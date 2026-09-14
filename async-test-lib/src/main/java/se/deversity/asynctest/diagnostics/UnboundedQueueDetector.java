@@ -54,7 +54,7 @@ public class UnboundedQueueDetector {
         }
     }
 
-    private final Map<Integer, QueueState> trackedQueues = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, QueueState> trackedQueues = new ConcurrentHashMap<>();
     private final List<UnboundedQueueEvent> events = new ArrayList<>();
     private volatile boolean enabled = true;
     private volatile int warningThreshold = 1000; // Warn if queue grows beyond this
@@ -73,7 +73,7 @@ public class UnboundedQueueDetector {
 
         boolean isUnbounded = capacity < 0 || capacity == Integer.MAX_VALUE;
         QueueState state = new QueueState(name, capacity);
-        trackedQueues.put(System.identityHashCode(queue), state);
+        trackedQueues.put(new IdentityKey(queue), state);
 
         if (isUnbounded) {
             UnboundedQueueEvent event = new UnboundedQueueEvent(
@@ -97,7 +97,7 @@ public class UnboundedQueueDetector {
     public void recordEnqueue(BlockingQueue<?> queue) {
         if (!enabled || queue == null) return;
 
-        QueueState state = trackedQueues.get(System.identityHashCode(queue));
+        QueueState state = trackedQueues.get(new IdentityKey(queue));
         if (state != null) {
             state.enqueueCount.incrementAndGet();
             int currentSize = queue.size();
@@ -136,7 +136,7 @@ public class UnboundedQueueDetector {
     public void recordDequeue(BlockingQueue<?> queue) {
         if (!enabled || queue == null) return;
 
-        QueueState state = trackedQueues.get(System.identityHashCode(queue));
+        QueueState state = trackedQueues.get(new IdentityKey(queue));
         if (state != null) {
             state.dequeueCount.incrementAndGet();
         }

@@ -33,7 +33,7 @@ public class WakeupDetector {
         }
     }
     
-    private final Map<Integer, MonitorState> monitors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -44,7 +44,7 @@ public class WakeupDetector {
     public void recordWaitEnter(Object monitor) {
         if (!enabled || monitor == null) return;
         
-        MonitorState state = monitors.computeIfAbsent(System.identityHashCode(monitor), 
+        MonitorState state = monitors.computeIfAbsent(new IdentityKey(monitor), 
             k -> new MonitorState(monitor)
         );
         
@@ -65,7 +65,7 @@ public class WakeupDetector {
     public void recordWaitExit(Object monitor, boolean wasNotified) {
         if (!enabled || monitor == null) return;
         
-        MonitorState state = monitors.get(System.identityHashCode(monitor));
+        MonitorState state = monitors.get(new IdentityKey(monitor));
         if (state == null) return;
         
         synchronized (state) {
@@ -92,7 +92,7 @@ public class WakeupDetector {
     public void recordNotify(Object monitor, boolean notifyAll) {
         if (!enabled || monitor == null) return;
         
-        MonitorState state = monitors.computeIfAbsent(System.identityHashCode(monitor),
+        MonitorState state = monitors.computeIfAbsent(new IdentityKey(monitor),
             k -> new MonitorState(monitor)
         );
         

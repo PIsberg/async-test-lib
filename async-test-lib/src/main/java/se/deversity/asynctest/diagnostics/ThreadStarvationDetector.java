@@ -77,7 +77,7 @@ public class ThreadStarvationDetector {
         }
     }
 
-    private final Map<Integer, ExecutorState> trackedExecutors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ExecutorState> trackedExecutors = new ConcurrentHashMap<>();
     private final List<TaskEvent> starvationEvents = new ArrayList<>();
     private volatile boolean enabled = true;
     private volatile long starvationThresholdMs = 1000; // 1 second default
@@ -95,7 +95,7 @@ public class ThreadStarvationDetector {
         // registering inside it registers once per worker.
         if (!enabled || executor == null) return;
 
-        trackedExecutors.putIfAbsent(System.identityHashCode(executor),
+        trackedExecutors.putIfAbsent(new IdentityKey(executor),
             new ExecutorState(name));
     }
 
@@ -111,7 +111,7 @@ public class ThreadStarvationDetector {
     public long recordTaskSubmission(ExecutorService executor) {
         if (!enabled || executor == null) return 0;
 
-        ExecutorState state = trackedExecutors.get(System.identityHashCode(executor));
+        ExecutorState state = trackedExecutors.get(new IdentityKey(executor));
         if (state != null) {
             state.submittedTasks.incrementAndGet();
             int depth = state.currentQueueDepth.incrementAndGet();

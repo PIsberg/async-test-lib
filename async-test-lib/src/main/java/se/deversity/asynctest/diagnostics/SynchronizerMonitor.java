@@ -35,7 +35,7 @@ public class SynchronizerMonitor {
         }
     }
     
-    private final Map<Integer, BarrierState> synchronizers = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, BarrierState> synchronizers = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -47,8 +47,7 @@ public class SynchronizerMonitor {
     public void registerSynchronizer(Object synchronizer, int expectedParties) {
         if (!enabled || synchronizer == null) return;
         
-        int id = System.identityHashCode(synchronizer);
-        synchronizers.putIfAbsent(id, new BarrierState(
+        synchronizers.putIfAbsent(new IdentityKey(synchronizer), new BarrierState(
             synchronizer.getClass().getSimpleName(), 
             expectedParties
         ));
@@ -60,10 +59,9 @@ public class SynchronizerMonitor {
      * @param synchronizer the synchronizer being recorded, tracked by identity
      */
     public void recordBarrierArrival(Object synchronizer) {
-        if (!enabled) return;
+        if (!enabled || synchronizer == null) return;
         
-        int id = System.identityHashCode(synchronizer);
-        BarrierState state = synchronizers.get(id);
+        BarrierState state = synchronizers.get(new IdentityKey(synchronizer));
         if (state == null) return;
         
         long threadId = Thread.currentThread().threadId();
@@ -87,10 +85,9 @@ public class SynchronizerMonitor {
      * @param synchronizer the synchronizer being recorded, tracked by identity
      */
     public void recordBarrierAdvance(Object synchronizer) {
-        if (!enabled) return;
+        if (!enabled || synchronizer == null) return;
         
-        int id = System.identityHashCode(synchronizer);
-        BarrierState state = synchronizers.get(id);
+        BarrierState state = synchronizers.get(new IdentityKey(synchronizer));
         if (state == null) return;
         
         state.events.add(String.format("T-%d advanced past barrier", 
@@ -103,10 +100,9 @@ public class SynchronizerMonitor {
      * @param synchronizer the synchronizer being recorded, tracked by identity
      */
     public void recordBarrierReset(Object synchronizer) {
-        if (!enabled) return;
+        if (!enabled || synchronizer == null) return;
         
-        int id = System.identityHashCode(synchronizer);
-        BarrierState state = synchronizers.get(id);
+        BarrierState state = synchronizers.get(new IdentityKey(synchronizer));
         if (state == null) return;
         
         state.arrivedCount.set(0);

@@ -85,7 +85,7 @@ public final class VirtualThreadPoolingDetector {
         ThreadTasks(String threadName) { this.threadName = threadName; }
     }
 
-    private final Map<Integer, ExecutorInfo> executors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ExecutorInfo> executors = new ConcurrentHashMap<>();
     private final Map<Long, ThreadTasks> tasksPerVirtualThread = new ConcurrentHashMap<>();
 
     /**
@@ -100,12 +100,13 @@ public final class VirtualThreadPoolingDetector {
         if (!(executor instanceof ThreadPoolExecutor pool)) {
             return;
         }
-        int id = System.identityHashCode(executor);
-        if (executors.containsKey(id)) {
+        IdentityKey key = new IdentityKey(executor);
+        int id = key.hashCode();
+        if (executors.containsKey(key)) {
             return;
         }
         String label = name != null ? name : executor.getClass().getSimpleName() + "@" + id;
-        executors.computeIfAbsent(id, k -> new ExecutorInfo(
+        executors.computeIfAbsent(key, k -> new ExecutorInfo(
                 label,
                 executor.getClass().getName(),
                 pool.getMaximumPoolSize(),

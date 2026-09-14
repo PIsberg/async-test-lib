@@ -59,7 +59,7 @@ public class StringBuilderDetector {
         }
     }
 
-    private final Map<Integer, BuilderState> builders = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, BuilderState> builders = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -70,7 +70,7 @@ public class StringBuilderDetector {
      */
     public void registerBuilder(StringBuilder builder, String name) {
         if (!enabled || builder == null) return;
-        builders.putIfAbsent(System.identityHashCode(builder),
+        builders.putIfAbsent(new IdentityKey(builder),
                 new BuilderState(name != null ? name : "StringBuilder@" + System.identityHashCode(builder)));
     }
 
@@ -160,9 +160,9 @@ public class StringBuilderDetector {
     }
 
     private BuilderState resolve(StringBuilder builder, String name) {
-        int key = System.identityHashCode(builder);
+        IdentityKey key = new IdentityKey(builder);
         return builders.computeIfAbsent(key,
-                k -> new BuilderState(name != null ? name : "StringBuilder@" + k));
+                k -> new BuilderState(name != null ? name : "StringBuilder@" + k.hashCode()));
     }
 
     /**

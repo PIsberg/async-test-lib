@@ -32,8 +32,8 @@ public final class TryLockMisuseDetector {
         }
     }
 
-    private final Map<Integer, Map<Long, Boolean>> lockResults = new ConcurrentHashMap<>();
-    private final Map<Integer, State> violations = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, Map<Long, Boolean>> lockResults = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> violations = new ConcurrentHashMap<>();
 
     /**
      * Record the result of a tryLock() call.
@@ -45,8 +45,8 @@ public final class TryLockMisuseDetector {
      */
     public void recordTryLockResult(Object lock, String lockName, boolean acquired, Thread thread) {
         if (lock == null || thread == null) return;
-        int id = System.identityHashCode(lock);
-        lockResults.computeIfAbsent(id, k -> new ConcurrentHashMap<>()).put(thread.threadId(), acquired);
+        IdentityKey key = new IdentityKey(lock);
+        lockResults.computeIfAbsent(key, k -> new ConcurrentHashMap<>()).put(thread.threadId(), acquired);
     }
 
     /**
@@ -58,13 +58,13 @@ public final class TryLockMisuseDetector {
      */
     public void recordUnlock(Object lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
-        int id = System.identityHashCode(lock);
-        Map<Long, Boolean> threadResults = lockResults.get(id);
+        IdentityKey key = new IdentityKey(lock);
+        Map<Long, Boolean> threadResults = lockResults.get(key);
         if (threadResults != null) {
             Boolean acquired = threadResults.get(thread.threadId());
             if (acquired != null && !acquired) {
-                State s = violations.computeIfAbsent(id, k -> new State(
-                    lockName != null ? lockName : "Lock@" + id
+                State s = violations.computeIfAbsent(key, k -> new State(
+                    lockName != null ? lockName : "Lock@" + key.hashCode()
                 ));
                 s.threadsWithViolations.add(thread.getName());
             }
