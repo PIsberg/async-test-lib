@@ -785,7 +785,7 @@ public @interface AsyncTest {
 
     /**
      * Enable Exchanger misuse detection.
-     * Detects exchange timeouts and missing partners.
+     * Detects an exchange that started and never ended: a caller left with no partner.
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}

@@ -43,6 +43,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `recorded_cyclicBarrier_leftBroken` becomes `recorded_cyclicBarrier_awaitedWhileBroken` and
   awaits a barrier broken for real. `recordTimeout` is still the caller's declaration.
 
+- **`ExchangerDetector` reports an exchange that was never left, not a timeout that was handled
+  (#585).** `recordTimeout` and `recordInterrupted` put the exchanger in a set and any entry was a
+  CRITICAL finding, so a timed `exchange(v, t, unit)` that catches `TimeoutException`, the fix the
+  report itself prescribed, failed the gate, while an untimed exchange whose partner never came
+  recorded nothing. The started and completed counts that would show the orphan were written and
+  never read. The detector now counts, per exchanger, exchanges started against exchanges ended by
+  a completion, a timeout or an interrupt, and reports the ones still open at analysis; timeouts,
+  interrupts and null payloads are printed as context. A start on an exchanger nobody registered is
+  now tracked under its label instead of dropped. Inside an `@AsyncTest` an untimed orphan holds its
+  round until `timeoutMs`, so the finding arrives with the timeout and is named in its message;
+  `ExchangerOrphanRunTest` pins that through the runner, and `examples/48-exchanger-misuse` now
+  demonstrates the untimed orphan rather than the handled timeout. The class javadoc no longer
+  lists an odd-thread check it never had or null payloads as misuse. `ExchangerDetectorTest` and two
+  `DetectorAccuracyEvalTest` twins pin both directions; nine of those tests were red before the fix.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

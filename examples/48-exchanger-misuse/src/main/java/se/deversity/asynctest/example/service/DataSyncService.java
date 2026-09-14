@@ -8,29 +8,41 @@ import java.util.concurrent.TimeoutException;
  * Synchronizes data between pairs of threads using an {@link Exchanger}.
  *
  * <p><strong>Bug:</strong> An {@code Exchanger} requires exactly two threads to
- * call {@link Exchanger#exchange} at the same time. When the number of concurrent
- * callers is odd, one thread waits indefinitely for a partner that never arrives,
- * causing a timeout (or deadlock without one).
+ * call {@link Exchanger#exchange} at the same time. {@link #exchangeData} waits
+ * without a bound, so when the number of concurrent callers is odd, the caller
+ * left over waits forever for a partner that never arrives.
  *
- * <p><strong>Fix:</strong> Ensure the exchanger is always called by an even
- * number of threads, or replace it with a {@link java.util.concurrent.SynchronousQueue}
- * combined with explicit producer/consumer roles.
+ * <p><strong>Fix:</strong> {@link #exchangeDataWithin} bounds the wait and hands
+ * the caller a sentinel instead of blocking, or ensure callers always arrive in
+ * pairs.
  */
 public class DataSyncService {
 
     private final Exchanger<String> exchanger = new Exchanger<>();
 
     /**
-     * Attempts to exchange {@code data} with another thread within 100 ms.
+     * Exchanges {@code data} with another thread, waiting as long as it takes.
      *
      * @param data the payload to send
+     * @return the payload received from the partner thread
+     * @throws InterruptedException if the caller is interrupted while waiting for a partner
+     */
+    public String exchangeData(String data) throws InterruptedException {
+        return exchanger.exchange(data); // BUG: no partner means no return
+    }
+
+    /**
+     * Attempts to exchange {@code data} with another thread within {@code timeoutMs}.
+     *
+     * @param data the payload to send
+     * @param timeoutMs how long to wait for a partner
      * @return the payload received from the partner thread, or {@code "[timeout]"} on timeout
      */
-    public String exchangeData(String data) {
+    public String exchangeDataWithin(String data, long timeoutMs) {
         try {
-            return exchanger.exchange(data, 100, TimeUnit.MILLISECONDS);
+            return exchanger.exchange(data, timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            return "[timeout]"; // no partner arrived in time
+            return "[timeout]"; // no partner arrived in time; the caller gives up and moves on
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return "[interrupted]";

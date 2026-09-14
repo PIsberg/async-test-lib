@@ -2896,14 +2896,15 @@ final class Corpus {
                             + "phase, which is the cycle it exists for. The pair separates on "
                             + "whether the protocol ended in its terminal state"),
 
-            new RecordingSubject("recorded_exchanger_timedOutWithNoPartner", JDK,
+            new RecordingSubject("recorded_exchanger_leftWithNoPartner", JDK,
                     "java.util.concurrent.Exchanger",
                     DetectorType.EXCHANGER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "an exchange that timed out is one where no partner ever arrived, and an "
-                            + "Exchanger needs exactly two threads to meet. The thread that did "
-                            + "arrive is left holding a handoff that will never complete, which "
-                            + "is the hazard the class carries and the one this detector models"),
+                    "an exchange is recorded as entered and nothing ever ends it: no completion, "
+                            + "no timeout, no interrupt. An Exchanger needs exactly two threads to "
+                            + "meet, and the one that arrived is still inside exchange() waiting "
+                            + "for a partner that is not coming. A recorded timeout is no longer "
+                            + "this row, because a timed exchange that handles it has left (#585)"),
             new RecordingSubject("recorded_exchanger_exchangedNothing", JDK,
                     "java.util.concurrent.Exchanger",
                     DetectorType.EXCHANGER, Contract.THREAD_SAFE,

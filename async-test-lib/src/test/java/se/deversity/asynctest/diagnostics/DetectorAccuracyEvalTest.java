@@ -2245,6 +2245,72 @@ class DetectorAccuracyEvalTest {
                         + "report. Report:\n" + monitor.analyzeThreadLocalLeaks());
     }
 
+    // ---- ExchangerDetector ----
+
+    @Test
+    @DisplayName("exchanger: an odd caller left blocked in an untimed exchange fires (true positive)")
+    void exchangerFiresWhenAnOddCallerIsLeftWithoutAPartner() throws InterruptedException {
+        ExchangerDetector detector = new ExchangerDetector();
+        java.util.concurrent.Exchanger<String> exchanger = new java.util.concurrent.Exchanger<>();
+        detector.registerExchanger(exchanger, "sync");
+
+        Runnable untimed = () -> {
+            detector.recordExchangeStart(exchanger, "sync");
+            try {
+                detector.recordExchangeComplete(exchanger, "sync", exchanger.exchange("payload"));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // this test's cleanup, after the analysis
+            }
+        };
+        onTwoThreads(untimed, untimed);
+
+        // The bug: a third caller of an exchange that has no timeout, with nobody left to pair with.
+        Thread odd = new Thread(untimed, "odd-exchanger-caller");
+        odd.setDaemon(true);
+        odd.start();
+        try {
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+            while (odd.getState() != Thread.State.WAITING) {
+                assertTrue(System.nanoTime() < deadline, "the odd caller never parked in exchange()");
+                Thread.sleep(5);
+            }
+            assertTrue(detector.analyze().hasIssues(),
+                    "the third caller is parked in exchange() for good, which is the orphaned "
+                            + "rendezvous this detector exists to report. Report: "
+                            + detector.analyze());
+        } finally {
+            odd.interrupt();
+            odd.join(2_000);
+        }
+    }
+
+    @Test
+    @DisplayName("exchanger: the twin whose odd caller times out and handles it stays silent (true negative)")
+    void exchangerStaysSilentWhenTheOddCallerHandlesItsTimeout() throws InterruptedException {
+        ExchangerDetector detector = new ExchangerDetector();
+        java.util.concurrent.Exchanger<String> exchanger = new java.util.concurrent.Exchanger<>();
+        detector.registerExchanger(exchanger, "sync");
+
+        Runnable timed = () -> {
+            detector.recordExchangeStart(exchanger, "sync");
+            try {
+                detector.recordExchangeComplete(exchanger, "sync",
+                        exchanger.exchange("payload", 20, java.util.concurrent.TimeUnit.MILLISECONDS));
+            } catch (java.util.concurrent.TimeoutException e) {
+                detector.recordTimeout(exchanger); // the fix: give up, and say so
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        onTwoThreads(timed, timed);
+        timed.run(); // the same odd caller, which now cannot be left behind
+
+        assertFalse(detector.analyze().hasIssues(),
+                "every exchange ended: the pair completed and the odd caller timed out and handled "
+                        + "it, which is the report's own prescribed fix (#585). Report: "
+                        + detector.analyze());
+    }
+
     @Test
     @DisplayName("countdown latch: a worker that never signals makes the waiter time out (true positive)")
     void countDownLatchFiresWhenAWorkerNeverSignals() throws InterruptedException {

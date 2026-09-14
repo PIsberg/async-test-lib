@@ -113,7 +113,7 @@ public enum DetectorType {
     PHASER,
     /** Detects StampedLock misuse patterns: - Optimistic read without validation - Lock upgrade issues (optimistic → write) - Stamp not released in finally block - Wro. */
     STAMPED_LOCK,
-    /** Detects Exchanger misuse patterns: - Exchange timeout (exchange with timeout expiring) - Missing exchange partner (odd number of threads) - InterruptedException. */
+    /** Detects an orphaned Exchanger rendezvous: an exchange a thread started and never left, typically the odd caller with no partner. */
     EXCHANGER,
     /** Detects ScheduledExecutorService misuse patterns: - Task scheduling without proper shutdown - Fixed delay vs fixed rate confusion - Long-running tasks blocking . */
     SCHEDULED_EXECUTOR,
