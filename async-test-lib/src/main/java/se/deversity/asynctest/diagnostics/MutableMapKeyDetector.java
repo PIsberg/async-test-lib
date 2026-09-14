@@ -49,7 +49,7 @@ public class MutableMapKeyDetector {
         }
     }
 
-    private final Map<Integer, KeyRegistration> registeredKeys = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, KeyRegistration> registeredKeys = new ConcurrentHashMap<>();
     private final List<String> mutationDetails = new CopyOnWriteArrayList<>();
 
     /**
@@ -64,7 +64,7 @@ public class MutableMapKeyDetector {
         if (map == null || key == null) return;
         String resolved = mapName != null ? mapName : "map@" + System.identityHashCode(map);
         String desc = key.getClass().getSimpleName() + "@" + System.identityHashCode(key);
-        registeredKeys.put(System.identityHashCode(key),
+        registeredKeys.put(new IdentityKey(key),
                 new KeyRegistration(resolved, key.hashCode(), desc));
     }
 
@@ -79,7 +79,7 @@ public class MutableMapKeyDetector {
      */
     public void recordKeyMutation(Object key, String fieldName, Object oldValue, Object newValue) {
         if (key == null) return;
-        KeyRegistration reg = registeredKeys.get(System.identityHashCode(key));
+        KeyRegistration reg = registeredKeys.get(new IdentityKey(key));
         if (reg == null) return;
 
         reg.mutationCount.incrementAndGet();

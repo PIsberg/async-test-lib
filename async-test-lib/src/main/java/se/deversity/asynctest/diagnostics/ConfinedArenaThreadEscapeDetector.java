@@ -103,7 +103,7 @@ public final class ConfinedArenaThreadEscapeDetector {
 
     private static final class SegmentState {
         final String label;
-        final @Nullable Integer arenaId;
+        final @Nullable IdentityKey arenaKey;
         final long byteSize;
         final Set<String> accessingThreads = ConcurrentHashMap.newKeySet();
         final LongAdder wrongThreadAccesses = new LongAdder();
@@ -111,15 +111,15 @@ public final class ConfinedArenaThreadEscapeDetector {
         final Set<String> offendingThreads  = ConcurrentHashMap.newKeySet();
         final AtomicBoolean confirmedConfined = new AtomicBoolean();
         final AtomicBoolean jvmAnswered       = new AtomicBoolean();
-        SegmentState(String label, @Nullable Integer arenaId, long byteSize) {
+        SegmentState(String label, @Nullable IdentityKey arenaKey, long byteSize) {
             this.label    = label;
-            this.arenaId  = arenaId;
+            this.arenaKey = arenaKey;
             this.byteSize = byteSize;
         }
     }
 
-    private final Map<Integer, ArenaState>   arenas   = new ConcurrentHashMap<>();
-    private final Map<Integer, SegmentState> segments = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ArenaState>   arenas   = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, SegmentState> segments = new ConcurrentHashMap<>();
 
     /**
      * Register an arena and the thread that created it. For a confined arena that thread is the
@@ -132,9 +132,9 @@ public final class ConfinedArenaThreadEscapeDetector {
      */
     public void recordArena(@Nullable Object arena, @Nullable String label, @Nullable Thread owner) {
         if (arena == null) return;
-        int id = System.identityHashCode(arena);
-        final String lbl = label != null ? label : "Arena@" + id;
-        arenas.computeIfAbsent(id, k -> new ArenaState(lbl, owner));
+        IdentityKey key = new IdentityKey(arena);
+        final String lbl = label != null ? label : "Arena@" + key.hashCode();
+        arenas.computeIfAbsent(key, k -> new ArenaState(lbl, owner));
     }
 
     /**
@@ -149,8 +149,8 @@ public final class ConfinedArenaThreadEscapeDetector {
     public void recordAllocation(@Nullable Object segment, @Nullable Object arena,
                                  @Nullable String label, long byteSize) {
         if (segment == null) return;
-        Integer arenaId = arena == null ? null : System.identityHashCode(arena);
-        SegmentState s = stateFor(segment, label, arenaId, byteSize);
+        IdentityKey arenaKey = arena == null ? null : new IdentityKey(arena);
+        SegmentState s = stateFor(segment, label, arenaKey, byteSize);
         probeConfinement(segment, s);
     }
 
@@ -178,9 +178,9 @@ public final class ConfinedArenaThreadEscapeDetector {
                 s.wrongThreadAccesses.increment();
                 s.offendingThreads.add(thread.getName());
             }
-        } else if (s.arenaId != null) {
+        } else if (s.arenaKey != null) {
             // Fallback: no JVM answer available, compare against the recorded owner.
-            ArenaState a = arenas.get(s.arenaId);
+            ArenaState a = arenas.get(s.arenaKey);
             if (a != null && a.ownerThreadId != null && a.ownerThreadId != thread.threadId()) {
                 s.wrongThreadAccesses.increment();
                 s.offendingThreads.add(thread.getName());
@@ -188,7 +188,7 @@ public final class ConfinedArenaThreadEscapeDetector {
         }
 
         Boolean alive = isAlive(segment);
-        if (Boolean.FALSE.equals(alive) || (s.arenaId != null && isClosed(s.arenaId))) {
+        if (Boolean.FALSE.equals(alive) || (s.arenaKey != null && isClosed(s.arenaKey))) {
             s.afterCloseAccesses.increment();
             s.offendingThreads.add(thread.getName());
         }
@@ -203,11 +203,11 @@ public final class ConfinedArenaThreadEscapeDetector {
      */
     public void recordClose(@Nullable Object arena, @Nullable Thread thread) {
         if (arena == null) return;
-        int id = System.identityHashCode(arena);
-        ArenaState a = arenas.get(id);
+        IdentityKey key = new IdentityKey(arena);
+        ArenaState a = arenas.get(key);
         if (a == null) {
-            final String lbl = "Arena@" + id;
-            a = arenas.computeIfAbsent(id, k -> new ArenaState(lbl, thread));
+            final String lbl = "Arena@" + key.hashCode();
+            a = arenas.computeIfAbsent(key, k -> new ArenaState(lbl, thread));
         }
         a.closed.set(true);
         if (thread != null && a.ownerThreadId != null && a.ownerThreadId != thread.threadId()) {
@@ -215,18 +215,18 @@ public final class ConfinedArenaThreadEscapeDetector {
         }
     }
 
-    private boolean isClosed(int arenaId) {
-        ArenaState a = arenas.get(arenaId);
+    private boolean isClosed(IdentityKey arenaKey) {
+        ArenaState a = arenas.get(arenaKey);
         return a != null && a.closed.get();
     }
 
     private SegmentState stateFor(Object segment, @Nullable String label,
-                                  @Nullable Integer arenaId, long byteSize) {
-        int id = System.identityHashCode(segment);
-        SegmentState s = segments.get(id);
+                                  @Nullable IdentityKey arenaKey, long byteSize) {
+        IdentityKey key = new IdentityKey(segment);
+        SegmentState s = segments.get(key);
         if (s == null) {
-            final String lbl = label != null ? label : "MemorySegment@" + id;
-            s = segments.computeIfAbsent(id, k -> new SegmentState(lbl, arenaId, byteSize));
+            final String lbl = label != null ? label : "MemorySegment@" + key.hashCode();
+            s = segments.computeIfAbsent(key, k -> new SegmentState(lbl, arenaKey, byteSize));
         }
         return s;
     }

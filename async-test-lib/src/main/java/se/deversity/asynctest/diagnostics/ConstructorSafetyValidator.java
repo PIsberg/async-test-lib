@@ -50,7 +50,7 @@ public class ConstructorSafetyValidator {
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
     }
     
-    private final Map<Integer, ObjectState> objects = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ObjectState> objects = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -61,7 +61,7 @@ public class ConstructorSafetyValidator {
     public void recordConstructionStart(Object object) {
         if (!enabled || object == null) return;
 
-        int id = System.identityHashCode(object);
+        IdentityKey id = new IdentityKey(object);
         objects.putIfAbsent(id, new ObjectState(object.getClass().getSimpleName(),
                                                 Thread.currentThread().threadId()));
     }
@@ -72,9 +72,9 @@ public class ConstructorSafetyValidator {
      * @param object the object the access is on, tracked by identity
      */
     public void recordConstructionEnd(Object object) {
-        if (!enabled) return;
+        if (!enabled || object == null) return;
         
-        int id = System.identityHashCode(object);
+        IdentityKey id = new IdentityKey(object);
         ObjectState state = objects.get(id);
         if (state != null) {
             state.constructionComplete = true;
@@ -89,9 +89,9 @@ public class ConstructorSafetyValidator {
      * @param timestamp when the event happened, in nanoseconds
      */
     public void recordFieldAccess(Object object, String fieldName, long timestamp) {
-        if (!enabled) return;
+        if (!enabled || object == null) return;
         
-        int objectId = System.identityHashCode(object);
+        IdentityKey objectId = new IdentityKey(object);
         ObjectState state = objects.get(objectId);
         if (state == null) return;
         

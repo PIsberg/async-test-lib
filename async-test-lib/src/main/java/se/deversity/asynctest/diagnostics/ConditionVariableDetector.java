@@ -71,7 +71,7 @@ public class ConditionVariableDetector {
         }
     }
 
-    private final Map<Integer, ConditionState> conditions = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ConditionState> conditions = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -87,7 +87,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return;
         }
-        conditions.putIfAbsent(System.identityHashCode(condition), new ConditionState(condition, name));
+        conditions.putIfAbsent(new IdentityKey(condition), new ConditionState(condition, name));
     }
 
     /**
@@ -100,7 +100,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return;
         }
-        ConditionState state = conditions.get(System.identityHashCode(condition));
+        ConditionState state = conditions.get(new IdentityKey(condition));
         if (state != null) {
             state.awaitCount.incrementAndGet();
             state.currentWaiters.incrementAndGet();
@@ -119,7 +119,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return;
         }
-        ConditionState state = conditions.get(System.identityHashCode(condition));
+        ConditionState state = conditions.get(new IdentityKey(condition));
         if (state != null) {
             state.currentWaiters.decrementAndGet();
             state.waitingThreads.remove(Thread.currentThread().threadId());
@@ -137,7 +137,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return;
         }
-        ConditionState state = conditions.get(System.identityHashCode(condition));
+        ConditionState state = conditions.get(new IdentityKey(condition));
         if (state != null) {
             if (isSignalAll) {
                 state.signalAllCount.incrementAndGet();

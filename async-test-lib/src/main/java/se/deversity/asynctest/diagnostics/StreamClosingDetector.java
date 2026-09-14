@@ -61,7 +61,7 @@ public class StreamClosingDetector {
         }
     }
 
-    private final Map<Integer, StreamState> openStreams = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, StreamState> openStreams = new ConcurrentHashMap<>();
     private final List<CrossThreadCloseEvent> crossThreadCloseEvents =
         java.util.Collections.synchronizedList(new java.util.ArrayList<>());
     private final AtomicInteger totalOpened = new AtomicInteger(0);
@@ -95,7 +95,7 @@ public class StreamClosingDetector {
             return;
         }
         StreamState state = new StreamState(name);
-        openStreams.put(System.identityHashCode(stream), state);
+        openStreams.put(new IdentityKey(stream), state);
         totalOpened.incrementAndGet();
         int current = currentOpen.incrementAndGet();
         maxConcurrentOpen.updateAndGet(max -> Math.max(max, current));
@@ -111,8 +111,7 @@ public class StreamClosingDetector {
         if (!enabled || stream == null) {
             return;
         }
-        int key = System.identityHashCode(stream);
-        StreamState state = openStreams.remove(key);
+        StreamState state = openStreams.remove(new IdentityKey(stream));
         if (state != null) {
             state.closed = true;
             state.closedByThread = Thread.currentThread().threadId();
@@ -139,7 +138,7 @@ public class StreamClosingDetector {
         report.maxConcurrentOpen = maxConcurrentOpen.get();
 
         // Check for unclosed streams
-        for (Map.Entry<Integer, StreamState> entry : openStreams.entrySet()) {
+        for (Map.Entry<IdentityKey, StreamState> entry : openStreams.entrySet()) {
             StreamState state = entry.getValue();
             if (!state.closed) {
                 long openDuration = System.currentTimeMillis() - state.openTime;

@@ -40,7 +40,7 @@ public class SharedDecimalFormatDetector {
         FormatState(String name) { this.name = name; }
     }
 
-    private final Map<Integer, FormatState> formats = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, FormatState> formats = new ConcurrentHashMap<>();
 
     /**
      * Record an access (format/parse/applyPattern) to a DecimalFormat or NumberFormat instance.
@@ -54,7 +54,7 @@ public class SharedDecimalFormatDetector {
         String label = name != null ? name
                 : format.getClass().getSimpleName() + "@" + System.identityHashCode(format);
         FormatState s = formats.computeIfAbsent(
-                System.identityHashCode(format), id -> new FormatState(label));
+                new IdentityKey(format), id -> new FormatState(label));
         s.noteAccess(format);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());

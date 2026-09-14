@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Detectors no longer merge two objects whose identity hashes collide (#564).** 86 detector
+  classes kept per-instance state in a map or set keyed by `System.identityHashCode`, which is not
+  unique: two live objects share one about half the time once some 54,000 are tracked, and the
+  shared entry silently attributed one object's events to the other. A fresh pool per body could
+  inherit an earlier pool's shutdown, two per-thread `Shared*` instances could read as one shared
+  instance and report a race on correct code, a colliding owner could make a field look like it
+  changed its lock. 80 of them now key by a package-private `IdentityKey` that caches the hash and
+  compares referents with `==`, or by a value that is already unique (`ThreadLeakDetector` by
+  thread id, because it must not retain the thread). Report labels print the same hash as before.
+  `DetectorStateIsKeyedByIdentityTest` refuses the pattern in main sources; the other six, which
+  open pull requests also rewrite, are listed as pending there until those merge. `ThreadPoolMonitor`,
+  `SynchronizerMonitor` and `ConstructorSafetyValidator` now ignore a `null` subject in every
+  record method, where some used to file it under hash 0.
+
 - **`TimerDetector` reports a timer thread's death only when the thread died (#567).**
   `recordTaskException` set the death flag unconditionally, so the call was the finding: a task
   that catches its exception, records it and carries on, with the timer still running, was

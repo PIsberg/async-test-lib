@@ -52,7 +52,7 @@ public class LatchMisuseDetector {
         }
     }
 
-    private final Map<Integer, LatchState> latches = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, LatchState> latches = new ConcurrentHashMap<>();
     /**
      * Registers latch for tracking.
      *
@@ -64,7 +64,7 @@ public class LatchMisuseDetector {
         if (latch == null) {
             return;
         }
-        latches.putIfAbsent(System.identityHashCode(latch),
+        latches.putIfAbsent(new IdentityKey(latch),
             new LatchState(name == null || name.isBlank() ? "CountDownLatch" : name, initialCount));
     }
 
@@ -92,9 +92,10 @@ public class LatchMisuseDetector {
         if (!(latch instanceof CountDownLatch countDownLatch)) {
             return;
         }
-        int key = System.identityHashCode(latch);
+        IdentityKey key = new IdentityKey(latch);
         int observed = (int) Math.min(countDownLatch.getCount(), Integer.MAX_VALUE);
-        latches.computeIfAbsent(key, absent -> new LatchState("CountDownLatch@" + absent, observed))
+        latches.computeIfAbsent(key,
+                absent -> new LatchState("CountDownLatch@" + absent.hashCode(), observed))
             .initialCount.accumulateAndGet(observed, Math::max);
     }
     /**
@@ -140,7 +141,7 @@ public class LatchMisuseDetector {
     }
 
     private @Nullable LatchState stateFor(Object latch) {
-        return latch == null ? null : latches.get(System.identityHashCode(latch));
+        return latch == null ? null : latches.get(new IdentityKey(latch));
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.

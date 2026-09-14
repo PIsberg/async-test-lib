@@ -54,7 +54,7 @@ public class WeakReferenceRaceDetector {
         RefState(String name) { this.name = name; }
     }
 
-    private final Map<Integer, RefState> refs = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, RefState> refs = new ConcurrentHashMap<>();
 
     /**
      * Record the result of calling {@code ref.get()}.
@@ -67,7 +67,7 @@ public class WeakReferenceRaceDetector {
     public void recordGet(Object ref, String name, Object result, Thread thread) {
         if (ref == null || thread == null) return;
         String label = name != null ? name : "ref@" + System.identityHashCode(ref);
-        RefState s = refs.computeIfAbsent(System.identityHashCode(ref), id -> new RefState(label));
+        RefState s = refs.computeIfAbsent(new IdentityKey(ref), k -> new RefState(label));
         if (result != null) {
             s.sawNonNull.set(true);
             s.nonNullThreads.add(thread.getName());
@@ -89,7 +89,7 @@ public class WeakReferenceRaceDetector {
     public void recordNullDereference(Object ref, String name, Thread thread) {
         if (ref == null || thread == null) return;
         String label = name != null ? name : "ref@" + System.identityHashCode(ref);
-        RefState s = refs.computeIfAbsent(System.identityHashCode(ref), id -> new RefState(label));
+        RefState s = refs.computeIfAbsent(new IdentityKey(ref), k -> new RefState(label));
         s.nullDerefs.add(thread.getName());
     }
 

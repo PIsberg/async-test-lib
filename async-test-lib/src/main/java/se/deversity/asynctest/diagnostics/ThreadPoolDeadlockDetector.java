@@ -88,7 +88,7 @@ public class ThreadPoolDeadlockDetector {
         }
     }
 
-    private final Map<Integer, PoolState> registeredPools = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, PoolState> registeredPools = new ConcurrentHashMap<>();
     private final AtomicInteger deadlockRiskCount = new AtomicInteger(0);
     private volatile boolean enabled = true;
 
@@ -106,7 +106,7 @@ public class ThreadPoolDeadlockDetector {
             return;
         }
 
-        int identity = System.identityHashCode(pool);
+        IdentityKey identity = new IdentityKey(pool);
         int poolSize = estimatePoolSize(pool);
         registeredPools.putIfAbsent(identity, new PoolState(name, poolSize));
     }
@@ -124,7 +124,7 @@ public class ThreadPoolDeadlockDetector {
             return;
         }
 
-        int identity = System.identityHashCode(pool);
+        IdentityKey identity = new IdentityKey(pool);
         PoolState state = registeredPools.get(identity);
         if (state != null) {
             int activeTasks = state.activeTaskCount.incrementAndGet();
@@ -150,7 +150,7 @@ public class ThreadPoolDeadlockDetector {
             return;
         }
 
-        int identity = System.identityHashCode(pool);
+        IdentityKey identity = new IdentityKey(pool);
         PoolState state = registeredPools.get(identity);
         if (state != null) {
             state.activeTaskCount.decrementAndGet();

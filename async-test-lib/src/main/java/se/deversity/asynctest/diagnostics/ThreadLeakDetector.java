@@ -71,7 +71,13 @@ public class ThreadLeakDetector {
      */
     private static final int THREAD_COUNT_VARIANCE_ALLOWANCE = 2;
 
-    private final Map<Integer, ThreadState> trackedThreads = new ConcurrentHashMap<>();
+    /**
+     * Keyed by thread id, not by identity hash (#564). An identity hash is not unique, so a
+     * colliding thread overwrote another thread's state and hid its leak. The id is unique for
+     * the thread's lifetime, and unlike an identity key it holds no reference, which this map must
+     * not do: {@link #recordThreadEnd} drops the Thread so a finished one can be collected.
+     */
+    private final Map<Long, ThreadState> trackedThreads = new ConcurrentHashMap<>();
     private final AtomicInteger initialThreadCount = new AtomicInteger(0);
     private volatile int maxThreadCount = 0;
     private volatile boolean enabled = true;
@@ -97,7 +103,7 @@ public class ThreadLeakDetector {
         if (!enabled || thread == null) {
             return;
         }
-        trackedThreads.put(System.identityHashCode(thread), new ThreadState(thread, name));
+        trackedThreads.put(thread.threadId(), new ThreadState(thread, name));
         int currentCount = Thread.activeCount();
         if (currentCount > maxThreadCount) {
             maxThreadCount = currentCount;
@@ -113,7 +119,7 @@ public class ThreadLeakDetector {
         if (!enabled || thread == null) {
             return;
         }
-        ThreadState state = trackedThreads.get(System.identityHashCode(thread));
+        ThreadState state = trackedThreads.get(thread.threadId());
         if (state != null) {
             state.terminated = true;
             // Drop the strong Thread reference now that it's accounted for; the

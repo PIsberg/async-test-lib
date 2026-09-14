@@ -32,7 +32,7 @@ public final class SpuriousWakeupDetector {
         }
     }
 
-    private final Map<Integer, State> monitors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> monitors = new ConcurrentHashMap<>();
 
     /**
      * Record a wait/await operation.
@@ -46,9 +46,9 @@ public final class SpuriousWakeupDetector {
         if (monitor == null || thread == null) return;
         if (insideLoop) return; // Safely inside loop, do not track as violation
         
-        int id = System.identityHashCode(monitor);
-        State s = monitors.computeIfAbsent(id, k -> new State(
-            monitorName != null ? monitorName : "Monitor@" + id
+        IdentityKey key = new IdentityKey(monitor);
+        State s = monitors.computeIfAbsent(key, k -> new State(
+            monitorName != null ? monitorName : "Monitor@" + k.hashCode()
         ));
         s.threadsOutsideLoop.add(thread.getName());
     }

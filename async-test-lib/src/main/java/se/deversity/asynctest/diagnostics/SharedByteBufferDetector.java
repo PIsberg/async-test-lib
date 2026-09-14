@@ -80,7 +80,7 @@ public final class SharedByteBufferDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record a position-mutating access to a buffer instance — a relative
@@ -120,12 +120,12 @@ public final class SharedByteBufferDetector {
     }
 
     private State resolve(Object buffer) {
-        int id = System.identityHashCode(buffer);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(buffer);
+        State s = instances.get(key);
         if (s == null) {
             final String kind = buffer.getClass().getSimpleName();
-            final String label = kind + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label, kind));
+            final String label = kind + "@" + key.hashCode();
+            s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         return s;
     }

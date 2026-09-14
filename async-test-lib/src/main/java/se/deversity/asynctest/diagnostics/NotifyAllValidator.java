@@ -39,7 +39,7 @@ public class NotifyAllValidator {
         }
     }
 
-    private final Map<Integer, MonitorState> monitors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     /**
      * Records waiter added so it can be analysed at the end of the run.
@@ -53,7 +53,7 @@ public class NotifyAllValidator {
         }
 
         MonitorState state = monitors.computeIfAbsent(
-            System.identityHashCode(monitor),
+            new IdentityKey(monitor),
             ignored -> new MonitorState(monitorName == null || monitorName.isBlank()
                 ? monitor.getClass().getSimpleName()
                 : monitorName)
@@ -71,7 +71,7 @@ public class NotifyAllValidator {
             return;
         }
 
-        MonitorState state = monitors.get(System.identityHashCode(monitor));
+        MonitorState state = monitors.get(new IdentityKey(monitor));
         if (state != null) {
             state.waitingThreads.updateAndGet(current -> Math.max(0, current - 1));
         }
@@ -88,7 +88,7 @@ public class NotifyAllValidator {
         }
 
         MonitorState state = monitors.computeIfAbsent(
-            System.identityHashCode(monitor),
+            new IdentityKey(monitor),
             ignored -> new MonitorState(monitor.getClass().getSimpleName())
         );
 

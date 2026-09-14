@@ -106,7 +106,7 @@ public class SharedCollectionDetector {
         }
     }
 
-    private final Map<Integer, CollectionState> collections = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, CollectionState> collections = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -118,9 +118,9 @@ public class SharedCollectionDetector {
      */
     public void registerCollection(Object collection, String name, String collectionType) {
         if (!enabled || collection == null) return;
-        int key = System.identityHashCode(collection);
+        IdentityKey key = new IdentityKey(collection);
         String resolvedType = collectionType != null ? collectionType : collection.getClass().getSimpleName();
-        String resolvedName = name != null ? name : resolvedType + "@" + key;
+        String resolvedName = name != null ? name : resolvedType + "@" + key.hashCode();
         collections.putIfAbsent(key, new CollectionState(resolvedName, resolvedType));
     }
 
@@ -155,10 +155,10 @@ public class SharedCollectionDetector {
     }
 
     private CollectionState resolveState(Object collection, String name) {
-        int key = System.identityHashCode(collection);
+        IdentityKey key = new IdentityKey(collection);
         return collections.computeIfAbsent(key, k -> {
             String type = collection.getClass().getSimpleName();
-            String label = name != null ? name : type + "@" + k;
+            String label = name != null ? name : type + "@" + k.hashCode();
             return new CollectionState(label, type);
         });
     }

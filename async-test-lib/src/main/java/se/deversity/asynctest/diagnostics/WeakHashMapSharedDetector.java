@@ -67,7 +67,7 @@ public final class WeakHashMapSharedDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a {@link WeakHashMap} or {@link IdentityHashMap}.
@@ -84,12 +84,12 @@ public final class WeakHashMapSharedDetector {
         else if (map instanceof IdentityHashMap) type = "IdentityHashMap";
         else return; // not our concern
 
-        int id = System.identityHashCode(map);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(map);
+        State s = instances.get(key);
         if (s == null) {
             final String finalType = type;
-            s = instances.computeIfAbsent(id, k -> new State(
-                    (name != null) ? name : finalType + "@" + k,
+            s = instances.computeIfAbsent(key, k -> new State(
+                    (name != null) ? name : finalType + "@" + k.hashCode(),
                     finalType));
         }
         // Probed on the accessing thread, which is the one inside (or outside) the guarded

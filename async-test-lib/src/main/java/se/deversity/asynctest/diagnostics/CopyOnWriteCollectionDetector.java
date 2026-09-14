@@ -68,7 +68,7 @@ public class CopyOnWriteCollectionDetector {
         }
     }
 
-    private final Map<Integer, CoWState> collections = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, CoWState> collections = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -79,10 +79,10 @@ public class CopyOnWriteCollectionDetector {
      */
     public void registerCollection(Object collection, String name) {
         if (!enabled || collection == null) return;
-        int key = System.identityHashCode(collection);
+        IdentityKey key = new IdentityKey(collection);
         String type = collection.getClass().getSimpleName();
         collections.putIfAbsent(key,
-                new CoWState(name != null ? name : type + "@" + key, type));
+                new CoWState(name != null ? name : type + "@" + key.hashCode(), type));
     }
 
     /**
@@ -108,10 +108,9 @@ public class CopyOnWriteCollectionDetector {
     }
 
     private CoWState resolve(Object collection, String name) {
-        int key = System.identityHashCode(collection);
-        return collections.computeIfAbsent(key, k -> {
+        return collections.computeIfAbsent(new IdentityKey(collection), k -> {
             String type = collection.getClass().getSimpleName();
-            return new CoWState(name != null ? name : type + "@" + k, type);
+            return new CoWState(name != null ? name : type + "@" + k.hashCode(), type);
         });
     }
 

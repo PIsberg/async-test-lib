@@ -88,7 +88,7 @@ public final class HighContentionAtomicDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
     private final long attemptThreshold;
 
     /** Creates a detector using {@link #DEFAULT_ATTEMPT_THRESHOLD} as the attempt threshold. */
@@ -138,11 +138,11 @@ public final class HighContentionAtomicDetector {
     }
 
     private State stateFor(Object atomic) {
-        int id = System.identityHashCode(atomic);
+        IdentityKey id = new IdentityKey(atomic);
         State existing = instances.get(id);
         if (existing != null) return existing;
         return instances.computeIfAbsent(id,
-                k -> new State(atomic.getClass().getSimpleName() + "@" + k));
+                k -> new State(atomic.getClass().getSimpleName() + "@" + k.hashCode()));
     }
 
     private static void track(State s, Thread thread) {

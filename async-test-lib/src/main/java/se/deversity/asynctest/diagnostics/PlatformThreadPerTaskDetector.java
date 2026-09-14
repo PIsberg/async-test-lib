@@ -73,8 +73,8 @@ public final class PlatformThreadPerTaskDetector {
 
     private final Queue<Thread> platformThreadsCreated = new ConcurrentLinkedQueue<>();
     private final AtomicInteger virtualThreadsCreated = new AtomicInteger();
-    private final Map<Integer, Boolean> probedExecutors = new ConcurrentHashMap<>();
-    private final Map<Integer, String> perTaskPlatformExecutors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, Boolean> probedExecutors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, String> perTaskPlatformExecutors = new ConcurrentHashMap<>();
 
     /**
      * Adjust the churn threshold (defaults to {@link #DEFAULT_CHURN_THRESHOLD}).
@@ -119,7 +119,7 @@ public final class PlatformThreadPerTaskDetector {
         if (executor == null || !THREAD_PER_TASK_EXECUTOR.equals(executor.getClass().getName())) {
             return;
         }
-        int id = System.identityHashCode(executor);
+        IdentityKey id = new IdentityKey(executor);
         if (probedExecutors.putIfAbsent(id, Boolean.TRUE) != null) {
             return;
         }
@@ -140,7 +140,7 @@ public final class PlatformThreadPerTaskDetector {
             return;
         }
         if (!probeWasVirtual.get()) {
-            perTaskPlatformExecutors.put(id, name != null ? name : "executor@" + id);
+            perTaskPlatformExecutors.put(id, name != null ? name : "executor@" + id.hashCode());
         }
     }
 

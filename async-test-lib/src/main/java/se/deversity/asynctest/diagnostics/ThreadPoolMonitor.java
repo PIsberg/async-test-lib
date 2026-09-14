@@ -55,7 +55,7 @@ public class ThreadPoolMonitor {
         }
     }
     
-    private final Map<Integer, PoolState> pools = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, PoolState> pools = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -68,10 +68,10 @@ public class ThreadPoolMonitor {
      * @param queueCapacity the configured work-queue capacity
      */
     public void registerPool(Object executor, String name, int coreSize, int maxSize, int queueCapacity) {
-        if (!enabled) return;
+        if (!enabled || executor == null) return;
         
-        int id = System.identityHashCode(executor);
-        pools.putIfAbsent(id, new PoolState(name, maxSize, queueCapacity));
+        IdentityKey key = new IdentityKey(executor);
+        pools.putIfAbsent(key, new PoolState(name, maxSize, queueCapacity));
     }
     
     /**
@@ -80,10 +80,10 @@ public class ThreadPoolMonitor {
      * @param executor the executor being recorded, tracked by identity
      */
     public void recordTaskSubmitted(Object executor) {
-        if (!enabled) return;
+        if (!enabled || executor == null) return;
         
-        int id = System.identityHashCode(executor);
-        PoolState state = pools.get(id);
+        IdentityKey key = new IdentityKey(executor);
+        PoolState state = pools.get(key);
         if (state == null) return;
         
         state.queuedTasks.incrementAndGet();
@@ -96,10 +96,10 @@ public class ThreadPoolMonitor {
      * @param executor the executor being recorded, tracked by identity
      */
     public void recordTaskStarted(Object executor) {
-        if (!enabled) return;
+        if (!enabled || executor == null) return;
         
-        int id = System.identityHashCode(executor);
-        PoolState state = pools.get(id);
+        IdentityKey key = new IdentityKey(executor);
+        PoolState state = pools.get(key);
         if (state == null) return;
         
         state.activeThreads.incrementAndGet();
@@ -113,10 +113,10 @@ public class ThreadPoolMonitor {
      * @param durationMs the duration in milliseconds
      */
     public void recordTaskCompleted(Object executor, long durationMs) {
-        if (!enabled) return;
+        if (!enabled || executor == null) return;
         
-        int id = System.identityHashCode(executor);
-        PoolState state = pools.get(id);
+        IdentityKey key = new IdentityKey(executor);
+        PoolState state = pools.get(key);
         if (state == null) return;
         
         state.activeThreads.decrementAndGet();
@@ -131,10 +131,10 @@ public class ThreadPoolMonitor {
      * @param reason why the event was recorded, shown in the report
      */
     public void recordTaskRejected(Object executor, String reason) {
-        if (!enabled) return;
+        if (!enabled || executor == null) return;
         
-        int id = System.identityHashCode(executor);
-        PoolState state = pools.computeIfAbsent(id, k -> 
+        IdentityKey key = new IdentityKey(executor);
+        PoolState state = pools.computeIfAbsent(key, k -> 
             new PoolState("Unregistered pool", 0, 0, false)
         );
         

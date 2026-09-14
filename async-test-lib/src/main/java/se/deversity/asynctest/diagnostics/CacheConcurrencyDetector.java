@@ -90,7 +90,7 @@ public class CacheConcurrencyDetector {
         }
     }
 
-    private final Map<Integer, CacheState> caches = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, CacheState> caches = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -119,7 +119,7 @@ public class CacheConcurrencyDetector {
         }
         @SuppressWarnings("unchecked")
         Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-        caches.computeIfAbsent(System.identityHashCode(cache),
+        caches.computeIfAbsent(new IdentityKey(cache),
             k -> new CacheState(typedCache, name));
     }
 
@@ -134,12 +134,12 @@ public class CacheConcurrencyDetector {
         if (!enabled || cache == null) {
             return;
         }
-        int cacheKey = System.identityHashCode(cache);
+        IdentityKey cacheKey = new IdentityKey(cache);
         CacheState state = caches.get(cacheKey);
         if (state == null) {
             @SuppressWarnings("unchecked")
             Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-            final String label = name != null ? name : "cache-" + cacheKey;
+            final String label = name != null ? name : "cache-" + cacheKey.hashCode();
             // computeIfAbsent, not get-then-put: two threads racing on a cache's first access
             // both saw null, both built a CacheState and the second put discarded the first, so
             // readerThreads/writerThreads each held one id and the cross-thread contention this
@@ -165,12 +165,12 @@ public class CacheConcurrencyDetector {
         if (!enabled || cache == null) {
             return;
         }
-        int cacheKey = System.identityHashCode(cache);
+        IdentityKey cacheKey = new IdentityKey(cache);
         CacheState state = caches.get(cacheKey);
         if (state == null) {
             @SuppressWarnings("unchecked")
             Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-            final String label = name != null ? name : "cache-" + cacheKey;
+            final String label = name != null ? name : "cache-" + cacheKey.hashCode();
             // Atomic auto-register - see recordGet() for what get-then-put cost here.
             state = caches.computeIfAbsent(cacheKey, k -> new CacheState(typedCache, label));
         }
@@ -191,7 +191,7 @@ public class CacheConcurrencyDetector {
         if (!enabled || cache == null) {
             return;
         }
-        CacheState state = caches.get(System.identityHashCode(cache));
+        CacheState state = caches.get(new IdentityKey(cache));
         if (state != null) {
             state.iterationDetected = true;
         }

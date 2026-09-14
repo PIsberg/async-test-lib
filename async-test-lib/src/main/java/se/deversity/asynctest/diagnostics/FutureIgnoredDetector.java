@@ -39,7 +39,7 @@ public class FutureIgnoredDetector {
         }
     }
 
-    private final Map<Integer, SubmitRecord> submits = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, SubmitRecord> submits = new ConcurrentHashMap<>();
 
     /**
      * Records that a {@code Future} was returned from a {@code submit()} call.
@@ -52,7 +52,7 @@ public class FutureIgnoredDetector {
         if (future == null || thread == null) return;
         String label = taskName != null ? taskName
                 : "task@" + Integer.toHexString(System.identityHashCode(future));
-        submits.put(System.identityHashCode(future),
+        submits.put(new IdentityKey(future),
                 new SubmitRecord(label, thread.getName()));
     }
 
@@ -65,7 +65,7 @@ public class FutureIgnoredDetector {
      */
     public void recordInspect(Object future, Thread thread) {
         if (future == null) return;
-        SubmitRecord rec = submits.get(System.identityHashCode(future));
+        SubmitRecord rec = submits.get(new IdentityKey(future));
         if (rec != null) rec.inspected = true;
     }
 

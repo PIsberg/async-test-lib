@@ -39,7 +39,7 @@ public class SharedFormatterDetector {
         FormatterState(String name) { this.name = name; }
     }
 
-    private final Map<Integer, FormatterState> formatters = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, FormatterState> formatters = new ConcurrentHashMap<>();
 
     /**
      * Record an access (format/print/write) to a shared formatter or print stream.
@@ -53,7 +53,7 @@ public class SharedFormatterDetector {
         String label = name != null ? name
                 : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter);
         FormatterState s = formatters.computeIfAbsent(
-            System.identityHashCode(formatter), id -> new FormatterState(label));
+            new IdentityKey(formatter), id -> new FormatterState(label));
         s.noteAccess(formatter);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());

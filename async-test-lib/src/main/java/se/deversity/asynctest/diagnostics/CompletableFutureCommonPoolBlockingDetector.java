@@ -40,8 +40,8 @@ public class CompletableFutureCommonPoolBlockingDetector {
      */
     static final int MAX_DISTINCT_FINDINGS = 200;
 
-    private final Set<Integer>         commonPoolFutures = ConcurrentHashMap.newKeySet();
-    private final Map<Integer, String> futureNames       = new ConcurrentHashMap<>();
+    private final Set<IdentityKey>         commonPoolFutures = ConcurrentHashMap.newKeySet();
+    private final Map<IdentityKey, String> futureNames       = new ConcurrentHashMap<>();
 
     /**
      * Finding text to the number of times it was recorded.
@@ -66,9 +66,9 @@ public class CompletableFutureCommonPoolBlockingDetector {
      */
     public void recordCommonPoolSubmission(Object future, Thread thread, String taskName) {
         if (future == null) return;
-        int id = System.identityHashCode(future);
-        commonPoolFutures.add(id);
-        futureNames.put(id, taskName != null ? taskName : "task@" + id);
+        IdentityKey key = new IdentityKey(future);
+        commonPoolFutures.add(key);
+        futureNames.put(key, taskName != null ? taskName : "task@" + key.hashCode());
     }
 
     /**
@@ -81,9 +81,9 @@ public class CompletableFutureCommonPoolBlockingDetector {
      */
     public void recordBlockingCall(Object future, Thread thread, String callType) {
         if (future == null || thread == null) return;
-        int id = System.identityHashCode(future);
-        if (!commonPoolFutures.contains(id)) return;
-        String name = futureNames.getOrDefault(id, "future@" + id);
+        IdentityKey key = new IdentityKey(future);
+        if (!commonPoolFutures.contains(key)) return;
+        String name = futureNames.getOrDefault(key, "future@" + key.hashCode());
         String type = callType != null ? callType : "blocking call";
         String finding = String.format(
             "Thread '%s' made blocking call (%s) inside CompletableFuture '%s' "

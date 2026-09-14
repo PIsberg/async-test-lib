@@ -43,7 +43,7 @@ public class SynchronizedCollectionIterationDetector {
         WrapperInfo(String name) { this.name = name; }
     }
 
-    private final Map<Integer, WrapperInfo> wrappers = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, WrapperInfo> wrappers = new ConcurrentHashMap<>();
 
     /**
      * Register a synchronized wrapper created by {@code Collections.synchronized*(collection)}.
@@ -58,7 +58,7 @@ public class SynchronizedCollectionIterationDetector {
         // again for a wrapper already being tracked. Installing fresh state there discarded
         // every unsafe iteration counted so far. The first label wins, which is the right way
         // round - a name is cosmetic and the observations are the finding.
-        wrappers.computeIfAbsent(System.identityHashCode(wrapper), k -> new WrapperInfo(label));
+        wrappers.computeIfAbsent(new IdentityKey(wrapper), k -> new WrapperInfo(label));
     }
 
     /**
@@ -70,7 +70,7 @@ public class SynchronizedCollectionIterationDetector {
      */
     public void recordIterationStarted(Object wrapper, Thread thread, boolean holdingLock) {
         if (wrapper == null || thread == null) return;
-        WrapperInfo info = wrappers.get(System.identityHashCode(wrapper));
+        WrapperInfo info = wrappers.get(new IdentityKey(wrapper));
         if (info == null || holdingLock) return;
         info.unsafeIterations.incrementAndGet();
         info.details.add(String.format(

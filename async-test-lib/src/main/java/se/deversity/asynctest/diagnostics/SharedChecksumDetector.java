@@ -69,7 +69,7 @@ public final class SharedChecksumDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a {@link Checksum} instance.
@@ -81,11 +81,11 @@ public final class SharedChecksumDetector {
      */
     public void recordAccess(Checksum checksum, String operation, Thread thread) {
         if (checksum == null || thread == null) return;
-        int id = System.identityHashCode(checksum);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(checksum);
+        State s = instances.get(key);
         if (s == null) {
-            final String label = checksum.getClass().getSimpleName() + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label));
+            final String label = checksum.getClass().getSimpleName() + "@" + key.hashCode();
+            s = instances.computeIfAbsent(key, k -> new State(label));
         }
         s.noteAccess(checksum);
         if (operation != null) s.operations.add(operation);

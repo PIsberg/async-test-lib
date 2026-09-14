@@ -32,8 +32,8 @@ public class ThreadLocalContaminationDetector {
     private static final class ThreadState {
         int taskCount = 0;
         String currentTaskName = "task-0";
-        final Map<Integer, Integer> lastSetInTask = new HashMap<>();
-        final Map<Integer, String>  tlNames       = new HashMap<>();
+        final Map<IdentityKey, Integer> lastSetInTask = new HashMap<>();
+        final Map<IdentityKey, String>  tlNames       = new HashMap<>();
     }
 
     private final Map<Long, ThreadState> threadStates   = new ConcurrentHashMap<>();
@@ -63,9 +63,9 @@ public class ThreadLocalContaminationDetector {
         if (thread == null || tl == null) return;
         ThreadState s = threadStates.get(thread.threadId());
         if (s == null) return;
-        int id = System.identityHashCode(tl);
-        s.lastSetInTask.put(id, s.taskCount);
-        if (name != null) s.tlNames.put(id, name);
+        IdentityKey key = new IdentityKey(tl);
+        s.lastSetInTask.put(key, s.taskCount);
+        if (name != null) s.tlNames.put(key, name);
     }
 
     /**
@@ -81,10 +81,11 @@ public class ThreadLocalContaminationDetector {
         if (thread == null || tl == null || !hasValue) return;
         ThreadState s = threadStates.get(thread.threadId());
         if (s == null) return;
-        int id = System.identityHashCode(tl);
-        Integer setTask = s.lastSetInTask.get(id);
+        IdentityKey key = new IdentityKey(tl);
+        Integer setTask = s.lastSetInTask.get(key);
         if (setTask != null && setTask < s.taskCount) {
-            String label = s.tlNames.getOrDefault(id, name != null ? name : "ThreadLocal@" + id);
+            String label = s.tlNames.getOrDefault(
+                key, name != null ? name : "ThreadLocal@" + key.hashCode());
             contaminations.add(String.format(
                 "Thread '%s' in '%s': read %s whose value was set in task %d — not cleared between tasks",
                 thread.getName(), s.currentTaskName, label, setTask));

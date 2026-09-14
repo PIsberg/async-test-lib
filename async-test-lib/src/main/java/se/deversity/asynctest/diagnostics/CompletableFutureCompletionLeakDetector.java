@@ -80,7 +80,7 @@ public class CompletableFutureCompletionLeakDetector {
         }
     }
 
-    private final Map<Integer, FutureState> futures = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, FutureState> futures = new ConcurrentHashMap<>();
     private final AtomicInteger leakCount = new AtomicInteger(0);
     private volatile boolean enabled = true;
 
@@ -95,7 +95,7 @@ public class CompletableFutureCompletionLeakDetector {
         if (!enabled || future == null) {
             return;
         }
-        int identity = System.identityHashCode(future);
+        IdentityKey identity = new IdentityKey(future);
         FutureState state = new FutureState(future, name);
         futures.put(identity, state);
         leakCount.incrementAndGet();
@@ -135,7 +135,7 @@ public class CompletableFutureCompletionLeakDetector {
         if (!enabled || future == null) {
             return;
         }
-        int identity = System.identityHashCode(future);
+        IdentityKey identity = new IdentityKey(future);
         FutureState state = futures.get(identity);
         if (state != null && state.completed.compareAndSet(false, true)) {
             state.completedTimeNanos = System.nanoTime();

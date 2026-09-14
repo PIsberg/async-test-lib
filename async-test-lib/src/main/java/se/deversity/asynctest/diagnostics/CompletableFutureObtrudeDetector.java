@@ -35,7 +35,7 @@ public final class CompletableFutureObtrudeDetector {
         }
     }
 
-    private final Map<Integer, State> obtrudes = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> obtrudes = new ConcurrentHashMap<>();
 
     /**
      * Record an obtrude action on a CompletableFuture.
@@ -48,7 +48,7 @@ public final class CompletableFutureObtrudeDetector {
         if (future == null || thread == null) return;
         int id = System.identityHashCode(future);
         String name = label != null ? label : "CompletableFuture@" + id;
-        obtrudes.merge(id, new State(name, 1, thread.getName()), (old, val) -> 
+        obtrudes.merge(new IdentityKey(future), new State(name, 1, thread.getName()), (old, val) -> 
             new State(name, old.obtrudeCount + 1, val.lastObtrudedByThread)
         );
     }

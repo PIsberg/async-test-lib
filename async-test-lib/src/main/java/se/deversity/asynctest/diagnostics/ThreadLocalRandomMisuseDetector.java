@@ -70,7 +70,7 @@ public final class ThreadLocalRandomMisuseDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record the thread that obtained a {@link ThreadLocalRandom} reference via
@@ -82,9 +82,10 @@ public final class ThreadLocalRandomMisuseDetector {
      */
     public void recordObtain(ThreadLocalRandom rng, String name, Thread thread) {
         if (rng == null || thread == null) return;
-        int id = System.identityHashCode(rng);
+        IdentityKey key = new IdentityKey(rng);
+        int id = key.hashCode();
         final String label = (name != null) ? name : "ThreadLocalRandom@" + id;
-        instances.computeIfAbsent(id, k -> new State(label, thread.threadId(), thread.getName()));
+        instances.computeIfAbsent(key, k -> new State(label, thread.threadId(), thread.getName()));
     }
 
     /**
@@ -96,7 +97,7 @@ public final class ThreadLocalRandomMisuseDetector {
      */
     public void recordUse(ThreadLocalRandom rng, Thread thread) {
         if (rng == null || thread == null) return;
-        State s = instances.get(System.identityHashCode(rng));
+        State s = instances.get(new IdentityKey(rng));
         if (s == null) return; // never recorded as obtained — nothing to correlate
         if (thread.threadId() != s.obtainingThreadId) {
             s.misusingThreads.add(thread.getName());

@@ -61,7 +61,7 @@ public class CompletableFutureExceptionDetector {
         }
     }
 
-    private final Map<Integer, FutureState> futures = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, FutureState> futures = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -76,7 +76,7 @@ public class CompletableFutureExceptionDetector {
         }
         // computeIfAbsent, not put: re-declaring a future already tracked would discard whether
         // a handler had been registered on it, which is the whole finding.
-        futures.computeIfAbsent(System.identityHashCode(future), k -> new FutureState(future, name));
+        futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(future, name));
     }
 
     /**
@@ -90,7 +90,7 @@ public class CompletableFutureExceptionDetector {
         if (!enabled || future == null) {
             return;
         }
-        FutureState state = futures.get(System.identityHashCode(future));
+        FutureState state = futures.get(new IdentityKey(future));
         if (state != null) {
             state.exceptionHandlerRegistered = true;
             state.lastException = exception instanceof Exception e ? e : new Exception(exception);
@@ -108,7 +108,7 @@ public class CompletableFutureExceptionDetector {
         if (!enabled || future == null) {
             return;
         }
-        FutureState state = futures.get(System.identityHashCode(future));
+        FutureState state = futures.get(new IdentityKey(future));
         if (state != null) {
             state.completed = true;
             state.completedExceptionally = !success;
@@ -126,7 +126,7 @@ public class CompletableFutureExceptionDetector {
         if (!enabled || future == null) {
             return;
         }
-        FutureState state = futures.get(System.identityHashCode(future));
+        FutureState state = futures.get(new IdentityKey(future));
         if (state != null) {
             state.getJoinCalls.incrementAndGet();
             if (threwException) {

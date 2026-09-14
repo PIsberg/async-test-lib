@@ -92,10 +92,10 @@ public final class VirtualThreadMonitorSerializationDetector {
         MonitorState(String label) { this.label = label; }
     }
 
-    private final Map<Integer, MonitorState> monitors = new ConcurrentHashMap<>();
-    private final int                        contentionThreshold;
-    private final int                        jdkFeatureVersion;
-    private volatile boolean                 enabled = true;
+    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
+    private final int                            contentionThreshold;
+    private final int                            jdkFeatureVersion;
+    private volatile boolean                     enabled = true;
 
     /** Creates a detector with the default threshold, evaluated against the running JDK. */
     public VirtualThreadMonitorSerializationDetector() {
@@ -127,9 +127,10 @@ public final class VirtualThreadMonitorSerializationDetector {
      */
     public void recordMonitorEnter(Object monitor, String label, Thread thread) {
         if (!enabled || monitor == null || thread == null) return;
-        int id = System.identityHashCode(monitor);
+        IdentityKey key = new IdentityKey(monitor);
+        int id = key.hashCode();
         String name = label != null ? label : "monitor@" + id;
-        MonitorState s = monitors.computeIfAbsent(id, k -> new MonitorState(name));
+        MonitorState s = monitors.computeIfAbsent(key, k -> new MonitorState(name));
         raise(s.peakWaiting, s.waiting.incrementAndGet());
         if (isVirtual(thread)) {
             raise(s.peakVirtualWaiting, s.virtualWaiting.incrementAndGet());
@@ -155,7 +156,7 @@ public final class VirtualThreadMonitorSerializationDetector {
 
     private @Nullable MonitorState state(Object monitor, Thread thread) {
         if (!enabled || monitor == null || thread == null) return null;
-        return monitors.get(System.identityHashCode(monitor));
+        return monitors.get(new IdentityKey(monitor));
     }
 
     /** Raises {@code peak} to {@code observed} if it is higher, retrying against concurrent raisers. */

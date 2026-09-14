@@ -41,7 +41,7 @@ public class SynchronizedOnLiteralDetector {
         LiteralUsage(String description) { this.description = description; }
     }
 
-    private final Map<Integer, LiteralUsage> literals = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, LiteralUsage> literals = new ConcurrentHashMap<>();
 
     /**
      * Record a {@code synchronized(monitor)} acquisition.
@@ -56,8 +56,9 @@ public class SynchronizedOnLiteralDetector {
         if (monitor == null || thread == null) return;
         String description = describeIfLiteral(monitor);
         if (description == null) return;
-        int id = System.identityHashCode(monitor);
-        LiteralUsage u = literals.computeIfAbsent(id, i -> new LiteralUsage(description));
+        // Identity on purpose: the interned instance itself is the JVM-wide monitor.
+        LiteralUsage u = literals.computeIfAbsent(
+            new IdentityKey(monitor), k -> new LiteralUsage(description));
         u.threadIds.add(thread.threadId());
         if (context != null) u.contexts.add(context);
     }

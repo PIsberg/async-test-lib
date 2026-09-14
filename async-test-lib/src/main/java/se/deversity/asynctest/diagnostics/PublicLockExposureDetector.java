@@ -29,10 +29,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PublicLockExposureDetector {
 
-    private final Set<Integer>          synchronizedObjects = ConcurrentHashMap.newKeySet();
-    private final Set<Integer>          publishedObjects    = ConcurrentHashMap.newKeySet();
-    private final Map<Integer, String>  objectNames         = new ConcurrentHashMap<>();
-    private final Map<Integer, String>  publishContexts     = new ConcurrentHashMap<>();
+    private final Set<IdentityKey>          synchronizedObjects = ConcurrentHashMap.newKeySet();
+    private final Set<IdentityKey>          publishedObjects    = ConcurrentHashMap.newKeySet();
+    private final Map<IdentityKey, String>  objectNames         = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, String>  publishContexts     = new ConcurrentHashMap<>();
 
     /**
      * Record that {@code obj} is being used as a lock via {@code synchronized(this)}
@@ -44,7 +44,7 @@ public class PublicLockExposureDetector {
      */
     public void recordSynchronizedOnThis(Object obj, Thread thread, String className) {
         if (obj == null) return;
-        int id = System.identityHashCode(obj);
+        IdentityKey id = new IdentityKey(obj);
         synchronizedObjects.add(id);
         if (className != null) objectNames.put(id, className);
     }
@@ -58,7 +58,7 @@ public class PublicLockExposureDetector {
      */
     public void recordObjectPublished(Object obj, String context) {
         if (obj == null) return;
-        int id = System.identityHashCode(obj);
+        IdentityKey id = new IdentityKey(obj);
         publishedObjects.add(id);
         if (context != null) publishContexts.put(id, context);
     }
@@ -68,9 +68,9 @@ public class PublicLockExposureDetector {
      */
     public PublicLockExposureReport analyze() {
         PublicLockExposureReport r = new PublicLockExposureReport();
-        for (int id : synchronizedObjects) {
+        for (IdentityKey id : synchronizedObjects) {
             if (publishedObjects.contains(id)) {
-                String name = objectNames.getOrDefault(id, "object@" + id);
+                String name = objectNames.getOrDefault(id, "object@" + id.hashCode());
                 String ctx  = publishContexts.getOrDefault(id, "external code");
                 r.violations.add(String.format(
                     "%s uses synchronized(this) but is publicly exposed via %s — "

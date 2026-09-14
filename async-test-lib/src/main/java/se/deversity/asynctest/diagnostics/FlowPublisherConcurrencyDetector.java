@@ -74,7 +74,7 @@ public final class FlowPublisherConcurrencyDetector {
         State(String label) { this.label = label; }
     }
 
-    private final Map<Integer, State> subscribers = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> subscribers = new ConcurrentHashMap<>();
 
     /**
      * Record a subscription. Registers the subscriber under {@code label} so later
@@ -169,12 +169,12 @@ public final class FlowPublisherConcurrencyDetector {
 
     private @Nullable State stateFor(@Nullable Object subscriber, @Nullable String label) {
         if (subscriber == null) return null;
-        int id = System.identityHashCode(subscriber);
+        IdentityKey id = new IdentityKey(subscriber);
         State s = subscribers.get(id);
         if (s == null) {
             final String lbl = label != null
                     ? label
-                    : subscriber.getClass().getSimpleName() + "@" + id;
+                    : subscriber.getClass().getSimpleName() + "@" + id.hashCode();
             s = subscribers.computeIfAbsent(id, k -> new State(lbl));
         }
         return s;

@@ -74,7 +74,7 @@ public final class ThisEscapeDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record that a constructor published {@code this} before returning.
@@ -85,11 +85,12 @@ public final class ThisEscapeDetector {
      */
     public void recordConstructorEscape(Object instance, String how, Thread thread) {
         if (instance == null || thread == null) return;
-        int id = System.identityHashCode(instance);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(instance);
+        int id = key.hashCode();
+        State s = instances.get(key);
         if (s == null) {
             final String label = instance.getClass().getSimpleName() + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label, thread.threadId()));
+            s = instances.computeIfAbsent(key, k -> new State(label, thread.threadId()));
         }
         s.escapes.add(how != null ? how : "this published from constructor");
     }
@@ -104,7 +105,7 @@ public final class ThisEscapeDetector {
      */
     public void recordExternalAccess(Object instance, Thread thread) {
         if (instance == null || thread == null) return;
-        State s = instances.get(System.identityHashCode(instance));
+        State s = instances.get(new IdentityKey(instance));
         if (s == null) return; // no escape recorded for this instance — nothing to correlate
         if (!s.completed && thread.threadId() != s.constructingThreadId) {
             s.observerThreads.add(thread.threadId());
@@ -119,7 +120,7 @@ public final class ThisEscapeDetector {
      */
     public void recordConstructionComplete(Object instance) {
         if (instance == null) return;
-        State s = instances.get(System.identityHashCode(instance));
+        State s = instances.get(new IdentityKey(instance));
         if (s != null) s.completed = true;
     }
     /**

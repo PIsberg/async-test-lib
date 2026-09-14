@@ -55,7 +55,7 @@ public class LockLeakDetector {
         }
     }
 
-    private final Map<Integer, LockState> locks = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, LockState> locks = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -73,7 +73,7 @@ public class LockLeakDetector {
         // against the same lock. A put() would install a fresh LockState each time, wiping the
         // acquire/release counts — so an acquire leaked by an earlier invocation would be
         // erased before analysis ever saw it.
-        locks.computeIfAbsent(System.identityHashCode(lock), ignored -> new LockState(lock, name));
+        locks.computeIfAbsent(new IdentityKey(lock), ignored -> new LockState(lock, name));
     }
 
     /**
@@ -89,7 +89,7 @@ public class LockLeakDetector {
         // Auto-register atomically: a get-then-put lets two threads that both miss each build
         // and install a LockState, and the loser's increments then land on an orphaned object
         // that analysis never sees.
-        LockState state = locks.computeIfAbsent(System.identityHashCode(lock),
+        LockState state = locks.computeIfAbsent(new IdentityKey(lock),
                                                 ignored -> new LockState(lock, name));
         state.acquireCount.incrementAndGet();
         state.acquiringThreads.add(Thread.currentThread().threadId());
@@ -109,7 +109,7 @@ public class LockLeakDetector {
         if (!enabled || lock == null) {
             return;
         }
-        int id = System.identityHashCode(lock);
+        IdentityKey id = new IdentityKey(lock);
         LockState state = locks.get(id);
         if (state == null) {
             // Auto-register atomically. get-then-put let two threads racing on the same lock

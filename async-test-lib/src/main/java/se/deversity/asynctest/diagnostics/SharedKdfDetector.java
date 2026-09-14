@@ -71,7 +71,7 @@ public final class SharedKdfDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a KDF instance.
@@ -85,12 +85,12 @@ public final class SharedKdfDetector {
      */
     public void recordAccess(Object kdf, String algorithm, String operation, Thread thread) {
         if (kdf == null || thread == null) return;
-        int id = System.identityHashCode(kdf);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(kdf);
+        State s = instances.get(key);
         if (s == null) {
-            final String label = kdf.getClass().getSimpleName() + "@" + id;
+            final String label = kdf.getClass().getSimpleName() + "@" + key.hashCode();
             final String algo = algorithm != null ? algorithm : "unknown";
-            s = instances.computeIfAbsent(id, k -> new State(label, algo));
+            s = instances.computeIfAbsent(key, k -> new State(label, algo));
         }
         s.noteAccess(kdf);
         if (operation != null) s.operations.add(operation);

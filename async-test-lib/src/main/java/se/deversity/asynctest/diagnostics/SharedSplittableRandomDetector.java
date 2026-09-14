@@ -71,7 +71,7 @@ public final class SharedSplittableRandomDetector {
         }
     }
 
-    private final Map<Integer, GeneratorState> generators = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, GeneratorState> generators = new ConcurrentHashMap<>();
 
     /**
      * Register a generator for monitoring. {@code java.util.Random} subclasses are ignored —
@@ -84,12 +84,13 @@ public final class SharedSplittableRandomDetector {
         if (!tracked(generator)) {
             return;
         }
-        int id = System.identityHashCode(generator);
-        if (generators.containsKey(id)) {
+        IdentityKey key = new IdentityKey(generator);
+        if (generators.containsKey(key)) {
             return;
         }
-        String label = name != null ? name : generator.getClass().getSimpleName() + "@" + id;
-        generators.computeIfAbsent(id, k -> new GeneratorState(label, generator.getClass().getSimpleName()));
+        String type = generator.getClass().getSimpleName();
+        String label = name != null ? name : type + "@" + key.hashCode();
+        generators.computeIfAbsent(key, k -> new GeneratorState(label, type));
     }
 
     /**
@@ -103,12 +104,12 @@ public final class SharedSplittableRandomDetector {
         if (!tracked(generator)) {
             return;
         }
-        int id = System.identityHashCode(generator);
-        GeneratorState state = generators.get(id);
+        IdentityKey key = new IdentityKey(generator);
+        GeneratorState state = generators.get(key);
         if (state == null) {
-            final String label = name != null ? name : generator.getClass().getSimpleName() + "@" + id;
             final String type = generator.getClass().getSimpleName();
-            state = generators.computeIfAbsent(id, k -> new GeneratorState(label, type));
+            final String label = name != null ? name : type + "@" + key.hashCode();
+            state = generators.computeIfAbsent(key, k -> new GeneratorState(label, type));
         }
         state.noteAccess(generator);
         state.accessCount.incrementAndGet();
