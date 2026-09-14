@@ -18,6 +18,8 @@ stale, so the counts are restated here rather than edited in place: the drift is
 | detectors keyed by `identityHashCode` | 84 | **103** | worse |
 | `DetectorType` constants | 127 | **146** | grew |
 
+_2026-09-14: the collision half of the identity-hash row is closed, not by the base class this plan proposes but by #564, which moved every map and set keyed by a bare `identityHashCode` onto an identity key and gates against the pattern in `DetectorStateIsKeyedByIdentityTest`. The duplicated scaffolding and the retention half are unchanged, so the row still counts the files that call `identityHashCode`, most of them now only for report labels._
+
 Nothing regressed. Every one of those grew because detectors were added, and each detector costs a
 constant, an attribute, a config field, a builder setter, a `from()` read, a `build()` resolution
 line and usually an identity-keyed map. That is the tax this plan was written to remove, and it
