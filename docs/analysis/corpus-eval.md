@@ -100,7 +100,7 @@ Per exposed detector, over the 100 documented-safe and 39 documented-unsafe subj
 
 | Detector | Feed | Safe exposed | ...with a finding | Unsafe exposed | ...with a finding |
 |---|---|---:|---:|---:|---:|
-| `AtomicityValidator` | AGENT | 100 | 3 | 39 | 22 |
+| `AtomicityValidator` | AGENT | 100 | 0 | 39 | 22 |
 | `SharedCollectionDetector` | AGENT | 100 | 0 | 39 | 21 |
 | `SimpleDateFormatDetector` | AGENT | 100 | 0 | 39 | 2 |
 | `StringBuilderDetector` | AGENT | 100 | 0 | 39 | 1 |
@@ -143,7 +143,7 @@ is not reproducible.
 
 | Key | JDK | OS | Agent | Source |
 |---|---|---|---|---|
-| **L** | 26 (Oracle HotSpot) | Windows 11 26200 (amd64) | `fields=true,collections=true` | local run, 2026-09-13 |
+| **L** | 26 (Oracle HotSpot) | Windows 11 26200 (amd64) | `fields=true,collections=true` | local run, 2026-09-14 |
 | **C21** | 21 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 21)` |
 | **C25** | 25 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 25)` |
 | **C26** | 26 (Temurin) | ubuntu-latest | `fields=true,collections=true` | corpus workflow, `Corpus Eval (Java 26)` |
@@ -193,24 +193,22 @@ existing suite can still lose classes the same way.
 |---|---:|---:|---:|---:|
 | Documented-thread-safe with a VERDICT-tier HIGH or CRITICAL finding | **0 of 100** | **0 of 100** | **0 of 100** | **0 of 100** |
 | Documented-not-thread-safe with at least one finding | **39 of 39** | **39 of 39** | **39 of 39** | **39 of 39** |
-| Documented-thread-safe with any finding at all | **3 of 100** | **2 of 100** | **2 of 100** | **2 of 100** |
+| Documented-thread-safe with any finding at all | **0 of 100** | **0 of 100** | **0 of 100** | **0 of 100** |
 | `AtomicityValidator`, documented-unsafe subjects with a finding | 22 of 39 | 22 of 39 | 22 of 39 | 22 of 39 |
 | `SharedCollectionDetector`, documented-unsafe subjects with a finding | 21 of 39 | 21 of 39 | 21 of 39 | 21 of 39 |
 | The five shared-instance detectors, documented-unsafe subjects with a finding | 6 of 39 | 6 of 39 | 6 of 39 | 6 of 39 |
-| `mutableInt_incrementAndGet`, events / findings | 1,489 / 1 | 1,455 / 1 | 1,455 / 1 | 1,445 / 1 |
-| `rateLimiter_tryAcquire`, events / findings | 6,481 / 0 | 6,431 / 0 | 6,431 / 0 | 6,672 / 0 |
+| `mutableInt_incrementAndGet`, events / findings | 1,439 / 1 | 1,445 / 1 | 1,455 / 1 | 1,455 / 1 |
+| `rateLimiter_tryAcquire`, events / findings | 6,431 / 0 | 6,421 / 0 | 6,431 / 0 | 6,431 / 0 |
 | Telemetry events dropped | 0 | 0 | 0 | 0 |
 
-The C columns are corpus workflow run 34782981328, on the commit that also stopped the
-`TimedSemaphore` timer described in the sixth-wave section; the event rows would not be comparable
-without it. Every count agrees on all four platforms but one: the same 39 subjects detected,
-the same zero at the gated tier over a safe side that is now 100 wide, the same per-detector split,
-and per-subject event counts that agree to within 4%. The row that is not is the noise column, and
-the difference is one subject, `caffeineBoundedCache_evictUnderPressure`, which drew a `PROMPT`-tier
-finding on 2 of the 10 lane runs whose reports were kept during the sixth wave: once on JDK 26 locally and once on the
-JDK 26 CI leg of the run before this one. It shares `StripedBuffer.table` with the Caffeine
-subject that fires every time, reached on a schedule rather than on every run, and it is recorded
-on [#554](https://github.com/PIsberg/async-test-lib/issues/554). The thirty-seven documented-safe
+The C columns are corpus workflow run 34811225390, on the commit that taught the model the two
+idioms the sixth wave found (#554, #555; see that section). Every row is identical on all four
+platforms: the same 39 subjects detected, the same zero at the gated tier and the same zero below
+it over a safe side that is now 100 wide, the same per-detector split, and per-subject event counts
+that agree to within 1.2%. Before that commit the noise column was the one row that moved, 2 or 3
+of 100 depending on the run, because one Caffeine subject reached its spinlock on a schedule rather
+than on every run; the model change removed the idiom rather than the schedule, which is why the
+row is now zero on every platform instead of zero on the lucky ones. The thirty-seven documented-safe
 subjects added in 2026-08-29 hold at zero on Linux and on JDK 21 and 25, not only on the machine
 they were written on - which is the question a single-machine zero cannot answer, and the reason
 this table has a platform key at all. The rows that used to differ were
@@ -257,153 +255,153 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 
 | Subject | Library | Contract | Events | Findings | Detectors (tier/severity) | Crashes |
 |---|---|---|---:|---:|---|---:|
-| `mutableInt_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1489 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `mutableLong_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1489 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `stopWatch_splitAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 6831 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 59 |
-| `lruMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 5425 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `flat3Map_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4599 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `listOrderedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1732 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `passiveExpiringMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3169 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `arrayListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2027 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `evictingQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2209 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `guavaStopwatch_startStop` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2440 | 1 | AtomicityValidator (PROMPT/HIGH) | 11 |
-| `statsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4349 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `hashMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1483 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `linkedListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4635 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `minMaxPriorityQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 16512 | 1 | AtomicityValidator (PROMPT/HIGH) | 53 |
-| `hashedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3943 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `linkedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4243 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `multiKeyMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 7973 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `caseInsensitiveMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3943 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `lazyMap_get` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1253 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `fastDateFormat_format` | commons-lang3:3.20.0 | THREAD_SAFE | 4557 | 0 | - | 0 |
-| `atomicSafeInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 2284 | 0 | - | 0 |
-| `lazyInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1212 | 0 | - | 0 |
-| `synchronizedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4070 | 0 | - | 0 |
-| `rateLimiter_tryAcquire` | guava:33.4.8-jre | THREAD_SAFE | 6481 | 0 | - | 0 |
-| `eventBus_post` | guava:33.4.8-jre | THREAD_SAFE | 31381 | 0 | - | 0 |
-| `bloomFilter_putAndMightContain` | guava:33.4.8-jre | THREAD_SAFE | 28476 | 0 | - | 0 |
-| `atomicLongMap_incrementAndGet` | guava:33.4.8-jre | THREAD_SAFE | 961 | 0 | - | 0 |
-| `sequenceWriter_write` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 25109 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 239 |
-| `hashBasedTable_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 3903 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `guavaLoadingCache_get` | guava:33.4.8-jre | THREAD_SAFE | 10654 | 0 | - | 0 |
-| `concurrentHashMultiset_add` | guava:33.4.8-jre | THREAD_SAFE | 1443 | 0 | - | 0 |
-| `memoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1462 | 0 | - | 0 |
-| `joiner_join` | guava:33.4.8-jre | THREAD_SAFE | 4081 | 0 | - | 0 |
-| `splitter_splitToList` | guava:33.4.8-jre | THREAD_SAFE | 33616 | 0 | - | 0 |
-| `patternFilenameFilter_accept` | guava:33.4.8-jre | THREAD_SAFE | 961 | 0 | - | 0 |
-| `fixedOrderComparator_compare` | commons-collections4:4.5.0 | THREAD_SAFE | 1441 | 0 | - | 0 |
-| `fileBackedOutputStream_writeAndReset` | guava:33.4.8-jre | THREAD_SAFE | 5341 | 0 | - | 0 |
-| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 120446 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `objectMapper_configuredThenShared` | jackson-databind:2.22.2 | THREAD_SAFE | 114565 | 0 | - | 0 |
-| `objectReader_readValue` | jackson-databind:2.22.2 | THREAD_SAFE | 75545 | 0 | - | 0 |
-| `objectWriter_writeValueAsString` | jackson-databind:2.22.2 | THREAD_SAFE | 84058 | 0 | - | 0 |
-| `caffeineCache_getAndPut` | caffeine:3.2.4 | THREAD_SAFE | 8757 | 0 | - | 0 |
-| `caffeineAsMap_computeIfAbsent` | caffeine:3.2.4 | THREAD_SAFE | 3603 | 0 | - | 0 |
-| `pooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 61332 | 0 | - | 0 |
-| `concurrentReferenceHashMap_putAndGet` | spring-core:7.0.9 | THREAD_SAFE | 10473 | 0 | - | 0 |
-| `concurrentHashMap_putAndGet` | jdk:26 | THREAD_SAFE | 1889 | 0 | - | 0 |
-| `copyOnWriteArrayList_addAndIterate` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `stringBuffer_appendAndLength` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `concurrentLinkedQueue_addAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `linkedBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `hashtable_putAndGet` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `concurrentSkipListMap_putAndGet` | jdk:26 | THREAD_SAFE | 951 | 0 | - | 0 |
-| `synchronizedList_addUnderItsMonitor` | jdk:26 | THREAD_SAFE | 1201 | 0 | - | 0 |
-| `threadLocalRandom_nextInt` | jdk:26 | THREAD_SAFE | 481 | 0 | - | 0 |
-| `atomicInteger_incrementAndGet` | jdk:26 | THREAD_SAFE | 711 | 0 | - | 0 |
-| `thresholdCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
-| `eventCountCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 4209 | 0 | - | 0 |
-| `memoizer_compute` | commons-lang3:3.20.0 | THREAD_SAFE | 1201 | 0 | - | 0 |
-| `constantInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `atomicInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1209 | 0 | - | 0 |
-| `range_contains` | commons-lang3:3.20.0 | THREAD_SAFE | 1681 | 0 | - | 0 |
-| `staticBucketMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 3604 | 0 | - | 0 |
-| `commonsReferenceHashMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 7927 | 0 | - | 0 |
-| `synchronizedCollection_addAndSize` | commons-collections4:4.5.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
-| `synchronizedSortedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4320 | 0 | - | 0 |
-| `synchronizedMultiSet_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4319 | 0 | - | 0 |
-| `synchronizedQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 2326 | 0 | - | 0 |
-| `strongInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3718 | 0 | - | 0 |
-| `weakInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3241 | 0 | - | 0 |
-| `guavaSynchronizedQueue_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1921 | 0 | - | 0 |
-| `guavaSynchronizedDeque_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1921 | 0 | - | 0 |
-| `synchronizedTable_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 4805 | 0 | - | 0 |
-| `concurrentHashSet_addAndContains` | guava:33.4.8-jre | THREAD_SAFE | 951 | 0 | - | 0 |
-| `hashFunction_hashString` | guava:33.4.8-jre | THREAD_SAFE | 3121 | 0 | - | 0 |
-| `mapMakerMap_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 1202 | 0 | - | 0 |
-| `synchronizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1201 | 0 | - | 0 |
-| `guavaCache_getAndPut` | guava:33.4.8-jre | THREAD_SAFE | 29735 | 0 | - | 0 |
-| `asyncCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4233 | 0 | - | 0 |
-| `asyncLoadingCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4374 | 0 | - | 0 |
-| `caffeineLoadingCache_get` | caffeine:3.2.4 | THREAD_SAFE | 3842 | 0 | - | 0 |
-| `unpooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 9141 | 0 | - | 0 |
-| `conversionService_convert` | spring-core:7.0.9 | THREAD_SAFE | 7940 | 0 | - | 0 |
-| `synchronizedBiMap_forcePutAndInverse` | guava:33.4.8-jre | THREAD_SAFE | 5546 | 0 | - | 0 |
-| `guavaSynchronizedNavigableMap_putAndPollFirst` | guava:33.4.8-jre | THREAD_SAFE | 3121 | 0 | - | 0 |
-| `guavaSynchronizedNavigableSet_addAndPollFirst` | guava:33.4.8-jre | THREAD_SAFE | 2631 | 0 | - | 0 |
-| `synchronizedSetMultimap_putAndRemove` | guava:33.4.8-jre | THREAD_SAFE | 7906 | 0 | - | 0 |
-| `synchronizedListMultimap_putAndRemove` | guava:33.4.8-jre | THREAD_SAFE | 8178 | 0 | - | 0 |
-| `expiringMemoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1791 | 0 | - | 0 |
-| `atomicDouble_addAndCompareAndSet` | guava:33.4.8-jre | THREAD_SAFE | 2361 | 0 | - | 0 |
-| `atomicDoubleArray_addAndCompareAndSet` | guava:33.4.8-jre | THREAD_SAFE | 2426 | 0 | - | 0 |
-| `simpleStatsCounter_recordAndSnapshot` | guava:33.4.8-jre | THREAD_SAFE | 3841 | 0 | - | 0 |
-| `guavaCacheAsMap_merge` | guava:33.4.8-jre | THREAD_SAFE | 65711 | 0 | - | 0 |
-| `eventBus_registerAndUnregister` | guava:33.4.8-jre | THREAD_SAFE | 40478 | 0 | - | 0 |
-| `timedSemaphore_tryAcquire` | commons-lang3:3.20.0 | THREAD_SAFE | 4110 | 0 | - | 0 |
-| `backgroundInitializer_startAndGet` | commons-lang3:3.20.0 | THREAD_SAFE | 1691 | 0 | - | 0 |
-| `basicThreadFactory_newThread` | commons-lang3:3.20.0 | THREAD_SAFE | 3121 | 0 | - | 0 |
-| `readWriteLockVisitor_writeAndRead` | commons-lang3:3.20.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
-| `stampedLockVisitor_writeAndRead` | commons-lang3:3.20.0 | THREAD_SAFE | 1921 | 0 | - | 0 |
-| `synchronizedCircularFifoQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 9885 | 0 | - | 0 |
-| `concurrentLinkedDeque_offerFirstAndPollLast` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `linkedBlockingDeque_offerAndPollLast` | jdk:26 | THREAD_SAFE | 1441 | 0 | - | 0 |
-| `arrayBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 971 | 0 | - | 0 |
-| `priorityBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `linkedTransferQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `concurrentSkipListSet_addAndContains` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `copyOnWriteArraySet_addAndIterate` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `vector_addAndGet` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `synchronizedMap_putAndGet` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `synchronizedNavigableMap_putAndCeilingKey` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `synchronizedSet_addAndContains` | jdk:26 | THREAD_SAFE | 961 | 0 | - | 0 |
-| `random_nextInt` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
-| `secureRandom_nextBytes` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
-| `properties_setPropertyAndGetProperty` | jdk:26 | THREAD_SAFE | 951 | 0 | - | 0 |
-| `atomicLong_incrementAndGet` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
-| `atomicReference_updateAndGet` | jdk:26 | THREAD_SAFE | 721 | 0 | - | 0 |
-| `jacksonLruMap_putAndEvict` | jackson-databind:2.22.2 | THREAD_SAFE | 16030 | 0 | - | 0 |
-| `caffeineStrongInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 977 | 0 | - | 0 |
-| `caffeineWeakInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 6286 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `caffeineBoundedCache_evictUnderPressure` | caffeine:3.2.4 | THREAD_SAFE | 53419 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `asyncCacheSynchronous_asMapMerge` | caffeine:3.2.4 | THREAD_SAFE | 23269 | 0 | - | 0 |
-| `concurrentStatsCounter_recordAndSnapshot` | caffeine:3.2.4 | THREAD_SAFE | 3361 | 0 | - | 0 |
-| `adaptiveByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 94314 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `stringBuilder_appendAndLength` | jdk:26 | NOT_THREAD_SAFE | 1009 | 1 | StringBuilderDetector (VERDICT/HIGH) | 0 |
-| `simpleDateFormat_format` | jdk:26 | NOT_THREAD_SAFE | 769 | 1 | SimpleDateFormatDetector (VERDICT/HIGH) | 0 |
-| `dateFormat_formatThroughSupertype` | jdk:26 | NOT_THREAD_SAFE | 769 | 1 | SimpleDateFormatDetector (VERDICT/HIGH) | 0 |
-| `matcher_resetFindAndGroup` | jdk:26 | NOT_THREAD_SAFE | 1269 | 1 | SharedMatcherDetector (VERDICT/HIGH) | 17 |
-| `decimalFormat_format` | jdk:26 | NOT_THREAD_SAFE | 769 | 1 | SharedDecimalFormatDetector (VERDICT/HIGH) | 0 |
-| `formatter_format` | jdk:26 | NOT_THREAD_SAFE | 765 | 1 | SharedFormatterDetector (VERDICT/HIGH) | 0 |
-| `arrayDeque_offerAndPoll` | jdk:26 | NOT_THREAD_SAFE | 1009 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `priorityQueue_offerAndPoll` | jdk:26 | NOT_THREAD_SAFE | 1364 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 238 |
-| `treeMultimap_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 6188 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `linkedHashMultimap_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 12856 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `treeBasedTable_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 5810 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `pairedStatsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 6995 | 1 | AtomicityValidator (PROMPT/HIGH) | 240 |
-| `hashSetValuedHashMap_put` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1736 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
-| `hashCodeBuilder_appendAndHash` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1966 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `springStopWatch_startStop` | spring-core:7.0.9 | NOT_THREAD_SAFE | 3774 | 1 | AtomicityValidator (PROMPT/HIGH) | 33 |
-| `linkedMultiValueMap_addAndRemove` | spring-core:7.0.9 | NOT_THREAD_SAFE | 1489 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 3 |
-| `tokenBuffer_writeNumber` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 4423 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `mutableInt_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1439 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `mutableLong_incrementAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1439 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `stopWatch_splitAndGet` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 5607 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 77 |
+| `lruMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 5375 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `flat3Map_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4559 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `listOrderedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1680 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `passiveExpiringMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3119 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `arrayListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1979 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `evictingQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2635 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `guavaStopwatch_startStop` | guava:33.4.8-jre | NOT_THREAD_SAFE | 2397 | 1 | AtomicityValidator (PROMPT/HIGH) | 9 |
+| `statsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4279 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `hashMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 1459 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedListMultimap_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 4577 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `minMaxPriorityQueue_addAndPoll` | guava:33.4.8-jre | NOT_THREAD_SAFE | 15422 | 1 | AtomicityValidator (PROMPT/HIGH) | 76 |
+| `hashedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3890 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 4180 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `multiKeyMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 7913 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `caseInsensitiveMap_putAndGet` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 3896 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `lazyMap_get` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1201 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `fastDateFormat_format` | commons-lang3:3.20.0 | THREAD_SAFE | 4507 | 0 | - | 0 |
+| `atomicSafeInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1224 | 0 | - | 0 |
+| `lazyInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1162 | 0 | - | 0 |
+| `synchronizedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4030 | 0 | - | 0 |
+| `rateLimiter_tryAcquire` | guava:33.4.8-jre | THREAD_SAFE | 6431 | 0 | - | 0 |
+| `eventBus_post` | guava:33.4.8-jre | THREAD_SAFE | 31595 | 0 | - | 0 |
+| `bloomFilter_putAndMightContain` | guava:33.4.8-jre | THREAD_SAFE | 28422 | 0 | - | 0 |
+| `atomicLongMap_incrementAndGet` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
+| `sequenceWriter_write` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 24765 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 239 |
+| `hashBasedTable_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 3863 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `guavaLoadingCache_get` | guava:33.4.8-jre | THREAD_SAFE | 10784 | 0 | - | 0 |
+| `concurrentHashMultiset_add` | guava:33.4.8-jre | THREAD_SAFE | 1394 | 0 | - | 0 |
+| `memoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1653 | 0 | - | 0 |
+| `joiner_join` | guava:33.4.8-jre | THREAD_SAFE | 4031 | 0 | - | 0 |
+| `splitter_splitToList` | guava:33.4.8-jre | THREAD_SAFE | 33315 | 0 | - | 0 |
+| `patternFilenameFilter_accept` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
+| `fixedOrderComparator_compare` | commons-collections4:4.5.0 | THREAD_SAFE | 1391 | 0 | - | 0 |
+| `fileBackedOutputStream_writeAndReset` | guava:33.4.8-jre | THREAD_SAFE | 3541 | 0 | - | 0 |
+| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 120373 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `objectMapper_configuredThenShared` | jackson-databind:2.22.2 | THREAD_SAFE | 114529 | 0 | - | 0 |
+| `objectReader_readValue` | jackson-databind:2.22.2 | THREAD_SAFE | 75498 | 0 | - | 0 |
+| `objectWriter_writeValueAsString` | jackson-databind:2.22.2 | THREAD_SAFE | 83692 | 0 | - | 0 |
+| `caffeineCache_getAndPut` | caffeine:3.2.4 | THREAD_SAFE | 8726 | 0 | - | 0 |
+| `caffeineAsMap_computeIfAbsent` | caffeine:3.2.4 | THREAD_SAFE | 3470 | 0 | - | 0 |
+| `pooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 61083 | 0 | - | 0 |
+| `concurrentReferenceHashMap_putAndGet` | spring-core:7.0.9 | THREAD_SAFE | 10398 | 0 | - | 0 |
+| `concurrentHashMap_putAndGet` | jdk:26 | THREAD_SAFE | 1839 | 0 | - | 0 |
+| `copyOnWriteArrayList_addAndIterate` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `stringBuffer_appendAndLength` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `concurrentLinkedQueue_addAndPoll` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `linkedBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `hashtable_putAndGet` | jdk:26 | THREAD_SAFE | 901 | 0 | - | 0 |
+| `concurrentSkipListMap_putAndGet` | jdk:26 | THREAD_SAFE | 901 | 0 | - | 0 |
+| `synchronizedList_addUnderItsMonitor` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `threadLocalRandom_nextInt` | jdk:26 | THREAD_SAFE | 431 | 0 | - | 0 |
+| `atomicInteger_incrementAndGet` | jdk:26 | THREAD_SAFE | 671 | 0 | - | 0 |
+| `thresholdCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 1861 | 0 | - | 0 |
+| `eventCountCircuitBreaker_incrementAndCheckState` | commons-lang3:3.20.0 | THREAD_SAFE | 4219 | 0 | - | 0 |
+| `memoizer_compute` | commons-lang3:3.20.0 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `constantInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `atomicInitializer_get` | commons-lang3:3.20.0 | THREAD_SAFE | 1168 | 0 | - | 0 |
+| `range_contains` | commons-lang3:3.20.0 | THREAD_SAFE | 1621 | 0 | - | 0 |
+| `staticBucketMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 3544 | 0 | - | 0 |
+| `commonsReferenceHashMap_putAndGet` | commons-collections4:4.5.0 | THREAD_SAFE | 7877 | 0 | - | 0 |
+| `synchronizedCollection_addAndSize` | commons-collections4:4.5.0 | THREAD_SAFE | 1871 | 0 | - | 0 |
+| `synchronizedSortedBag_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4270 | 0 | - | 0 |
+| `synchronizedMultiSet_addAndCount` | commons-collections4:4.5.0 | THREAD_SAFE | 4269 | 0 | - | 0 |
+| `synchronizedQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 2515 | 0 | - | 0 |
+| `strongInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3668 | 0 | - | 0 |
+| `weakInterner_intern` | guava:33.4.8-jre | THREAD_SAFE | 3149 | 0 | - | 0 |
+| `guavaSynchronizedQueue_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 2351 | 0 | - | 0 |
+| `guavaSynchronizedDeque_addAndPoll` | guava:33.4.8-jre | THREAD_SAFE | 1871 | 0 | - | 0 |
+| `synchronizedTable_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 4755 | 0 | - | 0 |
+| `concurrentHashSet_addAndContains` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
+| `hashFunction_hashString` | guava:33.4.8-jre | THREAD_SAFE | 3071 | 0 | - | 0 |
+| `mapMakerMap_putAndGet` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
+| `synchronizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `guavaCache_getAndPut` | guava:33.4.8-jre | THREAD_SAFE | 29914 | 0 | - | 0 |
+| `asyncCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4174 | 0 | - | 0 |
+| `asyncLoadingCache_getAndJoin` | caffeine:3.2.4 | THREAD_SAFE | 4325 | 0 | - | 0 |
+| `caffeineLoadingCache_get` | caffeine:3.2.4 | THREAD_SAFE | 3793 | 0 | - | 0 |
+| `unpooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 9081 | 0 | - | 0 |
+| `conversionService_convert` | spring-core:7.0.9 | THREAD_SAFE | 7888 | 0 | - | 0 |
+| `synchronizedBiMap_forcePutAndInverse` | guava:33.4.8-jre | THREAD_SAFE | 5486 | 0 | - | 0 |
+| `guavaSynchronizedNavigableMap_putAndPollFirst` | guava:33.4.8-jre | THREAD_SAFE | 3071 | 0 | - | 0 |
+| `guavaSynchronizedNavigableSet_addAndPollFirst` | guava:33.4.8-jre | THREAD_SAFE | 2591 | 0 | - | 0 |
+| `synchronizedSetMultimap_putAndRemove` | guava:33.4.8-jre | THREAD_SAFE | 7772 | 0 | - | 0 |
+| `synchronizedListMultimap_putAndRemove` | guava:33.4.8-jre | THREAD_SAFE | 8053 | 0 | - | 0 |
+| `expiringMemoizedSupplier_get` | guava:33.4.8-jre | THREAD_SAFE | 1770 | 0 | - | 0 |
+| `atomicDouble_addAndCompareAndSet` | guava:33.4.8-jre | THREAD_SAFE | 2233 | 0 | - | 0 |
+| `atomicDoubleArray_addAndCompareAndSet` | guava:33.4.8-jre | THREAD_SAFE | 2127 | 0 | - | 0 |
+| `simpleStatsCounter_recordAndSnapshot` | guava:33.4.8-jre | THREAD_SAFE | 3791 | 0 | - | 0 |
+| `guavaCacheAsMap_merge` | guava:33.4.8-jre | THREAD_SAFE | 65661 | 0 | - | 0 |
+| `eventBus_registerAndUnregister` | guava:33.4.8-jre | THREAD_SAFE | 40851 | 0 | - | 0 |
+| `timedSemaphore_tryAcquire` | commons-lang3:3.20.0 | THREAD_SAFE | 3196 | 0 | - | 0 |
+| `backgroundInitializer_startAndGet` | commons-lang3:3.20.0 | THREAD_SAFE | 1641 | 0 | - | 0 |
+| `basicThreadFactory_newThread` | commons-lang3:3.20.0 | THREAD_SAFE | 3071 | 0 | - | 0 |
+| `readWriteLockVisitor_writeAndRead` | commons-lang3:3.20.0 | THREAD_SAFE | 1861 | 0 | - | 0 |
+| `stampedLockVisitor_writeAndRead` | commons-lang3:3.20.0 | THREAD_SAFE | 1871 | 0 | - | 0 |
+| `synchronizedCircularFifoQueue_addAndPoll` | commons-collections4:4.5.0 | THREAD_SAFE | 10322 | 0 | - | 0 |
+| `concurrentLinkedDeque_offerFirstAndPollLast` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `linkedBlockingDeque_offerAndPollLast` | jdk:26 | THREAD_SAFE | 1631 | 0 | - | 0 |
+| `arrayBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `priorityBlockingQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `linkedTransferQueue_offerAndPoll` | jdk:26 | THREAD_SAFE | 1151 | 0 | - | 0 |
+| `concurrentSkipListSet_addAndContains` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `copyOnWriteArraySet_addAndIterate` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `vector_addAndGet` | jdk:26 | THREAD_SAFE | 901 | 0 | - | 0 |
+| `synchronizedMap_putAndGet` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `synchronizedNavigableMap_putAndCeilingKey` | jdk:26 | THREAD_SAFE | 921 | 0 | - | 0 |
+| `synchronizedSet_addAndContains` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `random_nextInt` | jdk:26 | THREAD_SAFE | 671 | 0 | - | 0 |
+| `secureRandom_nextBytes` | jdk:26 | THREAD_SAFE | 671 | 0 | - | 0 |
+| `properties_setPropertyAndGetProperty` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
+| `atomicLong_incrementAndGet` | jdk:26 | THREAD_SAFE | 661 | 0 | - | 0 |
+| `atomicReference_updateAndGet` | jdk:26 | THREAD_SAFE | 667 | 0 | - | 0 |
+| `jacksonLruMap_putAndEvict` | jackson-databind:2.22.2 | THREAD_SAFE | 15529 | 0 | - | 0 |
+| `caffeineStrongInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 928 | 0 | - | 0 |
+| `caffeineWeakInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 6316 | 0 | - | 0 |
+| `caffeineBoundedCache_evictUnderPressure` | caffeine:3.2.4 | THREAD_SAFE | 51490 | 0 | - | 0 |
+| `asyncCacheSynchronous_asMapMerge` | caffeine:3.2.4 | THREAD_SAFE | 21589 | 0 | - | 0 |
+| `concurrentStatsCounter_recordAndSnapshot` | caffeine:3.2.4 | THREAD_SAFE | 3311 | 0 | - | 0 |
+| `adaptiveByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 94448 | 0 | - | 0 |
+| `stringBuilder_appendAndLength` | jdk:26 | NOT_THREAD_SAFE | 959 | 1 | StringBuilderDetector (VERDICT/HIGH) | 0 |
+| `simpleDateFormat_format` | jdk:26 | NOT_THREAD_SAFE | 709 | 1 | SimpleDateFormatDetector (VERDICT/HIGH) | 0 |
+| `dateFormat_formatThroughSupertype` | jdk:26 | NOT_THREAD_SAFE | 719 | 1 | SimpleDateFormatDetector (VERDICT/HIGH) | 0 |
+| `matcher_resetFindAndGroup` | jdk:26 | NOT_THREAD_SAFE | 1222 | 1 | SharedMatcherDetector (VERDICT/HIGH) | 14 |
+| `decimalFormat_format` | jdk:26 | NOT_THREAD_SAFE | 719 | 1 | SharedDecimalFormatDetector (VERDICT/HIGH) | 0 |
+| `formatter_format` | jdk:26 | NOT_THREAD_SAFE | 709 | 1 | SharedFormatterDetector (VERDICT/HIGH) | 0 |
+| `arrayDeque_offerAndPoll` | jdk:26 | NOT_THREAD_SAFE | 2115 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `priorityQueue_offerAndPoll` | jdk:26 | NOT_THREAD_SAFE | 1200 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 239 |
+| `treeMultimap_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 6300 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `linkedHashMultimap_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 13542 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `treeBasedTable_putAndRemove` | guava:33.4.8-jre | NOT_THREAD_SAFE | 9672 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `pairedStatsAccumulator_add` | guava:33.4.8-jre | NOT_THREAD_SAFE | 6945 | 1 | AtomicityValidator (PROMPT/HIGH) | 240 |
+| `hashSetValuedHashMap_put` | commons-collections4:4.5.0 | NOT_THREAD_SAFE | 1451 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
+| `hashCodeBuilder_appendAndHash` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1669 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `springStopWatch_startStop` | spring-core:7.0.9 | NOT_THREAD_SAFE | 3585 | 1 | AtomicityValidator (PROMPT/HIGH) | 44 |
+| `linkedMultiValueMap_addAndRemove` | spring-core:7.0.9 | NOT_THREAD_SAFE | 1429 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 7 |
+| `tokenBuffer_writeNumber` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 4363 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 
 | Measure | **L** | **L-off** |
 |---|---|---|
 | Detectors exposed at all | 21 of 146 | 3 of 146 |
 | Documented-thread-safe subjects with a VERDICT-tier HIGH or CRITICAL finding | 0 of 100 | 0 of 100 |
-| Documented-thread-safe subjects with any finding at all | **3 of 100** | 0 of 100 |
+| Documented-thread-safe subjects with any finding at all | **0 of 100** | 0 of 100 |
 | Documented-not-thread-safe subjects with at least one finding | 39 of 39 | 0 of 39 |
-| Documented-not-thread-safe subjects that threw out of their own code | 9 of 39 | 11 of 39 |
+| Documented-not-thread-safe subjects that threw out of their own code | 9 of 39 | 10 of 39 |
 | Distinct detectors that produced any finding | 7 of 21 exposed | 0 of 3 exposed |
 
 The control column is the same on every platform: with nothing attached, all four runs observed
@@ -421,17 +419,15 @@ have failed on any of them, anywhere. That zero over 100 bounds the rate at 3.0%
 the one result the cross-platform comparison leaves standing, and it is the result the tier system
 was built to produce.
 
-**Below the gate, the noise column is two or three subjects wide.** Over the first 60
-documented-safe subjects it was empty, after four findings were traced to three model gaps and
-closed by the rules recorded below. The sixth wave's forty added two that fire on every run and a
-third that fires on some, all `PROMPT`-tier, all from `AtomicityValidator`, and all on idioms
-nobody had pointed the model at yet: Caffeine's CAS spinlock
-([#554](https://github.com/PIsberg/async-test-lib/issues/554)) and a chunk counter in Netty's
-adaptive allocator whose cause is not yet diagnosed
-([#555](https://github.com/PIsberg/async-test-lib/issues/555)). Two or three of 100 puts the
-one-sided 95% bound on the rate of any finding at all at 6.2% to 7.6%. A user who fails a build on
-`PROMPT` findings should expect that kind of noise on unfamiliar code; a user who gates on
-`VERDICT` should not.
+**Below the gate, the noise column is empty again.** Over the first 60 documented-safe subjects it
+was empty, after four findings were traced to three model gaps and closed by the rules recorded
+below. The sixth wave's forty found two more idioms the model had not been taught, Caffeine's
+compare-and-swap spinlock ([#554](https://github.com/PIsberg/async-test-lib/issues/554)) and
+netty's hand-off of chunks and pooled buffers between threads
+([#555](https://github.com/PIsberg/async-test-lib/issues/555)), and put 2 or 3 of 100 in the
+column depending on the run. Both were closed the same way as the earlier ones, by a rule with a
+twin pair in both directions, and the column now reads 0 of 100 on all four platforms. That zero
+bounds the rate of any finding at all at 3.0% at 95%, the same bound as the gated tier.
 
 **What attaching the agent buys, in one number.** Twenty-one detectors of 146 could see anything in
 this corpus, and seven of them produced every finding in it. That is not a defect in the other
@@ -617,28 +613,39 @@ only transitively and would need dependency rows of their own.
 **At the gated tier, the zero held.** No documented-safe subject drew a `VERDICT`-tier HIGH or
 CRITICAL finding, so the bound a `VERDICT`-gated build can rely on is now 3.0%.
 
-**Below it, two findings on every run, and a third on some.** All three are `PROMPT`/HIGH from
-`AtomicityValidator`, and none is a bug in the library. The first two appeared on all 10 lane runs
-whose reports were kept, four local and six CI legs:
+**Below it, the widening found two idioms, and both are now rules.** On first measurement three
+subjects drew `PROMPT`/HIGH findings from `AtomicityValidator`, two on every one of the 10 lane runs
+whose reports were kept and one on 2 of them, and none was a bug in the library:
 
-- `caffeineWeakInterner_intern` on `StripedBuffer.table`. Caffeine writes that `volatile` table only
-  after winning a CAS on `tableBusy` from 0 to 1, re-checks it under that spinlock, and releases in
-  a `finally`; readers take a snapshot and retry. The validator does not count a CAS-acquired
-  spinlock as a guard ([#554](https://github.com/PIsberg/async-test-lib/issues/554)).
-- `adaptiveByteBufAllocator_bufferAndRelease` on `SizeClassedChunk.allocatedBytes`, a plain `int`
-  mutated inside `Magazine.tryAllocate` under a `StampedLock` write stamp the agent does weave. Why
-  that did not satisfy the lockset is not diagnosed: a chunk handed between magazines under two
-  different locks, the unlocked allocation path, or the stamp not reaching the lockset are all
-  consistent with the evidence ([#555](https://github.com/PIsberg/async-test-lib/issues/555)).
+- `caffeineWeakInterner_intern`, and on some runs `caffeineBoundedCache_evictUnderPressure`, on
+  `StripedBuffer.table`. Caffeine writes that volatile table only after winning
+  `compareAndSet(this, 0, 1)` on `tableBusy`, and releases it with `tableBusy = 0`. The lockset
+  never saw that lock, so the single write looked unguarded and the volatile safe-publication rule
+  did not apply ([#554](https://github.com/PIsberg/async-test-lib/issues/554)).
+- `adaptiveByteBufAllocator_bufferAndRelease`, on `SizeClassedChunk.allocatedBytes` and on the
+  pooled `AdaptiveByteBuf` fields. A probe that printed each receiver's accesses in drain order
+  showed ownership moving between threads rather than a race: a chunk under one magazine's lock,
+  then taken from the shared cache or with `AtomicReferenceFieldUpdater.getAndSet(this, null)` and
+  used under another magazine's lock or none; a pooled buffer built without a lock and then handed
+  to each next user through JCTools' `MessagePassingQueue.relaxedPoll()`
+  ([#555](https://github.com/PIsberg/async-test-lib/issues/555)).
 
-The third, `caffeineBoundedCache_evictUnderPressure`, appeared on 2 of those 10 runs, both on JDK
-26: `StripedBuffer.table` again, plus the producer fields of Caffeine's MPSC write buffer, which
-look like the same CAS-guarded family and are recorded on #554 as such without having been traced.
+[#557](https://github.com/PIsberg/async-test-lib/pull/557) teaches both. A won int
+`VarHandle.compareAndSet` from 0 to 1 is now a lock on that receiver's flag, released by the swap
+back, a set through the handle or the holder's write. A take, the object a `getAndSet` or a queue
+`poll` hands back, starts a new ownership generation exclusive to the taker, and locks only have to
+agree within a generation; a take also corroborates the builder's construction accesses. Each
+shape has a pair in `DetectorAccuracyEvalTest` or in the agent's end-to-end tests, including the
+ones that must keep firing: a lock change with no take, a thread that uses an object it did not
+take, two locks inside one generation, and a table replaced with no spinlock. With them the noise
+column is 0 of 100 on L and on all three CI legs, and the unsafe side kept all 39 subjects and its
+per-detector split exactly.
 
-All three stay in the corpus. The noise column over 100 is 2 or 3 depending on the run, and the
-one-sided 95% bound on the rate of any finding at all is 6.2% at 2 and 7.6% at 3. The earlier
-findings of this kind were each closed by a rule with its own twin pair; these are filed to be
-closed the same way, not quietened by a threshold.
+What the rules do not cover is filed rather than assumed: spinlocks taken through an
+`AtomicIntegerFieldUpdater`, an atomic object or a handle bound before the agent attached
+([#558](https://github.com/PIsberg/async-test-lib/issues/558)), and the false-negative boundary where
+an alias holder races a taker after its last access
+([#559](https://github.com/PIsberg/async-test-lib/issues/559)).
 
 **The unsafe side stayed complete, and five detectors spoke in this lane for the first time.** All
 39 documented-unsafe subjects drew a finding. `SimpleDateFormatDetector` fired on both date-format
@@ -685,12 +692,12 @@ now says its ground truth is the cached field set rather than a quote.
   is zero, so those lanes say nothing about them in either direction. Twelve are measured in the
   recording lane below, which is a different eval over a different denominator and is reported
   separately for that reason.
-- **A noise column is a measurement, not a guarantee.** The first sixty documented-safe subjects
-  produced nothing, and each of the three before them went quiet because a specific idiom became
-  a rule the analyzer can check, never because a threshold moved. The next forty found two idioms
-  the model had not been taught, which is what this paragraph predicted: a correct class guarded by
-  a mechanism the weaver cannot see, a lock acquired inside unwoven code, a hand-rolled protocol on
-  plain fields, will still draw a `PROMPT`-tier finding, and the tier system exists to price
+- **A noise column is a measurement, not a guarantee.** All 100 documented-safe subjects produce
+  nothing, and each of the last five went quiet because a specific idiom became a rule the analyzer
+  can check, never because a threshold moved. The sixth wave found two such idioms on code the model
+  had not been tuned on, which is what this paragraph predicted before it: a correct class guarded
+  by a mechanism the weaver cannot see, a lock acquired inside unwoven code, a hand-rolled protocol
+  on plain fields, will still draw a `PROMPT`-tier finding, and the tier system exists to price
   exactly that. The next library someone points the agent at may hold a third.
 - **Detection is probabilistic, and the gate is built around that rather than excused by it.**
   `CorpusGates` fails the run when a documented-thread-safe class draws a VERDICT-tier HIGH or

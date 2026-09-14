@@ -95,7 +95,12 @@ authority on which row is which - each outcome above is one assertion in it.
   model: it compares whole lock sets by fingerprint rather than intersecting them, so a field one
   thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
-  than one thread touched this field and at least one wrote". The report only mentions locks when
+  than one thread touched this field and at least one wrote". On the agent-fed path an object
+  that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`) is judged per
+  ownership generation, so each owner may bring its own lock, or none while the object is exclusive
+  to it (#555); a lock that changes with no take, a thread that uses an object it did not take, and
+  two locks inside one generation still fire, and each direction is a case in
+  `DetectorAccuracyEvalTest`. The report only mentions locks when
   the caller supplied some.
 - The rest of the Shared* family no longer has that limit; see the section below.
 - `failOn = CRITICAL` gates on the trustworthy end of the scale.

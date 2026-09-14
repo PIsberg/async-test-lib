@@ -79,9 +79,16 @@ public class AtomicityValidator {
          */
         final int storedIdentity;
 
+        /**
+         * Which ownership generation of the receiver this access belongs to (#555): 0 from
+         * construction until the first observed take, then one more for every take. Locks are
+         * only required to agree within a generation.
+         */
+        final int generation;
+
         FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown,
                           int identity, long fingerprint, int ownMonitor, int methodMonitor,
-                          boolean exclusivePhase, int storedIdentity) {
+                          boolean exclusivePhase, int storedIdentity, int generation) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
@@ -92,6 +99,7 @@ public class AtomicityValidator {
             this.methodMonitor = methodMonitor;
             this.exclusivePhase = exclusivePhase;
             this.storedIdentity = storedIdentity;
+            this.generation = generation;
         }
     }
 
@@ -257,8 +265,12 @@ public class AtomicityValidator {
         final long firstThread;
         volatile boolean shared;
 
-        ReceiverState(long firstThread) {
+        /** How many takes have been observed for this receiver; see {@link #recordOwnershipTaken}. */
+        final int generation;
+
+        ReceiverState(long firstThread, int generation) {
             this.firstThread = firstThread;
+            this.generation = generation;
         }
     }
 
@@ -278,7 +290,7 @@ public class AtomicityValidator {
             return false;
         }
         ReceiverState state = receiverStates.computeIfAbsent(identity,
-                ignored -> new ReceiverState(threadId));
+                ignored -> new ReceiverState(threadId, 0));
         if (state.shared) {
             return false;
         }
@@ -576,7 +588,7 @@ public class AtomicityValidator {
         boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
                 methodMonitor, volatileField, constantTag, identity, threadId);
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
-                ownMonitor, methodMonitor, exclusive, 0);
+                ownMonitor, methodMonitor, exclusive, 0, generationOf(identity));
     }
 
     /**
@@ -654,19 +666,19 @@ public class AtomicityValidator {
         boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
                 methodMonitor, volatileField, constantTag, identity, threadId);
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
-                ownMonitor, methodMonitor, exclusive, storedIdentity);
+                ownMonitor, methodMonitor, exclusive, storedIdentity, generationOf(identity));
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0,
-                false, 0);
+                false, 0, 0);
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
                         int identity, int ownMonitor, int methodMonitor, boolean exclusivePhase,
-                        int storedIdentity) {
+                        int storedIdentity, int generation) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -692,7 +704,7 @@ public class AtomicityValidator {
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
                     ownerKnown, identity, lockFingerprint, ownMonitor, methodMonitor,
-                    exclusivePhase, isWrite ? storedIdentity : 0));
+                    exclusivePhase, isWrite ? storedIdentity : 0, generation));
             // Index the owner's own writes as they arrive, so asking "did this published object
             // then go quiet" later costs a map lookup rather than a scan of every history.
             if (isWrite && identity != 0) {
@@ -764,6 +776,45 @@ public class AtomicityValidator {
         // only one to clear.
         fieldLocks.keySet().removeIf(key ->
                 key.equals(fieldName) || key.startsWith(fieldName + '@'));
+    }
+
+    /**
+     * Records that {@code threadId} took the object with identity {@code identity} out of a queue
+     * or an atomic slot, which makes it exclusive to that thread again.
+     *
+     * <p>The construction phase (#312) ends for good at the first access from a second thread,
+     * because nothing in an access stream says when an object stops being shared. A take does. An
+     * object polled from a queue or swapped out of a slot with {@code getAndSet(x, null)} is no
+     * longer reachable through that queue or slot, so the thread that took it is the only one the
+     * structure hands it to. netty's adaptive allocator moves a chunk between magazines exactly so:
+     * under one magazine's lock, then taken, then under another magazine's lock or none (#555).
+     * Without this the two locks never intersect and the chunk reads as racing.
+     *
+     * <p>What a take starts is a new ownership generation, exclusive to the taker until any other
+     * thread touches the object, exactly as construction is. It only ever excuses: a thread that
+     * kept a reference from before the take and uses it anyway ends the exclusion at its first
+     * access, and locks must still agree within each generation. Identity 0 is not an object and
+     * is ignored.
+     *
+     * @param identity {@code System.identityHashCode} of the object taken
+     * @param threadId the thread that took it
+     * @since 1.12.1
+     */
+    public void recordOwnershipTaken(int identity, long threadId) {
+        if (!enabled || identity == 0) {
+            return;
+        }
+        receiverStates.compute(identity, (ignored, previous) ->
+                new ReceiverState(threadId, previous == null ? 1 : previous.generation + 1));
+    }
+
+    /** {@return the ownership generation {@code identity} is currently in, 0 before any take} */
+    private int generationOf(int identity) {
+        if (identity == 0) {
+            return 0;
+        }
+        ReceiverState state = receiverStates.get(identity);
+        return state == null ? 0 : state.generation;
     }
 
     /**
@@ -863,7 +914,8 @@ public class AtomicityValidator {
                             identity -> (handOff && postShareAccessesShareALock(copy, identity))
                                     || hintReadsConfirmedUnderTheWriteLock(copy, identity, guard,
                                             handOff)
-                                    || settledSingleCheckCache(copy, identity, guard, handOff));
+                                    || settledSingleCheckCache(copy, identity, guard, handOff)
+                                    || everyOwnershipGenerationAgreesOnALock(copy, identity));
                     sawUnguarded = !excused;
                 }
                 // Only claim to have looked at locks when an owner was actually supplied.
@@ -949,6 +1001,58 @@ public class AtomicityValidator {
             }
         }
         return common != null && common.length > 0;
+    }
+
+    /**
+     * {@return whether the receiver changed hands through observed takes, and each owner guarded
+     * it consistently} (#555)
+     *
+     * <p>{@link #postShareAccessesShareALock} asks for one lock across every post-publication
+     * access, which an object that moves between owners cannot satisfy: each owner brings its own
+     * lock. This asks for the same thing per ownership generation instead, and only once at least
+     * one take has been seen, so a lock that simply changes with no take in between keeps
+     * reporting. Accesses a taker made while the object was still exclusive to it are exclusion by
+     * the take and need no lock, and so do the builder's construction accesses, because the take
+     * that follows them corroborates the hand-off the construction phase assumed.
+     */
+    private static boolean everyOwnershipGenerationAgreesOnALock(List<FieldAccessRecord> history,
+                                                                 int identity) {
+        boolean taken = false;
+        for (FieldAccessRecord access : history) {
+            if (access.identity == identity && access.generation > 0) {
+                taken = true;
+                break;
+            }
+        }
+        if (!taken) {
+            return false;
+        }
+        Map<Integer, int[]> commonPerGeneration = new HashMap<>();
+        for (FieldAccessRecord access : history) {
+            if (access.identity != identity) {
+                continue;
+            }
+            // Exclusive accesses need no lock. A taker's are exclusive by the take; the builder's
+            // are exclusive by construction, and an observed take afterwards corroborates that the
+            // object left the builder through a hand-off, as later rounds do for #312.
+            if (access.exclusivePhase) {
+                continue;
+            }
+            if (access.fingerprint == UNMODELLED) {
+                return false;
+            }
+            int[] held = heldLocksOf(access);
+            if (held.length == 0) {
+                return false;
+            }
+            int[] previous = commonPerGeneration.get(access.generation);
+            int[] common = previous == null ? held : intersectLocks(previous, held);
+            if (common.length == 0) {
+                return false;
+            }
+            commonPerGeneration.put(access.generation, common);
+        }
+        return true;
     }
 
     /** {@return the resolved lock ids this access held, the carried monitors included} */

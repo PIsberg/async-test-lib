@@ -67,24 +67,22 @@ true positive. Nothing is inferred from how the code looks.
 | | Result |
 |---|---|
 | Documented not thread-safe | 39 of 39 detected |
-| Documented thread-safe, with any finding at all | **2–3 of 100** |
+| Documented thread-safe, with any finding at all | **0 of 100** |
 | Documented thread-safe, with a `VERDICT`-tier HIGH or CRITICAL | **0 of 100** |
 
-Identical at the gated tier on four platforms: JDK 21, 25 and 26 on Linux, and 26 on Windows. A
-hundred documented-safe subjects is what puts a **95% upper bound of 3.0%** on the rate of findings
-a `VERDICT`-gated build would fail on; the bound comes from the size of that denominator rather
+Identical on four platforms: JDK 21, 25 and 26 on Linux, and 26 on Windows. A hundred
+documented-safe subjects is what puts a **95% upper bound of 3.0%** on the false-positive rate; the bound comes from the size of that denominator rather
 than from the run of zeroes, which is why the safe side is the larger half of the corpus on
 purpose. The last forty were chosen before they were first run, and none was dropped for what it
 drew.
 
-The `PROMPT`-tier findings are what that widening bought. Two appear on every run: Caffeine's weak
-interner writes its striped buffer table only after winning a CAS spinlock, which is not a lock the
-model counts, and Netty's adaptive allocator updates a chunk's byte count under a `StampedLock` the
-agent does track, for a reason not yet diagnosed. A third, a Caffeine bounded cache reaching the
-same striped buffer, appears on some runs. All are filed as issues
-([#554](https://github.com/PIsberg/async-test-lib/issues/554),
-[#555](https://github.com/PIsberg/async-test-lib/issues/555)), the same way the four
-findings before them were: `ConcurrentReferenceHashMap`'s hint
+The zero was not tuned. The last forty safe subjects first drew `PROMPT`-tier findings on 2 or 3
+of them per run, and both causes became rules rather than exclusions: Caffeine's striped buffer
+table written under a compare-and-swap spinlock the model could not see
+([#554](https://github.com/PIsberg/async-test-lib/issues/554)), and netty's chunks and pooled
+buffers handed between threads through queues and atomic slots, each owner under its own lock or
+none ([#555](https://github.com/PIsberg/async-test-lib/issues/555)). They join the four before
+them: `ConcurrentReferenceHashMap`'s hint
 read re-established under its own lock, Netty's pool metadata built while the receiver is still
 exclusive to its builder, Jackson's racy single-check cache recognised by how it converges, and
 Guava's `synchronized`-method fields that compile to a flag and no monitor instruction were each

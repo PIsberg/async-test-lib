@@ -12,6 +12,7 @@ import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.SharedCollectionDetector;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -216,7 +217,10 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Queue.poll}. @param receiver the queue @return the head, or null */
     public static @Nullable Object queuePoll(Queue<Object> receiver) {
         record(receiver, "poll", true);
-        return receiver.poll();
+        Object taken = receiver.poll();
+        // The element left the queue, so it is this thread's alone as far as the queue goes (#555).
+        TelemetryRegistry.ownershipTaken(taken);
+        return taken;
     }
 
     /** Weaves {@code Queue.peek}. @param receiver the queue @return the head, or null */
