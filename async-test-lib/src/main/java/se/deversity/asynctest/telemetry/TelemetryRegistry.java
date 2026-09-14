@@ -3,6 +3,10 @@ package se.deversity.asynctest.telemetry;
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.invoke.VarHandle;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -63,12 +67,12 @@ public final class TelemetryRegistry {
     private static @Nullable Thread shutdownHook = null;
 
     /** Fields bound to a VarHandle or an atomic updater. Static facts; grows only. */
-    private static final java.util.Set<String> ATOMICALLY_MANAGED =
-            java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Set<String> ATOMICALLY_MANAGED =
+            ConcurrentHashMap.newKeySet();
 
     /** Fields a volatile write publishes, as the weaver found them. Static facts; grows only. */
-    private static final java.util.Set<String> PUBLISHED_BY_VOLATILE =
-            java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Set<String> PUBLISHED_BY_VOLATILE =
+            ConcurrentHashMap.newKeySet();
 
     private TelemetryRegistry() {}
 
@@ -274,6 +278,11 @@ public final class TelemetryRegistry {
             return;
         }
         int identity = staticField || receiver == null ? 0 : System.identityHashCode(receiver);
+        if (isWrite && identity != 0 && !SPIN_FIELDS.isEmpty() && SPIN_FIELDS.contains(qualifiedName)) {
+            // The holder writing its spinlock flag is the release (#554). Declared before the write
+            // lands, so the lock never reads as held after it truly is not.
+            releaseSpinLockIfHeld(identity, qualifiedName);
+        }
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
@@ -323,6 +332,135 @@ public final class TelemetryRegistry {
      */
     public static void monitorEntered(Object monitor) {
         HeldLocks.acquired(monitor);
+    }
+
+    /** Which field each {@code VarHandle} bound in a woven class initializer is a handle on. */
+    private static final Map<Object, String> HANDLE_FIELDS = new ConcurrentHashMap<>();
+
+    /**
+     * Fields some thread has used as a compare-and-swap spinlock.
+     *
+     * <p>Keeps the release check off the access path until a spinlock actually exists: the woven
+     * write hook asks this set only when it is non-empty.
+     */
+    private static final Set<String> SPIN_FIELDS = ConcurrentHashMap.newKeySet();
+
+    /** One lock object per receiver and spinlock field, so every thread declares the same lock. */
+    private static final Map<SpinLockKey, Object> SPIN_LOCKS = new ConcurrentHashMap<>();
+
+    /** A spinlock is the flag field of one receiver. Identity hash, so no receiver is retained. */
+    private record SpinLockKey(int receiver, String field) { }
+
+    /**
+     * Records that {@code handle} is a {@code VarHandle} on {@code qualifiedName}.
+     *
+     * <p>Emitted by the weaver right after a {@code findVarHandle} call in a type initializer,
+     * with the handle it returned. A spinlock is acquired through the handle and released by a
+     * plain write to the field, and this is the only place the two names meet.
+     *
+     * @param handle        the handle the binding returned
+     * @param qualifiedName the field, as {@code declaringClass.field}
+     * @since 1.12.1
+     */
+    public static void varHandleBound(@Nullable Object handle, String qualifiedName) {
+        if (handle != null && qualifiedName != null) {
+            HANDLE_FIELDS.put(handle, qualifiedName);
+        }
+    }
+
+    /**
+     * Weaves {@code VarHandle.compareAndSet(receiver, expected, update)} on an {@code int} field.
+     *
+     * <p>A compare-and-swap from 0 to 1 on a flag field is a spinlock, and what is written while
+     * it is held is as guarded as anything written under a monitor. Caffeine's {@code StripedBuffer}
+     * replaces its volatile buffer table that way, and without seeing the lock the table read as
+     * a race on a class documented as thread-safe (#554). A won swap from 0 to 1 declares the
+     * receiver's spinlock held; a won swap from 1 to 0 releases it. Every other swap only swaps.
+     *
+     * <p>Performs the original operation and propagates its exceptions unchanged. The declaration
+     * follows a won acquire and precedes nothing it could make look guarded early. The call goes
+     * through {@code withInvokeBehavior()} because this hook's erased signature can only match a
+     * handle that adapts its argument types, which is what a handle without exact invoke
+     * behaviour does at every call site.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is swapped
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean compareAndSetInt(VarHandle handle, Object receiver, int expected,
+                                           int update) {
+        boolean won = handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
+        if (won && receiver != null) {
+            if (expected == 0 && update == 1) {
+                acquireSpinLock(handle, receiver);
+            } else if (expected == 1 && update == 0) {
+                String field = HANDLE_FIELDS.get(handle);
+                if (field != null) {
+                    releaseSpinLockIfHeld(System.identityHashCode(receiver), field);
+                }
+            }
+        }
+        return won;
+    }
+
+    /** Weaves {@code VarHandle.set} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
+    public static void setInt(VarHandle handle, Object receiver, int value) {
+        releaseIfSpinLockField(handle, receiver);
+        handle.withInvokeBehavior().set(receiver, value);
+    }
+
+    /** Weaves {@code VarHandle.setVolatile} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
+    public static void setVolatileInt(VarHandle handle, Object receiver, int value) {
+        releaseIfSpinLockField(handle, receiver);
+        handle.withInvokeBehavior().setVolatile(receiver, value);
+    }
+
+    /** Weaves {@code VarHandle.setRelease} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
+    public static void setReleaseInt(VarHandle handle, Object receiver, int value) {
+        releaseIfSpinLockField(handle, receiver);
+        handle.withInvokeBehavior().setRelease(receiver, value);
+    }
+
+    /** Weaves {@code VarHandle.setOpaque} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
+    public static void setOpaqueInt(VarHandle handle, Object receiver, int value) {
+        releaseIfSpinLockField(handle, receiver);
+        handle.withInvokeBehavior().setOpaque(receiver, value);
+    }
+
+    private static void acquireSpinLock(VarHandle handle, Object receiver) {
+        String field = HANDLE_FIELDS.get(handle);
+        if (field == null) {
+            // The binding was not seen, so neither will the release be. Declaring a lock nothing
+            // can release would make every later write on this thread look guarded.
+            return;
+        }
+        SPIN_FIELDS.add(field);
+        Object lock = SPIN_LOCKS.computeIfAbsent(
+                new SpinLockKey(System.identityHashCode(receiver), field), ignored -> new Object());
+        if (!HeldLocks.holds(lock)) {
+            HeldLocks.acquired(lock);
+        }
+    }
+
+    /** A holder that stores into its spinlock flag through the handle has released it. */
+    private static void releaseIfSpinLockField(VarHandle handle, Object receiver) {
+        if (receiver == null || SPIN_FIELDS.isEmpty()) {
+            return;
+        }
+        String field = HANDLE_FIELDS.get(handle);
+        if (field != null && SPIN_FIELDS.contains(field)) {
+            releaseSpinLockIfHeld(System.identityHashCode(receiver), field);
+        }
+    }
+
+    private static void releaseSpinLockIfHeld(int receiverIdentity, String field) {
+        Object lock = SPIN_LOCKS.get(new SpinLockKey(receiverIdentity, field));
+        if (lock != null) {
+            HeldLocks.released(lock);
+        }
     }
 
     /**
