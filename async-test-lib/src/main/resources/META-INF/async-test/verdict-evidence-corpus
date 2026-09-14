@@ -112,3 +112,26 @@ LATCH_MISUSE = recorded_latch_countedDownPastItsCount, recorded_latch_countedDow
 EXECUTOR_DEADLOCK = recorded_executor_taskWaitedOnItsSibling, recorded_executor_taskWaitedWithThreadsToSpare
 FUTURE_BLOCKING = recorded_future_blockedOnAFullPool, recorded_future_blockedWithThreadsToSpare
 SHARED_SPLITTABLE_RANDOM = recorded_splittableRandom_sharedAcrossThreads, recorded_splittableRandom_splitPerThread
+
+# --- Third wave, 2026-09-14: the first pairs promoted by reading rather than by the rule.
+#
+# The shape rule in corpus-eval's PairEvidence held these back as calling different detector
+# methods, and in both cases the rule was misreading the source, not the pair. It counted
+# CorpusRecorder.recordCrash, which is the harness keeping a thrown exception, as a detector
+# call; and it read `synchronized (monitor)` as a call to a helper named `synchronized`, whose
+# "body" was then the first synchronized block anywhere in the lane. With both fixed, the two
+# pairs are same-shape, and each was read against its detector before being registered here:
+#
+#   NOTIFY_WITHOUT_MONITOR decides with Thread.holdsLock at the attempt, which is the JVM's own
+#   IllegalMonitorStateException rule, so a monitor held any other way (a synchronized method,
+#   a reentrant hold, an outer frame) stays silent, and the firing half proves its premise by
+#   really calling notifyAll outside the monitor once and recording what the JVM threw.
+#
+#   SHARED_CHARSET_CODER keeps the same per-instance lockset, and has the same limits, as
+#   SHARED_DEFLATER and SHARED_CHECKSUM above, on a pair of the same kind: one coder for every
+#   thread against one per thread.
+#
+# The same reading held nine pairs back on their detector's model; PairEvidence.HELD_ON_MODEL
+# carries each reason.
+NOTIFY_WITHOUT_MONITOR = recorded_notify_withoutHoldingTheMonitor, recorded_notify_holdingTheMonitor
+SHARED_CHARSET_CODER = recorded_charsetEncoder_sharedAcrossThreads, recorded_charsetEncoder_encoderPerThread
