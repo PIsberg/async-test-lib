@@ -10,15 +10,26 @@ import java.util.concurrent.CyclicBarrier;
 
 /**
  * Detects CyclicBarrier misuse patterns:
- * - Barrier timeout (await with timeout expiring)
- * - Broken barrier (barrier broken due to thread interruption or timeout)
- * - Barrier reuse issues (inconsistent participation across cycles)
- * - Missing participants (not all expected threads arrive)
+ * - Barrier timeout (an await the body records as having timed out)
+ * - Reuse of a broken barrier: an arrival or await on a barrier whose {@code isBroken()} is true
+ *   at that moment, so the await throws {@code BrokenBarrierException} for every caller until
+ *   somebody calls {@code reset()}
+ *
+ * <p>A broken barrier is not a finding by itself (#584). Breaking one is how its parties are
+ * cancelled: {@code reset()} with parties waiting, or interrupting them, and then discarding the
+ * barrier is correct code. What fails is the next await on it, so that is what is reported, and it
+ * is decided by asking the barrier rather than by what the body recorded. {@link #recordBroken}
+ * and {@link #recordReset} are kept as context for that report; a recorded break on a barrier that
+ * is not broken at the await reports nothing, and a break nobody recorded is still seen.
+ *
+ * <p>The decision is taken when the arrival or await is recorded, so a barrier that breaks after
+ * that check and before the await itself is missed. That errs towards silence.
  */
 public class CyclicBarrierDetector {
 
     private final Map<CyclicBarrier, BarrierInfo> barrierRegistry = new ConcurrentHashMap<>();
     private final Set<CyclicBarrier> timedOutBarriers = ConcurrentHashMap.newKeySet();
+    /** Barriers with at least one recorded break; context for the reuse report, never a finding. */
     private final Set<CyclicBarrier> brokenBarriers = ConcurrentHashMap.newKeySet();
     private final Set<CyclicBarrier> reuseAfterBrokenBarriers = ConcurrentHashMap.newKeySet();
 
@@ -38,7 +49,9 @@ public class CyclicBarrierDetector {
     }
 
     /**
-     * Record a thread arriving at the barrier.
+     * Record a thread arriving at the barrier, about to await it. An arrival at a barrier that is
+     * broken at this moment is reported as reuse of a broken barrier, the same as
+     * {@link #recordAwait}.
      *
      * @param barrier the barrier being recorded, tracked by identity
      */
@@ -48,6 +61,7 @@ public class CyclicBarrierDetector {
         if (info != null) {
             info.arrive();
         }
+        checkBroken(barrier);
     }
 
     /**
@@ -61,7 +75,9 @@ public class CyclicBarrierDetector {
     }
 
     /**
-     * Record a barrier that was broken.
+     * Record that the barrier broke, for example a party leaving with
+     * {@code BrokenBarrierException}. This is context for a later reuse finding, not a finding:
+     * a barrier broken to cancel its parties and then discarded is correct.
      *
      * @param barrier the barrier being recorded, tracked by identity
      */
@@ -71,26 +87,35 @@ public class CyclicBarrierDetector {
     }
 
     /**
-     * Record a barrier that was reset, repairing it after it broke.
-     * Subsequent await() calls are no longer considered reuse-after-broken.
+     * Record a call to {@code reset()}; call it just before the reset, while any waiting parties are
+     * still waiting. A reset with parties waiting breaks the barrier for each of them, so when
+     * {@code getNumberWaiting()} is non-zero it counts as a recorded break. It never clears
+     * anything: whether a later await is on a broken barrier is asked of the barrier at that
+     * await, and after a completed reset it is not.
      *
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordReset(CyclicBarrier barrier) {
         if (barrier == null) return;
-        brokenBarriers.remove(barrier);
+        if (barrier.getNumberWaiting() > 0) {
+            brokenBarriers.add(barrier);
+        }
     }
 
     /**
-     * Record a thread calling await() on the barrier. If the barrier is
-     * currently broken and has not been reset since, this is flagged as
-     * reuse of a broken barrier without an intervening reset().
+     * Record a thread about to call await() on the barrier. If the barrier is broken at this
+     * moment, the await throws {@code BrokenBarrierException} immediately, and this is reported
+     * as reuse of a broken barrier without an intervening reset().
      *
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordAwait(CyclicBarrier barrier) {
         if (barrier == null) return;
-        if (brokenBarriers.contains(barrier)) {
+        checkBroken(barrier);
+    }
+
+    private void checkBroken(CyclicBarrier barrier) {
+        if (barrier.isBroken()) {
             reuseAfterBrokenBarriers.add(barrier);
         }
     }
@@ -135,8 +160,9 @@ public class CyclicBarrierDetector {
          *
          * @param barrierRegistry every registered barrier and what was observed on it
          * @param timedOutBarriers the barriers whose await timed out
-         * @param brokenBarriers the barriers left in a broken state
-         * @param reuseAfterBrokenBarriers the barriers used again after they had broken
+         * @param brokenBarriers the barriers with a recorded break; context for the reuse report,
+         *                       never a finding on its own
+         * @param reuseAfterBrokenBarriers the barriers arrived at or awaited while broken
          */
         public CyclicBarrierReport(
             Map<CyclicBarrier, BarrierInfo> barrierRegistry,
@@ -159,7 +185,7 @@ public class CyclicBarrierDetector {
          *
          * @param barrierRegistry every registered barrier and what was observed on it
          * @param timedOutBarriers the barriers whose await timed out
-         * @param brokenBarriers the barriers left in a broken state
+         * @param brokenBarriers the barriers with a recorded break; context only, never a finding
          */
         @Deprecated(since = "1.7.0")
         @SuppressWarnings("InlineMeSuggester") // binary-compat shim for 1.6.0 callers, not an active migration target
@@ -179,10 +205,13 @@ public class CyclicBarrierDetector {
         }
 
         /**
-         * {@return whether there are issues}
+         * Whether a finding was made: a recorded timeout, or an arrival or await on a barrier that
+         * was broken at that moment. A recorded break alone is not one (#584).
+         *
+         * @return whether there are issues
          */
         public boolean hasIssues() {
-            return !timedOutBarriers.isEmpty() || !brokenBarriers.isEmpty() || !reuseAfterBrokenBarriers.isEmpty();
+            return !timedOutBarriers.isEmpty() || !reuseAfterBrokenBarriers.isEmpty();
         }
 
         /**
@@ -220,24 +249,15 @@ public class CyclicBarrierDetector {
                 sb.append("  Fix: Ensure all registered parties call await(); wrap in try-catch BrokenBarrierException and reset() before reuse\n");
             }
 
-            if (!brokenBarriers.isEmpty()) {
-                sb.append("  Broken Barriers:\n");
-                for (CyclicBarrier barrier : brokenBarriers) {
-                    BarrierInfo info = infoFor(barrier);
-                    sb.append("    - ").append(info.name)
-                      .append(" (barrier broken - thread interrupted or timed out)\n");
-                }
-                sb.append("  Why: A thread timing out or being interrupted breaks the barrier for all other waiting parties,\n");
-                sb.append("       leaving them stuck unless the barrier is explicitly reset.\n");
-                sb.append("  Fix: Catch BrokenBarrierException, call barrier.reset() before reuse, and restore interrupt status on InterruptedException\n");
-            }
-
             if (!reuseAfterBrokenBarriers.isEmpty()) {
                 sb.append("  Reuse After Broken Barriers:\n");
                 for (CyclicBarrier barrier : reuseAfterBrokenBarriers) {
                     BarrierInfo info = infoFor(barrier);
                     sb.append("    - ").append(info.name)
-                      .append(" (await() called on a barrier that was already broken)\n");
+                      .append(" (arrival or await() while barrier.isBroken() was true")
+                      .append(brokenBarriers.contains(barrier)
+                              ? "; a break was recorded earlier, by a party or a reset() with parties waiting)\n"
+                              : "; the break was not recorded: a party timed out, was interrupted, or the barrier action threw)\n");
                 }
                 sb.append("  Why: await() on a broken barrier throws BrokenBarrierException immediately for every caller;\n");
                 sb.append("       the barrier stays broken until reset() is called, so repeated reuse without a reset\n");
@@ -261,7 +281,6 @@ public class CyclicBarrierDetector {
         final String name;
         final int parties;
         private int arrivals = 0;
-        int completedCycles = 0;
 
         BarrierInfo(String name, int parties) {
             this.name = name;
@@ -273,7 +292,6 @@ public class CyclicBarrierDetector {
         }
 
         synchronized void cycleComplete() {
-            completedCycles++;
             arrivals = 0;
         }
 

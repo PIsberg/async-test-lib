@@ -511,9 +511,23 @@ class CorpusRecordingLaneTest {
     /** What the silent exposure row publishes instead: a value, not the monitor. */
     private static final Object PUBLISHED_VALUE = new Object();
 
-    /** The barrier the loud row records as broken; six parties, never awaited for real. */
-    private static final java.util.concurrent.CyclicBarrier BROKEN_BARRIER =
-            new java.util.concurrent.CyclicBarrier(THREADS);
+    /** The barrier the loud row awaits; broken for real before any body runs, and never reset. */
+    private static final java.util.concurrent.CyclicBarrier BROKEN_BARRIER = brokenBarrier();
+
+    private static java.util.concurrent.CyclicBarrier brokenBarrier() {
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(THREADS);
+        try {
+            barrier.await(1, java.util.concurrent.TimeUnit.NANOSECONDS);   // times out, and breaks it
+        } catch (java.util.concurrent.TimeoutException expected) {
+            // the break is the point
+        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+            throw new IllegalStateException("could not break the corpus barrier", e);
+        }
+        if (!barrier.isBroken()) {
+            throw new IllegalStateException("a timed-out await must leave the barrier broken");
+        }
+        return barrier;
+    }
 
     /** The twin recorded through a whole arrive-await-complete cycle. */
     private static final java.util.concurrent.CyclicBarrier COMPLETED_BARRIER =
@@ -2975,13 +2989,20 @@ class CorpusRecordingLaneTest {
     // Four coordinators, one question: did the protocol complete, or did it end in the state the
     // class documents as terminal? Each pair records a finished cycle against an abandoned one.
 
-    /** A barrier recorded as broken: every later await fails until somebody resets it. */
+    /** An await on a barrier that really is broken: it fails at once, and keeps failing until a reset. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_cyclicBarrier_leftBroken() {
+    void recorded_cyclicBarrier_awaitedWhileBroken() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
         detector.registerBarrier(BROKEN_BARRIER, "broken-barrier", THREADS);
-        detector.recordBroken(BROKEN_BARRIER);
+        detector.recordAwait(BROKEN_BARRIER);
+        try {
+            BROKEN_BARRIER.await();
+        } catch (java.util.concurrent.BrokenBarrierException e) {
+            detector.recordBroken(BROKEN_BARRIER);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** The same barrier through a whole cycle: arrive, await, complete, never broken. */

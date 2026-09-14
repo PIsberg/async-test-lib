@@ -140,10 +140,11 @@ final class PairEvidence {
                 + "the MUST_FIRE row's finding is the body's own declaration that an await woke "
                 + "with no signal; needs the lock's hasWaiters at analysis, or a real parked "
                 + "waiter in the unsafe body, to decide on what the object did");
-        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "recordBroken is the finding and is never "
-                + "checked against barrier.isBroken(), so a barrier broken on purpose to cancel and "
-                + "then discarded fires CRITICAL; needs reuse-after-broken decided with isBroken() "
-                + "at the await, and the bare left-broken finding dropped");
+        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "recordTimeout is still the finding and is "
+                + "never checked against the barrier, so a timed await that handles its "
+                + "TimeoutException fires the same as one that strands its parties; needs the "
+                + "timeout observed, then a re-read (#584 decided reuse with isBroken() at the "
+                + "await and dropped the bare left-broken finding)");
         HELD_ON_MODEL.put(DetectorType.EXCHANGER, "recordTimeout and recordInterrupted set the "
                 + "finding unconditionally, so a timed exchange that handles TimeoutException, the "
                 + "report's own fix, fires CRITICAL, while an untimed exchange whose partner never "
