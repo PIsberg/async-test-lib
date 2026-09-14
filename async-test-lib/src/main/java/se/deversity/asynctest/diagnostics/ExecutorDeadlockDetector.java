@@ -30,7 +30,7 @@ public class ExecutorDeadlockDetector {
         }
     }
 
-    private final Map<Integer, ExecutorState> executors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ExecutorState> executors = new ConcurrentHashMap<>();
     /**
      * Registers executor for tracking.
      *
@@ -42,7 +42,7 @@ public class ExecutorDeadlockDetector {
         if (executor == null) {
             return;
         }
-        executors.putIfAbsent(System.identityHashCode(executor),
+        executors.putIfAbsent(new IdentityKey(executor),
             new ExecutorState(name == null || name.isBlank() ? "Executor" : name, maxThreads));
     }
     /**
@@ -92,7 +92,7 @@ public class ExecutorDeadlockDetector {
     }
 
     private @Nullable ExecutorState stateFor(Object executor) {
-        return executor == null ? null : executors.get(System.identityHashCode(executor));
+        return executor == null ? null : executors.get(new IdentityKey(executor));
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.

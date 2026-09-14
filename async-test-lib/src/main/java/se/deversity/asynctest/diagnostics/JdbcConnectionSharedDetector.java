@@ -107,7 +107,7 @@ public final class JdbcConnectionSharedDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a JDBC resource. Non-JDBC objects are silently
@@ -126,12 +126,12 @@ public final class JdbcConnectionSharedDetector {
         else if (resource instanceof ResultSet)         type = "ResultSet";
         else return;
 
-        int id = System.identityHashCode(resource);
+        IdentityKey id = new IdentityKey(resource);
         State s = instances.get(id);
         if (s == null) {
             final String finalType = type;
             s = instances.computeIfAbsent(id, k -> new State(
-                    (name != null) ? name : finalType + "@" + k,
+                    (name != null) ? name : finalType + "@" + k.hashCode(),
                     finalType));
         }
         s.noteAccess(resource);
@@ -172,7 +172,7 @@ public final class JdbcConnectionSharedDetector {
      */
     public void recordRelease(Object resource, Thread thread) {
         if (resource == null || thread == null) return;
-        State s = instances.get(System.identityHashCode(resource));
+        State s = instances.get(new IdentityKey(resource));
         if (s == null) return;
         s.ownershipModelled = true;
         s.currentHolders.remove(thread.threadId());

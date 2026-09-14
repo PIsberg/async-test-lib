@@ -41,13 +41,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class NestedMonitorLockoutDetector {
 
-    /** Per-thread set of currently held monitor identity hashes. */
-    private final Map<Long, Deque<Integer>> heldMonitors = new ConcurrentHashMap<>();
+    /** Per-thread stack of currently held monitors, compared by identity. */
+    private final Map<Long, Deque<IdentityKey>> heldMonitors = new ConcurrentHashMap<>();
 
     /** All captured nested-monitor-lockout events. */
     private final List<String> issues = new CopyOnWriteArrayList<>();
 
-    private Deque<Integer> monitorsFor(Thread t) {
+    private Deque<IdentityKey> monitorsFor(Thread t) {
         return heldMonitors.computeIfAbsent(t.threadId(), id -> new ArrayDeque<>());
     }
 
@@ -58,7 +58,7 @@ public class NestedMonitorLockoutDetector {
      */
     public void recordMonitorAcquired(Object monitor) {
         if (monitor == null) return;
-        monitorsFor(Thread.currentThread()).push(System.identityHashCode(monitor));
+        monitorsFor(Thread.currentThread()).push(new IdentityKey(monitor));
     }
 
     /**
@@ -68,8 +68,8 @@ public class NestedMonitorLockoutDetector {
      */
     public void recordMonitorReleased(Object monitor) {
         if (monitor == null) return;
-        Deque<Integer> held = heldMonitors.get(Thread.currentThread().threadId());
-        if (held != null) held.remove(System.identityHashCode(monitor));
+        Deque<IdentityKey> held = heldMonitors.get(Thread.currentThread().threadId());
+        if (held != null) held.remove(new IdentityKey(monitor));
     }
 
     /**
@@ -80,7 +80,7 @@ public class NestedMonitorLockoutDetector {
      */
     public void recordBlockingOperationAttempted(String operation) {
         Thread t = Thread.currentThread();
-        Deque<Integer> held = heldMonitors.get(t.threadId());
+        Deque<IdentityKey> held = heldMonitors.get(t.threadId());
         if (held == null || held.isEmpty()) return;
 
         issues.add(String.format(

@@ -107,7 +107,7 @@ public final class RecordMutableComponentLeakDetector {
         }
     }
 
-    private final Map<Integer, State> records = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> records = new ConcurrentHashMap<>();
     private final LongAdder dropped   = new LongAdder();
     private final LongAdder nonRecord = new LongAdder();
 
@@ -130,7 +130,7 @@ public final class RecordMutableComponentLeakDetector {
             nonRecord.increment();
             return;
         }
-        int id = System.identityHashCode(recordInstance);
+        IdentityKey id = new IdentityKey(recordInstance);
         State s = records.get(id);
         if (s == null) {
             if (records.size() >= MAX_INSTANCES) {
@@ -139,7 +139,7 @@ public final class RecordMutableComponentLeakDetector {
             }
             final String lbl = label != null
                     ? label
-                    : recordInstance.getClass().getSimpleName() + "@" + id;
+                    : recordInstance.getClass().getSimpleName() + "@" + id.hashCode();
             s = records.computeIfAbsent(id, k -> {
                 State fresh = new State(lbl, recordInstance);
                 snapshot(fresh);

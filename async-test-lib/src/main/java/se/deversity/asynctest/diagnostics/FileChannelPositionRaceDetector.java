@@ -71,7 +71,7 @@ public final class FileChannelPositionRaceDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an implicit-position operation: one of {@code read}, {@code write},
@@ -109,10 +109,10 @@ public final class FileChannelPositionRaceDetector {
     }
 
     private State stateFor(Object channel) {
-        int id = System.identityHashCode(channel);
+        IdentityKey id = new IdentityKey(channel);
         State s = instances.get(id);
         if (s == null) {
-            final String label = channel.getClass().getSimpleName() + "@" + id;
+            final String label = channel.getClass().getSimpleName() + "@" + id.hashCode();
             s = instances.computeIfAbsent(id, k -> new State(label));
         }
         return s;

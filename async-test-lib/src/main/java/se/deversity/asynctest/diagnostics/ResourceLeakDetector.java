@@ -54,7 +54,7 @@ public class ResourceLeakDetector {
         }
     }
 
-    private final Map<Integer, ResourceState> resources = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ResourceState> resources = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -72,7 +72,7 @@ public class ResourceLeakDetector {
         // runner runs threads × invocations times against the same resource. A put() would
         // install a fresh ResourceState each time, wiping the open/close counts — so a resource
         // left open by an earlier invocation would be erased before analysis saw it.
-        resources.computeIfAbsent(System.identityHashCode(resource),
+        resources.computeIfAbsent(new IdentityKey(resource),
                                   ignored -> new ResourceState(resource, name, resourceType));
     }
 
@@ -86,7 +86,7 @@ public class ResourceLeakDetector {
         if (!enabled || resource == null) {
             return;
         }
-        ResourceState state = resources.get(System.identityHashCode(resource));
+        ResourceState state = resources.get(new IdentityKey(resource));
         if (state != null) {
             state.openCount.incrementAndGet();
             state.openingThreads.add(Thread.currentThread().threadId());
@@ -105,7 +105,7 @@ public class ResourceLeakDetector {
         if (!enabled || resource == null) {
             return;
         }
-        ResourceState state = resources.get(System.identityHashCode(resource));
+        ResourceState state = resources.get(new IdentityKey(resource));
         if (state != null) {
             state.closeCount.incrementAndGet();
             state.closingThreads.add(Thread.currentThread().threadId());

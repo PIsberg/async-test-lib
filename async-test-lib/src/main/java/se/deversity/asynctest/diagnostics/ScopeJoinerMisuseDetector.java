@@ -136,7 +136,7 @@ public final class ScopeJoinerMisuseDetector {
         JoinerState(String label) { this.label = label; }
     }
 
-    private final Map<Integer, JoinerState> joiners = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, JoinerState> joiners = new ConcurrentHashMap<>();
     private volatile boolean                enabled = true;
 
     /** Creates a detector with no recorded joiners. */
@@ -263,14 +263,14 @@ public final class ScopeJoinerMisuseDetector {
     }
 
     private JoinerState stateOrCreate(Object joiner, String label) {
-        int id = System.identityHashCode(joiner);
-        String name = label != null ? label : "joiner@" + id;
+        IdentityKey id = new IdentityKey(joiner);
+        String name = label != null ? label : "joiner@" + id.hashCode();
         return joiners.computeIfAbsent(id, k -> new JoinerState(name));
     }
 
     private @Nullable JoinerState state(Object joiner) {
         if (!enabled || joiner == null) return null;
-        return joiners.get(System.identityHashCode(joiner));
+        return joiners.get(new IdentityKey(joiner));
     }
 
     /** Raises {@code peak} to {@code observed} if it is higher, retrying against concurrent raisers. */

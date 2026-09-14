@@ -58,7 +58,7 @@ public class LockContentionDetector {
         }
     }
 
-    private final Map<Integer, MonitorState> monitors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
 
     // ---- Public API --------------------------------------------------------
 
@@ -144,9 +144,10 @@ public class LockContentionDetector {
     // ---- Internal ----------------------------------------------------------
 
     private MonitorState resolve(Object monitor, String name) {
-        int key = System.identityHashCode(monitor);
-        return monitors.computeIfAbsent(key, k -> {
-            String label = (name != null) ? name : monitor.getClass().getSimpleName() + "@" + k;
+        return monitors.computeIfAbsent(new IdentityKey(monitor), k -> {
+            String label = (name != null)
+                    ? name
+                    : monitor.getClass().getSimpleName() + "@" + k.hashCode();
             return new MonitorState(label);
         });
     }

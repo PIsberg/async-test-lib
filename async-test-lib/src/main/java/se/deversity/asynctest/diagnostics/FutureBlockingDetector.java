@@ -30,7 +30,7 @@ public class FutureBlockingDetector {
         }
     }
 
-    private final Map<Integer, ExecutorState> executors = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ExecutorState> executors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     /**
      * Disable.
@@ -51,7 +51,7 @@ public class FutureBlockingDetector {
         if (!enabled || executor == null) {
             return;
         }
-        executors.putIfAbsent(System.identityHashCode(executor),
+        executors.putIfAbsent(new IdentityKey(executor),
             new ExecutorState(name == null || name.isBlank() ? "Executor" : name, maxThreads));
     }
     /**
@@ -104,7 +104,7 @@ public class FutureBlockingDetector {
         if (!enabled || executor == null) {
             return null;
         }
-        return executors.get(System.identityHashCode(executor));
+        return executors.get(new IdentityKey(executor));
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
