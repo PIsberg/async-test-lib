@@ -99,10 +99,11 @@ final class PairEvidence {
                 + "closes it, draws the leak finding; needs a declared lifetime and no "
                 + "cross-thread rule on the reporting path");
         HELD_ON_MODEL.put(DetectorType.EXECUTOR_SHUTDOWN, "a finding means the ownership "
-                + "declaration disagrees with the body's own records, not that a pool leaked: a "
-                + "try-with-resources ExecutorService or a pool shut down in @AfterAll fires, and "
-                + "an awaitTermination that timed out counts as awaited; needs the await's result "
-                + "and a lifetime model");
+                + "declaration disagrees with the executor's state at analysis, not that a pool "
+                + "leaked: a pool the body declared but a class-scoped @AfterAll or a shutdown "
+                + "hook closes reads as never shut down, because analysis runs first; needs a "
+                + "declared lifetime (#568 made the executor, not the records, decide timed-out "
+                + "awaits and try-with-resources)");
         HELD_ON_MODEL.put(DetectorType.FUTURE_IGNORED, "the body declares both the submit and "
                 + "the inspection and the detector only compares the two, so fire-and-forget by "
                 + "design and a whenComplete handler (a different Future identity) fire, while "
