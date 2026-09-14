@@ -130,11 +130,8 @@ final class PairEvidence {
                 + "lock (pinned in DetectorAccuracyEvalTest), a volatile read of a field written "
                 + "under a lock, and a confined hand-off all fire; needs lockset intersection and "
                 + "per-finding grades for the invisible-lock case");
-        HELD_ON_MODEL.put(DetectorType.READ_WRITE_LOCK_FAIRNESS, "fires on a read-to-write count "
-                + "ratio above 10 or a caller-supplied wait above 100 ms and never looks at the "
-                + "lock, so a fair or deliberately non-fair read-mostly lock fires and a writer "
-                + "that never acquires stays silent; starvation is a liveness observation, which "
-                + "points at ADVISORY rather than VERDICT");
+        // READ_WRITE_LOCK_FAIRNESS was held here as a liveness observation; #569 moved it to
+        // ADVISORY, which is not a promotion candidate, so the hold no longer asks anything.
         // Read before this map existed; the full argument is in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.FILE_CHANNEL_POSITION_RACE, "reports whenever more than "
                 + "one thread accessed the channel and carries no representation of a lock, so a "

@@ -145,7 +145,7 @@ still produces a finding, and so does inconsistent locking - two threads holding
 have excluded nothing, which is a race however many locks were involved.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 68 VERDICT, 63 PROMPT, 11 FACT and 4
+tier is one a reader has to rank alone. The split is 68 VERDICT, 62 PROMPT, 11 FACT and 5
 ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
 detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
 statements about the kind of claim a finding makes rather than about missing evidence - a FACT
@@ -696,7 +696,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 18. Read-Write Lock Fairness Detector
 * **Severity**: `MEDIUM`
-* **Description**: Measures per-lock read/write acquisition counts and wait times to detect writer starvation, where a steady stream of readers keeps a non-fair `ReadWriteLock`'s writer waiting indefinitely.
+* **Description**: Measures per-lock read/write acquisition counts and wait times to detect writer starvation, where a steady stream of readers keeps a non-fair `ReadWriteLock`'s writer waiting indefinitely. Trust tier `ADVISORY`: the finding is decided by a read-to-write count ratio above 10, or a recorded writer wait above 100 ms, and never by the lock itself, so it is a performance note rather than a correctness claim, and a build gated on `minTrust = PROMPT` or higher does not fail on it (#569). A writer that never acquires the lock is never recorded, so starvation that complete is not reported.
 * **Buggy Code**:
   ```java
   ReadWriteLock rw = new ReentrantReadWriteLock(); // default: non-fair, favors readers

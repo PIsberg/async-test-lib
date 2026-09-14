@@ -205,7 +205,10 @@ public class ReadWriteLockMonitor {
     public static class ReadWriteLockReport {
         /** Locks where readers arrived often enough to hold writers off. */
         public final Set<String> readerDominatedLocks = new HashSet<>();
-        /** Writers that never acquired the lock during the run. */
+        /**
+         * Locks where a writer, once it acquired, had waited over 100 ms while reads outnumbered
+         * writes twice over. A writer that never acquires is never recorded, so it is not here.
+         */
         public final Set<String> starvedWriters = new HashSet<>();
         /** Writers that waited longer than the reporting threshold. */
         public final Set<String> longWriteWaits = new HashSet<>();
