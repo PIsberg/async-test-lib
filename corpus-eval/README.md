@@ -22,7 +22,7 @@ A run executes five lanes and writes one report per lane under `target/corpus-ev
 
 | Lane | Report | What it is |
 |---|---|---|
-| `agent-on` | `corpus-eval.md` | The agent attached as `fields=true,collections=true`. Every number the write-up quotes comes from here. |
+| `agent-on` | `corpus-eval.md` | The agent attached as `fields=true,collections=true`, with Surefire's own classes excluded from weaving (#561). Every number the write-up quotes comes from here. |
 | `agent-off` | `corpus-eval-agent-off.md` | The same subjects with nothing attached. The control: `DetectorFeeds` says the 18 agent-fed detectors have no input without the agent, so this lane must observe nothing from them, and `CorpusGates` asserts it. |
 | `recording` | `corpus-eval-recording.md` | The same libraries, with bodies that call the recording API. A different measurement over a different denominator, which is why it writes its own report and is never merged into the other two. |
 | `agent-pairs` | `corpus-eval-agent-pairs.md` | The mirror image of the recording lane, for the 18 agent-fed detectors it cannot reach. The agent is attached and the body records nothing: the difference between a firing row and its silent twin is a field declaration, and everything in between comes from the weaver. `AgentRowPremise` fails the lane if a body here touches the recording API. Some pairs call the JDK type from the test file; others call only Guava, Jackson, HikariCP, Spring, commons-lang3 or Groovy, so the woven call sits inside the library, and `LibraryReach` accounts for which agent-fed detectors that reaches. |
