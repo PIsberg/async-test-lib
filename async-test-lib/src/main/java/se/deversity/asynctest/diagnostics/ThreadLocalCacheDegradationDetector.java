@@ -68,8 +68,8 @@ public final class ThreadLocalCacheDegradationDetector {
 
     private static final class CacheState {
         final String    name;
-        final Set<Integer> virtualInstanceIds  = ConcurrentHashMap.newKeySet();
-        final Set<Integer> platformInstanceIds = ConcurrentHashMap.newKeySet();
+        final Set<IdentityKey> virtualInstanceIds  = ConcurrentHashMap.newKeySet();
+        final Set<IdentityKey> platformInstanceIds = ConcurrentHashMap.newKeySet();
         final Set<Long>    virtualThreadIds    = ConcurrentHashMap.newKeySet();
         final Set<Long>    platformThreadIds   = ConcurrentHashMap.newKeySet();
         volatile String    valueType = "?";
@@ -113,10 +113,10 @@ public final class ThreadLocalCacheDegradationDetector {
         CacheState s = caches.computeIfAbsent(name, CacheState::new);
         s.valueType = value.getClass().getSimpleName();
         if (isVirtual(thread)) {
-            s.virtualInstanceIds.add(System.identityHashCode(value));
+            s.virtualInstanceIds.add(new IdentityKey(value));
             s.virtualThreadIds.add(thread.threadId());
         } else {
-            s.platformInstanceIds.add(System.identityHashCode(value));
+            s.platformInstanceIds.add(new IdentityKey(value));
             s.platformThreadIds.add(thread.threadId());
         }
     }

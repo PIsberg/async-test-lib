@@ -48,7 +48,7 @@ public class SynchronizedNonFinalDetector {
         final String fieldId;
         /** Whether the caller identified the object that declares the field. */
         final boolean ownerKnown;
-        final Set<Integer> identityHashes = ConcurrentHashMap.newKeySet();
+        final Set<IdentityKey> identityHashes = ConcurrentHashMap.newKeySet();
 
         LockSlot(String fieldId, boolean ownerKnown) {
             this.fieldId = fieldId;
@@ -56,7 +56,15 @@ public class SynchronizedNonFinalDetector {
         }
     }
 
-    private final Map<String, LockSlot> slots = new ConcurrentHashMap<>();
+    /**
+     * Keyed by the field id alone, or by the field id and its owner compared by identity. The owner
+     * used to be folded into a string as its identity hash, so two owners whose hashes collided
+     * shared a slot and each one's single monitor read as the field changing its lock (#564).
+     */
+    private final Map<Object, LockSlot> slots = new ConcurrentHashMap<>();
+
+    private record OwnedSlot(String fieldId, IdentityKey owner) {
+    }
 
     // ---- Public API --------------------------------------------------------
 
@@ -96,9 +104,9 @@ public class SynchronizedNonFinalDetector {
         if (lockObject == null || fieldId == null) return;
         String key = (ownerClass != null) ? ownerClass.getSimpleName() + "." + fieldId : fieldId;
         boolean ownerKnown = owner != null;
-        String slotKey = ownerKnown ? key + "@" + System.identityHashCode(owner) : key;
+        Object slotKey = owner != null ? new OwnedSlot(key, new IdentityKey(owner)) : key;
         LockSlot slot = slots.computeIfAbsent(slotKey, k -> new LockSlot(key, ownerKnown));
-        slot.identityHashes.add(System.identityHashCode(lockObject));
+        slot.identityHashes.add(new IdentityKey(lockObject));
     }
 
     // ---- Analysis ----------------------------------------------------------

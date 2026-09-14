@@ -77,22 +77,27 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class ConcurrentMapComputeRecursionDetector {
 
     /**
-     * The keys currently being computed, per {@code mapIdentityHash:threadId} scope.
+     * The keys currently being computed, per (map, thread) scope.
      *
      * <p>Keyed by scope rather than by the whole {@code map:key:thread} slot so that the question
      * "is this thread already inside a compute on this map" is answerable, which is what the
-     * cross-key rule needs (#343). The inner map holds each key's identity hash against a label
-     * captured at entry; neither the map nor the key is retained, so an entry cannot keep a
-     * subject alive. Every scope names one thread, so only that thread ever touches its inner
+     * cross-key rule needs (#343). The inner map holds each key, compared by identity, against a
+     * label captured at entry. Both are held only while a compute is in flight, when the caller
+     * holds them anyway. They used to be identity hashes, which collide: two distinct keys read as
+     * the same key and a correct nested compute on another key was reported as recursion on this
+     * one (#564). Every scope names one thread, so only that thread ever touches its inner
      * map, and an empty one is dropped rather than left to accumulate across a long run.
      */
-    private final Map<String, Map<Integer, String>> activeByScope = new ConcurrentHashMap<>();
+    private final Map<Scope, Map<IdentityKey, String>> activeByScope = new ConcurrentHashMap<>();
 
     private final List<String> recursions          = new CopyOnWriteArrayList<>();
     private final List<String> crossKeyRecursions  = new CopyOnWriteArrayList<>();
 
-    private static String scope(Object map, Thread thread) {
-        return System.identityHashCode(map) + ":" + thread.threadId();
+    private record Scope(IdentityKey map, long threadId) {
+    }
+
+    private static Scope scope(Object map, Thread thread) {
+        return new Scope(new IdentityKey(map), thread.threadId());
     }
 
     /**
@@ -125,9 +130,9 @@ public class ConcurrentMapComputeRecursionDetector {
         if (map == null || key == null || thread == null) return;
         // computeIfAbsent rather than get-then-put: a get/null-check/put here loses an entry the
         // moment two threads open a scope at once, and a lost entry is a missed finding.
-        Map<Integer, String> active =
+        Map<IdentityKey, String> active =
                 activeByScope.computeIfAbsent(scope(map, thread), ignored -> new ConcurrentHashMap<>());
-        int keyIdentity = System.identityHashCode(key);
+        IdentityKey keyIdentity = new IdentityKey(key);
         String label = mapName != null ? mapName : "map@" + System.identityHashCode(map);
 
         if (active.containsKey(keyIdentity)) {
@@ -159,12 +164,12 @@ public class ConcurrentMapComputeRecursionDetector {
      */
     public void recordComputeEnd(Map<?, ?> map, Object key, Thread thread) {
         if (map == null || key == null || thread == null) return;
-        String scope = scope(map, thread);
-        Map<Integer, String> active = activeByScope.get(scope);
+        Scope scope = scope(map, thread);
+        Map<IdentityKey, String> active = activeByScope.get(scope);
         if (active == null) {
             return;
         }
-        active.remove(System.identityHashCode(key));
+        active.remove(new IdentityKey(key));
         // Only this thread writes to this scope, so an empty inner map here stays empty until
         // this thread opens it again. Dropping it keeps a long run over many short-lived maps
         // from accumulating one entry per map.

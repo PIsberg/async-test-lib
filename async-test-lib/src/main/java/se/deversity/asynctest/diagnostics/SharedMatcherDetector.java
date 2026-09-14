@@ -40,7 +40,7 @@ public class SharedMatcherDetector {
         MatcherState(String name) { this.name = name; }
     }
 
-    private final Map<Integer, MatcherState> matchers = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, MatcherState> matchers = new ConcurrentHashMap<>();
 
     /**
      * Record an access (find/matches/group/reset) to a Matcher instance.
@@ -54,7 +54,7 @@ public class SharedMatcherDetector {
         String label = name != null ? name
                 : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher);
         MatcherState s = matchers.computeIfAbsent(
-                System.identityHashCode(matcher), id -> new MatcherState(label));
+                new IdentityKey(matcher), id -> new MatcherState(label));
         s.noteAccess(matcher);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());

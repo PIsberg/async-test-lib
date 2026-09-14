@@ -48,7 +48,7 @@ public class SharedXmlParserDetector {
         ParserState(String parserType) { this.parserType = parserType; }
     }
 
-    private final Map<Integer, ParserState> parsers = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ParserState> parsers = new ConcurrentHashMap<>();
 
     /**
      * Records an access to an XML parser instance.
@@ -63,7 +63,7 @@ public class SharedXmlParserDetector {
         String label = parserType != null ? parserType
                 : parser.getClass().getSimpleName();
         ParserState s = parsers.computeIfAbsent(
-                System.identityHashCode(parser), id -> new ParserState(label));
+                new IdentityKey(parser), id -> new ParserState(label));
         s.noteAccess(parser);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());

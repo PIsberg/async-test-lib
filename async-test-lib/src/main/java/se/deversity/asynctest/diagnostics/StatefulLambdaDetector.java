@@ -41,7 +41,7 @@ public class StatefulLambdaDetector {
         LambdaState(String name) { this.name = name; }
     }
 
-    private final Map<Integer, LambdaState> lambdas = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, LambdaState> lambdas = new ConcurrentHashMap<>();
 
     /**
      * Record that a lambda instance is executing on the calling thread.
@@ -56,7 +56,7 @@ public class StatefulLambdaDetector {
         String label = name != null ? name
                 : lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda);
         LambdaState s = lambdas.computeIfAbsent(
-                System.identityHashCode(lambda), id -> new LambdaState(label));
+                new IdentityKey(lambda), id -> new LambdaState(label));
         s.executingThreadIds.add(thread.threadId());
         s.executingThreadNames.add(thread.getName());
     }
@@ -73,7 +73,7 @@ public class StatefulLambdaDetector {
         if (lambda == null || thread == null) return;
         String label = capturedName != null ? capturedName : "capturedState";
         LambdaState s = lambdas.computeIfAbsent(
-                System.identityHashCode(lambda),
+                new IdentityKey(lambda),
                 id -> new LambdaState(lambda.getClass().getSimpleName()
                         + "@" + System.identityHashCode(lambda)));
         s.mutationEvents.add(thread.getName() + " → " + label);
