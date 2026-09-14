@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   six cases, four of them red before the fix. Both corpus bodies now take the real lock, which
   made the pair decided by the JDK's rule, and it is promoted: VERDICT goes to 68 of 146.
 
+- **`ExecutorShutdownDetector` asks the executor, so a timed-out `awaitTermination` is reported
+  and try-with-resources is not (#568).** Recorded calls say that a shutdown or an await happened,
+  never how it ended. An `awaitTermination` that gave up with tasks still running, which is the
+  leak the detector exists for, was recorded like one that succeeded and went silent; and
+  `ExecutorService.close()`, which the report's own fix text recommends, records nothing and was
+  reported as never shut down. The detector now keeps the declared executor and consults
+  `isShutdown()`/`isTerminated()` at analysis: shut down but still running is reported whatever was
+  recorded, a pool really shut down is never reported as not shut down, and a missing await is not
+  reported once nothing is left in flight. The records still decide for a body that declares calls
+  it does not make. Executors are now keyed by identity rather than by `identityHashCode`, which
+  let a colliding fresh pool inherit an earlier pool's shutdown (part of #564).
+  `ExecutorShutdownAccuracyTest` pins four cases, three red before the fix.
+
 - **`AtomicityValidator` sees a compare-and-swap spinlock and an object handed between owners (#554,
   #555).** With `fields=true`, a won int `VarHandle.compareAndSet(this, 0, 1)` is now a lock on that
   receiver's flag, released by the swap back, a set through the handle or the holder's write, so a

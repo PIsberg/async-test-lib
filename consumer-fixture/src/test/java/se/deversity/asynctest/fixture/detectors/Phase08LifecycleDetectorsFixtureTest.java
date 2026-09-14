@@ -10,7 +10,10 @@ import se.deversity.asynctest.DetectorType;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.List;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -63,24 +66,61 @@ class Phase08LifecycleDetectorsFixtureTest {
         reachable("executorShutdownDetector()", AsyncTestContext::executorShutdownDetector);
 
         // shutdown() without awaitTermination() is the half-done shutdown the detector
-        // reports; the fixture does the complete version.
-        // An executor shut down without awaitTermination abandons whatever is still running.
-        // The fixture waits properly below, so the shutdown recorded here is the one without
-        // the wait - really abandoning tasks would leak them into the next round.
+        // reports. Since #568 the detector asks the executor, and reports it only while the
+        // executor is shut down and not yet terminated, because a terminated one abandoned
+        // nothing. A real pool in that state at analysis would be a task leaking into the next
+        // test, so the pool here is one whose termination waits for an awaitTermination that
+        // this body deliberately never makes. Its tasks run inline, so nothing is left behind.
         var shutdownDetector = AsyncTestContext.executorShutdownDetector();
-        ExecutorService pool = Executors.newSingleThreadExecutor();
+        ExecutorService pool = new NeverAwaitedExecutor();
         shutdownDetector.recordExecutorCreated(pool, "lifecycle-pool");
         shutdownDetector.recordTaskSubmitted(pool);
         pool.execute(() -> spin(32));
         shutdownDetector.recordShutdownCalled(pool, false);
         pool.shutdown();
-        try {
-            if (!pool.awaitTermination(2, TimeUnit.SECONDS)) {
-                pool.shutdownNow();
+    }
+
+    /**
+     * Runs each task on the caller, and counts as terminated only once somebody has waited for it,
+     * which is the state of a real pool shut down with work still in flight.
+     */
+    private static final class NeverAwaitedExecutor extends AbstractExecutorService {
+        private volatile boolean shutdown;
+        private volatile boolean awaited;
+
+        @Override
+        public void execute(Runnable command) {
+            if (shutdown) {
+                throw new RejectedExecutionException("shut down");
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            pool.shutdownNow();
+            command.run();
+        }
+
+        @Override
+        public void shutdown() {
+            shutdown = true;
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            shutdown = true;
+            return List.of();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return shutdown && awaited;
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            awaited = shutdown;
+            return isTerminated();
         }
     }
 

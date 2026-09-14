@@ -1763,7 +1763,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 67. Executor Shutdown Detector
 * **Severity**: `MEDIUM`
-* **Description**: Flags `ExecutorService` instances that have tasks submitted but are never shut down (thread leak), or that are shut down without a following `awaitTermination()` call (submitted tasks may be silently abandoned or still running at test end).
+* **Description**: Flags `ExecutorService` instances that have tasks submitted but are never shut down (thread leak), or that are shut down without a following `awaitTermination()` call (submitted tasks may be silently abandoned or still running at test end). The executor's own state at analysis outranks what was recorded about it: a pool that is shut down but not terminated is reported even when `awaitTermination()` was recorded, because a wait that timed out leaves the tasks running; a pool closed with try-with-resources (`close()`) is not reported as never shut down although nothing was recorded; and a missing await is not reported once the pool has terminated, since nothing was left in flight. Executors are tracked by identity.
 * **Buggy Code**:
   ```java
   ExecutorService pool = Executors.newFixedThreadPool(4);

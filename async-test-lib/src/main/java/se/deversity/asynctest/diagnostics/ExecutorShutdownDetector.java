@@ -1,9 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -58,16 +59,29 @@ public class ExecutorShutdownDetector {
 
     private static class ExecutorState {
         final String name;
+        /**
+         * The executor itself, held strongly for the life of the run like the rest of the
+         * detector's state. Recorded calls say that a shutdown or an await happened, never how it
+         * ended, and only the executor can say whether its tasks are still running (#568).
+         */
+        final ExecutorService executor;
         final AtomicInteger tasksSubmitted = new AtomicInteger(0);
         volatile boolean shutdownCalled = false;
         volatile boolean awaitTerminationCalled = false;
 
-        ExecutorState(String name) {
+        ExecutorState(String name, ExecutorService executor) {
             this.name = name;
+            this.executor = executor;
         }
     }
 
-    private final Map<Integer, ExecutorState> executors = new ConcurrentHashMap<>();
+    /**
+     * Keyed by identity. A bare {@code System.identityHashCode} key merged two executors whose
+     * hashes collided, and with {@code computeIfAbsent} the second one - a fresh pool per body,
+     * leaked - inherited the first one's shutdown and went unreported (#564).
+     */
+    private final Map<ExecutorService, ExecutorState> executors =
+            Collections.synchronizedMap(new IdentityHashMap<>());
 
     /**
      * Declare that this scope created {@code executor} and owns shutting it down.
@@ -85,7 +99,7 @@ public class ExecutorShutdownDetector {
         String resolved = name != null ? name : "executor@" + System.identityHashCode(executor);
         // computeIfAbsent, not put: re-declaring an executor already tracked would reset
         // tasksSubmitted and shutdownCalled, and analyze() gates on both.
-        executors.computeIfAbsent(System.identityHashCode(executor), k -> new ExecutorState(resolved));
+        executors.computeIfAbsent(executor, k -> new ExecutorState(resolved, executor));
     }
 
     /**
@@ -95,7 +109,7 @@ public class ExecutorShutdownDetector {
      */
     public void recordTaskSubmitted(ExecutorService executor) {
         if (executor == null) return;
-        ExecutorState state = executors.get(System.identityHashCode(executor));
+        ExecutorState state = executors.get(executor);
         if (state != null) state.tasksSubmitted.incrementAndGet();
     }
 
@@ -108,7 +122,7 @@ public class ExecutorShutdownDetector {
      */
     public void recordShutdownCalled(ExecutorService executor, boolean withAwaitTermination) {
         if (executor == null) return;
-        ExecutorState state = executors.get(System.identityHashCode(executor));
+        ExecutorState state = executors.get(executor);
         if (state != null) {
             state.shutdownCalled = true;
             if (withAwaitTermination) state.awaitTerminationCalled = true;
@@ -122,7 +136,7 @@ public class ExecutorShutdownDetector {
      */
     public void recordAwaitTerminationCalled(ExecutorService executor) {
         if (executor == null) return;
-        ExecutorState state = executors.get(System.identityHashCode(executor));
+        ExecutorState state = executors.get(executor);
         if (state != null) state.awaitTerminationCalled = true;
     }
 
@@ -133,12 +147,30 @@ public class ExecutorShutdownDetector {
      */
     public ExecutorShutdownReport analyze() {
         ExecutorShutdownReport report = new ExecutorShutdownReport();
-        for (ExecutorState state : executors.values()) {
-            if (state.tasksSubmitted.get() > 0 && !state.shutdownCalled) {
+        List<ExecutorState> states;
+        synchronized (executors) {
+            states = new ArrayList<>(executors.values());
+        }
+        for (ExecutorState state : states) {
+            // What the executor did outranks what was recorded about it, in both directions. A
+            // pool closed by try-with-resources records no shutdown and is shut down all the same;
+            // an awaitTermination that gave up is recorded like one that succeeded and leaves the
+            // tasks running. The records still decide for a body that declares calls it does not
+            // make, which is how the recording API has always been usable (#568).
+            boolean reallyShutDown = state.executor.isShutdown();
+            if (reallyShutDown && !state.executor.isTerminated()) {
+                report.stillRunning.add(String.format(
+                    "%s: shut down but still running when the test ended — "
+                    + "its tasks outlive the test%s",
+                    state.name, state.awaitTerminationCalled
+                            ? " although awaitTermination() was called, so the wait timed out"
+                            : ""));
+            } else if (state.tasksSubmitted.get() > 0 && !state.shutdownCalled && !reallyShutDown) {
                 report.notShutDown.add(String.format(
                     "%s: %d task(s) submitted but shutdown() never called — threads will leak",
                     state.name, state.tasksSubmitted.get()));
-            } else if (state.shutdownCalled && !state.awaitTerminationCalled) {
+            } else if (state.shutdownCalled && !state.awaitTerminationCalled
+                    && !state.executor.isTerminated()) {
                 report.noAwaitTermination.add(String.format(
                     "%s: shutdown() called but awaitTermination() never called — "
                     + "in-flight tasks may be abandoned when the test ends",
@@ -152,17 +184,19 @@ public class ExecutorShutdownDetector {
     public static class ExecutorShutdownReport {
         final List<String> notShutDown       = new ArrayList<>();
         final List<String> noAwaitTermination = new ArrayList<>();
+        final List<String> stillRunning       = new ArrayList<>();
 
         /**
          * {@return whether there are issues}
          */
         public boolean hasIssues() {
-            return !notShutDown.isEmpty() || !noAwaitTermination.isEmpty();
+            return !notShutDown.isEmpty() || !noAwaitTermination.isEmpty() || !stillRunning.isEmpty();
         }
 
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder("EXECUTOR SHUTDOWN ISSUES DETECTED:\n");
+            for (String issue : stillRunning)       sb.append("  - ").append(issue).append("\n");
             for (String issue : notShutDown)        sb.append("  - ").append(issue).append("\n");
             for (String issue : noAwaitTermination) sb.append("  - ").append(issue).append("\n");
             sb.append("""
