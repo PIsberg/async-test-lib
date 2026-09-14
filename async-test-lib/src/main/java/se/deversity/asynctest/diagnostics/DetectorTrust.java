@@ -99,7 +99,7 @@ public final class DetectorTrust {
             row(DetectorType.THREAD_POOL, "ThreadPoolMonitor", "ThreadPool", TrustTier.PROMPT),
             row(DetectorType.MEMORY_ORDERING, "MemoryOrderingMonitor", "MemoryOrdering", TrustTier.PROMPT),
             row(DetectorType.ASYNC_PIPELINE, "PipelineMonitor", "AsyncPipeline", TrustTier.PROMPT),
-            row(DetectorType.READ_WRITE_LOCK_FAIRNESS, "ReadWriteLockMonitor", "ReadWriteLockFairness", TrustTier.PROMPT),
+            row(DetectorType.READ_WRITE_LOCK_FAIRNESS, "ReadWriteLockMonitor", "ReadWriteLockFairness", TrustTier.ADVISORY),
             row(DetectorType.SEMAPHORE, "SemaphoreMisuseDetector", "Semaphore", TrustTier.VERDICT),
             row(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, "CompletableFutureExceptionDetector", "CompletableFutureExceptions", TrustTier.VERDICT),
             row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, "CompletableFutureCompletionLeakDetector", "CompletableFutureCompletionLeaks", TrustTier.VERDICT),

@@ -106,6 +106,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`READ_WRITE_LOCK_FAIRNESS` is `TrustTier.ADVISORY`, not `PROMPT` (#569).** Its finding is a
+  read-to-write count ratio above 10, or a recorded writer wait above 100 ms; it never looks at
+  the lock, and its report calls starvation something that "may" happen on a lock that is behaving
+  correctly. `ADVISORY` is defined as a performance or hygiene note that says nothing about
+  correctness, which is this detector. **Upgrade note:** a build gated on `minTrust = PROMPT` or
+  higher no longer fails on it; the default floor (`ADVISORY`) is unchanged, so default builds
+  still do. `ReadWriteLockFairnessTierTest` pins both, the PROMPT floor red before the change. The
+  `starvedWriters` javadoc said it held writers that never acquired the lock, which the detector
+  cannot record; it now says what it holds. The split is 67 VERDICT, 63 PROMPT, 11 FACT, 5 ADVISORY.
+
 - **`NOTIFY_WITHOUT_MONITOR` and `SHARED_CHARSET_CODER` reach `TrustTier.VERDICT`, taking it to
   67 of 146.** Both held a same-class corpus pair that corpus-eval's promotion gate misread as
   calling different detector methods. It counted `CorpusRecorder.recordCrash`, the harness keeping
