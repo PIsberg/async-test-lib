@@ -1,6 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,17 +16,23 @@ public class ThreadLocalMonitor {
 
     private static class ThreadLocalState {
         final String threadLocalName;
-        final int threadLocalId;
         /** Threads that touched this thread-local in the round in progress; folded at each round start. */
         final Set<Long> threadsThatUsed = ConcurrentHashMap.newKeySet();
+        /**
+         * Threads that set or read this thread-local in the round in progress and have not
+         * removed it since. A value lives in one thread's map, so only that thread's
+         * {@code remove()} clears it: one flag for the whole run let a remove on one thread, or
+         * in one round, stand in for every other (#565).
+         */
+        final Set<Long> holding = ConcurrentHashMap.newKeySet();
         /** The widest single round seen so far, which is what a finding reports. */
         volatile int maxRoundThreads;
         volatile boolean initialized;
-        volatile boolean cleanedUp;
+        /** Whether any round ended with a thread still holding a value. */
+        volatile boolean leftHeld;
 
-        ThreadLocalState(String threadLocalName, int threadLocalId) {
+        ThreadLocalState(String threadLocalName) {
             this.threadLocalName = threadLocalName;
-            this.threadLocalId = threadLocalId;
         }
 
         /**
@@ -41,11 +51,21 @@ public class ThreadLocalMonitor {
                 maxRoundThreads = seen;
             }
             threadsThatUsed.clear();
+            if (!holding.isEmpty()) {
+                leftHeld = true;
+            }
+            holding.clear();
         }
     }
 
-    private final Map<Integer, ThreadLocalState> threadLocals = new ConcurrentHashMap<>();
-    private final Map<Long, Set<Integer>> threadLocalsByThread = new ConcurrentHashMap<>();
+    /**
+     * Keyed by identity. A bare {@code System.identityHashCode} key merged two thread-locals whose
+     * hashes collided into one entry, so one's cleanup covered the other's leak (#564).
+     */
+    private final Map<ThreadLocal<?>, ThreadLocalState> threadLocals =
+            Collections.synchronizedMap(new IdentityHashMap<>());
+    /** Per thread, the thread-locals it holds a value for right now: a removed one is not retained. */
+    private final Map<Long, Set<ThreadLocalState>> threadLocalsByThread = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     /**
      * Records thread local init so it can be analysed at the end of the run.
@@ -60,7 +80,7 @@ public class ThreadLocalMonitor {
 
         int id = System.identityHashCode(threadLocal);
         String resolvedName = (name == null || name.isBlank()) ? "ThreadLocal-" + id : name;
-        ThreadLocalState state = threadLocals.computeIfAbsent(id, ignored -> new ThreadLocalState(resolvedName, id));
+        ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal, ignored -> new ThreadLocalState(resolvedName));
         state.initialized = true;
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
@@ -75,7 +95,7 @@ public class ThreadLocalMonitor {
         }
 
         int id = System.identityHashCode(threadLocal);
-        ThreadLocalState state = threadLocals.computeIfAbsent(id, ignored -> new ThreadLocalState("ThreadLocal-" + id, id));
+        ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal, ignored -> new ThreadLocalState("ThreadLocal-" + id));
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
     /**
@@ -88,16 +108,28 @@ public class ThreadLocalMonitor {
             return;
         }
 
-        ThreadLocalState state = threadLocals.get(System.identityHashCode(threadLocal));
+        ThreadLocalState state = threadLocals.get(threadLocal);
         if (state != null) {
-            state.cleanedUp = true;
-            recordThreadUsage(state, Thread.currentThread().threadId());
+            long threadId = Thread.currentThread().threadId();
+            state.threadsThatUsed.add(threadId);
+            state.holding.remove(threadId);
+            Set<ThreadLocalState> held = threadLocalsByThread.get(threadId);
+            if (held != null) {
+                held.remove(state);
+            }
         }
     }
 
     private void recordThreadUsage(ThreadLocalState state, long threadId) {
         state.threadsThatUsed.add(threadId);
-        threadLocalsByThread.computeIfAbsent(threadId, ignored -> ConcurrentHashMap.newKeySet()).add(state.threadLocalId);
+        state.holding.add(threadId);
+        threadLocalsByThread.computeIfAbsent(threadId, ignored -> ConcurrentHashMap.newKeySet()).add(state);
+    }
+
+    private List<ThreadLocalState> states() {
+        synchronized (threadLocals) {
+            return new ArrayList<>(threadLocals.values());
+        }
     }
 
     /**
@@ -112,7 +144,7 @@ public class ThreadLocalMonitor {
      * @since 1.10.0
      */
     public void markInvocationStart() {
-        for (ThreadLocalState state : threadLocals.values()) {
+        for (ThreadLocalState state : states()) {
             state.foldRound();
         }
     }
@@ -124,12 +156,12 @@ public class ThreadLocalMonitor {
     public ThreadLocalReport analyzeThreadLocalLeaks() {
         ThreadLocalReport report = new ThreadLocalReport();
 
-        for (ThreadLocalState state : threadLocals.values()) {
+        for (ThreadLocalState state : states()) {
             // The final round has not been folded by a round start.
             state.foldRound();
             int threads = state.maxRoundThreads;
 
-            if (state.initialized && !state.cleanedUp) {
+            if (state.initialized && state.leftHeld) {
                 report.uncleanedThreadLocals.add(String.format(
                     "%s: accessed by %d thread(s) without remove()",
                     state.threadLocalName,
@@ -152,7 +184,7 @@ public class ThreadLocalMonitor {
             }
         }
 
-        for (Map.Entry<Long, Set<Integer>> entry : threadLocalsByThread.entrySet()) {
+        for (Map.Entry<Long, Set<ThreadLocalState>> entry : threadLocalsByThread.entrySet()) {
             if (entry.getValue().size() > 5) {
                 report.threadLocalAccumulation.add(String.format(
                     "Thread %d retained %d distinct ThreadLocal values",
