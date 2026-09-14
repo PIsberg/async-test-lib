@@ -32,11 +32,12 @@ import java.util.zip.Inflater;
  * leak — but the thread-safety violation is the more acute bug, so findings are
  * reported here rather than via {@link ResourceLeakDetector}.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the instance's own monitor - the {@code synchronized (deflater)} idiom - counts as guarded,
- * and an instance whose every access was guarded produces no finding. A guard on any other lock
- * object is invisible and still fires; treat such a finding as a prompt to verify the
- * synchronization, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * instance's own monitor - the {@code synchronized (deflater)} idiom - counts as guarded, and an
+ * instance whose every access was guarded produces no finding. A guard on any other lock counts
+ * once the test declares it with {@code AsyncTestContext.holdingLock(...)} or the agent sees it
+ * taken. A lock that was never declared is invisible and still fires; treat such a finding as a
+ * prompt to verify the synchronization, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one instance per thread (and a matching {@code end()}
  * in a {@code finally}), or a fresh instance per compression unit.

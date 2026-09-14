@@ -25,12 +25,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * cryptographic-integrity failure (the derived key simply doesn't match what the
  * peer derives) with no exception at the point of corruption.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the instance's own monitor - the {@code synchronized (kdf)} idiom, which is exactly what the
- * KDF javadoc asks callers to do - counts as guarded, and an instance whose every access was
- * guarded produces no finding. A guard on any other lock object is invisible and still fires;
- * treat such a finding as a prompt to verify the synchronization, or to move to a per-thread
- * instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * instance's own monitor - the {@code synchronized (kdf)} idiom, which is exactly what the KDF
+ * javadoc asks callers to do - counts as guarded, and an instance whose every access was guarded
+ * produces no finding. A guard on any other lock counts once the test declares it with
+ * {@code AsyncTestContext.holdingLock(...)} or the agent sees it taken. A lock that was never
+ * declared is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one {@code KDF} instance per thread (KDF construction
  * via {@code KDF.getInstance(...)} is cheap), or full external synchronization

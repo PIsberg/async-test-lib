@@ -28,11 +28,12 @@ import java.util.zip.Checksum;
  * no crash, just data-integrity corruption that surfaces later as a checksum
  * mismatch far from the code that caused it.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the instance's own monitor - the {@code synchronized (checksum)} idiom - counts as guarded,
- * and an instance whose every access was guarded produces no finding. A guard on any other lock
- * object is invisible and still fires; treat such a finding as a prompt to verify the
- * synchronization, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * instance's own monitor - the {@code synchronized (checksum)} idiom - counts as guarded, and an
+ * instance whose every access was guarded produces no finding. A guard on any other lock counts
+ * once the test declares it with {@code AsyncTestContext.holdingLock(...)} or the agent sees it
+ * taken. A lock that was never declared is invisible and still fires; treat such a finding as a
+ * prompt to verify the synchronization, or to move to a per-thread instance.
  *
  * <p>The safe pattern is one {@code Checksum} instance per thread (a
  * {@link ThreadLocal} works well), or computing a checksum per-chunk on each

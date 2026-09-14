@@ -14,11 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * use of the same {@code Matcher} instance produces incorrect matches or
  * {@link java.lang.StringIndexOutOfBoundsException}.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the matcher's own monitor - the {@code synchronized (matcher)} idiom - counts as guarded, and
- * a matcher whose every access was guarded produces no finding. A guard on any other lock object
- * is invisible and still fires; treat such a finding as a prompt to verify the synchronization,
- * or to obtain a fresh matcher per thread from the shared {@code Pattern}.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * matcher's own monitor - the {@code synchronized (matcher)} idiom - counts as guarded, and a
+ * matcher whose every access was guarded produces no finding. A guard on any other lock counts once
+ * the test declares it with {@code AsyncTestContext.holdingLock(...)} or the agent sees it taken. A
+ * lock that was never declared is invisible and still fires; treat such a finding as a prompt to
+ * verify the synchronization, or to obtain a fresh matcher per thread from the shared {@code
+ * Pattern}.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code

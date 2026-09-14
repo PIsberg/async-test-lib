@@ -45,9 +45,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
  * the iterator's own monitor - the {@code synchronized (it)} idiom - counts as guarded, and an
- * iterator whose every access was guarded produces no finding. A guard on any other lock object,
- * and a handoff coordinated some other way, is invisible and still fires; treat such a finding
- * as a prompt to verify that coordination exists, or to give each thread its own iterator.
+ * iterator whose every access was guarded produces no finding. A guard on any other lock counts
+ * once the test declares it with {@code AsyncTestContext.holdingLock(...)} or the agent sees it
+ * taken. A lock that was never declared, and a handoff coordinated some other way, is invisible and
+ * still fires; treat such a finding as a prompt to verify that coordination exists, or to give each
+ * thread its own iterator.
  *
  * <p>Cooperative API: call {@link #recordAccess} at each
  * {@code hasNext}/{@code next}/{@code remove}/{@code tryAdvance}/
