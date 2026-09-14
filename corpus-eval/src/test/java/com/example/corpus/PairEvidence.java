@@ -132,6 +132,40 @@ final class PairEvidence {
                 + "(#570 replaced fingerprint equality with lockset intersection)");
         // READ_WRITE_LOCK_FAIRNESS was held here as a liveness observation; #569 moved it to
         // ADVISORY, which is not a promotion candidate, so the hold no longer asks anything.
+
+        // Second reading, 2026-09-14 (#571). In all eight the body declares what the finding says
+        // and the detector never asks the object it names.
+        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "decides on run-wide counts of recorded "
+                + "await and signal calls and never asks the Condition, so a timed-await poll that "
+                + "is never signalled fires and one signal anywhere in the run silences every "
+                + "waiter; needs per-await pairing, or the lock's hasWaiters at analysis");
+        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "recordBroken is the finding and is never "
+                + "checked against barrier.isBroken(), so a barrier broken on purpose to cancel and "
+                + "then discarded fires CRITICAL; needs reuse-after-broken decided with isBroken() "
+                + "at the await, and the bare left-broken finding dropped");
+        HELD_ON_MODEL.put(DetectorType.EXCHANGER, "recordTimeout and recordInterrupted set the "
+                + "finding unconditionally, so a timed exchange that handles TimeoutException, the "
+                + "report's own fix, fires CRITICAL, while an untimed exchange whose partner never "
+                + "comes records nothing; needs orphaning decided from start and complete counts");
+        HELD_ON_MODEL.put(DetectorType.MISSED_SIGNAL, "counts a notify with no recorded waiter as "
+                + "lost, which is harmless whenever the waiter checks a state predicate, and the "
+                + "class javadoc's own example is that correct pattern; needs a wait observed not "
+                + "to re-check its predicate, on the real monitor");
+        HELD_ON_MODEL.put(DetectorType.PHASER, "recordTermination is the finding, and termination "
+                + "is how a phaser normally ends, so arriveAndDeregister to zero draws CRITICAL; "
+                + "needs an arrive or register observed returning a negative phase after it");
+        HELD_ON_MODEL.put(DetectorType.STAMPED_LOCK, "a leak is reported only when the body calls "
+                + "recordStampNotReleased and an unmatched acquisition is never inferred, so the "
+                + "finding is the caller's assertion; needs stamp matching, or the real lock's "
+                + "isWriteLocked and getReadLockCount at analysis");
+        HELD_ON_MODEL.put(DetectorType.REENTRANT_LOCK, "recordLockTimeout is the finding, so a "
+                + "tryLock timeout the caller handles is reported the same as one it discards, and "
+                + "whether the false return was discarded is invisible here; TRY_LOCK_MISUSE, which "
+                + "observes the caller's use of the result, is the detector that can say it");
+        HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "the wasNotified flag the body passes is the "
+                + "spurious-wakeup finding, a wakeup is a defect only if the waiter skips "
+                + "re-checking its condition, which is never seen, and a notify with no waiter, "
+                + "the correct flag-then-notifyAll handshake, counts as lost");
         // Read before this map existed; the full argument is in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.FILE_CHANNEL_POSITION_RACE, "reports whenever more than "
                 + "one thread accessed the channel and carries no representation of a lock, so a "
