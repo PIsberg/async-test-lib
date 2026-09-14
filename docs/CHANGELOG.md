@@ -124,6 +124,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ReentrantLockHeldAtAnalysisRunTest` pin both directions; against the unchanged detector, four of the
   model and registry tests failed.
 
+- **`WakeupDetector` reports a wakeup acted on, not a notify with nobody waiting (#590).** It
+  reported HIGH on any `notify()` that found no recorded waiter, which is also the correct
+  `ready = true; notifyAll()` handshake, and its spurious-wakeup finding was the `wasNotified =
+  false` flag the caller passed, so a spurious return inside `while (!ready) wait()` was reported
+  while the `if`-instead-of-`while` bug it names was invisible. A shared waiter count was
+  decremented by exits from threads that never waited, so it could go negative, and a third
+  report field was never part of `hasIssues` and read the count outside its lock. The finding is
+  now a wait that returned with no recorded notify accounting for it (a `notifyAll` accounts for
+  every open wait, a `notify` for one) after which the same thread did not wait again, closed at
+  each round boundary through a new `markInvocationStart` so a pooled worker's next-round wait is
+  not taken for the re-check. `wasNotified = true` still silences a return; `false` alone is no
+  longer a finding. A notify with nobody waiting is kept as context in the report, since a wait
+  that misses one is `MissedSignalDetector`'s finding. Each exit is matched to its own thread's
+  wait, so a stray exit changes nothing. `WakeupReport.alwaysNotifyWithoutWait` is deprecated and
+  always empty. The corpus pair's silent twin, the consumer fixture and `examples/95-wakeup-issues`
+  now exercise the unsignalled return that is not waited again; the pair stays held, because the
+  recording API cannot see a timeout and a timed wait whose caller gives up by design also fires.
+  `WakeupDetectorAccuracyTest` was 4 of 8 red before the change, all on correct code.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

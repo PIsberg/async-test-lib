@@ -2611,4 +2611,74 @@ class DetectorAccuracyEvalTest {
                 "both workers were counted and both left; termination at zero parties is how a "
                         + "phaser ends, not a finding (#587). Report:\n" + report);
     }
+
+    /**
+     * Runs a consumer that waits on {@code monitor} for {@code ready[0]}, guarded by {@code while}
+     * or by {@code if}, and records each wait and its return. Nobody notifies until the consumer
+     * has returned unsignalled at least once, so the only difference between the two runs is
+     * whether that return is re-checked.
+     */
+    private static void wakeupConsumer(WakeupDetector detector, Object monitor, boolean[] ready,
+            boolean loop) throws InterruptedException {
+        CountDownLatch returnedOnce = new CountDownLatch(1);
+        Thread consumer = new Thread(() -> {
+            synchronized (monitor) {
+                boolean first = true;
+                while (!ready[0] && (loop || first)) {
+                    first = false;
+                    detector.recordWaitEnter(monitor);
+                    try {
+                        monitor.wait(5);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    detector.recordWaitExit(monitor, ready[0]);
+                    returnedOnce.countDown();
+                }
+            }
+        });
+        consumer.setDaemon(true);
+        consumer.start();
+        assertTrue(returnedOnce.await(10, java.util.concurrent.TimeUnit.SECONDS),
+                "consumer never returned from wait");
+        synchronized (monitor) {
+            ready[0] = true;
+            detector.recordNotify(monitor, true);
+            monitor.notifyAll();
+        }
+        consumer.join(java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+        assertFalse(consumer.isAlive(), "consumer did not finish");
+    }
+
+    @Test
+    @DisplayName("wakeup: an if-guarded wait returns with no notify and the consumer proceeds (true positive)")
+    void wakeupFiresWhenAnIfGuardProceedsOnAnUnsignalledReturn() throws InterruptedException {
+        WakeupDetector detector = new WakeupDetector();
+        wakeupConsumer(detector, new Object(), new boolean[] {false}, false);
+
+        var report = detector.analyzeWakeups();
+        assertTrue(report.hasIssues(),
+                "the consumer's wait returned before anyone notified and the if guard let it go "
+                        + "on with the flag still false. Report:\n" + report);
+    }
+
+    @Test
+    @DisplayName("wakeup: the while-loop twin waits again after the same return and stays silent (true negative)")
+    void wakeupStaysSilentWhenTheWhileLoopWaitsAgain() throws InterruptedException {
+        WakeupDetector detector = new WakeupDetector();
+        Object monitor = new Object();
+        boolean[] ready = {false};
+        wakeupConsumer(detector, monitor, ready, true);
+        // A second producer notifying with nobody waiting is ordinary flag-guarded code.
+        synchronized (monitor) {
+            detector.recordNotify(monitor, true);
+            monitor.notifyAll();
+        }
+
+        var report = detector.analyzeWakeups();
+        assertFalse(report.hasIssues(),
+                "every unsignalled return was followed by another wait, and a notify into an "
+                        + "empty monitor is not a lost wakeup (#590). Report:\n" + report);
+    }
 }

@@ -407,6 +407,58 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                         + "idiom: " + REPORTS.get("StampedLockDetector"));
     }
 
+    /** An unsignalled wait return in round one, and a notified wait in round two, on one thread. */
+    public static class WakeupCrossRound {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+        static final Object MONITOR = new Object();
+
+        // One platform worker, so the same pool thread runs both rounds: its wait in round two
+        // would read as the re-check of round one's return unless the round boundary closes it.
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAll = false, detectWakeupIssues = true)
+        void body() {
+            var d = AsyncTestContext.wakeupDetector();
+            d.recordWaitEnter(MONITOR);
+            d.recordWaitExit(MONITOR, EXECUTIONS.getAndIncrement() != 0);
+        }
+    }
+
+    /** The loop re-check inside one round: an unsignalled return followed by a second wait. */
+    public static class WakeupSameRoundReWait {
+        static final Object MONITOR = new Object();
+
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
+                   detectAll = false, detectWakeupIssues = true)
+        void body() {
+            var d = AsyncTestContext.wakeupDetector();
+            d.recordWaitEnter(MONITOR);
+            d.recordWaitExit(MONITOR, false);
+            d.recordWaitEnter(MONITOR);
+            d.recordWaitExit(MONITOR, true);
+        }
+    }
+
+    @Test
+    @DisplayName("an unsignalled wait return in one round is not excused by the next round's wait")
+    void wakeupCrossRoundReturnIsReported() {
+        WakeupCrossRound.EXECUTIONS.set(0);
+        run(WakeupCrossRound.class);
+        assertTrue(REPORTS.containsKey("WakeupDetector"),
+                "round one's waiter returned with no notify and its body ended without waiting "
+                        + "again; the pooled thread's wait in round two is a new body execution. "
+                        + "AsyncTestContext.markInvocationStart must reach this detector (#590). "
+                        + "Reports: " + REPORTS.keySet());
+    }
+
+    @Test
+    @DisplayName("the same return followed by a second wait inside one round is silent, so the finding above is not the return alone")
+    void wakeupSameRoundReWaitIsSilent() {
+        run(WakeupSameRoundReWait.class);
+        assertFalse(REPORTS.containsKey("WakeupDetector"),
+                "a return followed by another wait in the same body is the while loop's re-check. "
+                        + "Report: " + REPORTS.get("WakeupDetector"));
+    }
+
     /** Enables the pinning detector and does nothing else to start it. */
     public static class PinningEnabledOnly {
         static final AtomicInteger EVENTS_SEEN = new AtomicInteger(-1);

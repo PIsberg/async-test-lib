@@ -29,13 +29,15 @@ import static org.junit.jupiter.api.Assertions.*;
  * Spurious wakeups never manifest in isolation.
  *
  * WHY @AsyncTest DETECTS:
- * With many threads, some call waitUntilReady() while others call setReady().
- * WakeupDetector records WAIT_ENTER, WAIT_EXIT, and NOTIFY events and identifies
- * threads that exited wait() without a corresponding notify (spurious wakeup)
- * or notifies that fired with no waiters present (lost notification).
+ * Eight consumers wait at once with nobody signalling. WakeupDetector records
+ * WAIT_ENTER, WAIT_EXIT and NOTIFY events and reports a wait that returned with
+ * no notify accounting for it, after which the thread went on without waiting
+ * again. A while loop would record a second wait there; the if guard does not.
+ * A notify that finds no waiter is not reported: setting a flag and then
+ * notifying is the correct handshake.
  *
  * FIX:
- * Replace "if (!ready) monitor.wait()" with "while (!ready) { monitor.wait(); }"
+ * Replace "if (!ready) monitor.wait(...)" with "while (!ready) { monitor.wait(...); }"
  */
 class SpuriousWakeupServiceTest {
 
@@ -72,40 +74,30 @@ class SpuriousWakeupServiceTest {
     // -------------------------------------------------------------------------
 
     /**
-     * Mixed threads wait and signal concurrently. WakeupDetector records
-     * spurious wakeups (exit without notify) and lost notifications (notify
-     * with no waiters) triggered by the if-instead-of-while bug.
+     * Consumers call waitUntilReady() while nobody calls setReady(), so every return from
+     * wait() is one no notify accounted for, which is exactly what a spurious wakeup looks like
+     * to the if guard. WakeupDetector reports a wait that returned with no notify after which
+     * the thread went on without waiting again: the if-instead-of-while bug.
      *
      * To see the detection:
      * 1. Remove @Disabled
      * 2. Run this test
-     * 3. To fix: change if(!ready) to while(!ready) in waitUntilReady()
+     * 3. To fix: change if(!ready) to while(!ready) in waitUntilReady(); the loop then waits
+     *    again after every unsignalled return, and a producer's setReady() ends it
      */
-    @Disabled("Remove @Disabled: the round times out waiting for a signal that was already lost, and the failure "
-            + "names WakeupDetector's finding")
+    @Disabled("Remove @Disabled: each consumer's wait() returns with nobody having notified and the if guard "
+            + "lets it proceed with ready still false; the failure names WakeupDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWakeupIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsSpuriousWakeup() {
         Object monitor = service.getMonitor();
-        String name = Thread.currentThread().getName();
-
-        if (name.hashCode() % 3 == 0) {
-            // Producer thread: call setReady() and record the notify
-            service.setReady();
-            AsyncTestContext.wakeupDetector().recordNotify(monitor, true);
-        } else {
-            // Consumer thread: record wait-enter, wait, record wait-exit
-            AsyncTestContext.wakeupDetector().recordWaitEnter(monitor);
-            try {
-                service.waitUntilReady();
-                // wasNotified = service.isReady() would be true only if genuinely notified
-                boolean genuineWakeup = service.isReady();
-                AsyncTestContext.wakeupDetector().recordWaitExit(monitor, genuineWakeup);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                AsyncTestContext.wakeupDetector().recordWaitExit(monitor, false);
-            } finally {
-                service.reset();
-            }
+        var detector = AsyncTestContext.wakeupDetector();
+        detector.recordWaitEnter(monitor);
+        try {
+            service.waitUntilReady();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
+        // True only if the consumer really saw the flag set; nobody sets it here.
+        detector.recordWaitExit(monitor, service.isReady());
     }
 }

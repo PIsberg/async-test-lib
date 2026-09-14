@@ -3362,18 +3362,19 @@ final class Corpus {
                     "java.lang.Object",
                     DetectorType.WAKEUP_ISSUES, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "a wait is recorded as having exited without any notify, which is the "
-                            + "spurious wakeup Object.wait's javadoc warns can happen at any "
-                            + "time. Code that treats the return as the condition acts on a "
-                            + "state nobody established"),
+                    "a wait is recorded as having returned with no notify, and the body goes on "
+                            + "without waiting again, which is an if guard taking the spurious "
+                            + "wakeup Object.wait's javadoc warns of as the condition. Code that "
+                            + "treats the return as the condition acts on a state nobody "
+                            + "established"),
 
-            new RecordingSubject("recorded_wait_returnedAfterANotify", JDK,
+            new RecordingSubject("recorded_wait_returnedWithoutANotify_thenWaitedAgain", JDK,
                     "java.lang.Object",
                     DetectorType.WAKEUP_ISSUES, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same wait with a recorded notify between the enter and an exit that "
-                            + "says it was notified, which is the handshake working. The pair "
-                            + "separates on whether a signal accounted for the wakeup"),
+                    "the same unsignalled return followed by a second wait that a recorded "
+                            + "notifyAll ends, which is the while loop re-checking its condition. "
+                            + "The pair separates on whether the waiter waited again (#590)"),
 
             new RecordingSubject("recorded_object_accessedDuringConstruction", JDK,
                     "java.lang.Object",

@@ -87,18 +87,22 @@ class Phase02CoreDetectorsFixtureTest {
     void wakeupIssues() {
         reachable("wakeupDetector()", AsyncTestContext::wakeupDetector);
 
-        // A notify with nobody waiting is simply thrown away: the waiter that arrives next
-        // waits for a signal that has already happened.
+        // An if guard around wait(): the wait returns with nobody having notified, and the
+        // body goes on with the flag still false instead of waiting again (#590). A notify with
+        // nobody waiting is not the finding; the flag-then-notifyAll handshake does that.
         var wakeup = AsyncTestContext.wakeupDetector();
         Object monitor = new Object();
+        boolean ready = false;            // nobody ever sets it
         synchronized (monitor) {
-            try {
-                monitor.wait(1);          // always timed — never an unguarded wait()
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            if (!ready) {                 // the bug: should be while (!ready)
+                wakeup.recordWaitEnter(monitor);
+                try {
+                    monitor.wait(1);      // always timed, so the fixture never hangs
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                wakeup.recordWaitExit(monitor, ready);
             }
-            wakeup.recordNotify(monitor, true);
-            monitor.notifyAll();
         }
     }
 

@@ -35,13 +35,14 @@ class WakeupDetectorTest {
     }
 
     @Test
-    void notifyWithoutWaiterDetected() {
+    void notifyWithoutWaiterIsContextNotAFinding() {
         WakeupDetector detector = new WakeupDetector();
         Object monitor = new Object();
-        // notify without any prior waitEnter
+        // notify without any prior waitEnter: the flag-then-notifyAll handshake does this (#590)
         detector.recordNotify(monitor, false);
         WakeupDetector.WakeupReport report = detector.analyzeWakeups();
-        assertFalse(report.alwaysNotifyWithoutWait.isEmpty());
+        assertFalse(report.hasIssues());
+        assertEquals(1, report.monitorsWithLostNotifications.size());
     }
 
     @Test
@@ -51,7 +52,6 @@ class WakeupDetectorTest {
         assertFalse(report.hasIssues());
         assertTrue(report.monitorsWithSpuriousWakeups.isEmpty());
         assertTrue(report.monitorsWithLostNotifications.isEmpty());
-        assertTrue(report.alwaysNotifyWithoutWait.isEmpty());
     }
 
     @Test

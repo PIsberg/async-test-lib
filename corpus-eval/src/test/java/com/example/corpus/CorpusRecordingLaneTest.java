@@ -3671,7 +3671,7 @@ class CorpusRecordingLaneTest {
         AsyncTestContext.visibilityMonitor().recordFieldAccess("confined.value", 42L);
     }
 
-    /** A wait recorded as exiting with no notify: the spurious wakeup the javadoc warns of. */
+    /** A wait recorded as returning with no notify, and a body that goes on without waiting again. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_wait_returnedWithoutANotify() {
         CorpusRecorder.countBodyExecution();
@@ -3680,11 +3680,13 @@ class CorpusRecordingLaneTest {
         detector.recordWaitExit(UNSIGNALLED_CONDITION, false);
     }
 
-    /** The same wait with a notify recorded between the enter and a notified exit. */
+    /** The same unsignalled return, then the loop's second wait, ended by a recorded notifyAll. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_wait_returnedAfterANotify() {
+    void recorded_wait_returnedWithoutANotify_thenWaitedAgain() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.wakeupDetector();
+        detector.recordWaitEnter(SIGNALLED_CONDITION);
+        detector.recordWaitExit(SIGNALLED_CONDITION, false);
         detector.recordWaitEnter(SIGNALLED_CONDITION);
         detector.recordNotify(SIGNALLED_CONDITION, true);
         detector.recordWaitExit(SIGNALLED_CONDITION, true);

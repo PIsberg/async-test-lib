@@ -103,11 +103,15 @@ public class Phase2DetectorsTest {
         detector.recordNotify(monitor, false);
         
         WakeupDetector.WakeupReport report = detector.analyzeWakeups();
-        // A notify() with nobody waiting is a lost notification, which is the whole point of
-        // this fixture. Previously asserted `size() >= 0`.
+        // A notify() with nobody waiting is described, but it is not a finding: a producer that
+        // sets its flag before notifyAll() does exactly this, and the waiter that arrives later
+        // finds the flag set and never waits (#590). Previously asserted `size() >= 0`.
         assertFalse(report.monitorsWithLostNotifications.isEmpty(),
-                "notify() was called with no thread waiting, so the notification was lost and "
-                        + "must be reported. Report was: " + report);
+                "notify() was called with no thread waiting and must be described as context. "
+                        + "Report was: " + report);
+        assertFalse(report.hasIssues(),
+                "a notify with no waiter is the correct flag-then-notifyAll handshake, not a "
+                        + "finding. Report was: " + report);
     }
 
     // ============= Constructor Safety Tests =============
