@@ -99,6 +99,15 @@ class CorpusGatesTest {
         assertDoesNotThrow(() -> CorpusGates.nothingPublishesAfterTheLastSubject(
                 1_000L, 1_000L + CorpusGates.QUIET_WINDOW_ALLOWANCE, 250L));
     }
+
+    @Test
+    @DisplayName("one event over the allowance fails the quiescence gate")
+    void oneEventOverTheAllowanceFailsQuiescence() {
+        // The Surefire command reader that tripped this gate on JDK 25 and 26 published 261 and 271
+        // events; with it excluded the window reads 0, so the boundary is pinned where it now is.
+        assertThrows(AssertionFailedError.class, () -> CorpusGates.nothingPublishesAfterTheLastSubject(
+                1_000L, 1_000L + CorpusGates.QUIET_WINDOW_ALLOWANCE + 1, 250L));
+    }
     // --- Attribution -------------------------------------------------------------------------
 
     @Test
