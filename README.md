@@ -103,8 +103,9 @@ carry `VERDICT`, the tier a build can fail on. HikariCP joins the corpus as an e
 in the recording lane, because a connection pool is the one subject that cannot be exercised
 without something to pool.
 
-Ten of the agent pairs put the woven JDK call inside Guava, Jackson or HikariCP instead of the test
-file, so 15 of the 18 agent-fed detectors are measured on a call site nobody here compiled. Their
+The library agent pairs put the woven JDK call inside Guava, Jackson, HikariCP, Spring, commons-lang3
+or Groovy instead of the test file, so 17 of the 18 agent-fed detectors are measured on a call site
+nobody here compiled; the eighteenth, `EXPLICIT_GC`, is refused a pair in every lane. Their
 first run found a detector that dropped every sleep held under a `ReentrantLock`, which the
 test-file pair could not see because it sleeps inside a `synchronized` method.
 
