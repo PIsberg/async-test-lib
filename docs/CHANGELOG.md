@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
+  digest of each access's locks and treated a field as guarded only when every digest was equal,
+  which asks whether every access held the same locks rather than whether some lock was held at
+  all of them. A thread writing under `synchronized (shared)` and another under the same monitor
+  plus a declared lock of its own are excluded by the monitor, and the field was reported. Each
+  access now records the lock set itself, empty and allocation-free when nothing is held, and a
+  round or an adjacent pair is guarded when the sets intersect. `RaceConditionLocksetTest` pins
+  the superset case, red before the fix, and two disjoint-lock cases that must still fire. The
+  class javadoc said a guard on any lock but the object's own monitor is invisible, which declared
+  locks had already made untrue, and now says why the detector does not grade its findings.
+
 - **Detectors no longer merge two objects whose identity hashes collide (#564).** 86 detector
   classes kept per-instance state in a map or set keyed by `System.identityHashCode`, which is not
   unique: two live objects share one about half the time once some 54,000 are tracked, and the

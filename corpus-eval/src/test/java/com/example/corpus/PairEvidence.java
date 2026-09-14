@@ -125,11 +125,11 @@ final class PairEvidence {
                 + "death observed on the timer thread and the clock monotonic)");
         // LOCK_UPGRADE_DEADLOCK was held here on reading only the body's records; #566 made it
         // ask the lock, and it is promoted in verdict-evidence-corpus.
-        HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "compares exact lock fingerprints with no "
-                + "happens-before edge but the round epoch, so a field guarded by an undeclared "
-                + "lock (pinned in DetectorAccuracyEvalTest), a volatile read of a field written "
-                + "under a lock, and a confined hand-off all fire; needs lockset intersection and "
-                + "per-finding grades for the invisible-lock case");
+        HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "has no happens-before edge but the round "
+                + "epoch and cannot see an undeclared lock, so a field guarded by one (pinned in "
+                + "DetectorAccuracyEvalTest), a volatile read of a field written under a lock, and "
+                + "a confined hand-off all fire; needs ordering the recording API does not carry "
+                + "(#570 replaced fingerprint equality with lockset intersection)");
         // READ_WRITE_LOCK_FAIRNESS was held here as a liveness observation; #569 moved it to
         // ADVISORY, which is not a promotion candidate, so the hold no longer asks anything.
         // Read before this map existed; the full argument is in verdict-evidence-corpus.

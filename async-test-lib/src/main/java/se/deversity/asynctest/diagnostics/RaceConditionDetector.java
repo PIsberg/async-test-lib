@@ -15,12 +15,20 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Detects potential race conditions by tracking cross-thread field accesses.
  *
- * <p>Synchronization awareness is partial and deliberate: at record time the detector probes
- * {@link Thread#holdsLock(Object)} on the tracked object itself, so accesses serialized by the
- * object's own monitor — {@code synchronized (shared)} blocks and synchronized methods of the
- * shared object — count as guarded, and a round whose every access was guarded produces no
- * finding. A guard on any <em>other</em> lock object is invisible and still fires; the report
- * wording and {@code DetectorAccuracyEvalTest} pin that asymmetry in both directions.
+ * <p>Synchronization awareness is a lockset, the intersection of the locks held at every access to a
+ * field in a round (#570). A lock is visible when it is the tracked object's own monitor, probed
+ * with {@link Thread#holdsLock(Object)} so {@code synchronized (shared)} needs nothing; when the
+ * test declares it through {@code AsyncTestContext.holdingLock}; or when the agent sees it taken. A
+ * round in which some lock was held at every access produces no finding, whatever else any one
+ * access also held. An undeclared lock in unwoven code is invisible and the finding stands, which
+ * {@code DetectorAccuracyEvalTest} pins.
+ *
+ * <p><strong>Why findings are not graded.</strong> A per-finding grade would have to separate a
+ * race the library can stand behind from one it cannot, and nothing this detector records can:
+ * an access with no visible lock may still hold an undeclared one, and the recording API carries no
+ * volatile or hand-off ordering, so a lock-free read of a volatile field and a confined hand-off
+ * look like the race they are not. Every finding is therefore the same kind of claim, which is what
+ * the detector's single {@code PROMPT} tier already says.
  */
 public class RaceConditionDetector {
 
@@ -31,31 +39,52 @@ public class RaceConditionDetector {
         /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
         final long epoch;
         /**
-         * Identifies the locks the accessing thread held at record time, 0 for none.
+         * The identity hashes of the locks the accessing thread held at record time that guard an
+         * access of this kind, empty for none.
          *
-         * <p>Was a boolean answering only "was the tracked object's own monitor held", which made
-         * every other guard - a {@code ReentrantLock}, a private lock object - indistinguishable
-         * from no guard. The fingerprint covers the instance's own monitor and any lock declared
-         * through {@link HeldLocks}, so two accesses can be compared by what actually covered
-         * them: the same non-zero value means one set of locks serialised both, and there is no
-         * race between them to report.
+         * <p>Covers the instance's own monitor and any lock declared through {@link HeldLocks} or
+         * seen by the agent. It used to be a digest of that set, compared for equality, which
+         * asked whether two accesses held the <em>same</em> locks rather than whether some lock
+         * was held at both: a thread under {@code synchronized (shared)} and another under
+         * {@code synchronized (shared)} plus a lock of its own are excluded by the shared monitor,
+         * and were reported (#570). Empty for an unguarded access, which allocates nothing.
          */
-        final long lockFingerprint;
+        final int[] locks;
 
-        FieldAccess(long threadId, boolean write, long epoch, long lockFingerprint) {
+        FieldAccess(long threadId, boolean write, long epoch, int[] locks) {
             this.threadId = threadId;
             this.timestamp = System.nanoTime();
             this.write = write;
             this.epoch = epoch;
-            this.lockFingerprint = lockFingerprint;
+            this.locks = locks;
         }
 
-        /** {@return whether {@code other} was covered by exactly the same locks as this} */
+        /** {@return whether some lock was held at both this access and {@code other}} */
         boolean sharesLocksWith(FieldAccess other) {
-            return lockFingerprint != 0L && lockFingerprint == other.lockFingerprint;
+            return intersection(locks, other.locks).length > 0;
         }
     }
 
+    /** {@return the lock hashes present in both sets} */
+    static int[] intersection(int[] left, int[] right) {
+        if (left.length == 0 || right.length == 0) {
+            return EMPTY;
+        }
+        int[] kept = new int[Math.min(left.length, right.length)];
+        int count = 0;
+        for (int candidate : left) {
+            for (int other : right) {
+                if (candidate == other) {
+                    kept[count] = candidate;
+                    count++;
+                    break;
+                }
+            }
+        }
+        return count == 0 ? EMPTY : java.util.Arrays.copyOf(kept, count);
+    }
+
+    private static final int[] EMPTY = new int[0];
     private static class ObjectFieldState {
         final String className;
         final int objectId;
@@ -139,9 +168,9 @@ public class RaceConditionDetector {
         // lock in as if exclusive made two threads writing under the same readLock() look
         // consistently guarded, which is a false negative and a divergence between two detectors
         // that claim the same model (#500).
-        long lockFingerprint = HeldLocks.lockFingerprint(object, write);
+        int[] locks = HeldLocks.intersect(null, object, write);
         state.fieldAccesses.computeIfAbsent(fieldName, ignored -> new ConcurrentLinkedQueue<>())
-            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get(), lockFingerprint));
+            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get(), locks));
     }
     /**
      * Analyses what has been recorded about race conditions and builds the report for it.
@@ -195,42 +224,32 @@ public class RaceConditionDetector {
         Set<Long> threads = new HashSet<>();
         boolean hasWrite = false;
         int writeCount = 0;
-        // "Guarded" now means every access was covered by the same set of locks, not merely that
-        // each held something: two threads taking different locks exclude nothing from each other
-        // and race exactly as they would with no locks at all.
-        long commonLocks = 0L;
-        boolean firstAccess = true;
-        long commonWriteLocks = 0L;
-        boolean firstWrite = true;
+        // "Guarded" means some lock was held at every access: the Eraser lockset, the intersection
+        // of the locks held at each. Two threads taking different locks share none and race
+        // exactly as they would with no locks at all; two threads that both hold the shared
+        // monitor are excluded by it whatever else either of them holds.
+        int[] commonLocks = null;
+        int[] commonWriteLocks = null;
         for (FieldAccess access : accesses) {
             threads.add(access.threadId);
-            if (firstAccess) {
-                commonLocks = access.lockFingerprint;
-                firstAccess = false;
-            } else if (commonLocks != access.lockFingerprint) {
-                commonLocks = 0L;
-            }
+            commonLocks = commonLocks == null ? access.locks : intersection(commonLocks, access.locks);
             if (access.write) {
                 hasWrite = true;
                 writeCount++;
-                if (firstWrite) {
-                    commonWriteLocks = access.lockFingerprint;
-                    firstWrite = false;
-                } else if (commonWriteLocks != access.lockFingerprint) {
-                    commonWriteLocks = 0L;
-                }
+                commonWriteLocks = commonWriteLocks == null
+                        ? access.locks : intersection(commonWriteLocks, access.locks);
             }
         }
-        boolean allGuarded = commonLocks != 0L;
-        boolean allWritesGuarded = commonWriteLocks != 0L;
+        boolean allGuarded = commonLocks != null && commonLocks.length > 0;
+        boolean allWritesGuarded = commonWriteLocks != null && commonWriteLocks.length > 0;
 
         if (threads.size() < 2 || !hasWrite) {
             return;
         }
 
-        // Every access in the round held the tracked object's own monitor: they are mutually
-        // excluded and ordered by that monitor, which is the synchronized(shared) idiom working
-        // correctly. Guards on other lock objects remain invisible — see the class javadoc.
+        // Some lock was held at every access in the round, so the accesses are mutually excluded
+        // by it: synchronized(shared), a declared lock, or a woven one. A lock the library cannot
+        // see still leaves the field reported; see the class javadoc.
         if (allGuarded) {
             return;
         }
