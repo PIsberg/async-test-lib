@@ -326,6 +326,42 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * The target an ownership-taken event carries instead of a field identifier.
+     *
+     * <p>The ring buffer has one event shape, a field access, and adding a second shape to its
+     * pre-allocated slots would cost every access a discriminator. A reserved name costs nothing
+     * on the access path: no field identifier starts with {@code '#'}, the one other producer that
+     * builds names ({@code Class#method}) never puts it first, and the bridge checks for this
+     * before it treats the name as a field.
+     */
+    static final String OWNERSHIP_TAKEN = "#ownership-taken";
+
+    /**
+     * Records that the calling thread took {@code taken} out of a queue or an atomic slot.
+     *
+     * <p>Emitted by the weaver after a reference {@code getAndSet} on a {@code VarHandle},
+     * {@code AtomicReference}, {@code AtomicReferenceFieldUpdater} or {@code AtomicReferenceArray},
+     * and by the queue hooks after a {@code poll} that returned an element. The value that came
+     * back is no longer in the slot or the queue, so the structure hands it to this thread and to
+     * no other; the detector uses that to judge an object that moves between owners per owner
+     * rather than across all of them (#555). A {@code null} result took nothing and records
+     * nothing.
+     *
+     * <p>Allocation-free and non-throwing like every other hook on this path: it runs inside the
+     * user's code.
+     *
+     * @param taken the object that left the slot or queue, or {@code null}
+     * @since 1.12.1
+     */
+    public static void ownershipTaken(@Nullable Object taken) {
+        if (taken == null || STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,
+                Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0, 0);
+    }
+
+    /**
      * Declares that a volatile write in the same method publishes {@code qualifiedName}.
      *
      * <p>Emitted by the weaver at the volatile write, once per plain field that method wrote before

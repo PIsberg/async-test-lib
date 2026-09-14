@@ -9,6 +9,7 @@ import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.CountDownLatchDetector;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -357,6 +358,7 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
         }
+        TelemetryRegistry.ownershipTaken(taken);
         return taken;
     }
 
@@ -375,6 +377,7 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
         }
+        TelemetryRegistry.ownershipTaken(taken);
         return taken;
     }
 

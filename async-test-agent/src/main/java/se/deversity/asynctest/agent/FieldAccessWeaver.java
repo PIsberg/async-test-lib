@@ -430,10 +430,43 @@ final class FieldAccessWeaver {
             noteConstant(null);
             noteAtomicBinding(name);
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+            if (weaveFieldInstructions && isReferenceTake(opcode, owner, name, descriptor)) {
+                // The returned reference is on top of the stack: hand a copy to the registry and
+                // leave the original where the caller expects it. Stack-neutral and branch-free.
+                super.visitInsn(Opcodes.DUP);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "ownershipTaken",
+                        "(Ljava/lang/Object;)V", false);
+            }
             recentConstants.clear();
             if (thisIsUninitialised && opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name)) {
                 thisIsUninitialised = false;
             }
+        }
+
+        /**
+         * {@return whether this call swaps a reference out of an atomic slot}
+         *
+         * <p>{@code getAndSet} returns the value it replaced, and that value is no longer in the
+         * slot, so the slot hands it to this thread and to no other. That is how netty moves a
+         * chunk out of a magazine's next-in-line slot before using it without the magazine's lock
+         * (#555); without seeing the take, every such use reads as a race with the previous owner.
+         * Only the reference-returning forms count, because only an object can have an owner. A
+         * {@code VarHandle} call is signature-polymorphic, so its descriptor is whatever the call
+         * site declared; the return type is what decides.
+         */
+        private static boolean isReferenceTake(int opcode, String owner, String name,
+                                                String descriptor) {
+            if (opcode != Opcodes.INVOKEVIRTUAL || !"getAndSet".equals(name)) {
+                return false;
+            }
+            if (!"java/lang/invoke/VarHandle".equals(owner)
+                    && !"java/util/concurrent/atomic/AtomicReference".equals(owner)
+                    && !"java/util/concurrent/atomic/AtomicReferenceFieldUpdater".equals(owner)
+                    && !"java/util/concurrent/atomic/AtomicReferenceArray".equals(owner)) {
+                return false;
+            }
+            int sort = Type.getReturnType(descriptor).getSort();
+            return sort == Type.OBJECT || sort == Type.ARRAY;
         }
 
         @Override

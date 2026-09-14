@@ -395,6 +395,12 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName == null) return;
+        if (TelemetryRegistry.OWNERSHIP_TAKEN.equals(qualifiedName)) {
+            // Not a field access: a worker took the object with this identity out of a queue or
+            // an atomic slot, which starts a new ownership generation for it (#555).
+            atomicityValidator.recordOwnershipTaken(identity, threadId);
+            return;
+        }
         String field = fieldIdentifier(qualifiedName);
         // A field under a lock-free protocol is not something a lockset can judge. Dropping the
         // event rather than passing it on keeps that honest: the detectors say nothing about the
