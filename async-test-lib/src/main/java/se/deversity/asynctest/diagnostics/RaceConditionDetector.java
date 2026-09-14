@@ -56,37 +56,6 @@ public class RaceConditionDetector {
         }
     }
 
-    /**
-     * Identity key for tracked objects. Keying by bare {@code System.identityHashCode}
-     * merged two distinct objects whenever their hashes collided (about a 50% chance once
-     * ~54k recorded objects are live, by the birthday bound), silently attributing one
-     * object's accesses to another. This key caches the identity hash but compares
-     * referents by {@code ==}, so a collision only costs a hash-bucket neighbor, never a
-     * merge. The reference is strong on purpose: detector state is scoped to a single test
-     * run, {@link #reset()} releases it, and the per-access records already dwarf the
-     * object references themselves.
-     */
-    private static final class TrackedObject {
-        final Object referent;
-        final int identityHash;
-
-        TrackedObject(Object referent) {
-            this.referent = referent;
-            this.identityHash = System.identityHashCode(referent);
-        }
-
-        @Override
-        @SuppressWarnings("ReferenceEquality") // referent identity is the point — see the class javadoc
-        public boolean equals(Object other) {
-            return other instanceof TrackedObject that && that.referent == this.referent;
-        }
-
-        @Override
-        public int hashCode() {
-            return identityHash;
-        }
-    }
-
     private static class ObjectFieldState {
         final String className;
         final int objectId;
@@ -98,7 +67,7 @@ public class RaceConditionDetector {
         }
     }
 
-    private final Map<TrackedObject, ObjectFieldState> objects = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, ObjectFieldState> objects = new ConcurrentHashMap<>();
     private final IssueDeduplicator<RaceConditionEvent> deduplicator = new IssueDeduplicator<>();
 
     /**
@@ -150,11 +119,11 @@ public class RaceConditionDetector {
     }
 
     private void recordAccess(Object object, String fieldName, boolean write) {
-        // TrackedObject compares referents by identity — see its Javadoc for why bare
+        // IdentityKey compares referents by identity; see its javadoc for why bare
         // identityHashCode keying merged distinct objects on hash collision.
         ObjectFieldState state = objects.computeIfAbsent(
-            new TrackedObject(object),
-            key -> new ObjectFieldState(object.getClass().getSimpleName(), key.identityHash)
+            new IdentityKey(object),
+            key -> new ObjectFieldState(object.getClass().getSimpleName(), key.hashCode())
         );
 
         // ConcurrentLinkedQueue, deliberately not a synchronizedList: this method runs on
