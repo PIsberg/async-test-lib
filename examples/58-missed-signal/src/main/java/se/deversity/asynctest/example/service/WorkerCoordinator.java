@@ -37,6 +37,19 @@ public class WorkerCoordinator {
     }
 
     /**
+     * {@link #waitForSignal()} with a bound, so a demonstration can show the lost signal
+     * without hanging. Same bug: it waits whether or not a signal was already sent.
+     *
+     * @param timeoutMs how long to wait before giving up
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public void waitForSignal(long timeoutMs) throws InterruptedException {
+        synchronized (monitor) {
+            monitor.wait(timeoutMs); // no guard condition — after a missed signal only the timeout ends it
+        }
+    }
+
+    /**
      * Signals all waiting workers.
      */
     public void signalAll() {

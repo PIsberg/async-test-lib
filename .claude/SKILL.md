@@ -330,7 +330,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectWaitTimeout` | `WAIT_TIMEOUT` | `wait()` without a timeout argument |
 | `detectLockContention` | `LOCK_CONTENTION` | Monitors with high blocked-acquire ratio |
 | `detectSynchronizedNonFinal` | `SYNCHRONIZED_NON_FINAL` | `synchronized` on a non-`final` field |
-| `detectMissedSignals` | `MISSED_SIGNAL` | `notify()` with no thread waiting |
+| `detectMissedSignals` | `MISSED_SIGNAL` | a wait that began after a `notify()` no thread was waiting for, and received no notify of its own |
 | `detectLazyInitRace` | `LAZY_INIT_RACE` | Multi-thread lazy init without proper guards |
 
 ### Phase 2 — Advanced concurrency utilities

@@ -1101,20 +1101,17 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 37. Missed Signal Detector
 * **Severity**: `CRITICAL`
-* **Description**: Detects lost/missed signals where `notify()`/`notifyAll()` fires while no thread is yet waiting on the condition, so the wakeup is silently discarded and the eventual waiter blocks forever.
+* **Description**: Detects lost/missed signals: a `notify()`/`notifyAll()` that found no thread waiting, followed by a wait on the same condition that received no notify of its own, either ending unsignalled (a timed wait ran out) or still waiting when the run is analysed. A notify with nobody waiting is not reported on its own, because it is also the correct flag-then-notify handshake: a waiter that checks its predicate finds the flag set and never waits (#586). Each wait is matched to the wakeup its own thread records, so a stray wakeup cannot erase a live waiter. Record the monitor (`recordWait(monitor)`) rather than a name where possible; named conditions share state with every monitor recorded under that name. Boundary: the recording API cannot see the predicate, so a guarded timed wait that legitimately runs out after a lost notify is reported too.
 * **Buggy Code**:
   ```java
-  // Thread A (producer, runs first)
+  // Thread A (runs first)
   synchronized (monitor) {
-      dataReady = true;
       monitor.notify(); // signal lost - no one is waiting yet
   }
 
-  // Thread B (consumer, runs second)
+  // Thread B (runs second)
   synchronized (monitor) {
-      while (!dataReady) {
-          monitor.wait(); // blocks forever - missed the earlier notify
-      }
+      monitor.wait(); // no flag records the earlier notify: blocks forever
   }
   ```
 * **Fixed Code**:

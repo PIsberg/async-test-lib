@@ -149,10 +149,10 @@ final class PairEvidence {
                 + "recorded starts against completions, timeouts and interrupts, so a handled timeout "
                 + "is silent; still held until re-read, because the counts are the body's own "
                 + "declaration and an Exchanger exposes no waiter count to check a start against");
-        HELD_ON_MODEL.put(DetectorType.MISSED_SIGNAL, "counts a notify with no recorded waiter as "
-                + "lost, which is harmless whenever the waiter checks a state predicate, and the "
-                + "class javadoc's own example is that correct pattern; needs a wait observed not "
-                + "to re-check its predicate, on the real monitor");
+        HELD_ON_MODEL.put(DetectorType.MISSED_SIGNAL, "since #586 a lost notify is a finding only "
+                + "when a later wait receives no notify, but the recording API still cannot see the "
+                + "predicate, so a guarded timed wait that runs out after a lost notify fires; needs "
+                + "a wait observed not to re-check its predicate, on the real monitor");
         HELD_ON_MODEL.put(DetectorType.PHASER, "recordTermination is the finding, and termination "
                 + "is how a phaser normally ends, so arriveAndDeregister to zero draws CRITICAL; "
                 + "needs an arrive or register observed returning a negative phase after it");

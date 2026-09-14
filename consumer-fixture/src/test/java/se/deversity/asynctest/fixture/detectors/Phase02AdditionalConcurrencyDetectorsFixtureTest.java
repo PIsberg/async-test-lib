@@ -237,19 +237,27 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.MISSED_SIGNAL})
-    void missedSignal() {
+    void missedSignal() throws InterruptedException {
         reachable("missedSignalDetector()", AsyncTestContext::missedSignalDetector);
 
         // notify before anyone waits: the signal that goes nowhere.
         // A notify that arrives before anyone is waiting is simply lost: the waiter that
-        // turns up afterwards waits for a signal that has already been and gone.
+        // turns up afterwards waits for a signal that has already been and gone. The lost notify
+        // alone is not a finding (#586); the unsignalled wait after it is. Each execution has its
+        // own monitor, so the other worker's notify can never reach this wait.
         var signalDetector = AsyncTestContext.missedSignalDetector();
         Object monitor = new Object();
         synchronized (monitor) {
-            signalDetector.recordNotify("fixture-condition");
+            signalDetector.recordNotify(monitor);
             monitor.notifyAll();
         }
-        signalDetector.recordWait("fixture-condition");
+        synchronized (monitor) {
+            // No predicate: the wait has no way to learn the notify already happened, and nothing
+            // will notify again. In production this is wait() and never returns; bounded here.
+            signalDetector.recordWait(monitor);
+            monitor.wait(5);
+            signalDetector.recordWakeup(monitor);
+        }
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
