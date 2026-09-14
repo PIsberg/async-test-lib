@@ -43,7 +43,7 @@ code, so it is recorded rather than proposed.
 
 ## 2b. Pairs held back by a rule rather than a reading
 
-29 PROMPT pairs are held back by a rule, not by a reading. `PairEvidence.unreviewed()` derives
+21 PROMPT pairs are held back by a rule, not by a reading. `PairEvidence.unreviewed()` derives
 that number from the rows, and `EveryEligiblePairIsPromotedOrExplainedTest` fails when this
 sentence stops agreeing with it. When this section was first written it said 69, counted by hand
 over every tier on 2026-09-07, and it went on saying so after the number had moved.
@@ -80,6 +80,17 @@ nine were held on their detector's model:
 Several of those reasons are detector defects rather than limits, and each has an issue. The
 first to be fixed was `LOCK_UPGRADE_DEADLOCK` (#566): it now asks the lock whenever the recording
 thread holds it, both corpus bodies take the real lock, and the pair was promoted.
+
+**The second reading, 2026-09-14 (#571).** Eight more were read and all eight held:
+`CONDITION_VARIABLES`, `CYCLIC_BARRIER`, `EXCHANGER`, `MISSED_SIGNAL`, `PHASER`, `STAMPED_LOCK`,
+`REENTRANT_LOCK` and `WAKEUP_ISSUES`. They share one shape, which is worth naming because it
+predicts the rest of the backlog: the body calls a method whose name is the finding
+(`recordTimeout`, `recordBroken`, `recordTermination`, `recordStampNotReleased`, a
+`wasNotified` flag), the detector adds it to a set, and nothing asks the `Exchanger`, the barrier or
+the lock whether it happened. `LOCK_UPGRADE_DEADLOCK` and `NOTIFY_WITHOUT_MONITOR` are the
+counterexamples, promoted because they ask the real object. The reading also turned up defects
+beyond the model, dead state and a javadoc example that is itself correct code among them, filed
+per detector.
 
 Worth doing in small batches, and worth resisting the urge to clear it in one pass: the rule held
 back two pairs that were sound, the three this section was surest of were not, and only reading
