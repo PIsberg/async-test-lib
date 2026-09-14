@@ -260,7 +260,13 @@ class CorpusEvalTest {
         System.out.println(CorpusReport.exposure(CorpusRecorder.findings(), lane));
         System.out.println(CorpusReport.summary(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane));
         CorpusGates.check(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane);
-        CorpusGates.nothingPublishesAfterTheLastSubject(quietFrom, quietTo, QUIET_WINDOW_MS);
+        // Printed on every run, green or red, so the CI log shows how much headroom the gate had.
+        System.out.println("corpus.quiet_window events=" + (quietTo - quietFrom)
+                + " allowance=" + CorpusGates.QUIET_WINDOW_ALLOWANCE + " window_ms=" + QUIET_WINDOW_MS);
+        String whoWasRunning = quietTo - quietFrom > CorpusGates.QUIET_WINDOW_ALLOWANCE
+                ? CorpusGates.threadsInsideNonPlatformCode(100, 2) : "";
+        CorpusGates.nothingPublishesAfterTheLastSubject(quietFrom, quietTo, QUIET_WINDOW_MS,
+                whoWasRunning);
     }
 
     /**

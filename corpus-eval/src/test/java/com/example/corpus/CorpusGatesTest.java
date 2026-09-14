@@ -15,6 +15,7 @@ import se.deversity.asynctest.diagnostics.TrustTier;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Shows that {@link CorpusGates} can fail, one gate at a time.
@@ -59,6 +60,36 @@ class CorpusGatesTest {
         // A TimedSemaphore timer left running published 430 events in this window on JDK 26.
         assertThrows(AssertionFailedError.class,
                 () -> CorpusGates.nothingPublishesAfterTheLastSubject(1_000L, 1_300L, 250L));
+    }
+
+    @Test
+    @DisplayName("a tripped quiescence gate names what was running")
+    void aTrippedQuiescenceGateCarriesItsDiagnostics() {
+        AssertionFailedError failure = assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.nothingPublishesAfterTheLastSubject(1_000L, 1_300L, 250L,
+                        "{corpus-timer in com.example.Leak.tick=40}"));
+        assertTrue(failure.getMessage().contains("corpus-timer in com.example.Leak.tick"),
+                "the CI log is the only place a failure of this gate is ever read: " + failure.getMessage());
+    }
+
+    @Test
+    @DisplayName("the thread sampler reports a busy thread outside platform code")
+    void theSamplerSeesABusyThread() throws InterruptedException {
+        java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread busy = new Thread(() -> {
+            while (!stop.get()) {
+                Math.sqrt(System.nanoTime());
+            }
+        }, "sampler-probe-7");
+        busy.setDaemon(true);
+        busy.start();
+        try {
+            String seen = CorpusGates.threadsInsideNonPlatformCode(20, 2);
+            assertTrue(seen.contains("sampler-probe-N in com.example.corpus.CorpusGatesTest"), seen);
+        } finally {
+            stop.set(true);
+            busy.join(1_000);
+        }
     }
 
     @Test
