@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LockUpgradeDeadlockDetector` stops reporting a legal write re-acquire as a permanent deadlock,
+  and reaches `TrustTier.VERDICT` (#566).** A thread that holds the write lock of a
+  `ReentrantReadWriteLock` may take the read lock and then the write lock again; the JDK's own
+  downgrading example depends on it. The detector kept no write holds and reported that sequence
+  at HIGH, including when `LockDowngradeDetector` forwarded it, although that detector's own
+  comment calls it a legal reentrant acquire. Read holds were also a set, so a read lock taken
+  twice and released once went silent at a write attempt that really never returns. The detector
+  now asks the lock whenever the recording thread holds it (`isWriteLockedByCurrentThread`,
+  `getReadHoldCount`), counts recorded read holds otherwise, and `LockDowngradeDetector` no longer
+  forwards a re-acquire made while holding the write lock. `LockUpgradeDeadlockAccuracyTest` pins
+  six cases, four of them red before the fix. Both corpus bodies now take the real lock, which
+  made the pair decided by the JDK's rule, and it is promoted: VERDICT goes to 68 of 146.
+
 - **`AtomicityValidator` sees a compare-and-swap spinlock and an object handed between owners (#554,
   #555).** With `fields=true`, a won int `VarHandle.compareAndSet(this, 0, 1)` is now a lock on that
   receiver's flag, released by the swap back, a set through the handle or the holder's write, so a
@@ -79,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the pair. `PairEvidence.HELD_ON_MODEL` records each reason, a gate fails an entry once its
   detector is no longer a candidate, and `corpus-eval-future-improvements.md` must state the
   backlog `PairEvidence.unreviewed()` derives: 29 PROMPT pairs, where the document said 69.
+  `LOCK_UPGRADE_DEADLOCK` has since been fixed and promoted (#566, above).
 
 - **The corpus eval reaches 17 of the 18 agent-fed detectors through library bytecode (#545).**
   `SHARED_MATCHER` is paired through Groovy's `StringGroovyMethods.getCount(Matcher)`, which calls

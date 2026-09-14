@@ -145,7 +145,7 @@ still produces a finding, and so does inconsistent locking - two threads holding
 have excluded nothing, which is a race however many locks were involved.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 67 VERDICT, 64 PROMPT, 11 FACT and 4
+tier is one a reader has to rank alone. The split is 68 VERDICT, 63 PROMPT, 11 FACT and 4
 ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
 detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
 statements about the kind of claim a finding makes rather than about missing evidence - a FACT
@@ -2668,7 +2668,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 108. Lock Upgrade Deadlock Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a thread attempting to acquire the write lock of a `ReentrantReadWriteLock` while it still holds that lock's read lock. `ReentrantReadWriteLock` does not support upgrading a read lock to a write lock on the same thread, so the attempt deadlocks permanently. This is the detector that reports that condition: `LockDowngradeDetector` observes it too, through its own recording API, and forwards what it records here when both are enabled, so a caller who instrumented either API gets exactly one finding under this name.
+* **Description**: Detects a thread attempting to acquire the write lock of a `ReentrantReadWriteLock` while it still holds that lock's read lock. `ReentrantReadWriteLock` does not support upgrading a read lock to a write lock on the same thread, so the attempt deadlocks permanently. This is the detector that reports that condition: `LockDowngradeDetector` observes it too, through its own recording API, and forwards what it records here when both are enabled, so a caller who instrumented either API gets exactly one finding under this name. A thread that already holds the write lock may take the read lock and then the write lock again, which is a legal reentrant acquire and is not reported. When the recording thread really holds the lock, the lock itself decides (`isWriteLockedByCurrentThread`, `getReadHoldCount`); the recorded read holds, counted per thread, decide only for a body that records acquisitions without taking the lock. Record a blocking `writeLock().lock()` only: a `tryLock()` made while holding the read lock returns `false` at once and does not deadlock. Trust tier `VERDICT`, on a corpus pair that takes the real lock in both halves (#566).
 * **Buggy Code**:
   ```java
   rwLock.readLock().lock();

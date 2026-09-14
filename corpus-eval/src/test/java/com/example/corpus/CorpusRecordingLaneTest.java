@@ -2596,25 +2596,47 @@ class CorpusRecordingLaneTest {
      *
      * <p>{@code ReentrantReadWriteLock} does not support upgrading: the write acquisition waits
      * for the readers to leave, and one of those readers is the caller, so nothing can wake it.
+     *
+     * <p>The read lock is really held when the attempt is recorded, so the detector answers from
+     * the lock rather than from the declaration (#566). The write acquire itself is not made,
+     * because it would never return.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_readLock_upgradedWithoutReleasing() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
         var detector = AsyncTestContext.lockUpgradeDeadlockDetector();
-        detector.recordReadLockAcquired(UPGRADED_LOCK, "upgraded", self);
-        detector.recordWriteLockAcquisitionAttempt(UPGRADED_LOCK, "upgraded", self);
+        UPGRADED_LOCK.readLock().lock();
+        try {
+            detector.recordReadLockAcquired(UPGRADED_LOCK, "upgraded", self);
+            detector.recordWriteLockAcquisitionAttempt(UPGRADED_LOCK, "upgraded", self);
+        } finally {
+            UPGRADED_LOCK.readLock().unlock();
+            detector.recordReadLockReleased(UPGRADED_LOCK, self);
+        }
     }
 
-    /** The same two acquisitions with the read released between them: the documented way up. */
+    /**
+     * The same two acquisitions with the read released between them: the documented way up.
+     *
+     * <p>Both locks are really taken, and the write acquire really returns, which is what makes
+     * the silence correct rather than an absence of calls.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_readLock_releasedBeforeWriting() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
         var detector = AsyncTestContext.lockUpgradeDeadlockDetector();
-        detector.recordReadLockAcquired(RELEASED_THEN_WRITTEN_LOCK, "released", self);
-        detector.recordReadLockReleased(RELEASED_THEN_WRITTEN_LOCK, self);
+        RELEASED_THEN_WRITTEN_LOCK.readLock().lock();
+        try {
+            detector.recordReadLockAcquired(RELEASED_THEN_WRITTEN_LOCK, "released", self);
+        } finally {
+            RELEASED_THEN_WRITTEN_LOCK.readLock().unlock();
+            detector.recordReadLockReleased(RELEASED_THEN_WRITTEN_LOCK, self);
+        }
         detector.recordWriteLockAcquisitionAttempt(RELEASED_THEN_WRITTEN_LOCK, "released", self);
+        RELEASED_THEN_WRITTEN_LOCK.writeLock().lock();
+        RELEASED_THEN_WRITTEN_LOCK.writeLock().unlock();
     }
 
     // --- ScopedValue ---------------------------------------------------------------------------
