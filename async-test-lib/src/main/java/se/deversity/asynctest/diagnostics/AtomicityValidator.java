@@ -915,8 +915,7 @@ public class AtomicityValidator {
                                     || hintReadsConfirmedUnderTheWriteLock(copy, identity, guard,
                                             handOff)
                                     || settledSingleCheckCache(copy, identity, guard, handOff)
-                                    || everyOwnershipGenerationAgreesOnALock(copy, identity,
-                                            handOff));
+                                    || everyOwnershipGenerationAgreesOnALock(copy, identity));
                     sawUnguarded = !excused;
                 }
                 // Only claim to have looked at locks when an owner was actually supplied.
@@ -1013,20 +1012,30 @@ public class AtomicityValidator {
      * lock. This asks for the same thing per ownership generation instead, and only once at least
      * one take has been seen, so a lock that simply changes with no take in between keeps
      * reporting. Accesses a taker made while the object was still exclusive to it are exclusion by
-     * the take and need no lock; construction accesses need the same corroboration they need
-     * everywhere else.
+     * the take and need no lock, and so do the builder's construction accesses, because the take
+     * that follows them corroborates the hand-off the construction phase assumed.
      */
     private static boolean everyOwnershipGenerationAgreesOnALock(List<FieldAccessRecord> history,
-                                                                 int identity,
-                                                                 boolean constructionExcused) {
-        Map<Integer, int[]> commonPerGeneration = new HashMap<>();
+                                                                 int identity) {
         boolean taken = false;
+        for (FieldAccessRecord access : history) {
+            if (access.identity == identity && access.generation > 0) {
+                taken = true;
+                break;
+            }
+        }
+        if (!taken) {
+            return false;
+        }
+        Map<Integer, int[]> commonPerGeneration = new HashMap<>();
         for (FieldAccessRecord access : history) {
             if (access.identity != identity) {
                 continue;
             }
-            taken |= access.generation > 0;
-            if (access.exclusivePhase && (access.generation > 0 || constructionExcused)) {
+            // Exclusive accesses need no lock. A taker's are exclusive by the take; the builder's
+            // are exclusive by construction, and an observed take afterwards corroborates that the
+            // object left the builder through a hand-off, as later rounds do for #312.
+            if (access.exclusivePhase) {
                 continue;
             }
             if (access.fingerprint == UNMODELLED) {
@@ -1043,7 +1052,7 @@ public class AtomicityValidator {
             }
             commonPerGeneration.put(access.generation, common);
         }
-        return taken;
+        return true;
     }
 
     /** {@return the resolved lock ids this access held, the carried monitors included} */

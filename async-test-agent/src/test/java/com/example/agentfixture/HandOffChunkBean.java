@@ -6,6 +6,9 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.example.agentfixture.jctools.queues.LockedMessagePassingQueue;
+import com.example.agentfixture.jctools.queues.MessagePassingQueue;
+
 /**
  * One mutable chunk that threads pass between them the way netty's adaptive allocator passes a
  * chunk between magazines (#555): out of a queue, or swapped out of an atomic slot, used with no
@@ -34,12 +37,14 @@ public final class HandOffChunkBean {
 
     private final Queue<Chunk> cache = new ConcurrentLinkedQueue<>();
     private final AtomicReference<Chunk> slot = new AtomicReference<>();
+    private final MessagePassingQueue<Chunk> pool = new LockedMessagePassingQueue<>();
     @SuppressWarnings("unused") // updated through NEXT_IN_LINE
     private volatile Chunk nextInLine;
     private final Chunk shared = new Chunk();
 
     public HandOffChunkBean() {
         cache.offer(new Chunk());
+        pool.relaxedOffer(new Chunk());
         slot.set(new Chunk());
         NEXT_IN_LINE.setVolatile(this, new Chunk());
     }
@@ -50,6 +55,15 @@ public final class HandOffChunkBean {
         if (chunk != null) {
             chunk.allocated = chunk.allocated + 1;
             cache.offer(chunk);
+        }
+    }
+
+    /** Polls the chunk from a JCTools-shaped queue, uses it, offers it back. */
+    public void useThroughMessagePassingQueue() {
+        Chunk chunk = pool.relaxedPoll();
+        if (chunk != null) {
+            chunk.allocated = chunk.allocated + 1;
+            pool.relaxedOffer(chunk);
         }
     }
 

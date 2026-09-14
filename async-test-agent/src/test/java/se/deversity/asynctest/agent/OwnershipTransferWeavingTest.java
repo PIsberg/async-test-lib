@@ -90,6 +90,18 @@ class OwnershipTransferWeavingTest {
     }
 
     @Test
+    @DisplayName("a chunk polled from a JCTools-shaped MessagePassingQueue is not a race")
+    void pollingFromAMessagePassingQueueTakesOwnership() throws Exception {
+        HandOffChunkBean bean = new HandOffChunkBean();
+        AtomicityValidator.AtomicityReport report = drive(bean::useThroughMessagePassingQueue);
+
+        assertFalse(report.hasIssues(),
+                "relaxedPoll on a MessagePassingQueue, the interface netty's buffer recycler uses, "
+                        + "hands the element to one thread. Findings: "
+                        + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
+    @Test
     @DisplayName("a chunk swapped out of an AtomicReference is exclusive to the thread that swapped it")
     void atomicReferenceGetAndSetTakesOwnership() throws Exception {
         HandOffChunkBean bean = new HandOffChunkBean();

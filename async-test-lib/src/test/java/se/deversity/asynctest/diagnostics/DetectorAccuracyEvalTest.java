@@ -567,6 +567,33 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("atomicity: an object built without a lock and then handed off by takes is silent (#555)")
+    void atomicityUnlockedConstructionFollowedByTakesIsSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "buffer.writerIndex";
+        long thread = 1;
+        // netty's pooled buffer: the recycler's first user builds it with no lock, then every later
+        // user takes it out of the recycler's queue before touching it. No access after the
+        // builder's is anything but a taker's own.
+        validator.markInvocationStart();
+        agentAccess(validator, field, true, thread, NO_LOCKS, 96);
+        agentAccess(validator, field, false, thread, NO_LOCKS, 96);
+        for (int round = 0; round < 3; round++) {
+            validator.markInvocationStart();
+            for (int user = 0; user < 2; user++) {
+                thread++;
+                validator.recordOwnershipTaken(96, thread);
+                agentAccess(validator, field, true, thread, WRITE_LOCK, 96);
+                agentAccess(validator, field, true, thread, NO_LOCKS, 96);
+            }
+        }
+        assertFalse(validator.analyze().hasIssues(),
+                "The builder's accesses came before anyone else's, and the object then only ever "
+                        + "moved through observed takes. The take corroborates the hand-off the "
+                        + "construction phase assumed, the way later rounds do for #312");
+    }
+
+    @Test
     @DisplayName("atomicity: unlocked use with no take still fires (#555)")
     void atomicityUnlockedUseWithoutATakeStillFires() {
         AtomicityValidator validator = new AtomicityValidator();

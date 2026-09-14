@@ -510,6 +510,15 @@ final class FieldAccessWeaver {
          */
         private static boolean isReferenceTake(int opcode, String owner, String name,
                                                 String descriptor) {
+            if (opcode == Opcodes.INVOKEINTERFACE && owner.endsWith("jctools/queues/MessagePassingQueue")
+                    && ("relaxedPoll".equals(name) || "poll".equals(name))) {
+                // JCTools' lock-free queue interface, which netty and others shade under their own
+                // package: an element polled out of it is taken exactly as from java.util.Queue,
+                // which the collection weaver already reports. netty's buffer recycler hands a
+                // pooled buffer to the next thread this way.
+                int sort = Type.getReturnType(descriptor).getSort();
+                return sort == Type.OBJECT || sort == Type.ARRAY;
+            }
             if (opcode != Opcodes.INVOKEVIRTUAL || !"getAndSet".equals(name)) {
                 return false;
             }
