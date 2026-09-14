@@ -2177,9 +2177,10 @@ final class Corpus {
             //     one fragility is its single task-execution thread. The pair separates on
             //     recordTaskException alone: the detector's thread-death claim follows from
             //     that one recorded event and from nothing the scheduler did. The silent row
-            //     deliberately records schedule and complete but not recordTaskRun, because the
-            //     run-to-complete path is judged against a wall-clock threshold (100 ms), and a
-            //     silent expectation must not be breakable by a GC pause.
+            //     records schedule, run and complete for one task on its own timer. Since #575
+            //     starvation is a task falling due while another holds the timer thread, which one
+            //     task cannot do, so no GC pause can break the silence; before it the row had to
+            //     leave recordTaskRun out, because runs were judged against a 100 ms threshold.
 
             new RecordingSubject("recorded_timer_taskExceptionKillsThread", JDK,
                     "java.util.Timer",
@@ -2195,10 +2196,11 @@ final class Corpus {
                     "java.util.Timer",
                     DetectorType.TIMER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same schedule-and-complete lifecycle on a second timer, with no "
-                            + "exception recorded because none is thrown. Thread death is the "
-                            + "only claim the detector makes from these calls, so the silence "
-                            + "is its model finding a completed lifecycle and nothing else"),
+                    "the same schedule-run-complete lifecycle on a second timer, with no "
+                            + "exception recorded because none is thrown, and one task, which "
+                            + "cannot fall due while another task holds the timer's thread. "
+                            + "Neither thread death nor starvation can follow from these calls, "
+                            + "so the silence is the model finding a completed lifecycle"),
 
             // --- FutureIgnored: the purest protocol pair in the lane. The detector's whole
             //     model is one boolean per submitted Future - was it ever inspected - so the

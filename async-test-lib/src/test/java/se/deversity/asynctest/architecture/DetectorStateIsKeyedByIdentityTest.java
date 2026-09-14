@@ -58,7 +58,6 @@ class DetectorStateIsKeyedByIdentityTest {
     private static final Map<String, String> PENDING = Map.of(
             "ExecutorShutdownDetector.java", "#573 keys it by identity itself",
             "ThreadLocalMonitor.java", "#574 keys it by identity itself",
-            "TimerDetector.java", "#576 rewrites its exception and timing paths",
             "LockUpgradeDeadlockDetector.java", "#572 rewrites its read-hold map",
             "LockDowngradeDetector.java", "#572 rewrites its write-acquire forwarding",
             "ReadWriteLockMonitor.java", "#577 edits its report class");

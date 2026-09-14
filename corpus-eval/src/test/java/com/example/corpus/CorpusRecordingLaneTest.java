@@ -2112,12 +2112,13 @@ class CorpusRecordingLaneTest {
     }
 
     /**
-     * The same schedule-and-complete lifecycle on a second timer, with nothing thrown.
+     * The same lifecycle on a second timer - schedule, run, complete - with nothing thrown.
      *
-     * <p>recordTaskRun is deliberately not called: the run-to-complete distance is judged
-     * against a 100 ms wall-clock threshold, and a MUST_STAY_SILENT row must not be breakable
-     * by a GC pause between two adjacent calls. Thread death is the only claim the detector can
-     * make from what is recorded here, so the silence is structural.
+     * <p>The run is recorded with the task itself, so the detector reads when it fell due. One
+     * task on its own timer cannot fall due while another task holds that timer's thread, so no
+     * starvation can be observed however long the run takes, and nothing is thrown, so no death.
+     * The silence is structural: until #575 this row had to leave recordTaskRun out, because the
+     * run-to-complete distance was judged against 100 ms and a GC pause could break it.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_timer_tasksCompleteWithoutException() throws InterruptedException {
@@ -2130,6 +2131,7 @@ class CorpusRecordingLaneTest {
             cleanTimer.schedule(new TimerTask() {
                 @Override
                 public void run() {
+                    monitor.recordTaskRun(cleanTimer, "clean-timer", this, "tick");
                     monitor.recordTaskComplete(cleanTimer, "clean-timer", "tick");
                     completed.countDown();
                 }

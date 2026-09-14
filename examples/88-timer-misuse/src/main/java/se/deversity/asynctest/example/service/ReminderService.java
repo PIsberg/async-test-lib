@@ -24,9 +24,11 @@ import java.util.function.Consumer;
  * <p>FIX: {@code ScheduledExecutorService}. It can have more than one thread, and a task that
  * throws kills that task rather than the scheduler.
  *
- * <p>INSTRUMENTATION: TimerDetector times each task from run to complete, and needs to be told
- * when one throws. The hooks below report that lifecycle; they default to no-ops, so the
- * production path never touches the test library. This is the seam, not the bug.
+ * <p>INSTRUMENTATION: TimerDetector needs each run reported from inside the task, with the task
+ * itself, so it can read when the task fell due and see who held the timer thread at that moment;
+ * it also needs to be told when a task completes or throws. The hooks below report that lifecycle;
+ * they default to no-ops, so the production path never touches the test library. This is the seam,
+ * not the bug.
  */
 public class ReminderService {
 
@@ -37,7 +39,7 @@ public class ReminderService {
 
     private volatile Consumer<String> onScheduled = taskName -> { };
 
-    private volatile Consumer<String> onRun = taskName -> { };
+    private volatile BiConsumer<String, TimerTask> onRun = (taskName, task) -> { };
 
     private volatile Consumer<String> onComplete = taskName -> { };
 
@@ -74,7 +76,7 @@ public class ReminderService {
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
-                onRun.accept(taskName);
+                onRun.accept(taskName, this);
                 try {
                     Thread.sleep(workMillis);   // BUG: holds the single timer thread
                     firedReminders.add(message);
@@ -105,7 +107,7 @@ public class ReminderService {
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
-                onRun.accept(taskName);
+                onRun.accept(taskName, this);
                 RuntimeException failure = new IllegalStateException("reminder backend unreachable");
                 onException.accept(taskName, failure);
                 done.countDown();
@@ -141,12 +143,12 @@ public class ReminderService {
      * Installs the hooks TimerDetector needs. No-ops by default.
      *
      * @param scheduled called with the task label as it is scheduled
-     * @param run       called with the task label as it starts
+     * @param run       called from inside the task as it starts, with its label and the task
      * @param complete  called with the task label as it finishes
      * @param exception called with the task label and the throwable that is about to escape
      * @param cancel    called after the timer is cancelled
      */
-    public void observeTimer(Consumer<String> scheduled, Consumer<String> run,
+    public void observeTimer(Consumer<String> scheduled, BiConsumer<String, TimerTask> run,
                              Consumer<String> complete, BiConsumer<String, Throwable> exception,
                              Runnable cancel) {
         this.onScheduled = scheduled;

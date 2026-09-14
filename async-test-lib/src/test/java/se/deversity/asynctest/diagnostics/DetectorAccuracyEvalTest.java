@@ -2681,4 +2681,81 @@ class DetectorAccuracyEvalTest {
                 "every unsignalled return was followed by another wait, and a notify into an "
                         + "empty monitor is not a lost wakeup (#590). Report:\n" + report);
     }
+
+    /** Keeps the calling timer task busy until the wall clock is strictly past {@code instantMs}. */
+    private static void holdTimerThreadUntilPast(long instantMs) {
+        while (System.currentTimeMillis() <= instantMs) {
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("timer: a task that falls due while another holds the only thread is reported (true positive)")
+    void timerDetectorFiresOnATaskStarvedByAnotherOnTheSameThread() throws InterruptedException {
+        TimerDetector detector = new TimerDetector();
+        java.util.Timer timer = new java.util.Timer("eval-starved", true);
+        try {
+            detector.registerTimer(timer, "eval-timer");
+            CountDownLatch reminderRan = new CountDownLatch(1);
+            java.util.TimerTask reminder = new java.util.TimerTask() {
+                @Override
+                public void run() {
+                    detector.recordTaskRun(timer, "eval-timer", this, "reminder");
+                    detector.recordTaskComplete(timer, "eval-timer", "reminder");
+                    reminderRan.countDown();
+                }
+            };
+            timer.schedule(new java.util.TimerTask() {
+                @Override
+                public void run() {
+                    detector.recordTaskRun(timer, "eval-timer", this, "report");
+                    timer.schedule(reminder, 2);
+                    // The bug: slow work on the timer's one thread, past the reminder's due time.
+                    holdTimerThreadUntilPast(reminder.scheduledExecutionTime());
+                    detector.recordTaskComplete(timer, "eval-timer", "report");
+                }
+            }, 0);
+            assertTrue(reminderRan.await(10, java.util.concurrent.TimeUnit.SECONDS));
+
+            assertTrue(detector.analyze().hasIssues(),
+                    "the reminder fell due while the report still held the timer thread, and waited "
+                            + "for it. Report: " + detector.analyze());
+        } finally {
+            timer.cancel();
+        }
+    }
+
+    @Test
+    @DisplayName("timer: a slow task with nothing falling due behind it stays silent (true negative)")
+    void timerDetectorStaysSilentOnASlowTaskThatStarvesNobody() throws InterruptedException {
+        TimerDetector detector = new TimerDetector();
+        java.util.Timer timer = new java.util.Timer("eval-alone", true);
+        try {
+            detector.registerTimer(timer, "eval-timer");
+            CountDownLatch done = new CountDownLatch(1);
+            timer.schedule(new java.util.TimerTask() {
+                @Override
+                public void run() {
+                    detector.recordTaskRun(timer, "eval-timer", this, "report");
+                    // The same slow work, standing in for a GC pause too: longer than the 100 ms
+                    // the detector used to call long-running, with no other task scheduled.
+                    holdTimerThreadUntilPast(System.currentTimeMillis() + 150);
+                    detector.recordTaskComplete(timer, "eval-timer", "report");
+                    done.countDown();
+                }
+            }, 0);
+            assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS));
+
+            assertFalse(detector.analyze().hasIssues(),
+                    "no task fell due while the report ran, so none waited for it; a duration is not "
+                            + "starvation (#575). Report: " + detector.analyze());
+        } finally {
+            timer.cancel();
+        }
+    }
 }

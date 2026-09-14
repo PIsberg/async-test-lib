@@ -49,27 +49,6 @@ public class TimerDetectorTest {
     }
 
     @Test
-    void testLongRunningTaskDetected() throws InterruptedException {
-        TimerDetector detector = new TimerDetector();
-        Timer timer = new Timer("long-task-timer");
-
-        detector.registerTimer(timer, "long-timer");
-        detector.recordTaskRun(timer, "long-timer", "slow-task");
-
-        // Simulate long-running task by sleeping beyond the threshold
-        Thread.sleep(150);
-
-        detector.recordTaskComplete(timer, "long-timer", "slow-task");
-
-        TimerDetector.TimerReport report = detector.analyze();
-
-        assertNotNull(report);
-        assertTrue(report.hasIssues(), "Long-running task should be detected");
-        assertFalse(report.longRunningTaskWarnings.isEmpty(), "Should report long-running task warning");
-        timer.cancel();
-    }
-
-    @Test
     void testTimerCancellationTracked() {
         TimerDetector detector = new TimerDetector();
         Timer timer = new Timer("cancel-timer");

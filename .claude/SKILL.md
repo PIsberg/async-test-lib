@@ -365,7 +365,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 |-----------------|-------------|-----------------|
 | `detectCalendarIssues` | `CALENDAR` | Shared `Calendar` accessed by multiple threads |
 | `detectSharedCollections` | `SHARED_COLLECTIONS` | `ArrayList`/`HashMap`/`HashSet`/etc. used concurrently without synchronization |
-| `detectTimerIssues` | `TIMER` | `java.util.Timer` failures (uncaught exception kills all tasks) |
+| `detectTimerIssues` | `TIMER` | `java.util.Timer` failures (uncaught exception kills all tasks), tasks starved behind another on the timer thread |
 | `detectCopyOnWriteCollectionIssues` | `COPY_ON_WRITE_COLLECTIONS` | `CopyOnWriteArrayList`/`Set` in write-heavy paths |
 | `detectStringBuilderIssues` | `STRING_BUILDER` | `StringBuilder` mutated by multiple threads |
 

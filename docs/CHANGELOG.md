@@ -159,6 +159,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thrown from, because the exception message alone named no class and the crash could not be
   traced from either CI log.
 
+- **`TimerDetector` observes starvation instead of timing tasks against 100 ms (#575).** A task
+  whose run-to-complete time passed 100 ms was reported as starving the tasks behind it, so a GC
+  pause or a loaded CI runner made a correct, short task fire, and a lone slow task that starved
+  nobody fired too. A task is now reported when it fell due, by its own
+  `TimerTask.scheduledExecutionTime()`, strictly inside a recorded run of a different task on the
+  timer thread: it waited for that task, and the report names both and the offsets. The due time
+  needs the task, so a new `recordTaskRun(Timer, String, TimerTask, String)` overload is called
+  from inside `run()`; the name-only form still marks who held the thread but never decides a
+  starvation. The boundaries are all towards silence and are in the class javadoc: two tasks due at
+  the same instant, fixed-delay repetitions, a fixed-rate task overrunning its own period, and
+  overlaps shorter than a millisecond. `TimerStarvationModelTest` pins both directions on real
+  timers, four of its six cases red before the change; `DetectorAccuracyEvalTest` gains the pair.
+  Example 88's demonstration now schedules its eight reminders 10 ms apart so each falls due inside
+  an earlier one's run. The detector also keys its timers by identity rather than identity hash.
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at
