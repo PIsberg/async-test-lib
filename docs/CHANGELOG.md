@@ -143,6 +143,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recording API cannot see a timeout and a timed wait whose caller gives up by design also fires.
   `WakeupDetectorAccuracyTest` was 4 of 8 red before the change, all on correct code.
 
+- **`AtomicityValidator` and `RaceConditionDetector` no longer crash on a lock held twice (#605).**
+  Both recomputed "some lock was held at every access" with an intersection that sized its result
+  by the shorter set and copied every match from the other. A held-lock set can name a lock twice:
+  a lock acquired reentrantly repeats in its fingerprint's members, and a `synchronized` method on
+  the receiver carried the receiver as both its own monitor and the method's. `{M, M}` against
+  `{M}` then threw `ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1` out of
+  `analyze()`, where `DetectorFailurePolicy` skips the detector with one stderr line, so the test
+  reported nothing for it and read as clean. The corpus eval hit it on main (run 34890157370, JDK
+  25) through the per-generation ownership excuse (#555), only when the access holding the lock
+  twice drained first. Both detectors now share one duplicate-safe `Lockset.intersect`, and
+  `AtomicityValidator` counts the carried monitors with the same union the streamed lockset uses.
+  `DuplicateLockIntersectionTest` pins both shapes and a must-fire twin for each; five of its six
+  cases threw on main. The skip line now also ends with the top three frames the failure was
+  thrown from, because the exception message alone named no class and the crash could not be
+  traced from either CI log.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

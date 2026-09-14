@@ -44,18 +44,50 @@ public final class DetectorFailurePolicy {
      * does abort the rest of that sweep — acceptable, because the only reason to enable strict
      * mode is to fail a build that would otherwise pass while reporting nothing.
      *
+     * <p>The line ends with the frames the failure was thrown from. Outside strict mode it is
+     * often all a build log keeps: the run stays green and nobody reruns it, and an exception's
+     * message alone rarely names a class. {@code ArrayIndexOutOfBoundsException: Index 1 out of
+     * bounds for length 1} reached the corpus eval twice that way before anyone could say which
+     * detector method threw it (#605).
+     *
      * @param detectorName simple class name of the detector or report that failed
      * @param failure      what it threw
      * @throws AssertionError under strict mode, always
      */
     public static void detectorFailed(String detectorName, Throwable failure) {
         System.err.println("[AsyncTest] Detector " + detectorName
-            + " failed during analysis and was skipped: " + failure);
+            + " failed during analysis and was skipped: " + failure + thrownAt(failure));
         if (Boolean.getBoolean(STRICT_PROPERTY)) {
             throw new AssertionError("Detector " + detectorName + " threw during analysis, so its"
                 + " finding was lost and the run reported nothing for it — which looks exactly"
                 + " like a clean run. Strict mode (" + STRICT_PROPERTY + ") fails the build"
                 + " instead of writing a line to stderr.", failure);
         }
+    }
+
+    /** How many frames of the failure the diagnostic line carries. */
+    private static final int FRAMES_SHOWN = 3;
+
+    /**
+     * {@return {@code " at frame <- caller <- caller"} for the top of {@code failure}'s stack, or
+     * an empty string when it carries none}
+     *
+     * <p>Three frames name the method that threw and the path that reached it while keeping the
+     * diagnostic to one line.
+     */
+    private static String thrownAt(Throwable failure) {
+        StackTraceElement[] frames = failure.getStackTrace();
+        if (frames.length == 0) {
+            return "";
+        }
+        StringBuilder at = new StringBuilder(" at ");
+        int shown = Math.min(FRAMES_SHOWN, frames.length);
+        for (int i = 0; i < shown; i++) {
+            if (i > 0) {
+                at.append(" <- ");
+            }
+            at.append(frames[i]);
+        }
+        return at.toString();
     }
 }

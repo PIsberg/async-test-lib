@@ -65,26 +65,15 @@ public class RaceConditionDetector {
         }
     }
 
-    /** {@return the lock hashes present in both sets} */
+    /**
+     * {@return the lock hashes present in both sets}
+     *
+     * <p>The shared {@link Lockset#intersect} rather than a copy of it: an access holding a lock
+     * reentrantly names it twice, and this copy overflowed on that shape (#605).
+     */
     static int[] intersection(int[] left, int[] right) {
-        if (left.length == 0 || right.length == 0) {
-            return EMPTY;
-        }
-        int[] kept = new int[Math.min(left.length, right.length)];
-        int count = 0;
-        for (int candidate : left) {
-            for (int other : right) {
-                if (candidate == other) {
-                    kept[count] = candidate;
-                    count++;
-                    break;
-                }
-            }
-        }
-        return count == 0 ? EMPTY : java.util.Arrays.copyOf(kept, count);
+        return Lockset.intersect(left, right);
     }
-
-    private static final int[] EMPTY = new int[0];
     private static class ObjectFieldState {
         final String className;
         final int objectId;

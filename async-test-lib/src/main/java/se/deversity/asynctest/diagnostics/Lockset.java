@@ -120,6 +120,41 @@ final class Lockset {
     }
 
     /**
+     * {@return the distinct lock ids present in both sets, {@link HeldLocks#NONE} when there are
+     * none}
+     *
+     * <p>For a consumer that recomputes an intersection from recorded sets rather than streaming
+     * it through {@link #note}. Either side may name a lock more than once: a lock acquired
+     * reentrantly sits on the thread's lock stack twice, so its registered members repeat, and a
+     * {@code synchronized} method on the receiver carries the receiver as both its own monitor
+     * and the method's. Sizing the result by the shorter side and copying every match from the
+     * other overflowed on exactly that shape, so each match is kept once (#605).
+     */
+    static int[] intersect(int[] left, int[] right) {
+        if (left.length == 0 || right.length == 0) {
+            return HeldLocks.NONE;
+        }
+        int[] kept = new int[left.length];
+        int count = 0;
+        for (int hash : left) {
+            if (contains(right, hash) && !containsWithin(kept, count, hash)) {
+                kept[count] = hash;
+                count++;
+            }
+        }
+        return count == 0 ? HeldLocks.NONE : Arrays.copyOf(kept, count);
+    }
+
+    private static boolean containsWithin(int[] hashes, int length, int hash) {
+        for (int i = 0; i < length; i++) {
+            if (hashes[i] == hash) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * {@return a lock id for a digest nobody registered, in a range no identity hash uses}
      *
      * <p>Identity hashes are non-negative, so the sign bit marks an opaque id and the two

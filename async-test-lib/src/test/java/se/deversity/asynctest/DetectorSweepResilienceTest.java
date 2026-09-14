@@ -95,6 +95,41 @@ class DetectorSweepResilienceTest {
     }
 
     /**
+     * The contained line is often all a CI log keeps of a detector failure: the run stays green and
+     * nobody reruns it. A bare {@code ArrayIndexOutOfBoundsException: Index 1 out of bounds for
+     * length 1} names no class, which is how #605 reached the corpus eval twice and could not be
+     * traced from either log. The line has to say where the detector threw.
+     */
+    @Test
+    void theSkipLineSaysWhereTheDetectorThrew() {
+        withoutStrictMode(() -> {
+            FindingSink out = new FindingSink();
+            String written = captureStdErr(() ->
+                DetectorRegistry.ifIssue(new ExplodingDetector(),
+                    ExplodingDetector::analyze, r -> true, out));
+
+            assertTrue(written.contains("ExplodingDetector failed during analysis and was skipped"),
+                "the line keeps the shape the changelog and past logs quote: " + written);
+            assertTrue(written.contains("ExplodingDetector.analyze("),
+                "the line must name the frame that threw, not just the exception: " + written);
+        });
+    }
+
+    /** Runs {@code body} with {@code System.err} redirected and returns what it wrote. */
+    private static String captureStdErr(Runnable body) {
+        java.io.PrintStream previous = System.err;
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        try (java.io.PrintStream capture = new java.io.PrintStream(
+                buffer, true, java.nio.charset.StandardCharsets.UTF_8)) {
+            System.setErr(capture);
+            body.run();
+        } finally {
+            System.setErr(previous);
+        }
+        return buffer.toString(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /**
      * The other half of the contract. Containment is right for a consumer and wrong here: a
      * detector that throws reports nothing, and nothing reporting looks exactly like a clean run,
      * which is how five detectors shipped for several releases dereferencing a registry miss

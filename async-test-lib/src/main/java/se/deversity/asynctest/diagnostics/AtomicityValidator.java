@@ -1,7 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -995,7 +994,7 @@ public class AtomicityValidator {
                 common = held;
                 continue;
             }
-            common = intersectLocks(common, held);
+            common = Lockset.intersect(common, held);
             if (common.length == 0) {
                 return false;
             }
@@ -1046,7 +1045,7 @@ public class AtomicityValidator {
                 return false;
             }
             int[] previous = commonPerGeneration.get(access.generation);
-            int[] common = previous == null ? held : intersectLocks(previous, held);
+            int[] common = previous == null ? held : Lockset.intersect(previous, held);
             if (common.length == 0) {
                 return false;
             }
@@ -1065,32 +1064,12 @@ public class AtomicityValidator {
             members = registered != null ? registered
                     : new int[] {Lockset.opaque(access.fingerprint)};
         }
-        int extra = (access.ownMonitor != 0 ? 1 : 0) + (access.methodMonitor != 0 ? 1 : 0);
-        if (extra == 0) {
+        if (access.ownMonitor == 0 && access.methodMonitor == 0) {
             return members;
         }
-        int[] out = Arrays.copyOf(members, members.length + extra);
-        int at = members.length;
-        if (access.ownMonitor != 0) {
-            out[at] = access.ownMonitor;
-            at++;
-        }
-        if (access.methodMonitor != 0) {
-            out[at] = access.methodMonitor;
-        }
-        return out;
-    }
-
-    private static int[] intersectLocks(int[] left, int[] right) {
-        int kept = 0;
-        int[] out = new int[Math.min(left.length, right.length)];
-        for (int hash : left) {
-            if (Lockset.contains(right, hash)) {
-                out[kept] = hash;
-                kept++;
-            }
-        }
-        return kept == out.length ? out : Arrays.copyOf(out, kept);
+        // The same union the streamed lockset takes, so a monitor the members already name, or a
+        // method monitor that is the receiver's own, is counted once here as it is there (#605).
+        return Lockset.union(members, access.ownMonitor, access.methodMonitor);
     }
 
     /**
