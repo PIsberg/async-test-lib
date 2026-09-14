@@ -59,7 +59,7 @@ public class CalendarDetector {
         }
     }
 
-    private final Map<Integer, CalendarState> calendars = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, CalendarState> calendars = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -70,7 +70,7 @@ public class CalendarDetector {
      */
     public void registerCalendar(Calendar calendar, String name) {
         if (!enabled || calendar == null) return;
-        calendars.putIfAbsent(System.identityHashCode(calendar), new CalendarState(calendar, name));
+        calendars.putIfAbsent(new IdentityKey(calendar), new CalendarState(calendar, name));
     }
 
     /**
@@ -112,7 +112,7 @@ public class CalendarDetector {
      */
     public void recordError(Calendar calendar, String name, String errorType) {
         if (!enabled || calendar == null) return;
-        CalendarState state = calendars.get(System.identityHashCode(calendar));
+        CalendarState state = calendars.get(new IdentityKey(calendar));
         if (state != null) {
             state.errorCount.incrementAndGet();
         }
@@ -121,7 +121,7 @@ public class CalendarDetector {
     private void recordAccess(Calendar calendar, String name, String method) {
         if (!enabled || calendar == null) return;
 
-        int key = System.identityHashCode(calendar);
+        IdentityKey key = new IdentityKey(calendar);
         CalendarState state = calendars.computeIfAbsent(key,
                 k -> new CalendarState(calendar, name));
 

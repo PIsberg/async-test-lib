@@ -53,7 +53,7 @@ public class CompletableFutureChainDetector {
         }
     }
 
-    private final Map<Integer, FutureState> futures = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, FutureState> futures = new ConcurrentHashMap<>();
     private final AtomicInteger totalCreated = new AtomicInteger(0);
     private final AtomicInteger totalJoined = new AtomicInteger(0);
     private final AtomicInteger totalChained = new AtomicInteger(0);
@@ -83,8 +83,8 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        int key = System.identityHashCode(future);
-        FutureState state = new FutureState(name != null ? name : "CompletableFuture@" + Integer.toHexString(key));
+        IdentityKey key = new IdentityKey(future);
+        FutureState state = new FutureState(name != null ? name : "CompletableFuture@" + Integer.toHexString(key.hashCode()));
         futures.put(key, state);
         totalCreated.incrementAndGet();
     }
@@ -102,14 +102,14 @@ public class CompletableFutureChainDetector {
         if (!enabled || original == null || result == null) {
             return;
         }
-        int key = System.identityHashCode(original);
+        IdentityKey key = new IdentityKey(original);
         FutureState state = futures.get(key);
         if (state != null) {
             state.chainOperations.add(operation);
         }
         
         // Track the new future too
-        int resultKey = System.identityHashCode(result);
+        IdentityKey resultKey = new IdentityKey(result);
         if (!futures.containsKey(resultKey)) {
             FutureState newState = new FutureState(
                 state != null ? state.name + "->" + operation : "chained-" + operation);
@@ -128,7 +128,7 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        int key = System.identityHashCode(future);
+        IdentityKey key = new IdentityKey(future);
         FutureState state = futures.get(key);
         if (state != null) {
             state.exceptionallyAdded = true;
@@ -152,7 +152,7 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        int key = System.identityHashCode(future);
+        IdentityKey key = new IdentityKey(future);
         FutureState state = futures.get(key);
         if (state != null) {
             state.handled = true;
@@ -177,7 +177,7 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        int key = System.identityHashCode(future);
+        IdentityKey key = new IdentityKey(future);
         FutureState state = futures.get(key);
         if (state != null) {
             state.joined = true;
@@ -199,7 +199,7 @@ public class CompletableFutureChainDetector {
         report.totalChained = totalChained.get();
 
         // Check for unjoined futures
-        for (Map.Entry<Integer, FutureState> entry : futures.entrySet()) {
+        for (Map.Entry<IdentityKey, FutureState> entry : futures.entrySet()) {
             FutureState state = entry.getValue();
             
             if (!state.joined) {

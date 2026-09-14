@@ -90,7 +90,7 @@ public final class CompletableFutureCompletionRaceDetector {
         FutureState(String label) { this.label = label; }
     }
 
-    private final Map<Integer, FutureState> futures  = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, FutureState> futures  = new ConcurrentHashMap<>();
     private final AtomicInteger             sequence = new AtomicInteger();
     private volatile boolean                enabled  = true;
 
@@ -165,7 +165,7 @@ public final class CompletableFutureCompletionRaceDetector {
         if (!enabled || future == null || thread == null) return;
         int id = System.identityHashCode(future);
         String name = label != null ? label : "CompletableFuture@" + id;
-        FutureState state = futures.computeIfAbsent(id, k -> new FutureState(name));
+        FutureState state = futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(name));
         state.attempts.add(new Attempt(
                 sequence.incrementAndGet(), thread.getName(), won, exceptional, rendered));
     }

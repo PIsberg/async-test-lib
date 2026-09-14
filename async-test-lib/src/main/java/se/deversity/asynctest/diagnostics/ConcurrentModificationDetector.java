@@ -117,7 +117,7 @@ public class ConcurrentModificationDetector {
         }
     }
 
-    private final Map<Integer, CollectionState> collections = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, CollectionState> collections = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -133,7 +133,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        collections.putIfAbsent(System.identityHashCode(collection), 
+        collections.putIfAbsent(new IdentityKey(collection), 
             new CollectionState(collection, name));
     }
 
@@ -147,7 +147,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(System.identityHashCode(collection));
+        CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
             state.activeIterators.incrementAndGet();
             state.iteratingThreads.add(Thread.currentThread().threadId());
@@ -165,7 +165,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(System.identityHashCode(collection));
+        CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
             state.activeIterators.decrementAndGet();
             state.iteratingThreads.remove(Thread.currentThread().threadId());
@@ -183,7 +183,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(System.identityHashCode(collection));
+        CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
             state.modificationCount.incrementAndGet();
             state.modifyingThreads.add(Thread.currentThread().threadId());
@@ -210,7 +210,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(System.identityHashCode(collection));
+        CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
             state.concurrentModifications.incrementAndGet();
             state.observedDuringIteration.incrementAndGet();

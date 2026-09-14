@@ -38,11 +38,11 @@ public class AtomicNonAtomicUpdateDetector {
         AtomicState(String name) { this.name = name; }
     }
 
-    private final Map<Integer, AtomicState> atomics = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, AtomicState> atomics = new ConcurrentHashMap<>();
 
     private AtomicState stateFor(Object atomic, String name) {
-        return atomics.computeIfAbsent(System.identityHashCode(atomic),
-            id -> new AtomicState(name != null ? name : "Atomic@" + id));
+        return atomics.computeIfAbsent(new IdentityKey(atomic),
+            key -> new AtomicState(name != null ? name : "Atomic@" + key.hashCode()));
     }
 
     /**

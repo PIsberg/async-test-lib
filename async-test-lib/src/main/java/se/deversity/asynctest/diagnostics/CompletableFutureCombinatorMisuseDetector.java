@@ -139,7 +139,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
         }
     }
 
-    private final Map<Integer, CombinatorState> combinators = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, CombinatorState> combinators = new ConcurrentHashMap<>();
     private final AtomicLong                    sequence    = new AtomicLong();
     private volatile boolean                    enabled     = true;
 
@@ -158,7 +158,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
         if (!enabled || combined == null || thread == null) return;
         int id = System.identityHashCode(combined);
         String name = label != null ? label : "combinator@" + id;
-        combinators.computeIfAbsent(id, k -> new CombinatorState(
+        combinators.computeIfAbsent(new IdentityKey(combined), k -> new CombinatorState(
                 name, kind != null ? kind : "allOf", Math.max(arity, 0), thread.getName()));
     }
 
@@ -173,7 +173,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
     public void recordConstituentCompleted(CompletableFuture<?> combined, String constituentLabel,
                                            boolean exceptional, Thread thread) {
         if (!enabled || combined == null || thread == null) return;
-        CombinatorState s = combinators.get(System.identityHashCode(combined));
+        CombinatorState s = combinators.get(new IdentityKey(combined));
         if (s == null) return;   // combinator was never registered; nothing to say about it
         s.constituents.add(new ConstituentEvent(
                 sequence.incrementAndGet(),
@@ -191,7 +191,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
      */
     public void recordAwait(CompletableFuture<?> combined, String how, Thread thread) {
         if (!enabled || combined == null || thread == null) return;
-        CombinatorState s = combinators.get(System.identityHashCode(combined));
+        CombinatorState s = combinators.get(new IdentityKey(combined));
         if (s == null) return;
         s.awaits.add(new AwaitEvent(
                 sequence.incrementAndGet(), how != null ? how : "join", thread.getName()));

@@ -80,7 +80,7 @@ public class BlockingQueueDetector {
         }
     }
 
-    private final Map<Integer, QueueState> queues = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, QueueState> queues = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -109,7 +109,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        queues.putIfAbsent(System.identityHashCode(queue), new QueueState(queue, name, capacity));
+        queues.putIfAbsent(new IdentityKey(queue), new QueueState(queue, name, capacity));
     }
 
     /**
@@ -136,7 +136,7 @@ public class BlockingQueueDetector {
             return;
         }
         int observed = observedCapacityOf(queue);
-        queues.computeIfAbsent(System.identityHashCode(queue),
+        queues.computeIfAbsent(new IdentityKey(queue),
                         absent -> new QueueState(queue, null, observed))
                 .capacity.accumulateAndGet(observed, BlockingQueueDetector::widerBound);
     }
@@ -199,7 +199,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(System.identityHashCode(queue));
+        QueueState state = queues.get(new IdentityKey(queue));
         lastOffer.set(state);
         if (state != null) {
             state.offerCount.incrementAndGet();
@@ -253,7 +253,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(System.identityHashCode(queue));
+        QueueState state = queues.get(new IdentityKey(queue));
         if (state != null) {
             state.pollCount.incrementAndGet();
             state.consumerThreads.add(Thread.currentThread().threadId());
@@ -276,7 +276,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(System.identityHashCode(queue));
+        QueueState state = queues.get(new IdentityKey(queue));
         if (state != null) {
             state.putCount.incrementAndGet();
             state.producerThreads.add(Thread.currentThread().threadId());
@@ -294,7 +294,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(System.identityHashCode(queue));
+        QueueState state = queues.get(new IdentityKey(queue));
         if (state != null) {
             state.takeCount.incrementAndGet();
             state.consumerThreads.add(Thread.currentThread().threadId());
