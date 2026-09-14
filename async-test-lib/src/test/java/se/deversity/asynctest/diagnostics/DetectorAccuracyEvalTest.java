@@ -1529,6 +1529,69 @@ class DetectorAccuracyEvalTest {
                         + "counting how many threads touched the lock");
     }
 
+    /**
+     * One thread takes the lock and holds it until the other has timed out and backed off, so the
+     * handled timeout happens on every run. {@code leak} decides whether the holder also re-enters
+     * the lock without releasing the extra hold, the CounterService shape (#589).
+     */
+    private static Runnable holdUntilTheOtherTimesOut(ReentrantLockDetector detector,
+            ReentrantLock lock, CountDownLatch otherTimedOut, boolean leak) {
+        return () -> {
+            try {
+                if (lock.tryLock(20, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    detector.recordLockAcquired(lock, Thread.currentThread().getName());
+                    try {
+                        if (leak) {
+                            lock.lock(); // a helper re-enters and never unlocks
+                        }
+                        otherTimedOut.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    } finally {
+                        detector.recordLockReleased(lock, Thread.currentThread().getName());
+                        lock.unlock();
+                    }
+                } else {
+                    detector.recordLockTimeout(lock); // handled: back off
+                    otherTimedOut.countDown();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("reentrant lock: a hold re-entered and never released fires (true positive)")
+    void reentrantLockDetectorFiresOnAHoldLeftTaken() throws InterruptedException {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "counter-lock");
+        CountDownLatch timedOut = new CountDownLatch(1);
+        Runnable body = holdUntilTheOtherTimesOut(detector, lock, timedOut, true);
+        onTwoThreads(body, body);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "both threads are gone and the lock is still taken: the recorded pair balanced, "
+                        + "but the lock itself says a hold was never given back. Report:\n"
+                        + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("reentrant lock: the twin whose tryLock times out and backs off stays silent (true negative)")
+    void reentrantLockDetectorStaysSilentOnAHandledTimeout() throws InterruptedException {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "counter-lock");
+        CountDownLatch timedOut = new CountDownLatch(1);
+        Runnable body = holdUntilTheOtherTimesOut(detector, lock, timedOut, false);
+        onTwoThreads(body, body);
+
+        assertEquals(0, timedOut.getCount(), "the premise: one tryLock really timed out");
+        assertFalse(detector.analyze().hasIssues(),
+                "the same contention and the same recorded timeout, handled by backing off, and the "
+                        + "lock free at analysis. Until #589 the timeout alone was a HIGH finding. "
+                        + "Report:\n" + detector.analyze());
+    }
+
     @Test
     @DisplayName("completable future: completing exceptionally with no handler fires (true positive)")
     void completableFutureExceptionDetectorFiresOnAnUnhandledFailure() throws InterruptedException {

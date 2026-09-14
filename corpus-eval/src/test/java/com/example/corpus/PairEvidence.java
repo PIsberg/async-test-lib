@@ -162,10 +162,11 @@ final class PairEvidence {
                 + "recorded unlock matched on a lock still write- or read-held at analysis, and the "
                 + "MUST_FIRE row no longer declares it; not yet re-read against that model, so it "
                 + "stays held until a reading confirms the rows separate on the real lock's state");
-        HELD_ON_MODEL.put(DetectorType.REENTRANT_LOCK, "recordLockTimeout is the finding, so a "
-                + "tryLock timeout the caller handles is reported the same as one it discards, and "
-                + "whether the false return was discarded is invisible here; TRY_LOCK_MISUSE, which "
-                + "observes the caller's use of the result, is the detector that can say it");
+        HELD_ON_MODEL.put(DetectorType.REENTRANT_LOCK, "#589 made the finding a lock still held "
+                + "at analysis, read from the lock itself, and a handled tryLock timeout context; "
+                + "still held until re-read, because recordStarvation is still the caller's own "
+                + "declaration and a hold kept by a thread still running at analysis would read "
+                + "the same as a leaked one");
         HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "the wasNotified flag the body passes is the "
                 + "spurious-wakeup finding, a wakeup is a defect only if the waiter skips "
                 + "re-checking its condition, which is never seen, and a notify with no waiter, "

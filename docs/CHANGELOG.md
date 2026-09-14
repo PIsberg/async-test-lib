@@ -107,6 +107,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the cross-round pair. The corpus MUST_FIRE row now takes a real write lock and declares
   nothing, and `examples/75-stamped-lock` no longer records a zero stamp as an acquisition.
 
+- **`ReentrantLockDetector` reports a lock left held, not a timeout that was handled (#589).**
+  `recordLockTimeout` put the lock in a set and any entry was a HIGH finding, so a `tryLock(t)`
+  that timed out and backed off, which is correct, failed the gate exactly like one whose `false`
+  return was discarded; the detector cannot see which. `recordStarvation` fired on any call,
+  including a wait of 0 ms, against a threshold its javadoc described and the code never had. The
+  finding is now a lock still held when the run is analysed, by a thread other than the analysing
+  one, read from the lock itself with `isLocked()`: the hold nobody gave back, including the
+  re-entered hold whose recorded acquire and release pair balances, which no count could show.
+  When `LockLeakDetector` is enabled and the forwarded counts already show the leak, the finding is
+  left to it. Timeouts are printed as context with a pointer to `TRY_LOCK_MISUSE`;
+  `recordStarvation` applies no threshold and ignores a wait of zero or less, as its javadoc now
+  says. `examples/66-reentrant-lock`, the consumer fixture and the corpus MUST_FIRE row (now
+  `recorded_reentrantLock_holdLeftTaken`) demonstrate the leaked hold. `ReentrantLockDetectorModelTest`,
+  two `LeakedHoldReportedOnceTest` cases, a `DetectorAccuracyEvalTest` twin pair and the runner-level
+  `ReentrantLockHeldAtAnalysisRunTest` pin both directions; against the unchanged detector, four of the
+  model and registry tests failed.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at
