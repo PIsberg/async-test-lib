@@ -33,16 +33,6 @@ final class LibraryReach {
     private static final Map<DetectorType, String> UNREACHED = new EnumMap<>(DetectorType.class);
 
     static {
-        unreached(DetectorType.SHARED_MATCHER,
-                "every corpus library creates a Matcher per call from a shared Pattern, which is "
-                        + "the correct shape, so there is a silent half and no library bug to pair "
-                        + "it with");
-        unreached(DetectorType.LATCH_MISUSE,
-                "no corpus library calls countDown on a latch the caller supplies; the three "
-                        + "countDown calls in Guava and netty are on latches those classes own. The "
-                        + "common library shape, future.addListener(latch::countDown, executor), "
-                        + "passes a method reference, and the agent cannot see a call made through "
-                        + "one wherever it is written (#550)");
         unreached(DetectorType.EXPLICIT_GC,
                 "no corpus library calls System.gc, and the detector is refused a pair in every "
                         + "lane anyway (DetectorCoverage)");

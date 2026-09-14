@@ -93,6 +93,9 @@ class CorpusAgentPairLaneTest {
 
     private static final Matcher SHARED_MATCHER = PATTERN.matcher(MATCH_INPUT);
 
+    /** The Matcher every thread hands to Groovy; its own instance, so the JDK row's counts stay apart. */
+    private static final Matcher SHARED_GROOVY_MATCHER = PATTERN.matcher(MATCH_INPUT);
+
     private static MessageDigest sharedDigest;
 
     private static final Calendar SHARED_CALENDAR = Calendar.getInstance();
@@ -965,6 +968,25 @@ class CorpusAgentPairLaneTest {
         });
     }
     /**
+     * Every thread asks Groovy to count the matches in the one Matcher.
+     *
+     * <p>{@code StringGroovyMethods.getCount(Matcher)} calls {@code reset()} and then
+     * {@code find()} in a loop on the Matcher it is given; those calls are in Groovy's class file.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_groovyMatcherCount_oneMatcherForEveryThread() {
+        swallowingTheRace(() -> org.codehaus.groovy.runtime.StringGroovyMethods.getCount(
+                SHARED_GROOVY_MATCHER));
+    }
+
+    /** The same Groovy call on a Matcher this call took from the shared Pattern. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_groovyMatcherCount_oneMatcherPerCall() {
+        swallowingTheRace(() -> org.codehaus.groovy.runtime.StringGroovyMethods.getCount(
+                PATTERN.matcher(MATCH_INPUT)));
+    }
+
+    /**
      * Leaves a Guava monitor after a {@code tryEnter} that returned false.
      *
      * <p>The Monitor javadoc says a boolean enter belongs in the condition of an {@code if}; this
@@ -1139,6 +1161,28 @@ class CorpusAgentPairLaneTest {
     /** The same Guava await, on a latch this thread counted down first. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void agent_guavaLatchAwait_sawItsCount() {
+        counted(() -> {
+            CountDownLatch reached = new CountDownLatch(1);
+            reached.countDown();
+            Uninterruptibles.awaitUninterruptibly(reached, 1, TimeUnit.SECONDS);
+        });
+    }
+
+    /**
+     * Waits through Guava on a latch nothing ever counts down, for the misuse detector.
+     *
+     * <p>The same body as {@link #agent_guavaLatchAwait_timedOut}, kept apart so each detector's
+     * row has its own method and its own report line.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaLatchAwait_neverCountedDown() {
+        counted(() -> Uninterruptibles.awaitUninterruptibly(
+                new CountDownLatch(1), 1, TimeUnit.MILLISECONDS));
+    }
+
+    /** The same Guava await, on a latch this thread counted down first. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaLatchAwait_countedDownBeforeTheAwait() {
         counted(() -> {
             CountDownLatch reached = new CountDownLatch(1);
             reached.countDown();

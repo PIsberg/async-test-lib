@@ -2045,16 +2045,38 @@ detector the whole lockset, and a `StampedLock` entry counts when the lock is he
 mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair that shape through
 the agent, and were as stated on their first run.
 
-**Where it stops.** With these pairs, the two #542 added and the commons-lang3 one below, 15 of the 18 agent-fed detectors are measured in both
-directions on call sites inside a library. `LibraryReach` records why the other three are not, and
+**Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
+added below, 17 of the 18 agent-fed detectors are measured in both directions on call sites inside a
+library. `LibraryReach` records why the eighteenth is not, and
 `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
 | Detector | Why no corpus library reaches it |
 |---|---|
-| `SHARED_MATCHER` | every library creates a `Matcher` per call, so there is a silent half and no bug to pair it with ([#545](https://github.com/PIsberg/async-test-lib/issues/545)) |
-| `LATCH_MISUSE` | no corpus library counts down a latch the caller supplies; the usual library shape, `future.addListener(latch::countDown, executor)`, passes a method reference, which the agent cannot see ([#545](https://github.com/PIsberg/async-test-lib/issues/545), [#550](https://github.com/PIsberg/async-test-lib/issues/550)) |
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
+
+**The last two, and a reason that was wrong.** Until #545 the table had two more rows.
+`SHARED_MATCHER` was there because every corpus library builds a `Matcher` per call, which is the
+correct shape and leaves nothing to pair it with. A parameter search over further libraries found
+one public API that works on a `Matcher` its caller supplies: Groovy's
+`StringGroovyMethods.getCount(Matcher)` resets the matcher and calls `find()` on it in Groovy's own
+class file. Groovy states no contract of its own; the ground truth is `Matcher`'s javadoc, the same
+kind of evidence as the commons-lang3 `Formatter` pair, and it joins the corpus as a ninth library
+in this lane only (`docs/DEPENDENCIES.md`, with every dependency it declares optional).
+`agent_groovyMatcherCount_oneMatcherForEveryThread` fires and its per-call twin stays silent.
+
+`LATCH_MISUSE` was there with the reason that no corpus library counts down a latch its caller
+supplies, and that reason assumed the wrong condition. `LatchMisuseDetector` also reports a latch
+that was awaited, never saw an await return, and was counted down fewer times than its count, which
+is the shape of a gate its author believed would open. Guava's timed
+`Uninterruptibles.awaitUninterruptibly` makes that await itself, so
+`agent_guavaLatchAwait_neverCountedDown` pairs the detector through Guava, already a corpus library,
+with no new dependency; its twin counts the latch down first. The extra-countdown condition still
+has no library call site, and that is recorded here rather than in the table, because the detector
+is reached.
+
+Both firing rows also go silent in the library-exclusion lane, whose exclude list now names
+`org.codehaus.groovy`, so each finding comes from the library's bytecode.
 
 When this section was first written the table had two more rows, and they were the more useful
 finding, because they were agent limits rather than corpus limits. The weaver matched a call only

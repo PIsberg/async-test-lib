@@ -28,6 +28,7 @@
         <netty.version>4.2.17.Final</netty.version>
         <spring.version>7.0.9</spring.version>
         <hikaricp.version>7.0.2</hikaricp.version>
+        <groovy.version>5.1.2</groovy.version>
         <slf4j.version>2.0.17</slf4j.version>
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
@@ -113,6 +114,16 @@
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
             <version>${hikaricp.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Groovy's runtime helpers take a java.util.regex.Matcher from the caller and call find()
+             on it in Groovy's own class file, which is the only public API across the surveyed
+             libraries that lets SHARED_MATCHER be measured on a library call site (#545). Every
+             dependency Groovy declares is optional, so this adds one jar and nothing else. -->
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy</artifactId>
+            <version>${groovy.version}</version>
             <scope>test</scope>
         </dependency>
         <!-- HikariCP logs through SLF4J and warns on every pool operation without a binding.
@@ -268,12 +279,12 @@
                             <includes>
                                 <include>**/CorpusAgentPairLaneTest.java</include>
                             </includes>
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons,fields=true,collections=true</argLine>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy,fields=true,collections=true</argLine>
                             <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs-library-excluded</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <corpus.lane>agent-pairs-library-excluded</corpus.lane>
-                                <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons,fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

@@ -27,6 +27,7 @@ final class Corpus {
     private static final String NETTY = "netty-buffer:4.2.17.Final";
     private static final String SPRING = "spring-core:7.0.9";
     private static final String HIKARI = "HikariCP:7.0.2";
+    private static final String GROOVY = "groovy:5.1.2";
 
     /**
      * The platform itself, for subjects that ship with it.
@@ -1339,6 +1340,22 @@ final class Corpus {
                     DetectorType.SHARED_FORMATTER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same commons-lang3 call into a Formatter this call built and closes"),
+
+            new RecordingSubject("agent_groovyMatcherCount_oneMatcherForEveryThread", GROOVY,
+                    "org.codehaus.groovy.runtime.StringGroovyMethods",
+                    DetectorType.SHARED_MATCHER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "getCount(Matcher) resets the Matcher it is handed and calls find() on it until "
+                            + "it fails, in Groovy's class file, and every thread hands it the same "
+                            + "one. Groovy states no contract; Matcher's javadoc does: not safe for "
+                            + "use by multiple concurrent threads (#545)"),
+
+            new RecordingSubject("agent_groovyMatcherCount_oneMatcherPerCall", GROOVY,
+                    "org.codehaus.groovy.runtime.StringGroovyMethods",
+                    DetectorType.SHARED_MATCHER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same Groovy call on a Matcher this call took from the shared Pattern, "
+                            + "which is how the regex API is meant to be used"),
             new RecordingSubject("agent_guavaMonitorTryEnter_leftAfterFailing", GUAVA,
                     "com.google.common.util.concurrent.Monitor",
                     DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
@@ -1415,6 +1432,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same Guava await on a latch this thread already counted down, which "
                             + "returns true with no timing assumption"),
+
+            new RecordingSubject("agent_guavaLatchAwait_neverCountedDown", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the await Guava makes on a latch of one never returns true and nothing ever "
+                            + "counts it down, which is LatchMisuseDetector's missing-countdown "
+                            + "condition: a gate its author believed would open. The detector needs "
+                            + "no library countDown for it, only Guava's await (#545)"),
+
+            new RecordingSubject("agent_guavaLatchAwait_countedDownBeforeTheAwait", GUAVA,
+                    "com.google.common.util.concurrent.Uninterruptibles",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same Guava await after the body counted the latch down to zero: the "
+                            + "await returns, and a returned await settles the latch"),
 
             new RecordingSubject("agent_guavaQueuePut_filledToCapacity", GUAVA,
                     "com.google.common.util.concurrent.Uninterruptibles",

@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The corpus eval reaches 17 of the 18 agent-fed detectors through library bytecode (#545).**
+  `SHARED_MATCHER` is paired through Groovy's `StringGroovyMethods.getCount(Matcher)`, which calls
+  `find()` on the caller's `Matcher` in Groovy's own class file; Groovy (`org.apache.groovy:groovy`,
+  every dependency optional) joins `corpus-eval` as a ninth corpus library, agent-pair lane only.
+  `LATCH_MISUSE` is paired through Guava's timed `Uninterruptibles.awaitUninterruptibly` on a latch
+  nothing counts down, which is the detector's missing-countdown condition; its `LibraryReach`
+  reason had assumed only a library `countDown` could reach it. `EXPLICIT_GC` remains the one
+  agent-fed detector with no library pair, and is refused in every lane.
 - **The corpus eval's lane one grows from 82 subjects to 139: 100 documented thread-safe, 39 not.**
   Sixty documented-safe subjects bounded the rate of `VERDICT`-tier false positives at 5.0% at 95%;
   a hundred bound it at 3.0%, and that column is still zero on JDK 21, 25 and 26 on Linux and 26 on
