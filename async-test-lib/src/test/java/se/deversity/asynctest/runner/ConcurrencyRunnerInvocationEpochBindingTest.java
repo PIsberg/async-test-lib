@@ -254,6 +254,67 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                         + " -> " + report);
     }
 
+    /** An await round one never exits, then a complete signalled wait in round two, on one thread. */
+    public static class ConditionAwaitAbandonedCrossRound {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+        static final java.util.concurrent.locks.Condition CONDITION =
+                new java.util.concurrent.locks.ReentrantLock().newCondition();
+
+        // One platform worker, so the same pool thread runs both rounds: without the round
+        // boundary, its await in round two is merged into round one's and that one vanishes.
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAll = false, detectConditionVariableIssues = true)
+        void body() {
+            var d = AsyncTestContext.conditionVariableDetector();
+            d.registerCondition(CONDITION, "cross-round");
+            d.recordAwait(CONDITION, "cross-round");
+            if (EXECUTIONS.getAndIncrement() == 0) {
+                return;   // round one ends inside the wait, with no exit recorded
+            }
+            d.recordSignal(CONDITION, "cross-round", false);
+            d.recordAwaitExit(CONDITION, "cross-round", false);
+        }
+    }
+
+    /** A while loop that awaits twice before its one recorded exit, in each of two rounds. */
+    public static class ConditionLoopReAwaitEachRound {
+        static final java.util.concurrent.locks.Condition CONDITION =
+                new java.util.concurrent.locks.ReentrantLock().newCondition();
+
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAll = false, detectConditionVariableIssues = true)
+        void body() {
+            var d = AsyncTestContext.conditionVariableDetector();
+            d.registerCondition(CONDITION, "loop");
+            d.recordAwait(CONDITION, "loop");
+            d.recordSignal(CONDITION, "loop", false);
+            d.recordAwait(CONDITION, "loop");   // woken, predicate still false: waits again
+            d.recordSignal(CONDITION, "loop", false);
+            d.recordAwaitExit(CONDITION, "loop", false);
+        }
+    }
+
+    @Test
+    @DisplayName("an await abandoned in round one is reported after the pooled thread awaits in round two")
+    void conditionAwaitAbandonedCrossRoundIsReported() {
+        ConditionAwaitAbandonedCrossRound.EXECUTIONS.set(0);
+        run(ConditionAwaitAbandonedCrossRound.class);
+        String report = REPORTS.get("ConditionVariableDetector");
+        assertTrue(report != null && report.contains("earlier round"),
+                "round one's await never exited; round two's exit closes round two's await. "
+                        + "AsyncTestContext.markInvocationStart must reach this detector (#593). "
+                        + "Reports: " + REPORTS.keySet() + " -> " + report);
+    }
+
+    @Test
+    @DisplayName("a loop re-awaiting inside each round is one wait per round, so the finding above is not the re-await alone")
+    void conditionLoopReAwaitEachRoundIsSilent() {
+        run(ConditionLoopReAwaitEachRound.class);
+        assertFalse(REPORTS.containsKey("ConditionVariableDetector"),
+                "a while loop that awaits again before its single recorded exit abandons nothing. "
+                        + "Report: " + REPORTS.get("ConditionVariableDetector"));
+    }
+
     /** A write release in round one and a read acquire in round two, on one pooled thread. */
     public static class LockDowngradeCrossRoundOnly {
         static final AtomicInteger EXECUTIONS = new AtomicInteger();

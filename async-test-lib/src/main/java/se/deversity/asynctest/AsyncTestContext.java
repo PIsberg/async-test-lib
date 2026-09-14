@@ -829,6 +829,11 @@ public final class AsyncTestContext {
         if (stampedLockDetector != null) {
             stampedLockDetector.markInvocationStart();
         }
+        // An await a pooled worker recorded and never exited belongs to its round; its await in
+        // the next round is a new wait, not the same one (#593).
+        if (conditionVariableDetector != null) {
+            conditionVariableDetector.markInvocationStart();
+        }
         // In-flight computations a thrown supplier or mapping function abandoned. Worker threads
         // are pooled, so without this the stale entry follows the thread into the next round and
         // reads as reentrancy or as recursion there (#498).
