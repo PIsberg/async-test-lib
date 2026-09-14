@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`TimerDetector` reports a timer thread's death only when the thread died (#567).**
+  `recordTaskException` set the death flag unconditionally, so the call was the finding: a task
+  that catches its exception, records it and carries on, with the timer still running, was
+  reported as having silently cancelled every remaining task. An exception recorded on the timer
+  thread now makes analysis ask that thread whether it died, with a bounded join for the moment
+  between the exception leaving `run()` and the thread exiting; a record from any other thread is
+  still taken at its word. Two smaller defects in the same class: the schedule call stored a start
+  time under a key nothing ever removed, one entry per schedule, and task durations used the wall
+  clock, which an NTP step can stretch. `TimerDetectorAccuracyTest` pins both directions, the
+  caught exception red before the fix.
+
 - **`LockUpgradeDeadlockDetector` stops reporting a legal write re-acquire as a permanent deadlock,
   and reaches `TrustTier.VERDICT` (#566).** A thread that holds the write lock of a
   `ReentrantReadWriteLock` may take the read lock and then the write lock again; the JDK's own

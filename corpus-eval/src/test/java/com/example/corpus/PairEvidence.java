@@ -118,10 +118,11 @@ final class PairEvidence {
                 + "a duration the body passes in; pool size and queued work are never consulted, "
                 + "so a dedicated scheduler running one slow nightly job fires and a real overrun "
                 + "under a second stays silent; needs a queue-behind model");
-        HELD_ON_MODEL.put(DetectorType.TIMER, "recordTaskException sets threadDied "
-                + "unconditionally, so the call is the finding and a caught, recorded exception "
-                + "fires the same; the other trigger compares wall-clock time against 100 ms; "
-                + "needs to observe the timer thread's death itself");
+        HELD_ON_MODEL.put(DetectorType.TIMER, "the long-running trigger compares a task's "
+                + "run-to-complete time against 100 ms, so a GC pause or a loaded runner makes a "
+                + "correct task fire, and an exception recorded off the timer thread is still "
+                + "taken at its word; needs the duration off the reporting path (#567 made thread "
+                + "death observed on the timer thread and the clock monotonic)");
         // LOCK_UPGRADE_DEADLOCK was held here on reading only the body's records; #566 made it
         // ask the lock, and it is promoted in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "compares exact lock fingerprints with no "
