@@ -7,7 +7,9 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import se.deversity.asynctest.AsyncTest;
@@ -769,13 +771,74 @@ final class CorpusGates {
      */
     static void nothingPublishesAfterTheLastSubject(long publishedAtStart, long publishedAtEnd,
                                                     long windowMillis) {
+        nothingPublishesAfterTheLastSubject(publishedAtStart, publishedAtEnd, windowMillis, "");
+    }
+
+    /**
+     * The same gate, carrying what was running when it tripped.
+     *
+     * <p>A count on its own says that something kept publishing, not what. The first CI failure of
+     * this gate (JDK 25, 271 events against 100) could not be told apart from Surefire's own woven
+     * stream flusher having more output to move, which is exactly the question the failure message
+     * has to answer for whoever reads it next.
+     *
+     * @param publishedAtStart the telemetry counter when the window opened
+     * @param publishedAtEnd   the counter when it closed
+     * @param windowMillis     how long the window was held open
+     * @param whoWasRunning    what {@link #threadsInsideNonPlatformCode} saw, or empty
+     */
+    static void nothingPublishesAfterTheLastSubject(long publishedAtStart, long publishedAtEnd,
+                                                    long windowMillis, String whoWasRunning) {
         long published = publishedAtEnd - publishedAtStart;
         assertTrue(published <= QUIET_WINDOW_ALLOWANCE,
                 published + " events were published in the " + windowMillis + " ms after the last "
                         + "subject finished, and at most " + QUIET_WINDOW_ALLOWANCE + " may be. A "
                         + "subject has left something running - a timer, a scheduler, an executor - "
                         + "whose woven accesses land in the event count of every subject that runs "
-                        + "after it. Stop it in an @AfterEach.");
+                        + "after it. Stop it in an @AfterEach."
+                        + (whoWasRunning.isEmpty() ? ""
+                                : " Runnable threads seen outside platform code right after the "
+                                        + "window, with sample counts: " + whoWasRunning));
+    }
+
+    /**
+     * {@return which runnable threads are executing outside the JDK and JUnit, sampled}
+     *
+     * <p>Called only once the quiet window has already failed, so it costs nothing on a green run.
+     * Each sample takes every thread's stack and keeps the first frame that is not platform code;
+     * a leaked timer shows up as its own thread inside the library that started it, and the
+     * harness as Surefire's.
+     *
+     * @param samples        how many snapshots to take
+     * @param intervalMillis the pause between snapshots
+     * @throws InterruptedException if the sampling thread is interrupted
+     */
+    static String threadsInsideNonPlatformCode(int samples, long intervalMillis)
+            throws InterruptedException {
+        Map<String, Integer> seen = new TreeMap<>();
+        for (int sample = 0; sample < samples; sample++) {
+            for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+                Thread thread = entry.getKey();
+                if (thread == Thread.currentThread() || thread.getState() != Thread.State.RUNNABLE) {
+                    continue;
+                }
+                for (StackTraceElement frame : entry.getValue()) {
+                    if (!isPlatformFrame(frame.getClassName())) {
+                        seen.merge(thread.getName().replaceAll("[0-9]+", "N") + " in "
+                                + frame.getClassName() + "." + frame.getMethodName(), 1, Integer::sum);
+                        break;
+                    }
+                }
+            }
+            Thread.sleep(intervalMillis);
+        }
+        return seen.toString();
+    }
+
+    private static boolean isPlatformFrame(String className) {
+        return className.startsWith("java.") || className.startsWith("jdk.")
+                || className.startsWith("sun.") || className.startsWith("com.sun.")
+                || className.startsWith("org.junit.");
     }
 
     private static boolean isAgentFed(DetectorType type) {
