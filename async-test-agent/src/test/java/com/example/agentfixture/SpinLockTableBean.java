@@ -27,6 +27,7 @@ public final class SpinLockTableBean {
     private volatile int busy;
 
     private volatile Object[] unguardedTable;
+    private volatile Object[] afterRelease;
 
     /** Replaces the table under the spinlock, released by writing 0 back like Caffeine does. */
     public int growReleasedByWrite() {
@@ -58,6 +59,25 @@ public final class SpinLockTableBean {
     public int growUnguarded() {
         unguardedTable = next(unguardedTable);
         Object[] seen = unguardedTable;
+        return seen == null ? 0 : seen.length;
+    }
+
+    /**
+     * The second twin (#558): the acquire is observed, the release is an {@code int}
+     * {@code getAndSet} through the handle, which the weaver does not substitute, and the thread
+     * then replaces {@link #afterRelease} with nothing held. The lock must not outlive its release
+     * just because the release was invisible.
+     */
+    public int growThenWriteAfterUnobservedRelease() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                int ignored = (int) BUSY.getAndSet(this, 0);
+            }
+            afterRelease = next(afterRelease);
+        }
+        Object[] seen = afterRelease;
         return seen == null ? 0 : seen.length;
     }
 

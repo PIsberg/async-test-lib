@@ -90,6 +90,39 @@ public final class HeldLocks {
     }
 
     /**
+     * A lock whose release may happen where nothing reports it, so its hold is re-confirmed against
+     * the lock itself whenever this thread's set is read.
+     *
+     * <p>A compare-and-swap spinlock is the case (#558). The agent sees the swap that takes it, but a
+     * release can go through a call it does not substitute - a {@code getAndSet}, a
+     * {@code decrementAndGet}, code it does not weave - and a lock that outlives its release makes
+     * every later access on this thread look guarded, which hides a real race. Asking the flag
+     * whether this thread still holds it turns an invisible release into an observed one the next
+     * time the set matters. An entry whose {@link #stillHeld()} answers {@code false}, or throws,
+     * leaves the set.
+     *
+     * @since 1.12.1
+     */
+    public interface Revocable {
+        /**
+         * {@return whether the calling thread still holds this lock}
+         *
+         * <p>Called on the holding thread, on the hot path of every access recorded while the lock
+         * is in the set, so it must be allocation-free and must not call back into this class.
+         */
+        boolean stillHeld();
+    }
+
+    /** {@return the calling thread's frame, with any revocable lock it no longer holds dropped} */
+    private static Frame current() {
+        Frame frame = FRAMES.get();
+        if (frame.revocable > 0) {
+            frame.dropRevoked();
+        }
+        return frame;
+    }
+
+    /**
      * Declares that the calling thread holds {@code lock} until the returned guard is closed.
      *
      * @param lock the lock object; {@code null} is ignored and yields a no-op guard
@@ -174,7 +207,7 @@ public final class HeldLocks {
      * @param lock the lock object
      */
     public static boolean holds(@Nullable Object lock) {
-        return lock != null && FRAMES.get().indexOf(lock) >= 0;
+        return lock != null && current().indexOf(lock) >= 0;
     }
 
     /**
@@ -189,7 +222,7 @@ public final class HeldLocks {
      * synchronisation and nothing to leak.
      */
     public static boolean anyHeld() {
-        return FRAMES.get().depth > 0;
+        return current().depth > 0;
     }
 
     /**
@@ -200,7 +233,7 @@ public final class HeldLocks {
      * can confirm, and one it can confirm may sit below it (#543).
      */
     static int depth() {
-        return FRAMES.get().depth;
+        return current().depth;
     }
 
     /**
@@ -209,7 +242,7 @@ public final class HeldLocks {
      * @param index 0 for the most recently acquired lock
      */
     static @Nullable Object heldFromTop(int index) {
-        Frame frame = FRAMES.get();
+        Frame frame = current();
         return index < 0 || index >= frame.depth ? null : frame.locks[frame.depth - 1 - index];
     }
 
@@ -219,7 +252,7 @@ public final class HeldLocks {
      * @param index 0 for the most recently acquired lock
      */
     static boolean sharedFromTop(int index) {
-        Frame frame = FRAMES.get();
+        Frame frame = current();
         return index >= 0 && index < frame.depth && frame.shared[frame.depth - 1 - index];
     }
 
@@ -232,7 +265,7 @@ public final class HeldLocks {
      * <p>Reads only the calling thread's own frame, so it is a plain array read.
      */
     public static @Nullable Object topHeld() {
-        Frame frame = FRAMES.get();
+        Frame frame = current();
         return frame.depth == 0 ? null : frame.locks[frame.depth - 1];
     }
 
@@ -283,7 +316,7 @@ public final class HeldLocks {
      * @since 1.9.8
      */
     public static long lockFingerprint(boolean forWrite) {
-        return FRAMES.get().registeredFingerprint(forWrite);
+        return current().registeredFingerprint(forWrite);
     }
 
     /**
@@ -345,7 +378,7 @@ public final class HeldLocks {
      */
     public static long lockFingerprint(@Nullable Object self, boolean forWrite) {
         int selfHash = self != null && Thread.holdsLock(self) ? System.identityHashCode(self) : 0;
-        return FRAMES.get().fingerprint(selfHash, forWrite);
+        return current().fingerprint(selfHash, forWrite);
     }
 
     /**
@@ -372,7 +405,7 @@ public final class HeldLocks {
      * @return the new intersection, which is {@code candidate} itself when nothing dropped out
      */
     static int[] intersect(int @Nullable [] candidate, Object self, boolean forWrite) {
-        Frame frame = FRAMES.get();
+        Frame frame = current();
         boolean selfHeld = Thread.holdsLock(self);
         int selfHash = selfHeld ? System.identityHashCode(self) : 0;
 
@@ -417,6 +450,9 @@ public final class HeldLocks {
         private boolean[] shared = new boolean[8];
         private int depth;
 
+        /** How many entries are {@link Revocable}, so a frame without one never re-confirms. */
+        private int revocable;
+
         /**
          * Cached per-mode fingerprints, recomputed lazily after a push or pop.
          *
@@ -442,6 +478,9 @@ public final class HeldLocks {
             hashes[depth] = System.identityHashCode(lock);
             shared[depth] = isShared;
             depth++;
+            if (lock instanceof Revocable) {
+                revocable++;
+            }
             fingerprintsValid = false;
         }
 
@@ -455,12 +494,41 @@ public final class HeldLocks {
                     return;
                 }
             }
+            removeAt(at);
+        }
+
+        private void removeAt(int at) {
+            if (locks[at] instanceof Revocable) {
+                revocable--;
+            }
             System.arraycopy(locks, at + 1, locks, at, depth - at - 1);
             System.arraycopy(hashes, at + 1, hashes, at, depth - at - 1);
             System.arraycopy(shared, at + 1, shared, at, depth - at - 1);
             depth--;
             locks[depth] = null;
             fingerprintsValid = false;
+        }
+
+        /**
+         * Removes every revocable entry this thread no longer holds.
+         *
+         * <p>A lock that cannot answer is treated as released: keeping it would be the direction
+         * that hides a race, and dropping it at worst reports an access that was guarded.
+         */
+        void dropRevoked() {
+            for (int i = depth - 1; i >= 0; i--) {
+                if (locks[i] instanceof Revocable lock && !confirmHeld(lock)) {
+                    removeAt(i);
+                }
+            }
+        }
+
+        private static boolean confirmHeld(Revocable lock) {
+            try {
+                return lock.stillHeld();
+            } catch (RuntimeException e) { // NOPMD - diagnostic bookkeeping never fails a test
+                return false;
+            }
         }
 
         /**

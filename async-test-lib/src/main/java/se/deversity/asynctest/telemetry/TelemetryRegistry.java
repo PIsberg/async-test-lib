@@ -4,7 +4,6 @@ import se.deversity.asynctest.diagnostics.HeldLocks;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.invoke.VarHandle;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -14,6 +13,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
  * Global registry that routes field-access events from producer threads into a shared
@@ -278,10 +279,10 @@ public final class TelemetryRegistry {
             return;
         }
         int identity = staticField || receiver == null ? 0 : System.identityHashCode(receiver);
-        if (isWrite && identity != 0 && !SPIN_FIELDS.isEmpty() && SPIN_FIELDS.contains(qualifiedName)) {
+        if (isWrite && identity != 0 && SpinLocks.isSpinField(qualifiedName)) {
             // The holder writing its spinlock flag is the release (#554). Declared before the write
             // lands, so the lock never reads as held after it truly is not.
-            releaseSpinLockIfHeld(identity, qualifiedName);
+            SpinLocks.release(receiver, qualifiedName);
         }
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
@@ -334,38 +335,36 @@ public final class TelemetryRegistry {
         HeldLocks.acquired(monitor);
     }
 
-    /** Which field each {@code VarHandle} bound in a woven class initializer is a handle on. */
-    private static final Map<Object, String> HANDLE_FIELDS = new ConcurrentHashMap<>();
-
-    /**
-     * Fields some thread has used as a compare-and-swap spinlock.
-     *
-     * <p>Keeps the release check off the access path until a spinlock actually exists: the woven
-     * write hook asks this set only when it is non-empty.
-     */
-    private static final Set<String> SPIN_FIELDS = ConcurrentHashMap.newKeySet();
-
-    /** One lock object per receiver and spinlock field, so every thread declares the same lock. */
-    private static final Map<SpinLockKey, Object> SPIN_LOCKS = new ConcurrentHashMap<>();
-
-    /** A spinlock is the flag field of one receiver. Identity hash, so no receiver is retained. */
-    private record SpinLockKey(int receiver, String field) { }
-
     /**
      * Records that {@code handle} is a {@code VarHandle} on {@code qualifiedName}.
      *
      * <p>Emitted by the weaver right after a {@code findVarHandle} call in a type initializer,
      * with the handle it returned. A spinlock is acquired through the handle and released by a
-     * plain write to the field, and this is the only place the two names meet.
+     * plain write to the field, and this is the only place the two names meet. A handle bound
+     * before the agent attached never makes this call; {@link SpinLocks} resolves it from the
+     * handle's own descriptor instead (#558).
      *
      * @param handle        the handle the binding returned
      * @param qualifiedName the field, as {@code declaringClass.field}
      * @since 1.12.1
      */
     public static void varHandleBound(@Nullable Object handle, String qualifiedName) {
-        if (handle != null && qualifiedName != null) {
-            HANDLE_FIELDS.put(handle, qualifiedName);
-        }
+        SpinLocks.bound(handle, qualifiedName);
+    }
+
+    /**
+     * Records that {@code updater} is an {@code AtomicIntegerFieldUpdater} on {@code qualifiedName}.
+     *
+     * <p>Emitted by the weaver right after a {@code newUpdater} call that returns one, the
+     * updater counterpart of {@link #varHandleBound} (#558). An updater exposes no field name, so
+     * without this call a spinlock taken through it is never declared.
+     *
+     * @param updater       the updater the binding returned
+     * @param qualifiedName the field, as {@code declaringClass.field}
+     * @since 1.12.1
+     */
+    public static void atomicUpdaterBound(@Nullable Object updater, String qualifiedName) {
+        SpinLocks.bound(updater, qualifiedName);
     }
 
     /**
@@ -376,6 +375,8 @@ public final class TelemetryRegistry {
      * replaces its volatile buffer table that way, and without seeing the lock the table read as
      * a race on a class documented as thread-safe (#554). A won swap from 0 to 1 declares the
      * receiver's spinlock held; a won swap from 1 to 0 releases it. Every other swap only swaps.
+     * The hold is re-confirmed against the flag whenever the lockset is read, so a release the
+     * weaver does not see cannot leave it declared (#558; see {@link SpinLocks}).
      *
      * <p>Performs the original operation and propagates its exceptions unchanged. The declaration
      * follows a won acquire and precedes nothing it could make look guarded early. The call goes
@@ -393,14 +394,17 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetInt(VarHandle handle, Object receiver, int expected,
                                            int update) {
         boolean won = handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
-        if (won && receiver != null) {
-            if (expected == 0 && update == 1) {
-                acquireSpinLock(handle, receiver);
-            } else if (expected == 1 && update == 0) {
-                String field = HANDLE_FIELDS.get(handle);
-                if (field != null) {
-                    releaseSpinLockIfHeld(System.identityHashCode(receiver), field);
-                }
+        if (won && receiver != null && (expected == 0 && update == 1 || expected == 1 && update == 0)) {
+            String field = SpinLocks.fieldOf(handle);
+            if (field == null) {
+                // Neither the binding nor the handle names the field, so a plain write releasing
+                // it could not be matched. Declaring nothing reports rather than hides.
+                return won;
+            }
+            if (update == 1) {
+                SpinLocks.acquire(receiver, field, handle);
+            } else {
+                SpinLocks.release(receiver, field);
             }
         }
         return won;
@@ -430,37 +434,178 @@ public final class TelemetryRegistry {
         handle.withInvokeBehavior().setOpaque(receiver, value);
     }
 
-    private static void acquireSpinLock(VarHandle handle, Object receiver) {
-        String field = HANDLE_FIELDS.get(handle);
-        if (field == null) {
-            // The binding was not seen, so neither will the release be. Declaring a lock nothing
-            // can release would make every later write on this thread look guarded.
-            return;
-        }
-        SPIN_FIELDS.add(field);
-        Object lock = SPIN_LOCKS.computeIfAbsent(
-                new SpinLockKey(System.identityHashCode(receiver), field), ignored -> new Object());
-        if (!HeldLocks.holds(lock)) {
-            HeldLocks.acquired(lock);
-        }
-    }
-
     /** A holder that stores into its spinlock flag through the handle has released it. */
     private static void releaseIfSpinLockField(VarHandle handle, Object receiver) {
-        if (receiver == null || SPIN_FIELDS.isEmpty()) {
+        if (receiver == null || !SpinLocks.anySpinField()) {
+            // Checked before the handle is resolved, so an int set through a handle no spinlock
+            // uses never pays for describing it.
             return;
         }
-        String field = HANDLE_FIELDS.get(handle);
-        if (field != null && SPIN_FIELDS.contains(field)) {
-            releaseSpinLockIfHeld(System.identityHashCode(receiver), field);
+        String field = SpinLocks.fieldOf(handle);
+        if (field != null && SpinLocks.isSpinField(field)) {
+            SpinLocks.release(receiver, field);
         }
     }
 
-    private static void releaseSpinLockIfHeld(int receiverIdentity, String field) {
-        Object lock = SPIN_LOCKS.get(new SpinLockKey(receiverIdentity, field));
-        if (lock != null) {
-            HeldLocks.released(lock);
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.compareAndSet(receiver, expected, update)}.
+     *
+     * <p>The updater form of {@link #compareAndSetInt}, the spinlock shape older netty and
+     * JDK-style code uses (#558): a won swap from 0 to 1 declares the receiver's flag held, a won
+     * swap from 1 to 0 releases it, and the hold is re-confirmed through the updater whenever the
+     * lockset is read. Only an updater whose {@code newUpdater} call the weaver saw names a field;
+     * a swap through any other updater only swaps.
+     *
+     * <p>Performs the original operation first, so its exceptions, including the
+     * {@code ClassCastException} for a receiver of the wrong type, propagate unchanged.
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is swapped
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean compareAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
+                                                  Object receiver, int expected, int update) {
+        AtomicIntegerFieldUpdater<Object> target = erased(updater);
+        boolean won = target.compareAndSet(receiver, expected, update);
+        if (won && receiver != null && (expected == 0 && update == 1 || expected == 1 && update == 0)) {
+            String field = SpinLocks.fieldOf(updater);
+            if (field == null) {
+                return won;
+            }
+            if (update == 1) {
+                SpinLocks.acquire(receiver, field, target);
+            } else {
+                SpinLocks.release(receiver, field);
+            }
         }
+        return won;
+    }
+
+    /** Weaves {@code AtomicIntegerFieldUpdater.set}, a release when the holder stores its flag. @param updater the updater @param receiver the owner @param value the value @since 1.12.1 */
+    public static void setIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
+                                     int value) {
+        releaseIfSpinLockField(updater, receiver);
+        erased(updater).set(receiver, value);
+    }
+
+    /** Weaves {@code AtomicIntegerFieldUpdater.lazySet}, a release when the holder stores its flag. @param updater the updater @param receiver the owner @param value the value @since 1.12.1 */
+    public static void lazySetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
+                                         int value) {
+        releaseIfSpinLockField(updater, receiver);
+        erased(updater).lazySet(receiver, value);
+    }
+
+    private static void releaseIfSpinLockField(AtomicIntegerFieldUpdater<?> updater,
+                                               Object receiver) {
+        if (receiver == null || updater == null) {
+            return;
+        }
+        String field = SpinLocks.fieldOf(updater);
+        if (field != null && SpinLocks.isSpinField(field)) {
+            SpinLocks.release(receiver, field);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static AtomicIntegerFieldUpdater<Object> erased(AtomicIntegerFieldUpdater<?> updater) {
+        return (AtomicIntegerFieldUpdater<Object>) updater;
+    }
+
+    /**
+     * Weaves {@code AtomicBoolean.compareAndSet(expected, update)}, where the atomic is the lock.
+     *
+     * <p>{@code busy.compareAndSet(false, true)} guards what follows exactly as a monitor would, and
+     * the lock is the atomic object itself rather than a field of the receiver (#558). A won swap to
+     * {@code true} declares it held, a won swap to {@code false} releases it, and the hold is
+     * re-confirmed with {@code get()} whenever the lockset is read, so a one-shot
+     * {@code started.compareAndSet(false, true)} that is never reset only ever reads as held by the
+     * one thread that won it, which cannot make two threads look excluded.
+     *
+     * @param flag     the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean compareAndSetAtomicBoolean(AtomicBoolean flag, boolean expected,
+                                                     boolean update) {
+        boolean won = flag.compareAndSet(expected, update);
+        if (won && expected != update) {
+            if (update) {
+                SpinLocks.acquire(flag);
+            } else {
+                SpinLocks.release(flag);
+            }
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicBoolean.getAndSet(value)}: {@code !busy.getAndSet(true)} is a won acquire,
+     * and storing {@code false} is a release. @param flag the atomic @param value the value to
+     * store @return the previous value @since 1.12.1
+     */
+    public static boolean getAndSetAtomicBoolean(AtomicBoolean flag, boolean value) {
+        if (!value) {
+            SpinLocks.release(flag);
+        }
+        boolean previous = flag.getAndSet(value);
+        if (value && !previous) {
+            SpinLocks.acquire(flag);
+        }
+        return previous;
+    }
+
+    /** Weaves {@code AtomicBoolean.set}; storing {@code false} releases. @param flag the atomic @param value the value @since 1.12.1 */
+    public static void setAtomicBoolean(AtomicBoolean flag, boolean value) {
+        if (!value) {
+            SpinLocks.release(flag);
+        }
+        flag.set(value);
+    }
+
+    /** Weaves {@code AtomicBoolean.lazySet}; storing {@code false} releases. @param flag the atomic @param value the value @since 1.12.1 */
+    public static void lazySetAtomicBoolean(AtomicBoolean flag, boolean value) {
+        if (!value) {
+            SpinLocks.release(flag);
+        }
+        flag.lazySet(value);
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.compareAndSet(expected, update)}: a won swap from 0 to 1 takes the
+     * atomic as a lock and one from 1 to 0 releases it (#558). A counter that happens to pass
+     * through 0 and 1 reads as held only while it stays at 1 with this thread its last winner, which
+     * is mutual exclusion in fact. @param count the atomic @param expected the value it must hold
+     * @param update the value to store @return whether the swap happened @since 1.12.1
+     */
+    public static boolean compareAndSetAtomicInteger(AtomicInteger count, int expected, int update) {
+        boolean won = count.compareAndSet(expected, update);
+        if (won && expected == 0 && update == 1) {
+            SpinLocks.acquire(count);
+        } else if (won && expected == 1 && update == 0) {
+            SpinLocks.release(count);
+        }
+        return won;
+    }
+
+    /** Weaves {@code AtomicInteger.set}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
+    public static void setAtomicInteger(AtomicInteger count, int value) {
+        if (value == 0) {
+            SpinLocks.release(count);
+        }
+        count.set(value);
+    }
+
+    /** Weaves {@code AtomicInteger.lazySet}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
+    public static void lazySetAtomicInteger(AtomicInteger count, int value) {
+        if (value == 0) {
+            SpinLocks.release(count);
+        }
+        count.lazySet(value);
     }
 
     /**

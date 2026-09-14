@@ -227,18 +227,29 @@ Three limits worth knowing before switching it on:
   nothing either. A lock acquired only inside unwoven code still needs
   `AsyncTestContext.holdingLock(...)`.
 - **Spinlocks and hand-offs are exclusion too (with `fields=true`).** A won
-  `VarHandle.compareAndSet(this, 0, 1)` on an `int` field bound in the class's own initializer is
-  a spinlock: the weaver replaces the call with a hook that performs it and declares a lock on that
-  receiver's flag, released by a `compareAndSet(this, 1, 0)`, an `int` `set` through the handle, or
-  a plain write to the field by the holder. A volatile field replaced only while it is held is safe
-  publication, which is how Caffeine's `StripedBuffer` table reads now (#554). Separately, the
+  `VarHandle.compareAndSet(this, 0, 1)` on an `int` field is a spinlock: the weaver replaces the
+  call with a hook that performs it and declares a lock on that receiver's flag, released by a
+  `compareAndSet(this, 1, 0)`, an `int` `set` through the handle, or a plain write to the field by
+  the holder. A volatile field replaced only while it is held is safe publication, which is how
+  Caffeine's `StripedBuffer` table reads now (#554). The same holds for an
+  `AtomicIntegerFieldUpdater` bound by a `newUpdater` call the weaver saw (`compareAndSet`,
+  released by the swap back, `set`, `lazySet` or the holder's write), and for an `AtomicBoolean` or
+  `AtomicInteger` that is the lock itself (`compareAndSet(false, true)`, `!getAndSet(true)`,
+  `compareAndSet(0, 1)`, released by the swap back, `set` or `lazySet`). A handle bound before the
+  agent attached is resolved from its own descriptor (#558).
+  A spinlock is never trusted past what its flag says: it counts as held only while the flag
+  still reads locked and this thread is its last observed winner, re-checked whenever the lockset
+  is read. A release through a call the weaver does not substitute (`getAndSet(0)`,
+  `decrementAndGet()`, `compareAndExchange`, unwoven code) therefore drops the lock before the
+  next access is recorded instead of leaving it declared, which would make every later write on
+  that thread look guarded. Separately, the
   object a reference `getAndSet` returns, or a `Queue.poll` or JCTools `MessagePassingQueue`
   `poll`/`relaxedPoll` hands back, is reported as taken: it
   starts a new ownership generation, exclusive to the taker until another thread touches it, and
   locks only have to agree within a generation. That is netty's chunk moving between magazines
-  (#555). A spinlock released through a mechanism the weaver does not see (an
-  `AtomicIntegerFieldUpdater`, `Unsafe`) is not modelled at all, and its writes still report
-  ([#558](https://github.com/PIsberg/async-test-lib/issues/558)).
+  (#555). Not modelled, so writes under them still report: `Unsafe.compareAndSwapInt`, and an
+  `AtomicIntegerFieldUpdater` created before the agent attached, which exposes no field name to
+  resolve.
 - **Thread-safe types are skipped.** A receiver from `java.util.concurrent`, a
   `Collections.synchronizedX` wrapper, a `Hashtable` or a `Vector` synchronizes where nothing can
   be woven, so recording it would report every shared use. Those calls are delegated and never

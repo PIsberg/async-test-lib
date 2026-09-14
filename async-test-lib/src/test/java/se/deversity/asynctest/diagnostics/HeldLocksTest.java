@@ -60,6 +60,53 @@ class HeldLocksTest {
         assertFalse(HeldLocks.holds(lock), "and the outer release ends it");
     }
 
+    /** A lock whose hold the test flips, standing in for a spinlock whose flag was swapped back. */
+    private static final class FlagLock implements HeldLocks.Revocable {
+        private volatile boolean held = true;
+
+        @Override
+        public boolean stillHeld() {
+            return held;
+        }
+    }
+
+    @Test
+    @DisplayName("a revocable lock released where nothing reports it leaves the set on the next read (#558)")
+    void revocableLockLeavesTheSetWhenItNoLongerHolds() {
+        FlagLock spinLock = new FlagLock();
+        Object monitor = new Object();
+        HeldLocks.acquired(monitor);
+        HeldLocks.acquired(spinLock);
+        long bothHeld = HeldLocks.lockFingerprint(true);
+        assertTrue(HeldLocks.holds(spinLock), "held while its flag says so");
+
+        spinLock.held = false;
+
+        assertFalse(HeldLocks.holds(spinLock),
+                "The release happened where no released() call reported it. Keeping the lock would "
+                        + "make every later access on this thread look guarded by it");
+        assertTrue(HeldLocks.holds(monitor), "a lock that is not revocable is untouched");
+        assertTrue(HeldLocks.lockFingerprint(true) != bothHeld,
+                "the fingerprint an access records must no longer include the revoked lock");
+        HeldLocks.released(spinLock);
+        assertTrue(HeldLocks.holds(monitor),
+                "a late release of the already-revoked lock must not pop anything else");
+        HeldLocks.released(monitor);
+    }
+
+    @Test
+    @DisplayName("a revocable lock that throws when asked counts as released (#558)")
+    void revocableLockThatCannotAnswerIsDropped() {
+        HeldLocks.Revocable broken = () -> {
+            throw new IllegalStateException("flag unreadable");
+        };
+        HeldLocks.acquired(broken);
+
+        assertFalse(HeldLocks.anyHeld(),
+                "A lock that cannot confirm its hold must leave the set: keeping it is the direction "
+                        + "that hides a race, and the question must never fail the user's test");
+    }
+
     @Test
     @DisplayName("reentrant acquisition needs matching releases")
     void reentrantAcquisitionIsCounted() {

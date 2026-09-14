@@ -58,6 +58,12 @@ final class FieldAccessWeaver {
     /** Internal name of {@link Thread}. */
     private static final String THREAD = "java/lang/Thread";
 
+    /** Internal names of the call-site owners whose spinlock calls are substituted (#554, #558). */
+    private static final String VAR_HANDLE = "java/lang/invoke/VarHandle";
+    private static final String INT_UPDATER = "java/util/concurrent/atomic/AtomicIntegerFieldUpdater";
+    private static final String ATOMIC_BOOLEAN = "java/util/concurrent/atomic/AtomicBoolean";
+    private static final String ATOMIC_INTEGER = "java/util/concurrent/atomic/AtomicInteger";
+
     /**
      * Owner prefixes (in internal, slash-separated form) whose fields are never woven.
      *
@@ -434,11 +440,9 @@ final class FieldAccessWeaver {
             String hook = weaveFieldInstructions ? spinLockHook(opcode, owner, name, descriptor)
                     : null;
             if (hook != null) {
-                // Same arguments, same result, one static call instead of the polymorphic one.
+                // Same arguments, same result, one static call instead of the virtual one.
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, hook,
-                        "compareAndSetInt".equals(hook)
-                                ? "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z"
-                                : "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V", false);
+                        spinLockHookDescriptor(owner, hook, descriptor), false);
             } else {
                 super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
             }
@@ -449,6 +453,15 @@ final class FieldAccessWeaver {
                 super.visitInsn(Opcodes.DUP);
                 super.visitLdcInsn(boundField);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "varHandleBound",
+                        "(Ljava/lang/Object;Ljava/lang/String;)V", false);
+            }
+            if (boundField != null && "newUpdater".equals(name)
+                    && descriptor.endsWith(")L" + INT_UPDATER + ";")) {
+                // The updater counterpart (#558): an updater has no way to name its field, so this
+                // is the only place a spinlock taken through it can learn which flag it swaps.
+                super.visitInsn(Opcodes.DUP);
+                super.visitLdcInsn(boundField);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "atomicUpdaterBound",
                         "(Ljava/lang/Object;Ljava/lang/String;)V", false);
             }
             if (weaveFieldInstructions && isReferenceTake(opcode, owner, name, descriptor)) {
@@ -465,19 +478,64 @@ final class FieldAccessWeaver {
         }
 
         /**
-         * {@return the registry hook that replaces this {@code VarHandle} call, or {@code null}}
+         * {@return the registry hook that replaces this call, or {@code null}}
          *
-         * <p>A compare-and-swap on an {@code int} field is how a spinlock is taken and released,
-         * and the stores are how it is released too (#554). Only instance-field shapes qualify,
-         * one object coordinate and an {@code int}: a static field has no receiver to own the
-         * lock, and an array element is not a flag field. The descriptor is the call site's own,
-         * since {@code VarHandle} methods are signature-polymorphic, and the hook consumes exactly
-         * the same stack.
+         * <p>A compare-and-swap on an {@code int} flag is how a spinlock is taken and released,
+         * and the stores are how it is released too (#554). Four shapes reach one:
+         * <ul>
+         *   <li>a {@code VarHandle} on an {@code int} instance field. Only one object coordinate and
+         *       an {@code int} qualify: a static field has no receiver to own the lock, and an array
+         *       element is not a flag field. The descriptor is the call site's own, since
+         *       {@code VarHandle} methods are signature-polymorphic;</li>
+         *   <li>an {@code AtomicIntegerFieldUpdater}: {@code compareAndSet}, {@code set},
+         *       {@code lazySet} (#558);</li>
+         *   <li>an {@code AtomicBoolean} used as the lock: {@code compareAndSet},
+         *       {@code getAndSet}, {@code set}, {@code lazySet} (#558);</li>
+         *   <li>an {@code AtomicInteger} used as the lock: {@code compareAndSet}, {@code set},
+         *       {@code lazySet} (#558).</li>
+         * </ul>
+         * Every hook consumes exactly the stack the original call did and returns what it returned.
+         * A release through any other call ({@code getAndSet(0)}, {@code decrementAndGet()},
+         * {@code Unsafe}) is not substituted; the registry re-confirms a hold against the flag
+         * instead of relying on seeing it.
          */
         private static @Nullable String spinLockHook(int opcode, String owner, String name,
                                                      String descriptor) {
-            if (opcode != Opcodes.INVOKEVIRTUAL || !"java/lang/invoke/VarHandle".equals(owner)
-                    || !descriptor.startsWith("(L")) {
+            if (opcode != Opcodes.INVOKEVIRTUAL) {
+                return null;
+            }
+            return switch (owner) {
+                case VAR_HANDLE -> varHandleHook(name, descriptor);
+                case INT_UPDATER -> switch (name) {
+                    case "compareAndSet" -> "(Ljava/lang/Object;II)Z".equals(descriptor)
+                            ? "compareAndSetIntUpdater" : null;
+                    case "set" -> "(Ljava/lang/Object;I)V".equals(descriptor) ? "setIntUpdater" : null;
+                    case "lazySet" -> "(Ljava/lang/Object;I)V".equals(descriptor)
+                            ? "lazySetIntUpdater" : null;
+                    default -> null;
+                };
+                case ATOMIC_BOOLEAN -> switch (name) {
+                    case "compareAndSet" -> "(ZZ)Z".equals(descriptor)
+                            ? "compareAndSetAtomicBoolean" : null;
+                    case "getAndSet" -> "(Z)Z".equals(descriptor) ? "getAndSetAtomicBoolean" : null;
+                    case "set" -> "(Z)V".equals(descriptor) ? "setAtomicBoolean" : null;
+                    case "lazySet" -> "(Z)V".equals(descriptor) ? "lazySetAtomicBoolean" : null;
+                    default -> null;
+                };
+                case ATOMIC_INTEGER -> switch (name) {
+                    case "compareAndSet" -> "(II)Z".equals(descriptor)
+                            ? "compareAndSetAtomicInteger" : null;
+                    case "set" -> "(I)V".equals(descriptor) ? "setAtomicInteger" : null;
+                    case "lazySet" -> "(I)V".equals(descriptor) ? "lazySetAtomicInteger" : null;
+                    default -> null;
+                };
+                default -> null;
+            };
+        }
+
+        /** {@return the {@code VarHandle} hook for an {@code int} instance-field call, or {@code null}} */
+        private static @Nullable String varHandleHook(String name, String descriptor) {
+            if (!descriptor.startsWith("(L")) {
                 return null;
             }
             int firstSemicolon = descriptor.indexOf(';');
@@ -495,6 +553,22 @@ final class FieldAccessWeaver {
                 case "setOpaque" -> "setOpaqueInt";
                 default -> null;
             };
+        }
+
+        /**
+         * {@return the static descriptor of {@code hook}: the virtual call's own, with the receiver
+         * it was invoked on as the first parameter}
+         *
+         * <p>A {@code VarHandle} call site declares whatever types it pushed, so its hooks take the
+         * erased {@code Object} receiver and {@code int} values the registry declares instead.
+         */
+        private static String spinLockHookDescriptor(String owner, String hook, String descriptor) {
+            if (VAR_HANDLE.equals(owner)) {
+                return "compareAndSetInt".equals(hook)
+                        ? "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z"
+                        : "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V";
+            }
+            return "(L" + owner + ";" + descriptor.substring(1);
         }
 
         /**
