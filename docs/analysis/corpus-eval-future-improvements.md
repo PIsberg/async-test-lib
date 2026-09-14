@@ -76,7 +76,9 @@ nine were held on their detector's model:
   `FILE_CHANNEL_POSITION_RACE`, whose argument was already in `verdict-evidence-corpus`, is now
   recorded there too.
 
-Several of those reasons are detector defects rather than limits, and each has an issue.
+Several of those reasons are detector defects rather than limits, and each has an issue. The
+first to be fixed was `LOCK_UPGRADE_DEADLOCK` (#566): it now asks the lock whenever the recording
+thread holds it, both corpus bodies take the real lock, and the pair was promoted.
 
 Worth doing in small batches, and worth resisting the urge to clear it in one pass: the rule held
 back two pairs that were sound, the three this section was surest of were not, and only reading

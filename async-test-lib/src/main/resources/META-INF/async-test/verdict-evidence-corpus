@@ -135,3 +135,14 @@ SHARED_SPLITTABLE_RANDOM = recorded_splittableRandom_sharedAcrossThreads, record
 # carries each reason.
 NOTIFY_WITHOUT_MONITOR = recorded_notify_withoutHoldingTheMonitor, recorded_notify_holdingTheMonitor
 SHARED_CHARSET_CODER = recorded_charsetEncoder_sharedAcrossThreads, recorded_charsetEncoder_encoderPerThread
+
+# --- 2026-09-14, #566: held on its model in the third wave, promoted once the model was fixed.
+#
+# LOCK_UPGRADE_DEADLOCK used to decide from the body's records alone: a write re-acquire by a
+# thread already holding the write lock, which ReentrantReadWriteLock allows, was reported as a
+# permanent deadlock, and read holds were a set, so read-twice-release-once went silent. It now
+# asks the lock whenever the recording thread really holds it (isWriteLockedByCurrentThread and
+# getReadHoldCount, both exact current-thread queries), and counts recorded read holds otherwise.
+# Both corpus bodies take the real lock, and the silent half's write acquire really returns, so
+# the pair is decided by the JDK's own rule. LockUpgradeDeadlockAccuracyTest pins both directions.
+LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_readLock_releasedBeforeWriting

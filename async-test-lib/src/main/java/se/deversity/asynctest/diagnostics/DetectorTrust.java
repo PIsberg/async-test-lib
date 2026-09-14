@@ -194,7 +194,7 @@ public final class DetectorTrust {
             row(DetectorType.THREAD_LOCAL_RANDOM_MISUSE, "ThreadLocalRandomMisuseDetector", "ThreadLocalRandomMisuse", TrustTier.PROMPT),
             row(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, "CompletableFutureObtrudeDetector", "CompletableFutureObtrude", TrustTier.PROMPT),
             row(DetectorType.SPURIOUS_WAKEUP_HAZARD, "SpuriousWakeupDetector", "SpuriousWakeup", TrustTier.VERDICT),
-            row(DetectorType.LOCK_UPGRADE_DEADLOCK, "LockUpgradeDeadlockDetector", "LockUpgradeDeadlock", TrustTier.PROMPT),
+            row(DetectorType.LOCK_UPGRADE_DEADLOCK, "LockUpgradeDeadlockDetector", "LockUpgradeDeadlock", TrustTier.VERDICT),
             row(DetectorType.TRY_LOCK_MISUSE, "TryLockMisuseDetector", "TryLockMisuse", TrustTier.VERDICT),
             row(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, "CompletableFutureBlockingCallbackDetector", "CompletableFutureBlockingCallback", TrustTier.VERDICT),
             row(DetectorType.STABLE_VALUE_MISUSE, "StableValueMisuseDetector", "StableValueMisuse", TrustTier.PROMPT),

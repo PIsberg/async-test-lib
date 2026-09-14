@@ -260,13 +260,19 @@ public class LockDowngradeDetector {
      */
     public void recordWriteLockAcquired(ReadWriteLock lock, String lockName) {
         if (lock == null) return;
-        // Forwarded before this detector's own bookkeeping, because the peer decides whether
-        // this is an upgrade from the read holders it has been told about, and those come from
-        // the same forwarding.
-        forward(lock, (peer, rw) ->
-                peer.recordWriteLockAcquisitionAttempt(rw, lockName, Thread.currentThread()));
         LockState state = stateFor(lock, lockName);
         long tid = Thread.currentThread().threadId();
+        // Forwarded before this detector's own bookkeeping, because the peer decides whether
+        // this is an upgrade from the read holders it has been told about, and those come from
+        // the same forwarding. Not forwarded while this thread already holds the write lock:
+        // that acquire is reentrant, as the compute below says, and the peer keeps no write holds
+        // of its own, so forwarding it reported a legal mid-downgrade re-acquire as a permanent
+        // deadlock (#566). Only this thread writes its own entry, so the read is not racy.
+        Holds before = state.threadHolds.get(tid);
+        if (before == null || before.write == 0) {
+            forward(lock, (peer, rw) ->
+                    peer.recordWriteLockAcquisitionAttempt(rw, lockName, Thread.currentThread()));
+        }
         // Bumped before the per-thread work so a gap that is open right now, on another
         // thread, closes against a generation that already counts this acquire.
         state.writeAcquireGeneration.incrementAndGet();

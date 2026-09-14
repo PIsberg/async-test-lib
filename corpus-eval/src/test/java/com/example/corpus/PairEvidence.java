@@ -120,11 +120,8 @@ final class PairEvidence {
                 + "unconditionally, so the call is the finding and a caught, recorded exception "
                 + "fires the same; the other trigger compares wall-clock time against 100 ms; "
                 + "needs to observe the timer thread's death itself");
-        HELD_ON_MODEL.put(DetectorType.LOCK_UPGRADE_DEADLOCK, "reads only the body's records, "
-                + "never the lock: a thread holding the write lock may legally take read then "
-                + "write again and draws the HIGH deadlock finding, a tryLock upgrade attempt "
-                + "fires, and read holds are a set rather than a count; needs "
-                + "getReadHoldCount() and isWriteLockedByCurrentThread() at the attempt");
+        // LOCK_UPGRADE_DEADLOCK was held here on reading only the body's records; #566 made it
+        // ask the lock, and it is promoted in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "compares exact lock fingerprints with no "
                 + "happens-before edge but the round epoch, so a field guarded by an undeclared "
                 + "lock (pinned in DetectorAccuracyEvalTest), a volatile read of a field written "

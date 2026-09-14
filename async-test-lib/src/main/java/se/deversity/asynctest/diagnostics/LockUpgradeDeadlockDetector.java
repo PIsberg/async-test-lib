@@ -39,7 +39,12 @@ public final class LockUpgradeDeadlockDetector {
         }
     }
 
-    private final Map<Integer, Set<Long>> readHolders = new ConcurrentHashMap<>();
+    /**
+     * Read holds per lock, per thread, as a count. A set lost the second of two nested read
+     * acquires at the first release, so a thread still holding the read lock read as free and
+     * its write attempt, which really blocks forever, went unreported (#566).
+     */
+    private final Map<Integer, Map<Long, Integer>> readHolds = new ConcurrentHashMap<>();
     private final Map<Integer, State> violations = new ConcurrentHashMap<>();
 
     /**
@@ -52,7 +57,8 @@ public final class LockUpgradeDeadlockDetector {
     public void recordReadLockAcquired(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
         int id = System.identityHashCode(lock);
-        readHolders.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(thread.threadId());
+        readHolds.computeIfAbsent(id, k -> new ConcurrentHashMap<>())
+                .merge(thread.threadId(), 1, Integer::sum);
     }
 
     /**
@@ -64,14 +70,28 @@ public final class LockUpgradeDeadlockDetector {
     public void recordReadLockReleased(ReentrantReadWriteLock lock, Thread thread) {
         if (lock == null || thread == null) return;
         int id = System.identityHashCode(lock);
-        Set<Long> holders = readHolders.get(id);
-        if (holders != null) {
-            holders.remove(thread.threadId());
+        Map<Long, Integer> holds = readHolds.get(id);
+        if (holds != null) {
+            holds.computeIfPresent(thread.threadId(), (k, count) -> count > 1 ? count - 1 : null);
         }
     }
 
     /**
      * Record attempt to acquire a write lock.
+     *
+     * <p>Reported only where {@link ReentrantReadWriteLock} really deadlocks: the thread holds the
+     * read lock and does not hold the write lock. A thread that holds the write lock may take the
+     * read lock and then the write lock again, which is the reentrant acquire the JDK's own
+     * downgrading example relies on. When the recording thread is the calling thread and really
+     * holds the lock, the lock is asked directly: {@link
+     * ReentrantReadWriteLock#isWriteLockedByCurrentThread()} and {@link
+     * ReentrantReadWriteLock#getReadHoldCount()} are exact current-thread queries that take
+     * nothing. Otherwise the decision rests on the recorded read holds, so a body that declares
+     * acquisitions without taking the lock is still judged by what it declared.
+     *
+     * <p>Record only a blocking {@code writeLock().lock()}. A {@code tryLock()} made while holding
+     * the read lock returns {@code false} at once and does not deadlock, so recording it here
+     * would report a deadlock that cannot happen.
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param lockName a label identifying the lock in the report
@@ -80,8 +100,17 @@ public final class LockUpgradeDeadlockDetector {
     public void recordWriteLockAcquisitionAttempt(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
         int id = System.identityHashCode(lock);
-        Set<Long> holders = readHolders.get(id);
-        if (holders != null && holders.contains(thread.threadId())) {
+        boolean upgrade;
+        if (thread.threadId() == Thread.currentThread().threadId()
+                && (lock.isWriteLockedByCurrentThread() || lock.getReadHoldCount() > 0)) {
+            // The calling thread really holds this lock, so the lock answers exactly. Records are
+            // only consulted for a body that declares acquisitions without taking the lock.
+            upgrade = !lock.isWriteLockedByCurrentThread();
+        } else {
+            Map<Long, Integer> holds = readHolds.get(id);
+            upgrade = holds != null && holds.containsKey(thread.threadId());
+        }
+        if (upgrade) {
             State s = violations.computeIfAbsent(id, k -> new State(
                 lockName != null ? lockName : "ReentrantReadWriteLock@" + id
             ));
