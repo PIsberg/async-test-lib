@@ -124,13 +124,15 @@ and it stands whether or not you hold a lock - which is why no amount of lock aw
 them up a tier.
 
 `RACE_CONDITIONS` and `ATOMICITY_VIOLATIONS` moved to the split tier below: both now carry a lock
-model, and both a coarser one than the lockset the rest of the family keeps. They compare whole
-lock sets rather than intersecting them - `RACE_CONDITIONS` by exact fingerprint equality - so a
-field one thread holds `{A, B}` for and another holds `{A}` for is still reported. Neither report
-grades its findings, so both detectors are rated PROMPT as a whole, and `minTrust = VERDICT` does
-not act on the visible-lock case for them yet. `RACE_CONDITIONS` has a same-class corpus pair and
-was read for promotion on 2026-09-14; it stays PROMPT on that model, with the reason recorded in
-corpus-eval's `PairEvidence`.
+model. `RACE_CONDITIONS` intersects the lock sets held at each access to a field in a round (#570),
+so a field one thread holds `{A, B}` for and another holds `{A}` for is guarded by `A` and not
+reported. `ATOMICITY_VIOLATIONS` is coarser on its agent-fed path, where it compares whole lock sets
+rather than intersecting them. Neither report grades its findings, so both detectors are rated
+PROMPT as a whole. For `RACE_CONDITIONS` that is a decision rather than a gap: no finding it makes
+can tell an unguarded access from one under an undeclared lock, and its recording API carries no
+volatile or hand-off ordering, so no finding of it could honestly be graded VERDICT. Its same-class
+corpus pair was read for promotion on 2026-09-14 and stays PROMPT on that model, with the reason
+recorded in corpus-eval's `PairEvidence`.
 
 **Split tier — `RACE_CONDITIONS`, `ATOMICITY_VIOLATIONS`, and the rest of the `SHARED_*`
 family:** verdict for a lock the library can see, prompt for one it cannot. 17 of the 19 in that
