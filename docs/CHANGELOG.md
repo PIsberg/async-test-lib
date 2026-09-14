@@ -59,6 +59,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`NOTIFY_WITHOUT_MONITOR` and `SHARED_CHARSET_CODER` reach `TrustTier.VERDICT`, taking it to
+  67 of 146.** Both held a same-class corpus pair that corpus-eval's promotion gate misread as
+  calling different detector methods. It counted `CorpusRecorder.recordCrash`, the harness keeping
+  a thrown exception, as a detector call, and it read `synchronized (monitor)` as a call to a
+  helper named `synchronized`, whose body was then the first synchronized block anywhere in the
+  lane. `PairEvidenceCallShapeTest` pins both defects and was red before the fix. The second one
+  was shared with the gate that holds every silent row to reaching its detector, which could have
+  passed a row on a neighbouring test's calls; both gates now read the source through one class.
+  Each promotion was read against its detector before registering it: the notify check is the
+  JVM's own `Thread.holdsLock` rule, and the charset coder keeps the same lockset as the already
+  VERDICT `SHARED_DEFLATER` and `SHARED_CHECKSUM`.
+
+- **Nine corpus pairs were read and held back on their detector's model, and the unread backlog is
+  now derived.** `STREAM_CLOSING`, `EXECUTOR_SHUTDOWN`, `FUTURE_IGNORED`, `THREAD_LOCAL_LEAKS`,
+  `SCHEDULED_EXECUTOR`, `TIMER`, `LOCK_UPGRADE_DEADLOCK`, `RACE_CONDITIONS` and
+  `READ_WRITE_LOCK_FAIRNESS` each fire on correct code that reaches the same end another way, or
+  decide on a number the caller supplies, so a finding does not mean the code is wrong however good
+  the pair. `PairEvidence.HELD_ON_MODEL` records each reason, a gate fails an entry once its
+  detector is no longer a candidate, and `corpus-eval-future-improvements.md` must state the
+  backlog `PairEvidence.unreviewed()` derives: 29 PROMPT pairs, where the document said 69.
+
 - **The corpus eval reaches 17 of the 18 agent-fed detectors through library bytecode (#545).**
   `SHARED_MATCHER` is paired through Groovy's `StringGroovyMethods.getCount(Matcher)`, which calls
   `find()` on the caller's `Matcher` in Groovy's own class file; Groovy (`org.apache.groovy:groovy`,

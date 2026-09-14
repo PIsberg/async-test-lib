@@ -15,11 +15,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * garbled format strings, or internal state corruption. {@link System#out} and
  * {@link System#err} are {@code PrintStream} instances that are commonly shared unknowingly.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the instance's own monitor - the {@code synchronized (out)} idiom, and what {@code PrintStream}
- * does internally - counts as guarded, and an instance whose every access was guarded produces
- * no finding. A guard on any other lock object is invisible and still fires; treat such a
- * finding as a prompt to verify the synchronization, or to move to a per-thread instance.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * instance's own monitor - the {@code synchronized (out)} idiom, and what {@code PrintStream} does
+ * internally - counts as guarded, and an instance whose every access was guarded produces no
+ * finding. A guard on any other lock counts once the test declares it with
+ * {@code AsyncTestContext.holdingLock(...)} or the agent sees it taken. A lock that was never
+ * declared is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to move to a per-thread instance.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code

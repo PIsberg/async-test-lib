@@ -35,11 +35,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * <em>position-mutating</em> access; absolute-only access from many threads is
  * reported as context, never as a violation.
  *
- * <p>Synchronization awareness is partial. A position-mutating access recorded while the
- * accessing thread holds the buffer's own monitor - the {@code synchronized (buffer)} idiom -
- * counts as guarded, and a buffer whose every positional access was guarded produces no
- * finding. A guard on any other lock object is invisible and still fires; treat such a finding
- * as a prompt to verify the synchronization, or to give each thread its own view.
+ * <p>Synchronization awareness is partial. A position-mutating access recorded while the accessing
+ * thread holds the buffer's own monitor - the {@code synchronized (buffer)} idiom - counts as
+ * guarded, and a buffer whose every positional access was guarded produces no finding. A guard on
+ * any other lock counts once the test declares it with {@code AsyncTestContext.holdingLock(...)} or
+ * the agent sees it taken. A lock that was never declared is invisible and still fires; treat such
+ * a finding as a prompt to verify the synchronization, or to give each thread its own view.
  *
  * <p>The safe pattern is to give each thread its own view via
  * {@code duplicate()} or {@code slice()} (independent position/limit/mark over

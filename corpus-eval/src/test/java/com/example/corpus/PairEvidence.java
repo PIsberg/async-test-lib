@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -60,14 +61,85 @@ final class PairEvidence {
      * from the {@code EXCHANGER} case, where the missing {@code recordExchangeStart} was incidental
      * and the pair claimed a defect the JDK permits (#521). So the escape hatch is a name and a
      * reason rather than a loosening of the rule.
+     *
+     * <p>An entry lifts the shape rule and nothing else: the pair becomes eligible, and
+     * {@code EveryEligiblePairIsPromotedOrExplainedTest} then requires it to be promoted. Before
+     * that was so, an entry here skipped eligibility outright, which would have let a reviewed
+     * pair sit unpromoted with nothing noticing - the same gap the promotion gate exists to close.
      */
     private static final Map<DetectorType, String> REVIEWED_DESPITE_SHAPE =
             new EnumMap<>(DetectorType.class);
 
+    /**
+     * Pairs read and held back on the detector's model, not on the pair.
+     *
+     * <p>VERDICT means a finding says the code is wrong. A pair can vary exactly the defect and
+     * still not earn that, when correct code reached another way draws the same finding, or the
+     * finding is decided by a number the body supplied. {@code verdict-evidence-corpus} records
+     * three such detectors in prose; these are the ones found by reading pairs the shape rule
+     * held back, recorded as data so that the backlog of pairs nobody has read is a number
+     * {@link #unreviewed()} derives rather than one a document states.
+     *
+     * <p>An entry is a claim about the detector as it is today. Each reason names what would have
+     * to change for the question to be worth asking again, and {@link #staleReviews()} fails an
+     * entry once the detector is no longer a PROMPT candidate with a pair.
+     */
+    private static final Map<DetectorType, String> HELD_ON_MODEL = new EnumMap<>(DetectorType.class);
+
     static {
-        // Empty on purpose. Adding an entry is a claim that someone read both bodies and found
-        // the differing call to be the defect itself. An entry with no such reading is worth
-        // less than the PROMPT tier it replaces.
+        // REVIEWED_DESPITE_SHAPE is empty on purpose. Adding an entry is a claim that someone read
+        // both bodies and found the differing call to be the defect itself. An entry with no such
+        // reading is worth less than the PROMPT tier it replaces.
+
+        // Read 2026-09-14: each pair's two bodies and its detector's source, by a reviewer asked
+        // to argue against promotion. The reason is the model property that decided it.
+        HELD_ON_MODEL.put(DetectorType.STREAM_CLOSING, "reports any stream still open when "
+                + "analysis runs and any close from a thread other than the opener, so a stream "
+                + "scoped to the class and closed in teardown, or handed to a consumer thread that "
+                + "closes it, draws the leak finding; needs a declared lifetime and no "
+                + "cross-thread rule on the reporting path");
+        HELD_ON_MODEL.put(DetectorType.EXECUTOR_SHUTDOWN, "a finding means the ownership "
+                + "declaration disagrees with the body's own records, not that a pool leaked: a "
+                + "try-with-resources ExecutorService or a pool shut down in @AfterAll fires, and "
+                + "an awaitTermination that timed out counts as awaited; needs the await's result "
+                + "and a lifetime model");
+        HELD_ON_MODEL.put(DetectorType.FUTURE_IGNORED, "the body declares both the submit and "
+                + "the inspection and the detector only compares the two, so fire-and-forget by "
+                + "design and a whenComplete handler (a different Future identity) fire, while "
+                + "isDone() counts as handling the exception; needs to observe get/join itself");
+        HELD_ON_MODEL.put(DetectorType.THREAD_LOCAL_LEAKS, "cleanup is one flag per ThreadLocal "
+                + "for the whole run, so removing on one thread in one round silences every "
+                + "other thread, a withInitial per-thread cache meant to stay fires, and "
+                + "threadLocalAccumulation counts entries already removed; needs per-thread, "
+                + "per-body cleanup tracking");
+        HELD_ON_MODEL.put(DetectorType.SCHEDULED_EXECUTOR, "the separator is durationMs > 1000 on "
+                + "a duration the body passes in; pool size and queued work are never consulted, "
+                + "so a dedicated scheduler running one slow nightly job fires and a real overrun "
+                + "under a second stays silent; needs a queue-behind model");
+        HELD_ON_MODEL.put(DetectorType.TIMER, "recordTaskException sets threadDied "
+                + "unconditionally, so the call is the finding and a caught, recorded exception "
+                + "fires the same; the other trigger compares wall-clock time against 100 ms; "
+                + "needs to observe the timer thread's death itself");
+        HELD_ON_MODEL.put(DetectorType.LOCK_UPGRADE_DEADLOCK, "reads only the body's records, "
+                + "never the lock: a thread holding the write lock may legally take read then "
+                + "write again and draws the HIGH deadlock finding, a tryLock upgrade attempt "
+                + "fires, and read holds are a set rather than a count; needs "
+                + "getReadHoldCount() and isWriteLockedByCurrentThread() at the attempt");
+        HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "compares exact lock fingerprints with no "
+                + "happens-before edge but the round epoch, so a field guarded by an undeclared "
+                + "lock (pinned in DetectorAccuracyEvalTest), a volatile read of a field written "
+                + "under a lock, and a confined hand-off all fire; needs lockset intersection and "
+                + "per-finding grades for the invisible-lock case");
+        HELD_ON_MODEL.put(DetectorType.READ_WRITE_LOCK_FAIRNESS, "fires on a read-to-write count "
+                + "ratio above 10 or a caller-supplied wait above 100 ms and never looks at the "
+                + "lock, so a fair or deliberately non-fair read-mostly lock fires and a writer "
+                + "that never acquires stays silent; starvation is a liveness observation, which "
+                + "points at ADVISORY rather than VERDICT");
+        // Read before this map existed; the full argument is in verdict-evidence-corpus.
+        HELD_ON_MODEL.put(DetectorType.FILE_CHANNEL_POSITION_RACE, "reports whenever more than "
+                + "one thread accessed the channel and carries no representation of a lock, so a "
+                + "caller that wraps position(n) and read(buffer) in synchronized(channel) draws "
+                + "the identical finding; needs the lockset the Shared* family already has");
     }
 
     private PairEvidence() {
@@ -106,7 +178,15 @@ final class PairEvidence {
          */
         GRADED("the detector's report implements GradedFindings, so its tier is the floor over "
                 + "every grade it can emit; a pair exercises one grade and promoting the detector "
-                + "would let a VERDICT-only gate admit the weaker ones");
+                + "would let a VERDICT-only gate admit the weaker ones"),
+
+        /**
+         * A reader went through the pair and the detector and found that a finding would not mean
+         * the code is wrong, whatever the pair shows. The reason is per detector, in
+         * {@link #HELD_ON_MODEL}.
+         */
+        MODEL("read and held back on the detector's model: correct code reached another way draws "
+                + "the same finding, or the outcome is a number the body supplied");
 
         private final String reason;
 
@@ -145,7 +225,6 @@ final class PairEvidence {
         for (CorpusLane lane : List.of(CorpusLane.RECORDING, CorpusLane.AGENT_PAIRS)) {
             for (DetectorType detector : Corpus.pairedDetectors(lane)) {
                 if (already.contains(detector)
-                        || REVIEWED_DESPITE_SHAPE.containsKey(detector)
                         // Already gated, on evidence that lives inside the library. Asking for a
                         // corpus registration too would put one tier's justification in two
                         // places, and the second copy is the one that goes stale.
@@ -225,6 +304,80 @@ final class PairEvidence {
      * @param detector the detector whose rows to weigh
      */
     static HeldBack heldBack(CorpusLane lane, DetectorType detector) {
+        HeldBack byRule = heldBackByRule(lane, detector);
+        if (HELD_ON_MODEL.containsKey(detector) && hasPairIn(lane, detector)) {
+            return HeldBack.MODEL;
+        }
+        if (byRule == HeldBack.CALL_SHAPE && REVIEWED_DESPITE_SHAPE.containsKey(detector)) {
+            return null;
+        }
+        return byRule;
+    }
+
+    /**
+     * {@return the PROMPT detectors whose pair the shape rule holds back and nobody has read}
+     *
+     * <p>This is the backlog item 2b of {@code corpus-eval-future-improvements.md} describes, derived
+     * so that the document can be held to it. A pair leaves it by being read: promoted after an
+     * entry in {@link #REVIEWED_DESPITE_SHAPE}, or recorded in {@link #HELD_ON_MODEL}.
+     */
+    static Set<DetectorType> unreviewed() {
+        Set<DetectorType> unreviewed = EnumSet.noneOf(DetectorType.class);
+        Set<DetectorType> already = promoted();
+        for (DetectorType detector : Corpus.pairedDetectors(CorpusLane.RECORDING)) {
+            if (!already.contains(detector)
+                    && DetectorTrust.tierOf(detector) == TrustTier.PROMPT
+                    && hasPairIn(CorpusLane.RECORDING, detector)
+                    && heldBack(CorpusLane.RECORDING, detector) == HeldBack.CALL_SHAPE) {
+                unreviewed.add(detector);
+            }
+        }
+        return unreviewed;
+    }
+
+    /**
+     * {@return a line per review entry that no longer reads a live question}
+     *
+     * <p>An entry outlives its question when the detector left PROMPT, was promoted, lost its
+     * pair, or - for {@link #REVIEWED_DESPITE_SHAPE} - stopped being held back by the shape rule,
+     * so that the entry now vouches for nothing. Left in place it reads as a decision somebody
+     * made about the detector as it is, when it was made about the detector as it was.
+     */
+    static List<String> staleReviews() {
+        List<String> stale = new ArrayList<>();
+        Set<DetectorType> already = promoted();
+        for (DetectorType detector : HELD_ON_MODEL.keySet()) {
+            String why = staleness(detector, already);
+            if (why != null) {
+                stale.add("HELD_ON_MODEL names " + detector + ", which " + why);
+            }
+        }
+        for (DetectorType detector : REVIEWED_DESPITE_SHAPE.keySet()) {
+            // Promotion is what an accepted reading is for, so unlike a hold this entry stays
+            // live after it: it is the only record of why a pair of differing calls backs VERDICT.
+            if (heldBackByRule(CorpusLane.RECORDING, detector) != HeldBack.CALL_SHAPE) {
+                stale.add("REVIEWED_DESPITE_SHAPE names " + detector + ", which the shape rule no "
+                        + "longer holds back, so the entry lifts nothing");
+            }
+        }
+        return stale;
+    }
+
+    private static String staleness(DetectorType detector, Set<DetectorType> already) {
+        if (already.contains(detector)) {
+            return "is promoted";
+        }
+        if (DetectorTrust.tierOf(detector) != TrustTier.PROMPT) {
+            return "is " + DetectorTrust.tierOf(detector) + ", not a PROMPT candidate";
+        }
+        if (!hasPairIn(CorpusLane.RECORDING, detector) && !hasPairIn(CorpusLane.AGENT_PAIRS, detector)) {
+            return "has no pair in either lane";
+        }
+        return null;
+    }
+
+    /** {@return why the derived rules hold {@code detector}'s pair back, ignoring every review} */
+    private static HeldBack heldBackByRule(CorpusLane lane, DetectorType detector) {
         List<RecordingSubject> rows = Corpus.subjectsFor(lane).stream()
                 .filter(subject -> subject.detector() == detector)
                 .toList();
@@ -289,56 +442,37 @@ final class PairEvidence {
             if (row.expectation() != direction) {
                 continue;
             }
-            Matcher found = Pattern.compile("\\.((?:record|register)[A-Z]\\w*)\\s*\\(")
-                    .matcher(bodyWithHelpers(source, row.testMethod()));
-            while (found.find()) {
-                calls.add(found.group(1));
+            calls.addAll(detectorCallsIn(LaneSource.bodyWithHelpers(source, row.testMethod())));
+        }
+        return calls;
+    }
+
+    /**
+     * {@return the detector methods {@code body} calls}
+     *
+     * <p>Two receivers are not detectors although their methods share the prefix.
+     * {@code CorpusRecorder.recordCrash} is the harness keeping a thrown exception, and
+     * {@code AsyncTestContext.record...Detector()} is an accessor returning the detector. Counting
+     * either made a pair differ on a call the detector never received: that is what held the
+     * {@code NOTIFY_WITHOUT_MONITOR} pair back, whose firing half hands the JVM's
+     * {@code IllegalMonitorStateException} to the recorder and is otherwise the silent half.
+     *
+     * @param body source text of a test body and its helpers
+     */
+    static Set<String> detectorCallsIn(String body) {
+        Set<String> calls = new LinkedHashSet<>();
+        Matcher found = Pattern.compile("(\\w+)?\\s*\\.\\s*((?:record|register)[A-Z]\\w*)\\s*\\(")
+                .matcher(body);
+        while (found.find()) {
+            // Set.of refuses a null probe, and a chained call has no receiver name.
+            if (found.group(1) == null || !NOT_DETECTORS.contains(found.group(1))) {
+                calls.add(found.group(2));
             }
         }
         return calls;
     }
 
-    /** {@return {@code testMethod}'s body plus the bodies of the lane methods it calls} */
-    private static String bodyWithHelpers(String source, String testMethod) {
-        String body = bodyOf(source, testMethod);
-        StringBuilder reachable = new StringBuilder(body);
-        Matcher calls = Pattern.compile("\\b([a-z][A-Za-z0-9_]*)\\s*\\(").matcher(body);
-        Set<String> seen = new LinkedHashSet<>();
-        while (calls.find()) {
-            String name = calls.group(1);
-            if (seen.add(name) && !name.equals(testMethod)) {
-                reachable.append('\n').append(bodyOf(source, name));
-            }
-        }
-        return reachable.toString();
-    }
-
-    /** {@return the source text of {@code methodName}'s body, or empty when there is none} */
-    private static String bodyOf(String source, String methodName) {
-        Matcher declaration = Pattern.compile(
-                "(?m)^\\s*(?:@\\w+\\s+)*(?:private|public|protected|static|final|void|"
-                        + "[A-Za-z<>\\[\\],.?\\s]+?)\\b"
-                        + Pattern.quote(methodName)
-                        + "\\s*\\([^)]*\\)\\s*(?:throws\\s+[A-Za-z0-9_$.,\\s]+)?\\{")
-                .matcher(source);
-        if (!declaration.find()) {
-            return "";
-        }
-        int open = source.indexOf('{', declaration.start());
-        int depth = 0;
-        for (int i = open; i < source.length(); i++) {
-            char c = source.charAt(i);
-            if (c == '{') {
-                depth++;
-            } else if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    return source.substring(open, i + 1);
-                }
-            }
-        }
-        return source.substring(open);
-    }
+    private static final Set<String> NOT_DETECTORS = Set.of("CorpusRecorder", "AsyncTestContext");
 
     private static String read(CorpusLane lane) {
         Path source = Path.of("src", "test", "java", "com", "example", "corpus",

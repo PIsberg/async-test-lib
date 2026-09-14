@@ -41,11 +41,12 @@ import javax.crypto.Mac;
  * test, regardless of provider. It is the stateful-primitive sibling of
  * {@link SharedMessageDigestDetector} and {@link SharedSecureRandomDetector}.
  *
- * <p>Synchronization awareness is partial: an access recorded while the accessing thread holds
- * the instance's <em>own</em> monitor counts as guarded, and an instance whose every access was
- * guarded produces no finding. A guard on any other lock object is invisible and still fires;
- * treat such a finding as a prompt to verify the synchronization, or to move to a per-thread
- * instance.
+ * <p>Synchronization awareness is partial: an access recorded while the accessing thread holds the
+ * instance's <em>own</em> monitor counts as guarded, and an instance whose every access was guarded
+ * produces no finding. A guard on any other lock counts once the test declares it with
+ * {@code AsyncTestContext.holdingLock(...)} or the agent sees it taken. A lock that was never
+ * declared is invisible and still fires; treat such a finding as a prompt to verify the
+ * synchronization, or to move to a per-thread instance.
  *
  * <p>Usage:
  * <pre>{@code

@@ -1,5 +1,9 @@
 package com.example.corpus;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -89,6 +93,34 @@ class EveryEligiblePairIsPromotedOrExplainedTest {
                         + "why PerFindingTierGateTest pins RECORD_MUTABLE_COMPONENT_LEAK at "
                         + "PROMPT. The eligibility rule holds these back, so a name here means "
                         + "one was registered by hand: " + graded);
+    }
+
+    @Test
+    @DisplayName("every review entry still answers a live question")
+    void everyReviewIsStillLive() {
+        List<String> stale = PairEvidence.staleReviews();
+
+        assertTrue(stale.isEmpty(),
+                "a review in PairEvidence is a decision about a detector as it was when someone "
+                        + "read it. These no longer describe a PROMPT candidate with a pair, so "
+                        + "the entry now vouches for nothing and should be removed, or the pair "
+                        + "re-read: " + stale);
+    }
+
+    @Test
+    @DisplayName("the unread backlog in corpus-eval-future-improvements.md is the one the rows give")
+    void theDocumentedBacklogIsTheDerivedOne() throws IOException {
+        int unreviewed = PairEvidence.unreviewed().size();
+        Path doc = Path.of("..", "docs", "analysis", "corpus-eval-future-improvements.md");
+        String text = Files.readString(doc, StandardCharsets.UTF_8);
+        String claim = unreviewed + " PROMPT pairs are held back by a rule, not by a reading";
+
+        assertTrue(text.contains(claim),
+                doc + " must say \"" + claim + "\". PairEvidence.unreviewed() derives the backlog "
+                        + "from the rows - PROMPT detectors whose pair the shape rule holds back "
+                        + "and nobody has read - and it is now " + unreviewed + ": "
+                        + names(PairEvidence.unreviewed()) + ". The document said 69 for a week "
+                        + "after the number had moved, because nothing compared the two");
     }
 
     private static String names(Set<DetectorType> types) {

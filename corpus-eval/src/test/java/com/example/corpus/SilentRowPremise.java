@@ -11,8 +11,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
@@ -64,7 +62,7 @@ final class SilentRowPremise {
                         + "resolve what the body would have to call");
                 continue;
             }
-            String reachable = bodyWithHelpers(source, subject.testMethod());
+            String reachable = LaneSource.bodyWithHelpers(source, subject.testMethod());
             boolean reached = accessors.stream().anyMatch(name -> reachable.contains(name + "("));
             if (!reached) {
                 broken.add(subject.testMethod() + " is the MUST_STAY_SILENT row for "
@@ -97,69 +95,6 @@ final class SilentRowPremise {
             }
         }
         return names;
-    }
-
-    /**
-     * {@return {@code testMethod}'s body, plus the bodies of the lane's own methods it calls}
-     *
-     * <p>One level of indirection is followed and no more, which is what the lane actually uses:
-     * {@code recorded_mutableIntKey_neverMutated} reaches its detector through {@code fileKeyOnce}
-     * and would read as a violation without this. A helper that itself delegates further would
-     * escape the check, and the answer to that is a deeper walk, not a looser one - filed if it
-     * ever happens rather than built for a case the lane does not have.
-     *
-     * @param source     the lane's source
-     * @param testMethod the row's test method
-     */
-    private static String bodyWithHelpers(String source, String testMethod) {
-        String body = bodyOf(source, testMethod);
-        StringBuilder reachable = new StringBuilder(body);
-        Matcher calls = Pattern.compile("\\b([a-z][A-Za-z0-9_]*)\\s*\\(").matcher(body);
-        Set<String> seen = new LinkedHashSet<>();
-        while (calls.find()) {
-            String name = calls.group(1);
-            if (seen.add(name) && !name.equals(testMethod)) {
-                reachable.append('\n').append(bodyOf(source, name));
-            }
-        }
-        return reachable.toString();
-    }
-
-    /**
-     * {@return the source text of {@code methodName}'s body, or empty if the lane has no such method}
-     *
-     * <p>Brace matching rather than a parser. The lane is one class of ordinary methods with no
-     * string literal containing an unbalanced brace, and a parser dependency for this would be a
-     * row in {@code docs/DEPENDENCIES.md} rather than a convenience.
-     *
-     * @param source     the lane's source
-     * @param methodName the method to extract
-     */
-    private static String bodyOf(String source, String methodName) {
-        Matcher declaration = Pattern.compile(
-                "(?m)^\\s*(?:@\\w+\\s+)*(?:private|public|protected|static|final|void|[A-Za-z<>\\[\\],.?\\s]+?)\\b"
-                        + Pattern.quote(methodName)
-                        // A declaration may carry a throws clause between the parameter list
-                        // and the body; without this alternative such a method reads as absent
-                        // and its silent row as never reaching the detector.
-                        + "\\s*\\([^)]*\\)\\s*(?:throws\\s+[A-Za-z0-9_$.,\\s]+)?\\{").matcher(source);
-        if (!declaration.find()) {
-            return "";
-        }
-        int open = source.indexOf('{', declaration.start());
-        int depth = 0;
-        for (int i = open; i < source.length(); i++) {
-            char c = source.charAt(i);
-            if (c == '{') {
-                depth++;
-            } else if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    return source.substring(open, i + 1);
-                }
-            }
-        }
-        return source.substring(open);
     }
 
     private static String read() {

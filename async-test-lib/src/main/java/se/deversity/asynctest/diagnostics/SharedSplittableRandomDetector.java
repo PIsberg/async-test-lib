@@ -27,11 +27,12 @@ import java.util.random.RandomGenerator;
  * {@code SHARED_SECURE_RANDOM}, and {@code ThreadLocalRandom} to
  * {@code THREAD_LOCAL_RANDOM_MISUSE}. One {@code instanceof Random} check excludes all three.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the generator's own monitor - the {@code synchronized (generator)} idiom - counts as guarded,
- * and a generator whose every access was guarded produces no finding. A guard on any other lock
- * object is invisible and still fires; treat such a finding as a prompt to verify the
- * synchronization, or to {@code split()} per thread.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * generator's own monitor - the {@code synchronized (generator)} idiom - counts as guarded, and a
+ * generator whose every access was guarded produces no finding. A guard on any other lock counts
+ * once the test declares it with {@code AsyncTestContext.holdingLock(...)} or the agent sees it
+ * taken. A lock that was never declared is invisible and still fires; treat such a finding as a
+ * prompt to verify the synchronization, or to {@code split()} per thread.
  *
  * <p>Usage:
  * <pre>{@code

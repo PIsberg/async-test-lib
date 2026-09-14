@@ -22,11 +22,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code SAXParserFactory}, {@code TransformerFactory}, {@code XPathFactory})
  * are thread-safe for {@code newXxx()} calls and can be shared freely.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the parser's own monitor - the {@code synchronized (parser)} idiom - counts as guarded, and a
- * parser whose every access was guarded produces no finding. A guard on any other lock object is
- * invisible and still fires; treat such a finding as a prompt to verify the synchronization, or
- * to create a per-thread parser from the shared factory.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * parser's own monitor - the {@code synchronized (parser)} idiom - counts as guarded, and a parser
+ * whose every access was guarded produces no finding. A guard on any other lock counts once the
+ * test declares it with {@code AsyncTestContext.holdingLock(...)} or the agent sees it taken. A
+ * lock that was never declared is invisible and still fires; treat such a finding as a prompt to
+ * verify the synchronization, or to create a per-thread parser from the shared factory.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code

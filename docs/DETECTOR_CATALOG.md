@@ -124,9 +124,13 @@ and it stands whether or not you hold a lock - which is why no amount of lock aw
 them up a tier.
 
 `RACE_CONDITIONS` and `ATOMICITY_VIOLATIONS` moved to the split tier below: both now carry a lock
-model, `ATOMICITY_VIOLATIONS` a coarser one on its agent-fed path (it compares whole lock sets
-rather than intersecting them, so a field one thread holds `{A, B}` for and another holds `{A}`
-for is still reported).
+model, and both a coarser one than the lockset the rest of the family keeps. They compare whole
+lock sets rather than intersecting them - `RACE_CONDITIONS` by exact fingerprint equality - so a
+field one thread holds `{A, B}` for and another holds `{A}` for is still reported. Neither report
+grades its findings, so both detectors are rated PROMPT as a whole, and `minTrust = VERDICT` does
+not act on the visible-lock case for them yet. `RACE_CONDITIONS` has a same-class corpus pair and
+was read for promotion on 2026-09-14; it stays PROMPT on that model, with the reason recorded in
+corpus-eval's `PairEvidence`.
 
 **Split tier — `RACE_CONDITIONS`, `ATOMICITY_VIOLATIONS`, and the rest of the `SHARED_*`
 family:** verdict for a lock the library can see, prompt for one it cannot. 17 of the 19 in that
@@ -141,7 +145,7 @@ still produces a finding, and so does inconsistent locking - two threads holding
 have excluded nothing, which is a race however many locks were involved.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 65 VERDICT, 66 PROMPT, 11 FACT and 4
+tier is one a reader has to rank alone. The split is 67 VERDICT, 64 PROMPT, 11 FACT and 4
 ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
 detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
 statements about the kind of claim a finding makes rather than about missing evidence - a FACT

@@ -29,11 +29,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * coder in {@code CODING} or {@code FLUSHED} state that the caller did not
  * expect.
  *
- * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds
- * the coder's own monitor - the {@code synchronized (coder)} idiom - counts as guarded, and a
- * coder whose every access was guarded produces no finding. A guard on any other lock object is
- * invisible and still fires; treat such a finding as a prompt to verify the synchronization, or
- * to move to a per-thread coder.
+ * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
+ * coder's own monitor - the {@code synchronized (coder)} idiom - counts as guarded, and a coder
+ * whose every access was guarded produces no finding. A guard on any other lock counts once the
+ * test declares it with {@code AsyncTestContext.holdingLock(...)} or the agent sees it taken. A
+ * lock that was never declared is invisible and still fires; treat such a finding as a prompt to
+ * verify the synchronization, or to move to a per-thread coder.
  *
  * <p>The safe pattern is a fresh coder per thread — cheap to obtain via
  * {@code Charset.newEncoder()}/{@code Charset.newDecoder()} since

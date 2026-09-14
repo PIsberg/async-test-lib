@@ -41,24 +41,46 @@ The standing form of it is mutation testing scoped to `CorpusGates`, which the r
 runs on the library. It is not obviously worth a two-hour job for five hundred lines of test-only
 code, so it is recorded rather than proposed.
 
-## 2b. Sixty-nine pairs are held back by a rule, not by a reading
+## 2b. Pairs held back by a rule rather than a reading
 
-The 2026-09-07 promotion wave registered 47 of the 116 same-class pairs. The remaining 69 are held
-back because the two halves call different detector methods, which is a proxy for "varies the
-defect and nothing else" rather than the thing itself. Some of them are certainly sound:
-`RESOURCE_LEAKS`, `STREAM_CLOSING`, `EXECUTOR_SHUTDOWN`, `FUTURE_IGNORED` and
-`ATOMIC_NON_ATOMIC_UPDATE` all pair a body that omits the call that makes it correct against one
-that makes it, so the missing call is the defect.
+29 PROMPT pairs are held back by a rule, not by a reading. `PairEvidence.unreviewed()` derives
+that number from the rows, and `EveryEligiblePairIsPromotedOrExplainedTest` fails when this
+sentence stops agreeing with it. When this section was first written it said 69, counted by hand
+over every tier on 2026-09-07, and it went on saying so after the number had moved.
 
-Each needs a reading of both bodies, and the outcome is either a named entry in
-`PairEvidence.REVIEWED_DESPITE_SHAPE` with the reason, or a rewritten pair. That is roughly an hour
-of careful work per handful and cannot be batched, which is why the wave stopped where the rule
-stops rather than where a reviewer's patience does. Four more are held back for naming two classes,
-which is the older rule and a rewrite rather than a reading.
+The rule holds a pair back when its two halves call different detector methods, which is a proxy
+for "varies the defect and nothing else" rather than the thing itself. A pair leaves the backlog by
+being read against both bodies and the detector, and the reading ends in one of two places: an
+entry in `PairEvidence.REVIEWED_DESPITE_SHAPE`, after which the pair must be promoted, or an entry
+in `PairEvidence.HELD_ON_MODEL` naming the model property that decides it. Four more pairs are held
+back for naming two classes, which is the older rule and a rewrite rather than a reading.
 
-Worth doing in small batches, and worth resisting the urge to clear it in one pass: the wave that
-created this document's parent found the `EXCHANGER` pair wrong on a rationale no rule could read,
-and the same will be true of some of these 69.
+**The first reading, 2026-09-14, and what it found.** Eleven pairs were read. Two were promoted and
+nine were held on their detector's model:
+
+- The two promotions, `NOTIFY_WITHOUT_MONITOR` and `SHARED_CHARSET_CODER`, were never different in
+  shape. The rule was misreading the source: it counted `CorpusRecorder.recordCrash`, which is the
+  harness keeping an exception, as a detector call, and it read `synchronized (monitor)` as a call
+  to a helper named `synchronized`, whose body was then the first synchronized block anywhere in
+  the lane. `PairEvidenceCallShapeTest` pins both, red before the fix. The second defect was shared
+  with `SilentRowPremise`, which could have let a silent row pass on a neighbour's detector calls;
+  both now read the source through one `LaneSource`.
+- This section used to call `STREAM_CLOSING`, `EXECUTOR_SHUTDOWN` and `FUTURE_IGNORED` "certainly
+  sound", because each pairs a body that omits the correct call against one that makes it. The
+  reading found all three unsound, and not because of the pair. Each detector fires on correct code
+  that reaches the same end another way (a stream closed in teardown, a try-with-resources
+  executor, a `whenComplete` handler), so a finding does not mean the code is wrong. The missing
+  call is the defect in the corpus; it is not the only thing the detector reports.
+- `RACE_CONDITIONS`, `READ_WRITE_LOCK_FAIRNESS`, `THREAD_LOCAL_LEAKS`, `SCHEDULED_EXECUTOR`,
+  `TIMER` and `LOCK_UPGRADE_DEADLOCK` are held for the same kind of reason, and
+  `FILE_CHANNEL_POSITION_RACE`, whose argument was already in `verdict-evidence-corpus`, is now
+  recorded there too.
+
+Several of those reasons are detector defects rather than limits, and each has an issue.
+
+Worth doing in small batches, and worth resisting the urge to clear it in one pass: the rule held
+back two pairs that were sound, the three this section was surest of were not, and only reading
+found either.
 
 ## 3. Severity is not pinned on a firing row
 

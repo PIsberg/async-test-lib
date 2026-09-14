@@ -20,10 +20,11 @@ import org.jspecify.annotations.Nullable;
  * - {@code ThreadLocal<SimpleDateFormat>} for legacy code
  * - Synchronized access blocks
  *
- * Synchronization awareness is partial: a format/parse call recorded while the calling thread
- * holds the formatter's own monitor - the synchronized(sdf) idiom, the third option above -
- * counts as guarded, and a formatter whose every recorded call was guarded produces no finding.
- * A guard on any other lock object is invisible and still fires.
+ * Synchronization awareness is partial: a format/parse call recorded while the calling thread holds
+ * the formatter's own monitor - the synchronized(sdf) idiom, the third option above - counts as
+ * guarded, and a formatter whose every recorded call was guarded produces no finding. A guard on
+ * any other lock counts once the test declares it with {@code AsyncTestContext.holdingLock(...)} or
+ * the agent sees it taken. A lock that was never declared is invisible and still fires.
  * 
  * Usage:
  * <pre>{@code
