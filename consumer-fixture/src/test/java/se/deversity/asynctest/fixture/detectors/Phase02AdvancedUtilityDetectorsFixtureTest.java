@@ -65,16 +65,15 @@ class Phase02AdvancedUtilityDetectorsFixtureTest {
     void phaser() {
         reachable("phaserDetector()", AsyncTestContext::phaserDetector);
 
-        // One registered party per worker, arrived and deregistered in the same body so no
-        // worker can be left waiting on a party that never arrives.
-        // A phaser party that never arrives leaves every other party waiting for a phase
-        // that cannot advance; the timeout is what a consumer sees when that happens.
+        // A phaser created for one party, left twice. The first arriveAndDeregister takes the
+        // party count to zero, which terminates the phaser; the second returns a negative phase
+        // instead of coordinating with anyone. That short count is the finding (#587). Each
+        // worker uses its own phaser and nothing blocks, so no worker can be left waiting.
         var phaserDetector = AsyncTestContext.phaserDetector();
         Phaser phaser = new Phaser(1);
         phaserDetector.registerPhaser(phaser, "fixture-phaser", 1);
-        phaserDetector.recordArrive(phaser);
-        phaserDetector.recordTimeout(phaser);
-        phaser.arriveAndDeregister();
+        phaserDetector.recordArrival(phaser, phaser.arriveAndDeregister());
+        phaserDetector.recordArrival(phaser, phaser.arriveAndDeregister());
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,

@@ -336,7 +336,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 ### Phase 2 — Advanced concurrency utilities
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|
-| `detectPhaserIssues` | `PHASER` | Missing `arrive()`, timeouts |
+| `detectPhaserIssues` | `PHASER` | Arrivals after the party count reached zero, phases stalled past a timeout |
 | `detectStampedLockIssues` | `STAMPED_LOCK` | Unvalidated optimistic reads |
 | `detectExchangerIssues` | `EXCHANGER` | Orphaned exchanges: a caller that started an exchange and never left it (a handled timeout is not a finding) |
 | `detectScheduledExecutorIssues` | `SCHEDULED_EXECUTOR` | Missing shutdown, long-running tasks |

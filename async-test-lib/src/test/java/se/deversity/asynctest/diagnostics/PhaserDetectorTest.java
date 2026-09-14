@@ -44,17 +44,20 @@ public class PhaserDetectorTest {
     }
 
     @Test
-    void testTerminationDetection() {
+    void terminationAloneIsNotAFinding() {
         PhaserDetector detector = new PhaserDetector();
         Phaser phaser = new Phaser(2);
 
         detector.registerPhaser(phaser, "terminatedPhaser", 2);
-        detector.recordTermination(phaser);  // Phaser terminated
+        phaser.forceTermination();
+        detector.recordTermination(phaser);  // how a phaser ends, not a defect (#587)
 
         PhaserDetector.PhaserReport report = detector.analyze();
 
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect termination");
+        assertFalse(report.hasIssues(), "Termination is how a phaser ends: " + report);
+        assertTrue(report.toString().contains("terminatedPhaser: terminated"),
+                "termination is still shown as context: " + report);
     }
 
     @Test

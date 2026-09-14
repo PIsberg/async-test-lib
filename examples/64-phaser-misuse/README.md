@@ -1,26 +1,26 @@
 # Example 64 — Phaser Misuse
 
 Demonstrates **PhaserDetector**: a `Phaser` registered with too few parties
-causes timeout or unexpected termination when more threads try to arrive than
-were registered.
+leaves a thread waiting at a phase boundary that never advances.
 
 ## The Problem
 
 `MultiPhaseProcessor` creates a `Phaser(2)` — registering exactly 2 parties —
-but 3 threads each call `arriveAndAwaitAdvance()`. The third arrival exceeds
-the registered party count. Depending on JVM behaviour the phaser either
-throws `IllegalStateException`, terminates prematurely, or leaves threads
-blocked indefinitely at the phase boundary.
+but 3 threads each call `arriveAndAwaitAdvance()`. Two of them pair up and
+advance the phase; the third arrives in the next phase and waits for a partner
+that never comes.
 
-The detector observes that the number of `arrive()` calls exceeds the
-registered party count and reports the mismatch as a phaser issue.
+The test body gives that wait a deadline and records the timeout. The detector
+reads the real phaser when the run is analyzed: the phase the wait gave up on
+is still the current phase, with a party not arrived, so the phase never
+advanced and the timeout is reported. A timeout whose phase advanced later is
+not reported, and neither is termination on its own (#587).
 
 ## How to Reproduce
 
 1. Remove `@Disabled` from `testRunPhase_concurrent_detectsPhaserMisuse`.
 2. Run: `mvn test` or `./gradlew test`
-3. The test fails with a **PhaserDetector** report showing a timed-out or
-   terminated phaser.
+3. The test fails with a **PhaserDetector** report showing a stalled phase.
 
 **Fix**: register the phaser with the correct number of parties — one per
 thread that will call `arrive*()` — or use `phaser.register()` dynamically

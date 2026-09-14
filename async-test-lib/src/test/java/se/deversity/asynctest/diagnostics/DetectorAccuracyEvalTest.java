@@ -2459,4 +2459,49 @@ class DetectorAccuracyEvalTest {
                         + "signal into an empty condition is not a lost wakeup (#583). Report:\n"
                         + report);
     }
+
+    @Test
+    @DisplayName("phaser: two workers leave a phaser created for one party (true positive)")
+    void phaserFiresWhenAWorkerArrivesAfterThePartiesRanOut() throws InterruptedException {
+        PhaserDetector detector = new PhaserDetector();
+        java.util.concurrent.Phaser done = new java.util.concurrent.Phaser(1);   // the bug: one party for two workers
+        detector.registerPhaser(done, "done", 1);
+
+        // The workers leave one after the other. Colliding on a barrier would not make the
+        // defect more visible: a second arrival inside the first one's advance window throws
+        // IllegalStateException into the body, which the runner already reports, instead of
+        // returning the negative phase this detector reads.
+        Runnable finish = () -> detector.recordArrival(done, done.arriveAndDeregister());
+        Thread first = new Thread(finish, "first-worker");
+        first.start();
+        first.join();
+        Thread second = new Thread(finish, "second-worker");
+        second.start();
+        second.join();
+
+        assertTrue(done.isTerminated(), "the first deregistration took the count to zero");
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "the second worker's arriveAndDeregister returned a negative phase: the phaser had "
+                        + "already ended, so that worker was never coordinated with. Report:\n"
+                        + report);
+    }
+
+    @Test
+    @DisplayName("phaser: the twin created for both workers ends in termination and stays silent (true negative)")
+    void phaserStaysSilentWhenEveryWorkerIsCounted() throws InterruptedException {
+        PhaserDetector detector = new PhaserDetector();
+        java.util.concurrent.Phaser done = new java.util.concurrent.Phaser(2);
+        detector.registerPhaser(done, "done", 2);
+
+        Runnable finish = () -> detector.recordArrival(done, done.arriveAndDeregister());
+        onTwoThreads(finish, finish);
+
+        assertTrue(done.isTerminated(), "the last deregistration terminates the phaser");
+        detector.recordTermination(done);
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "both workers were counted and both left; termination at zero parties is how a "
+                        + "phaser ends, not a finding (#587). Report:\n" + report);
+    }
 }

@@ -153,9 +153,11 @@ final class PairEvidence {
                 + "when a later wait receives no notify, but the recording API still cannot see the "
                 + "predicate, so a guarded timed wait that runs out after a lost notify fires; needs "
                 + "a wait observed not to re-check its predicate, on the real monitor");
-        HELD_ON_MODEL.put(DetectorType.PHASER, "recordTermination is the finding, and termination "
-                + "is how a phaser normally ends, so arriveAndDeregister to zero draws CRITICAL; "
-                + "needs an arrive or register observed returning a negative phase after it");
+        HELD_ON_MODEL.put(DetectorType.PHASER, "since #587 termination is context and the finding "
+                + "is an arrival whose returned phase is negative on a phaser with no party left "
+                + "registered, read from the real phaser; the rewritten pair has not been re-read "
+                + "against that model yet, and the stalled-phase half (a timeout still current at "
+                + "analysis) has no pair of its own");
         HELD_ON_MODEL.put(DetectorType.STAMPED_LOCK, "a leak is reported only when the body calls "
                 + "recordStampNotReleased and an unmatched acquisition is never inferred, so the "
                 + "finding is the caller's assertion; needs stamp matching, or the real lock's "

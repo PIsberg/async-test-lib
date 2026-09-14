@@ -1158,26 +1158,28 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 39. Phaser Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Detects Phaser misuse: parties that never call `arrive()` so the phaser never advances, `awaitAdvance()` timeouts, unexpected phaser termination, and a registered-party count that doesn't match observed arrivals.
+* **Description**: Detects a `Phaser` whose party count came up short, decided on the real phaser. Two findings: a party that registers or arrives after every registered party has deregistered (the call returns a negative phase instead of synchronizing; pass it to `recordArrival(phaser, phase)`), and a timed wait whose phase is still the current phase, with parties not arrived, when the run is analyzed. Termination itself is not a finding, since `arriveAndDeregister` to zero, `forceTermination` and `onAdvance` are how a phaser ends, and neither is a timeout whose phase advanced later (#587). Too many arrivals in one phase need no detector: the phaser throws `IllegalStateException`. Do not record `awaitAdvance(int)`'s result, which is negative in correct code that waits for termination.
 * **Buggy Code**:
   ```java
-  Phaser phaser = new Phaser(3);
-  executor.submit(() -> {
-      doWork();
-      if (shouldSkip()) return; // forgot arrive() - other 2 parties block forever
-      phaser.arriveAndAwaitAdvance();
-  });
+  Phaser done = new Phaser(1);                    // one party, but every task leaves
+  for (Runnable task : tasks) {
+      executor.submit(() -> {
+          task.run();
+          done.arriveAndDeregister();             // the first task takes the count to zero;
+      });                                         // every later call gets a negative phase
+  }
   ```
 * **Fixed Code**:
   ```java
-  Phaser phaser = new Phaser(3);
-  executor.submit(() -> {
-      try {
-          doWork();
-      } finally {
-          phaser.arriveAndAwaitAdvance(); // always arrives, even on early return
-      }
-  });
+  Phaser done = new Phaser(1);                    // the coordinator's own party
+  for (Runnable task : tasks) {
+      done.register();                            // count each task before it starts
+      executor.submit(() -> {
+          task.run();
+          done.arriveAndDeregister();
+      });
+  }
+  done.arriveAndDeregister();                     // terminates once every task has left
   ```
 
 ### 40. StampedLock Misuse Detector
