@@ -3859,21 +3859,21 @@ final class Corpus {
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.STAMPED_LOCK, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "a write stamp is taken and the body declares it unreleased. StampedLock is "
-                            + "not reentrant and holds no owner, so a leaked stamp is a lock "
-                            + "nobody can release and every later writer waits on it forever. "
-                            + "The declaration is load-bearing: this detector reports what the "
-                            + "caller reported and does not infer a leak from an unmatched "
-                            + "stamp, which is the caller-declares shape the interrupt pairs "
-                            + "have too"),
+                    "a write stamp is taken on a real lock and never released, with nothing "
+                            + "declared. StampedLock is not reentrant and holds no owner, so a "
+                            + "leaked stamp is a lock nobody can release and every later writer "
+                            + "waits on it forever. Since #588 the detector infers the leak from "
+                            + "the acquisition no unlock matched, and reports it only while the "
+                            + "lock itself is still write-held at analysis"),
 
             new RecordingSubject("recorded_stampedLock_stampReleased", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.STAMPED_LOCK, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same acquisition with its unlock recorded against the same stamp, which "
-                            + "is the whole discipline the class asks of a caller. The pair "
-                            + "separates on whether the stamp came back"),
+                    "the same real acquisition released in a finally block with its unlock "
+                            + "recorded against the same stamp, which is the whole discipline the "
+                            + "class asks of a caller. The pair separates on whether the stamp "
+                            + "came back"),
 
             new RecordingSubject("recorded_interruptedException_swallowedWholesale", JDK,
                     "java.lang.InterruptedException",

@@ -158,10 +158,10 @@ final class PairEvidence {
                 + "registered, read from the real phaser; the rewritten pair has not been re-read "
                 + "against that model yet, and the stalled-phase half (a timeout still current at "
                 + "analysis) has no pair of its own");
-        HELD_ON_MODEL.put(DetectorType.STAMPED_LOCK, "a leak is reported only when the body calls "
-                + "recordStampNotReleased and an unmatched acquisition is never inferred, so the "
-                + "finding is the caller's assertion; needs stamp matching, or the real lock's "
-                + "isWriteLocked and getReadLockCount at analysis");
+        HELD_ON_MODEL.put(DetectorType.STAMPED_LOCK, "since #588 a leak is an acquisition no "
+                + "recorded unlock matched on a lock still write- or read-held at analysis, and the "
+                + "MUST_FIRE row no longer declares it; not yet re-read against that model, so it "
+                + "stays held until a reading confirms the rows separate on the real lock's state");
         HELD_ON_MODEL.put(DetectorType.REENTRANT_LOCK, "recordLockTimeout is the finding, so a "
                 + "tryLock timeout the caller handles is reported the same as one it discards, and "
                 + "whether the false return was discarded is invisible here; TRY_LOCK_MISUSE, which "

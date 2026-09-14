@@ -343,6 +343,70 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         }
     }
 
+    /** A validation that fails in round one, and a read lock on the same pooled thread in round two. */
+    public static class StampedLockCrossRoundOnly {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+        static final java.util.concurrent.locks.StampedLock LOCK =
+                new java.util.concurrent.locks.StampedLock();
+
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAll = false, detectStampedLockIssues = true)
+        void body() {
+            var d = AsyncTestContext.stampedLockDetector();
+            if (EXECUTIONS.getAndIncrement() == 0) {
+                long stamp = LOCK.tryOptimisticRead();
+                d.recordOptimisticRead(LOCK, "shared", stamp);
+                // The stale value is used as read: no read lock, no retry, in this body.
+                d.recordOptimisticValidation(LOCK, "shared", stamp, false);
+            } else {
+                long stamp = LOCK.readLock();
+                d.recordReadLock(LOCK, "shared", stamp);
+                LOCK.unlockRead(stamp);
+                d.recordUnlock(LOCK, "shared", stamp);
+            }
+        }
+    }
+
+    /** The same failure followed by the read lock inside one round: the fallback that must stay silent. */
+    public static class StampedLockSameRound {
+        static final java.util.concurrent.locks.StampedLock LOCK =
+                new java.util.concurrent.locks.StampedLock();
+
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
+                   detectAll = false, detectStampedLockIssues = true)
+        void body() {
+            var d = AsyncTestContext.stampedLockDetector();
+            long optimistic = LOCK.tryOptimisticRead();
+            d.recordOptimisticRead(LOCK, "shared", optimistic);
+            d.recordOptimisticValidation(LOCK, "shared", optimistic, false);
+            long stamp = LOCK.readLock();
+            d.recordReadLock(LOCK, "shared", stamp);
+            LOCK.unlockRead(stamp);
+            d.recordUnlock(LOCK, "shared", stamp);
+        }
+    }
+
+    @Test
+    @DisplayName("a failed validation in one round is not settled by the next round's read lock")
+    void stampedLockCrossRoundFallbackIsNotAccepted() {
+        run(StampedLockCrossRoundOnly.class);
+        String report = REPORTS.get("StampedLockDetector");
+        assertTrue(report != null && report.contains("followed by no read lock"),
+                "the body that saw validate() fail finished without falling back, and the read "
+                        + "lock was taken by the same pooled thread in the next round. "
+                        + "AsyncTestContext.markInvocationStart must reach this detector (#588). "
+                        + "Reports: " + REPORTS.keySet() + " -> " + report);
+    }
+
+    @Test
+    @DisplayName("the same failure and read lock inside one round are the documented fallback, so the finding above is not the fallback's")
+    void stampedLockSameRoundFallbackIsSilent() {
+        run(StampedLockSameRound.class);
+        assertFalse(REPORTS.containsKey("StampedLockDetector"),
+                "validate() failing and a read lock taken in the same body is the StampedLock "
+                        + "idiom: " + REPORTS.get("StampedLockDetector"));
+    }
+
     /** Enables the pinning detector and does nothing else to start it. */
     public static class PinningEnabledOnly {
         static final AtomicInteger EVENTS_SEEN = new AtomicInteger(-1);
