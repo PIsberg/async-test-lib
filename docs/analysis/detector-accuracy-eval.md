@@ -67,6 +67,7 @@ still invisible.
 | ThreadLocalMonitor | fires (set on two threads, never removed) | silent (`remove()` in a finally block) | genuine both-direction detector |
 | LockDowngradeDetector | fires (write released before the read lock was taken, **and** another thread observed taking the write lock in the gap) | silent on the correct downgrade however contended, and silent on the same shape with nobody in the gap | evidence-gated since #355: the shape alone is also correct code that writes one thing and later reads another, so it is not reported without an observed writer. Deliberate false negative |
 | CountDownLatchDetector | fires (a worker never signals, the waiter's await expires) | silent when a later await on the same latch succeeded | evidence-gated since #477: a CountDownLatch only counts down and never blocks again once it is at zero, so a success proves the latch fell and the earlier timeout was a wait that started too early |
+| ConditionVariableDetector | fires (the producer signals `notFull`, the consumer stays parked on `notEmpty` at analysis) | silent when the producer signals `notEmpty`, including a second signal made into an empty condition | per-await pairing since #583: a timed-out await and a signal with nobody waiting are not findings; the detector still sees only what is recorded, never the lock's wait queue |
 
 Every buggy variant above fires. The twin column is the interesting one, and the twins that
 still fire on correct code now share a single cause: the guard is a lock nothing told the library

@@ -820,24 +820,26 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 25. Condition Variable Detector
 * **Severity**: `HIGH`
-* **Description**: Monitors `Lock.Condition` `await()`/`signal()` pairs to catch signals fired with no waiters, signals lost before the corresponding `await()`, and `await()` calls made outside a while-loop guard that are vulnerable to spurious wakeups.
+* **Description**: Pairs every recorded `Condition.await()` with the `signal()`/`signalAll()` calls recorded while it waited, per condition and per thread. It reports a thread still inside an await when the run is analysed (a stuck waiter), and an await that returned as woken with no signal delivered while it waited (a signal site not recorded, or a spurious wakeup taken as a signal). One signal does not account for two woken waiters. An await that timed out is not a finding, since a bounded poll that is never signalled runs exactly that way, and neither is a signal made while nobody waits, which is how predicate-guarded code runs whenever the producer gets there first; the report shows the latter as a note (#583). Record signals under the condition's lock, and pass the timed await's result as `timedOut`.
 * **Buggy Code**:
   ```java
-  lock.lock();
-  try {
-      if (!dataReady) {
-          condition.await(); // if() instead of while(): vulnerable to spurious wakeup
-      }
-  } finally { lock.unlock(); }
+  void put(String item) {
+      lock.lock();
+      try {
+          buffer.addLast(item);
+          notFull.signal(); // consumers wait on notEmpty: one already parked is never woken
+      } finally { lock.unlock(); }
+  }
   ```
 * **Fixed Code**:
   ```java
-  lock.lock();
-  try {
-      while (!dataReady) { // re-checks the predicate after every wakeup
-          condition.await();
-      }
-  } finally { lock.unlock(); }
+  void put(String item) {
+      lock.lock();
+      try {
+          buffer.addLast(item);
+          notEmpty.signal(); // the condition this item's consumers are parked on
+      } finally { lock.unlock(); }
+  }
   ```
 
 ### 26. SimpleDateFormat Sharing Detector

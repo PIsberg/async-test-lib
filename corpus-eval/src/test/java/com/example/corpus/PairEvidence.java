@@ -135,10 +135,11 @@ final class PairEvidence {
 
         // Second reading, 2026-09-14 (#571). In all eight the body declares what the finding says
         // and the detector never asks the object it names.
-        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "decides on run-wide counts of recorded "
-                + "await and signal calls and never asks the Condition, so a timed-await poll that "
-                + "is never signalled fires and one signal anywhere in the run silences every "
-                + "waiter; needs per-await pairing, or the lock's hasWaiters at analysis");
+        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "pairs each recorded await with the "
+                + "signals recorded while it waited (#583), but still never asks the Condition: "
+                + "the MUST_FIRE row's finding is the body's own declaration that an await woke "
+                + "with no signal; needs the lock's hasWaiters at analysis, or a real parked "
+                + "waiter in the unsafe body, to decide on what the object did");
         HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "recordBroken is the finding and is never "
                 + "checked against barrier.isBroken(), so a barrier broken on purpose to cancel and "
                 + "then discarded fires CRITICAL; needs reuse-after-broken decided with isBroken() "

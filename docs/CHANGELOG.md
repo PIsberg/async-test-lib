@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
+  It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
+  recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is
+  never signalled by design fired. `recordAwaitExit`'s `timedOut` argument was never read, and a
+  signal made while nobody waited was reported as lost, which the class javadoc already conceded
+  happens in correct code whenever the producer gets there first. A signal now owes a wakeup to a
+  waiter that is waiting at that moment (`signalAll` to every such waiter), a woken exit settles
+  one, and a woken exit with none owed is the missing-signal finding. A timed-out exit is not a
+  finding, an exit with no open await on its thread is ignored, and a signal into an empty
+  condition is printed as a note outside `hasIssues()`. `ConditionVariableDetectorModelTest` pins
+  eight cases, four of them red before the fix, and `DetectorAccuracyEvalTest` gains the pair: a
+  producer that signals the wrong condition strands a real parked consumer, and the twin that
+  signals the right one stays silent. `examples/42-condition-variable` demonstrated only the
+  no-waiter signal, and the consumer fixture only a timed-out await followed by one; both now
+  strand a consumer on the wrong condition, which is the defect the detector reports.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

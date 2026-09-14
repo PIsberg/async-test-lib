@@ -3,10 +3,14 @@ package se.deversity.asynctest.example;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.ConditionVariableDetector;
 import se.deversity.asynctest.example.service.BoundedBufferService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,31 +23,30 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * This test demonstrates a common pattern where:
  * - A sequential @Test PASSES (but gives false confidence)
- * - The same test with @AsyncTest FAILS (exposing the real concurrent bug)
+ * - The same service under @AsyncTest FAILS (exposing the real concurrent bug)
  *
  * THE BUG:
- * BoundedBufferService uses signal() on both the notFull and notEmpty
- * conditions. With a single producer and single consumer this works by
- * coincidence — only one thread waits per condition. With multiple producers
- * and consumers, signal() may wake the wrong thread type (another consumer
- * when a producer should proceed), leaving threads stranded despite the
- * buffer having capacity.
+ * BoundedBufferService.put() signals notFull after adding an item, but consumers are parked
+ * on notEmpty. A consumer that was already waiting when the item arrived is never woken.
  *
  * WHY @Test PASSES:
- * Sequential put/take pairs never block because the buffer is never full or
- * empty at the same time when accessed by a single thread. signal() is called
- * but has no visible effect — no other thread is waiting.
+ * A single thread calling put() then take() never waits: the item is already there when
+ * take() checks the buffer, so the wrong signal has no visible effect.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * 8 threads concurrently call put() and take(). ConditionVariableDetector
- * records each await() and signal() call on the registered Condition objects.
- * When it sees signal() used with multiple waiters on the same condition, it
- * reports the potential missed-wakeup pattern.
+ * Each worker parks a consumer on an empty buffer and then produces one item. The service
+ * reports every await, await exit and signal to ConditionVariableDetector through its Probe.
+ * When the run is analysed the consumers are still inside their await on notEmpty, with the
+ * item in the buffer: a stuck waiter, which the detector reports.
+ *
+ * WHAT IS NOT REPORTED:
+ * A signal made while nobody waits, and a poll that times out, are how correct code runs,
+ * so the detector does not report either on its own.
  *
  * DETECTORS TRIGGERED:
- *   ConditionVariableDetector — primary: signal() used with multiple waiters
+ *   ConditionVariableDetector — stuck waiters on "not-empty"
  *
- * FIX: replace signal() with signalAll() on both conditions.
+ * FIX: put() signals notEmpty instead of notFull.
  */
 class BoundedBufferServiceTest {
 
@@ -73,35 +76,54 @@ class BoundedBufferServiceTest {
     }
 
     // -----------------------------------------------------------------------
-    // Part 2: @AsyncTest — exposes signal() vs signalAll() bug
+    // Part 2: @AsyncTest — a consumer parked before the item arrives is stranded
     // -----------------------------------------------------------------------
 
-    @Disabled("Remove @Disabled to see signal() misuse detected by ConditionVariableDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConditionVariableIssues = true, failOn = FailOn.LOW)
-    void testBuffer_concurrent_detectsMissedSignal() throws InterruptedException {
-        var notEmpty = service.getNotEmpty();
-        var notFull  = service.getNotFull();
+    @Disabled("Remove @Disabled to see the stranded consumer reported by ConditionVariableDetector")
+    @AsyncTest(threads = 4, invocations = 5, detectAll = false, detectConditionVariableIssues = true, failOn = FailOn.LOW)
+    void testBuffer_concurrent_detectsStrandedConsumer() throws InterruptedException {
+        ConditionVariableDetector monitor = AsyncTestContext.conditionVariableDetector();
+        BoundedBufferService buffer = new BoundedBufferService(probe(monitor));
+        monitor.registerCondition(buffer.getNotEmpty(), "not-empty");
+        monitor.registerCondition(buffer.getNotFull(), "not-full");
 
-        // Register both conditions with the detector
-        AsyncTestContext.get().conditionMonitor()
-                .registerCondition(notEmpty, "not-empty");
-        AsyncTestContext.get().conditionMonitor()
-                .registerCondition(notFull, "not-full");
-
-        // Alternate between producing and consuming based on thread id parity
-        if (Thread.currentThread().getId() % 2 == 0) {
-            // Producer path
-            AsyncTestContext.get().conditionMonitor()
-                    .recordSignal(notFull, "not-full", false); // signal() = isSignalAll:false
-            service.put("item-" + Thread.currentThread().getId());
-        } else {
-            // Consumer path
-            AsyncTestContext.get().conditionMonitor()
-                    .recordSignal(notEmpty, "not-empty", false); // signal() = isSignalAll:false
-            if (service.size() > 0) {
-                String item = service.take();
-                assertNotNull(item, "taken item must not be null");
+        // A consumer that is already waiting when the item arrives. Daemon, and bounded well
+        // past the end of the run, so a stranded consumer neither hangs the build nor leaves
+        // before the detector looks.
+        Thread consumer = new Thread(() -> {
+            try {
+                buffer.poll(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
+        });
+        consumer.setDaemon(true);
+        consumer.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!buffer.hasWaitingConsumers()) {
+            assertTrue(System.nanoTime() < deadline, "the consumer never started waiting");
+            Thread.onSpinWait();
         }
+
+        buffer.put("item-" + Thread.currentThread().threadId());   // signals the wrong condition
+    }
+
+    private static BoundedBufferService.Probe probe(ConditionVariableDetector monitor) {
+        return new BoundedBufferService.Probe() {
+            @Override
+            public void awaiting(Condition condition) {
+                monitor.recordAwait(condition, null);
+            }
+
+            @Override
+            public void awaitExited(Condition condition, boolean timedOut) {
+                monitor.recordAwaitExit(condition, null, timedOut);
+            }
+
+            @Override
+            public void signalling(Condition condition, boolean all) {
+                monitor.recordSignal(condition, null, all);
+            }
+        };
     }
 }

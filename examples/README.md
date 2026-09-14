@@ -79,7 +79,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 39 | [CF Completion Leak](39-cf-completion-leak/) | `CompletableFutureCompletionLeakDetector` | `CompletableFuture` created but `complete()` never called — waiting threads block forever | 🟡 High |
 | 40 | [ConcurrentMap Recursion](40-concurrent-map-recursion/) | `ConcurrentMapComputeRecursionDetector` | `computeIfAbsent` lambda calls `computeIfAbsent` on the same map — recursive deadlock | 🔴 Critical |
 | 41 | [Concurrent Modification](41-concurrent-modification/) | `ConcurrentModificationDetector` | `ArrayList` iterated while another thread calls `add()` — `ConcurrentModificationException` | 🔴 Critical |
-| 42 | [Condition Variable](42-condition-variable/) | `ConditionVariableDetector` | `signal()` instead of `signalAll()` leaves threads waiting indefinitely | 🟡 High |
+| 42 | [Condition Variable](42-condition-variable/) | `ConditionVariableDetector` | `put()` signals the wrong condition, stranding a consumer that was already waiting | 🟡 High |
 | 43 | [Copy-On-Write Misuse](43-copy-on-write/) | `CopyOnWriteCollectionDetector` | `CopyOnWriteArrayList` on a write-heavy path — O(n) copy per write degrades throughput | 🟡 High |
 | 44 | [CountDownLatch Misuse](44-count-down-latch/) | `CountDownLatchDetector` | `countDown()` skipped in one code path — `await()` blocks forever | 🔴 Critical |
 | 45 | [CyclicBarrier Broken](45-cyclic-barrier/) | `CyclicBarrierDetector` | Exception before `await()` breaks the barrier — all subsequent arrivals get `BrokenBarrierException` | 🟡 High |
