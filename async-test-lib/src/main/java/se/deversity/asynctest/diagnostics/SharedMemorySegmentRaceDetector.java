@@ -98,7 +98,7 @@ public final class SharedMemorySegmentRaceDetector {
         SegmentState(String label) { this.label = label; }
     }
 
-    private final Map<Integer, SegmentState> segments = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, SegmentState> segments = new ConcurrentHashMap<>();
 
     private final java.util.concurrent.atomic.AtomicLong invocationEpoch =
             new java.util.concurrent.atomic.AtomicLong();
@@ -177,11 +177,11 @@ public final class SharedMemorySegmentRaceDetector {
     }
 
     private SegmentState stateFor(Object segment, @Nullable String label) {
-        int id = System.identityHashCode(segment);
-        SegmentState s = segments.get(id);
+        IdentityKey key = new IdentityKey(segment);
+        SegmentState s = segments.get(key);
         if (s == null) {
-            final String lbl = label != null ? label : "MemorySegment@" + id;
-            s = segments.computeIfAbsent(id, k -> new SegmentState(lbl));
+            final String lbl = label != null ? label : "MemorySegment@" + key.hashCode();
+            s = segments.computeIfAbsent(key, k -> new SegmentState(lbl));
         }
         return s;
     }

@@ -114,10 +114,10 @@ public final class ScopeResultEscapeDetector {
         }
     }
 
-    private final Map<String, ScopeState>   scopes   = new ConcurrentHashMap<>();
-    private final Map<Integer, HandleState> handles  = new ConcurrentHashMap<>();
-    private final AtomicLong                sequence = new AtomicLong();
-    private volatile boolean                enabled  = true;
+    private final Map<String, ScopeState>       scopes   = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, HandleState> handles  = new ConcurrentHashMap<>();
+    private final AtomicLong                    sequence = new AtomicLong();
+    private volatile boolean                    enabled  = true;
 
     /** Creates a detector with no recorded scopes. */
     public ScopeResultEscapeDetector() {
@@ -161,9 +161,9 @@ public final class ScopeResultEscapeDetector {
         if (!enabled || handle == null) return;
         ScopeState s = scope(scopeId);
         if (s == null) return;
-        int id = System.identityHashCode(handle);
-        String name = label != null ? label : "results@" + id;
-        handles.computeIfAbsent(id, k -> new HandleState(name, s));
+        IdentityKey key = new IdentityKey(handle);
+        String name = label != null ? label : "results@" + key.hashCode();
+        handles.computeIfAbsent(key, k -> new HandleState(name, s));
     }
 
     /**
@@ -221,7 +221,7 @@ public final class ScopeResultEscapeDetector {
 
     private @Nullable HandleState handle(Object handle) {
         if (!enabled || handle == null) return null;
-        return handles.get(System.identityHashCode(handle));
+        return handles.get(new IdentityKey(handle));
     }
 
     /** Turn recording off; already-recorded state is kept. */

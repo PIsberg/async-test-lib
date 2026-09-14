@@ -72,7 +72,7 @@ public final class SharedCharsetCoderDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a {@link CharsetEncoder} instance.
@@ -100,11 +100,11 @@ public final class SharedCharsetCoderDetector {
 
     private void record(Object coder, String operation, String kind, Thread thread) {
         if (thread == null) return;
-        int id = System.identityHashCode(coder);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(coder);
+        State s = instances.get(key);
         if (s == null) {
-            final String label = kind + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label, kind));
+            final String label = kind + "@" + key.hashCode();
+            s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         s.noteAccess(coder);
         s.accessingThreadIds.add(thread.threadId());

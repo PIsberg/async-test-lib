@@ -26,8 +26,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Jackson's per-type serializer/deserializer cache).
  *
  * <p>This library is dependency-free: it never references Jackson or Gson types
- * directly. Mapper instances are tracked purely by identity
- * ({@link System#identityHashCode}), and {@link Object#getClass()} is used only to label
+ * directly. Mapper instances are tracked purely by reference identity
+ * (compared with {@code ==}), and {@link Object#getClass()} is used only to label
  * findings in reports.
  *
  * <p>Configuring a mapper fully before it is shared ("config-then-use") is the correct,
@@ -87,7 +87,7 @@ public final class SharedJsonMapperReconfigDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record a serialization or deserialization call made against {@code mapper} on the
@@ -135,10 +135,10 @@ public final class SharedJsonMapperReconfigDetector {
     }
 
     private State stateFor(Object mapper) {
-        int id = System.identityHashCode(mapper);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(mapper);
+        State s = instances.get(key);
         if (s == null) {
-            s = instances.computeIfAbsent(id, k -> new State(mapper.getClass().getName()));
+            s = instances.computeIfAbsent(key, k -> new State(mapper.getClass().getName()));
         }
         return s;
     }

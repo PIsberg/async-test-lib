@@ -52,7 +52,7 @@ public class SemaphoreMisuseDetector {
         }
     }
 
-    private final Map<Integer, SemaphoreState> semaphores = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, SemaphoreState> semaphores = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -69,7 +69,7 @@ public class SemaphoreMisuseDetector {
         if (!enabled || semaphore == null) {
             return;
         }
-        semaphores.putIfAbsent(System.identityHashCode(semaphore), 
+        semaphores.putIfAbsent(new IdentityKey(semaphore), 
             new SemaphoreState(semaphore, name, initialPermits));
     }
 
@@ -83,14 +83,14 @@ public class SemaphoreMisuseDetector {
         if (!enabled || semaphore == null) {
             return;
         }
-        int id = System.identityHashCode(semaphore);
-        SemaphoreState state = semaphores.get(id);
+        IdentityKey key = new IdentityKey(semaphore);
+        SemaphoreState state = semaphores.get(key);
         if (state == null) {
             // Auto-register with unknown permits, atomically. get-then-put let two threads
             // racing on an unregistered semaphore each keep a private state, so acquiringThreads
             // and currentAcquires undercounted exactly when contention made them matter.
-            final String label = name != null ? name : "semaphore@" + id;
-            state = semaphores.computeIfAbsent(id,
+            final String label = name != null ? name : "semaphore@" + key.hashCode();
+            state = semaphores.computeIfAbsent(key,
                 k -> new SemaphoreState(semaphore, label, -1));
         }
         state.acquireCount.incrementAndGet();
@@ -109,7 +109,7 @@ public class SemaphoreMisuseDetector {
         if (!enabled || semaphore == null) {
             return;
         }
-        SemaphoreState state = semaphores.get(System.identityHashCode(semaphore));
+        SemaphoreState state = semaphores.get(new IdentityKey(semaphore));
         if (state != null) {
             state.releaseCount.incrementAndGet();
             state.releasingThreads.add(Thread.currentThread().threadId());

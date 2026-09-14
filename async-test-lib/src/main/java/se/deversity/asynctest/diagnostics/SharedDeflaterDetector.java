@@ -71,7 +71,7 @@ public final class SharedDeflaterDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a {@link Deflater} instance.
@@ -99,11 +99,11 @@ public final class SharedDeflaterDetector {
 
     private void record(Object instance, String name, String kind, Thread thread) {
         if (thread == null) return;
-        int id = System.identityHashCode(instance);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(instance);
+        State s = instances.get(key);
         if (s == null) {
-            final String label = (name != null) ? name : kind + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label, kind));
+            final String label = (name != null) ? name : kind + "@" + key.hashCode();
+            s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         s.noteAccess(instance);
         s.accessingThreadIds.add(thread.threadId());

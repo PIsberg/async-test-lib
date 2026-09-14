@@ -46,7 +46,7 @@ public class SharedTimeZoneDetector {
         volatile @Nullable String   firstOperation;
     }
 
-    private final Map<Integer, TzState> timezones = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, TzState> timezones = new ConcurrentHashMap<>();
 
     /**
      * Records a mutating operation on a {@code TimeZone} instance.
@@ -57,8 +57,8 @@ public class SharedTimeZoneDetector {
      */
     public void recordMutation(Object timeZone, String operation, Thread thread) {
         if (timeZone == null || thread == null) return;
-        TzState s = timezones.computeIfAbsent(System.identityHashCode(timeZone),
-                id -> new TzState());
+        TzState s = timezones.computeIfAbsent(new IdentityKey(timeZone),
+                k -> new TzState());
         s.noteAccess(timeZone);
         if (s.firstOperation == null) s.firstOperation = operation != null ? operation : "mutate";
         s.mutatingThreadIds.add(thread.threadId());

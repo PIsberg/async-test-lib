@@ -52,7 +52,7 @@ public class SharedRandomDetector {
         }
     }
 
-    private final Map<Integer, RandomState> randoms = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, RandomState> randoms = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -68,7 +68,7 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        randoms.putIfAbsent(System.identityHashCode(random), new RandomState(random, name));
+        randoms.putIfAbsent(new IdentityKey(random), new RandomState(random, name));
     }
 
     /**
@@ -82,16 +82,16 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        int id = System.identityHashCode(random);
-        RandomState state = randoms.get(id);
+        IdentityKey key = new IdentityKey(random);
+        RandomState state = randoms.get(key);
         if (state == null) {
             // Auto-register. computeIfAbsent, not get-then-put: two threads racing here both
             // saw null, both built a state and the second put discarded the first, so each
             // thread counted itself alone and analyze()'s "> 1 thread" test never tripped. A
             // detector whose whole job is spotting concurrent sharing went silent under
             // exactly the contention it exists to find.
-            final String label = name != null ? name : "random@" + id;
-            state = randoms.computeIfAbsent(id, k -> new RandomState(random, label));
+            final String label = name != null ? name : "random@" + key.hashCode();
+            state = randoms.computeIfAbsent(key, k -> new RandomState(random, label));
         }
         
         long now = System.currentTimeMillis();

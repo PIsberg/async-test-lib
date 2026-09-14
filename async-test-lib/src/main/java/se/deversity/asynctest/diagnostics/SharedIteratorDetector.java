@@ -88,7 +88,7 @@ public final class SharedIteratorDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to an iterator-like instance from the calling thread.
@@ -102,12 +102,12 @@ public final class SharedIteratorDetector {
     public void recordAccess(Object iterator, String operation) {
         if (iterator == null) return;
         Thread thread = Thread.currentThread();
-        int id = System.identityHashCode(iterator);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(iterator);
+        State s = instances.get(key);
         if (s == null) {
             final String kind = kindOf(iterator);
-            final String label = kind + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label, kind));
+            final String label = kind + "@" + key.hashCode();
+            s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         s.noteAccess(iterator);
         s.accessingThreadIds.add(thread.threadId());

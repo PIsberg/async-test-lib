@@ -58,7 +58,7 @@ public class SimpleDateFormatDetector {
         }
     }
 
-    private final Map<Integer, FormatterState> formatters = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, FormatterState> formatters = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -74,7 +74,7 @@ public class SimpleDateFormatDetector {
         if (!enabled || formatter == null) {
             return;
         }
-        formatters.putIfAbsent(System.identityHashCode(formatter), new FormatterState(formatter, name));
+        formatters.putIfAbsent(new IdentityKey(formatter), new FormatterState(formatter, name));
     }
 
     /**
@@ -108,15 +108,15 @@ public class SimpleDateFormatDetector {
         if (!enabled || formatter == null) {
             return;
         }
-        int id = System.identityHashCode(formatter);
-        FormatterState state = formatters.get(id);
+        IdentityKey key = new IdentityKey(formatter);
+        FormatterState state = formatters.get(key);
         if (state == null) {
             // Auto-register. computeIfAbsent, not get-then-put: two threads racing here both
             // saw null, both built a state and the second put discarded the first, so each
             // thread counted itself alone and the "> 1 thread" test in analyze() never
             // tripped - the detector went silent under exactly the contention it looks for.
-            final String label = name != null ? name : "formatter@" + id;
-            state = formatters.computeIfAbsent(id, k -> new FormatterState(formatter, label));
+            final String label = name != null ? name : "formatter@" + key.hashCode();
+            state = formatters.computeIfAbsent(key, k -> new FormatterState(formatter, label));
         }
         // The thread that hit the error was using the formatter, so it counts toward the
         // sharing the error finding now requires (#501).
@@ -131,12 +131,12 @@ public class SimpleDateFormatDetector {
         if (!enabled || formatter == null) {
             return;
         }
-        int id = System.identityHashCode(formatter);
-        FormatterState state = formatters.get(id);
+        IdentityKey key = new IdentityKey(formatter);
+        FormatterState state = formatters.get(key);
         if (state == null) {
             // Auto-register atomically - see recordError() for why get-then-put lost records.
-            final String label = name != null ? name : "formatter@" + id;
-            state = formatters.computeIfAbsent(id, k -> new FormatterState(formatter, label));
+            final String label = name != null ? name : "formatter@" + key.hashCode();
+            state = formatters.computeIfAbsent(key, k -> new FormatterState(formatter, label));
         }
         state.noteAccess(formatter);
 

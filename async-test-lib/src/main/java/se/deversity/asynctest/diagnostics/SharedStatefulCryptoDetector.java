@@ -81,7 +81,7 @@ public final class SharedStatefulCryptoDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access to a {@link Cipher} instance (init/update/doFinal/wrap/unwrap).
@@ -125,12 +125,13 @@ public final class SharedStatefulCryptoDetector {
     private void record(Object instance, String name, String kind, Class<?> type,
                         String algorithm, Thread thread) {
         if (thread == null) return;
-        int id = System.identityHashCode(instance);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(instance);
+        State s = instances.get(key);
         if (s == null) {
             // Cold path — first observation of this instance.
-            final String label = (name != null) ? name : type.getSimpleName() + "@" + id;
-            s = instances.computeIfAbsent(id, k -> new State(label, kind, algorithm));
+            final String label = (name != null)
+                    ? name : type.getSimpleName() + "@" + key.hashCode();
+            s = instances.computeIfAbsent(key, k -> new State(label, kind, algorithm));
         }
         s.noteAccess(instance);
         s.accessingThreadIds.add(thread.threadId());

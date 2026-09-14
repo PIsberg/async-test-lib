@@ -57,7 +57,7 @@ public class SharedMessageDigestDetector {
         }
     }
 
-    private final Map<Integer, DigestState> digests = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, DigestState> digests = new ConcurrentHashMap<>();
 
     /**
      * Record an access (update/digest/reset/clone/encrypt/decrypt/sign/verify) to a MessageDigest or cryptographic instance.
@@ -77,15 +77,15 @@ public class SharedMessageDigestDetector {
         // detector has already seen at least once, so we avoid all classification
         // work (instanceof chain, label string construction, lambda allocation)
         // until we know the entry is missing.
-        int id = System.identityHashCode(digest);
-        DigestState s = digests.get(id);
+        IdentityKey key = new IdentityKey(digest);
+        DigestState s = digests.get(key);
         if (s == null) {
             // Cold path: first encounter of this instance. computeIfAbsent
             // guarantees the factory runs at most once even under contention.
-            s = digests.computeIfAbsent(id, k -> {
+            s = digests.computeIfAbsent(key, k -> {
                 String label = (name != null)
                         ? name
-                        : digest.getClass().getSimpleName() + "@" + k;
+                        : digest.getClass().getSimpleName() + "@" + k.hashCode();
                 String type;
                 if (digest instanceof javax.crypto.Cipher) {
                     type = "Cipher";

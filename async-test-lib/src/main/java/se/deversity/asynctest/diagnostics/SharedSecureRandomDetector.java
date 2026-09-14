@@ -70,7 +70,7 @@ public final class SharedSecureRandomDetector {
         }
     }
 
-    private final Map<Integer, State> instances = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * Record an access (nextBytes/nextInt/nextLong/setSeed/etc.) to a
@@ -82,14 +82,14 @@ public final class SharedSecureRandomDetector {
      */
     public void recordAccess(SecureRandom random, String name, Thread thread) {
         if (random == null || thread == null) return;
-        int id = System.identityHashCode(random);
-        State s = instances.get(id);
+        IdentityKey key = new IdentityKey(random);
+        State s = instances.get(key);
         if (s == null) {
             // Cold path — first observation of this instance.
-            s = instances.computeIfAbsent(id, k -> {
+            s = instances.computeIfAbsent(key, k -> {
                 String label = (name != null)
                         ? name
-                        : random.getClass().getSimpleName() + "@" + k;
+                        : random.getClass().getSimpleName() + "@" + k.hashCode();
                 String algorithm = safeString(random::getAlgorithm);
                 String provider  = safeString(() -> random.getProvider() != null
                         ? random.getProvider().getName() : "unknown");
