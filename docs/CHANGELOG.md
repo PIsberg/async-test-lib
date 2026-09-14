@@ -15,11 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shared entry silently attributed one object's events to the other. A fresh pool per body could
   inherit an earlier pool's shutdown, two per-thread `Shared*` instances could read as one shared
   instance and report a race on correct code, a colliding owner could make a field look like it
-  changed its lock. They now key by a package-private `IdentityKey` that caches the hash and
+  changed its lock. 80 of them now key by a package-private `IdentityKey` that caches the hash and
   compares referents with `==`, or by a value that is already unique (`ThreadLeakDetector` by
   thread id, because it must not retain the thread). Report labels print the same hash as before.
-  `DetectorStateIsKeyedByIdentityTest` refuses the pattern in main sources; six files that open
-  pull requests also rewrite are listed as pending until those merge. `ThreadPoolMonitor`,
+  `DetectorStateIsKeyedByIdentityTest` refuses the pattern in main sources; the other six, which
+  open pull requests also rewrite, are listed as pending there until those merge. `ThreadPoolMonitor`,
   `SynchronizerMonitor` and `ConstructorSafetyValidator` now ignore a `null` subject in every
   record method, where some used to file it under hash 0.
 
