@@ -519,6 +519,159 @@ class DetectorAccuracyEvalTest {
                         + "the first foreign access");
     }
 
+    // ---- AtomicityValidator, ownership transfer: #555 ----
+    //
+    // An object taken out of a queue or an atomic slot is exclusive to the thread that took it,
+    // the way a receiver under construction is exclusive to its builder. netty's adaptive
+    // allocator moves a chunk between magazines that way: under one magazine's lock, then taken
+    // from the shared cache or the next-in-line slot, then under another magazine's lock, or with
+    // no lock at all by a thread that took it with getAndSet. The lock changes; the exclusion
+    // never lapses.
+
+    private static final long THIRD_LOCK = 0x3333L;
+
+    @Test
+    @DisplayName("atomicity: a receiver that moves between locks through a take is silent (#555)")
+    void atomicityLockMigrationThroughATakeIsSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        migrateBetweenLocks(validator, 90, true);
+        assertFalse(validator.analyze().hasIssues(),
+                "Every access held a lock. The lock changed once, at a point where one thread "
+                        + "took the receiver out of a queue, and every access in each ownership "
+                        + "generation agrees on its lock. That is netty's chunk leaving one "
+                        + "magazine and joining another; the empty intersection across the whole "
+                        + "run is an artefact of intersecting across the hand-off");
+    }
+
+    @Test
+    @DisplayName("atomicity: the same lock change with no take still fires (#555)")
+    void atomicityLockChangeWithoutATakeStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        migrateBetweenLocks(validator, 91, false);
+        assertTrue(validator.analyze().hasIssues(),
+                "Identical accesses, but nothing took the receiver: the lock simply changed, and "
+                        + "two locks that never intersect protect nothing against each other. "
+                        + "Only an observed take may start a new ownership generation");
+    }
+
+    @Test
+    @DisplayName("atomicity: unlocked use by whoever took the receiver atomically is silent (#555)")
+    void atomicityUnlockedUseAfterAnAtomicTakeIsSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        takeAndUseUnlocked(validator, 92, true);
+        assertFalse(validator.analyze().hasIssues(),
+                "Each thread took the receiver with an atomic getAndSet before touching it and "
+                        + "touched it with no lock. Nothing else could reach it between the take "
+                        + "and the hand-back, which is netty's allocateWithoutLock path; the "
+                        + "take, not a lock, is what excludes the other threads");
+    }
+
+    @Test
+    @DisplayName("atomicity: unlocked use with no take still fires (#555)")
+    void atomicityUnlockedUseWithoutATakeStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        takeAndUseUnlocked(validator, 93, false);
+        assertTrue(validator.analyze().hasIssues(),
+                "The same unlocked reads and writes from several threads with no take in "
+                        + "between is the plain race, and must keep reporting");
+    }
+
+    @Test
+    @DisplayName("atomicity: a thread that uses a taken receiver without taking it still fires (#555)")
+    void atomicityAccessByAThreadThatDidNotTakeTheReceiverStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "chunk.allocated", true, 1, WRITE_LOCK, 94);
+        validator.recordOwnershipTaken(94, 2);
+        agentAccess(validator, "chunk.allocated", false, 2, NO_LOCKS, 94);
+        agentAccess(validator, "chunk.allocated", true, 2, NO_LOCKS, 94);
+        // Thread 3 kept a reference from before the take and writes through it, unlocked.
+        agentAccess(validator, "chunk.allocated", true, 3, NO_LOCKS, 94);
+        agentAccess(validator, "chunk.allocated", false, 2, NO_LOCKS, 94);
+        agentAccess(validator, "chunk.allocated", true, 2, NO_LOCKS, 94);
+        validator.markInvocationStart();
+        agentAccess(validator, "chunk.allocated", true, 3, NO_LOCKS, 94);
+        agentAccess(validator, "chunk.allocated", true, 2, NO_LOCKS, 94);
+        assertTrue(validator.analyze().hasIssues(),
+                "Thread 2 took the receiver, but thread 3 wrote to it anyway through a reference "
+                        + "it already held, with no lock. A take excludes only the threads that "
+                        + "go through the slot; the first access by anyone else ends the "
+                        + "exclusion exactly as it ends construction");
+    }
+
+    @Test
+    @DisplayName("atomicity: locks that disagree inside one ownership generation still fire (#555)")
+    void atomicityDisagreeingLocksWithinOneGenerationStillFire() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        agentAccess(validator, "chunk.allocated", true, 1, WRITE_LOCK, 95);
+        agentAccess(validator, "chunk.allocated", false, 2, WRITE_LOCK, 95);
+        validator.recordOwnershipTaken(95, 3);
+        agentAccess(validator, "chunk.allocated", true, 3, OTHER_LOCK, 95);
+        agentAccess(validator, "chunk.allocated", true, 4, THIRD_LOCK, 95);
+        agentAccess(validator, "chunk.allocated", false, 3, OTHER_LOCK, 95);
+        validator.markInvocationStart();
+        agentAccess(validator, "chunk.allocated", true, 4, THIRD_LOCK, 95);
+        agentAccess(validator, "chunk.allocated", true, 3, OTHER_LOCK, 95);
+        assertTrue(validator.analyze().hasIssues(),
+                "After the take, threads 3 and 4 both write under locks that never intersect. "
+                        + "A take licenses a new lock for the new owner, not two locks at once");
+    }
+
+    /**
+     * Construction under one lock, a shared phase under a second, then a third lock after the
+     * point where {@code withTake} records a take.
+     */
+    private static void migrateBetweenLocks(AtomicityValidator validator, int identity,
+                                            boolean withTake) {
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        agentAccess(validator, field, true, 1, THIRD_LOCK, identity);
+        for (long thread = 2; thread <= 3; thread++) {
+            agentAccess(validator, field, false, thread, WRITE_LOCK, identity);
+            agentAccess(validator, field, true, thread, WRITE_LOCK, identity);
+        }
+        validator.markInvocationStart();
+        for (long thread = 2; thread <= 3; thread++) {
+            agentAccess(validator, field, false, thread, WRITE_LOCK, identity);
+            agentAccess(validator, field, true, thread, WRITE_LOCK, identity);
+        }
+        if (withTake) {
+            validator.recordOwnershipTaken(identity, 4);
+        }
+        for (long thread = 4; thread <= 5; thread++) {
+            agentAccess(validator, field, false, thread, OTHER_LOCK, identity);
+            agentAccess(validator, field, true, thread, OTHER_LOCK, identity);
+        }
+        validator.markInvocationStart();
+        for (long thread = 4; thread <= 5; thread++) {
+            agentAccess(validator, field, false, thread, OTHER_LOCK, identity);
+            agentAccess(validator, field, true, thread, OTHER_LOCK, identity);
+        }
+    }
+
+    /** Several threads per round each take the receiver, when {@code withTake}, and use it unlocked. */
+    private static void takeAndUseUnlocked(AtomicityValidator validator, int identity,
+                                           boolean withTake) {
+        String field = "chunk.allocated";
+        long thread = 1;
+        validator.markInvocationStart();
+        agentAccess(validator, field, true, thread, WRITE_LOCK, identity);
+        for (int round = 0; round < 3; round++) {
+            if (round > 0) {
+                validator.markInvocationStart();
+            }
+            for (int user = 0; user < 3; user++) {
+                thread++;
+                if (withTake) {
+                    validator.recordOwnershipTaken(identity, thread);
+                }
+                agentAccess(validator, field, false, thread, NO_LOCKS, identity);
+                agentAccess(validator, field, true, thread, NO_LOCKS, identity);
+            }
+        }
+    }
+
     @Test
     @DisplayName("atomicity: the settled single-check cache is silent (#313)")
     void atomicitySettledSingleCheckCacheIsSilent() {
