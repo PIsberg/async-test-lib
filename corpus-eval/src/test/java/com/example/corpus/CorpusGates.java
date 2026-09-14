@@ -744,13 +744,18 @@ final class CorpusGates {
     /**
      * How many events may still be published in the quiet window after the last subject.
      *
-     * <p>Not zero, because the harness itself publishes. Surefire's forked JVM runs a periodic
-     * stream flusher, {@code org.apache.maven.surefire}, which the agent weaves like any other
-     * class on the classpath. Sampled over 700 stack snapshots once the TimedSemaphore timer was
-     * stopped, it was the only thread seen inside woven code, and the counter moved by 20 to 30
-     * events per 250 ms on JDK 26. A subject that leaves a task
-     * running is a different order of magnitude: the TimedSemaphore timer this exists for published
-     * about 1,100 events per later subject, and 430 in a 250 ms window on JDK 26.
+     * <p>Surefire's forked JVM runs its own threads, {@code org.apache.maven.surefire}, which the
+     * agent wove like any other class until #561. They moved the counter by 20 to 30 events per
+     * 250 ms locally and on three green CI legs, by 271 on a JDK 25 CI run before the gate could
+     * say why, and by 261 on a JDK 26 CI run where its thread sampler found
+     * {@code surefire-forkedjvm-command-thread} in {@code Channels$3.readImpl} as the only runnable
+     * thread in woven code, 100 samples of 100.
+     * Lane one now excludes that package from weaving, and the local window reads 0.
+     *
+     * <p>A subject that leaves a task running is a different order of magnitude: the TimedSemaphore
+     * timer this exists for published about 1,100 events per later subject, and 430 in a 250 ms
+     * window on JDK 26. The allowance is left at 100 until the CI legs have measured the window
+     * with Surefire excluded; lowering it on one local zero would trade a flake for a guess.
      */
     static final long QUIET_WINDOW_ALLOWANCE = 100;
 

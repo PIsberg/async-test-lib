@@ -198,7 +198,13 @@
                                  20 with nothing else changed (#316). premain weaves at load time,
                                  before any subject class exists, so the corpus measures the
                                  detectors instead of the file order. -->
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=fields=true,collections=true</argLine>
+                            <!-- excludes=org.apache.maven.surefire: Surefire's forked-JVM command reader is woven like any
+                                 other class and publishes events after the last subject, which
+                                 the quiet-window gate cannot tell from a subject that left a
+                                 timer running. Its stack was the only one sampled inside woven
+                                 code when the gate tripped on JDK 26 (#561). It is harness, not
+                                 a subject, so no subject's count is meant to include it. -->
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire,fields=true,collections=true</argLine>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <corpus.lane>agent-on</corpus.lane>
@@ -209,7 +215,7 @@
                                      state in a JDK collection writes no field of its own, so
                                      without it three of the nine documented-unsafe subjects
                                      reported nothing at all. -->
-                                <asynctest.agent>fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>excludes=org.apache.maven.surefire,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

@@ -35,7 +35,10 @@ at once.
 
 Every subject runs twice, in two lanes:
 
-- **`agent-on`**, with the agent attached as `fields=true,collections=true`. Every number below
+- **`agent-on`**, with the agent attached as `fields=true,collections=true` and Surefire's own
+  classes excluded from weaving (#561). The exclusion takes the harness's own woven events out of
+  every subject's event count; runs keyed below that predate it carry a few more events per
+  subject, and no finding. Every number below
   comes from this lane.
 - **`agent-off`**, with nothing attached. This is a control, not a second measurement, and what it
   controls for is stated under "Exposure" below.
