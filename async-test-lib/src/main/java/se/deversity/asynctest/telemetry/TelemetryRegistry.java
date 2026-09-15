@@ -393,6 +393,9 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetInt(VarHandle handle, Object receiver, int expected,
                                            int update) {
+        if (expected == 0 && update == 1) {
+            SpinLocks.aboutToAcquire(receiver, handle);
+        }
         boolean won = handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
         if (won && receiver != null && (expected == 0 && update == 1 || expected == 1 && update == 0)) {
             String field = SpinLocks.fieldOf(handle);
@@ -468,6 +471,9 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                   Object receiver, int expected, int update) {
+        if (expected == 0 && update == 1) {
+            SpinLocks.aboutToAcquire(receiver, updater);
+        }
         AtomicIntegerFieldUpdater<Object> target = erased(updater);
         boolean won = target.compareAndSet(receiver, expected, update);
         if (won && receiver != null && (expected == 0 && update == 1 || expected == 1 && update == 0)) {
@@ -532,6 +538,9 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                      boolean update) {
+        if (!expected && update) {
+            SpinLocks.aboutToAcquire(flag);
+        }
         boolean won = flag.compareAndSet(expected, update);
         if (won && expected != update) {
             if (update) {
@@ -551,6 +560,8 @@ public final class TelemetryRegistry {
     public static boolean getAndSetAtomicBoolean(AtomicBoolean flag, boolean value) {
         if (!value) {
             SpinLocks.release(flag);
+        } else {
+            SpinLocks.aboutToAcquire(flag);
         }
         boolean previous = flag.getAndSet(value);
         if (value && !previous) {
@@ -583,6 +594,9 @@ public final class TelemetryRegistry {
      * @param update the value to store @return whether the swap happened @since 1.12.1
      */
     public static boolean compareAndSetAtomicInteger(AtomicInteger count, int expected, int update) {
+        if (expected == 0 && update == 1) {
+            SpinLocks.aboutToAcquire(count);
+        }
         boolean won = count.compareAndSet(expected, update);
         if (won && expected == 0 && update == 1) {
             SpinLocks.acquire(count);

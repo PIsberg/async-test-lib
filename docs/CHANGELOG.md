@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Spinlock re-confirmation revokes a stale holder before another thread's won swap lands (#621).**
+  A thread that released a spinlock flag through an unobserved call (such as `getAndSet(0)`)
+  remained listed as the lock holder until another thread won a substituted compare-and-swap and
+  recorded itself as holder. Between that swap and the holder write, the flag read locked and the
+  holder still named the previous thread, excusing accesses in that gap. An acquire sequence
+  counter is now bumped and any stale holder cleared before the swap instruction executes when the
+  flag is free; `Lock.stillHeld()` requires both the holder and the acquire sequence counter to be
+  unchanged since the winner took the lock. `SpinLocksTest` deterministically latches threads at
+  the three points with a test-only seam and pins the revocation.
+
 - **`ConditionVariableDetector` reads stuck waiters from the lock, and keeps an abandoned await
   in its own round (#592, #593).** A stuck waiter was any recorded await with no recorded exit, so
   a body that recorded an await and then threw, or found its predicate true and never called
