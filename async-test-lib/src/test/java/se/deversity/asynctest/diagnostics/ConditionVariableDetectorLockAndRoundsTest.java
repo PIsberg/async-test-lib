@@ -302,5 +302,75 @@ class ConditionVariableDetectorLockAndRoundsTest {
                     "a later registration with the lock must not discard the recorded missing "
                             + "signal. Report:\n" + report);
         }
+
+        @Test
+        @DisplayName("#643: an idle consumer parked on a condition whose predicate is false stays silent")
+        void idleConsumerParkedOnConditionStaysSilent() throws Exception {
+            boolean[] queueEmpty = {true};
+            detector.registerCondition(lock, condition, () -> !queueEmpty[0], NAME);
+            Thread waiter = parkOn(lock, condition, () -> hasWaiters(lock, condition));
+            try {
+                var report = detector.analyze();
+                assertFalse(report.hasIssues(),
+                        "the consumer is parked on an empty queue (predicate is false); it is an idle "
+                                + "consumer, not a stuck waiter. Report:\n" + report);
+                assertEquals(0, report.stuckWaiters.size(), report.toString());
+                assertTrue(report.toString().contains("idle consumer"), report.toString());
+            } finally {
+                waiter.interrupt();
+                waiter.join(10_000);
+            }
+        }
+
+        @Test
+        @DisplayName("#643: a consumer parked on a condition whose predicate is satisfied is reported as a stuck waiter")
+        void consumerParkedWhilePredicateSatisfiedFires() throws Exception {
+            boolean[] queueNotEmpty = {true};
+            detector.registerCondition(lock, condition, () -> queueNotEmpty[0], NAME);
+            Thread waiter = parkOn(lock, condition, () -> hasWaiters(lock, condition));
+            try {
+                var report = detector.analyze();
+                assertTrue(report.hasIssues(),
+                        "the consumer is parked while its predicate holds (an item was ready but no signal woke it). "
+                                + "Report:\n" + report);
+                assertEquals(1, report.stuckWaiters.size(), report.toString());
+                assertTrue(report.stuckWaiters.get(0).contains("while its predicate is satisfied"), report.toString());
+            } finally {
+                waiter.interrupt();
+                waiter.join(10_000);
+            }
+        }
+
+        @Test
+        @DisplayName("#643: write-lock condition with predicate: idle consumer stays silent, satisfied predicate fires")
+        void writeLockConditionWithPredicate() throws Exception {
+            ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+            Condition writeCondition = rw.writeLock().newCondition();
+            boolean[] ready = {false};
+            detector.registerCondition(rw, writeCondition, () -> ready[0], NAME);
+            Thread waiter = parkOn(rw.writeLock(), writeCondition, () -> {
+                rw.writeLock().lock();
+                try {
+                    return rw.hasWaiters(writeCondition);
+                } finally {
+                    rw.writeLock().unlock();
+                }
+            });
+            try {
+                var report = detector.analyze();
+                assertFalse(report.hasIssues(), "predicate is false, so waiter is idle. Report:\n" + report);
+
+                ready[0] = true;
+                var reportAfterReady = detector.analyze();
+                assertTrue(reportAfterReady.hasIssues(),
+                        "predicate is true, so waiter is stuck. Report:\n" + reportAfterReady);
+                assertEquals(1, reportAfterReady.stuckWaiters.size(), reportAfterReady.toString());
+                assertTrue(reportAfterReady.stuckWaiters.get(0).contains("while its predicate is satisfied"),
+                        reportAfterReady.toString());
+            } finally {
+                waiter.interrupt();
+                waiter.join(10_000);
+            }
+        }
     }
 }
