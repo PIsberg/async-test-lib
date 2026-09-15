@@ -173,6 +173,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timers, four of its six cases red before the change; `DetectorAccuracyEvalTest` gains the pair.
   Example 88's demonstration now schedules its eight reminders 10 ms apart so each falls due inside
   an earlier one's run. The detector also keys its timers by identity rather than identity hash.
+
+- **A spinlock released where the agent cannot see it no longer hides a race, and three more
+  spinlock shapes are modelled (#558).** #554's `VarHandle` spinlock stayed in the lockset until
+  the agent saw a release. A release through a call it does not substitute (an `int`
+  `getAndSet(this, 0)`, say) left the lock declared for the rest of the round, so every later write
+  on that thread looked guarded, and two threads doing that raced on a field the validator called
+  consistently locked. A spinlock now counts as held only while its flag still reads locked and
+  this thread is its last observed winner: `HeldLocks.Revocable` re-confirms it whenever the
+  lockset is read. With that in place the agent also declares spinlocks taken through an
+  `AtomicIntegerFieldUpdater` (`compareAndSet`, released by the swap back, `set`, `lazySet` or the
+  holder's write, bound by its `newUpdater` call), through an `AtomicBoolean` or `AtomicInteger`
+  used as the lock (`compareAndSet`, `getAndSet(true)`, released by the swap back, `set` or
+  `lazySet`), and through a `VarHandle` bound before the agent attached, resolved from the
+  handle's own nominal descriptor. Two live receivers that share an identity hash no longer share
+  a spinlock. `SpinLockWeavingTest` pins every shape both ways, 16 cases: before the change 10 were
+  red, among them the unobserved `VarHandle` release, which was a false negative on main. An
+  updater created before the agent attached and `Unsafe.compareAndSwapInt` stay unmodelled, so
+  writes under them still report.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

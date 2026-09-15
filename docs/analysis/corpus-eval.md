@@ -644,10 +644,11 @@ take, two locks inside one generation, and a table replaced with no spinlock. Wi
 column is 0 of 100 on L and on all three CI legs, and the unsafe side kept all 39 subjects and its
 per-detector split exactly.
 
-What the rules do not cover is filed rather than assumed: spinlocks taken through an
+What the rules did not cover was filed rather than assumed: spinlocks taken through an
 `AtomicIntegerFieldUpdater`, an atomic object or a handle bound before the agent attached
-([#558](https://github.com/PIsberg/async-test-lib/issues/558)), and the false-negative boundary where
-an alias holder races a taker after its last access
+([#558](https://github.com/PIsberg/async-test-lib/issues/558), since modelled, with every spinlock
+re-confirmed against its flag so a release the agent does not see cannot leave it held), and the
+false-negative boundary where an alias holder races a taker after its last access
 ([#559](https://github.com/PIsberg/async-test-lib/issues/559)).
 
 **The unsafe side stayed complete, and five detectors spoke in this lane for the first time.** All
