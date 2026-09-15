@@ -865,6 +865,20 @@ public final class AsyncTestContext {
         this.currentRoundSeed = seed;
     }
 
+    /**
+     * Internal: called by {@code ConcurrencyRunner} when a round has timed out, before it
+     * interrupts the round's workers, so a detector can tell that interrupt from one the test body
+     * sent itself. Touches only this context's own detector instances, never the
+     * {@code ThreadLocal}, so install/uninstall symmetry is unaffected.
+     *
+     * @since 1.12.1
+     */
+    public void markRoundTimedOut() {
+        if (exchangerDetector != null) {
+            exchangerDetector.markRoundTimedOut();
+        }
+    }
+
     // ---- Internal reporting ----
 
     /**

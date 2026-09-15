@@ -18,12 +18,14 @@ import org.jspecify.annotations.Nullable;
  * left over waits for a partner that is not coming, and an untimed {@code exchange(v)} waits for
  * it forever, holding its thread.
  *
- * <p><strong>The model.</strong> Per exchanger, tracked by identity, the detector counts the
- * exchanges started ({@link #recordExchangeStart}) and the exchanges ended, which is any of
- * {@link #recordExchangeComplete}, {@link #recordTimeout} and {@link #recordInterrupted}. The
- * runner analyses after its workers have quiesced, so an exchanger with more starts than ends at
- * that point has a thread that went into {@code exchange()} and never came back out. That is the
- * finding, reported CRITICAL.
+ * <p><strong>The model.</strong> Per exchanger, tracked by identity, and per thread, the detector
+ * counts the exchanges started ({@link #recordExchangeStart}) and the exchanges ended, which is any
+ * of {@link #recordExchangeComplete}, {@link #recordTimeout} and {@link #recordInterrupted}. An end
+ * closes a start only on the thread that recorded the start: {@code exchange()} returns, times out
+ * or is interrupted on the thread that called it, so that is where both are recorded. The runner
+ * analyses after its workers have quiesced, so an exchange still open on some thread at that point
+ * is a thread that went into {@code exchange()} and never came back out. That is the finding,
+ * reported CRITICAL.
  *
  * <p><strong>What is not a finding.</strong> A recorded timeout or interrupt is how a thread
  * left an exchange, not evidence that one was orphaned: a timed {@code exchange(v, t, unit)} that
@@ -33,16 +35,28 @@ import org.jspecify.annotations.Nullable;
  * a finding either: {@code exchange(null)} is permitted and a payload-free handoff is a normal
  * rendezvous (#521).
  *
+ * <p><strong>Which end closes which start.</strong>
+ * <ul>
+ *   <li>An end recorded on a thread with no open start closes nothing (#597). Counted per
+ *       exchanger, a completion recorded by a thread that never recorded starting used to offset a
+ *       different thread's orphan, and the orphan went unreported. The unmatched end is printed
+ *       as context.</li>
+ *   <li>An interrupt recorded after the runner timed the round out closes nothing (#598). An
+ *       untimed orphan inside an {@code @AsyncTest} body holds its round until {@code timeoutMs},
+ *       and the runner then interrupts the workers before analysing. That interrupt is the runner
+ *       abandoning the round, so a body that catches it and records it has not left an exchange it
+ *       would have left on its own; the start stays open and the timeout names this detector. The
+ *       runner says so through {@link #markRoundTimedOut()} before it interrupts anyone.</li>
+ * </ul>
+ *
  * <p><strong>Boundaries.</strong>
  * <ul>
- *   <li>The counts are per exchanger, not per call. An end recorded without its start (a
- *       completion recorded by a thread that never recorded starting) offsets another thread's
- *       open start, so that orphan goes unreported.</li>
- *   <li>An untimed orphan inside an {@code @AsyncTest} body blocks its round until
- *       {@code timeoutMs}. The runner then interrupts the workers before analysing; a body that
- *       records that interrupt has closed the exchange, and the round timeout is the only signal
- *       left. A body that lets the {@code InterruptedException} propagate leaves the start open,
- *       and the finding is printed with the timeout and named in its message.</li>
+ *   <li>A caller that records the start and the end of one exchange on different threads is
+ *       reported as orphaned, because nothing in the recording API says which thread an end
+ *       belongs to. {@code Exchanger} itself gives no reason to do that.</li>
+ *   <li>An interrupt the runner delivers without timing the round out, when the runner thread is
+ *       itself interrupted by a JUnit-level timeout, is not marked, and a body that records it
+ *       still closes its exchange.</li>
  * </ul>
  */
 public class ExchangerDetector {
@@ -55,6 +69,10 @@ public class ExchangerDetector {
     // this counter is written from two threads at once. A plain int made it a lost-update race
     // in a library whose own SharedCollectionDetector exists to flag exactly that shape.
     private final AtomicInteger nullValueExchanges = new AtomicInteger();
+    // Written once by the runner thread before it interrupts the workers of a timed-out round, and
+    // read by those workers when they record the interrupt. Thread.interrupt synchronises with the
+    // interrupted thread, so a worker woken by it already sees the write; volatile covers the rest.
+    private volatile boolean roundTimedOut;
 
     /**
      * Register an Exchanger for monitoring.
@@ -70,7 +88,7 @@ public class ExchangerDetector {
     }
 
     /**
-     * Record a thread starting an exchange.
+     * Record the calling thread starting an exchange.
      *
      * <p>An exchanger that was never registered is tracked from here under {@code exchangerName}.
      * Unregistered starts used to be dropped, so an exchange nobody registered could never be
@@ -80,11 +98,11 @@ public class ExchangerDetector {
      * @param exchangerName a label identifying the exchanger in the report
      */
     public void recordExchangeStart(Exchanger<?> exchanger, String exchangerName) {
-        infoFor(exchanger, exchangerName).started.incrementAndGet();
+        infoFor(exchanger, exchangerName).start();
     }
 
     /**
-     * Record a successful exchange completion.
+     * Record a successful exchange completion on the thread that started it.
      *
      * @param exchanger the exchanger being recorded, tracked by identity
      * @param exchangerName a label identifying the exchanger in the report
@@ -92,29 +110,51 @@ public class ExchangerDetector {
      */
     public void recordExchangeComplete(Exchanger<?> exchanger, String exchangerName,
                                        @Nullable Object value) {
-        infoFor(exchanger, exchangerName).completed.incrementAndGet();
+        ExchangerInfo info = infoFor(exchanger, exchangerName);
+        info.completed.incrementAndGet();
+        info.end();
         if (value == null) {
             nullValueExchanges.incrementAndGet();
         }
     }
 
     /**
-     * Record an exchange that timed out. This ends the exchange; it is not a finding on its own.
+     * Record an exchange that timed out, on the thread that started it. This ends the exchange; it
+     * is not a finding on its own.
      *
      * @param exchanger the exchanger being recorded, tracked by identity
      */
     public void recordTimeout(Exchanger<?> exchanger) {
-        infoFor(exchanger, null).timedOut.incrementAndGet();
+        ExchangerInfo info = infoFor(exchanger, null);
+        info.timedOut.incrementAndGet();
+        info.end();
     }
 
     /**
-     * Record an exchange that was interrupted. This ends the exchange; it is not a finding on its
-     * own.
+     * Record an exchange that was interrupted, on the thread that started it. This ends the
+     * exchange and is not a finding on its own, unless the runner has timed the round out: that
+     * interrupt is the runner abandoning the round, and the exchange stays open.
      *
      * @param exchanger the exchanger being recorded, tracked by identity
      */
     public void recordInterrupted(Exchanger<?> exchanger) {
-        infoFor(exchanger, null).interrupted.incrementAndGet();
+        ExchangerInfo info = infoFor(exchanger, null);
+        if (roundTimedOut) {
+            info.interruptedByTimeout.incrementAndGet();
+        } else {
+            info.interrupted.incrementAndGet();
+            info.end();
+        }
+    }
+
+    /**
+     * Tells the detector the runner has timed the current round out and is about to interrupt its
+     * workers. Called by the runner, not by test bodies.
+     *
+     * <p>A round that times out ends the run, so the mark is never cleared.
+     */
+    public void markRoundTimedOut() {
+        roundTimedOut = true;
     }
 
     private ExchangerInfo infoFor(Exchanger<?> exchanger, @Nullable String name) {
@@ -220,9 +260,13 @@ public class ExchangerDetector {
 
             int timedOut = 0;
             int interrupted = 0;
+            int unmatched = 0;
+            int byTimeout = 0;
             for (ExchangerInfo c : exchangers) {
                 timedOut += c.timedOut.get();
                 interrupted += c.interrupted.get();
+                unmatched += c.unmatchedEnds.get();
+                byTimeout += c.interruptedByTimeout.get();
             }
 
             if (hasIssues()) {
@@ -233,7 +277,12 @@ public class ExchangerDetector {
                           .append(c.open()).append(" of ").append(c.started.get())
                           .append(" started exchange(s) never ended (completed: ").append(c.completed.get())
                           .append(", timed out: ").append(c.timedOut.get())
-                          .append(", interrupted: ").append(c.interrupted.get()).append(")\n");
+                          .append(", interrupted: ").append(c.interrupted.get());
+                        if (c.interruptedByTimeout.get() > 0) {
+                            sb.append(", interrupted by the round timeout: ")
+                              .append(c.interruptedByTimeout.get());
+                        }
+                        sb.append(")\n");
                     }
                 }
                 sb.append("  Why: An Exchanger pairs its callers two at a time. A thread that entered exchange() and never came\n");
@@ -249,6 +298,14 @@ public class ExchangerDetector {
                 sb.append("  Exchanges ended by a recorded timeout: ").append(timedOut)
                   .append(", by a recorded interrupt: ").append(interrupted)
                   .append(" (not findings; the thread left the exchange)\n");
+            }
+            if (byTimeout > 0) {
+                sb.append("  Interrupts recorded after the round timed out: ").append(byTimeout)
+                  .append(" (the runner abandoning the round; they ended no exchange)\n");
+            }
+            if (unmatched > 0) {
+                sb.append("  Ends recorded with no start recorded on that thread: ").append(unmatched)
+                  .append(" (they ended no exchange; record the start and the end on the calling thread)\n");
             }
             if (nullValueExchanges > 0) {
                 sb.append("  Null value exchanges (legal; a rendezvous carries no payload): ")
@@ -269,17 +326,33 @@ public class ExchangerDetector {
         final AtomicInteger completed;
         final AtomicInteger timedOut;
         final AtomicInteger interrupted;
+        /** Ends recorded on a thread with no open start there; they closed nothing (#597). */
+        final AtomicInteger unmatchedEnds;
+        /** Interrupts recorded after the runner timed the round out; they closed nothing (#598). */
+        final AtomicInteger interruptedByTimeout;
+        // Exchanges started and not yet ended, per thread id. Each thread only ever changes its
+        // own entry, so the per-entry counter needs no more than the atomic it already is.
+        private final Map<Long, AtomicInteger> openByThread;
 
         ExchangerInfo(String name) {
             this(name, 0, 0, 0, 0);
         }
 
         ExchangerInfo(String name, int started, int completed, int timedOut, int interrupted) {
+            this(name, started, completed, timedOut, interrupted, 0, 0, new ConcurrentHashMap<>());
+        }
+
+        private ExchangerInfo(String name, int started, int completed, int timedOut, int interrupted,
+                              int unmatchedEnds, int interruptedByTimeout,
+                              Map<Long, AtomicInteger> openByThread) {
             this.name = name;
             this.started = new AtomicInteger(started);
             this.completed = new AtomicInteger(completed);
             this.timedOut = new AtomicInteger(timedOut);
             this.interrupted = new AtomicInteger(interrupted);
+            this.unmatchedEnds = new AtomicInteger(unmatchedEnds);
+            this.interruptedByTimeout = new AtomicInteger(interruptedByTimeout);
+            this.openByThread = openByThread;
         }
 
         /** Replaces the placeholder with the first real label; a real name is never overwritten. */
@@ -289,15 +362,38 @@ public class ExchangerDetector {
             }
         }
 
-        /** A copy for a report, so recording that continues cannot change what it says. */
-        ExchangerInfo snapshot() {
-            return new ExchangerInfo(name, started.get(), completed.get(), timedOut.get(),
-                    interrupted.get());
+        /** The calling thread started an exchange. */
+        void start() {
+            started.incrementAndGet();
+            openByThread.computeIfAbsent(Thread.currentThread().threadId(), id -> new AtomicInteger())
+                    .incrementAndGet();
         }
 
-        /** Exchanges started and not ended; never negative, so an unmatched end hides nothing extra. */
+        /** The calling thread ended an exchange: it closes one of that thread's own open starts. */
+        void end() {
+            AtomicInteger open = openByThread.get(Thread.currentThread().threadId());
+            if (open == null || open.getAndUpdate(n -> n > 0 ? n - 1 : n) == 0) {
+                unmatchedEnds.incrementAndGet();
+            }
+        }
+
+        /** A copy for a report, so recording that continues cannot change what it says. */
+        ExchangerInfo snapshot() {
+            Map<Long, AtomicInteger> openCopy = new ConcurrentHashMap<>();
+            for (Map.Entry<Long, AtomicInteger> e : openByThread.entrySet()) {
+                openCopy.put(e.getKey(), new AtomicInteger(e.getValue().get()));
+            }
+            return new ExchangerInfo(name, started.get(), completed.get(), timedOut.get(),
+                    interrupted.get(), unmatchedEnds.get(), interruptedByTimeout.get(), openCopy);
+        }
+
+        /** Exchanges started and not ended by the thread that started them. */
         int open() {
-            return Math.max(0, started.get() - completed.get() - timedOut.get() - interrupted.get());
+            int open = 0;
+            for (AtomicInteger n : openByThread.values()) {
+                open += n.get();
+            }
+            return open;
         }
     }
 }
