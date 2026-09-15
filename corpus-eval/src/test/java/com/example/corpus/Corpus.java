@@ -2202,6 +2202,30 @@ final class Corpus {
                             + "Neither thread death nor starvation can follow from these calls, "
                             + "so the silence is the model finding a completed lifecycle"),
 
+            // --- Timer starvation (#616): the half of the detector the pair above never
+            //     exercised. Both rows run the same two real tasks with the same records; they
+            //     separate on whether the waiter's own scheduledExecutionTime falls inside the
+            //     holder's recorded run, which each body arranges by construction.
+
+            new RecordingSubject("recorded_timer_taskStarvedBehindAnother", JDK,
+                    "java.util.Timer",
+                    DetectorType.TIMER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a real holder task schedules a waiter two milliseconds out and keeps the "
+                            + "timer's single thread until the wall clock is past the waiter's own "
+                            + "scheduledExecutionTime, so the waiter falls due while another task "
+                            + "holds the thread - starvation observed from the tasks' instants, "
+                            + "with no duration threshold"),
+
+            new RecordingSubject("recorded_timer_slowTaskWithNothingDueBehindIt", JDK,
+                    "java.util.Timer",
+                    DetectorType.TIMER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same slow holder and the same waiter with the same records, on a "
+                            + "second timer, except the waiter is scheduled only after the holder "
+                            + "recorded its completion, so it falls due after the run. A long run "
+                            + "that nothing waited behind is not starvation"),
+
             // --- FutureIgnored: the purest protocol pair in the lane. The detector's whole
             //     model is one boolean per submitted Future - was it ever inspected - so the
             //     rows differ in exactly that call and nothing else.

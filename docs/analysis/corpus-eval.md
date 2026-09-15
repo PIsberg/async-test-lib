@@ -1071,7 +1071,11 @@ silent. The timer's silent row deliberately records schedule and complete but no
 MUST_STAY_SILENT row must not be breakable by a GC pause - the same species of choice as the
 iterator pair's `hasNext()`. (Since #575 the threshold is gone: starvation is a task falling due, by its
 own `scheduledExecutionTime()`, while another task holds the timer thread. The silent row now records
-the run as well, and stays silent structurally, because one task cannot starve itself of a thread.)
+the run as well, and stays silent structurally, because one task cannot starve itself of a thread.
+#616 added the starvation half the pair never exercised: `recorded_timer_taskStarvedBehindAnother`
+schedules a waiter from inside a holder that keeps the thread past the waiter's due time, and
+`recorded_timer_slowTaskWithNothingDueBehindIt` runs the same two tasks with the same records but
+schedules the waiter only after the holder finished.)
 
 Three refusals, each for a different reason, all worth keeping:
 

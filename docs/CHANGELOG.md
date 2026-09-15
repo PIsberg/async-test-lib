@@ -103,6 +103,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pins six cases, two of them red against a no-op stub, and `DetectorAccuracyEvalTest` gains the
   deadline-loop true negative. Existing callers see no change.
 
+- **`TimerDetector` sees tasks that fell due together, and fixed-delay repetitions (#614, #615).**
+  Since #575 a task was starved only when its `scheduledExecutionTime()` fell strictly inside
+  another task's recorded run, so two tasks due at the same instant never reported: the timer runs
+  one first, and the second one's due time is at or before that run's start however long it takes.
+  Eight reminders scheduled with delay 0, each taking 150 ms, serialised for over a second in
+  silence. A task is now starved when a different task's run held the thread for a whole clock tick
+  at or after the instant it fell due, which is the existing rule when the due time is inside the
+  run and covers the co-due case when it is not; two short co-due tasks that finish inside the tick
+  they started in stay silent, and no duration threshold is involved. A fixed-delay repetition
+  (`schedule(task, delay, period)`) reports the instant the timer picked it from
+  `scheduledExecutionTime()`, not when it fell due, so it was never seen waiting; the new
+  `recordFixedDelayTaskRun(timer, name, task, periodMs, taskName)` counts its due time from the
+  previous pick plus the period. `TimerStarvationGapsTest` pins both directions on real timers,
+  including the JDK premise that a waited fixed-delay execution reports its pick; the co-due and
+  fixed-delay firing cases were red before the change. The TIMER corpus pair gains its starvation
+  twin (#616): `recorded_timer_taskStarvedBehindAnother` must fire and
+  `recorded_timer_slowTaskWithNothingDueBehindIt` must stay silent, with the same records on both
+  sides. The pair stays held, now on the off-thread exception alone.
+
 - **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
   It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
   recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is

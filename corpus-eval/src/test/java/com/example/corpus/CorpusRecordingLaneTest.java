@@ -369,6 +369,18 @@ class CorpusRecordingLaneTest {
     /** The clean row's own one-shot latch. */
     private final AtomicBoolean cleanTimerArmed = new AtomicBoolean();
 
+    /** A task falls due on this timer while another task holds its only thread (#616). */
+    private static Timer starvedTimer;
+
+    /** The starvation row's twin: the same slow task, and nothing due behind it until it is done. */
+    private static Timer unblockedTimer;
+
+    /** The starvation row arms its two real tasks once for the run. */
+    private final AtomicBoolean starvedTimerArmed = new AtomicBoolean();
+
+    /** The unblocked twin's own one-shot latch. */
+    private final AtomicBoolean unblockedTimerArmed = new AtomicBoolean();
+
     /** The pool the Future rows submit to; never declared to ExecutorShutdown, closed unrecorded. */
     private static ExecutorService futuresPool;
 
@@ -873,6 +885,8 @@ class CorpusRecordingLaneTest {
         futuresPool = Executors.newFixedThreadPool(2);
         failingTimer = new Timer("corpus-failing-timer", true);
         cleanTimer = new Timer("corpus-clean-timer", true);
+        starvedTimer = new Timer("corpus-starved-timer", true);
+        unblockedTimer = new Timer("corpus-unblocked-timer", true);
 
         // Both rows need a thread that is genuinely alive at analysis: the leak detector only
         // reports a tracked thread that is still isAlive(), and a non-daemon thread is the one
@@ -938,6 +952,8 @@ class CorpusRecordingLaneTest {
         promptScheduler.shutdownNow();
         cleanTimer.cancel();
         failingTimer.cancel();
+        starvedTimer.cancel();
+        unblockedTimer.cancel();
         leakedStream.close();
         Files.deleteIfExists(streamFile);
         Files.deleteIfExists(channelFile);
@@ -2139,6 +2155,98 @@ class CorpusRecordingLaneTest {
             assertTrue(completed.await(10, TimeUnit.SECONDS),
                     "the clean task must have completed and recorded before the arming body "
                             + "returns, or the silent row would be silent for lack of input");
+        }
+    }
+
+    /**
+     * A real task falls due while another real task holds the timer's only thread (#616).
+     *
+     * <p>The holder records its run, schedules the waiter two milliseconds out, and keeps the
+     * thread until the wall clock is past the waiter's own {@code scheduledExecutionTime()}. The
+     * waiter therefore falls due inside the holder's recorded run by construction, not by how the
+     * timer thread was scheduled, and the detector reads both instants from the tasks themselves.
+     * The body awaits the waiter, so every record precedes analysis.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_timer_taskStarvedBehindAnother() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        if (starvedTimerArmed.compareAndSet(false, true)) {
+            var monitor = AsyncTestContext.timerMonitor();
+            monitor.registerTimer(starvedTimer, "starved-timer");
+            CountDownLatch waiterRan = new CountDownLatch(1);
+            TimerTask waiter = new TimerTask() {
+                @Override
+                public void run() {
+                    monitor.recordTaskRun(starvedTimer, "starved-timer", this, "waiter");
+                    monitor.recordTaskComplete(starvedTimer, "starved-timer", "waiter");
+                    waiterRan.countDown();
+                }
+            };
+            starvedTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    monitor.recordTaskRun(starvedTimer, "starved-timer", this, "holder");
+                    starvedTimer.schedule(waiter, 2);
+                    holdPast(waiter.scheduledExecutionTime());
+                    monitor.recordTaskComplete(starvedTimer, "starved-timer", "holder");
+                }
+            }, 0);
+            assertTrue(waiterRan.await(10, TimeUnit.SECONDS),
+                    "the waiter must have run and recorded before the arming body returns, or the "
+                            + "MUST_FIRE claim would depend on the timer thread's schedule");
+        }
+    }
+
+    /**
+     * The same slow holder on its own timer, and the waiter scheduled only once the holder is done.
+     *
+     * <p>Both tasks record the same calls as the starvation row. The holder keeps the thread for a
+     * few clock ticks as it does there, so the only difference is whether anything fell due while
+     * it ran: the waiter is scheduled from the body after the holder recorded its completion, so its
+     * due instant is after the holder's run by construction. A long run alone starves nobody.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_timer_slowTaskWithNothingDueBehindIt() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        if (unblockedTimerArmed.compareAndSet(false, true)) {
+            var monitor = AsyncTestContext.timerMonitor();
+            monitor.registerTimer(unblockedTimer, "unblocked-timer");
+            CountDownLatch holderDone = new CountDownLatch(1);
+            unblockedTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    monitor.recordTaskRun(unblockedTimer, "unblocked-timer", this, "holder");
+                    holdPast(System.currentTimeMillis() + 3);
+                    monitor.recordTaskComplete(unblockedTimer, "unblocked-timer", "holder");
+                    holderDone.countDown();
+                }
+            }, 0);
+            assertTrue(holderDone.await(10, TimeUnit.SECONDS),
+                    "the holder must have completed before the waiter is scheduled");
+            CountDownLatch waiterRan = new CountDownLatch(1);
+            unblockedTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    monitor.recordTaskRun(unblockedTimer, "unblocked-timer", this, "waiter");
+                    monitor.recordTaskComplete(unblockedTimer, "unblocked-timer", "waiter");
+                    waiterRan.countDown();
+                }
+            }, 2);
+            assertTrue(waiterRan.await(10, TimeUnit.SECONDS),
+                    "the waiter must have run and recorded before the arming body returns, or the "
+                            + "silent row would be silent for lack of input");
+        }
+    }
+
+    /** Keeps the calling timer thread busy until the wall clock is strictly past {@code instantMs}. */
+    private static void holdPast(long instantMs) {
+        while (System.currentTimeMillis() <= instantMs) {
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 

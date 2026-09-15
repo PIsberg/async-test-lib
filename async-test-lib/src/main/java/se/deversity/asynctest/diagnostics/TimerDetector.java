@@ -42,15 +42,31 @@ import org.jspecify.annotations.Nullable;
  * starves nobody, and a GC pause that stretches a short task is not a finding unless another task
  * fell due inside it.
  *
+ * <p>Precisely: a task is starved by a different task's recorded run when that run held the thread
+ * for a whole clock tick at or after the instant the task fell due. That covers a task falling due
+ * in the middle of a run, and a task that was already due when the timer picked another task due at
+ * the same instant (#614): the timer runs co-due tasks one after the other, and the later one waits
+ * for the whole of the earlier one's run. Instants are milliseconds, so "a whole tick" is the
+ * granularity the clock gives, not a threshold chosen here: two short co-due tasks that finish
+ * inside the tick they started in are sequencing, and are silent.
+ *
+ * <p>A fixed-delay repetition ({@code schedule(task, delay, period)}) is the one schedule whose
+ * {@code scheduledExecutionTime()} is not when it fell due: {@code java.util.Timer} reschedules it
+ * from the instant it was picked, and reports that pick. Its due time is the previous execution's
+ * pick plus the period, which the task does not expose, so such a task records itself with
+ * {@link #recordFixedDelayTaskRun(java.util.Timer, String, java.util.TimerTask, long, String)}
+ * and passes the period it was scheduled with (#615).
+ *
  * <p>The boundaries, all towards silence:
  * <ul>
- *   <li>Two tasks due at the same instant are ordered by the timer, and the second one's wait is
- *       not reported, however long the first ran: the due time did not fall inside a run.</li>
- *   <li>A fixed-delay repetition ({@code schedule(task, delay, period)}) reports the instant the
- *       timer picked it rather than when it fell due, so it is never seen waiting.</li>
+ *   <li>A fixed-delay repetition recorded with the plain {@code recordTaskRun} reports the instant
+ *       the timer picked it, so it is never seen waiting; so is the first execution of a
+ *       fixed-delay task recorded with {@code recordFixedDelayTaskRun}, which has no previous pick
+ *       to count the period from.</li>
  *   <li>A task that falls due inside its own previous execution (a fixed-rate task overrunning its
- *       period) is not reported as starving another.</li>
- *   <li>Instants are milliseconds, so an overlap shorter than a clock tick can be missed.</li>
+ *       period, or a fixed-delay one) is not reported as starving another.</li>
+ *   <li>Instants are milliseconds, so a run that does not span a whole tick after a task fell due
+ *       is not reported, however it straddles a tick boundary.</li>
  *   <li>Records that name a task but carry no {@code TimerTask} still mark who held the thread,
  *       but cannot say when a task fell due, so they never decide a starvation.</li>
  * </ul>
@@ -141,17 +157,26 @@ public class TimerDetector {
         }
 
         /**
-         * {@return the finished run of a different task that held the thread at {@code instantMs},
-         * or {@code null}} Strict on both sides: a task due in the same millisecond a run started
-         * or ended was not observed waiting.
+         * {@return the newest finished run of a different task that held the thread for a whole
+         * clock tick at or after {@code dueMs}, or {@code null}}
+         *
+         * <p>The tick is {@code max(startMs + 1, dueMs)}: when the task fell due inside the run it
+         * is the due millisecond itself, which the run held from an earlier tick into a later one;
+         * when the task was already due as the run started (#614) it is the first tick after the
+         * start. Either way the run has to end after that tick. A run that ended at or before the
+         * due instant, and every older one, cannot have made the task wait.
          */
-        synchronized @Nullable Run heldAt(long instantMs, Object task) {
+        synchronized @Nullable Run heldAt(long dueMs, Object task) {
             for (Run run : finished) {
-                if (run.endMs <= instantMs) {
+                if (run.endMs <= dueMs) {
                     return null;
                 }
-                if (run.startMs < instantMs) {
-                    return Objects.equals(run.task, task) ? null : run;
+                if (Objects.equals(run.task, task)) {
+                    // Its own previous execution: a periodic task catching up starves nobody else.
+                    continue;
+                }
+                if (Math.max(run.startMs + 1, dueMs) < run.endMs) {
+                    return run;
                 }
             }
             return null;
@@ -179,6 +204,11 @@ public class TimerDetector {
         final Set<Thread> threadsThatRecordedAnException = ConcurrentHashMap.newKeySet();
         /** The runs recorded on each timer thread; only timer threads are tracked. */
         final Map<Thread, RunHistory> runsByTimerThread = new ConcurrentHashMap<>();
+        /**
+         * The instant each fixed-delay task was last picked, which its next execution falls due a
+         * period after (#615). Written only on the timer thread that runs the task.
+         */
+        final Map<IdentityKey, Long> fixedDelayPicks = new ConcurrentHashMap<>();
 
         TimerState(String name) {
             this.name = name;
@@ -253,16 +283,59 @@ public class TimerDetector {
         if (runs == null) {
             return;
         }
+        startJudged(state, runs, task, taskName, task.scheduledExecutionTime());
+    }
+
+    /**
+     * Record that an execution of a fixed-delay task has started, from inside its {@code run()}.
+     *
+     * <p>For a task scheduled with {@code timer.schedule(task, delay, period)}, the timer reports
+     * the instant it picked the execution from {@code scheduledExecutionTime()}, not the instant it
+     * fell due, so the four-argument {@code recordTaskRun} never sees such a task waiting. This form
+     * counts the due time from the previous execution's pick instead: the timer schedules the next
+     * execution {@code periodMs} after it. The first execution of a task has no previous pick and is
+     * not judged. Given a fixed-rate or one-shot task by mistake, it decides exactly as
+     * {@code recordTaskRun} does, because their reported instant is already the due one.
+     *
+     * @param timer    the Timer instance
+     * @param name     the label (should match registration)
+     * @param task     the task whose {@code run()} is making this call, normally {@code this}
+     * @param periodMs the period the task was scheduled with, in milliseconds
+     * @param taskName a descriptive name for the task
+     * @since 1.12.1
+     */
+    public void recordFixedDelayTaskRun(java.util.Timer timer, String name, java.util.TimerTask task,
+                                        long periodMs, String taskName) {
+        if (!enabled || timer == null || task == null || taskName == null) return;
+        TimerState state = resolve(timer, name);
+        RunHistory runs = runsOnThisTimerThread(state);
+        if (runs == null) {
+            return;
+        }
+        long pickMs = task.scheduledExecutionTime();
+        Long previousPick = state.fixedDelayPicks.put(new IdentityKey(task), pickMs);
+        long dueMs = previousPick == null || periodMs <= 0
+                ? pickMs
+                : Math.min(previousPick + periodMs, pickMs);
+        startJudged(state, runs, task, taskName, dueMs);
+    }
+
+    /** Opens {@code task}'s run on this timer thread, first reporting it if it waited to start. */
+    private static void startJudged(TimerState state, RunHistory runs, java.util.TimerTask task,
+                                    String taskName, long dueMs) {
         long nowMs = System.currentTimeMillis();
-        long dueMs = task.scheduledExecutionTime();
         Run holder = runs.heldAt(dueMs, task);
         if (holder != null) {
             state.starvedTasks.incrementAndGet();
             if (state.quotedStarvations.size() < QUOTED_STARVATIONS) {
-                state.quotedStarvations.add(String.format(
-                        "'%s' fell due %d ms into a %d ms run of '%s' and started %d ms late",
-                        taskName, dueMs - holder.startMs, holder.endMs - holder.startMs,
-                        holder.label, Math.max(0, nowMs - dueMs)));
+                long runMs = holder.endMs - holder.startMs;
+                state.quotedStarvations.add(dueMs > holder.startMs
+                        ? String.format("'%s' fell due %d ms into a %d ms run of '%s' and started %d ms late",
+                                taskName, dueMs - holder.startMs, runMs, holder.label,
+                                Math.max(0, nowMs - dueMs))
+                        : String.format("'%s' was already due when a %d ms run of '%s' took the "
+                                + "thread, and started %d ms late",
+                                taskName, runMs, holder.label, Math.max(0, nowMs - dueMs)));
             }
         }
         runs.start(task, taskName, nowMs);
