@@ -35,8 +35,8 @@ import java.util.Map;
  * attempt is recorded. If the calling thread does not hold the monitor, the
  * call is flagged.
  *
- * <p>Complements {@link MissedSignalDetector} (which catches notifies with no
- * waiter) by flagging the inverse: notifies that are illegal regardless of
+ * <p>Complements {@link MissedSignalDetector} (which catches a notify with no
+ * waiter that a later wait misses) by flagging the inverse: notifies that are illegal regardless of
  * whether anyone is waiting.
  *
  * @since 1.6.0

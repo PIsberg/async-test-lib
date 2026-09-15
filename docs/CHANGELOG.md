@@ -58,6 +58,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lists an odd-thread check it never had or null payloads as misuse. `ExchangerDetectorTest` and two
   `DetectorAccuracyEvalTest` twins pin both directions; nine of those tests were red before the fix.
 
+- **`MissedSignalDetector` reports a lost signal only when a wait missed it (#586).** Any notify
+  with no recorded waiter was CRITICAL, which is also the correct flag-then-notify handshake: the
+  class javadoc's own "bug" example was that correct code. A lost notify is now remembered, and the
+  finding is a wait that begins after it and receives no notify of its own, either ending
+  unsignalled or still open at analysis. Each wait is matched to the wakeup its own thread
+  records, replacing a shared counter whose decrement-then-clamp let a wakeup from a thread that
+  never waited erase a live waiter. New `recordWait`/`recordWakeup`/`recordNotify`/
+  `recordNotifyAll(Object monitor)` overloads key state by monitor identity; the `String` forms
+  still key by name. `MissedSignalDetectorAccuracyTest` pins the javadoc handshake, a signalled
+  later wait and the stray-wakeup case, all red before the change, and two cases that must fire.
+  The corpus pair, the consumer fixture and example 58 now record the unsignalled wait they
+  describe. Boundary: the recording API cannot see the predicate, so a guarded timed wait that
+  runs out after a lost notify is still reported.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

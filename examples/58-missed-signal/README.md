@@ -28,7 +28,10 @@ enters wait with no memory of past notifications.
 ## How to Reproduce
 
 Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
-`WorkerCoordinatorTest`. The `MissedSignalDetector` will report the missed signal.
+`WorkerCoordinatorTest`. Each execution signals a fresh coordinator nobody is waiting on, then
+waits on it with the bounded `waitForSignal(10)`, which receives nothing. The
+`MissedSignalDetector` reports that unsignalled wait. The lost `notify()` alone would not be
+reported: with a flag checked in a `while` loop the waiter never waits, and nothing is lost.
 
 ```
 @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMissedSignals = true)

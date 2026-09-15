@@ -2553,25 +2553,32 @@ class CorpusRecordingLaneTest {
     }
 
     /**
-     * A notify on a condition nobody recorded waiting for.
+     * A notify on a monitor nobody is waiting on, then a wait on it that receives no notify.
      *
      * <p>A signal sent before its waiter arrives is not queued anywhere; it is lost, and the
-     * waiter that arrives next blocks for a notification that has already happened.
+     * unguarded wait that arrives next wakes only when it times out, or never. A notify with
+     * nobody waiting is not enough on its own: a predicate-guarded waiter never waits for it
+     * (#586). Each execution uses its own monitor, so no other thread's notify can reach it.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_notify_withNobodyWaiting() {
         CorpusRecorder.countBodyExecution();
-        AsyncTestContext.missedSignalDetector().recordNotify("orphan-condition");
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        detector.recordNotify(monitor);
+        detector.recordWait(monitor);
+        detector.recordWakeup(monitor);
     }
 
-    /** The same notify with a recorded wait before it and a wakeup after it: the whole handshake. */
+    /** The same three calls with the wait first, so the notify reaches it: the whole handshake. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_notify_afterAWaiterArrived() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
-        detector.recordWait("paired-condition");
-        detector.recordNotify("paired-condition");
-        detector.recordWakeup("paired-condition");
+        Object monitor = new Object();
+        detector.recordWait(monitor);
+        detector.recordNotify(monitor);
+        detector.recordWakeup(monitor);
     }
 
     /**

@@ -2481,19 +2481,20 @@ final class Corpus {
                     "java.lang.Object",
                     DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "a notify is recorded on a condition no thread ever recorded waiting for. "
-                            + "A signal delivered before the waiter arrives is not queued - it "
-                            + "is simply lost - and the waiter that arrives next blocks for a "
-                            + "notification that has already been and gone"),
+                    "a notify is recorded on a monitor no thread is waiting on, and a wait "
+                            + "recorded on it afterwards ends with no notify in between. A signal "
+                            + "delivered before the waiter arrives is not queued - it is simply "
+                            + "lost - and the wait that follows blocks for a notification that "
+                            + "has already been and gone"),
 
             new RecordingSubject("recorded_notify_afterAWaiterArrived", JDK,
                     "java.lang.Object",
                     DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same notify on a condition with a recorded wait before it and a "
-                            + "recorded wakeup after it, which is the whole handshake. The pair "
-                            + "separates on whether a waiter existed, not on how the threads "
-                            + "were scheduled"),
+                    "the same three calls on a monitor with the wait recorded first, so the "
+                            + "notify reaches it before the wakeup, which is the whole handshake. "
+                            + "The pair separates on whether the wait received a notify, not on "
+                            + "how the threads were scheduled: each execution has its own monitor"),
 
             new RecordingSubject("recorded_optimisticRead_usedWithoutValidating", JDK,
                     "java.util.concurrent.locks.StampedLock",
