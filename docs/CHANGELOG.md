@@ -274,6 +274,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updater created before the agent attached and `Unsafe.compareAndSwapInt` stay unmodelled, so
   writes under them still report.
 
+- **`StampedLockDetector` records mode conversions and reports a read stamp released twice
+  (#604).** A conversion changes the stamp, and the recording API had no method for it: a body
+  that took a read lock, upgraded it and leaked the write had its leak counted against the read
+  stamp it gave up, and an optimistic read converted to a lock was reported as never validated,
+  although `tryConvertToReadLock` succeeds only for a stamp that still validates. The new
+  `recordConversion(lock, name, fromStamp, toStamp)` reads each stamp's kind from the stamp
+  (`isOptimisticReadStamp`, `isLockStamp`): from a lock stamp it moves the outstanding acquisition
+  to the returned stamp, from an optimistic stamp it is a validation (a failed one needs the usual
+  fallback), a zero result moves nothing, and the optimistic stamp a downgrade returns is not
+  judged. The leak evidence now says whether write or read stamps are outstanding, and an
+  optimistic stamp passed to `recordReadLock` or `recordWriteLock` is no longer an acquisition.
+  Of the wrong-stamp releases the lock itself refuses a mismatched mode and a repeated write
+  release with `IllegalMonitorStateException`, and releasing from another thread is legal, so
+  none of those is reported; the one it accepts is a read stamp released again, which takes
+  another reader's hold because `unlockRead` checks only the stamp's version. That is now a
+  finding when the lock corroborates it: after an unmatched release, `getReadLockCount()` is below
+  the recorded read holds still outstanding, so a release whose acquisition was never recorded
+  stays silent. `StampedLockConversionTest` pins thirteen cases against real locks, eight red
+  against a no-op `recordConversion`, with a first case that pins which wrong stamps the JDK
+  refuses; `DetectorAccuracyEvalTest` gains the repeated-release pair.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

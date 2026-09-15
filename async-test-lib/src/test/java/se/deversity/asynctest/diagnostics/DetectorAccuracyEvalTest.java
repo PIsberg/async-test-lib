@@ -2073,6 +2073,83 @@ class DetectorAccuracyEvalTest {
                 "every write stamp came back and the lock is free: " + detector.analyze());
     }
 
+    @Test
+    @DisplayName("stamped lock: a read stamp released again on an error path, while another reader holds, fires (true positive)")
+    void stampedLockDetectorFiresOnAReadStampReleasedTwice() throws InterruptedException {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+        detector.registerLock(lock, "index");
+        CountDownLatch readerHolds = new CountDownLatch(1);
+        CountDownLatch writerDone = new CountDownLatch(1);
+        Thread reader = new Thread(() -> readAndReleaseAfter(detector, lock, readerHolds, writerDone));
+        reader.start();
+        readerHolds.await();
+
+        long stamp = lock.readLock();
+        detector.recordReadLock(lock, "index", stamp);
+        try {
+            // read, then fail
+        } finally {
+            lock.unlockRead(stamp);
+            detector.recordUnlock(lock, "index", stamp);
+        }
+        // An error handler that releases again, as if the finally block had not run.
+        lock.unlockRead(stamp);
+        detector.recordUnlock(lock, "index", stamp);
+        writerDone.countDown();
+        reader.join();
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the second release is accepted by the lock and takes the other reader's hold; "
+                        + "the lock only throws later, in that reader's thread (#604): " + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("stamped lock: the same read released once in its finally block stays silent (true negative)")
+    void stampedLockDetectorStaysSilentOnAReadStampReleasedOnce() throws InterruptedException {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+        detector.registerLock(lock, "index");
+        CountDownLatch readerHolds = new CountDownLatch(1);
+        CountDownLatch writerDone = new CountDownLatch(1);
+        Thread reader = new Thread(() -> readAndReleaseAfter(detector, lock, readerHolds, writerDone));
+        reader.start();
+        readerHolds.await();
+
+        long stamp = lock.readLock();
+        detector.recordReadLock(lock, "index", stamp);
+        try {
+            // read, then fail
+        } finally {
+            lock.unlockRead(stamp);
+            detector.recordUnlock(lock, "index", stamp);
+        }
+        writerDone.countDown();
+        reader.join();
+
+        assertFalse(detector.analyze().hasIssues(),
+                "each hold released exactly once, by the code that took it: " + detector.analyze());
+    }
+
+    /** Takes a read hold, keeps it until {@code release} opens, then releases it. */
+    private static void readAndReleaseAfter(StampedLockDetector detector, StampedLock lock,
+                                            CountDownLatch holds, CountDownLatch release) {
+        long stamp = lock.readLock();
+        detector.recordReadLock(lock, "index", stamp);
+        holds.countDown();
+        try {
+            release.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        try {
+            lock.unlockRead(stamp);
+            detector.recordUnlock(lock, "index", stamp);
+        } catch (IllegalMonitorStateException holdAlreadyTaken) {
+            // The symptom of the other thread's double release, far from its cause.
+        }
+    }
+
     private static Runnable mutateUnder(ConcurrentModificationDetector detector,
                                         List<String> list, ReentrantLock lock) {
         return () -> {
