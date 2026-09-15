@@ -478,6 +478,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The `CONDITION_VARIABLES` corpus recording pair runs against a real parked waiter under `registerCondition(lock, ...)` (#618).**
+  The old recording pair simulated an abandoned await by having one thread record an await and then return without signalling, with no thread ever awaiting on the condition variable. The pair now registers the condition with `ConditionVariableDetector.registerCondition(CONDITION_LOCK, ...)`; the must-fire subject starts a background consumer parked in `UNSIGNALLED_CONDITION.await()` while worker threads signal another condition, leaving a stuck waiter detected via `getWaitQueueLength`, and the silent twin signals and joins a parked consumer on `SIGNALLED_CONDITION`, clearing all waiters before analysis.
+
 - **Corpus-eval, the consumer fixtures and the examples fail on a detector that throws during
   analysis (#612).** `async-test.strict-detectors=true` was set only for this library's own tests,
   so in every build that measures the detectors from outside, a detector that crashed was skipped

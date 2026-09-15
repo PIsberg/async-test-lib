@@ -135,13 +135,11 @@ final class PairEvidence {
 
         // Second reading, 2026-09-14 (#571). In all eight the body declares what the finding says
         // and the detector never asks the object it names.
-        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "pairs each recorded await with the "
-                + "signals recorded while it waited (#583), and reads stuck waiters from the lock's "
-                + "wait queue when the condition is registered with its lock (#592), but the "
-                + "MUST_FIRE row registers the condition alone and its finding is the body's own "
-                + "declaration that an await woke with no signal; needs the row rebuilt on a real "
-                + "parked waiter under registerCondition(lock, condition, name) to decide on what "
-                + "the object did");
+        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "since #592 stuck waiters are read "
+                + "from the lock's wait queue, and since #618 the pair is rebuilt on a real parked "
+                + "waiter under registerCondition(lock, condition, name); the model no longer "
+                + "holds the pair back, so it needs the adversarial re-read against both bodies "
+                + "that promotion requires (#571)");
         HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "since #595 nothing the body declares is a "
                 + "finding: reuse is decided with isBroken() at the arrival or await (#584), and "
                 + "recordTimeout and recordBroken are only context for that report; the model no "
