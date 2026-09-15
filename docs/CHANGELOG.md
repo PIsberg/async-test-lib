@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`AtomicityValidator` withdraws exclusivity from closed ownership generations when touched by an alias (#630).**
+  An ownership generation that a later take closed previously retained take-granted exclusivity even
+  if another thread touched the receiver through an alias inside that generation. `AtomicityValidator`
+  now tracks the taker thread for each generation and distinguishes alias accesses from late-published
+  handoff accesses by the previous owner: an access by a thread that was neither the generation's
+  taker nor the previous owner withdraws the taker's exclusivity for that generation, exposing races
+  between the taker and the alias while preserving silence for clean object handoffs.
+
 - **`ConditionVariableDetector` reads stuck waiters from the lock, and keeps an abandoned await
   in its own round (#592, #593).** A stuck waiter was any recorded await with no recorded exit, so
   a body that recorded an await and then threw, or found its predicate true and never called
