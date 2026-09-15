@@ -247,7 +247,12 @@ Three limits worth knowing before switching it on:
   `poll`/`relaxedPoll` hands back, is reported as taken: it
   starts a new ownership generation, exclusive to the taker until another thread touches it, and
   locks only have to agree within a generation. That is netty's chunk moving between magazines
-  (#555). Not modelled, so writes under them still report: `Unsafe.compareAndSwapInt`, and an
+  (#555). Another thread's access inside the generation the receiver is still in withdraws the
+  taker's exclusivity for that whole generation, including accesses the taker made before it, so
+  an alias kept from before the take cannot hide behind the order its access was published in
+  (#559); a generation a later take closed keeps it
+  ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
+  so writes under them still report: `Unsafe.compareAndSwapInt`, and an
   `AtomicIntegerFieldUpdater` created before the agent attached, which exposes no field name to
   resolve.
 - **Thread-safe types are skipped.** A receiver from `java.util.concurrent`, a

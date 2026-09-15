@@ -108,6 +108,20 @@ authority on which row is which - each outcome above is one assertion in it.
   two locks inside one generation still fire, and each direction is a case in
   `DetectorAccuracyEvalTest`. The report only mentions locks when
   the caller supplied some.
+- **Ownership-generation boundary (#559).** Exclusivity ends at the first foreign access in drain
+  order, which the publication order can defeat: an alias kept from before a take whose only access
+  is published after every taker access used to leave the taker's accesses exclusive and itself
+  agreeing with nothing, so the race was silent. A foreign access inside the generation the receiver
+  is still in now withdraws the taker's exclusivity for the whole generation, and
+  `atomicityAliasWritingAfterTheTakersLastAccessStillFires` fires (it was silent before) while
+  `atomicityTakesWithNoAliasStaySilent` stays silent. The boundary that remains is a generation a
+  later take closed: it keeps the exclusion, alias or not, because a later take is the only evidence
+  in a value-free stream that the object left the previous owner, and withdrawing it there too would
+  judge netty's hand-offs by the lockset again. `atomicityAliasInAGenerationALaterTakeClosedIsStillExcused`
+  pins that false negative, tracked in [#630](https://github.com/PIsberg/async-test-lib/issues/630).
+  Measured on corpus-eval lane one (local JDK 26): the rule withdrew exclusivity in 7 analyses, all
+  in netty's `adaptiveByteBufAllocator_bufferAndRelease`, and the documented-thread-safe column
+  stayed at 0 of 100 against main.
 - The rest of the Shared* family no longer has that limit; see the section below.
 - `failOn = CRITICAL` gates on the trustworthy end of the scale.
   `failOn = HIGH` will fail builds over correct-but-shared code unless those findings
