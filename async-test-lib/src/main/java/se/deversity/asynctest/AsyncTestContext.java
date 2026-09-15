@@ -877,6 +877,9 @@ public final class AsyncTestContext {
         if (exchangerDetector != null) {
             exchangerDetector.markRoundTimedOut();
         }
+        if (cyclicBarrierDetector != null) {
+            cyclicBarrierDetector.markRoundTimedOut();
+        }
     }
 
     // ---- Internal reporting ----
