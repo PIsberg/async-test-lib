@@ -78,7 +78,7 @@ public class MissedSignalDetector {
     /** A recorded wait whose wakeup has not been recorded yet. */
     private static final class OpenWait {
         final Thread thread;
-        final Guard guard;
+        Guard guard;
         /** The condition's notify count when the wait began. */
         final long notifiesAtStart;
         /** Whether the most recent notify before this wait found nobody waiting. */
@@ -109,14 +109,43 @@ public class MissedSignalDetector {
         }
     }
 
+    /** A wait that completed, tracked until analysis to observe whether a predicate recheck occurs (#635). */
+    private static final class CompletedWait {
+        final Thread thread;
+        Guard guard;
+        final long notifiesAtStart;
+        final boolean afterLostNotify;
+        final int lostNotifiesAtStart;
+        final long notifiesAtWakeup;
+
+        CompletedWait(Thread thread, Guard guard, long notifiesAtStart, boolean afterLostNotify,
+                      int lostNotifiesAtStart, long notifiesAtWakeup) {
+            this.thread = thread;
+            this.guard = guard;
+            this.notifiesAtStart = notifiesAtStart;
+            this.afterLostNotify = afterLostNotify;
+            this.lostNotifiesAtStart = lostNotifiesAtStart;
+            this.notifiesAtWakeup = notifiesAtWakeup;
+        }
+
+        boolean missedItsSignal() {
+            boolean noNotifySince = notifiesAtWakeup == notifiesAtStart;
+            return switch (guard) {
+                case GUARDED -> false;
+                case UNGUARDED -> lostNotifiesAtStart > 0 && noNotifySince;
+                case UNKNOWN -> afterLostNotify && noNotifySince;
+            };
+        }
+    }
+
     /** One condition's wait/notify history. Every field is guarded by the instance's monitor. */
     private static final class ConditionState {
         final String label;
         private final List<OpenWait> openWaits = new ArrayList<>();
+        private final List<CompletedWait> completedWaits = new ArrayList<>();
         private long notifies;
         private int notifiesWithNoWaiter;
         private boolean lastNotifyLost;
-        private int unsignalledWaits;
 
         ConditionState(String label) {
             this.label = label;
@@ -131,13 +160,29 @@ public class MissedSignalDetector {
                 OpenWait wait = openWaits.get(i);
                 if (wait.thread.equals(thread)) { // Thread keeps Object's identity equals
                     openWaits.remove(i);
-                    if (wait.missedItsSignal(notifies)) {
-                        unsignalledWaits++;
-                    }
+                    completedWaits.add(new CompletedWait(thread, wait.guard, wait.notifiesAtStart,
+                            wait.afterLostNotify, wait.lostNotifiesAtStart, notifies));
                     return;
                 }
             }
             // A wakeup with no wait recorded by this thread matches nothing and changes nothing.
+        }
+
+        synchronized void predicateChecked(Thread thread) {
+            for (int i = completedWaits.size() - 1; i >= 0; i--) {
+                CompletedWait wait = completedWaits.get(i);
+                if (wait.thread.equals(thread)) {
+                    wait.guard = Guard.GUARDED;
+                    break;
+                }
+            }
+            for (int i = openWaits.size() - 1; i >= 0; i--) {
+                OpenWait wait = openWaits.get(i);
+                if (wait.thread.equals(thread)) {
+                    wait.guard = Guard.GUARDED;
+                    break;
+                }
+            }
         }
 
         synchronized void notified() {
@@ -149,6 +194,12 @@ public class MissedSignalDetector {
         }
 
         synchronized void describeInto(List<String> findings) {
+            int unsignalledWaits = 0;
+            for (CompletedWait wait : completedWaits) {
+                if (wait.missedItsSignal()) {
+                    unsignalledWaits++;
+                }
+            }
             int stillWaiting = 0;
             for (OpenWait wait : openWaits) {
                 if (wait.missedItsSignal(notifies)) {
@@ -244,6 +295,34 @@ public class MissedSignalDetector {
     public void recordWakeup(Object monitor) {
         if (monitor == null) return;
         byMonitor(monitor).wokeUp(Thread.currentThread());
+    }
+
+    /**
+     * Records that the calling thread evaluated the condition's state predicate (e.g. in a
+     * {@code while (!ready)} loop). A predicate check observed after {@link #recordWakeup} confirms
+     * that the wait re-tests its condition, making it predicate-guarded (#635).
+     *
+     * @param conditionName the name of the condition
+     * @param satisfied {@code true} if the condition predicate was satisfied, {@code false} if not
+     * @since 1.12.1
+     */
+    public void recordPredicateCheck(String conditionName, boolean satisfied) {
+        if (conditionName == null) return;
+        byName(conditionName).predicateChecked(Thread.currentThread());
+    }
+
+    /**
+     * Records that the calling thread evaluated the monitor's state predicate. A predicate check
+     * observed after {@link #recordWakeup(Object)} confirms that the wait re-tests its condition,
+     * making it predicate-guarded (#635).
+     *
+     * @param monitor the monitor object
+     * @param satisfied {@code true} if the condition predicate was satisfied, {@code false} if not
+     * @since 1.12.1
+     */
+    public void recordPredicateCheck(Object monitor, boolean satisfied) {
+        if (monitor == null) return;
+        byMonitor(monitor).predicateChecked(Thread.currentThread());
     }
 
     /**

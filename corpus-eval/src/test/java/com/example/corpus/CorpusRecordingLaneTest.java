@@ -2673,7 +2673,7 @@ class CorpusRecordingLaneTest {
         var detector = AsyncTestContext.missedSignalDetector();
         Object monitor = new Object();
         detector.recordNotify(monitor);
-        detector.recordWait(monitor, false); // unguarded (#599)
+        detector.recordWait(monitor);
         detector.recordWakeup(monitor);
     }
 
