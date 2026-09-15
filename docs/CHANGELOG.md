@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ConditionVariableDetector` reads stuck waiters from the lock, and keeps an abandoned await
+  in its own round (#592, #593).** A stuck waiter was any recorded await with no recorded exit, so
+  a body that recorded an await and then threw, or found its predicate true and never called
+  `await()`, was reported, and a thread parked on the condition by an await nobody recorded was
+  not. New `registerCondition(ReentrantLock, Condition, String)` and
+  `registerCondition(ReentrantReadWriteLock, Condition, String)` overloads hand the detector the
+  lock that created the condition; at analysis it takes the lock with `tryLock()` and reads
+  `getWaitQueueLength(condition)`, and that count is the finding. A recorded await the lock does
+  not show parked is a note, and a lock held by another thread at analysis, or one that did not
+  create the condition, is not read and reports nothing. A condition registered alone keeps the
+  recorded model. Separately, an await a pooled platform worker recorded in one round and never
+  exited was merged into the same thread's await in the next round, so the abandoned wait
+  vanished and a signal owed to it credited the new await. A new `markInvocationStart()`, wired
+  from `AsyncTestContext.markInvocationStart`, stamps each await with its round: an await from an
+  earlier round replaced by a new one is counted as abandoned and the new await starts with no
+  wakeup owed, while a `while` loop that awaits again inside one round, and a waiter parked across
+  a boundary, are unchanged. The boundary does not clear open awaits, because a consumer the body
+  started on a thread of its own may wait through it. `ConditionVariableDetectorLockAndRoundsTest`
+  pins eleven cases, seven of them red against stubs of the new methods that kept the old model;
+  `DetectorAccuracyEvalTest` gains the lock-registered pair and
+  `ConcurrencyRunnerInvocationEpochBindingTest` the cross-round pair through the real runner,
+  which goes red with the `AsyncTestContext` call removed.
+
 - **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
   It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
   recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is

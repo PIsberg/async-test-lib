@@ -2758,4 +2758,56 @@ class DetectorAccuracyEvalTest {
             timer.cancel();
         }
     }
+
+    @Test
+    @DisplayName("condition variable, lock registered: a consumer parked on the condition nobody signalled fires from the lock (true positive)")
+    void conditionVariableWithItsLockFiresOnAConsumerTheLockShowsParked() throws InterruptedException {
+        ConditionVariableDetector detector = new ConditionVariableDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
+        java.util.concurrent.locks.Condition notFull = lock.newCondition();
+        detector.registerCondition(lock, notEmpty, "not-empty");
+        detector.registerCondition(lock, notFull, "not-full");
+        boolean[] ready = {false};
+
+        Thread consumer = parkedConsumer(detector, lock, notEmpty, ready);
+        lock.lock();
+        try {
+            ready[0] = true;
+            detector.recordSignal(notFull, "not-full", false);   // the bug: nobody waits on notFull
+            notFull.signal();
+        } finally {
+            lock.unlock();
+        }
+
+        try {
+            var report = detector.analyze();
+            assertTrue(report.hasIssues() && report.toString().contains("read from the lock"),
+                    "the lock shows the consumer parked on not-empty, which nobody signalled (#592). "
+                            + "Report:\n" + report);
+        } finally {
+            consumer.interrupt();
+            consumer.join();
+        }
+    }
+
+    @Test
+    @DisplayName("condition variable, lock registered: an await the body recorded but never parked in stays silent (true negative)")
+    void conditionVariableWithItsLockStaysSilentOnARecordedAwaitNobodyParkedIn() throws Exception {
+        ConditionVariableDetector detector = new ConditionVariableDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
+        detector.registerCondition(lock, notEmpty, "not-empty");
+
+        // The consumer records its await, then finds the item already there and never calls
+        // await(): with the condition registered alone this read as a stuck waiter.
+        Thread consumer = new Thread(() -> detector.recordAwait(notEmpty, "not-empty"));
+        consumer.start();
+        consumer.join();
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "no thread is parked on the condition; the lock, not the recording, decides a stuck "
+                        + "waiter (#592). Report:\n" + report);
+    }
 }

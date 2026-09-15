@@ -137,10 +137,12 @@ final class PairEvidence {
         // Second reading, 2026-09-14 (#571). In all eight the body declares what the finding says
         // and the detector never asks the object it names.
         HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "pairs each recorded await with the "
-                + "signals recorded while it waited (#583), but still never asks the Condition: "
-                + "the MUST_FIRE row's finding is the body's own declaration that an await woke "
-                + "with no signal; needs the lock's hasWaiters at analysis, or a real parked "
-                + "waiter in the unsafe body, to decide on what the object did");
+                + "signals recorded while it waited (#583), and reads stuck waiters from the lock's "
+                + "wait queue when the condition is registered with its lock (#592), but the "
+                + "MUST_FIRE row registers the condition alone and its finding is the body's own "
+                + "declaration that an await woke with no signal; needs the row rebuilt on a real "
+                + "parked waiter under registerCondition(lock, condition, name) to decide on what "
+                + "the object did");
         HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "recordTimeout is still the finding and is "
                 + "never checked against the barrier, so a timed await that handles its "
                 + "TimeoutException fires the same as one that strands its parties; needs the "
