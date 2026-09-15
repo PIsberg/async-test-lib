@@ -82,7 +82,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 42 | [Condition Variable](42-condition-variable/) | `ConditionVariableDetector` | `put()` signals the wrong condition, stranding a consumer that was already waiting | 🟡 High |
 | 43 | [Copy-On-Write Misuse](43-copy-on-write/) | `CopyOnWriteCollectionDetector` | `CopyOnWriteArrayList` on a write-heavy path — O(n) copy per write degrades throughput | 🟡 High |
 | 44 | [CountDownLatch Misuse](44-count-down-latch/) | `CountDownLatchDetector` | `countDown()` skipped in one code path — `await()` blocks forever | 🔴 Critical |
-| 45 | [CyclicBarrier Broken](45-cyclic-barrier/) | `CyclicBarrierDetector` | Exception before `await()` breaks the barrier — all subsequent arrivals get `BrokenBarrierException` | 🟡 High |
+| 45 | [CyclicBarrier Broken](45-cyclic-barrier/) | `CyclicBarrierDetector` | A stranded worker's timed-out `await()` breaks the barrier, nobody resets it, and later phases arrive at it broken | 🟡 High |
 | 46 | [Daemon Thread Hygiene](46-daemon-thread/) | `DaemonThreadHygieneDetector` | Non-daemon background threads prevent JVM from shutting down | 🟢 Low |
 | 47 | [Double-Checked Locking](47-double-checked-locking/) | `DoubleCheckedLockingDetector` | DCL without `volatile` — partially constructed singleton visible to other threads | 🔴 Critical |
 | 48 | [Exchanger Misuse](48-exchanger-misuse/) | `ExchangerDetector` | Odd-numbered callers leave one thread blocked in `exchange()` without a partner | 🟡 High |

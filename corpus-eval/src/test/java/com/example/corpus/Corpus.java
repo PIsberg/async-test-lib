@@ -2843,14 +2843,15 @@ final class Corpus {
             //     end in the state the class documents as terminal - so each pair records a
             //     completed cycle against an abandoned one.
 
-            new RecordingSubject("recorded_cyclicBarrier_leftBroken", JDK,
+            new RecordingSubject("recorded_cyclicBarrier_awaitedWhileBroken", JDK,
                     "java.util.concurrent.CyclicBarrier",
                     DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "the barrier is recorded as broken, which its own javadoc describes as the "
-                            + "state every subsequent await fails from until somebody resets it. "
-                            + "A broken barrier is a coordination point that will never "
-                            + "coordinate again, and nothing throws to say so at the site"),
+                    "every party awaits a barrier that a timed-out await broke and nobody reset, "
+                            + "so each await throws BrokenBarrierException at once. The detector "
+                            + "asks the barrier's isBroken() at the await; a recorded break on its "
+                            + "own is not the finding, because breaking a barrier is how its "
+                            + "parties are cancelled (#584)"),
 
             new RecordingSubject("recorded_cyclicBarrier_completedItsCycle", JDK,
                     "java.util.concurrent.CyclicBarrier",

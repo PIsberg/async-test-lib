@@ -9,7 +9,7 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>Async Test Lib - Cyclic Barrier Example</name>
-    <description>Demonstrates CyclicBarrierDetector catching a barrier broken by an exception, causing BrokenBarrierException for all waiting threads</description>
+    <description>Demonstrates CyclicBarrierDetector catching workers that await a barrier a timed-out party broke and nobody reset</description>
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>

@@ -3,6 +3,8 @@ package se.deversity.asynctest.diagnostics;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -45,19 +47,26 @@ public class CyclicBarrierDetectorTest {
         assertTrue(report.hasIssues(), "Should detect timeout");
     }
 
+    /** A two-party barrier broken for real, by a timed await that cannot succeed. */
+    private static CyclicBarrier brokenBarrier() {
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
+        return barrier;
+    }
+
     @Test
-    void testBrokenBarrierDetection() {
+    void testRecordedBreakAloneIsNotAFinding() {
         CyclicBarrierDetector detector = new CyclicBarrierDetector();
         CyclicBarrier barrier = new CyclicBarrier(2);
 
         detector.registerBarrier(barrier, "brokenBarrier", 2);
         detector.recordArrival(barrier);
-        detector.recordBroken(barrier);  // Barrier broken
+        detector.recordBroken(barrier);  // a break alone: cancelling by breaking is correct (#584)
 
         CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
 
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect broken barrier");
+        assertFalse(report.hasIssues(), "A recorded break with no later await is not a finding");
     }
 
     @Test
@@ -92,7 +101,7 @@ public class CyclicBarrierDetectorTest {
     @Test
     void testAwaitOnBrokenBarrierIsFlagged() {
         CyclicBarrierDetector detector = new CyclicBarrierDetector();
-        CyclicBarrier barrier = new CyclicBarrier(2);
+        CyclicBarrier barrier = brokenBarrier();
 
         detector.registerBarrier(barrier, "reuseAfterBrokenBarrier", 2);
         detector.recordArrival(barrier);
@@ -148,7 +157,7 @@ public class CyclicBarrierDetectorTest {
     @Test
     void testReuseAfterBrokenDescribedInReport() {
         CyclicBarrierDetector detector = new CyclicBarrierDetector();
-        CyclicBarrier barrier = new CyclicBarrier(2);
+        CyclicBarrier barrier = brokenBarrier();
 
         detector.registerBarrier(barrier, "describedBarrier", 2);
         detector.recordArrival(barrier);

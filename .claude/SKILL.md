@@ -323,7 +323,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|
 | `detectCountDownLatchIssues` | `COUNTDOWN_LATCH` | Timeout, missing/extra `countDown()` |
-| `detectCyclicBarrierIssues` | `CYCLIC_BARRIER` | Timeout, broken barriers |
+| `detectCyclicBarrierIssues` | `CYCLIC_BARRIER` | Timeout, await on a broken barrier |
 | `detectReentrantLockIssues` | `REENTRANT_LOCK` | Starvation, unfair acquisition |
 | `detectVolatileArrayIssues` | `VOLATILE_ARRAY` | Non-volatile array element access |
 | `detectDoubleCheckedLocking` | `DOUBLE_CHECKED_LOCKING` | Broken DCL without `volatile` |

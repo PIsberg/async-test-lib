@@ -925,7 +925,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 30. CyclicBarrier Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Detects CyclicBarrier misuse: `await()` timeouts, barriers broken by interruption or timeout, reuse of a broken barrier without an intervening `reset()`, and threads that fail to show up for a cycle.
+* **Description**: Detects CyclicBarrier misuse: `await()` timeouts the test records, and reuse of a broken barrier, an arrival or `await()` on a barrier whose `isBroken()` is true at that moment, so the await throws `BrokenBarrierException` at once for every caller until somebody calls `reset()`. A broken barrier is not reported by itself: breaking one (a `reset()` with parties waiting, or interrupting them) is how its parties are cancelled, and a barrier broken on purpose and then discarded is correct. Reuse is decided by asking the barrier, so a recorded break on a barrier that is not broken at the await reports nothing, and a break nobody recorded is still seen. The check runs when the arrival or await is recorded, so a barrier that breaks between that check and the await is missed.
 * **Buggy Code**:
   ```java
   CyclicBarrier barrier = new CyclicBarrier(3);

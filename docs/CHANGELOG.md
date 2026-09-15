@@ -25,6 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no-waiter signal, and the consumer fixture only a timed-out await followed by one; both now
   strand a consumer on the wrong condition, which is the defect the detector reports.
 
+- **`CyclicBarrierDetector` reports an await on a broken barrier, not the break (#584).**
+  `recordBroken` added the barrier to a set that `hasIssues` reported CRITICAL, so the call was
+  the finding: a barrier broken on purpose to cancel its parties (`reset()` with parties waiting,
+  or interrupting them) and then discarded was reported. Reuse-after-broken was decided from the
+  same set, so an await on a barrier broken by a timeout nobody recorded was silent, and
+  `recordReset` removed the barrier from the set although `reset()` is exactly what breaks it for
+  the parties waiting at that moment. An arrival or await is now reported when the barrier's own
+  `isBroken()` is true at that moment; `recordBroken` and a `recordReset` with parties waiting are
+  context for that report and never a finding. The never-read `completedCycles` counter is gone,
+  and the class javadoc no longer promises "missing participants" and "inconsistent
+  participation" checks that did not exist. `CyclicBarrierDetectorAccuracyTest` pins both
+  directions against real barriers, five of its six cases red before the change.
+  `examples/45-cyclic-barrier` claimed a worker throwing before `await()` breaks the barrier,
+  which it does not; its service now waits with a timeout, the timeout breaks the barrier, and
+  the demo reports later rounds arriving at it broken. The corpus row
+  `recorded_cyclicBarrier_leftBroken` becomes `recorded_cyclicBarrier_awaitedWhileBroken` and
+  awaits a barrier broken for real. `recordTimeout` is still the caller's declaration.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at
