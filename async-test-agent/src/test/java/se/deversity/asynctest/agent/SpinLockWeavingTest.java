@@ -2,6 +2,7 @@ package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.AtomicSpinLockTableBean;
 import com.example.agentfixture.PreAttachSpinLockTableBean;
+import com.example.agentfixture.PreAttachUpdaterSpinLockTableBean;
 import com.example.agentfixture.SpinLockTableBean;
 import com.example.agentfixture.UpdaterSpinLockTableBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
@@ -55,9 +56,10 @@ class SpinLockWeavingTest {
         assumeTrue(supported,
                 "self-attach not permitted (run with -Djdk.attach.allowAttachSelf=true)");
 
-        // Initialised before the attach on purpose: its VarHandle is bound by a type initializer
-        // that has already run, so only the retransformed call sites can see it.
+        // Initialised before the attach on purpose: their handles/updaters are bound by type
+        // initializers that have already run, so only the retransformed call sites can see them.
         PreAttachSpinLockTableBean.initialise();
+        PreAttachUpdaterSpinLockTableBean.initialise();
         AsyncTestAgent.selfAttach("includes=com.example.agentfixture,fields=true,collections=true");
     }
 
@@ -221,6 +223,14 @@ class SpinLockWeavingTest {
         assertQuiet(drive(new PreAttachSpinLockTableBean()::growReleasedByWrite),
                 "the handle's type initializer ran before the attach, so the field it reaches must be "
                         + "resolved from the handle itself");
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerFieldUpdater spinlock bound before the agent attached still guards the table (#619)")
+    void preAttachUpdaterSpinLockGuardsTheTable() throws Exception {
+        assertQuiet(drive(new PreAttachUpdaterSpinLockTableBean()::growReleasedByWrite),
+                "the updater's type initializer ran before the attach, so the field it reaches must be "
+                        + "resolved from the owner class's recorded updater fields");
     }
 
     private static void assertQuiet(AtomicityValidator.AtomicityReport report, String shape) {

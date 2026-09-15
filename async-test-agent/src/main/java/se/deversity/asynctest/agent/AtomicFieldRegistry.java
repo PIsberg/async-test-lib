@@ -22,6 +22,7 @@ import se.deversity.vibetags.annotations.AIContract;
 final class AtomicFieldRegistry {
 
     private static final @Nullable Method RECORD = resolve();
+    private static final @Nullable Method RECORD_INT_UPDATER = resolveIntUpdater();
 
     private AtomicFieldRegistry() {
     }
@@ -31,6 +32,16 @@ final class AtomicFieldRegistry {
             Class<?> registry = Class.forName("se.deversity.asynctest.telemetry.TelemetryRegistry",
                     false, AtomicFieldRegistry.class.getClassLoader());
             return registry.getMethod("atomicallyManaged", String.class);
+        } catch (ReflectiveOperationException | LinkageError e) { // NOPMD - see the class javadoc
+            return null;
+        }
+    }
+
+    private static @Nullable Method resolveIntUpdater() {
+        try {
+            Class<?> registry = Class.forName("se.deversity.asynctest.telemetry.TelemetryRegistry",
+                    false, AtomicFieldRegistry.class.getClassLoader());
+            return registry.getMethod("atomicUpdaterFieldRecorded", String.class, String.class);
         } catch (ReflectiveOperationException | LinkageError e) { // NOPMD - see the class javadoc
             return null;
         }
@@ -48,6 +59,25 @@ final class AtomicFieldRegistry {
         }
         try {
             record.invoke(null, qualifiedName);
+        } catch (ReflectiveOperationException | RuntimeException e) { // NOPMD - see class javadoc
+            // Silence is the safe direction here; see the class javadoc.
+        }
+    }
+
+    /**
+     * Records that {@code ownerClass} binds {@code field} through an
+     * {@code AtomicIntegerFieldUpdater.newUpdater} call (#619).
+     *
+     * @param ownerClass the owner class passed to {@code newUpdater}
+     * @param field      the qualified field name, as {@code declaringClass.field}
+     */
+    static void recordIntUpdater(String ownerClass, String field) {
+        Method record = RECORD_INT_UPDATER;
+        if (record == null) {
+            return;
+        }
+        try {
+            record.invoke(null, ownerClass, field);
         } catch (ReflectiveOperationException | RuntimeException e) { // NOPMD - see class javadoc
             // Silence is the safe direction here; see the class javadoc.
         }
