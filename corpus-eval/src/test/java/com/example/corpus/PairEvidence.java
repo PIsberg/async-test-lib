@@ -119,11 +119,10 @@ final class PairEvidence {
                 + "so a dedicated scheduler running one slow nightly job fires and a real overrun "
                 + "under a second stays silent; needs a queue-behind model");
         HELD_ON_MODEL.put(DetectorType.TIMER, "an exception recorded off the timer thread is "
-                + "still taken at its word, and the pair separates on thread death alone; #575 "
-                + "replaced the 100 ms duration with starvation observed from "
-                + "scheduledExecutionTime, which neither row exercises, so the pair can be "
-                + "re-read once a starvation twin is added to it (#567 made thread death observed "
-                + "on the timer thread)");
+                + "still taken at its word: correct code that records a caught exception from a "
+                + "worker draws the thread-death finding; needs the exception half to require the "
+                + "timer thread, as #567 did on it (#616 added the starvation twin, which is "
+                + "observed from both tasks' scheduledExecutionTime, so only this half holds)");
         // LOCK_UPGRADE_DEADLOCK was held here on reading only the body's records; #566 made it
         // ask the lock, and it is promoted in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "has no happens-before edge but the round "
