@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The remaining twenty-one unreviewed PROMPT corpus pairs were read and held back on their detector's model (#571).**
+  `ASYNC_PIPELINE`, `COMPLETABLEFUTURE_CHAIN`, `CONSTRUCTOR_SAFETY`, `COPY_ON_WRITE_COLLECTIONS`,
+  `FINAL_FIELD_MUTATION`, `FLOW_PUBLISHER_CONCURRENCY`, `FORK_JOIN_POOL`, `HTTP_CLIENT`,
+  `INHERITABLE_THREAD_LOCAL`, `LAZY_CONSTANT_MISUSE`, `LOCK_CONTENTION`, `PARALLEL_STREAMS`,
+  `SCOPED_VALUE`, `STABLE_VALUE_MISUSE`, `STRUCTURED_CONCURRENCY`, `STRUCTURED_TASK_SCOPE_MISUSE`,
+  `SYNCHRONIZERS`, `THREAD_POOL`, `VIRTUAL_THREAD_CONTEXT_LEAKS`, `WAIT_TIMEOUT` and
+  `WEAK_REFERENCE_RACE` were read against both corpus bodies in `CorpusRecordingLaneTest` and the
+  underlying detectors. Each detector relies on caller-asserted record methods without bytecode or
+  object introspection, on synthetic string identifiers rather than JVM construct state, or on
+  arbitrary contention/write heuristics on types thread-safe by contract. `PairEvidence.HELD_ON_MODEL`
+  records the model limitation and what is required to re-evaluate each pair, bringing the unreviewed
+  backlog in `docs/analysis/corpus-eval-future-improvements.md` from 21 down to 0, verified by
+  `EveryEligiblePairIsPromotedOrExplainedTest`.
+
 - **`ConditionVariableDetector` reads stuck waiters from the lock, and keeps an abandoned await
   in its own round (#592, #593).** A stuck waiter was any recorded await with no recorded exit, so
   a body that recorded an await and then threw, or found its predicate true and never called

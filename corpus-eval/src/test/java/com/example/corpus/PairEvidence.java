@@ -183,6 +183,92 @@ final class PairEvidence {
                 + "one thread accessed the channel and carries no representation of a lock, so a "
                 + "caller that wraps position(n) and read(buffer) in synchronized(channel) draws "
                 + "the identical finding; needs the lockset the Shared* family already has");
+
+        // Third reading, 2026-09-16 (#571). In all twenty-one the body declares what the finding says
+        // or asserts arbitrary thresholds, and the detector never inspects the underlying JVM objects
+        // or bytecode contracts.
+        HELD_ON_MODEL.put(DetectorType.ASYNC_PIPELINE, "relies on caller declarations "
+                + "(recordEventPublished/recordEventProcessed) on dummy stages without message bus "
+                + "inspection, so unrecorded events appear as dropped pipeline events; needs "
+                + "instrumentation of actual message/event dispatch mechanisms");
+        HELD_ON_MODEL.put(DetectorType.COMPLETABLEFUTURE_CHAIN, "tracks caller-reported stage "
+                + "creations and joins without inspecting real CompletableFuture dependency graphs "
+                + "or completion states, taking declarations at their word; needs runtime "
+                + "introspection of CompletableFuture completion and dependent stages");
+        HELD_ON_MODEL.put(DetectorType.CONSTRUCTOR_SAFETY, "relies on manual recordConstructionEnd "
+                + "calls to mark safe publication, unable to observe actual JVM bytecode <init> "
+                + "boundaries or field access ordering; needs agent or bytecode tracking of "
+                + "constructor exit and reference publication");
+        HELD_ON_MODEL.put(DetectorType.COPY_ON_WRITE_COLLECTIONS, "flags CopyOnWrite collections "
+                + "when caller-recorded writes exceed a 20% write-ratio heuristic, even though the "
+                + "collection is fully thread-safe by contract; throughput heuristic rather than a "
+                + "concurrency correctness defect");
+        HELD_ON_MODEL.put(DetectorType.FINAL_FIELD_MUTATION, "records string field names and "
+                + "reports every manual recordMutation call without verifying field finality or "
+                + "reflection interception; needs bytecode or reflection-layer observation of "
+                + "actual field writes");
+        HELD_ON_MODEL.put(DetectorType.FLOW_PUBLISHER_CONCURRENCY, "relies on caller-asserted "
+                + "recordNextStart/recordComplete calls on dummy objects; unrecorded requests "
+                + "appear as demand overruns; needs reactive-streams Flow.Subscriber contract "
+                + "interception");
+        HELD_ON_MODEL.put(DetectorType.FORK_JOIN_POOL, "only reports when a caller manually invokes "
+                + "recordForkWithoutJoin or recordException, never comparing fork and join counts "
+                + "on actual ForkJoinPool instances; needs ForkJoinPool or ForkJoinTask runtime "
+                + "interception");
+        HELD_ON_MODEL.put(DetectorType.HTTP_CLIENT, "tracks manual recordRequestSent and "
+                + "recordResponseReceived calls on dummy targets, using an arbitrary concurrency "
+                + "threshold (> 50) as connection pool risk; needs HttpClient connection pool "
+                + "observation");
+        HELD_ON_MODEL.put(DetectorType.INHERITABLE_THREAD_LOCAL, "only flags threads that a "
+                + "caller explicitly registers via registerPoolThread, missing real thread pool "
+                + "threads or virtual threads unless declared; needs thread factory or pool "
+                + "instrumentation");
+        HELD_ON_MODEL.put(DetectorType.LAZY_CONSTANT_MISUSE, "tracks string-keyed manual "
+                + "recordComputeStart/recordComputeEnd calls rather than observing actual lazy holder "
+                + "instances or reentrant initialization; needs holder object tracking");
+        HELD_ON_MODEL.put(DetectorType.LOCK_CONTENTION, "reports when caller-declared contention "
+                + "ratio exceeds 20% or count exceeds 5 on manual recordContended calls; throughput "
+                + "heuristic that does not observe JVM monitor or lock contention; needs lock "
+                + "profiling hooks");
+        HELD_ON_MODEL.put(DetectorType.PARALLEL_STREAMS, "relies on caller-asserted string "
+                + "declarations (recordStatefulOperation/recordNonThreadSafeCollector) without stream "
+                + "introspection; needs bytecode or runtime analysis of Stream pipeline operations");
+        HELD_ON_MODEL.put(DetectorType.SCOPED_VALUE, "tracks bindings by thread ID and string "
+                + "names via manual recordBindingEntered/recordBindingExited calls, never observing "
+                + "real java.lang.ScopedValue carriers or isBound() guards; needs ScopedValue "
+                + "carrier or bytecode integration");
+        HELD_ON_MODEL.put(DetectorType.STABLE_VALUE_MISUSE, "keyed on string names populated by "
+                + "manual recordRead/recordSet/recordSupplier calls without observing real "
+                + "StableValue instances or preview holder state; needs runtime interception of "
+                + "StableValue methods");
+        HELD_ON_MODEL.put(DetectorType.STRUCTURED_CONCURRENCY, "scope lifecycles and subtask counts "
+                + "are tracked via synthetic IDs generated by manual recordScopeOpened/recordScopeClosed "
+                + "calls rather than real StructuredTaskScope instances; needs runtime interception "
+                + "of StructuredTaskScope");
+        HELD_ON_MODEL.put(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, "models scope state machines "
+                + "on caller-supplied string scope IDs across manual recordScopeOpened/recordFork/"
+                + "recordJoin/recordScopeClosed calls without observing real scope instances; needs "
+                + "StructuredTaskScope and Subtask runtime interception");
+        HELD_ON_MODEL.put(DetectorType.SYNCHRONIZERS, "reports incomplete barrier arrivals based on "
+                + "caller-declared expected party counts and manual recordBarrierArrival calls on "
+                + "dummy objects without observing real CyclicBarrier or Phaser state; needs "
+                + "observation of real synchronizer wait queues and completion");
+        HELD_ON_MODEL.put(DetectorType.THREAD_POOL, "takes caller manual registration and explicit "
+                + "recordTaskRejected/recordTaskSubmitted calls on arbitrary objects at their word, "
+                + "never inspecting real ThreadPoolExecutor queues or handlers; needs real "
+                + "ExecutorService wrapping or instrumentation");
+        HELD_ON_MODEL.put(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, "tracks thread-local lifetimes "
+                + "via manual recordThreadLocalSet/recordThreadLocalRemoved calls with string names, "
+                + "ignoring natural garbage collection on virtual thread exit; needs JVM "
+                + "ThreadLocal tracking or carrier thread transition monitoring");
+        HELD_ON_MODEL.put(DetectorType.WAIT_TIMEOUT, "reports solely on manual recordInfiniteWait "
+                + "calls regardless of condition guards or guaranteed notifications, never "
+                + "intercepting actual Object.wait() bytecode; needs bytecode interception and "
+                + "lost-signal correlation");
+        HELD_ON_MODEL.put(DetectorType.WEAK_REFERENCE_RACE, "relies on the caller's explicit "
+                + "recordNullDereference invocation in the firing row without observing actual "
+                + "get() returns or subsequent bytecode dereferences; needs Reference.get() and "
+                + "dereference tracking");
     }
 
     private PairEvidence() {

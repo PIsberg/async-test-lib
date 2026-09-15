@@ -43,7 +43,7 @@ code, so it is recorded rather than proposed.
 
 ## 2b. Pairs held back by a rule rather than a reading
 
-21 PROMPT pairs are held back by a rule, not by a reading. `PairEvidence.unreviewed()` derives
+0 PROMPT pairs are held back by a rule, not by a reading. `PairEvidence.unreviewed()` derives
 that number from the rows, and `EveryEligiblePairIsPromotedOrExplainedTest` fails when this
 sentence stops agreeing with it. When this section was first written it said 69, counted by hand
 over every tier on 2026-09-07, and it went on saying so after the number had moved.
@@ -95,6 +95,22 @@ per detector.
 Worth doing in small batches, and worth resisting the urge to clear it in one pass: the rule held
 back two pairs that were sound, the three this section was surest of were not, and only reading
 found either.
+
+**The third reading, 2026-09-16 (#571).** The remaining twenty-one were read and all twenty-one held:
+`ASYNC_PIPELINE`, `COMPLETABLEFUTURE_CHAIN`, `CONSTRUCTOR_SAFETY`, `COPY_ON_WRITE_COLLECTIONS`,
+`FINAL_FIELD_MUTATION`, `FLOW_PUBLISHER_CONCURRENCY`, `FORK_JOIN_POOL`, `HTTP_CLIENT`,
+`INHERITABLE_THREAD_LOCAL`, `LAZY_CONSTANT_MISUSE`, `LOCK_CONTENTION`, `PARALLEL_STREAMS`,
+`SCOPED_VALUE`, `STABLE_VALUE_MISUSE`, `STRUCTURED_CONCURRENCY`, `STRUCTURED_TASK_SCOPE_MISUSE`,
+`SYNCHRONIZERS`, `THREAD_POOL`, `VIRTUAL_THREAD_CONTEXT_LEAKS`, `WAIT_TIMEOUT`, and
+`WEAK_REFERENCE_RACE`. They confirm the pattern identified in the second reading: in each case, the
+detector is driven either by caller-asserted record methods (`recordForkWithoutJoin`, `recordMutation`,
+`recordNullDereference`, `recordInfiniteWait`, `recordTaskRejected`, etc.) without bytecode or object
+introspection, by synthetic string IDs rather than actual JVM construct instances (e.g.
+`StructuredTaskScope`, `ScopedValue`, `StableValue`), or by arbitrary contention/ratio thresholds on
+types that are thread-safe by specification (e.g. `CopyOnWriteArrayList`, lock contention ratio). None
+inspects real JVM objects or synchronization primitives, so each requires agent instrumentation or
+bytecode analysis before its pair can be evaluated for promotion. The unreviewed PROMPT backlog
+held by call shape is now 0.
 
 ## 3. Severity is not pinned on a firing row
 
