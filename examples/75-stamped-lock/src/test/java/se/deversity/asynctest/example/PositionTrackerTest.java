@@ -34,9 +34,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * method exit, but with one thread there are no contenders to block.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * StampedLockDetector.recordWriteLock() and recordStampNotReleased() track
- * every stamp lifecycle. When the detector finds stamps acquired but never
- * passed to recordUnlock(), the analysis report flags them as leaked stamps.
+ * StampedLockDetector matches recorded write-lock acquisitions against
+ * recordUnlock(), and corroborates both an unmatched acquisition and a
+ * recordStampNotReleased() declaration against the real lock: a lock still
+ * write-held when the run is analysed is reported as a leaked stamp.
  *
  * DETECTORS TRIGGERED:
  *   StampedLockDetector — primary: detects unreleased write/read stamps
@@ -106,8 +107,11 @@ class PositionTrackerTest {
 
         tracker.moveTo(Thread.currentThread().threadId(),
                 Thread.currentThread().threadId() * 2.0);
-        detector.recordWriteLock(lock, "position-lock", 0L);
 
+        // moveTo() takes its stamp inside the subject, so the body has no stamp to pass to
+        // recordWriteLock. It declares what it can see instead: moveTo() has returned and the
+        // lock is still write-held. The detector does not take the declaration on trust; it
+        // reports it only because the lock is still write-held when the run is analysed (#588).
         // Stamp 0 is not a placeholder: tryOptimisticRead() returns 0 while the lock is
         // write-held, which is exactly the state moveTo() has just left behind.
         if (lock.isWriteLocked()) {

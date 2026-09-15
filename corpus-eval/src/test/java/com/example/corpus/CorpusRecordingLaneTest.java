@@ -823,11 +823,7 @@ class CorpusRecordingLaneTest {
     /** What the silent executor rows declare: above the whole run, not above one body. */
     private static final int MORE_THREADS_THAN_THE_RUN = THREADS * INVOCATIONS * 10;
 
-    /** The lock whose write stamps are never released. */
-    private static final java.util.concurrent.locks.StampedLock LEAKED_STAMPED_LOCK =
-            new java.util.concurrent.locks.StampedLock();
-
-    /** The twin whose every stamp comes back. */
+    /** The twin whose every stamp comes back; the leaking row takes a fresh lock per body. */
     private static final java.util.concurrent.locks.StampedLock RELEASED_STAMPED_LOCK =
             new java.util.concurrent.locks.StampedLock();
 
@@ -4294,25 +4290,32 @@ class CorpusRecordingLaneTest {
     void recorded_stampedLock_stampNeverReleased() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.stampedLockDetector();
-        detector.registerLock(LEAKED_STAMPED_LOCK, "leaked-stamp");
-        long stamp = UNIQUE_KEYS.incrementAndGet();
-        detector.recordWriteLock(LEAKED_STAMPED_LOCK, "leaked-stamp", stamp);
-        // Declared, not inferred. analyze() reports only what the body reported: an unmatched
-        // recordWriteLock produces nothing on its own, because the detector does not treat a
-        // missing unlock as a leak. That is the same caller-declares shape as the interrupt
-        // pairs, and it is why this detector reads as a prompt rather than a verdict.
-        detector.recordStampNotReleased("leaked-stamp", stamp);
+        // A lock per body, so the leak cannot park the next worker: StampedLock is not
+        // reentrant, and a shared lock left write-held would turn every later body into a
+        // timeout rather than a recording.
+        var lock = new java.util.concurrent.locks.StampedLock();
+        detector.registerLock(lock, "leaked-stamp");
+        long stamp = lock.writeLock();
+        detector.recordWriteLock(lock, "leaked-stamp", stamp);
+        // No unlockWrite and no declaration. Since #588 the detector infers the leak from the
+        // acquisition nobody matched, and reports it only because the lock itself still says it
+        // is write-held when the run is analysed.
     }
 
-    /** The same acquisition with its unlock recorded against the same stamp. */
+    /** The same acquisition released in a finally block, with its unlock recorded. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_stampedLock_stampReleased() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.stampedLockDetector();
         detector.registerLock(RELEASED_STAMPED_LOCK, "released-stamp");
-        long stamp = UNIQUE_KEYS.incrementAndGet();
+        long stamp = RELEASED_STAMPED_LOCK.writeLock();
         detector.recordWriteLock(RELEASED_STAMPED_LOCK, "released-stamp", stamp);
-        detector.recordUnlock(RELEASED_STAMPED_LOCK, "released-stamp", stamp);
+        try {
+            Thread.onSpinWait(); // the write the stamp guards
+        } finally {
+            RELEASED_STAMPED_LOCK.unlockWrite(stamp);
+            detector.recordUnlock(RELEASED_STAMPED_LOCK, "released-stamp", stamp);
+        }
     }
 
     /** A caught InterruptedException with no restore recorded against it. */

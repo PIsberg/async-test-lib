@@ -1383,10 +1383,10 @@ a threshold or a precondition the detector documents:
 - `SCHEDULED_EXECUTOR` also reports a scheduler that was registered and never shut down, so the
   silent twin was firing for a reason unrelated to task duration. Both halves now record the
   shutdown and the pair separates on the duration alone.
-- `STAMPED_LOCK` does not infer a leak from an unmatched stamp: `analyze()` reports what the
-  caller declared, so the loud row has to call `recordStampNotReleased`. That is the same
-  caller-declares shape as the interrupt pairs, and it is a fair description of what the
-  detector knows.
+- `STAMPED_LOCK` used not to infer a leak from an unmatched stamp, so the loud row had to call
+  `recordStampNotReleased`. Since #588 it matches recorded acquisitions against recorded unlocks
+  and asks the lock whether it is still held at analysis, so the loud row takes a real write lock
+  and never releases it, with nothing declared, and the silent row releases it in a `finally`.
 
 ### How far this lane can go, and where it stops
 

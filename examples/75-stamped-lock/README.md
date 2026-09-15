@@ -18,8 +18,9 @@ than an unreleased `ReentrantLock`.
 ## How to Reproduce
 
 Remove the `@Disabled` annotation from `test_concurrent_detectsUnreleasedStamp`
-and run the test. `StampedLockDetector` records every write-lock acquisition and
-unlock, then flags any stamp that was acquired but never released.
+and run the test. `StampedLockDetector` matches recorded acquisitions against recorded
+unlocks, then asks the lock itself: a stamp acquired and never released (or declared
+unreleased by the body) is flagged only while the lock is still held when the run is analysed.
 
 ## The Fix
 

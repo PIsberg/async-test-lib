@@ -88,6 +88,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one party fires, the twin created for both stays silent. The consumer fixture, which fed only a
   timeout, and the corpus recording rows now use a real late arrival.
 
+- **`StampedLockDetector` infers leaks from the real lock and matches reads per thread and lock
+  (#588).** A leak was reported only when the body called `recordStampNotReleased`, which added a
+  string with no check, so a real leak was silent and the finding was the caller's assertion. It
+  is now an acquisition no recorded unlock matched on a lock that `isWriteLocked()` or
+  `getReadLockCount()` still reports held at analysis; a declaration stands in for the unmatched
+  acquisition under the same condition, and a declaration on a free lock is dropped. Failed
+  validations were pending under the thread and the lock's *name*, so a fallback on another lock
+  with the same label cleared them, and optimistic reads were checked as reads minus validations
+  per lock, so a second validation on one thread cancelled a read another thread never validated.
+  Both are now keyed by thread and lock instance and matched by stamp, a zero stamp from
+  `tryOptimisticRead()` needs the same fallback as a failed validation, and a round boundary
+  (`markInvocationStart`, wired in `AsyncTestContext`) seals what a pooled worker left open. The
+  never-written `unvalidatedOptimisticReads` set and the never-read `unlockCount` are gone, and
+  the javadoc and catalog no longer promise wrong-stamp or upgrade checks that did not exist.
+  `StampedLockDetectorModelTest` pins ten cases, five red before the fix;
+  `DetectorAccuracyEvalTest` gains the leak pair and `ConcurrencyRunnerInvocationEpochBindingTest`
+  the cross-round pair. The corpus MUST_FIRE row now takes a real write lock and declares
+  nothing, and `examples/75-stamped-lock` no longer records a zero stamp as an acquisition.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

@@ -1895,6 +1895,50 @@ class DetectorAccuracyEvalTest {
                         + "the situation this code handles correctly");
     }
 
+    @Test
+    @DisplayName("stamped lock: a write stamp dropped on the early-return path fires with no declaration (true positive)")
+    void stampedLockDetectorFiresOnAWriteStampNeverReleased() throws InterruptedException {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+        detector.registerLock(lock, "ledger");
+        Runnable writeAndReturnEarly = () -> {
+            long stamp = lock.tryWriteLock();
+            detector.recordWriteLock(lock, "ledger", stamp);
+            if (stamp == 0L) {
+                return; // the other thread already holds it, and will hold it forever
+            }
+            // An early return between writeLock() and unlockWrite() with no finally block.
+        };
+        onTwoThreads(writeAndReturnEarly, writeAndReturnEarly);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "one thread took the write stamp and never released it; the lock is still "
+                        + "write-held at analysis and the acquisition was never matched. Until "
+                        + "#588 this needed the body to call recordStampNotReleased itself");
+    }
+
+    @Test
+    @DisplayName("stamped lock: the same write released in a finally block stays silent (true negative)")
+    void stampedLockDetectorStaysSilentWhenTheStampIsReleasedInFinally() throws InterruptedException {
+        StampedLockDetector detector = new StampedLockDetector();
+        StampedLock lock = new StampedLock();
+        detector.registerLock(lock, "ledger");
+        Runnable writeAndRelease = () -> {
+            long stamp = lock.writeLock();
+            detector.recordWriteLock(lock, "ledger", stamp);
+            try {
+                // the write
+            } finally {
+                lock.unlockWrite(stamp);
+                detector.recordUnlock(lock, "ledger", stamp);
+            }
+        };
+        onTwoThreads(writeAndRelease, writeAndRelease);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "every write stamp came back and the lock is free: " + detector.analyze());
+    }
+
     private static Runnable mutateUnder(ConcurrentModificationDetector detector,
                                         List<String> list, ReentrantLock lock) {
         return () -> {

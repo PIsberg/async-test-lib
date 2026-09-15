@@ -824,6 +824,11 @@ public final class AsyncTestContext {
         if (registry.lockDowngradeDetector != null) {
             registry.lockDowngradeDetector.markInvocationStart();
         }
+        // Optimistic reads and failed validations a pooled worker left open; the next round's
+        // lock acquisition on the same thread must not read as their fallback (#588).
+        if (stampedLockDetector != null) {
+            stampedLockDetector.markInvocationStart();
+        }
         // In-flight computations a thrown supplier or mapping function abandoned. Worker threads
         // are pooled, so without this the stale entry follows the thread into the next round and
         // reads as reentrancy or as recursion there (#498).

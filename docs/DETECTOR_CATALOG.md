@@ -1184,7 +1184,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 40. StampedLock Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Detects StampedLock misuse: optimistic-read stamps used without a subsequent `validate()` call, unsafe upgrade attempts from optimistic to write mode, stamps not released in a `finally` block, and unlocking with the wrong stamp.
+* **Description**: Detects StampedLock misuse, matched per thread and per lock instance: an optimistic read whose stamp is never passed to `validate()`, a `validate()` that failed (or a zero stamp) followed by neither a read lock, a write lock nor a retried optimistic read, and a read or write stamp recorded as acquired, never recorded as released, on a lock that `isWriteLocked()` or `getReadLockCount()` still reports held when the run is analysed. `recordStampNotReleased` declarations are corroborated the same way rather than reported on trust. Pooled workers do not carry an open read or failed validation into the next round. A wrong stamp passed to an unlock method and mode conversions are not modelled (#588).
 * **Buggy Code**:
   ```java
   long stamp = lock.tryOptimisticRead();
