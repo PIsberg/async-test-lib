@@ -91,6 +91,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gains the still-working twin. Known boundary: a body-started virtual thread that never recorded
   against the lock is not enumerable, so its hold is still treated as finished.
 
+- **`WakeupDetector` lets a deadline loop record that it gave up (#607).** Since #590 the finding
+  is a `wait()` that returned with no notify accounting for it, after which the same thread did
+  not wait again. A timed wait whose caller gives up once its deadline passes records exactly that
+  sequence, so correct code was reported. The new `recordGaveUp(Object monitor)` (`@since 1.12.1`)
+  is recorded on the give-up branch and closes that thread's pending return on the monitor without
+  a finding; it is kept as context in the report. It is the branch, not a `timedOut` flag on
+  `recordWaitExit`, because a timeout alone does not say what the thread did next: an `if` guard
+  that times out and proceeds is the defect itself. A give-up closes only its own thread's return
+  on its own monitor, in its own round, and nothing recorded later. `WakeupDetectorDeadlineTest`
+  pins six cases, two of them red against a no-op stub, and `DetectorAccuracyEvalTest` gains the
+  deadline-loop true negative. Existing callers see no change.
+
 - **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
   It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
   recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is

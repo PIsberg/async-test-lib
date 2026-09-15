@@ -173,11 +173,12 @@ final class PairEvidence {
                 + "starvation a finding only when barging was seen on the lock, so the model "
                 + "questions are answered; still held until the pair is re-read against that model");
         HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "since #590 the finding is an unsignalled "
-                + "wait return the same thread does not follow with another wait, but the "
-                + "recording API cannot see the predicate or a timeout: a timed wait whose caller "
-                + "legitimately gives up records the same sequence and is reported, and "
-                + "wasNotified=true on an unsignalled return hides one. Asking a real monitor "
-                + "cannot close it, since Object exposes no waiter or notify state");
+                + "wait return the same thread does not follow with another wait; since #607 a "
+                + "deadline loop can close its last return with recordGaveUp, but that and "
+                + "wasNotified are the body's own declarations: wasNotified=true on an unsignalled "
+                + "return, or a give-up recorded before acting on the condition anyway, hides one. "
+                + "Asking a real monitor cannot close it, since Object exposes no waiter or notify "
+                + "state; re-read once the silent twin includes a recorded deadline give-up");
         // Read before this map existed; the full argument is in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.FILE_CHANNEL_POSITION_RACE, "reports whenever more than "
                 + "one thread accessed the channel and carries no representation of a lock, so a "

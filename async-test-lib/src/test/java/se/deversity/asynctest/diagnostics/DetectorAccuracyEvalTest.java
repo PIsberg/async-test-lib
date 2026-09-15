@@ -3054,4 +3054,43 @@ class DetectorAccuracyEvalTest {
         var report = detector.analyze();
         assertFalse(report.hasIssues(), "every wait returned (#602). Report:\n" + report);
     }
+
+    @Test
+    @DisplayName("wakeup: a deadline loop that records its give-up after the last timed wait stays silent (true negative)")
+    void wakeupStaysSilentWhenADeadlineLoopGivesUp() throws InterruptedException {
+        WakeupDetector detector = new WakeupDetector();
+        Object monitor = new Object();
+        boolean[] gaveUp = {false};
+        Thread consumer = new Thread(() -> {
+            synchronized (monitor) {
+                long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(20);
+                while (true) {   // nobody ever sets the condition
+                    long left = deadline - System.nanoTime();
+                    if (left <= 0) {
+                        detector.recordGaveUp(monitor);
+                        gaveUp[0] = true;
+                        return;
+                    }
+                    detector.recordWaitEnter(monitor);
+                    try {
+                        monitor.wait(Math.max(1, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(left)));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    detector.recordWaitExit(monitor, false);
+                }
+            }
+        });
+        consumer.setDaemon(true);
+        consumer.start();
+        consumer.join(java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+        assertFalse(consumer.isAlive(), "consumer did not finish");
+
+        assertTrue(gaveUp[0], "premise: the loop gave up at its deadline");
+        var report = detector.analyzeWakeups();
+        assertFalse(report.hasIssues(),
+                "the last timed wait ran out and the thread returned without acting on the "
+                        + "condition; the recorded give-up closes that return (#607). Report:\n" + report);
+    }
 }
