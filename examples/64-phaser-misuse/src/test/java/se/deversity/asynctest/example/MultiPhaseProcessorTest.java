@@ -34,13 +34,15 @@ import static org.junit.jupiter.api.Assertions.*;
  * mismatch is never triggered. The phaser advances normally and the test exits.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * 8 threads simultaneously call runPhase(). Each calls arriveAndAwaitAdvance()
- * on a Phaser that only knows about 2 parties. The overflow causes a timeout
- * or termination. PhaserDetector records all arrive() calls, compares them to
- * the registered party count, and reports the discrepancy.
+ * 3 threads simultaneously call runPhase(). Each calls arriveAndAwaitAdvance()
+ * on a Phaser that only knows about 2 parties. Two pair up and advance the
+ * phase; the third waits in the next phase with nobody left to pair with. The
+ * body records that timed-out wait, and PhaserDetector checks the real phaser
+ * at analysis: the phase is still current with a party not arrived, so it
+ * never advanced.
  *
  * DETECTORS TRIGGERED:
- *   PhaserDetector — primary: detects timeout or termination of the phaser
+ *   PhaserDetector — primary: a timed-out wait on a phase that never advanced
  *
  * FIX: use new Phaser(threadCount) or call phaser.register() for every thread
  *      that will participate in the phase.
@@ -107,8 +109,9 @@ class MultiPhaseProcessorTest {
         party.join(200);
 
         if (party.isAlive()) {
-            // This party will never advance: recordTimeout is what PhaserDetector.hasIssues()
-            // gates on, and an arrival that never completes is the finding.
+            // This party gave up waiting. recordTimeout notes the phase it gave up on, and the
+            // detector reports it only if that phase is still the current one, with a party not
+            // arrived, when the run is analyzed: nobody is left to pair with, so it always is.
             detector.recordTimeout(phaser);
         } else {
             detector.recordPhaseComplete(phaser, phaser.getPhase());

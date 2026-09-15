@@ -72,6 +72,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   describe. Boundary: the recording API cannot see the predicate, so a guarded timed wait that
   runs out after a lost notify is still reported.
 
+- **`PhaserDetector` reports a short party count instead of termination (#587).** `recordTermination`
+  was the CRITICAL finding with no check, and termination is how a phaser ends: `arriveAndDeregister`
+  to zero, `forceTermination` and `onAdvance` all produce it in correct code. `recordTimeout` was the
+  same bare assertion, so a timed wait that expired and was handled fired too. `arrivals`,
+  `completedPhases` and `currentPhase` were never read, the class javadoc's missing-arrive and
+  party-count checks did not exist, and `recordPhaseComplete(phaser, 0)` did nothing. The detector
+  now decides on the real phaser. The new `recordArrival(Phaser, int)` takes the phase that
+  `register`, `arrive`, `arriveAndDeregister` or `arriveAndAwaitAdvance` returned, and a negative
+  phase on a phaser with no party left registered is the finding: a party that was never in the
+  count. A timeout is a finding only if the phase it expired on is still current, with parties not
+  arrived, at analysis. Termination and a timeout whose phase advanced later are printed as notes
+  outside `hasIssues()`. `PhaserDetectorModelTest` pins eight cases on real phasers, six red before
+  the fix, and `DetectorAccuracyEvalTest` gains the pair: two workers leaving a phaser created for
+  one party fires, the twin created for both stays silent. The consumer fixture, which fed only a
+  timeout, and the corpus recording rows now use a real late arrival.
+
 - **`RaceConditionDetector` intersects lock sets instead of comparing them (#570).** It recorded a
   digest of each access's locks and treated a field as guarded only when every digest was equal,
   which asks whether every access held the same locks rather than whether some lock was held at

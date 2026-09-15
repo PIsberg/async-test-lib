@@ -101,7 +101,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 61 | [Notify Without Monitor](61-notify-without-monitor/) | `NotifyWithoutMonitorDetector` | `notify()` called without holding the object's monitor — `IllegalMonitorStateException` | 🔴 Critical |
 | 62 | [Optimistic Read Validation](62-optimistic-read-validation/) | `OptimisticReadValidationDetector` | `StampedLock.tryOptimisticRead()` used without `validate()` — stale data returned silently | 🟡 High |
 | 63 | [Parallel Stream Side-Effects](63-parallel-stream/) | `ParallelStreamDetector` | `parallelStream().forEach()` mutates shared `ArrayList` — lost updates and CME | 🔴 Critical |
-| 64 | [Phaser Misuse](64-phaser-misuse/) | `PhaserDetector` | Fewer parties registered than threads that arrive — `IllegalStateException` or early termination | 🟡 High |
+| 64 | [Phaser Misuse](64-phaser-misuse/) | `PhaserDetector` | Fewer parties registered than threads that arrive — a phase that never advances | 🟡 High |
 | 65 | [Public Lock Exposure](65-public-lock-exposure/) | `PublicLockExposureDetector` | `synchronized` methods make the object its own lock, and the object is public API, so external callers can hold it indefinitely | 🟡 High |
 | 66 | [Reentrant Lock Imbalance](66-reentrant-lock/) | `ReentrantLockDetector` | `lock()` called twice, `unlock()` once — hold count stays at 1, starving all callers | 🔴 Critical |
 | 67 | [Resource Leak](67-resource-leak/) | `ResourceLeakDetector` | `InputStream` opened per call but never closed — file descriptor exhaustion | 🟡 High |

@@ -541,13 +541,14 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.locks.ReentrantLock CLEAN_LOCK =
             new java.util.concurrent.locks.ReentrantLock();
 
-    /** The phaser recorded as terminated: every later arrival stops synchronizing. */
-    private static final java.util.concurrent.Phaser TERMINATED_PHASER =
-            new java.util.concurrent.Phaser(1);
+    /** A phaser whose only party arrived and deregistered, which terminated it. */
+    private static final java.util.concurrent.Phaser TERMINATED_PHASER = leftByItsOnlyParty();
 
-    /** The twin recorded advancing through a phase. */
-    private static final java.util.concurrent.Phaser ADVANCING_PHASER =
-            new java.util.concurrent.Phaser(1);
+    private static java.util.concurrent.Phaser leftByItsOnlyParty() {
+        var phaser = new java.util.concurrent.Phaser(1);
+        phaser.arriveAndDeregister();
+        return phaser;
+    }
 
     /** The exchanger whose partner never arrives, for the orphaned row. */
     private static final java.util.concurrent.Exchanger<String> ORPHANED_EXCHANGER =
@@ -3048,24 +3049,32 @@ class CorpusRecordingLaneTest {
         }
     }
 
-    /** A phaser recorded as terminated: later arrivals return a phase instead of synchronizing. */
+    /**
+     * A party arriving at a phaser its only party already left: the arrival returns a negative
+     * phase instead of synchronizing with anyone.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_phaser_terminated() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.phaserDetector();
         detector.registerPhaser(TERMINATED_PHASER, "terminated-phaser", 1);
         detector.recordTermination(TERMINATED_PHASER);
+        detector.recordArrival(TERMINATED_PHASER, TERMINATED_PHASER.arrive());
     }
 
-    /** The same phaser recorded arriving, awaiting the advance and completing its phase. */
+    /**
+     * A phaser of the worker's own, its one party arriving and completing the phase. Each body
+     * has its own: concurrent arrivals on one shared single-party phaser can land inside another
+     * arrival's advance window, where the phaser throws instead of returning a phase.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_phaser_advancedThroughItsPhase() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.phaserDetector();
-        detector.registerPhaser(ADVANCING_PHASER, "advancing-phaser", 1);
-        detector.recordArrive(ADVANCING_PHASER);
-        detector.recordArriveAwaitAdvance(ADVANCING_PHASER);
-        detector.recordPhaseComplete(ADVANCING_PHASER, 0);
+        var phaser = new java.util.concurrent.Phaser(1);
+        detector.registerPhaser(phaser, "advancing-phaser", 1);
+        detector.recordArrival(phaser, phaser.arrive());
+        detector.recordPhaseComplete(phaser, 0);
     }
 
     /** An exchange that completes carrying nothing: a rendezvous that transferred no value. */

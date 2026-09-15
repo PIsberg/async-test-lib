@@ -2884,18 +2884,19 @@ final class Corpus {
                     "java.util.concurrent.Phaser",
                     DetectorType.PHASER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "the phaser is recorded as terminated. Termination is permanent and every "
-                            + "later arrival returns a negative phase rather than blocking, so "
-                            + "parties that keep arriving are silently no longer synchronizing "
-                            + "with each other"),
+                    "a party arrives at a phaser whose only party already arrived and "
+                            + "deregistered. That terminated it, so the arrival returns a "
+                            + "negative phase rather than blocking, and the party is silently no "
+                            + "longer synchronizing with anyone. Since #587 termination alone is "
+                            + "not the finding; the late arrival is"),
 
             new RecordingSubject("recorded_phaser_advancedThroughItsPhase", JDK,
                     "java.util.concurrent.Phaser",
                     DetectorType.PHASER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same phaser recorded arriving, awaiting the advance and completing a "
-                            + "phase, which is the cycle it exists for. The pair separates on "
-                            + "whether the protocol ended in its terminal state"),
+                    "a phaser's one party arriving and completing a phase, which is the cycle "
+                            + "it exists for. The pair separates on whether a party arrived "
+                            + "after the party count had already reached zero"),
 
             new RecordingSubject("recorded_exchanger_leftWithNoPartner", JDK,
                     "java.util.concurrent.Exchanger",
