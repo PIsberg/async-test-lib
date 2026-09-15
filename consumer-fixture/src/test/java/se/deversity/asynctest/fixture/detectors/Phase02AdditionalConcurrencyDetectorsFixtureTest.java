@@ -266,7 +266,7 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
         synchronized (monitor) {
             // No predicate: the wait has no way to learn the notify already happened, and nothing
             // will notify again. In production this is wait() and never returns; bounded here.
-            signalDetector.recordWait(monitor);
+            signalDetector.recordWait(monitor, false);
             monitor.wait(5);
             signalDetector.recordWakeup(monitor);
         }

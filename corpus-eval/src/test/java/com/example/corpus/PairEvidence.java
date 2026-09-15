@@ -153,9 +153,10 @@ final class PairEvidence {
                 + "is silent; still held until re-read, because the counts are the body's own "
                 + "declaration and an Exchanger exposes no waiter count to check a start against");
         HELD_ON_MODEL.put(DetectorType.MISSED_SIGNAL, "since #586 a lost notify is a finding only "
-                + "when a later wait receives no notify, but the recording API still cannot see the "
-                + "predicate, so a guarded timed wait that runs out after a lost notify fires; needs "
-                + "a wait observed not to re-check its predicate, on the real monitor");
+                + "when a later wait receives no notify, and since #599 a caller can say whether "
+                + "that wait is predicate-guarded, but guardedness is still the body's own "
+                + "declaration and the detector never sees the predicate or the real monitor's "
+                + "waiters; needs the missing re-check observed, not declared");
         HELD_ON_MODEL.put(DetectorType.PHASER, "since #587 termination is context and the finding "
                 + "is an arrival whose returned phase is negative on a phaser with no party left "
                 + "registered, read from the real phaser; the rewritten pair has not been re-read "

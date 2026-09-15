@@ -34,12 +34,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * that never recorded a wait changes nothing (#586: it used to decrement a shared counter and
  * erase a live waiter, making the next notify read as lost).
  *
- * <p><strong>Boundary.</strong> The recording API cannot see the predicate. A predicate loop
- * whose timed wait legitimately runs out after a lost notify (a consumer polling after the last
- * producer finished) records the same sequence and is reported; a lost notify followed by a
- * notify that reached another waiter hides a later unguarded wait. Record the monitor itself
- * ({@link #recordWait(Object)}) rather than a name where you can: named conditions share state
- * with every other monitor recorded under the same name.
+ * <p><strong>Say whether the wait is guarded.</strong> The detector cannot see the predicate, so
+ * {@link #recordWait(Object, boolean)} asks the caller (#599). A guarded wait is never reported:
+ * its loop re-tests the state a lost notify would have changed, so a consumer polling after the
+ * last producer finished, whose timed wait runs out by design, stays silent. An unguarded wait is
+ * judged against every notify lost before it, so a lost notify followed by one that reached some
+ * other waiter no longer hides it. The forms that do not say ({@link #recordWait(Object)},
+ * {@link #recordWait(String)}) keep the #586 rule: a wait is judged on the notify just before it,
+ * which reports the guarded poll above and misses the hidden unguarded wait. Record the monitor
+ * itself rather than a name where you can: named conditions share state with every other monitor
+ * recorded under the same name.
  *
  * <p>Usage:
  * <pre>{@code
@@ -52,7 +56,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *         monitor.notify();
  *     }
  *     synchronized (monitor) {
- *         detector.recordWait(monitor);
+ *         detector.recordWait(monitor, false); // no predicate loop around this wait
  *         monitor.wait(100);
  *         detector.recordWakeup(monitor);
  *     }
@@ -61,23 +65,47 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class MissedSignalDetector {
 
+    /** What the caller said about the loop around a wait. */
+    private enum Guard {
+        /** Recorded without saying: decided on the notify just before the wait (#586). */
+        UNKNOWN,
+        /** Inside a loop that re-tests the state predicate: never a missed signal (#599). */
+        GUARDED,
+        /** No predicate: judged against every notify lost before the wait (#599). */
+        UNGUARDED
+    }
+
     /** A recorded wait whose wakeup has not been recorded yet. */
     private static final class OpenWait {
         final Thread thread;
+        final Guard guard;
         /** The condition's notify count when the wait began. */
         final long notifiesAtStart;
         /** Whether the most recent notify before this wait found nobody waiting. */
         final boolean afterLostNotify;
+        /** How many notifies before this wait found nobody waiting. */
+        final int lostNotifiesAtStart;
 
-        OpenWait(Thread thread, long notifiesAtStart, boolean afterLostNotify) {
+        OpenWait(Thread thread, Guard guard, long notifiesAtStart, boolean afterLostNotify,
+                 int lostNotifiesAtStart) {
             this.thread = thread;
+            this.guard = guard;
             this.notifiesAtStart = notifiesAtStart;
             this.afterLostNotify = afterLostNotify;
+            this.lostNotifiesAtStart = lostNotifiesAtStart;
         }
 
-        /** {@return whether this wait followed a lost notify and no notify has arrived since} */
+        /** {@return whether this wait needed a notify that was lost and none has arrived since} */
         boolean missedItsSignal(long notifiesNow) {
-            return afterLostNotify && notifiesNow == notifiesAtStart;
+            boolean noNotifySince = notifiesNow == notifiesAtStart;
+            return switch (guard) {
+                // The loop re-tests the state a lost notify would have changed, so the notify it
+                // did not see cannot strand it; a guarded poll that times out is how it ends.
+                case GUARDED -> false;
+                // A later notify consumed by another waiter does not give back one already lost.
+                case UNGUARDED -> lostNotifiesAtStart > 0 && noNotifySince;
+                case UNKNOWN -> afterLostNotify && noNotifySince;
+            };
         }
     }
 
@@ -94,8 +122,8 @@ public class MissedSignalDetector {
             this.label = label;
         }
 
-        synchronized void waitStarted(Thread thread) {
-            openWaits.add(new OpenWait(thread, notifies, lastNotifyLost));
+        synchronized void waitStarted(Thread thread, Guard guard) {
+            openWaits.add(new OpenWait(thread, guard, notifies, lastNotifyLost, notifiesWithNoWaiter));
         }
 
         synchronized void wokeUp(Thread thread) {
@@ -155,19 +183,43 @@ public class MissedSignalDetector {
      */
     public void recordWait(String conditionName) {
         if (conditionName == null) return;
-        byName(conditionName).waitStarted(Thread.currentThread());
+        byName(conditionName).waitStarted(Thread.currentThread(), Guard.UNKNOWN);
     }
 
     /**
      * Records that the calling thread is about to call {@code wait()} on {@code monitor}.
      * State is keyed by the monitor's identity, so distinct monitors never share a history.
      *
+     * <p>This form does not say whether the wait is predicate-guarded, so it is decided on the
+     * notify just before it; prefer {@link #recordWait(Object, boolean)}.
+     *
      * @param monitor the object whose {@code wait()} is about to be called
      * @since 1.12.1
      */
     public void recordWait(Object monitor) {
         if (monitor == null) return;
-        byMonitor(monitor).waitStarted(Thread.currentThread());
+        byMonitor(monitor).waitStarted(Thread.currentThread(), Guard.UNKNOWN);
+    }
+
+    /**
+     * Records that the calling thread is about to call {@code wait()} on {@code monitor}, and
+     * whether that wait sits in a loop that re-tests a state predicate under the monitor
+     * ({@code while (!ready) monitor.wait(...)}).
+     *
+     * <p>A {@code guarded} wait is never reported by this detector: its loop re-tests the state a
+     * lost notify would have changed, so the notify it did not see cannot strand it, and a guarded
+     * timed wait that runs out is how a polling consumer ends. An unguarded wait is reported when
+     * any earlier notify on the monitor found nobody waiting and no notify arrives while it waits;
+     * a later notify consumed by another waiter does not give back the one that was lost.
+     *
+     * @param monitor the object whose {@code wait()} is about to be called
+     * @param guarded {@code true} when the wait is inside a loop re-testing its predicate
+     * @since 1.12.1
+     */
+    public void recordWait(Object monitor, boolean guarded) {
+        if (monitor == null) return;
+        byMonitor(monitor).waitStarted(Thread.currentThread(),
+                guarded ? Guard.GUARDED : Guard.UNGUARDED);
     }
 
     /**

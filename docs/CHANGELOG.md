@@ -48,6 +48,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   records the runner's interrupt is still named by the timeout (red before), and a body that
   interrupts itself and handles it passes a `failOn = LOW` gate.
 
+- **`MissedSignalDetector` can be told whether a wait is predicate-guarded (#599).** The
+  recording calls could not see the predicate, so two shapes were decided wrongly. A consumer
+  polling `while (queue.isEmpty()) lock.wait(100)` after the last producer's notify found nobody
+  waiting timed out by design and was reported CRITICAL; and because only the notify just before a
+  wait was consulted, a lost notify followed by one consumed by another waiter hid a later
+  unguarded wait. The new `recordWait(Object monitor, boolean guarded)` (`@since 1.12.1`) lets the
+  caller say: a guarded wait is never reported, since its loop re-tests the state a lost notify
+  would have changed, and an unguarded wait is judged against every notify lost before it. The
+  existing `recordWait(Object)` and `recordWait(String)` do not say and keep the #586 rule.
+  `MissedSignalPredicateTest` pins four cases on real monitors, three of them red against the
+  #586 rule, and a fifth pinning that the forms that do not say keep both of that rule's
+  boundaries. Example 58, the Phase02 consumer fixture and the corpus MUST_FIRE row now record
+  their unguarded wait with `recordWait(monitor, false)`; the corpus pair stays held, because
+  guardedness is still the body's declaration.
+
 - **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
   It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
   recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is
