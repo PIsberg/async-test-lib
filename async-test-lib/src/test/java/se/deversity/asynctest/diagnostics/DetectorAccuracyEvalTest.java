@@ -2881,4 +2881,65 @@ class DetectorAccuracyEvalTest {
                 "no thread is parked on the condition; the lock, not the recording, decides a stuck "
                         + "waiter (#592). Report:\n" + report);
     }
+
+    /** A party that returns early on one path; the fixed twin arrives in finally (#602). */
+    private static void phaserParty(PhaserDetector detector, java.util.concurrent.Phaser phaser,
+                                    boolean earlyReturn, boolean arriveInFinally) {
+        try {
+            if (earlyReturn) {
+                return;
+            }
+        } finally {
+            if (arriveInFinally || !earlyReturn) {
+                detector.recordAwaitAdvanceStarted(phaser);
+                detector.recordAwaitAdvanceReturned(phaser, phaser.arriveAndAwaitAdvance());
+            }
+        }
+    }
+
+    private static Thread parkedPhaserParty(PhaserDetector detector, java.util.concurrent.Phaser phaser)
+            throws InterruptedException {
+        Thread waiter = new Thread(() -> phaserParty(detector, phaser, false, false), "waiting-party");
+        // arriveAndAwaitAdvance ignores interrupts: a stranded party can only be abandoned.
+        waiter.setDaemon(true);
+        waiter.start();
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+        while (!(phaser.getArrivedParties() == 1 && waiter.getState() == Thread.State.WAITING)) {
+            assertTrue(System.nanoTime() < deadline, "the waiting party never parked");
+            Thread.sleep(5);
+        }
+        return waiter;
+    }
+
+    @Test
+    @DisplayName("phaser: a party's early return strands the other in arriveAndAwaitAdvance (true positive)")
+    void phaserFiresWhenAPartyReturnsEarlyWithoutArriving() throws InterruptedException {
+        PhaserDetector detector = new PhaserDetector();
+        java.util.concurrent.Phaser phase = new java.util.concurrent.Phaser(2);
+        detector.registerPhaser(phase, "phase", 2);
+
+        parkedPhaserParty(detector, phase);
+        phaserParty(detector, phase, true, false);   // the bug: the early return skips the arrival
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "the waiting party never returned and phase 0 still has a party not arrived, with no "
+                        + "timed wait recorded (#602). Report:\n" + report);
+    }
+
+    @Test
+    @DisplayName("phaser: the twin that arrives in finally releases the waiter and stays silent (true negative)")
+    void phaserStaysSilentWhenTheEarlyReturnArrivesInFinally() throws InterruptedException {
+        PhaserDetector detector = new PhaserDetector();
+        java.util.concurrent.Phaser phase = new java.util.concurrent.Phaser(2);
+        detector.registerPhaser(phase, "phase", 2);
+
+        Thread waiter = parkedPhaserParty(detector, phase);
+        phaserParty(detector, phase, true, true);
+        waiter.join(10_000);
+        assertFalse(waiter.isAlive(), "both parties arrived, so the phase advanced");
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "every wait returned (#602). Report:\n" + report);
+    }
 }

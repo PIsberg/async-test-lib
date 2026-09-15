@@ -63,6 +63,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their unguarded wait with `recordWait(monitor, false)`; the corpus pair stays held, because
   guardedness is still the body's declaration.
 
+- **`PhaserDetector` sees a phase stalled by a party that never arrived, with no timeout recorded (#602).**
+  Since #587 a stall was reported only when the body recorded a timed wait that expired on a phase
+  still current at analysis. A registered party that never arrived while every other party sat in
+  an untimed `arriveAndAwaitAdvance()` recorded nothing, so the report did not name the phaser and
+  only the run's own timeout reported the stranded threads. New `recordAwaitAdvanceStarted(phaser)`
+  and `recordAwaitAdvanceReturned(phaser, phase)` bracket the call per phaser and thread; a wait
+  that never returned is a stall when, at analysis, its phase is still current, a party has not
+  arrived and its thread is still parked inside `Phaser`. The last check keeps a start whose call
+  threw, and a pooled thread that moved on, silent. Registrations left behind with nobody waiting
+  are not a stall. `PhaserStalledPhaseTest` pins five cases on real phasers, the firing one red
+  before the change, and `DetectorAccuracyEvalTest` gains the early-return pair: a party that
+  returns without arriving fires, the twin that arrives in `finally` stays silent.
+
 - **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
   It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
   recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is
