@@ -132,7 +132,7 @@ but are frequently shared across threads by mistake.
 |-----------|------|---------|-------------|
 | `detectCalendarIssues` | boolean | true | Detect `java.util.Calendar` shared across threads (not thread-safe; use `java.time.*`) |
 | `detectSharedCollections` | boolean | true | Detect `ArrayList`/`HashMap`/`HashSet` etc. written by multiple threads without synchronization |
-| `detectTimerIssues` | boolean | true | Detect `java.util.Timer` thread failures (uncaught exception kills all tasks) and long-running tasks |
+| `detectTimerIssues` | boolean | true | Detect `java.util.Timer` thread failures (uncaught exception kills all tasks) and tasks that fell due while another task held the timer thread |
 | `detectCopyOnWriteCollectionIssues` | boolean | true | Detect `CopyOnWriteArrayList`/`CopyOnWriteArraySet` with high write ratio (O(n) copy per write) |
 | `detectStringBuilderIssues` | boolean | true | Detect `StringBuilder` mutated by multiple threads (not thread-safe; use `StringBuffer` or `ThreadLocal`) |
 
@@ -184,13 +184,18 @@ void testSharedList() {
 @AsyncTest(threads = 2, detectTimerIssues = true)
 void testTimerUsage() {
     Timer timer = new Timer("my-timer");
-    AsyncTestContext.timerMonitor()
-        .registerTimer(timer, "my-timer");
+    TimerDetector detector = AsyncTestContext.timerMonitor();
+    detector.registerTimer(timer, "my-timer");
 
-    AsyncTestContext.timerMonitor()
-        .recordTaskRun(timer, "my-timer", "task-1");
-    AsyncTestContext.timerMonitor()
-        .recordTaskComplete(timer, "my-timer", "task-1");
+    timer.schedule(new TimerTask() {
+        public void run() {
+            // Pass the task itself: its scheduledExecutionTime() says when it fell due, and a task
+            // that fell due while another held the timer's one thread is reported as starved.
+            detector.recordTaskRun(timer, "my-timer", this, "task-1");
+            doWork();
+            detector.recordTaskComplete(timer, "my-timer", "task-1");
+        }
+    }, 0);
 }
 // Fix: replace java.util.Timer with ScheduledExecutorService
 ```

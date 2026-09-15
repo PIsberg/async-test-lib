@@ -1063,7 +1063,9 @@ fire, and the same submission followed by a recorded inspection and a real `get(
 silent. The timer's silent row deliberately records schedule and complete but not
 `recordTaskRun`: the run-to-complete path is judged against a 100 ms wall-clock threshold, and a
 MUST_STAY_SILENT row must not be breakable by a GC pause - the same species of choice as the
-iterator pair's `hasNext()`.
+iterator pair's `hasNext()`. (Since #575 the threshold is gone: starvation is a task falling due, by its
+own `scheduledExecutionTime()`, while another task holds the timer thread. The silent row now records
+the run as well, and stays silent structurally, because one task cannot starve itself of a thread.)
 
 Three refusals, each for a different reason, all worth keeping:
 

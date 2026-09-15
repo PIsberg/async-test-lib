@@ -118,11 +118,12 @@ final class PairEvidence {
                 + "a duration the body passes in; pool size and queued work are never consulted, "
                 + "so a dedicated scheduler running one slow nightly job fires and a real overrun "
                 + "under a second stays silent; needs a queue-behind model");
-        HELD_ON_MODEL.put(DetectorType.TIMER, "the long-running trigger compares a task's "
-                + "run-to-complete time against 100 ms, so a GC pause or a loaded runner makes a "
-                + "correct task fire, and an exception recorded off the timer thread is still "
-                + "taken at its word; needs the duration off the reporting path (#567 made thread "
-                + "death observed on the timer thread and the clock monotonic)");
+        HELD_ON_MODEL.put(DetectorType.TIMER, "an exception recorded off the timer thread is "
+                + "still taken at its word, and the pair separates on thread death alone; #575 "
+                + "replaced the 100 ms duration with starvation observed from "
+                + "scheduledExecutionTime, which neither row exercises, so the pair can be "
+                + "re-read once a starvation twin is added to it (#567 made thread death observed "
+                + "on the timer thread)");
         // LOCK_UPGRADE_DEADLOCK was held here on reading only the body's records; #566 made it
         // ask the lock, and it is promoted in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "has no happens-before edge but the round "

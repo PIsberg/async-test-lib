@@ -902,7 +902,7 @@ public @interface AsyncTest {
     /**
      * Enable {@code java.util.Timer} misuse detection.
      * Detects timer thread failures (uncaught exceptions kill all tasks) and
-     * long-running tasks that starve subsequent tasks.
+     * tasks that fell due while another task held the timer's single thread.
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
