@@ -42,10 +42,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * the flag set and never waits. It is kept as context in the report. A wait that begins after such
  * a notify and is never signalled is {@code MissedSignalDetector}'s finding, not this one's.
  *
- * <p><strong>Boundary.</strong> A timed wait whose caller legitimately gives up when the time runs
- * out records the same unsignalled return with no second wait and is reported. A caller that passes
- * {@code wasNotified = true} for a return that was not notified hides it. Each wait is matched to
- * the exit recorded by the same thread; an exit from a thread with no open wait changes nothing.
+ * <p>A timed wait whose caller gives up when its deadline passes also leaves an unsignalled return
+ * with no second wait. The caller records that branch with {@link #recordGaveUp(Object)}, which
+ * closes the return without a finding (#607); a thread that proceeds after the timeout records no
+ * give-up and is still reported.
+ *
+ * <p><strong>Boundary.</strong> A deadline loop that does not record its give-up is reported. A
+ * caller that passes {@code wasNotified = true} for a return that was not notified, or records a
+ * give-up and then acts on the condition anyway, hides it. Each wait is matched to the exit
+ * recorded by the same thread; an exit from a thread with no open wait changes nothing.
  */
 public class WakeupDetector {
 
@@ -71,6 +76,8 @@ public class WakeupDetector {
         private int unsignalledReturns;
         /** Unaccounted returns a closed round left without a second wait. */
         private int proceededInClosedRounds;
+        /** Unaccounted returns closed by the thread giving up at its deadline (#607). Context only. */
+        private int gaveUpAtDeadline;
 
         MonitorState(String label) {
             this.label = label;
@@ -94,6 +101,13 @@ public class WakeupDetector {
                 }
             }
             // An exit with no wait recorded by this thread matches nothing and changes nothing.
+        }
+
+        /** The thread gave up instead of proceeding: its pending unaccounted return is closed. */
+        synchronized void gaveUp(Thread thread) {
+            if (returnedUnsignalled.remove(thread)) {
+                gaveUpAtDeadline++;
+            }
         }
 
         /**
@@ -147,6 +161,11 @@ public class WakeupDetector {
                         "%s: %d of %d notify call(s) found no thread waiting",
                         label, notifiesWithNoWaiter, notifies));
             }
+            if (gaveUpAtDeadline > 0) {
+                report.monitorsWithDeadlineGiveUps.add(String.format(
+                        "%s: %d unsignalled return(s) closed by the thread giving up at its deadline",
+                        label, gaveUpAtDeadline));
+            }
         }
     }
 
@@ -178,6 +197,28 @@ public class WakeupDetector {
         MonitorState state = monitors.get(new IdentityKey(monitor));
         if (state == null) return;
         state.waitExited(Thread.currentThread(), wasNotified);
+    }
+
+    /**
+     * Record that the calling thread gave up waiting on a monitor: the branch that returns without
+     * the condition, typically once a timed wait's deadline has passed (#607). It closes this
+     * thread's pending unaccounted return on the monitor without a finding, because the thread did
+     * not act on the condition. A give-up with no such return pending closes nothing, so a later
+     * return is judged on its own.
+     *
+     * <p>Record it on the give-up branch, not after every timed wait. A timeout alone does not say
+     * what the thread did next: {@code if (!ready) monitor.wait(t); consume();} times out and then
+     * proceeds, which is the defect this detector reports, so a {@code timedOut} flag on
+     * {@link #recordWaitExit(Object, boolean)} would silence it.
+     *
+     * @param monitor the object being used as a monitor, tracked by identity
+     * @since 1.12.1
+     */
+    public void recordGaveUp(Object monitor) {
+        if (!enabled || monitor == null) return;
+        MonitorState state = monitors.get(new IdentityKey(monitor));
+        if (state == null) return;
+        state.gaveUp(Thread.currentThread());
     }
 
     /**
@@ -271,6 +312,14 @@ public class WakeupDetector {
          */
         @Deprecated(since = "1.12.1")
         public final Set<String> alwaysNotifyWithoutWait = new HashSet<>();
+        /**
+         * Monitors where a thread closed an unsignalled return with
+         * {@link WakeupDetector#recordGaveUp(Object)}: it gave up at its deadline instead of acting
+         * on the condition. Context only, never a finding.
+         *
+         * @since 1.12.1
+         */
+        public final Set<String> monitorsWithDeadlineGiveUps = new HashSet<>();
 
         /**
          * {@return whether there are issues}
@@ -297,11 +346,18 @@ public class WakeupDetector {
                     sb.append("  - ").append(note).append("\n");
                 }
             }
+            if (!monitorsWithDeadlineGiveUps.isEmpty()) {
+                sb.append("\nContext, not a finding (thread gave up at its deadline):\n");
+                for (String note : monitorsWithDeadlineGiveUps) {
+                    sb.append("  - ").append(note).append("\n");
+                }
+            }
             sb.append("""
                       Why: wait() can return without a notification (a spurious wakeup, or a timed wait running out).
                            A thread that proceeds after a single if-check instead of re-checking in a while loop acts
                            as if the condition is met when nobody established it, producing logic errors or data corruption.
                       Fix: Always wrap wait() in a while loop: synchronized(lock) { while (!condition) { lock.wait(); } }
+                           A loop that gives up at a deadline records the give-up branch with recordGaveUp(monitor).
                     """);
             return sb.toString();
         }
