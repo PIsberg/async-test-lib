@@ -40,9 +40,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * another thread's observed acquire changes the holder. Either drops the stale entry before the
  * next access is recorded.
  *
- * <p>The window that remains is narrow and one-sided: another thread's acquire lands between its
- * swap and its holder write while the stale thread records an access. The next round's
- * interleaving closes it; no steady-state code shape keeps it open.
+ * <p>To close the window where a stale holder reads the flag locked between another thread's won
+ * swap and its holder write (#621), an acquire sequence bumps an acquire sequence counter and
+ * clears the stale holder before the swap instruction lands. Re-confirmation requires both the
+ * holder and the sequence counter to be unchanged since the thread won the lock.
  *
  * <h2>What identifies a lock</h2>
  *
@@ -161,6 +162,74 @@ final class SpinLocks {
         }
     }
 
+    /** Test-only seam: called right before {@code wonBy} records the new winner (#621). */
+    private static volatile @Nullable Runnable testHookBeforeWonBy;
+
+    static void setTestHookBeforeWonBy(@Nullable Runnable hook) {
+        testHookBeforeWonBy = hook;
+    }
+
+    @SuppressWarnings("PMD.NullAssignment")
+    static void resetForTesting() {
+        LOCKS.clear();
+        SPIN_FIELDS.clear();
+        HANDLE_FIELDS.clear();
+        testHookBeforeWonBy = null;
+    }
+
+    static @Nullable Lock lockFor(Object subject, String field) {
+        return LOCKS.get(new Key(System.identityHashCode(subject), field));
+    }
+
+    static @Nullable Lock lockFor(Object atomic) {
+        return lockFor(atomic, ATOMIC);
+    }
+
+    /**
+     * Prepares for a swap from 0 to 1 on {@code receiver}'s {@code field}, marking any stale
+     * holder as revoked before the swap instruction lands (#621).
+     */
+    static void aboutToAcquire(@Nullable Object receiver, @Nullable VarHandle handle) {
+        if (receiver == null || handle == null || !anySpinField()) {
+            return;
+        }
+        String field = fieldOf(handle);
+        if (field != null && isSpinField(field)) {
+            aboutToAcquire(receiver, field);
+        }
+    }
+
+    /**
+     * Prepares for a swap from 0 to 1 on {@code receiver}'s {@code field} through an updater (#621).
+     */
+    static void aboutToAcquire(@Nullable Object receiver,
+                              @Nullable AtomicIntegerFieldUpdater<?> updater) {
+        if (receiver == null || updater == null || !anySpinField()) {
+            return;
+        }
+        String field = fieldOf(updater);
+        if (field != null && isSpinField(field)) {
+            aboutToAcquire(receiver, field);
+        }
+    }
+
+    /**
+     * Prepares for a swap from 0 to 1 on {@code atomic} (#621).
+     */
+    static void aboutToAcquire(@Nullable Object atomic) {
+        if (atomic == null || LOCKS.isEmpty()) {
+            return;
+        }
+        aboutToAcquire(atomic, ATOMIC);
+    }
+
+    private static void aboutToAcquire(Object subject, String field) {
+        Lock lock = LOCKS.get(new Key(System.identityHashCode(subject), field));
+        if (lock != null && lock.isFor(subject)) {
+            lock.aboutToAcquire();
+        }
+    }
+
     /** Declares a won acquire of {@code receiver}'s flag {@code field}, confirmed through {@code handle}. */
     static void acquire(Object receiver, String field, VarHandle handle) {
         SPIN_FIELDS.add(field);
@@ -216,6 +285,10 @@ final class SpinLocks {
             // other, so this acquire goes undeclared: its writes report rather than hide.
             return;
         }
+        Runnable hook = testHookBeforeWonBy;
+        if (hook != null) {
+            hook.run();
+        }
         lock.wonBy(Thread.currentThread().threadId());
         if (!HeldLocks.holds(lock)) {
             HeldLocks.acquired(lock);
@@ -247,6 +320,12 @@ final class SpinLocks {
         /** The thread id of the last observed winner, or 0 after an observed release. */
         private final AtomicLong holder = new AtomicLong();
 
+        /** The total number of acquire sequences started, bumped before a won swap (#621). */
+        private final AtomicLong acquires = new AtomicLong();
+
+        /** The {@link #acquires} value at the time the current {@link #holder} won the lock (#621). */
+        private final AtomicLong holderAcquire = new AtomicLong();
+
         Lock(Object subject, @Nullable VarHandle handle,
              @Nullable AtomicIntegerFieldUpdater<Object> updater) {
             this.subject = new WeakReference<>(subject);
@@ -263,7 +342,16 @@ final class SpinLocks {
             return subject.get() == null;
         }
 
+        void aboutToAcquire() {
+            if (!isLocked()) {
+                acquires.incrementAndGet();
+                holder.compareAndSet(holder.get(), 0L);
+            }
+        }
+
         void wonBy(long threadId) {
+            long count = acquires.incrementAndGet();
+            holderAcquire.set(count);
             holder.set(threadId);
         }
 
@@ -287,9 +375,12 @@ final class SpinLocks {
          */
         @Override
         public boolean stillHeld() {
-            if (holder.get() != Thread.currentThread().threadId()) {
-                return false;
-            }
+            return holder.get() == Thread.currentThread().threadId()
+                    && acquires.get() == holderAcquire.get()
+                    && isLocked();
+        }
+
+        boolean isLocked() {
             Object target = subject.get();
             if (target == null) {
                 return false;
