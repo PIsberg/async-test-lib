@@ -892,6 +892,9 @@ public class ConcurrencyRunner {
             // outer executor.shutdownNow(). cancel(true) on an already-finished future
             // is a documented no-op, so this is safe regardless of how many of the
             // `threads` workers are actually still outstanding.
+            // Say so before interrupting: a body that catches this interrupt and records it has
+            // not left its work on its own, and a detector must not read it as though it had (#598).
+            phase2Context.markRoundTimedOut();
             for (Future<?> future : workerFutures) {
                 future.cancel(true);
             }

@@ -32,6 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ConcurrencyRunnerInvocationEpochBindingTest` the cross-round pair through the real runner,
   which goes red with the `AsyncTestContext` call removed.
 
+- **`ExchangerDetector` closes an exchange only with an end from the thread that started it, and
+  not with the runner's own timeout interrupt (#597, #598).** Since #585 the finding is an exchange
+  started and never ended, but the counts were per exchanger: a completion recorded by a thread that
+  never recorded starting offset a different thread's orphan, and the orphan went unreported. Open
+  exchanges are now kept per exchanger and per thread, an end closes only one of its own thread's
+  starts, and an unmatched end is printed as context. Separately, an untimed orphan inside an
+  `@AsyncTest` holds its round until `timeoutMs`, and the runner then interrupts the workers; a body
+  that caught that interrupt and recorded it closed its own orphan, so the timeout said no detector
+  had a finding. The runner now calls `AsyncTestContext.markRoundTimedOut()` before cancelling the
+  workers of a timed-out round, and an interrupt recorded after it leaves the exchange open. An
+  interrupt the body sends itself on a round that did not time out still ends the exchange.
+  `ExchangerOrphanMatchingTest` pins both boundaries in both directions (three of its six cases red
+  before the change), and `ExchangerOrphanRunTest` adds the runner pair: an orphan whose body
+  records the runner's interrupt is still named by the timeout (red before), and a body that
+  interrupts itself and handles it passes a `failOn = LOW` gate.
+
 - **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
   It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
   recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is
