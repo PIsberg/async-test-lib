@@ -167,10 +167,12 @@ final class PairEvidence {
                 + "still held until re-read, because recordStarvation is still the caller's own "
                 + "declaration and a hold kept by a thread still running at analysis would read "
                 + "the same as a leaked one");
-        HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "the wasNotified flag the body passes is the "
-                + "spurious-wakeup finding, a wakeup is a defect only if the waiter skips "
-                + "re-checking its condition, which is never seen, and a notify with no waiter, "
-                + "the correct flag-then-notifyAll handshake, counts as lost");
+        HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "since #590 the finding is an unsignalled "
+                + "wait return the same thread does not follow with another wait, but the "
+                + "recording API cannot see the predicate or a timeout: a timed wait whose caller "
+                + "legitimately gives up records the same sequence and is reported, and "
+                + "wasNotified=true on an unsignalled return hides one. Asking a real monitor "
+                + "cannot close it, since Object exposes no waiter or notify state");
         // Read before this map existed; the full argument is in verdict-evidence-corpus.
         HELD_ON_MODEL.put(DetectorType.FILE_CHANNEL_POSITION_RACE, "reports whenever more than "
                 + "one thread accessed the channel and carries no representation of a lock, so a "

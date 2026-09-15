@@ -844,6 +844,11 @@ public final class AsyncTestContext {
         if (concurrentMapComputeRecursionDetector != null) {
             concurrentMapComputeRecursionDetector.markInvocationStart();
         }
+        // An unsignalled wait return is excused only by a second wait from the same thread; a
+        // pooled worker's wait in the next round is a fresh body execution, not that re-check (#590).
+        if (wakeupDetector != null) {
+            wakeupDetector.markInvocationStart();
+        }
     }
 
     /**

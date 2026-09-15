@@ -537,12 +537,12 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 10. Wakeup Issues Detector
 * **Severity**: `HIGH`
-* **Description**: Tracks `wait()`/`notify()` pairs per monitor to catch spurious wakeups (a thread resumes without being notified) and lost notifications (`notify()` fires while no thread is waiting), both of which are hard to reproduce and debug.
+* **Description**: Tracks `wait()`/`notify()` per monitor and reports a waiter that acts on a wakeup no notify accounted for: a `wait()` that returned with no recorded `notify()`/`notifyAll()` that could have woken it, after which the same thread went on without waiting again. That is an `if` guard where a `while` loop belongs, and a spurious wakeup (or a timed wait running out) then proceeds on a condition nobody established. The re-check is observed as a second recorded wait from the same thread; a round boundary closes a return its round left without one. A `notifyAll` accounts for every wait open when it is recorded, a `notify` for one. The `wasNotified` flag only silences: `true` accounts for a return, `false` alone is not a finding (#590). A `notify()` that finds nobody waiting is described as context and never reported on its own, because setting a flag and then calling `notifyAll()` does exactly that; a wait that begins after such a notify and is never signalled is `MissedSignalDetector`'s finding. The recording API cannot see a timeout, so a timed wait whose caller legitimately gives up is reported too. Trust tier `PROMPT`.
 * **Buggy Code**:
   ```java
   synchronized (lock) {
       if (!conditionMet) {
-          lock.wait(); // no waiter yet when notify() races in -> notification lost
+          lock.wait(); // a spurious return proceeds with conditionMet still false
       }
   }
   ```

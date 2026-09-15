@@ -1,149 +1,221 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Detects spurious wakeups and lost notifications in wait/notify patterns.
- * 
- * Spurious Wakeup: A thread wakes from wait() without being notified
- * Lost Wakeup: A notify() is called when no thread is waiting
- * 
- * These issues are subtle and hard to debug in production code.
+ * Detects a waiter that acts on a wakeup no notify accounted for: a {@code wait()} that returned
+ * with no recorded {@code notify()}/{@code notifyAll()} that could have woken it, after which the
+ * waiting thread went on without waiting again.
+ *
+ * <p>{@code Object.wait} may return spuriously, and a timed wait returns when its time runs out.
+ * Either is harmless in a predicate loop, which checks the condition and waits again; it is a
+ * defect when the wait is guarded by {@code if} instead of {@code while}, because the thread then
+ * proceeds on a condition nobody established:
+ *
+ * <pre>{@code
+ * synchronized (monitor) {
+ *     if (!ready) {          // the bug: should be while (!ready)
+ *         monitor.wait();    // a spurious return proceeds with ready still false
+ *     }
+ *     consume();
+ * }
+ * }</pre>
+ *
+ * <p>The recording API cannot see the predicate, so the re-check is observed through what the
+ * thread records next: another {@link #recordWaitEnter(Object) wait} on the same monitor is the
+ * loop going round again and clears the return. A return that is still not followed by a wait
+ * when the round ends ({@link #markInvocationStart()}) or when the run is analysed is the finding.
+ *
+ * <p>A return is accounted for when a notify was recorded while its wait was open: a
+ * {@code notifyAll} accounts for every wait open at that moment, a {@code notify} for one of them.
+ * The {@code wasNotified} flag passed to {@link #recordWaitExit(Object, boolean)} is trusted only
+ * in the silencing direction: {@code true} accounts for the return, {@code false} alone is never a
+ * finding (#590: it used to be the whole spurious-wakeup finding).
+ *
+ * <p>A notify that finds no thread waiting is <em>not</em> a finding. It is also what the correct
+ * flag-then-{@code notifyAll} handshake does when the waiter has not arrived yet: the waiter finds
+ * the flag set and never waits. It is kept as context in the report. A wait that begins after such
+ * a notify and is never signalled is {@code MissedSignalDetector}'s finding, not this one's.
+ *
+ * <p><strong>Boundary.</strong> A timed wait whose caller legitimately gives up when the time runs
+ * out records the same unsignalled return with no second wait and is reported. A caller that passes
+ * {@code wasNotified = true} for a return that was not notified hides it. Each wait is matched to
+ * the exit recorded by the same thread; an exit from a thread with no open wait changes nothing.
  */
 public class WakeupDetector {
-    
-    private static class MonitorState {
-        final Object monitor;
-        int waitingThreads = 0; // guarded by synchronized(this)
-        final AtomicLong notifyCount = new AtomicLong(0);
-        final AtomicLong spuriousWakeups = new AtomicLong(0);
-        final AtomicLong lostNotifications = new AtomicLong(0);
-        final Set<Long> currentlyWaiting = ConcurrentHashMap.newKeySet();
-        final List<String> events = Collections.synchronizedList(new ArrayList<>());
-        
-        MonitorState(Object m) {
-            this.monitor = m;
+
+    /** A recorded wait whose exit has not been recorded yet. */
+    private static final class OpenWait {
+        final Thread thread;
+        /** Whether a recorded notify has been assigned to this wait. */
+        boolean signalled;
+
+        OpenWait(Thread thread) {
+            this.thread = thread;
         }
     }
-    
+
+    /** One monitor's wait/notify history. Every field is guarded by the instance's monitor. */
+    private static final class MonitorState {
+        final String label;
+        private final List<OpenWait> openWaits = new ArrayList<>();
+        /** Threads whose last return was unaccounted for and that have not waited again. */
+        private final Set<Thread> returnedUnsignalled = new HashSet<>();
+        private long notifies;
+        private int notifiesWithNoWaiter;
+        private int unsignalledReturns;
+        /** Unaccounted returns a closed round left without a second wait. */
+        private int proceededInClosedRounds;
+
+        MonitorState(String label) {
+            this.label = label;
+        }
+
+        synchronized void waitEntered(Thread thread) {
+            returnedUnsignalled.remove(thread);   // the loop went round again
+            openWaits.add(new OpenWait(thread));
+        }
+
+        synchronized void waitExited(Thread thread, boolean callerSaysNotified) {
+            for (int i = openWaits.size() - 1; i >= 0; i--) {
+                OpenWait wait = openWaits.get(i);
+                if (wait.thread.equals(thread)) { // Thread keeps Object's identity equals
+                    openWaits.remove(i);
+                    if (!wait.signalled && !callerSaysNotified && !takeSignalFromAnotherWait()) {
+                        unsignalledReturns++;
+                        returnedUnsignalled.add(thread);
+                    }
+                    return;
+                }
+            }
+            // An exit with no wait recorded by this thread matches nothing and changes nothing.
+        }
+
+        /**
+         * A {@code notify} is assigned to the oldest open wait, but the JVM may wake a different
+         * one; the return that arrives first takes the signal over.
+         */
+        private boolean takeSignalFromAnotherWait() {
+            for (OpenWait other : openWaits) {
+                if (other.signalled) {
+                    other.signalled = false;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        synchronized void notified(boolean all) {
+            notifies++;
+            if (openWaits.isEmpty()) {
+                notifiesWithNoWaiter++;
+                return;
+            }
+            for (OpenWait wait : openWaits) {
+                if (!wait.signalled) {
+                    wait.signalled = true;
+                    if (!all) {
+                        return;
+                    }
+                }
+            }
+        }
+
+        synchronized void closeRound() {
+            proceededInClosedRounds += returnedUnsignalled.size();
+            returnedUnsignalled.clear();
+            // A wait still open here belongs to a body execution that has already finished.
+            openWaits.clear();
+        }
+
+        synchronized void describeInto(WakeupReport report) {
+            int proceeded = proceededInClosedRounds + returnedUnsignalled.size();
+            if (proceeded > 0) {
+                report.monitorsWithSpuriousWakeups.add(String.format(
+                        "%s: %d wait(s) returned with no notify accounting for them and the thread "
+                                + "went on without waiting again (%d unsignalled return(s), %d notify "
+                                + "call(s) recorded)",
+                        label, proceeded, unsignalledReturns, notifies));
+            }
+            if (notifiesWithNoWaiter > 0) {
+                report.monitorsWithLostNotifications.add(String.format(
+                        "%s: %d of %d notify call(s) found no thread waiting",
+                        label, notifiesWithNoWaiter, notifies));
+            }
+        }
+    }
+
     private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
-    
+
     /**
-     * Record that a thread is about to wait on a monitor.
+     * Record that the calling thread is about to wait on a monitor. Call it inside the loop, before
+     * every {@code wait()}, so that waiting again after a return is visible.
      *
      * @param monitor the object being used as a monitor, tracked by identity
      */
     public void recordWaitEnter(Object monitor) {
         if (!enabled || monitor == null) return;
-        
-        MonitorState state = monitors.computeIfAbsent(new IdentityKey(monitor), 
-            k -> new MonitorState(monitor)
-        );
-        
-        synchronized (state) {
-            state.waitingThreads++;
-            state.currentlyWaiting.add(Thread.currentThread().threadId());
-            state.events.add(String.format("T-%d WAIT_ENTER (waiting: %d)",
-                Thread.currentThread().threadId(), state.waitingThreads));
-        }
+        stateFor(monitor).waitEntered(Thread.currentThread());
     }
-    
+
     /**
-     * Record that a thread has exited wait (either notified or spurious).
+     * Record that the calling thread returned from {@code wait()}. It closes the most recent wait
+     * this thread recorded on the monitor; an exit from a thread with no recorded wait is ignored.
      *
      * @param monitor the object being used as a monitor, tracked by identity
-     * @param wasNotified the {@code wasNotified} flag
+     * @param wasNotified {@code true} when the caller knows the wait was notified, which accounts
+     *        for the return; {@code false} when it cannot tell, which leaves the decision to the
+     *        recorded notifies and to whether the thread waits again
      */
     public void recordWaitExit(Object monitor, boolean wasNotified) {
         if (!enabled || monitor == null) return;
-        
         MonitorState state = monitors.get(new IdentityKey(monitor));
         if (state == null) return;
-        
-        synchronized (state) {
-            state.waitingThreads--;
-            state.currentlyWaiting.remove(Thread.currentThread().threadId());
-            
-            if (!wasNotified) {
-                state.spuriousWakeups.incrementAndGet();
-                state.events.add(String.format("T-%d SPURIOUS_WAKEUP (waiting: %d)",
-                    Thread.currentThread().threadId(), state.waitingThreads));
-            } else {
-                state.events.add(String.format("T-%d WAIT_EXIT_NOTIFIED (waiting: %d)",
-                    Thread.currentThread().threadId(), state.waitingThreads));
-            }
-        }
+        state.waitExited(Thread.currentThread(), wasNotified);
     }
-    
+
     /**
-     * Record a notify call on a monitor.
+     * Record a notify call on a monitor. A {@code notifyAll} accounts for every wait open at this
+     * moment, a {@code notify} for one of them; with nobody waiting it is kept as context only.
      *
      * @param monitor the object being used as a monitor, tracked by identity
-     * @param notifyAll the {@code notifyAll} flag
+     * @param notifyAll {@code true} for {@code notifyAll()}, {@code false} for {@code notify()}
      */
     public void recordNotify(Object monitor, boolean notifyAll) {
         if (!enabled || monitor == null) return;
-        
-        MonitorState state = monitors.computeIfAbsent(new IdentityKey(monitor),
-            k -> new MonitorState(monitor)
-        );
-        
-        synchronized (state) {
-            state.notifyCount.incrementAndGet();
+        stateFor(monitor).notified(notifyAll);
+    }
 
-            if (state.waitingThreads == 0) {
-                state.lostNotifications.incrementAndGet();
-                state.events.add(String.format("T-%d NOTIFY_LOST (no waiters)",
-                    Thread.currentThread().threadId()));
-            } else {
-                state.events.add(String.format("T-%d NOTIFY%s (waiting: %d)",
-                    Thread.currentThread().threadId(), 
-                    notifyAll ? "_ALL" : "",
-                    state.waitingThreads));
-            }
+    /**
+     * Internal: called by {@code AsyncTestContext.markInvocationStart()} before each invocation
+     * round, after the previous round's workers have all finished. An unsignalled return that its
+     * round left without a second wait is closed as a finding here, so the same pooled thread's
+     * wait in the next round is not mistaken for its re-check; waits still open are dropped.
+     *
+     * @since 1.12.1
+     */
+    public void markInvocationStart() {
+        for (MonitorState state : monitors.values()) {
+            state.closeRound();
         }
     }
-    
+
     /**
-     * Analyze wakeup patterns for issues.
+     * Analyze wakeup patterns for issues. Analysis reads the recorded state and does not change it.
      *
      * @return the findings this detector collected during the run
      */
     public WakeupReport analyzeWakeups() {
         WakeupReport report = new WakeupReport();
-        
         for (MonitorState state : monitors.values()) {
-            if (state.spuriousWakeups.get() > 0) {
-                report.monitorsWithSpuriousWakeups.add(String.format(
-                    "%s: %d spurious wakeups out of %d notifies",
-                    state.monitor.getClass().getSimpleName(),
-                    state.spuriousWakeups.get(),
-                    state.notifyCount.get()
-                ));
-            }
-            
-            if (state.lostNotifications.get() > 0) {
-                report.monitorsWithLostNotifications.add(String.format(
-                    "%s: %d lost notifications (notify with no waiters)",
-                    state.monitor.getClass().getSimpleName(),
-                    state.lostNotifications.get()
-                ));
-            }
-            
-            // Detect notify without wait pattern
-            if (state.notifyCount.get() > 0 && state.waitingThreads == 0 && state.currentlyWaiting.isEmpty()) {
-                report.alwaysNotifyWithoutWait.add(state.monitor.getClass().getSimpleName());
-            }
+            state.describeInto(report);
         }
-        
         return report;
     }
 
@@ -173,73 +245,64 @@ public class WakeupDetector {
     public void enable() {
         enabled = true;
     }
-    
+
+    private MonitorState stateFor(Object monitor) {
+        return monitors.computeIfAbsent(new IdentityKey(monitor), key -> new MonitorState(
+                monitor.getClass().getSimpleName() + "@" + Integer.toHexString(key.hashCode())));
+    }
+
     public static class WakeupReport {
-        /** Monitors whose waiters woke without a matching notification. */
+        /**
+         * Monitors where a wait returned with no notify accounting for it and the waiting thread
+         * went on without waiting again. This is the finding.
+         */
         public final Set<String> monitorsWithSpuriousWakeups = new HashSet<>();
-        /** Monitors where a notification arrived before the waiter blocked. */
+        /**
+         * Monitors notified while no thread was waiting on them. Context only, never a finding on
+         * its own: the correct flag-then-{@code notifyAll} handshake does this.
+         */
         public final Set<String> monitorsWithLostNotifications = new HashSet<>();
-        /** Monitors notified while nothing was waiting, so the signal was lost. */
+        /**
+         * No longer populated. It named monitors notified while nothing waited, which is correct
+         * code, and was never part of {@link #hasIssues()}; see
+         * {@link #monitorsWithLostNotifications} for that context.
+         *
+         * @deprecated always empty since 1.12.1 (#590)
+         */
+        @Deprecated(since = "1.12.1")
         public final Set<String> alwaysNotifyWithoutWait = new HashSet<>();
-        
+
         /**
          * {@return whether there are issues}
          */
         public boolean hasIssues() {
-            return !monitorsWithSpuriousWakeups.isEmpty() || !monitorsWithLostNotifications.isEmpty();
+            return !monitorsWithSpuriousWakeups.isEmpty();
         }
-        
+
         @Override
         public String toString() {
             if (!hasIssues()) {
                 return "No wakeup issues detected.";
             }
-            
+
             StringBuilder sb = new StringBuilder();
             sb.append("WAIT/NOTIFY ISSUES DETECTED:\n");
-            
-            if (!monitorsWithSpuriousWakeups.isEmpty()) {
-                sb.append("\nSpurious Wakeups (thread woke without being notified):\n");
-                for (String issue : monitorsWithSpuriousWakeups) {
-                    sb.append("  - ").append(issue).append("\n");
-                }
-                sb.append("""
-                          Why: wait() can return spuriously (without a notification) due to OS-level interrupts or JVM internals.
-                               Proceeding on a single if-check instead of a while loop causes the thread to act as if the
-                               condition is met when it is not, producing logic errors or data corruption.
-                          Fix: Always wrap wait() in a while loop: synchronized(lock) { while (!condition) { lock.wait(); } }
-                        """);
+            sb.append("\nWakeups acted on without a notify (wait returned unsignalled, thread did not wait again):\n");
+            for (String issue : monitorsWithSpuriousWakeups) {
+                sb.append("  - ").append(issue).append("\n");
             }
-            
             if (!monitorsWithLostNotifications.isEmpty()) {
-                sb.append("\nLost Notifications (notify called with no waiting threads):\n");
-                for (String issue : monitorsWithLostNotifications) {
-                    sb.append("  - ").append(issue).append("\n");
+                sb.append("\nContext, not a finding (notify with no thread waiting):\n");
+                for (String note : monitorsWithLostNotifications) {
+                    sb.append("  - ").append(note).append("\n");
                 }
-                sb.append("""
-                            Why: A notify() fired before any thread calls wait() is silently lost — the waiting thread will
-                                 never receive it and blocks forever. This is the classic "lost wakeup" race.
-                            Fix: Set a boolean flag before calling notify(), and check it in a while loop before wait():
-                                 ready = true; lock.notifyAll();  // sender
-                                 while (!ready) { lock.wait(); } // receiver — handles notify arriving before wait()
-                          """);
             }
-            
-            if (!alwaysNotifyWithoutWait.isEmpty()) {
-                sb.append("\nNotify Always Called Without Wait:\n");
-                for (String monitor : alwaysNotifyWithoutWait) {
-                    sb.append("  - ").append(monitor).append("\n");
-                }
-                sb.append("""
-                            Why: Calling notify() without a corresponding wait() is a no-op that wastes a signal.
-                                 It usually indicates that the notify is being fired unconditionally rather than in response
-                                 to a state change, breaking the protocol between producer and consumer.
-                            Fix: Pair notify() with a state change and pair wait() with a condition check:
-                                 // Producer: condition = true; synchronized(lock) { lock.notifyAll(); }
-                                 // Consumer: synchronized(lock) { while (!condition) { lock.wait(); } }
-                          """);
-            }
-            
+            sb.append("""
+                      Why: wait() can return without a notification (a spurious wakeup, or a timed wait running out).
+                           A thread that proceeds after a single if-check instead of re-checking in a while loop acts
+                           as if the condition is met when nobody established it, producing logic errors or data corruption.
+                      Fix: Always wrap wait() in a while loop: synchronized(lock) { while (!condition) { lock.wait(); } }
+                    """);
             return sb.toString();
         }
     }

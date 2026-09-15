@@ -292,7 +292,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|
 | `detectFalseSharing` | `FALSE_SHARING` | Cache-line contention between threads |
-| `detectWakeupIssues` | `WAKEUP_ISSUES` | Spurious wakeups, lost `notify()` signals |
+| `detectWakeupIssues` | `WAKEUP_ISSUES` | A `wait()` that returned with no notify and was not waited again (`if` instead of `while`) |
 | `validateConstructorSafety` | `CONSTRUCTOR_SAFETY` | Object published before fully constructed |
 | `detectABAProblem` | `ABA_PROBLEM` | Lock-free ABA hazard |
 | `validateLockOrder` | `LOCK_ORDER` | Inconsistent lock acquisition order |
