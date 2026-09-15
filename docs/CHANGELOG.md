@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`AsyncTestAgent` resolves `AtomicIntegerFieldUpdater` spinlock fields whose updater was bound before attach (#619).**
+  When a class containing an `AtomicIntegerFieldUpdater` initializes before the agent attaches, its type
+  initializer `<clinit>` executes prior to bytecode weaving, so `atomicUpdaterBound` never runs for that
+  instance. On retransformation, the updater's field binding is now captured at weave time via
+  `AtomicFieldRegistry.recordIntUpdater` and registered in `SpinLocks.recordUpdaterField`. When a CAS or
+  release is subsequently encountered for an updater with no instance binding, `SpinLocks.fieldOf(updater, receiver)`
+  resolves the target field from the receiver class hierarchy when exactly one field updater is bound for it.
+
 - **`ConditionVariableDetector` reads stuck waiters from the lock, and keeps an abandoned await
   in its own round (#592, #593).** A stuck waiter was any recorded await with no recorded exit, so
   a body that recorded an await and then threw, or found its predicate true and never called

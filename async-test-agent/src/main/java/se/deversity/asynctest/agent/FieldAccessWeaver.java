@@ -463,6 +463,10 @@ final class FieldAccessWeaver {
                 super.visitLdcInsn(boundField);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "atomicUpdaterBound",
                         "(Ljava/lang/Object;Ljava/lang/String;)V", false);
+                int lastDot = boundField.lastIndexOf('.');
+                if (lastDot > 0) {
+                    AtomicFieldRegistry.recordIntUpdater(boundField.substring(0, lastDot), boundField);
+                }
             }
             if (weaveFieldInstructions && isReferenceTake(opcode, owner, name, descriptor)) {
                 // The returned reference is on top of the stack: hand a copy to the registry and
