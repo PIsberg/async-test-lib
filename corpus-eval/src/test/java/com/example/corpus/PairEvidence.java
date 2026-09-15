@@ -145,10 +145,10 @@ final class PairEvidence {
                 + "TimeoutException fires the same as one that strands its parties; needs the "
                 + "timeout observed, then a re-read (#584 decided reuse with isBroken() at the "
                 + "await and dropped the bare left-broken finding)");
-        HELD_ON_MODEL.put(DetectorType.EXCHANGER, "recordTimeout and recordInterrupted set the "
-                + "finding unconditionally, so a timed exchange that handles TimeoutException, the "
-                + "report's own fix, fires CRITICAL, while an untimed exchange whose partner never "
-                + "comes records nothing; needs orphaning decided from start and complete counts");
+        HELD_ON_MODEL.put(DetectorType.EXCHANGER, "#585 made orphaning the finding, decided from "
+                + "recorded starts against completions, timeouts and interrupts, so a handled timeout "
+                + "is silent; still held until re-read, because the counts are the body's own "
+                + "declaration and an Exchanger exposes no waiter count to check a start against");
         HELD_ON_MODEL.put(DetectorType.MISSED_SIGNAL, "counts a notify with no recorded waiter as "
                 + "lost, which is harmless whenever the waiter checks a state predicate, and the "
                 + "class javadoc's own example is that correct pattern; needs a wait observed not "

@@ -338,7 +338,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 |-----------------|-------------|-----------------|
 | `detectPhaserIssues` | `PHASER` | Missing `arrive()`, timeouts |
 | `detectStampedLockIssues` | `STAMPED_LOCK` | Unvalidated optimistic reads |
-| `detectExchangerIssues` | `EXCHANGER` | Timeouts, missing exchange partners |
+| `detectExchangerIssues` | `EXCHANGER` | Orphaned exchanges: a caller that started an exchange and never left it (a handled timeout is not a finding) |
 | `detectScheduledExecutorIssues` | `SCHEDULED_EXECUTOR` | Missing shutdown, long-running tasks |
 | `detectForkJoinPoolIssues` | `FORK_JOIN_POOL` | Fork without join |
 | `detectThreadFactoryIssues` | `THREAD_FACTORY` | Missing uncaught exception handlers |

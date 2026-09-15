@@ -70,19 +70,25 @@ class UnregisteredSubjectReportTest {
     }
 
     @Test
-    @DisplayName("Exchanger: recordTimeout/recordInterrupted without registerExchanger still renders")
-    void exchangerTimeoutWithoutRegistration() {
+    @DisplayName("Exchanger: an orphaned exchange without registerExchanger still renders")
+    void exchangerOrphanWithoutRegistration() {
         ExchangerDetector detector = new ExchangerDetector();
         Exchanger<String> exchanger = new Exchanger<>();
+        Exchanger<String> alsoUnregistered = new Exchanger<>();
 
-        detector.recordTimeout(exchanger);
-        detector.recordInterrupted(exchanger);
+        // Unregistered starts used to be dropped, so an exchange nobody registered could never
+        // be found orphaned. The label on the start call names it instead.
+        detector.recordExchangeStart(exchanger, "never-registered");
+        detector.recordTimeout(alsoUnregistered);
+        detector.recordInterrupted(alsoUnregistered);
 
         ExchangerDetector.ExchangerReport report = detector.analyze();
-        assertTrue(report.hasIssues());
+        assertTrue(report.hasIssues(), "the exchange that started and never ended is the finding");
         String rendered = assertDoesNotThrow(report::toString);
         assertTrue(rendered.contains("EXCHANGER ISSUES DETECTED"),
             () -> "report lost its finding: " + rendered);
+        assertTrue(rendered.contains("never-registered"),
+            () -> "report must name the unregistered exchanger by its start label: " + rendered);
     }
 
     @Test

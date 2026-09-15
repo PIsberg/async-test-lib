@@ -1212,8 +1212,8 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
   ```
 
 ### 41. Exchanger Misuse Detector
-* **Severity**: `HIGH`
-* **Description**: Detects Exchanger misuse: `exchange()` timeouts, an odd number of participating threads that leaves one partner permanently unmatched, and interruptions during exchange. A `null` payload is counted and printed next to those findings, but is not one on its own: `exchange(null)` is permitted, and a payload-free handoff is how an Exchanger is used as a pure rendezvous where the meeting is the synchronisation (#521).
+* **Severity**: `CRITICAL`
+* **Description**: Detects an orphaned rendezvous: an exchange recorded as started that neither completed, timed out nor was interrupted by the time the run is analysed, which is a thread still inside `exchange()` waiting for a partner that is not coming. The typical cause is an odd number of callers. Counts are kept per exchanger, so an end recorded without its start can offset another thread's open one. A recorded timeout or interrupt is how a thread left the exchange and is printed as context, not reported: a timed exchange that handles `TimeoutException` is the fix, and it used to be reported CRITICAL whether or not anything was left waiting (#585). A `null` payload is counted and printed too, but is not a finding: `exchange(null)` is permitted, and a payload-free handoff is how an Exchanger is used as a pure rendezvous where the meeting is the synchronisation (#521). Inside an `@AsyncTest`, an untimed orphan blocks its round until `timeoutMs`; the finding is printed with the timeout and named in its message.
 * **Buggy Code**:
   ```java
   Exchanger<Buffer> exchanger = new Exchanger<>();
@@ -1225,9 +1225,15 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 * **Fixed Code**:
   ```java
   Exchanger<Buffer> exchanger = new Exchanger<>();
-  // Threads submitted in matched pairs, with a bounded wait
-  for (int i = 0; i < 4; i++) {
-      executor.submit(() -> exchanger.exchange(myBuffer, 5, TimeUnit.SECONDS));
+  // A bounded wait, and a caller left without a partner gives up instead of blocking
+  for (int i = 0; i < 3; i++) {
+      executor.submit(() -> {
+          try {
+              return exchanger.exchange(myBuffer, 5, TimeUnit.SECONDS);
+          } catch (TimeoutException noPartner) {
+              return myBuffer; // keep our own buffer; nothing is left waiting
+          }
+      });
   }
   ```
 

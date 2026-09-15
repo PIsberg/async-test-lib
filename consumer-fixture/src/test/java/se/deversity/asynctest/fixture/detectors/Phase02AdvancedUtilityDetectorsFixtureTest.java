@@ -14,7 +14,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.StampedLock;
 
 import static se.deversity.asynctest.fixture.detectors.DetectorFixtureSupport.assertAllReported;
@@ -34,6 +35,9 @@ class Phase02AdvancedUtilityDetectorsFixtureTest {
 
     private static AsyncFindings findings;
 
+    /** The callers {@link #exchanger()} leaves parked, released once the findings are read. */
+    private static final Queue<Thread> ORPHANED_EXCHANGERS = new ConcurrentLinkedQueue<>();
+
     @BeforeAll
     static void collectFindings() {
         findings = AsyncFindings.collect();
@@ -51,6 +55,7 @@ class Phase02AdvancedUtilityDetectorsFixtureTest {
                     "ThreadFactoryDetector");
         } finally {
             findings.close();
+            ORPHANED_EXCHANGERS.forEach(Thread::interrupt);
         }
     }
 
@@ -99,24 +104,31 @@ class Phase02AdvancedUtilityDetectorsFixtureTest {
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.EXCHANGER})
-    void exchanger() {
+    void exchanger() throws InterruptedException {
         reachable("exchangerDetector()", AsyncTestContext::exchangerDetector);
 
-        // exchange() with no partner blocks forever; the timed form is the safe usage and
-        // the timeout branch is exactly what an Exchanger-misuse detector reports on.
-        // An Exchanger pairs threads two at a time; a partner that never arrives leaves this
-        // one waiting until its timeout, which is the finding.
+        // An Exchanger pairs threads two at a time, and an untimed exchange() with no partner
+        // blocks forever. That orphan is the finding. A timed exchange that handles its
+        // TimeoutException is the fix, and is deliberately not reported (#585), so the fixture
+        // leaves a real caller parked in exchange() rather than recording a timeout.
         var exchangerDetector = AsyncTestContext.exchangerDetector();
         Exchanger<String> exchanger = new Exchanger<>();
         exchangerDetector.registerExchanger(exchanger, "fixture-exchanger");
-        try {
-            exchangerDetector.recordExchangeStart(exchanger, "fixture-exchanger");
-            exchanger.exchange("payload", 20, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (TimeoutException e) {
-            exchangerDetector.recordTimeout(exchanger);
-            // No partner arrived within the budget — the misuse being demonstrated.
+        exchangerDetector.recordExchangeStart(exchanger, "fixture-exchanger");
+        Thread orphan = new Thread(() -> {
+            try {
+                String received = exchanger.exchange("payload"); // nobody else is on this exchanger
+                exchangerDetector.recordExchangeComplete(exchanger, "fixture-exchanger", received);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // the @AfterAll cleanup, after analysis
+            }
+        }, "fixture-exchanger-orphan");
+        orphan.setDaemon(true);
+        ORPHANED_EXCHANGERS.add(orphan);
+        orphan.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (orphan.getState() != Thread.State.WAITING && System.nanoTime() < deadline) {
+            Thread.sleep(5);
         }
     }
 
