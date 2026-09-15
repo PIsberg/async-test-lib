@@ -645,6 +645,77 @@ class DetectorAccuracyEvalTest {
                         + "A take licenses a new lock for the new owner, not two locks at once");
     }
 
+    @Test
+    @DisplayName("atomicity: an alias that writes after the taker's last access still fires (#559)")
+    void atomicityAliasWritingAfterTheTakersLastAccessStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        takeThenMaybeAliasWriteLast(validator, 97, true);
+        assertTrue(validator.analyze().hasIssues(),
+                "Thread 99 kept a reference from before each take and wrote through it, under a "
+                        + "lock of its own, after the taker's last access in a generation no later "
+                        + "take closed. In drain order the alias comes after every taker access, so "
+                        + "each of those stayed marked exclusive and the alias write agreed with "
+                        + "nothing but itself. The taker's accesses are only exclusive while no one "
+                        + "else can reach the object, and the alias shows someone could");
+    }
+
+    @Test
+    @DisplayName("atomicity: the same takes with no alias stay silent (#559)")
+    void atomicityTakesWithNoAliasStaySilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        takeThenMaybeAliasWriteLast(validator, 98, false);
+        assertFalse(validator.analyze().hasIssues(),
+                "The identical takes and unlocked taker accesses, and no thread that kept a "
+                        + "reference: each owner had the object to itself. Withdrawing the take's "
+                        + "exclusivity must need another thread's access, not the take alone");
+    }
+
+    @Test
+    @DisplayName("atomicity: an alias inside a generation a later take closed is still excused (#559, #630)")
+    void atomicityAliasInAGenerationALaterTakeClosedIsStillExcused() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        agentAccess(validator, field, true, 1, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, 2);
+        agentAccess(validator, field, true, 2, NO_LOCKS, 90);
+        agentAccess(validator, field, true, 3, OTHER_LOCK, 90);
+        validator.recordOwnershipTaken(90, 4);
+        agentAccess(validator, field, true, 4, NO_LOCKS, 90);
+        validator.markInvocationStart();
+        validator.recordOwnershipTaken(90, 5);
+        agentAccess(validator, field, true, 5, NO_LOCKS, 90);
+        // A known false negative, pinned so a change to it is deliberate: a later take is the only
+        // evidence the stream has that generation 1 ended with thread 2, so thread 3's alias write
+        // inside it cannot be told from a late-published access by the previous owner (#630).
+        assertFalse(validator.analyze().hasIssues(),
+                "Boundary kept on purpose: a generation a further take closed keeps the taker's "
+                        + "exclusivity, alias or not. Withdrawing it there too brings back the "
+                        + "netty hand-off findings #557 removed; #630 tracks a narrower signal");
+    }
+
+    /**
+     * Three rounds of: a take by a new thread, that taker's unlocked read and write, and, when
+     * {@code withAlias}, a write by thread 99 under its own lock after the taker's last access.
+     */
+    private static void takeThenMaybeAliasWriteLast(AtomicityValidator validator, int identity,
+                                                    boolean withAlias) {
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        agentAccess(validator, field, true, 1, WRITE_LOCK, identity);
+        long thread = 1;
+        for (int round = 0; round < 3; round++) {
+            validator.markInvocationStart();
+            thread++;
+            validator.recordOwnershipTaken(identity, thread);
+            agentAccess(validator, field, false, thread, NO_LOCKS, identity);
+            agentAccess(validator, field, true, thread, NO_LOCKS, identity);
+            if (withAlias) {
+                agentAccess(validator, field, true, 99, OTHER_LOCK, identity);
+            }
+        }
+    }
+
     /**
      * Construction under one lock, a shared phase under a second, then a third lock after the
      * point where {@code withTake} records a take.

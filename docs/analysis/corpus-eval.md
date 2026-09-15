@@ -650,6 +650,11 @@ What the rules did not cover was filed rather than assumed: spinlocks taken thro
 re-confirmed against its flag so a release the agent does not see cannot leave it held), and the
 false-negative boundary where an alias holder races a taker after its last access
 ([#559](https://github.com/PIsberg/async-test-lib/issues/559)).
+The alias boundary has since been narrowed: another thread's access inside the generation the
+receiver is still in withdraws the taker's exclusivity, and only a generation a later take closed
+still excuses an alias ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). On lane one
+the rule fired inside netty's `adaptiveByteBufAllocator_bufferAndRelease` and left it silent; the
+noise column stayed at 0 of 100.
 
 **The unsafe side stayed complete, and five detectors spoke in this lane for the first time.** All
 39 documented-unsafe subjects drew a finding. `SimpleDateFormatDetector` fired on both date-format

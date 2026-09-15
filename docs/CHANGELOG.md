@@ -301,6 +301,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SpinLockWeavingTest`. Not modelled yet: spinlocks through `AtomicIntegerFieldUpdater` or atomic
   objects (#558), and an alias racing a taker after its last access (#559).
 
+- **`AtomicityValidator` reports an alias that races a taker after the taker's last access (#559).**
+  A take makes an object exclusive to the taker until another thread touches it, and the analysis
+  ends that exclusion at the first foreign access in drain order. A thread that kept a reference
+  from before the take and wrote through it only after every taker access therefore changed
+  nothing: each taker access stayed exclusive, the alias write agreed with nothing but itself, and
+  the race was silent. When the receiver's current ownership generation, one no later take closed,
+  was touched by another thread, the taker's accesses in it are now judged by the lockset like
+  everyone else's. A generation a later take closed keeps the exclusion, because a later take is
+  the only evidence a value-free stream has that the object left the previous owner; that residual
+  false negative is pinned in `DetectorAccuracyEvalTest` and tracked in #630. On lane one of the
+  corpus eval (local JDK 26) the rule withdrew exclusivity in 7 analyses, all in netty's
+  `adaptiveByteBufAllocator_bufferAndRelease`. That subject stayed silent, the documented-thread-safe
+  column stayed at 0 of 100, and all 39 documented-unsafe subjects were still detected, with
+  `AtomicityValidator` firing on 22 in both runs. The firing twin was red before the change.
+
 - **The agent observes a woven JDK call made through a method reference (#550).** `builder::append`
   or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from a hidden class
   the agent cannot weave, so every detector the agent feeds was blind to it: a shared `StringBuilder`

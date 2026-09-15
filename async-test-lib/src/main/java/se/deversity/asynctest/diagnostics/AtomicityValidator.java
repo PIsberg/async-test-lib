@@ -792,8 +792,9 @@ public class AtomicityValidator {
      * <p>What a take starts is a new ownership generation, exclusive to the taker until any other
      * thread touches the object, exactly as construction is. It only ever excuses: a thread that
      * kept a reference from before the take and uses it anyway ends the exclusion at its first
-     * access, and locks must still agree within each generation. Identity 0 is not an object and
-     * is ignored.
+     * access, and locks must still agree within each generation. In the generation the object is
+     * still in, such an access withdraws the taker's exclusion for the whole generation, earlier
+     * accesses included (#559). Identity 0 is not an object and is ignored.
      *
      * @param identity {@code System.identityHashCode} of the object taken
      * @param threadId the thread that took it
@@ -817,6 +818,49 @@ public class AtomicityValidator {
     }
 
     /**
+     * {@return {@code history} with the taker's exclusivity withdrawn wherever a still-open
+     * ownership generation was also touched by another thread} (#559)
+     *
+     * <p>A take makes the object exclusive to the taker until any other thread touches it, and the
+     * first foreign access ends the exclusion from then on. In drain order that cannot catch an
+     * alias holder whose only access comes after every access the taker made: each taker access
+     * is still marked exclusive, so the taker drops out of the lockset question, and the alias
+     * access is left to agree with nothing but itself. The race is real whenever the alias kept
+     * its reference from before the take.
+     *
+     * <p>Only a later take can tell that apart from a hand-off the stream cannot see, because a
+     * take is the one event proving the object left the previous owner. So a generation that a
+     * further take closed keeps the exclusion, exactly as it did; the one the receiver is still
+     * in, and that another thread has touched, does not. Its taker's accesses are judged like
+     * everyone else's.
+     */
+    private List<FieldAccessRecord> withdrawExclusivityFromContestedGenerations(
+            List<FieldAccessRecord> history) {
+        Map<Integer, Integer> contested = new HashMap<>();
+        for (FieldAccessRecord access : history) {
+            if (access.generation > 0 && !access.exclusivePhase && access.identity != 0
+                    && access.generation == generationOf(access.identity)) {
+                contested.put(access.identity, access.generation);
+            }
+        }
+        if (contested.isEmpty()) {
+            return history;
+        }
+        List<FieldAccessRecord> judged = new ArrayList<>(history.size());
+        for (FieldAccessRecord access : history) {
+            Integer generation = contested.get(access.identity);
+            if (access.exclusivePhase && generation != null && generation == access.generation) {
+                judged.add(new FieldAccessRecord(access.threadId, access.write, access.epoch,
+                        access.ownerKnown, access.identity, access.fingerprint, access.ownMonitor,
+                        access.methodMonitor, false, access.storedIdentity, access.generation));
+            } else {
+                judged.add(access);
+            }
+        }
+        return judged;
+    }
+
+    /**
      * Analyses what has been recorded about atomicity and builds the report for it.
      *
      * @return the findings this detector collected during the run
@@ -830,10 +874,11 @@ public class AtomicityValidator {
             // ordered by the runner (worker latch, then the next round's submissions), so
             // only same-round accesses can lack a happens-before edge. Without round marks
             // (standalone use) every record is in epoch 0 and behavior is unchanged.
-            List<FieldAccessRecord> copy;
+            List<FieldAccessRecord> snapshot;
             synchronized (entry.getValue()) {
-                copy = new ArrayList<>(entry.getValue());
+                snapshot = new ArrayList<>(entry.getValue());
             }
+            List<FieldAccessRecord> copy = withdrawExclusivityFromContestedGenerations(snapshot);
             // Split by instance before anything else. Two threads touching the same field of two
             // different objects share nothing, and merging them is how a per-call object reads as
             // contended. Identity 0 means "not known", which keeps every pre-agent caller's
