@@ -16,6 +16,7 @@ import org.apache.commons.collections4.list.CursorableLinkedList;
 import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.collections4.map.LRUMap;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.util.ConcurrentReferenceHashMap;
@@ -582,9 +583,19 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.locks.Condition UNSIGNALLED_CONDITION =
             CONDITION_LOCK.newCondition();
 
+    /** Condition signalled while the consumer waits on {@link #UNSIGNALLED_CONDITION} (#618). */
+    private static final java.util.concurrent.locks.Condition OTHER_CONDITION =
+            CONDITION_LOCK.newCondition();
+
     /** The twin with a recorded signal behind every await. */
     private static final java.util.concurrent.locks.Condition SIGNALLED_CONDITION =
             CONDITION_LOCK.newCondition();
+
+    /** Serializes the consumer setup/handshake for the signalled row so only one runs at a time (#618). */
+    private static final Object SIGNALLED_CONSUMER_GATE = new Object();
+
+    /** The consumer thread parked on {@link #UNSIGNALLED_CONDITION}, cleaned up after its test (#618). */
+    private static volatile Thread parkedConditionConsumer;
 
     /** The VarHandle stand-ins: the detector only needs non-null handle and receiver objects. */
     private static final Object PLAIN_HANDLE = new Object();
@@ -929,12 +940,32 @@ class CorpusRecordingLaneTest {
 
     private static final Set<Long> THREADS_THAT_USED_THE_POOL = ConcurrentHashMap.newKeySet();
 
+    @AfterEach
+    void cleanUpParkedConditionConsumer() throws InterruptedException {
+        Thread consumer = parkedConditionConsumer;
+        if (consumer != null) {
+            parkedConditionConsumer = null;
+            consumer.interrupt();
+            consumer.join();
+        }
+    }
+
     @AfterAll
     static void reportAndGate() throws IOException {
         CorpusRecorder.uninstall();
         // First, before any assertion. The measurement is over, and a gate that fails below must
         // not be able to leave the non-daemon thread parked with the JVM unable to exit.
         PARKED_THREADS_RELEASE.countDown();
+        Thread consumer = parkedConditionConsumer;
+        if (consumer != null) {
+            parkedConditionConsumer = null;
+            consumer.interrupt();
+            try {
+                consumer.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         thePooledRowsPremiseHeld();
         theIllegalNotifyReallyThrew();
         pool.close();
@@ -3245,25 +3276,97 @@ class CorpusRecordingLaneTest {
         detector.recordExchangeComplete(PAYLOAD_EXCHANGER, "payload-exchanger", "payload");
     }
 
-    /** An await with nothing ever signalling: the Condition form of a lost wakeup. */
+    /**
+     * A consumer parked in await() on a condition registered with its lock, while threads signal a
+     * different condition: the lock itself shows the stuck waiter at analysis (#592, #618).
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_condition_awaitedWithNoSignal() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
-        detector.registerCondition(UNSIGNALLED_CONDITION, "unsignalled");
-        detector.recordAwait(UNSIGNALLED_CONDITION, "unsignalled");
-        detector.recordAwaitExit(UNSIGNALLED_CONDITION, "unsignalled", false);
+        detector.registerCondition(CONDITION_LOCK, UNSIGNALLED_CONDITION, "unsignalled");
+        detector.registerCondition(CONDITION_LOCK, OTHER_CONDITION, "other");
+        if (parkedConditionConsumer == null) {
+            synchronized (CONDITION_LOCK) {
+                if (parkedConditionConsumer == null) {
+                    CountDownLatch waiting = new CountDownLatch(1);
+                    Thread waiter = new Thread(() -> {
+                        CONDITION_LOCK.lock();
+                        try {
+                            detector.recordAwait(UNSIGNALLED_CONDITION, "unsignalled");
+                            waiting.countDown();
+                            while (true) {
+                                UNSIGNALLED_CONDITION.await();
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            CONDITION_LOCK.unlock();
+                        }
+                    }, "corpus-unsignalled-condition-waiter");
+                    waiter.setDaemon(true);
+                    waiter.start();
+                    try {
+                        waiting.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    parkedConditionConsumer = waiter;
+                }
+            }
+        }
+        CONDITION_LOCK.lock();
+        try {
+            detector.recordSignal(OTHER_CONDITION, "other", false);
+            OTHER_CONDITION.signal();
+        } finally {
+            CONDITION_LOCK.unlock();
+        }
     }
 
-    /** The same await with a recorded signal behind it: the whole handshake. */
+    /**
+     * The same waiter on a condition registered with its lock, correctly signalled and joined
+     * so the lock shows no thread parked at analysis (#592, #618).
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_condition_awaitedAndSignalled() {
+    void recorded_condition_awaitedAndSignalled() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
-        detector.registerCondition(SIGNALLED_CONDITION, "signalled");
-        detector.recordAwait(SIGNALLED_CONDITION, "signalled");
-        detector.recordSignal(SIGNALLED_CONDITION, "signalled", true);
-        detector.recordAwaitExit(SIGNALLED_CONDITION, "signalled", false);
+        detector.registerCondition(CONDITION_LOCK, SIGNALLED_CONDITION, "signalled");
+        synchronized (SIGNALLED_CONSUMER_GATE) {
+            CountDownLatch waiting = new CountDownLatch(1);
+            boolean[] ready = {false};
+            Thread waiter = new Thread(() -> {
+                CONDITION_LOCK.lock();
+                try {
+                    while (!ready[0]) {
+                        detector.recordAwait(SIGNALLED_CONDITION, "signalled");
+                        waiting.countDown();
+                        boolean signalled = SIGNALLED_CONDITION.await(10, TimeUnit.SECONDS);
+                        detector.recordAwaitExit(SIGNALLED_CONDITION, "signalled", !signalled);
+                        if (!signalled) {
+                            return;
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    CONDITION_LOCK.unlock();
+                }
+            }, "corpus-signalled-condition-waiter");
+            waiter.setDaemon(true);
+            waiter.start();
+            waiting.await();
+            CONDITION_LOCK.lock();
+            try {
+                ready[0] = true;
+                detector.recordSignal(SIGNALLED_CONDITION, "signalled", false);
+                SIGNALLED_CONDITION.signal();
+            } finally {
+                CONDITION_LOCK.unlock();
+            }
+            waiter.join();
+        }
     }
 
     // --- The value-lifecycle family -------------------------------------------------------------
