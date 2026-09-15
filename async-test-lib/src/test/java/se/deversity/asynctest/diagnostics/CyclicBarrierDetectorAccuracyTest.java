@@ -161,4 +161,65 @@ class CyclicBarrierDetectorAccuracyTest {
         assertTrue(rendered.contains("a break was recorded"),
                 () -> "the reset with a waiting party is a recorded break: " + rendered);
     }
+
+    // --- #595: a recorded timeout is the caller's declaration, not a finding --------------------
+
+    @Test
+    @DisplayName("a timed await whose TimeoutException is handled with reset() is not reported")
+    void handledTimeoutFollowedByResetIsSilent() {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        detector.registerBarrier(barrier, "timed-then-reset", 2);
+
+        detector.recordArrival(barrier);
+        detector.recordAwait(barrier);
+        try {
+            barrier.await(1, TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
+            detector.recordTimeout(barrier);   // the fix the report itself prescribes
+            detector.recordReset(barrier);
+            barrier.reset();
+        } catch (InterruptedException | BrokenBarrierException e) {
+            throw new AssertionError("premise: a lone party times out", e);
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "a handled timeout followed by reset() is correct: " + report);
+    }
+
+    @Test
+    @DisplayName("a timed await whose TimeoutException is handled and the barrier dropped is not reported")
+    void handledTimeoutWithBarrierDiscardedIsSilent() {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(3);
+        detector.registerBarrier(barrier, "timed-then-dropped", 3);
+
+        detector.recordArrival(barrier);
+        detector.recordArrival(barrier);
+        assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
+        detector.recordTimeout(barrier);   // backs off; nobody touches this barrier again
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "a timeout that is handled and not followed by reuse is correct: " + report);
+    }
+
+    @Test
+    @DisplayName("a timeout that leaves the barrier broken, then an await on it, is reported and names the timeout")
+    void timeoutThenAwaitOnTheBrokenBarrierFires() {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        detector.registerBarrier(barrier, "timed-then-reused", 2);
+
+        assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
+        detector.recordTimeout(barrier);
+        detector.recordAwait(barrier);   // no reset: this await fails at once
+        assertThrows(BrokenBarrierException.class, barrier::await, "premise: the barrier is still broken");
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(), "an await on the barrier the timeout broke fails every caller: " + report);
+        assertTrue(report.getReuseAfterBrokenBarriers().contains(barrier));
+        String rendered = report.toString();
+        assertTrue(rendered.contains("a timeout was recorded earlier"),
+                () -> "the report says what broke the barrier: " + rendered);
+    }
 }
