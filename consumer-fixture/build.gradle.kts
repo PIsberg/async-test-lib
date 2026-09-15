@@ -36,6 +36,8 @@ tasks.test {
     useJUnitPlatform()
     // Skip the LicenseGuard's network gate (the fixture is offline)
     systemProperty("license.mock.mode", "true")
+    // A detector that throws during analysis fails the build, not one stderr line (#612)
+    systemProperty("async-test.strict-detectors", "true")
     // Enable benchmarking for all @AsyncTest tests in this module
     systemProperty("async-test.benchmarking.enabled", "true")
     // Benchmark regression threshold (20% default)

@@ -44,6 +44,16 @@ containment. Verified by breaking a detector on purpose: the same `IllegalStateE
 it on. `DetectorSweepResilienceTest` pins both halves — the containment (with the flag cleared for
 the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFailurePolicy`.
 
+The same switch is on wherever the detectors are measured from outside this module: every
+corpus-eval lane, `consumer-fixture` and `consumer-fixture-langs` (Maven and Gradle), the examples
+Gradle build, and the `mvn -f examples/pom.xml` commands in `e2e-tests.yml` (the example poms do
+not carry it, because they are copy-paste material; Surefire forwards the `-D` to the forked JVM).
+Without it #605's crash in corpus lane one read as a silent detector and both corpus jobs stayed
+green (#612). One place is lenient on purpose: `example-demos.yml`, where a demonstration that
+fails is the expected outcome, so a crash promoted to a failure would look like a demo that fired.
+`StrictDetectorsInDownstreamBuildsTest` fails if any of these loses the switch or the demo audit
+gains it.
+
 ## Build with JDK 21, 25 or 26
 
 > **Resolved: the PMD engine is now pinned, and JDK 26 no longer trips the gate.**

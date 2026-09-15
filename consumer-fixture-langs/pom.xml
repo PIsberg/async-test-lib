@@ -75,6 +75,8 @@
                                  The tests also set licenseMockMode = true on the annotation, so a
                                  consumer copying one class gets the same behaviour. -->
                             <license.mock.mode>true</license.mock.mode>
+                            <!-- A detector that throws during analysis fails the build, not one stderr line (#612) -->
+                            <async-test.strict-detectors>true</async-test.strict-detectors>
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>
