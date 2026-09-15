@@ -324,7 +324,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 |-----------------|-------------|-----------------|
 | `detectCountDownLatchIssues` | `COUNTDOWN_LATCH` | Timeout, missing/extra `countDown()` |
 | `detectCyclicBarrierIssues` | `CYCLIC_BARRIER` | Await on a broken barrier (a recorded timeout is context, not a finding) |
-| `detectReentrantLockIssues` | `REENTRANT_LOCK` | A lock still held when the run is analysed; recorded starvation |
+| `detectReentrantLockIssues` | `REENTRANT_LOCK` | A lock still held at analysis by a holder that stopped working; starvation the lock saw (barging) |
 | `detectVolatileArrayIssues` | `VOLATILE_ARRAY` | Non-volatile array element access |
 | `detectDoubleCheckedLocking` | `DOUBLE_CHECKED_LOCKING` | Broken DCL without `volatile` |
 | `detectWaitTimeout` | `WAIT_TIMEOUT` | `wait()` without a timeout argument |

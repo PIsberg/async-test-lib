@@ -105,15 +105,15 @@ class ReentrantLockDetectorModelTest {
     }
 
     @Test
-    @DisplayName("recordStarvation applies no threshold: any recorded wait is the caller's finding")
-    void aRecordedStarvationIsReportedWithoutAThreshold() {
+    @DisplayName("recordStarvation with no lock is context: a wait's length is not evidence (#608)")
+    void aLocklessStarvationRecordIsContext() {
         ReentrantLockDetector detector = new ReentrantLockDetector();
         detector.recordStarvation("worker-1", 1);
 
         ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
-        assertTrue(report.hasIssues(),
-                "the javadoc says the caller decides what counts as starvation; the detector does "
-                        + "not second-guess it with a duration of its own");
+        assertFalse(report.hasIssues(),
+                "with no lock named nothing can say whether the thread was passed over; the lock "
+                        + "overload judges that. Report:\n" + report);
         assertTrue(report.toString().contains("worker-1"), report::toString);
     }
 

@@ -2,12 +2,14 @@ package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,10 +18,10 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Detects ReentrantLock misuse patterns.
  *
- * <p><strong>What it reports:</strong> a lock that is still held when the run is analysed, by a
- * thread other than the one analysing ({@link #analyze}), and a starvation the caller recorded
- * ({@link #recordStarvation}). Those are the two things {@link ReentrantLockReport#hasIssues()}
- * gates on.
+ * <p><strong>What it reports:</strong> a lock still held when the run is analysed by a thread that
+ * is no longer working ({@link #analyze}), and a starvation the lock itself corroborated
+ * ({@link #recordStarvation(ReentrantLock, String, long)}). Those are the two things
+ * {@link ReentrantLockReport#hasIssues()} gates on.
  *
  * <p>The held lock is asked of the lock itself: {@link ReentrantLock#isLocked()} on every lock this
  * detector was told about, once the bodies have finished. A hold nobody gave back is what a
@@ -27,9 +29,18 @@ import java.util.concurrent.locks.ReentrantLock;
  * exception path with no {@code finally} or a helper that re-enters the lock and never releases
  * the extra hold; either way every later caller parks in {@code lock()} for good. Recorded acquire
  * and release counts cannot see the second shape, because the pair the caller instrumented is
- * balanced; the lock can. A thread still running when analysis starts and legitimately holding the
- * lock would also be reported, which is why the runner analyses only after its workers have
- * finished. The analysing thread's own holds are never reported.
+ * balanced; the lock can. The analysing thread's own holds are never reported.
+ *
+ * <p>A hold is a leak only if its holder has stopped working (#609). The holder is named by the
+ * lock ({@code "Locked by thread X"}) and looked up among the threads that recorded against the lock
+ * and the live platform threads. The hold is reported when no thread of that name is alive (the
+ * holder finished with the lock taken), or when every one that is sits idle in a pool
+ * ({@code ThreadPoolExecutor.getTask}, {@code ForkJoinPool.awaitWork}), which is how a runner worker
+ * or an executor thread looks once the task that took the lock has ended. A holder that is alive
+ * and anywhere else may still release the lock, so its hold is printed as context and not judged.
+ * The boundary: a virtual thread the body started, which never recorded against the lock and is
+ * still working when analysis starts, cannot be found (virtual threads are not enumerable), so its
+ * hold is reported as if the holder had finished.
  *
  * <p><strong>What it records but does not report:</strong>
  * <ul>
@@ -40,6 +51,10 @@ import java.util.concurrent.locks.ReentrantLock;
  *       {@code TRY_LOCK_MISUSE} observes the use of the return value and is the detector for it
  *       (#589). Timeouts are printed as context, and a timed-out lock is also checked for a held
  *       lock at analysis, which is often what the timeout was a symptom of.</li>
+ *   <li>A recorded wait the lock did not corroborate ({@link #recordStarvation(String, long)}, or
+ *       the lock overload with no barging seen). How long a thread waited is not evidence of
+ *       starvation: a GC pause or a busy CI runner stretches every wait (#575), and a long queue
+ *       behind a slow critical section is contention, not unfairness.</li>
  *   <li>Acquire and release counts. An unbalanced pair is as likely to mean the two halves were
  *       instrumented in different places as it is to mean a hold was leaked.
  *       {@link LockLeakDetector} is the detector for that question, and since issue #368 this one
@@ -54,16 +69,21 @@ public class ReentrantLockDetector {
     private final Map<ReentrantLock, LockInfo> lockRegistry = new ConcurrentHashMap<>();
     /** Timeouts per lock. {@code ReentrantLock} keeps {@code Object}'s equality, so keys are identities. */
     private final Map<ReentrantLock, Integer> timeouts = new ConcurrentHashMap<>();
-    private final Set<String> starvationThreads = ConcurrentHashMap.newKeySet();
+    /** What was seen on each lock at record time: who touched it, and who was passed over. */
+    private final Map<ReentrantLock, Observed> observed = new ConcurrentHashMap<>();
+    /** Starvations the lock corroborated: the finding. */
+    private final Set<String> observedStarvation = ConcurrentHashMap.newKeySet();
+    /** Recorded waits nothing corroborated: context. */
+    private final Set<String> recordedWaits = ConcurrentHashMap.newKeySet();
 
     /**
      * Where to send acquire and release records, or {@code null} to keep them as context only.
      *
-     * <p>{@link ReentrantLockReport#hasIssues()} gates on a lock held at analysis and on starvation.
-     * The acquire and release counts are recorded and printed but never trip it, which is right:
-     * this detector has no way to tell an unbalanced pair caused by a leak from one caused by
-     * instrumentation that records the two halves in different places. {@link LockLeakDetector} is
-     * the detector for that question.
+     * <p>{@link ReentrantLockReport#hasIssues()} gates on a lock held at analysis and on
+     * corroborated starvation. The acquire and release counts are recorded and printed but never
+     * trip it, which is right: this detector has no way to tell an unbalanced pair caused by a leak
+     * from one caused by instrumentation that records the two halves in different places.
+     * {@link LockLeakDetector} is the detector for that question.
      *
      * <p>What was wrong was the silence. The method names here invite a caller to record acquire
      * and release and expect a leak to be reported, and nothing said otherwise; a leaked hold went
@@ -96,6 +116,19 @@ public class ReentrantLockDetector {
         return info != null ? info.name : "ReentrantLock@" + System.identityHashCode(lock);
     }
 
+    /** {@return what has been seen on {@code lock}, created on first use} */
+    private Observed observedFor(ReentrantLock lock) {
+        Observed seen = observed.get(lock);
+        if (seen == null) {
+            Observed fresh = new Observed();
+            seen = observed.putIfAbsent(lock, fresh);
+            if (seen == null) {
+                seen = fresh;
+            }
+        }
+        return seen;
+    }
+
     /**
      * Register a ReentrantLock for monitoring.
      *
@@ -112,10 +145,16 @@ public class ReentrantLockDetector {
         // been observed about it. An @AsyncTest body runs once per thread, so a consumer
         // registering inside it registers once per worker.
         lockRegistry.putIfAbsent(lock, new LockInfo(name));
+        observedFor(lock).touch();
     }
 
     /**
      * Record a successful lock acquisition.
+     *
+     * <p>Call it while holding the lock, straight after acquiring. The lock is asked then which of
+     * the threads that recorded against it are still queued, which is how a thread passed over by
+     * another that barged ahead of it twice is seen (see
+     * {@link #recordStarvation(ReentrantLock, String, long)}).
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param threadName a label identifying the thread in the report
@@ -130,6 +169,9 @@ public class ReentrantLockDetector {
         if (info != null) {
             info.recordAcquire(threadName);
         }
+        Observed seen = observedFor(lock);
+        seen.touch();
+        seen.observeAcquisition(lock, Thread.currentThread());
     }
 
     /**
@@ -148,6 +190,7 @@ public class ReentrantLockDetector {
         if (info != null) {
             info.recordRelease(threadName);
         }
+        observedFor(lock).touch();
     }
 
     /**
@@ -163,22 +206,62 @@ public class ReentrantLockDetector {
     public void recordLockTimeout(ReentrantLock lock) {
         if (lock == null) return;
         timeouts.merge(lock, 1, Integer::sum);
+        observedFor(lock).touch();
     }
 
     /**
-     * Record a lock starvation the caller observed.
+     * Record a wait the caller took for starvation, with no lock to check it against.
      *
-     * <p>The caller decides what counts as starvation; this detector applies no threshold of its
-     * own, because a wall-clock duration is not evidence on a loaded machine (a GC pause or a busy
-     * CI runner stretches every wait). Any positive wait recorded here is reported. A wait of zero
-     * or less is not a wait, so it is ignored.
+     * <p>Context, not a finding (#608). Nothing here can ask a lock whether any thread was passed
+     * over, and a wait's length alone is not evidence: a GC pause or a busy CI runner stretches
+     * every wait (#575). Printed so the caller's observation is not lost; use
+     * {@link #recordStarvation(ReentrantLock, String, long)} to have it judged. A wait of zero or
+     * less is not a wait, so it is ignored.
      *
      * @param threadName a label identifying the thread in the report
      * @param waitTimeMs how long the thread waited, in milliseconds; ignored unless positive
      */
     public void recordStarvation(String threadName, long waitTimeMs) {
         if (waitTimeMs <= 0) return;
-        starvationThreads.add(threadName + " (waited " + waitTimeMs + "ms)");
+        recordedWaits.add(threadName + " (waited " + waitTimeMs + "ms; no lock named, so nothing "
+                + "could corroborate it)");
+    }
+
+    /**
+     * Record a wait on {@code lock} that the caller took for starvation, to be judged against what
+     * the lock showed.
+     *
+     * <p>Call it from the thread that waited, once it has the lock. It is a finding when this
+     * detector saw that thread passed over by a barger: another thread recorded acquiring the lock
+     * twice while this one stayed queued ({@link ReentrantLock#hasQueuedThread(Thread)} at each of
+     * that thread's {@link #recordLockAcquired} calls). That is the mechanism of starvation on a
+     * {@code ReentrantLock}: a non-fair {@code lock()}, or an untimed {@code tryLock()} on any lock,
+     * takes a free lock ahead of the queue. A fair lock taken through {@code lock()} hands itself to
+     * the longest waiter, so the same load there is never a finding. A wait with no barging seen is
+     * printed as context: its length alone is not evidence (#575). No duration threshold is
+     * applied. The waiting thread must have recorded against the lock (for example
+     * {@link #registerLock}) before it queued, so that the barger's records can ask about it.
+     *
+     * @param lock the lock the thread waited for, tracked by identity rather than equality
+     * @param threadName a label identifying the thread in the report
+     * @param waitTimeMs how long the thread waited, in milliseconds; ignored unless positive
+     * @since 1.12.1
+     */
+    public void recordStarvation(ReentrantLock lock, String threadName, long waitTimeMs) {
+        if (lock == null || waitTimeMs <= 0) return;
+        Observed seen = observedFor(lock);
+        seen.touch();
+        int barged = seen.timesBargedPast(Thread.currentThread());
+        String lockName = nameOf(lock);
+        if (barged > 0) {
+            observedStarvation.add(threadName + " on " + lockName + ": waited " + waitTimeMs
+                    + "ms, and another thread took the lock again " + barged
+                    + " time(s) while it stayed queued");
+        } else {
+            recordedWaits.add(threadName + " on " + lockName + " (waited " + waitTimeMs
+                    + "ms; nobody was seen barging past it"
+                    + (lock.isFair() ? ", and a fair lock taken by lock() cannot be barged)" : ")"));
+        }
     }
 
     /**
@@ -195,12 +278,80 @@ public class ReentrantLockDetector {
         known.addAll(timeouts.keySet());
         // The holder is read now, while it is the evidence, not when the report is printed.
         Map<ReentrantLock, String> held = new LinkedHashMap<>();
+        Map<ReentrantLock, String> stillWorking = new LinkedHashMap<>();
+        Set<Thread> platformThreads = null;
         for (ReentrantLock lock : known) {
-            if (lock.isLocked() && !lock.isHeldByCurrentThread() && !leftToLeakReporter(lock)) {
-                held.put(lock, ReentrantLockReport.holderOf(lock));
+            if (!lock.isLocked() || lock.isHeldByCurrentThread() || leftToLeakReporter(lock)) {
+                continue;
+            }
+            String holder = ReentrantLockReport.holderOf(lock);
+            String holderName = holderNameOf(lock);
+            if (holderName == null) {
+                stillWorking.put(lock, holder + ", holder could not be identified");
+                continue;
+            }
+            if (platformThreads == null) {
+                platformThreads = Thread.getAllStackTraces().keySet();
+            }
+            HolderState state = stateOf(holderName, lock, platformThreads);
+            if (state == HolderState.WORKING) {
+                stillWorking.put(lock, holder + ", still running");
+            } else {
+                held.put(lock, holder + (state == HolderState.IDLE
+                        ? ", now idle in its pool" : ", which has finished"));
             }
         }
-        return new ReentrantLockReport(lockRegistry, timeouts, starvationThreads, held);
+        return new ReentrantLockReport(lockRegistry, timeouts, observedStarvation, recordedWaits,
+                held, stillWorking);
+    }
+
+    /** Where the thread holding a lock is when the run is analysed. */
+    private enum HolderState { GONE, IDLE, WORKING }
+
+    private HolderState stateOf(String holderName, ReentrantLock lock, Set<Thread> platformThreads) {
+        Set<Thread> candidates = Collections.newSetFromMap(new IdentityHashMap<>());
+        Observed seen = observed.get(lock);
+        if (seen != null) {
+            candidates.addAll(seen.threads);
+        }
+        candidates.addAll(platformThreads);
+        boolean anyAlive = false;
+        for (Thread thread : candidates) {
+            if (!thread.isAlive() || !holderName.equals(thread.getName())) {
+                continue;
+            }
+            anyAlive = true;
+            if (!idleInAPool(thread)) {
+                return HolderState.WORKING;
+            }
+        }
+        return anyAlive ? HolderState.IDLE : HolderState.GONE;
+    }
+
+    /**
+     * {@return whether {@code thread} is waiting for its pool's next task, so the task that ran on it
+     * has ended}
+     */
+    static boolean idleInAPool(Thread thread) {
+        for (StackTraceElement frame : thread.getStackTrace()) {
+            String cls = frame.getClassName();
+            String method = frame.getMethodName();
+            if (("java.util.concurrent.ThreadPoolExecutor".equals(cls) && "getTask".equals(method))
+                    || ("java.util.concurrent.ForkJoinPool".equals(cls) && "awaitWork".equals(method))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** {@return the holder's thread name as the lock describes it, or {@code null} if it does not} */
+    static @Nullable String holderNameOf(ReentrantLock lock) {
+        String described = lock.toString();
+        String marker = "[Locked by thread ";
+        int at = described.lastIndexOf(marker);
+        return at >= 0 && described.endsWith("]")
+                ? described.substring(at + marker.length(), described.length() - 1)
+                : null;
     }
 
     /**
@@ -219,38 +370,49 @@ public class ReentrantLockDetector {
     public static class ReentrantLockReport {
         private final Map<ReentrantLock, LockInfo> lockRegistry;
         private final Map<ReentrantLock, Integer> timeouts;
-        private final Set<String> starvationThreads;
-        /** Each lock held at analysis, with its holder as the lock described it then. */
+        /** Starvations the lock corroborated. */
+        private final Set<String> observedStarvation;
+        /** Recorded waits nothing corroborated, printed as context. */
+        private final Set<String> recordedWaits;
+        /** Each lock held at analysis by a holder that stopped working, with that holder. */
         private final Map<ReentrantLock, String> heldLocks;
+        /** Each lock held at analysis by a holder still working, printed as context. */
+        private final Map<ReentrantLock, String> stillWorking;
 
         /**
          * Creates a ReentrantLockReport with no held locks.
          *
          * <p>Kept for source compatibility. Since #589 a timeout is context rather than a finding,
-         * so a report built this way has issues only when {@code starvationThreads} is non-empty.
+         * and since #608 a recorded wait is a finding only when the lock corroborated it, which
+         * this constructor cannot know; the threads passed here are printed as recorded waits, and
+         * a report built this way has no issues.
          *
          * @param lockRegistry every registered lock and what was observed on it
          * @param timeoutLocks the locks whose timed acquisition failed, printed as context
-         * @param starvationThreads the threads recorded as starved
+         * @param starvationThreads the threads recorded as waiting, printed as context
          */
         public ReentrantLockReport(
             Map<ReentrantLock, LockInfo> lockRegistry,
             Set<ReentrantLock> timeoutLocks,
             Set<String> starvationThreads
         ) {
-            this(lockRegistry, countOnce(timeoutLocks), starvationThreads, Map.of());
+            this(lockRegistry, countOnce(timeoutLocks), Set.of(), starvationThreads, Map.of(), Map.of());
         }
 
         private ReentrantLockReport(
             Map<ReentrantLock, LockInfo> lockRegistry,
             Map<ReentrantLock, Integer> timeouts,
-            Set<String> starvationThreads,
-            Map<ReentrantLock, String> heldLocks
+            Set<String> observedStarvation,
+            Set<String> recordedWaits,
+            Map<ReentrantLock, String> heldLocks,
+            Map<ReentrantLock, String> stillWorking
         ) {
             this.lockRegistry = Collections.unmodifiableMap(new HashMap<>(lockRegistry));
             this.timeouts = Collections.unmodifiableMap(new HashMap<>(timeouts));
-            this.starvationThreads = Collections.unmodifiableSet(new HashSet<>(starvationThreads));
+            this.observedStarvation = Collections.unmodifiableSet(new HashSet<>(observedStarvation));
+            this.recordedWaits = Collections.unmodifiableSet(new HashSet<>(recordedWaits));
             this.heldLocks = Collections.unmodifiableMap(new LinkedHashMap<>(heldLocks));
+            this.stillWorking = Collections.unmodifiableMap(new LinkedHashMap<>(stillWorking));
         }
 
         private static Map<ReentrantLock, Integer> countOnce(Set<ReentrantLock> locks) {
@@ -262,10 +424,11 @@ public class ReentrantLockDetector {
         }
 
         /**
-         * {@return whether a lock was held at analysis or a starvation was recorded}
+         * {@return whether a lock was left held by a holder that stopped working, or a starvation
+         * was corroborated by the lock}
          */
         public boolean hasIssues() {
-            return !heldLocks.isEmpty() || !starvationThreads.isEmpty();
+            return !heldLocks.isEmpty() || !observedStarvation.isEmpty();
         }
 
         /**
@@ -288,7 +451,10 @@ public class ReentrantLockDetector {
         /** {@return who holds {@code lock}, as the lock itself describes it, e.g. "Locked by thread x"} */
         static String holderOf(ReentrantLock lock) {
             String described = lock.toString();
-            int open = described.lastIndexOf('[');
+            int open = described.lastIndexOf("[Locked by thread ");
+            if (open < 0) {
+                open = described.lastIndexOf('[');
+            }
             return open >= 0 && described.endsWith("]")
                     ? described.substring(open + 1, described.length() - 1)
                     : "locked";
@@ -312,21 +478,43 @@ public class ReentrantLockDetector {
 """);
             }
 
-            if (!starvationThreads.isEmpty()) {
-                sb.append("  Lock Starvation (as recorded by the caller):\n");
-                for (String threadInfo : starvationThreads) {
-                    sb.append("    - Thread ").append(threadInfo).append("\n");
+            if (!observedStarvation.isEmpty()) {
+                sb.append("  Lock Starvation (barging seen on the lock):\n");
+                for (String starved : sortedCopy(observedStarvation)) {
+                    sb.append("    - Thread ").append(starved).append("\n");
                 }
                 sb.append("""
-  Why: A non-fair lock allows new threads to "barge" ahead of waiting threads, causing some threads
-       to wait arbitrarily long or never acquire the lock at all.
-  Fix: Construct with new ReentrantLock(true) for FIFO fairness; or reduce lock hold time so all
-       threads get more opportunities to acquire it
+  Why: A non-fair lock() or an untimed tryLock() takes a free lock ahead of the threads already
+       queued for it, so a thread that keeps losing that race can wait arbitrarily long or never
+       acquire the lock at all.
+  Fix: Construct with new ReentrantLock(true) and acquire with lock() or a timed tryLock() for FIFO
+       hand-off; or shorten the critical section so the barging thread holds the lock less often
 """);
             }
 
             if (!hasIssues()) {
                 sb.append("  No ReentrantLock issues detected.\n");
+            }
+
+            if (!stillWorking.isEmpty()) {
+                sb.append("  Context - locks held at analysis by a thread still working (not judged):\n");
+                stillWorking.forEach((lock, holder) -> sb.append("    - ").append(infoFor(lock).name)
+                        .append(" (").append(holder).append(")\n"));
+                sb.append("""
+       The holder is alive and not idle in a pool, so it may still release the lock. A hold is a
+       leak once its holder has finished or gone back to its pool.
+""");
+            }
+
+            if (!recordedWaits.isEmpty()) {
+                sb.append("  Context - recorded waits the lock did not corroborate (not a finding on their own):\n");
+                for (String wait : sortedCopy(recordedWaits)) {
+                    sb.append("    - ").append(wait).append("\n");
+                }
+                sb.append("""
+       A wait's length is not evidence of starvation: a GC pause or a loaded machine stretches every
+       wait, and a queue behind a slow critical section is contention.
+""");
             }
 
             if (!timeouts.isEmpty()) {
@@ -342,6 +530,59 @@ public class ReentrantLockDetector {
             }
 
             return sb.toString();
+        }
+
+        private static List<String> sortedCopy(Set<String> lines) {
+            List<String> sorted = new ArrayList<>(lines);
+            Collections.sort(sorted);
+            return sorted;
+        }
+    }
+
+    /**
+     * What one lock showed at record time.
+     *
+     * <p>{@link #threads} is every thread that recorded against the lock, which is who
+     * {@link ReentrantLock#hasQueuedThread(Thread)} can be asked about (the lock does not list its
+     * queue publicly) and where a virtual holder is found at analysis.
+     */
+    private static final class Observed {
+        final Set<Thread> threads = ConcurrentHashMap.newKeySet();
+        /** Per queued thread, who acquired ahead of it during its current wait. Guarded by this. */
+        private final Map<Thread, Set<Thread>> passedOverBy = new IdentityHashMap<>();
+        /** Per thread, how many times a thread that had already acquired ahead of it did so again. Guarded by this. */
+        private final Map<Thread, Integer> bargedPast = new IdentityHashMap<>();
+
+        void touch() {
+            threads.add(Thread.currentThread());
+        }
+
+        /** Called by {@code acquirer} while it holds {@code lock}. */
+        void observeAcquisition(ReentrantLock lock, Thread acquirer) {
+            boolean anyQueued = lock.hasQueuedThreads();
+            synchronized (this) {
+                if (!anyQueued) {
+                    // Every wait in progress has ended: nobody is queued any more.
+                    passedOverBy.clear();
+                    return;
+                }
+                for (Thread thread : threads) {
+                    // Thread keeps Object's equality, so equals is identity here.
+                    if (thread.equals(acquirer) || !lock.hasQueuedThread(thread)) {
+                        passedOverBy.remove(thread); // not waiting now, so a later wait starts fresh
+                        continue;
+                    }
+                    Set<Thread> ahead = passedOverBy.computeIfAbsent(thread,
+                            waiting -> Collections.newSetFromMap(new IdentityHashMap<>()));
+                    if (!ahead.add(acquirer)) {
+                        bargedPast.merge(thread, 1, Integer::sum);
+                    }
+                }
+            }
+        }
+
+        synchronized int timesBargedPast(Thread thread) {
+            return bargedPast.getOrDefault(thread, 0);
         }
     }
 

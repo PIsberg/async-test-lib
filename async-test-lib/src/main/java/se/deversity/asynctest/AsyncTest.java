@@ -670,8 +670,9 @@ public @interface AsyncTest {
 
     /**
      * Enable ReentrantLock issue detection.
-     * Detects a lock still held when the run is analysed, and records starvation the caller
-     * observed; {@code tryLock} timeouts are printed as context.
+     * Detects a lock still held when the run is analysed by a holder that stopped working, and
+     * starvation the lock corroborated (a waiter barged past twice); {@code tryLock} timeouts and
+     * uncorroborated waits are printed as context.
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}

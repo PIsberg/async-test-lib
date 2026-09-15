@@ -169,9 +169,9 @@ final class PairEvidence {
                 + "stays held until a reading confirms the rows separate on the real lock's state");
         HELD_ON_MODEL.put(DetectorType.REENTRANT_LOCK, "#589 made the finding a lock still held "
                 + "at analysis, read from the lock itself, and a handled tryLock timeout context; "
-                + "still held until re-read, because recordStarvation is still the caller's own "
-                + "declaration and a hold kept by a thread still running at analysis would read "
-                + "the same as a leaked one");
+                + "#609 no longer reports a hold whose holder is still working and #608 makes "
+                + "starvation a finding only when barging was seen on the lock, so the model "
+                + "questions are answered; still held until the pair is re-read against that model");
         HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "since #590 the finding is an unsignalled "
                 + "wait return the same thread does not follow with another wait, but the "
                 + "recording API cannot see the predicate or a timeout: a timed wait whose caller "

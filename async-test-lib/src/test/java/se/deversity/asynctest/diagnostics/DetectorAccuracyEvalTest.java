@@ -1664,6 +1664,41 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("reentrant lock: the same hold, taken by a thread still working at analysis, stays silent (true negative)")
+    void reentrantLockDetectorStaysSilentOnAHoldItsHolderStillWorksUnder() throws InterruptedException {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "counter-lock");
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = new Thread(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "holder");
+            try {
+                held.countDown();
+                release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                detector.recordLockReleased(lock, "holder");
+                lock.unlock();
+            }
+        }, "still-working-holder");
+        holder.start();
+        try {
+            assertTrue(held.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(lock.isLocked(), "the premise: the lock is taken at analysis");
+            assertFalse(detector.analyze().hasIssues(),
+                    "the lock is taken, but by a thread that is alive and not back in a pool, so it "
+                            + "may still give it back. Until #609 this was reported as a leak. "
+                            + "Report:\n" + detector.analyze());
+        } finally {
+            release.countDown();
+            holder.join(10_000);
+        }
+    }
+
+    @Test
     @DisplayName("completable future: completing exceptionally with no handler fires (true positive)")
     void completableFutureExceptionDetectorFiresOnAnUnhandledFailure() throws InterruptedException {
         CompletableFutureExceptionDetector detector = new CompletableFutureExceptionDetector();
