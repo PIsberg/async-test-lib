@@ -64,7 +64,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which it does not; its service now waits with a timeout, the timeout breaks the barrier, and
   the demo reports later rounds arriving at it broken. The corpus row
   `recorded_cyclicBarrier_leftBroken` becomes `recorded_cyclicBarrier_awaitedWhileBroken` and
-  awaits a barrier broken for real. `recordTimeout` is still the caller's declaration.
+  awaits a barrier broken for real. `recordTimeout` stayed the caller's declaration until #595.
+
+- **`CyclicBarrierDetector` no longer reports a recorded `await()` timeout (#595).**
+  `recordTimeout` added the barrier to a set that `hasIssues` reported CRITICAL with no check, so a
+  timed `await(timeout, unit)` whose `TimeoutException` the caller handled, by calling `reset()` as
+  the report's own fix text said or by backing off and dropping the barrier, failed the gate exactly
+  like code that went on to use the broken barrier. A timeout breaks the barrier for every party,
+  and the consequence that fails is the next arrival or await on it while it is still broken,
+  which the reuse finding already decides on `isBroken()`. A recorded timeout is now context for
+  that report, which names it as what broke the barrier. The arrival counter the old timeout text
+  printed had no other reader and is gone; `recordBarrierComplete` is kept and records nothing.
+  `CyclicBarrierDetectorAccuracyTest` adds three cases on real barriers (a handled timeout with
+  `reset()`, a handled timeout with the barrier dropped, and a timeout followed by an await on the
+  still-broken barrier), all three red before the change. The consumer fixture recorded a timeout
+  on a one-party barrier that could not time out and relied on it firing; it now times out a
+  lone party for real and awaits the broken barrier again without a reset.
 
 - **`ExchangerDetector` reports an exchange that was never left, not a timeout that was handled
   (#585).** `recordTimeout` and `recordInterrupted` put the exchanger in a set and any entry was a

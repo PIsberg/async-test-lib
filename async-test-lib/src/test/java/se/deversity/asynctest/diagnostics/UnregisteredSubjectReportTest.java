@@ -54,18 +54,23 @@ class UnregisteredSubjectReportTest {
     }
 
     @Test
-    @DisplayName("CyclicBarrier: recordTimeout/recordBroken without registerBarrier still renders")
-    void cyclicBarrierTimeoutWithoutRegistration() {
+    @DisplayName("CyclicBarrier: an await on a broken barrier without registerBarrier still renders")
+    void cyclicBarrierTimeoutWithoutRegistration() throws Exception {
         CyclicBarrierDetector detector = new CyclicBarrierDetector();
         CyclicBarrier barrier = new CyclicBarrier(2);
+        try {
+            barrier.await(1, java.util.concurrent.TimeUnit.NANOSECONDS);   // a lone party: times out, breaks it
+        } catch (java.util.concurrent.TimeoutException expected) {
+            // the barrier is now broken
+        }
 
-        detector.recordTimeout(barrier);
-        detector.recordBroken(barrier);
+        detector.recordTimeout(barrier);   // context since #595
+        detector.recordAwait(barrier);     // the finding: awaited while broken
 
         CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
         assertTrue(report.hasIssues());
         String rendered = assertDoesNotThrow(report::toString);
-        assertTrue(rendered.contains("CYCLICBARRIER ISSUES DETECTED"),
+        assertTrue(rendered.contains("<unregistered barrier>"),
             () -> "report lost its finding: " + rendered);
     }
 

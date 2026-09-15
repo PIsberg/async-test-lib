@@ -658,7 +658,8 @@ public @interface AsyncTest {
 
     /**
      * Enable CyclicBarrier misuse detection.
-     * Detects barrier timeout, broken barriers, and missing participants.
+     * Detects an arrival or await on a barrier that is broken at that moment; a recorded timeout
+     * or break is context for that report, not a finding.
      *
      * @return {@code true} to enable this detector, {@code false} to skip it
      * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}

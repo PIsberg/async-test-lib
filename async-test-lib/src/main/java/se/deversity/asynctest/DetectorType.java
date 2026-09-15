@@ -89,7 +89,7 @@ public enum DetectorType {
     // Phase 2: Additional Concurrency
     /** Detects CountDownLatch misuse patterns: - Latch timeout (await with timeout expiring) - Missing countDown (latch never reaches zero) - Extra countDown (more cou. */
     COUNTDOWN_LATCH,
-    /** Detects CyclicBarrier misuse patterns: - Barrier timeout (await with timeout expiring) - Broken barrier (barrier broken due to thread interruption or timeout) -. */
+    /** Detects an arrival or await on a CyclicBarrier that is broken at that moment; a recorded timeout or break is context, not a finding. */
     CYCLIC_BARRIER,
     /** Detects ReentrantLock misuse patterns: - Lock starvation (thread waiting excessively long) - Unfair lock acquisition (threads not acquiring in FIFO order) - Loc. */
     REENTRANT_LOCK,

@@ -143,11 +143,11 @@ final class PairEvidence {
                 + "declaration that an await woke with no signal; needs the row rebuilt on a real "
                 + "parked waiter under registerCondition(lock, condition, name) to decide on what "
                 + "the object did");
-        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "recordTimeout is still the finding and is "
-                + "never checked against the barrier, so a timed await that handles its "
-                + "TimeoutException fires the same as one that strands its parties; needs the "
-                + "timeout observed, then a re-read (#584 decided reuse with isBroken() at the "
-                + "await and dropped the bare left-broken finding)");
+        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "since #595 nothing the body declares is a "
+                + "finding: reuse is decided with isBroken() at the arrival or await (#584), and "
+                + "recordTimeout and recordBroken are only context for that report; the model no "
+                + "longer holds the pair back, so it needs the adversarial re-read against both "
+                + "bodies that promotion requires (#571)");
         HELD_ON_MODEL.put(DetectorType.EXCHANGER, "#585 made orphaning the finding, decided from "
                 + "recorded starts against completions, timeouts and interrupts, so a handled timeout "
                 + "is silent; still held until re-read, because the counts are the body's own "

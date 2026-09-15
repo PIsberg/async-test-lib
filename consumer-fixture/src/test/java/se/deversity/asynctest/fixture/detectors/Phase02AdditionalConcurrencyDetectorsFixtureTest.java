@@ -86,16 +86,27 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
     void cyclicBarrier() {
         reachable("cyclicBarrierDetector()", AsyncTestContext::cyclicBarrierDetector);
 
-        // Parties = 1 so the barrier trips immediately regardless of worker scheduling.
-        // A barrier one party short never trips, and once one waiter times out the barrier
-        // is broken for everybody else too.
+        // A timed await that times out breaks the barrier for every party. Handling that with
+        // reset() is correct (#595); awaiting the same barrier again without one is the defect,
+        // because the await fails at once and keeps failing. Each worker gets its own two-party
+        // barrier and is its only party, so the timeout is certain regardless of scheduling.
         var barrierDetector = AsyncTestContext.cyclicBarrierDetector();
-        CyclicBarrier barrier = new CyclicBarrier(1);
-        barrierDetector.registerBarrier(barrier, "fixture-barrier", 1);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        barrierDetector.registerBarrier(barrier, "fixture-barrier", 2);
         try {
             barrierDetector.recordArrival(barrier);
+            barrier.await(1, TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
             barrierDetector.recordTimeout(barrier);
-            barrier.await(100, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        } catch (BrokenBarrierException e) {
+            // Not reached: nobody else holds this barrier.
+        }
+        try {
+            barrierDetector.recordAwait(barrier);   // no reset(): the barrier is still broken
+            barrier.await(1, TimeUnit.NANOSECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (BrokenBarrierException | TimeoutException e) {
