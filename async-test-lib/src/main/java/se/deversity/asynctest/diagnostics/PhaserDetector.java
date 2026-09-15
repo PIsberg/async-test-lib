@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -22,10 +24,13 @@ import java.util.concurrent.Phaser;
  *       deregistered twice. Pass the phase the call returned to
  *       {@link #recordArrival(Phaser, int)}; a negative phase on a phaser with no registered
  *       parties left is the finding.</li>
- *   <li><b>A stalled phase.</b> A timed wait ({@code awaitAdvanceInterruptibly} with a timeout)
- *       expired, recorded with {@link #recordTimeout(Phaser)}, and the phase it expired on is still
- *       the phaser's current phase, with parties not arrived, when the run is analyzed. The phase
- *       never advanced, so a registered party never arrived.</li>
+ *   <li><b>A stalled phase.</b> A registered party never arrived, so the phase never advanced.
+ *       Either of two recordings shows it, and both are checked against the phaser when the run
+ *       is analyzed: a timed wait ({@code awaitAdvanceInterruptibly} with a timeout) expired,
+ *       recorded with {@link #recordTimeout(Phaser)}, on a phase that is still current with
+ *       parties not arrived; or an {@code arriveAndAwaitAdvance()} recorded as started with
+ *       {@link #recordAwaitAdvanceStarted(Phaser)} never returned, its phase is still current with
+ *       parties not arrived, and its thread is still parked inside the phaser (#602).</li>
  * </ul>
  *
  * <p>Not findings (#587):
@@ -44,8 +49,11 @@ import java.util.concurrent.Phaser;
  * non-party waiting for termination with it sees a negative phase in correct code. A caller that
  * checks the negative phase from {@code register()} and backs out is still reported, because a
  * phaser that ended while a party was still on its way to join is the short count itself. A phase
- * that stalls with no timed wait recorded on it is not seen; the run's own timeout reports the
- * parties it strands.
+ * that stalls with neither recording on it is not seen; the run's own timeout reports the parties
+ * it strands. A wait is judged on the phase current when {@code recordAwaitAdvanceStarted} ran, so
+ * a phase that advances between that call and the thread's arrival leaves the later wait unjudged
+ * (silent). Registrations left behind with nobody waiting (a body that registers per round and
+ * only arrives) are not a stall: no party is blocked on them.
  */
 public class PhaserDetector {
 
@@ -56,6 +64,11 @@ public class PhaserDetector {
     private final Set<Phaser> lateArrivals = ConcurrentHashMap.newKeySet();
     /** Phasers the body recorded as terminated: context for the report, never a finding. */
     private final Set<Phaser> terminatedPhasers = ConcurrentHashMap.newKeySet();
+    /**
+     * Waits in {@code arriveAndAwaitAdvance()} that were started and not yet recorded as returned:
+     * per phaser, the waiting thread and the phase current when it started.
+     */
+    private final Map<Phaser, Map<Thread, Integer>> openWaits = new ConcurrentHashMap<>();
 
     /**
      * Register a Phaser for monitoring.
@@ -115,6 +128,45 @@ public class PhaserDetector {
      */
     public void recordArriveAwaitAdvance(Phaser phaser) {
         recordArrive(phaser);
+    }
+
+    /**
+     * Record that the calling thread is about to block in {@code arriveAndAwaitAdvance()}. Call it
+     * immediately before the call, and {@link #recordAwaitAdvanceReturned(Phaser, int)} right after
+     * it returns. A wait that never returned is a stalled phase when, at analysis, the phase it
+     * started in is still current with parties not arrived and the thread is still parked inside
+     * the phaser: a registered party never arrived, and nothing else would have released it.
+     *
+     * @param phaser the phaser the thread is about to wait on, tracked by identity
+     * @since 1.12.1
+     */
+    public void recordAwaitAdvanceStarted(Phaser phaser) {
+        if (phaser == null) return;
+        int phase = phaser.getPhase();
+        if (phase < 0) {
+            return;   // terminated: the call returns at once with a negative phase
+        }
+        // A thread waits in one call at a time, so a new start replaces the thread's last one.
+        openWaits.computeIfAbsent(phaser, p -> new ConcurrentHashMap<>())
+                .put(Thread.currentThread(), phase);
+    }
+
+    /**
+     * Record that the calling thread's {@code arriveAndAwaitAdvance()} returned, with the phase it
+     * returned. Closes the wait {@link #recordAwaitAdvanceStarted(Phaser)} opened, and is also an
+     * arrival: the phase is judged as {@link #recordArrival(Phaser, int)} judges it.
+     *
+     * @param phaser the phaser the thread waited on, tracked by identity
+     * @param returnedPhase the phase the call returned; negative when the phaser had terminated
+     * @since 1.12.1
+     */
+    public void recordAwaitAdvanceReturned(Phaser phaser, int returnedPhase) {
+        if (phaser == null) return;
+        Map<Thread, Integer> waits = openWaits.get(phaser);
+        if (waits != null) {
+            waits.remove(Thread.currentThread());
+        }
+        recordArrival(phaser, returnedPhase);
     }
 
     /**
@@ -179,8 +231,60 @@ public class PhaserDetector {
                 advancedAfterTimeout.add(phaser);
             }
         }
+        for (Map.Entry<Phaser, Map<Thread, Integer>> entry : openWaits.entrySet()) {
+            Phaser phaser = entry.getKey();
+            String stall = unreturnedWaitStall(phaser, entry.getValue());
+            if (stall != null) {
+                stalled.putIfAbsent(phaser, stall);
+            }
+        }
         return new PhaserReport(phaserRegistry, stalled, lateArrivals, terminatedPhasers,
                 advancedAfterTimeout);
+    }
+
+    /**
+     * Decides whether a wait that was started and never recorded as returned is still stuck.
+     * Three things must hold, each observed rather than declared: the phase the wait started in is
+     * still the phaser's current phase, a registered party has not arrived in it, and the thread is
+     * still parked inside {@link Phaser}. The last one separates a real wait from a start whose
+     * call threw (an arrival with no party registered) and from a pooled thread that went on to
+     * other work or back to its queue; neither is waiting on the phaser.
+     *
+     * @return the stall description, or {@code null} when no open wait is stuck
+     */
+    private static @Nullable String unreturnedWaitStall(Phaser phaser, Map<Thread, Integer> waits) {
+        int current = phaser.getPhase();
+        int unarrived = phaser.getUnarrivedParties();
+        if (current < 0 || unarrived <= 0) {
+            return null;
+        }
+        int stuck = 0;
+        for (Map.Entry<Thread, Integer> wait : waits.entrySet()) {
+            if (wait.getValue() == current && parkedInPhaser(wait.getKey())) {
+                stuck++;
+            }
+        }
+        if (stuck == 0) {
+            return null;
+        }
+        return "phase " + current + " never advanced: " + stuck
+                + (stuck == 1 ? " party waiting" : " parties waiting")
+                + " in arriveAndAwaitAdvance() never returned; " + unarrived + " of "
+                + phaser.getRegisteredParties() + " registered parties had not arrived";
+    }
+
+    private static boolean parkedInPhaser(Thread thread) {
+        if (!thread.isAlive()) {
+            return false;
+        }
+        // Read at analysis only, and only for a wait whose phase is still current, so the stack
+        // walk is paid for the rare stuck candidate, never on the recording path.
+        for (StackTraceElement frame : thread.getStackTrace()) {
+            if (Phaser.class.getName().equals(frame.getClassName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -160,8 +160,9 @@ final class PairEvidence {
         HELD_ON_MODEL.put(DetectorType.PHASER, "since #587 termination is context and the finding "
                 + "is an arrival whose returned phase is negative on a phaser with no party left "
                 + "registered, read from the real phaser; the rewritten pair has not been re-read "
-                + "against that model yet, and the stalled-phase half (a timeout still current at "
-                + "analysis) has no pair of its own");
+                + "against that model yet, and the stalled-phase half (a timeout, or since #602 an "
+                + "arriveAndAwaitAdvance that never returned, still current at analysis) has no "
+                + "pair of its own");
         HELD_ON_MODEL.put(DetectorType.STAMPED_LOCK, "since #588 a leak is an acquisition no "
                 + "recorded unlock matched on a lock still write- or read-held at analysis, and the "
                 + "MUST_FIRE row no longer declares it; not yet re-read against that model, so it "
