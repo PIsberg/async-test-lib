@@ -27,17 +27,20 @@ public class ReentrantLockDetectorTest {
     }
 
     @Test
-    void testLockTimeoutDetection() {
+    void testLockTimeoutAloneIsContextNotAFinding() {
         ReentrantLockDetector detector = new ReentrantLockDetector();
         ReentrantLock lock = new ReentrantLock();
 
         detector.registerLock(lock, "timeoutLock");
-        detector.recordLockTimeout(lock);  // tryLock timed out
+        detector.recordLockTimeout(lock);  // tryLock timed out, and the lock is free now
 
         ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
 
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect lock timeout");
+        assertFalse(report.hasIssues(),
+                "a timeout the caller handled is correct code; discarding the false return is "
+                        + "TRY_LOCK_MISUSE's finding (#589)");
+        assertTrue(report.toString().contains("timeoutLock"), "the timeout is still printed as context");
     }
 
     @Test
@@ -99,11 +102,14 @@ public class ReentrantLockDetectorTest {
     }
 
     @Test
-    void testReportToString() {
+    void testReportToString() throws Exception {
         ReentrantLockDetector detector = new ReentrantLockDetector();
         ReentrantLock lock = new ReentrantLock();
 
         detector.registerLock(lock, "testLock");
+        Thread leaker = new Thread(lock::lock, "leaker");
+        leaker.start();
+        leaker.join(10_000);
         detector.recordLockTimeout(lock);
 
         ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
@@ -111,7 +117,9 @@ public class ReentrantLockDetectorTest {
         String reportStr = report.toString();
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("REENTRANTLOCK ISSUES DETECTED"), "Report should have header");
-        assertTrue(reportStr.contains("Lock Timeouts"), "Report should mention timeouts");
+        assertTrue(reportStr.contains("Lock Still Held At Analysis"), "Report should name the held lock");
+        assertTrue(reportStr.contains("leaker"), "Report should name the holder the lock reported: " + reportStr);
+        assertTrue(reportStr.contains("tryLock() timeouts"), "Report should keep timeouts as context");
     }
 
     @Test

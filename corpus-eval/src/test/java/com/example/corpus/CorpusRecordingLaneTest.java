@@ -533,8 +533,8 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.CyclicBarrier COMPLETED_BARRIER =
             new java.util.concurrent.CyclicBarrier(THREADS);
 
-    /** The lock whose tryLock is recorded as timed out. */
-    private static final java.util.concurrent.locks.ReentrantLock TIMED_OUT_LOCK =
+    /** The lock one worker re-enters and leaves taken, for the held-at-analysis row. */
+    private static final java.util.concurrent.locks.ReentrantLock LEAKED_LOCK =
             new java.util.concurrent.locks.ReentrantLock();
 
     /** The twin acquired and released cleanly by every thread. */
@@ -3020,13 +3020,36 @@ class CorpusRecordingLaneTest {
         detector.recordBarrierComplete(COMPLETED_BARRIER);
     }
 
-    /** A tryLock recorded as timed out: somebody held it longer than the caller would wait. */
+    /**
+     * A hold re-entered and never released: the first worker in takes the lock twice and gives
+     * it back once, and every other worker's bounded tryLock times out and backs off.
+     *
+     * <p>The row used to record a bare {@code recordLockTimeout}, which #589 settled: a timeout
+     * the caller handles is correct code, so it is context now. What is not correct is the lock
+     * still taken once the bodies are done, which the detector reads from the lock itself. Some
+     * worker always takes the lock first, so the outcome does not depend on the interleaving.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_reentrantLock_acquisitionTimedOut() {
+    void recorded_reentrantLock_holdLeftTaken() {
         CorpusRecorder.countBodyExecution();
+        String self = Thread.currentThread().getName();
         var detector = AsyncTestContext.reentrantLockDetector();
-        detector.registerLock(TIMED_OUT_LOCK, "timed-out-lock");
-        detector.recordLockTimeout(TIMED_OUT_LOCK);
+        detector.registerLock(LEAKED_LOCK, "leaked-lock");
+        try {
+            if (LEAKED_LOCK.tryLock(50, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                detector.recordLockAcquired(LEAKED_LOCK, self);
+                try {
+                    LEAKED_LOCK.lock(); // re-entered, and this hold is never released
+                } finally {
+                    detector.recordLockReleased(LEAKED_LOCK, self);
+                    LEAKED_LOCK.unlock();
+                }
+            } else {
+                detector.recordLockTimeout(LEAKED_LOCK);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** The same lock acquired and released with no timeout: what an uncontended lock looks like. */

@@ -37,12 +37,12 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
  * 8 threads compete to call increment(). Thread A enters and its lock hold
- * count ends at 1 rather than 0. Thread B then tries to lock() and blocks.
- * ReentrantLockDetector records acquire/release events and detects that
- * release count lags behind acquire count across invocations.
+ * count ends at 1 rather than 0. The other threads' tryLock() calls time out.
+ * When the run is analysed, every body has finished and the lock is still
+ * taken by thread A: ReentrantLockDetector reads that from the lock itself.
  *
  * DETECTORS TRIGGERED:
- *   ReentrantLockDetector — primary: detects unbalanced lock acquire/release
+ *   ReentrantLockDetector — primary: a lock still held after every body finished
  *
  * FIX: Add a finally block inside validate() that calls lock.unlock(), or
  *      restructure validate() to operate without acquiring the lock.
@@ -92,12 +92,12 @@ class CounterServiceTest {
         // from all eight threads hung the round, and the round timed out before anything was
         // analyzed.
         //
-        // The timeout is also the only thing this detector gates on. ReentrantLockReport.
-        // hasIssues() is (timeouts or starvation); the acquire and release counts are recorded
-        // and printed but never trip it, which is why the previous version's balanced pair
-        // reported nothing even when it did run. A tryLock that expires on a counter whose
-        // critical section is one increment is the leaked hold seen from outside, and is the
-        // finding. See issue #363.
+        // The finding is the lock itself: once the rounds are over, service.lock is still taken
+        // by the worker that leaked the hold, and ReentrantLockDetector asks the lock at analysis
+        // (#589). The recorded acquire/release pair below is balanced, which is why counts alone
+        // never showed this leak. The other workers' tryLock timeouts are handled - they back off
+        // - so they are printed as context, not reported; until #589 they were the finding, and
+        // so was every handled timeout in correct code.
         if (service.lock.tryLock(100, TimeUnit.MILLISECONDS)) {
             try {
                 detector.recordLockAcquired(service.lock, Thread.currentThread().getName());

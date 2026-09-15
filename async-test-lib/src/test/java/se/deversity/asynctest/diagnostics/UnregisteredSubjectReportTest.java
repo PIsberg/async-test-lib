@@ -108,17 +108,22 @@ class UnregisteredSubjectReportTest {
     }
 
     @Test
-    @DisplayName("ReentrantLock: recordLockTimeout without registerLock still renders")
-    void reentrantLockTimeoutWithoutRegistration() {
+    @DisplayName("ReentrantLock: a leaked hold on a lock only recordLockTimeout saw still renders")
+    void reentrantLockTimeoutWithoutRegistration() throws InterruptedException {
         ReentrantLockDetector detector = new ReentrantLockDetector();
         ReentrantLock lock = new ReentrantLock();
+        // Since #589 a timeout alone is context, so the finding here is the hold the timeout was
+        // a symptom of: taken on another thread and never given back.
+        Thread leaker = new Thread(lock::lock);
+        leaker.start();
+        leaker.join(10_000);
 
         detector.recordLockTimeout(lock);
 
         ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
         assertTrue(report.hasIssues());
         String rendered = assertDoesNotThrow(report::toString);
-        assertTrue(rendered.contains("Lock Timeouts"),
+        assertTrue(rendered.contains("Lock Still Held At Analysis") && rendered.contains("<unregistered lock>"),
             () -> "report lost its finding: " + rendered);
     }
 

@@ -952,7 +952,7 @@ Detectors that observe unsafe usages of JDK classes and concurrent collections.
 
 ### 31. ReentrantLock Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Detects ReentrantLock misuse: excessive thread wait times (starvation), unfair acquisition ordering, `tryLock()` timeouts, and locks not released inside a `finally` block.
+* **Description**: Detects a `ReentrantLock` still held when the run is analysed, by a thread other than the analysing one: a hold nobody gave back, whether the missing `unlock()` is an exception path with no `finally` or a helper that re-enters the lock and never releases the extra hold. Every later `lock()` parks for good. The evidence is the lock itself (`isLocked()`), not recorded counts, so a leak whose recorded acquire and release pair balances is still seen; when both this detector and `LockLeakDetector` are enabled and the forwarded counts already show the leak, it is left to that detector so one leak is one finding. Also reports a starvation the test records with `recordStarvation`; no threshold is applied, the caller decides, and a wait of zero or less is ignored. `tryLock()` timeouts recorded with `recordLockTimeout` are printed as context and are not a finding on their own: backing off on a timeout is correct, and a discarded `false` return is what `TRY_LOCK_MISUSE` observes (#589). A thread still running at analysis and legitimately holding the lock would be reported too, which is why analysis runs after the rounds finish.
 * **Buggy Code**:
   ```java
   ReentrantLock lock = new ReentrantLock(); // unfair by default

@@ -105,26 +105,27 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.REENTRANT_LOCK})
-    void reentrantLock() {
+    void reentrantLock() throws InterruptedException {
         reachable("reentrantLockDetector()", AsyncTestContext::reentrantLockDetector);
 
-        // A lock acquisition that times out means another worker held it too long; the
-        // detector reports the timeout rather than the reentrancy, which is legal.
+        // The finding is a hold nobody gave back, read from the lock at analysis (#589): the
+        // first worker in re-enters the lock and releases only once, the other times out and
+        // backs off. A timeout alone is no longer reported, because backing off is correct, so
+        // the fixture leaves the lock really taken. Bounded by tryLock so no worker hangs.
         var reentrantDetector = AsyncTestContext.reentrantLockDetector();
         ReentrantLock lock = SHARED_REENTRANT;
         registerOnce("reentrant-lock", () -> reentrantDetector.registerLock(lock, "shared-reentrant-lock"));
-        lock.lock();
-        reentrantDetector.recordLockAcquired(lock, Thread.currentThread().getName());
-        reentrantDetector.recordLockTimeout(lock);
-        try {
-            lock.lock();          // reentrant acquisition, matched below
+        if (lock.tryLock(100, TimeUnit.MILLISECONDS)) {
+            reentrantDetector.recordLockAcquired(lock, Thread.currentThread().getName());
             try {
+                lock.lock();      // re-entered and never released: the leaked hold
                 spin(32);
             } finally {
+                reentrantDetector.recordLockReleased(lock, Thread.currentThread().getName());
                 lock.unlock();
             }
-        } finally {
-            lock.unlock();
+        } else {
+            reentrantDetector.recordLockTimeout(lock);
         }
     }
 

@@ -90,8 +90,67 @@ class LeakedHoldReportedOnceTest {
 
         Map<String, String> findings = registry.analyzeAllNamed();
         assertFalse(findings.containsKey("ReentrantLockDetector"),
-                "the leak is one finding, not two. This detector gates on timeouts and "
-                        + "starvation, and forwarding must not quietly turn it into a second "
-                        + "voice on the same condition. Findings: " + findings.keySet());
+                "the leak is one finding, not two. Forwarding must not quietly turn this detector "
+                        + "into a second voice on the same condition. Findings: " + findings.keySet());
+    }
+
+    @Test
+    @DisplayName("a real leaked hold the records already show is reported once, by LockLeakDetector")
+    void aRealLeakTheRecordsShowIsReportedOnce() throws InterruptedException {
+        DetectorRegistry registry = new DetectorRegistry(AsyncTestConfig.builder()
+                .detectAll(false)
+                .detectReentrantLockIssues(true)
+                .detectLockLeaks(true)
+                .build());
+        assertNotNull(registry.reentrantLockDetector);
+        var detector = registry.reentrantLockDetector;
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "counter-lock");
+        Thread worker = new Thread(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "worker"); // never released, nor recorded as such
+        });
+        worker.start();
+        worker.join(10_000);
+
+        Map<String, String> findings = registry.analyzeAllNamed();
+        assertTrue(findings.containsKey("LockLeakDetector"), "Findings: " + findings.keySet());
+        assertFalse(findings.containsKey("ReentrantLockDetector"),
+                "the lock really is still held (#589 made that this detector's finding), but the "
+                        + "unbalanced records already make it LockLeakDetector's, and one leak is one "
+                        + "finding. Findings: " + findings.keySet());
+    }
+
+    @Test
+    @DisplayName("a real leaked hold whose records balance is reported by ReentrantLockDetector")
+    void aRealLeakTheRecordsCannotShowIsReportedByTheDetectorThatReadsTheLock()
+            throws InterruptedException {
+        DetectorRegistry registry = new DetectorRegistry(AsyncTestConfig.builder()
+                .detectAll(false)
+                .detectReentrantLockIssues(true)
+                .detectLockLeaks(true)
+                .build());
+        assertNotNull(registry.reentrantLockDetector);
+        var detector = registry.reentrantLockDetector;
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "counter-lock");
+        Thread worker = new Thread(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "worker");
+            try {
+                lock.lock(); // re-entered by a helper that never unlocks
+            } finally {
+                detector.recordLockReleased(lock, "worker");
+                lock.unlock();
+            }
+        });
+        worker.start();
+        worker.join(10_000);
+
+        Map<String, String> findings = registry.analyzeAllNamed();
+        assertTrue(findings.containsKey("ReentrantLockDetector"),
+                "LockLeakDetector reads the forwarded counts, which balance, so it cannot see this "
+                        + "hold; the lock itself is the only evidence, and this detector reads it "
+                        + "(#589). Findings: " + findings.keySet());
     }
 }

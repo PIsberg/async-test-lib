@@ -2862,15 +2862,15 @@ final class Corpus {
                             + "completion - and never broken. That is the ordinary use, and it "
                             + "is what the harness itself does on every round"),
 
-            new RecordingSubject("recorded_reentrantLock_acquisitionTimedOut", JDK,
+            new RecordingSubject("recorded_reentrantLock_holdLeftTaken", JDK,
                     "java.util.concurrent.locks.ReentrantLock",
                     DetectorType.REENTRANT_LOCK, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "a tryLock is recorded as having timed out. The lock is doing exactly what "
-                            + "it promises; a timeout means some other thread held it longer "
-                            + "than the caller was willing to wait, which is the contention the "
-                            + "caller needs told about because tryLock's false return is easy "
-                            + "to discard"),
+                    "a worker re-enters the lock and releases it once, so a hold is still taken "
+                            + "when the bodies are done and every later lock() would park for "
+                            + "good. The recorded acquire and release pair balances; the lock "
+                            + "itself is the evidence. A recorded tryLock timeout is no longer "
+                            + "this row, because backing off on one is correct (#589)"),
 
             new RecordingSubject("recorded_reentrantLock_acquiredAndReleased", JDK,
                     "java.util.concurrent.locks.ReentrantLock",

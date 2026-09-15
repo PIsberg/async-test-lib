@@ -19,8 +19,12 @@ all subsequent callers from other threads block indefinitely.
 
 1. Remove `@Disabled` from `testIncrement_concurrent_detectsLockImbalance`.
 2. Run: `mvn test` or `./gradlew test`
-3. The test fails with a **ReentrantLockDetector** report showing that lock
-   acquire count exceeds release count across invocations.
+3. The test fails with a **ReentrantLockDetector** report listing
+   `counter-service-lock` under "Lock Still Held At Analysis", with the worker
+   thread that still holds it. The recorded acquire and release pair is
+   balanced, so the finding comes from the lock itself, not from counts. The
+   other workers' `tryLock()` timeouts appear as context: backing off on a
+   timeout is correct, so on its own it is not reported.
 
 **Fix**: match every `lock()` with exactly one `unlock()` in a `finally` block.
 If `validate()` needs the lock, the outer `finally` must call `unlock()` twice,
