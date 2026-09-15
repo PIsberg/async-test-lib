@@ -76,6 +76,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before the change, and `DetectorAccuracyEvalTest` gains the early-return pair: a party that
   returns without arriving fires, the twin that arrives in `finally` stays silent.
 
+- **`ReentrantLockDetector` judges a held lock by where its holder is, and starvation by what the
+  lock showed (#608, #609).** A lock held at analysis was reported whoever held it, so a thread the
+  body started that was still working under the lock read as a leak. The holder is now named by the
+  lock and looked up among the threads that recorded against it and the live platform threads: the
+  hold is reported when no thread of that name is alive or every one that is sits idle in a pool
+  (`ThreadPoolExecutor.getTask`, `ForkJoinPool.awaitWork`), and a holder still working is printed as
+  context. `recordStarvation(threadName, waitMs)` made any positive wait a finding. The new
+  `recordStarvation(lock, threadName, waitMs)` is a finding only when another thread recorded
+  acquiring the lock twice while the waiter stayed queued (`hasQueuedThread`), which is barging; a
+  fair lock taken through `lock()` cannot do that. The lock-less overload and an uncorroborated wait
+  are context, since a wait's length is not evidence (#575). `ReentrantLockOwnerAndStarvationTest`
+  pins seven cases on real locks, four of them red before the change, and `DetectorAccuracyEvalTest`
+  gains the still-working twin. Known boundary: a body-started virtual thread that never recorded
+  against the lock is not enumerable, so its hold is still treated as finished.
+
 - **`ConditionVariableDetector` pairs each await with the signals that could have woken it (#583).**
   It decided missing signals on run-wide counts (`awaitCount > 0 && totalSignals == 0`), so one
   recorded signal anywhere silenced every waiter that nothing woke, and a timed-await poll that is

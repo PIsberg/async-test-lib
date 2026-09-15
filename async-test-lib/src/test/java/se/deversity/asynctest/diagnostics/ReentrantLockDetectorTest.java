@@ -44,7 +44,7 @@ public class ReentrantLockDetectorTest {
     }
 
     @Test
-    void testStarvationDetection() {
+    void testStarvationRecordWithoutALockIsContext() {
         ReentrantLockDetector detector = new ReentrantLockDetector();
 
         detector.recordStarvation("Thread-1", 5000);  // Waited 5 seconds
@@ -53,7 +53,10 @@ public class ReentrantLockDetectorTest {
         ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
 
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect starvation");
+        assertFalse(report.hasIssues(),
+                "a wait's length with no lock to ask is not evidence of starvation (#608, #575)");
+        assertTrue(report.toString().contains("Thread-1") && report.toString().contains("Thread-2"),
+                "the recorded waits are still printed as context: " + report);
     }
 
     @Test
