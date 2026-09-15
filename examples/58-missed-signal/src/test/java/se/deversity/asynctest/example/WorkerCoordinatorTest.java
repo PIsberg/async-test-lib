@@ -50,7 +50,7 @@ class WorkerCoordinatorTest {
         // waitForSignal() would block forever; the bounded variant returns when the timeout runs out,
         // having received nothing. A notify with nobody waiting is not reported on its own, since a
         // flag-guarded waiter would never wait; this unsignalled wait after it is the finding.
-        detector.recordWait(worker);
+        detector.recordWait(worker, false); // unguarded: no predicate loop around this wait
         worker.waitForSignal(10);
         detector.recordWakeup(worker);
     }
