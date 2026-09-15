@@ -337,7 +337,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | Annotation field | DetectorType | What it catches |
 |-----------------|-------------|-----------------|
 | `detectPhaserIssues` | `PHASER` | Arrivals after the party count reached zero, phases stalled past a timeout or behind an `arriveAndAwaitAdvance()` that never returned |
-| `detectStampedLockIssues` | `STAMPED_LOCK` | Unvalidated optimistic reads, stamps never released on a lock still held |
+| `detectStampedLockIssues` | `STAMPED_LOCK` | Unvalidated optimistic reads, stamps never released on a lock still held (conversions tracked via `recordConversion`), a read stamp released twice while another reader holds |
 | `detectExchangerIssues` | `EXCHANGER` | Orphaned exchanges: a caller that started an exchange and never left it (a handled timeout is not a finding) |
 | `detectScheduledExecutorIssues` | `SCHEDULED_EXECUTOR` | Missing shutdown, long-running tasks |
 | `detectForkJoinPoolIssues` | `FORK_JOIN_POOL` | Fork without join |
