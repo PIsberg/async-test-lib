@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`CyclicBarrierDetector` reports barriers left a party short with untimed waiters parked (#631).**
+  A barrier that never tripped because a party never arrived previously resulted in a round timeout
+  without naming the barrier or indicating that it was left short. New `markRoundTimedOut()` on
+  `CyclicBarrierDetector`, called by `AsyncTestContext` before worker cancellation, captures
+  `getNumberWaiting() > 0` on registered barriers before runner cancellation interrupts them and
+  resets the waiting count to 0. `analyze()` also inspects live registered barriers at quiescent
+  analysis. The timeout error message now names `CyclicBarrierDetector` and surfaces the stranded
+  barrier, the number of waiting parties, and the short count.
+
 - **`ConditionVariableDetector` reads stuck waiters from the lock, and keeps an abandoned await
   in its own round (#592, #593).** A stuck waiter was any recorded await with no recorded exit, so
   a body that recorded an await and then threw, or found its predicate true and never called

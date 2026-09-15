@@ -184,7 +184,114 @@ public class CyclicBarrierDetectorTest {
             detector.recordReset(null);
             detector.recordAwait(null);
             detector.recordBarrierComplete(null);
-            detector.analyze();
         });
+    }
+
+    @Test
+    void strandedBarrierDetectedDirectlyAtAnalysis() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(3);
+        detector.registerBarrier(barrier, "strandedBarrier");
+
+        Thread p1 = new Thread(() -> {
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        Thread p2 = new Thread(() -> {
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        p1.setDaemon(true);
+        p2.setDaemon(true);
+        p1.start();
+        p2.start();
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (barrier.getNumberWaiting() < 2 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertEquals(2, barrier.getNumberWaiting(), "premise: two parties waiting");
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.getStrandedBarriers().contains(barrier));
+        assertEquals(2, report.getWaitingParties(barrier));
+        assertTrue(report.toString().contains("Stranded Barriers (party short)"));
+        assertTrue(report.toString().contains("2 of 3 parties waiting"));
+
+        barrier.reset();
+        p1.join(1000);
+        p2.join(1000);
+    }
+
+    @Test
+    void strandedBarrierDetectedViaMarkRoundTimedOut() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        detector.registerBarrier(barrier, "timedOutBarrier", 2);
+
+        Thread p1 = new Thread(() -> {
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        p1.setDaemon(true);
+        p1.start();
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (barrier.getNumberWaiting() < 1 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertEquals(1, barrier.getNumberWaiting(), "premise: one party waiting");
+
+        detector.markRoundTimedOut();
+
+        // Worker interrupted by runner timeout, breaking barrier
+        p1.interrupt();
+        p1.join(1000);
+        assertEquals(0, barrier.getNumberWaiting(), "premise: worker interrupted and left barrier");
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.getStrandedBarriers().contains(barrier));
+        assertEquals(1, report.getWaitingParties(barrier));
+        assertTrue(report.toString().contains("Stranded Barriers (party short)"));
+        assertTrue(report.toString().contains("1 of 2 parties waiting"));
+    }
+
+    @Test
+    void autoRegistrationOnRecordArrivalMaintainsParties() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        detector.recordArrival(barrier);
+
+        Thread p1 = new Thread(() -> {
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        p1.setDaemon(true);
+        p1.start();
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (barrier.getNumberWaiting() < 1 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.getStrandedBarriers().contains(barrier));
+        assertTrue(report.toString().contains("<unregistered barrier>"));
+        assertTrue(report.toString().contains("1 of 2 parties waiting"));
+
+        barrier.reset();
+        p1.join(1000);
     }
 }

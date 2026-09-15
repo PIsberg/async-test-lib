@@ -39,6 +39,7 @@ public class CyclicBarrierDetector {
     /** Barriers with at least one recorded break; context for the reuse report, never a finding. */
     private final Set<CyclicBarrier> brokenBarriers = ConcurrentHashMap.newKeySet();
     private final Set<CyclicBarrier> reuseAfterBrokenBarriers = ConcurrentHashMap.newKeySet();
+    private final Map<CyclicBarrier, Integer> strandedBarriers = new ConcurrentHashMap<>();
 
     /**
      * Register a CyclicBarrier for monitoring.
@@ -49,10 +50,29 @@ public class CyclicBarrierDetector {
      */
     public void registerBarrier(CyclicBarrier barrier, String name, int parties) {
         if (barrier == null) return;
-        // First registration wins: re-registering a subject must not discard what has
-        // been observed about it. An @AsyncTest body runs once per thread, so a consumer
-        // registering inside it registers once per worker.
-        barrierRegistry.putIfAbsent(barrier, new BarrierInfo(name, parties));
+        int resolvedParties = parties > 0 ? parties : barrier.getParties();
+        barrierRegistry.compute(barrier, (k, existing) -> {
+            if (existing == null || "<unregistered barrier>".equals(existing.name)) {
+                return new BarrierInfo(name, resolvedParties);
+            }
+            return existing;
+        });
+    }
+
+    /**
+     * Register a CyclicBarrier for monitoring with parties inferred from the barrier.
+     *
+     * @param barrier the barrier being recorded, tracked by identity
+     * @param name a label identifying the barrier in the report
+     * @since 1.12.1
+     */
+    public void registerBarrier(CyclicBarrier barrier, String name) {
+        if (barrier == null) return;
+        registerBarrier(barrier, name, barrier.getParties());
+    }
+
+    private void autoRegister(CyclicBarrier barrier) {
+        barrierRegistry.putIfAbsent(barrier, new BarrierInfo("<unregistered barrier>", barrier.getParties()));
     }
 
     /**
@@ -64,6 +84,7 @@ public class CyclicBarrierDetector {
      */
     public void recordArrival(CyclicBarrier barrier) {
         if (barrier == null) return;
+        autoRegister(barrier);
         checkBroken(barrier);
     }
 
@@ -118,6 +139,7 @@ public class CyclicBarrierDetector {
      */
     public void recordAwait(CyclicBarrier barrier) {
         if (barrier == null) return;
+        autoRegister(barrier);
         checkBroken(barrier);
     }
 
@@ -138,16 +160,45 @@ public class CyclicBarrierDetector {
     }
 
     /**
+     * Tells the detector the runner has timed the current round out and is about to interrupt its
+     * workers. Called by the runner, not by test bodies.
+     *
+     * <p>At this moment, workers parked on untimed {@code await()} calls have not yet been
+     * interrupted, so {@link CyclicBarrier#getNumberWaiting()} reveals any barrier left short of its
+     * required parties. Once the runner cancels worker futures, the interrupt breaks the barrier and
+     * resets {@code getNumberWaiting()} to 0.
+     *
+     * @since 1.12.1
+     */
+    public void markRoundTimedOut() {
+        for (Map.Entry<CyclicBarrier, BarrierInfo> entry : barrierRegistry.entrySet()) {
+            CyclicBarrier barrier = entry.getKey();
+            int waiting = barrier.getNumberWaiting();
+            if (waiting > 0 && !barrier.isBroken()) {
+                strandedBarriers.put(barrier, waiting);
+            }
+        }
+    }
+
+    /**
      * Analyze barrier usage and return report.
      *
      * @return the findings this detector collected during the run
      */
     public CyclicBarrierReport analyze() {
+        for (Map.Entry<CyclicBarrier, BarrierInfo> entry : barrierRegistry.entrySet()) {
+            CyclicBarrier barrier = entry.getKey();
+            int waiting = barrier.getNumberWaiting();
+            if (waiting > 0 && !barrier.isBroken()) {
+                strandedBarriers.putIfAbsent(barrier, waiting);
+            }
+        }
         return new CyclicBarrierReport(
             barrierRegistry,
             timedOutBarriers,
             brokenBarriers,
-            reuseAfterBrokenBarriers
+            reuseAfterBrokenBarriers,
+            strandedBarriers
         );
     }
 
@@ -159,6 +210,8 @@ public class CyclicBarrierDetector {
         private final Set<CyclicBarrier> timedOutBarriers;
         private final Set<CyclicBarrier> brokenBarriers;
         private final Set<CyclicBarrier> reuseAfterBrokenBarriers;
+        private final Map<CyclicBarrier, Integer> strandedBarriers;
+
         /**
          * Creates a CyclicBarrierReport.
          *
@@ -168,25 +221,51 @@ public class CyclicBarrierDetector {
          * @param brokenBarriers the barriers with a recorded break; context for the reuse report,
          *                       never a finding on its own
          * @param reuseAfterBrokenBarriers the barriers arrived at or awaited while broken
+         * @param strandedBarriers the barriers left a party short with untimed waiters parked
+         * @since 1.12.1
          */
+        public CyclicBarrierReport(
+            Map<CyclicBarrier, BarrierInfo> barrierRegistry,
+            Set<CyclicBarrier> timedOutBarriers,
+            Set<CyclicBarrier> brokenBarriers,
+            Set<CyclicBarrier> reuseAfterBrokenBarriers,
+            Map<CyclicBarrier, Integer> strandedBarriers
+        ) {
+            this.barrierRegistry = Collections.unmodifiableMap(new HashMap<>(barrierRegistry));
+            this.timedOutBarriers = Collections.unmodifiableSet(new HashSet<>(timedOutBarriers));
+            this.brokenBarriers = Collections.unmodifiableSet(new HashSet<>(brokenBarriers));
+            this.reuseAfterBrokenBarriers = Collections.unmodifiableSet(new HashSet<>(reuseAfterBrokenBarriers));
+            this.strandedBarriers = Collections.unmodifiableMap(new HashMap<>(strandedBarriers));
+        }
+
+        /**
+         * Retained for binary compatibility with 1.7.0.
+         *
+         * @deprecated since 1.12.1 — use the five-argument constructor; this overload
+         *             reports no stranded barriers.
+         *
+         * @param barrierRegistry every registered barrier and what was observed on it
+         * @param timedOutBarriers the barriers with a recorded timeout
+         * @param brokenBarriers the barriers with a recorded break
+         * @param reuseAfterBrokenBarriers the barriers arrived at or awaited while broken
+         */
+        @Deprecated(since = "1.12.1")
+        @SuppressWarnings("InlineMeSuggester")
         public CyclicBarrierReport(
             Map<CyclicBarrier, BarrierInfo> barrierRegistry,
             Set<CyclicBarrier> timedOutBarriers,
             Set<CyclicBarrier> brokenBarriers,
             Set<CyclicBarrier> reuseAfterBrokenBarriers
         ) {
-            this.barrierRegistry = Collections.unmodifiableMap(new HashMap<>(barrierRegistry));
-            this.timedOutBarriers = Collections.unmodifiableSet(new HashSet<>(timedOutBarriers));
-            this.brokenBarriers = Collections.unmodifiableSet(new HashSet<>(brokenBarriers));
-            this.reuseAfterBrokenBarriers = Collections.unmodifiableSet(new HashSet<>(reuseAfterBrokenBarriers));
+            this(barrierRegistry, timedOutBarriers, brokenBarriers, reuseAfterBrokenBarriers, Collections.emptyMap());
         }
 
         /**
          * Legacy constructor retained for binary compatibility with 1.6.0, before
          * reuse-after-broken tracking was added.
          *
-         * @deprecated since 1.7.0 — use the four-argument constructor; this overload
-         *             reports no reuse-after-broken barriers.
+         * @deprecated since 1.7.0 — use the five-argument constructor; this overload
+         *             reports no reuse-after-broken or stranded barriers.
          *
          * @param barrierRegistry every registered barrier and what was observed on it
          * @param timedOutBarriers the barriers with a recorded timeout; context only, never a finding
@@ -199,7 +278,7 @@ public class CyclicBarrierDetector {
             Set<CyclicBarrier> timedOutBarriers,
             Set<CyclicBarrier> brokenBarriers
         ) {
-            this(barrierRegistry, timedOutBarriers, brokenBarriers, Collections.emptySet());
+            this(barrierRegistry, timedOutBarriers, brokenBarriers, Collections.emptySet(), Collections.emptyMap());
         }
 
         /**
@@ -210,14 +289,31 @@ public class CyclicBarrierDetector {
         }
 
         /**
+         * {@return the barriers left a party short with untimed waiters parked}
+         * @since 1.12.1
+         */
+        public Set<CyclicBarrier> getStrandedBarriers() {
+            return strandedBarriers.keySet();
+        }
+
+        /**
+         * {@return the number of waiting parties observed for a stranded barrier, or 0 if not stranded}
+         * @param barrier the barrier to query
+         * @since 1.12.1
+         */
+        public int getWaitingParties(CyclicBarrier barrier) {
+            return strandedBarriers.getOrDefault(barrier, 0);
+        }
+
+        /**
          * Whether a finding was made: an arrival or await on a barrier that was broken at that
-         * moment. A recorded break alone is not one (#584), and neither is a recorded timeout
-         * (#595): both are context for the reuse report.
+         * moment, or a barrier left a party short with untimed waiters parked. A recorded break alone
+         * is not one (#584), and neither is a recorded timeout (#595): both are context for the report.
          *
          * @return whether there are issues
          */
         public boolean hasIssues() {
-            return !reuseAfterBrokenBarriers.isEmpty();
+            return !reuseAfterBrokenBarriers.isEmpty() || !strandedBarriers.isEmpty();
         }
 
         /**
@@ -234,7 +330,7 @@ public class CyclicBarrierDetector {
          */
         private BarrierInfo infoFor(CyclicBarrier barrier) {
             BarrierInfo info = barrierRegistry.get(barrier);
-            return info != null ? info : new BarrierInfo("<unregistered barrier>", 0);
+            return info != null ? info : new BarrierInfo("<unregistered barrier>", barrier.getParties());
         }
 
         /** The recorded context for a reuse finding: what the body said broke the barrier, if anything. */
@@ -266,6 +362,25 @@ public class CyclicBarrierDetector {
                 sb.append("       keeps failing every participant.\n");
                 sb.append("  Fix: Call barrier.reset() after handling BrokenBarrierException, or replace the barrier instance;\n");
                 sb.append("       consider Phaser for more flexible recovery when barriers break frequently.\n");
+            }
+
+            if (!strandedBarriers.isEmpty()) {
+                sb.append("  Stranded Barriers (party short):\n");
+                for (Map.Entry<CyclicBarrier, Integer> entry : strandedBarriers.entrySet()) {
+                    CyclicBarrier barrier = entry.getKey();
+                    int waiting = entry.getValue();
+                    BarrierInfo info = infoFor(barrier);
+                    int totalParties = info.parties > 0 ? info.parties : barrier.getParties();
+                    int shortCount = totalParties - waiting;
+                    sb.append("    - ").append(info.name)
+                      .append(" (").append(waiting).append(" of ").append(totalParties)
+                      .append(" parties waiting; left ").append(shortCount)
+                      .append(" party short with untimed waiters parked)\n");
+                }
+                sb.append("  Why: untimed await() blocks indefinitely when fewer than the required parties arrive;\n");
+                sb.append("       the round times out while waiting parties stay parked indefinitely.\n");
+                sb.append("  Fix: Ensure all parties arrive before awaiting, use await(timeout, unit) to detect missing parties,\n");
+                sb.append("       or consider CountDownLatch / Phaser if the number of parties is dynamic.\n");
             }
 
             if (!hasIssues()) {
