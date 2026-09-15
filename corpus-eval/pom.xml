@@ -207,6 +207,11 @@
                             <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire,fields=true,collections=true</argLine>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
+                                <!-- A detector that throws during analysis fails the lane instead of reading as
+                                     silent. Without it #605's AtomicityValidator crash passed every row
+                                     that expects that detector to stay quiet, on two JDKs (#612). Set on
+                                     every lane; StrictDetectorsInDownstreamBuildsTest fails if one is missing. -->
+                                <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-on</corpus.lane>
                                 <!-- fields=true is what makes a bare field instruction inside a
                                      third-party method body observable. Without it only JavaBean
@@ -240,6 +245,7 @@
                             <reportsDirectory>${project.build.directory}/surefire-reports-recording</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
+                                <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>recording</corpus.lane>
                             </systemPropertyVariables>
                         </configuration>
@@ -265,6 +271,7 @@
                             <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
+                                <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-pairs</corpus.lane>
                                 <asynctest.agent>fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
@@ -289,6 +296,7 @@
                             <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs-library-excluded</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
+                                <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-pairs-library-excluded</corpus.lane>
                                 <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
@@ -312,6 +320,7 @@
                             <reportsDirectory>${project.build.directory}/surefire-reports-agent-off</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
+                                <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-off</corpus.lane>
                             </systemPropertyVariables>
                         </configuration>

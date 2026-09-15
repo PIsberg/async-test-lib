@@ -362,7 +362,7 @@ jobs:
             exit 0
           fi
           echo "Shard $SHARD modules: $slice"
-          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$slice" test -T 1C -fae
+          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$slice" test -T 1C -fae "-Dasync-test.strict-detectors=true"
 
       - name: Upload shard test reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -425,7 +425,7 @@ jobs:
             echo "Shard $SHARD has no modules"; exit 0
           fi
           echo "Shard $SHARD modules: $modules"
-          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$modules" test -T 1C -fae
+          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$modules" test -T 1C -fae "-Dasync-test.strict-detectors=true"
 
       - name: Upload shard test reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

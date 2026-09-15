@@ -26,6 +26,8 @@ subprojects {
             useJUnitPlatform()
             // The fixture is offline; the tests also set licenseMockMode = true on the annotation.
             systemProperty("license.mock.mode", "true")
+            // A detector that throws during analysis fails the build, not one stderr line (#612)
+            systemProperty("async-test.strict-detectors", "true")
         }
     }
 }

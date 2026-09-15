@@ -459,6 +459,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Corpus-eval, the consumer fixtures and the examples fail on a detector that throws during
+  analysis (#612).** `async-test.strict-detectors=true` was set only for this library's own tests,
+  so in every build that measures the detectors from outside, a detector that crashed was skipped
+  with one stderr line and every row expecting it to stay quiet passed. That is how #605's
+  `AtomicityValidator` crash left corpus lane one green on two JDKs. The switch is now on in all
+  five corpus-eval lanes, `consumer-fixture` and `consumer-fixture-langs` (Maven and Gradle), the
+  examples Gradle build, and the two e2e workflow commands that run the examples reactor through
+  Maven; the example poms stay without it, because users copy them. The disabled-demo audit is left
+  lenient on purpose: there a demonstration that fails is the pass, so a crash promoted to a failure
+  would read as a demo that fired. `StrictDetectorsInDownstreamBuildsTest` pins every place, three of
+  its four tests red before the change. Verified locally against a private repository with the
+  switch on: consumer-fixture 282 tests, consumer-fixture-langs 8, corpus-eval lanes 191, 236, 68,
+  68 and 139, the examples reactor 620 tests across 148 modules, all with 0 failures, no
+  `failed during analysis` line, and the property present in every forked JVM's surefire report.
+
 - **`READ_WRITE_LOCK_FAIRNESS` is `TrustTier.ADVISORY`, not `PROMPT` (#569).** Its finding is a
   read-to-write count ratio above 10, or a recorded writer wait above 100 ms; it never looks at
   the lock, and its report calls starvation something that "may" happen on a lock that is behaving
