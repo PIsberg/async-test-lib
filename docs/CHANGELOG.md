@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as predicate-guarded and silencing false-positive missed signal reports. The corpus recording lane
   MUST_FIRE row no longer declares its wait unguarded.
 
+- **`ConditionVariableDetector` distinguishes stranded condition waiters from idle consumers via waiter predicates (#643).**
+  A thread parked on a condition at analysis was previously reported as a stuck waiter even if it was legitimately
+  awaiting work. New `registerCondition` overloads accept a `BooleanSupplier ready` predicate evaluated under lock
+  with `tryLock()`. When parked threads exist and the predicate is false, the waiter is recorded as an idle consumer
+  in unconfirmed waits rather than failing the run; when the predicate is true or unspecified, parked threads are
+  reported as stuck waiters.
+
 - **`ConditionVariableDetector` reads stuck waiters from the lock, and keeps an abandoned await
   in its own round (#592, #593).** A stuck waiter was any recorded await with no recorded exit, so
   a body that recorded an await and then threw, or found its predicate true and never called

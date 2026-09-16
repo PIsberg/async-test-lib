@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.IntSupplier;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -108,6 +108,24 @@ public class ConditionVariableDetector {
     /** {@code waitQueue} result: the registered lock did not create the condition. */
     private static final int NOT_OWNED = -2;
 
+    /** Query result for a condition's wait queue and its waiter predicate. */
+    private static final class WaitQueueResult {
+        final int parked;
+        final boolean hasPredicate;
+        final boolean predicateSatisfied;
+
+        WaitQueueResult(int parked, boolean hasPredicate, boolean predicateSatisfied) {
+            this.parked = parked;
+            this.hasPredicate = hasPredicate;
+            this.predicateSatisfied = predicateSatisfied;
+        }
+    }
+
+    @FunctionalInterface
+    private interface WaitQueueQuery {
+        WaitQueueResult query();
+    }
+
     /** Everything recorded about one condition; every field is guarded by the state's monitor. */
     private static final class ConditionState {
         final String name;
@@ -133,7 +151,8 @@ public class ConditionVariableDetector {
          * Reads the owning lock's wait queue length for this condition, or {@link #LOCK_HELD} /
          * {@link #NOT_OWNED}; {@code null} when the condition was registered without its lock.
          */
-        @Nullable IntSupplier waitQueue;
+        @Nullable WaitQueueQuery waitQueue;
+        boolean hasPredicate;
 
         ConditionState(Condition condition, @Nullable String name) {
             this.name = name != null ? name : "condition@" + System.identityHashCode(condition);
@@ -173,10 +192,7 @@ public class ConditionVariableDetector {
      * @since 1.12.1
      */
     public void registerCondition(@Nullable ReentrantLock lock, Condition condition, String name) {
-        ConditionState state = stateFor(condition, name);
-        if (state != null && lock != null) {
-            attachWaitQueue(state, waitQueueOf(lock, condition));
-        }
+        registerCondition(lock, condition, null, name);
     }
 
     /**
@@ -190,38 +206,101 @@ public class ConditionVariableDetector {
      * @since 1.12.1
      */
     public void registerCondition(@Nullable ReentrantReadWriteLock lock, Condition condition, String name) {
+        registerCondition(lock, condition, null, name);
+    }
+
+    /**
+     * Register a Condition together with the {@link ReentrantLock} that created it and the waiter's
+     * state predicate ({@code ready}), so a stuck waiter is confirmed only when the lock shows a thread
+     * parked on the condition at analysis <em>while</em> {@code ready.getAsBoolean()} already holds.
+     *
+     * <p>A thread parked on the condition while {@code ready} is false is an idle consumer waiting
+     * for work and is noted in the report as context without failing the run (#643).
+     *
+     * @param lock the lock whose {@code newCondition()} made {@code condition}; {@code null}
+     *             registers the condition without a lock
+     * @param condition the Condition to monitor
+     * @param ready supplier evaluated under the lock at analysis; returns {@code true} when the
+     *              condition the waiter waits for is already satisfied
+     * @param name a descriptive name for reporting
+     * @since 1.12.1
+     */
+    public void registerCondition(@Nullable ReentrantLock lock, Condition condition,
+                                  @Nullable BooleanSupplier ready, String name) {
         ConditionState state = stateFor(condition, name);
         if (state != null && lock != null) {
-            attachWaitQueue(state, waitQueueOf(lock, condition));
+            attachWaitQueue(state, waitQueueOf(lock, condition, ready), ready != null);
         }
     }
 
-    /** Reads {@code lock}'s wait queue for {@code condition} without ever blocking on the lock. */
-    private static IntSupplier waitQueueOf(ReentrantLock lock, Condition condition) {
+    /**
+     * Register a Condition made by a {@link ReentrantReadWriteLock}'s write lock together with the
+     * waiter's state predicate ({@code ready}), so a stuck waiter is confirmed only when the lock
+     * shows a thread parked on the condition at analysis while {@code ready.getAsBoolean()} already holds.
+     *
+     * <p>A thread parked on the condition while {@code ready} is false is an idle consumer waiting
+     * for work and is noted in the report as context without failing the run (#643).
+     *
+     * @param lock the read-write lock whose {@code writeLock().newCondition()} made
+     *             {@code condition}; {@code null} registers the condition without a lock
+     * @param condition the Condition to monitor
+     * @param ready supplier evaluated under the lock at analysis; returns {@code true} when the
+     *              condition the waiter waits for is already satisfied
+     * @param name a descriptive name for reporting
+     * @since 1.12.1
+     */
+    public void registerCondition(@Nullable ReentrantReadWriteLock lock, Condition condition,
+                                  @Nullable BooleanSupplier ready, String name) {
+        ConditionState state = stateFor(condition, name);
+        if (state != null && lock != null) {
+            attachWaitQueue(state, waitQueueOf(lock, condition, ready), ready != null);
+        }
+    }
+
+    /** Reads {@code lock}'s wait queue for {@code condition} and evaluates {@code ready} without blocking. */
+    private static WaitQueueQuery waitQueueOf(ReentrantLock lock, Condition condition,
+                                              @Nullable BooleanSupplier ready) {
         return () -> {
             if (!lock.tryLock()) {
-                return LOCK_HELD;
+                return new WaitQueueResult(LOCK_HELD, ready != null, false);
             }
             try {
-                return lock.getWaitQueueLength(condition);
+                int parked = lock.getWaitQueueLength(condition);
+                boolean satisfied = false;
+                if (parked > 0 && ready != null) {
+                    try {
+                        satisfied = ready.getAsBoolean();
+                    } catch (RuntimeException | Error ignored) { // NOPMD EmptyCatchBlock — evaluation failure counts as unsatisfied
+                    }
+                }
+                return new WaitQueueResult(parked, ready != null, ready == null || satisfied);
             } catch (IllegalArgumentException notThisLocksCondition) {
-                return NOT_OWNED;
+                return new WaitQueueResult(NOT_OWNED, ready != null, false);
             } finally {
                 lock.unlock();
             }
         };
     }
 
-    /** Reads the write lock's wait queue for {@code condition} without ever blocking on the lock. */
-    private static IntSupplier waitQueueOf(ReentrantReadWriteLock lock, Condition condition) {
+    /** Reads the write lock's wait queue for {@code condition} and evaluates {@code ready} without blocking. */
+    private static WaitQueueQuery waitQueueOf(ReentrantReadWriteLock lock, Condition condition,
+                                              @Nullable BooleanSupplier ready) {
         return () -> {
             if (!lock.writeLock().tryLock()) {
-                return LOCK_HELD;
+                return new WaitQueueResult(LOCK_HELD, ready != null, false);
             }
             try {
-                return lock.getWaitQueueLength(condition);
+                int parked = lock.getWaitQueueLength(condition);
+                boolean satisfied = false;
+                if (parked > 0 && ready != null) {
+                    try {
+                        satisfied = ready.getAsBoolean();
+                    } catch (RuntimeException | Error ignored) { // NOPMD EmptyCatchBlock — evaluation failure counts as unsatisfied
+                    }
+                }
+                return new WaitQueueResult(parked, ready != null, ready == null || satisfied);
             } catch (IllegalArgumentException notThisLocksCondition) {
-                return NOT_OWNED;
+                return new WaitQueueResult(NOT_OWNED, ready != null, false);
             } finally {
                 lock.writeLock().unlock();
             }
@@ -237,10 +316,11 @@ public class ConditionVariableDetector {
         return prior != null ? prior : fresh;
     }
 
-    private static void attachWaitQueue(ConditionState state, IntSupplier waitQueue) {
+    private static void attachWaitQueue(ConditionState state, WaitQueueQuery waitQueue, boolean hasPredicate) {
         synchronized (state) {
-            if (state.waitQueue == null) {
+            if (state.waitQueue == null || (!state.hasPredicate && hasPredicate)) {
                 state.waitQueue = waitQueue;
+                state.hasPredicate = hasPredicate;
             }
         }
     }
@@ -389,7 +469,7 @@ public class ConditionVariableDetector {
             ? "last signal " + (System.nanoTime() - state.lastSignalNanos) / 1_000_000 + "ms ago"
             : "never signalled";
         int recordedOpen = state.openAwaits.size();
-        IntSupplier waitQueue = state.waitQueue;
+        WaitQueueQuery waitQueue = state.waitQueue;
         if (waitQueue == null) {
             if (recordedOpen > 0) {
                 report.stuckWaiters.add(String.format(
@@ -404,11 +484,26 @@ public class ConditionVariableDetector {
         } else {
             // tryLock() inside: never blocks, so holding the state's monitor here cannot deadlock
             // against a recording thread that holds the lock and waits for the monitor.
-            int parked = waitQueue.getAsInt();
+            WaitQueueResult result = waitQueue.query();
+            int parked = result.parked;
             if (parked > 0) {
-                report.stuckWaiters.add(String.format(
-                    "%s: %d thread(s) parked in await() at analysis, read from the lock (%s; %d "
-                        + "recorded await(s) still open)", state.name, parked, lastSignal, recordedOpen));
+                if (result.hasPredicate) {
+                    if (result.predicateSatisfied) {
+                        report.stuckWaiters.add(String.format(
+                            "%s: %d thread(s) parked in await() at analysis while its predicate is satisfied, "
+                                + "read from the lock (%s; %d recorded await(s) still open)",
+                            state.name, parked, lastSignal, recordedOpen));
+                    } else {
+                        report.unconfirmedWaits.add(String.format(
+                            "%s: %d thread(s) parked on the condition at analysis, but its predicate is false "
+                                + "(idle consumer; %s)",
+                            state.name, parked, lastSignal));
+                    }
+                } else {
+                    report.stuckWaiters.add(String.format(
+                        "%s: %d thread(s) parked in await() at analysis, read from the lock (%s; %d "
+                            + "recorded await(s) still open)", state.name, parked, lastSignal, recordedOpen));
+                }
             } else if (parked == LOCK_HELD) {
                 report.unconfirmedWaits.add(String.format(
                     "%s: the lock was held by another thread at analysis, so its waiters could not "

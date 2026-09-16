@@ -2683,6 +2683,8 @@ class DetectorAccuracyEvalTest {
         consumer.setDaemon(true);
         consumer.start();
         assertTrue(waiting.await(10, java.util.concurrent.TimeUnit.SECONDS), "consumer never waited");
+        lock.lock();
+        lock.unlock();
         return consumer;
     }
 
@@ -2968,6 +2970,59 @@ class DetectorAccuracyEvalTest {
             assertTrue(report.hasIssues() && report.toString().contains("read from the lock"),
                     "the lock shows the consumer parked on not-empty, which nobody signalled (#592). "
                             + "Report:\n" + report);
+        } finally {
+            consumer.interrupt();
+            consumer.join();
+        }
+    }
+
+    @Test
+    @DisplayName("condition variable, predicate registered: a consumer parked while predicate holds fires (true positive)")
+    void conditionVariableWithPredicateFiresWhenParkedWhilePredicateHolds() throws InterruptedException {
+        ConditionVariableDetector detector = new ConditionVariableDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
+        java.util.concurrent.locks.Condition notFull = lock.newCondition();
+        boolean[] ready = {false};
+        detector.registerCondition(lock, notEmpty, () -> ready[0], "not-empty");
+        detector.registerCondition(lock, notFull, "not-full");
+
+        Thread consumer = parkedConsumer(detector, lock, notEmpty, ready);
+        lock.lock();
+        try {
+            ready[0] = true;
+            detector.recordSignal(notFull, "not-full", false);   // the bug: nobody waits on notFull
+            notFull.signal();
+        } finally {
+            lock.unlock();
+        }
+
+        try {
+            var report = detector.analyze();
+            assertTrue(report.hasIssues() && report.toString().contains("while its predicate is satisfied"),
+                    "the item is ready but consumer is parked on not-empty (#643). Report:\n" + report);
+        } finally {
+            consumer.interrupt();
+            consumer.join();
+        }
+    }
+
+    @Test
+    @DisplayName("condition variable, predicate registered: an idle consumer parked on an empty queue stays silent (true negative)")
+    void conditionVariableWithPredicateStaysSilentOnIdleConsumer() throws InterruptedException {
+        ConditionVariableDetector detector = new ConditionVariableDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
+        boolean[] ready = {false};
+        detector.registerCondition(lock, notEmpty, () -> ready[0], "not-empty");
+
+        Thread consumer = parkedConsumer(detector, lock, notEmpty, ready);
+        try {
+            var report = detector.analyze();
+            assertFalse(report.hasIssues(),
+                    "the consumer is parked on an empty queue; predicate is false, so it is an idle "
+                            + "consumer, not a stuck waiter (#643). Report:\n" + report);
+            assertTrue(report.toString().contains("idle consumer"), report.toString());
         } finally {
             consumer.interrupt();
             consumer.join();
