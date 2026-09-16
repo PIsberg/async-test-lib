@@ -84,14 +84,14 @@ The following elements are security-critical. AI must not weaken security proper
 - `se.deversity.asynctest.runner.OfflineLicense`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
 
 ## Scoped Rules Index
-Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Consult the file before modifying an element:
+Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Consult the referenced file before modifying an element:
 
-- `se.deversity.asynctest.AgentCollectionHooks`
-- `se.deversity.asynctest.AgentConcurrencyUtilHooks`
-- `se.deversity.asynctest.AgentGcHooks`
-- `se.deversity.asynctest.AgentLockHooks`
-- `se.deversity.asynctest.AgentSharedInstanceHooks`
-- `se.deversity.asynctest.AgentSleepHooks`
+- `se.deversity.asynctest.AgentCollectionHooks` → `.gemini/rules/se-deversity-asynctest-AgentCollectionHooks.md`
+- `se.deversity.asynctest.AgentConcurrencyUtilHooks` → `.gemini/rules/se-deversity-asynctest-AgentConcurrencyUtilHooks.md`
+- `se.deversity.asynctest.AgentGcHooks` → `.gemini/rules/se-deversity-asynctest-AgentGcHooks.md`
+- `se.deversity.asynctest.AgentLockHooks` → `.gemini/rules/se-deversity-asynctest-AgentLockHooks.md`
+- `se.deversity.asynctest.AgentSharedInstanceHooks` → `.gemini/rules/se-deversity-asynctest-AgentSharedInstanceHooks.md`
+- `se.deversity.asynctest.AgentSleepHooks` → `.gemini/rules/se-deversity-asynctest-AgentSleepHooks.md`
 - `se.deversity.asynctest.AsyncAssert` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncFindings` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncTest` → `.gemini/rules/async-test-configuration.md`
