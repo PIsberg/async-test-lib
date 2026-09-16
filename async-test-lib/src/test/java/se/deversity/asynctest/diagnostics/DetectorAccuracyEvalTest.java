@@ -2683,6 +2683,8 @@ class DetectorAccuracyEvalTest {
         consumer.setDaemon(true);
         consumer.start();
         assertTrue(waiting.await(10, java.util.concurrent.TimeUnit.SECONDS), "consumer never waited");
+        lock.lock();
+        lock.unlock();
         return consumer;
     }
 
