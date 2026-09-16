@@ -18,7 +18,7 @@ The following elements are well-tested core components. Make changes with extrem
 - `se.deversity.asynctest.agent.AsyncTestAgent`: Sensitivity: Critical. Note: The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave accesses and double-count every one. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while neither weaver adds members — the Advice is a method-entry prologue, and FieldAccessWeaver inserts a stack-neutral, branch-free call before each field instruction, a DUP plus call after a reference getAndSet on an atomic slot (the ownership take, #555), and replaces an int VarHandle, AtomicIntegerFieldUpdater, AtomicBoolean or AtomicInteger compareAndSet/set call with a static hook consuming the same stack (the spinlock, #554, #558), so frames stay valid and only maxStack grows (COMPUTE_MAXS, never COMPUTE_FRAMES, which would load classes from inside the agent). Nothing may throw out of premain — an exception there aborts JVM startup, which is why install() catches Throwable and releases the gate rather than propagating. The Premain-Class / Agent-Class manifest entries live in this module's jar, which is why attaching uses -javaagent:async-test-agent.jar.
 
 ## Scoped Rules Index
-Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Consult the file before modifying an element:
+Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Consult the referenced file before modifying an element:
 
 - `se.deversity.asynctest.agent.AgentOptions` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.agent.AsyncTestAgent` → `.gemini/rules/async-test-instrumentation.md`
@@ -36,7 +36,7 @@ The following elements are well-tested core components. Make changes with extrem
 - `se.deversity.asynctest.analysis.StaticPinningScanner`: Sensitivity: High. Note: The whole module is this one class plus ASM, and ArchitectureTest pins both directions: nothing here may reference the library, and asm may not leak out of here. Keep the analysis one-directional — if the scanner starts needing the runner or a detector, that is a design question, not a dependency to add. The asymmetry in the findings is deliberate and must be preserved: monitor depth is tracked within a single method body only, so cross-method synchronization yields false negatives, and MONITOREXIT on exception-handler edges may undercount depth. False negatives are acceptable here; a false positive is not, because the scanner runs without executing tests and has no way to confirm a site.
 
 ## Scoped Rules Index
-Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Consult the file before modifying an element:
+Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Consult the referenced file before modifying an element:
 
 - `se.deversity.asynctest.analysis.StaticPinningScanner` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-analysis -->
@@ -84,14 +84,14 @@ The following elements are security-critical. AI must not weaken security proper
 - `se.deversity.asynctest.runner.OfflineLicense`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
 
 ## Scoped Rules Index
-Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Consult the file before modifying an element:
+Detailed per-element guardrails live in scoped rule files that load automatically when you open the matching source file. Consult the referenced file before modifying an element:
 
-- `se.deversity.asynctest.AgentCollectionHooks`
-- `se.deversity.asynctest.AgentConcurrencyUtilHooks`
-- `se.deversity.asynctest.AgentGcHooks`
-- `se.deversity.asynctest.AgentLockHooks`
-- `se.deversity.asynctest.AgentSharedInstanceHooks`
-- `se.deversity.asynctest.AgentSleepHooks`
+- `se.deversity.asynctest.AgentCollectionHooks` → `.gemini/rules/se-deversity-asynctest-AgentCollectionHooks.md`
+- `se.deversity.asynctest.AgentConcurrencyUtilHooks` → `.gemini/rules/se-deversity-asynctest-AgentConcurrencyUtilHooks.md`
+- `se.deversity.asynctest.AgentGcHooks` → `.gemini/rules/se-deversity-asynctest-AgentGcHooks.md`
+- `se.deversity.asynctest.AgentLockHooks` → `.gemini/rules/se-deversity-asynctest-AgentLockHooks.md`
+- `se.deversity.asynctest.AgentSharedInstanceHooks` → `.gemini/rules/se-deversity-asynctest-AgentSharedInstanceHooks.md`
+- `se.deversity.asynctest.AgentSleepHooks` → `.gemini/rules/se-deversity-asynctest-AgentSleepHooks.md`
 - `se.deversity.asynctest.AsyncAssert` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncFindings` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncTest` → `.gemini/rules/async-test-configuration.md`
