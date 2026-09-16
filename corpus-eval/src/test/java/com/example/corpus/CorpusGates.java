@@ -242,9 +242,13 @@ final class CorpusGates {
      * sites, or the pair measures the test rather than the agent. {@link AgentRowPremise} carries
      * the reasoning.
      */
-    private static void noAgentRowRecordedItsOwnFinding() {
-        List<String> recording = AgentRowPremise.linesThatRecord();
-        List<String> dropped = AgentRowPremise.pairsWhoseSilentRowDropsACall();
+    static void noAgentRowRecordedItsOwnFinding() {
+        noAgentRowRecordedItsOwnFinding(AgentRowPremise.read(), Corpus.subjectsFor(CorpusLane.AGENT_PAIRS));
+    }
+
+    static void noAgentRowRecordedItsOwnFinding(String source, List<RecordingSubject> subjects) {
+        List<String> recording = AgentRowPremise.linesThatRecord(source);
+        List<String> dropped = AgentRowPremise.pairsWhoseSilentRowDropsACall(source, subjects);
         assertTrue(dropped.isEmpty(),
                 "a silent row here is only evidence if it went through the same substituted call "
                         + "sites as the row it is paired with: " + dropped);
@@ -254,8 +258,12 @@ final class CorpusGates {
                         + "measuring the recording API instead: " + recording);
     }
 
-    private static void everySilentRowReachesItsDetector() {
-        List<String> broken = SilentRowPremise.rowsThatNeverReachTheirDetector();
+    static void everySilentRowReachesItsDetector() {
+        everySilentRowReachesItsDetector(SilentRowPremise.read(), Corpus.recordingSubjects());
+    }
+
+    static void everySilentRowReachesItsDetector(String source, List<RecordingSubject> subjects) {
+        List<String> broken = SilentRowPremise.rowsThatNeverReachTheirDetector(source, subjects);
         assertTrue(broken.isEmpty(),
                 "a silent row is only evidence if the detector had something to be silent about, "
                         + "and these never gave it anything: " + broken);
@@ -277,7 +285,7 @@ final class CorpusGates {
      * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, so between the two the tier cannot
      * outlive the measurement that earned it.
      */
-    private static void everyCorpusBackedVerdictResolvesToItsPair() {
+    static void everyCorpusBackedVerdictResolvesToItsPair() {
         String resource = "/META-INF/async-test/verdict-evidence-corpus";
         String content;
         try (java.io.InputStream in = CorpusGates.class.getResourceAsStream(resource)) {
@@ -287,7 +295,11 @@ final class CorpusGates {
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException("Could not read " + resource, e);
         }
+        everyCorpusBackedVerdictResolvesToItsPair(content, Corpus::recordingByTestMethod);
+    }
 
+    static void everyCorpusBackedVerdictResolvesToItsPair(String content,
+                                                         java.util.function.Function<String, RecordingSubject> resolver) {
         List<String> broken = new ArrayList<>();
         int lines = 0;
         for (String raw : content.split("\n")) {
@@ -301,7 +313,13 @@ final class CorpusGates {
                 broken.add("malformed line: " + line);
                 continue;
             }
-            DetectorType detector = DetectorType.valueOf(line.substring(0, equals).strip());
+            DetectorType detector;
+            try {
+                detector = DetectorType.valueOf(line.substring(0, equals).strip());
+            } catch (IllegalArgumentException e) {
+                broken.add("unknown detector: " + line.substring(0, equals).strip());
+                continue;
+            }
             String[] ids = line.substring(equals + 1).split(",");
             if (ids.length != 2) {
                 broken.add(detector + " must name two subjects, fire first, and names "
@@ -309,12 +327,12 @@ final class CorpusGates {
                 continue;
             }
             broken.addAll(problemsWith(detector, ids[0].strip(),
-                    RecordingSubject.Expectation.MUST_FIRE));
+                    RecordingSubject.Expectation.MUST_FIRE, resolver));
             broken.addAll(problemsWith(detector, ids[1].strip(),
-                    RecordingSubject.Expectation.MUST_STAY_SILENT));
+                    RecordingSubject.Expectation.MUST_STAY_SILENT, resolver));
         }
 
-        assertTrue(lines > 0, resource + " parsed to no lines at all, so this gate passed by "
+        assertTrue(lines > 0, "verdict evidence parsed to no lines at all, so this gate passed by "
                 + "reading nothing");
         assertTrue(broken.isEmpty(),
                 "the library classifies these detectors VERDICT because this module measures both "
@@ -325,8 +343,9 @@ final class CorpusGates {
     /** {@return what is wrong with the row {@code id}, as evidence for {@code detector}} */
     private static List<String> problemsWith(DetectorType detector,
                                              String id,
-                                             RecordingSubject.Expectation expected) {
-        RecordingSubject subject = Corpus.recordingByTestMethod(id);
+                                             RecordingSubject.Expectation expected,
+                                             java.util.function.Function<String, RecordingSubject> resolver) {
+        RecordingSubject subject = resolver.apply(id);
         if (subject == null) {
             return List.of(detector + " names " + id + ", which is not a recording subject");
         }
@@ -377,7 +396,11 @@ final class CorpusGates {
      * @param lane the lane that ran
      */
     static void everyPairedDetectorIsExposed(CorpusLane lane) {
-        List<String> unexposed = Corpus.pairedDetectors(lane).stream()
+        everyPairedDetectorIsExposed(lane, Corpus.pairedDetectors(lane));
+    }
+
+    static void everyPairedDetectorIsExposed(CorpusLane lane, Set<DetectorType> paired) {
+        List<String> unexposed = paired.stream()
                 .filter(type -> !DetectorExposure.isExposed(type, lane))
                 .map(Enum::name)
                 .toList();
@@ -570,13 +593,16 @@ final class CorpusGates {
     }
 
     /** A test method without a corpus row would be a subject with no documented contract. */
-    private static void everySubjectIsExercised() {
-        Set<String> exercised = Arrays.stream(CorpusEvalTest.class.getDeclaredMethods())
+    static void everySubjectIsExercised() {
+        everySubjectIsExercised(CorpusEvalTest.class, Corpus.subjects().stream()
+                .map(Subject::testMethod)
+                .collect(Collectors.toUnmodifiableSet()));
+    }
+
+    static void everySubjectIsExercised(Class<?> testClass, Set<String> declared) {
+        Set<String> exercised = Arrays.stream(testClass.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(AsyncTest.class))
                 .map(Method::getName)
-                .collect(Collectors.toUnmodifiableSet());
-        Set<String> declared = Corpus.subjects().stream()
-                .map(Subject::testMethod)
                 .collect(Collectors.toUnmodifiableSet());
 
         assertEquals(declared, exercised,

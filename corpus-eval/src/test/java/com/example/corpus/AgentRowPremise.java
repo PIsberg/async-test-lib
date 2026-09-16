@@ -51,7 +51,12 @@ final class AgentRowPremise {
 
     /** {@return every line of the agent lane that touches the recording API, with its number} */
     static List<String> linesThatRecord() {
-        String[] lines = withoutComments(read()).split("\n", -1);
+        return linesThatRecord(read());
+    }
+
+    /** {@return every line in {@code source} that touches the recording API, with its number} */
+    static List<String> linesThatRecord(String source) {
+        String[] lines = withoutComments(source).split("\n", -1);
         List<String> offenders = new ArrayList<>();
         for (int i = 0; i < lines.length; i++) {
             if (lines[i].contains(RECORDING_API)) {
@@ -63,40 +68,22 @@ final class AgentRowPremise {
 
     /**
      * {@return every pair whose silent row does not make all the calls its firing row makes}
-     *
-     * <p>The lane has no {@link SilentRowPremise} to lean on. There, a silent row's premise is
-     * that it called the detector, and the accessor name makes that checkable. Here there is no
-     * call to look for: the row's input is a JDK method the weaver rewrote, and the row is silent
-     * for the right reason only if it went through the same rewritten methods as its twin and the
-     * detector still separated them.
-     *
-     * <p>So the check is on the pair rather than the row. Every method a MUST_FIRE body calls, its
-     * MUST_STAY_SILENT twin must call too; the twin may call more (it has an instance to build).
-     * That is the difference between "confining the instance silenced the detector" and "this row
-     * stopped exercising the call site", which is the failure that turns a green pair into
-     * decoration.
-     *
-     * <p>What it does not catch: the overload. {@code append(String)} is substituted and
-     * {@code append(char)} is not, and both read as {@code append} here, so a pair can satisfy
-     * this and still be measuring nothing - which is exactly how the first draft of the
-     * StringBuilder and Formatter rows failed, silently and in the MUST_FIRE direction. The
-     * MUST_FIRE half is what catches that, by having to actually fire.
-     *
-     * <p>A detector can have more than one pair here - the JDK type called from this file, and
-     * the same call reached through a library - so the twin is looked up by class as well as by
-     * detector. Matching on the detector alone would compare the Guava Monitor rows against the
-     * ReentrantLock rows and report {@code enter} as a dropped call, which says what the two
-     * classes happen to call rather than whether either pair is sound.
      */
     static List<String> pairsWhoseSilentRowDropsACall() {
-        String source = read();
+        return pairsWhoseSilentRowDropsACall(read(), Corpus.subjectsFor(CorpusLane.AGENT_PAIRS));
+    }
+
+    /**
+     * {@return every pair in {@code subjects} whose silent row does not make all the calls in {@code source} its firing row makes}
+     */
+    static List<String> pairsWhoseSilentRowDropsACall(String source, List<RecordingSubject> subjects) {
         List<String> broken = new ArrayList<>();
 
-        for (RecordingSubject loud : Corpus.subjectsFor(CorpusLane.AGENT_PAIRS)) {
+        for (RecordingSubject loud : subjects) {
             if (loud.expectation() != RecordingSubject.Expectation.MUST_FIRE) {
                 continue;
             }
-            RecordingSubject quiet = twinOf(loud);
+            RecordingSubject quiet = twinOf(loud, subjects);
             if (quiet == null) {
                 broken.add(loud.testMethod() + " fires for " + loud.detector()
                         + " with no MUST_STAY_SILENT twin, so nothing says the detector is "
@@ -118,18 +105,15 @@ final class AgentRowPremise {
 
     /**
      * {@return the MUST_STAY_SILENT row paired with {@code loud}, or {@code null} when it has none}
-     *
-     * <p>Same detector, same class, and the nearest such row in declaration order, the following
-     * one on a tie. Rows are declared as pairs, so nearest is the pair; the tie rule matters only
-     * where one class carries two pairs for one detector back to back, as the BlockingQueue rows
-     * do, and there the firing row precedes its twin. Distance does the pairing today; the class
-     * condition is a backstop for a row declared away from its twin, and a mutation that drops it
-     * survives every current test for that reason.
-     *
-     * @param loud a MUST_FIRE row of the agent lane
      */
     static RecordingSubject twinOf(RecordingSubject loud) {
-        List<RecordingSubject> rows = Corpus.subjectsFor(CorpusLane.AGENT_PAIRS);
+        return twinOf(loud, Corpus.subjectsFor(CorpusLane.AGENT_PAIRS));
+    }
+
+    /**
+     * {@return the MUST_STAY_SILENT row in {@code rows} paired with {@code loud}, or {@code null} when it has none}
+     */
+    static RecordingSubject twinOf(RecordingSubject loud, List<RecordingSubject> rows) {
         int at = rows.indexOf(loud);
         RecordingSubject best = null;
         int bestDistance = Integer.MAX_VALUE;
@@ -233,7 +217,7 @@ final class AgentRowPremise {
         return out.toString();
     }
 
-    private static String read() {
+    static String read() {
         try {
             return Files.readString(SOURCE, StandardCharsets.UTF_8);
         } catch (IOException e) {

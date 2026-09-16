@@ -38,13 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * input it must accept: a gate that throws on everything is no more use than one that throws on
  * nothing, and only the pair tells them apart.
  *
- * <p><strong>What this does not cover.</strong> Four gates read only static module state, so their
- * failing direction cannot be induced without mutating {@link Corpus} or a lane's source:
- * {@code everySubjectIsExercised}, {@code everySilentRowReachesItsDetector},
- * {@code everyCorpusBackedVerdictResolvesToItsPair} and {@code noAgentRowRecordedItsOwnFinding}.
- * {@code everyPairedDetectorIsExposed} is uncovered from the other side: no lane exists in which a
- * paired detector is unexposed, so the input that would fail it cannot be built.
- * {@code docs/analysis/corpus-eval-future-improvements.md} records both.
+ * <p>All gates whose input can be synthesised, including the five gates parameterized to take
+ * their subjects or source, are covered in both failing and accepting directions.
  *
  * <p>It runs in the agent-on lane because it needs no measurement, only the gate code and the
  * static corpus. That the agent is attached in that fork is itself used once, by the test that
@@ -361,6 +356,173 @@ class CorpusGatesTest {
     void theStatedOutcomesCarryNoCollateral() {
         assertDoesNotThrow(() -> CorpusGates.noCollateralFindingOnASilentRow(
                 everyFiringRowFiring(), CorpusLane.RECORDING));
+    }
+
+    // --- The 5 previously unexercised gates ----------------------------------------------------
+
+    static class DummySubjectSuite {
+        @se.deversity.asynctest.AsyncTest
+        void subjectA() {}
+
+        @se.deversity.asynctest.AsyncTest
+        void subjectB() {}
+    }
+
+    @Test
+    @DisplayName("a missing test method fails the subject exercise gate")
+    void missingAsyncTestMethodFailsSubjectExerciseGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everySubjectIsExercised(DummySubjectSuite.class, Set.of("subjectA", "subjectB", "subjectC")));
+    }
+
+    @Test
+    @DisplayName("an unregistered test method fails the subject exercise gate")
+    void unregisteredAsyncTestMethodFailsSubjectExerciseGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everySubjectIsExercised(DummySubjectSuite.class, Set.of("subjectA")));
+    }
+
+    @Test
+    @DisplayName("matching subjects pass the subject exercise gate")
+    void matchingSubjectsPassSubjectExerciseGate() {
+        assertDoesNotThrow(() ->
+                CorpusGates.everySubjectIsExercised(DummySubjectSuite.class, Set.of("subjectA", "subjectB")));
+    }
+
+    @Test
+    @DisplayName("an unexposed paired detector fails the paired exposure gate")
+    void unexposedPairedDetectorFailsPairedExposureGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyPairedDetectorIsExposed(CorpusLane.RECORDING, Set.of(unexposedIn(CorpusLane.RECORDING))));
+    }
+
+    @Test
+    @DisplayName("exposed paired detectors pass the paired exposure gate")
+    void exposedPairedDetectorsPassPairedExposureGate() {
+        assertDoesNotThrow(() ->
+                CorpusGates.everyPairedDetectorIsExposed(CorpusLane.RECORDING, Corpus.pairedDetectors(CorpusLane.RECORDING)));
+    }
+
+    @Test
+    @DisplayName("empty verdict evidence fails the verdict resolution gate")
+    void emptyVerdictEvidenceFailsGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("", id -> null));
+    }
+
+    @Test
+    @DisplayName("malformed verdict evidence line fails the verdict resolution gate")
+    void malformedVerdictEvidenceLineFailsGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS_NO_EQUALS", id -> null));
+    }
+
+    @Test
+    @DisplayName("unpaired verdict evidence line fails the verdict resolution gate")
+    void unpairedVerdictEvidenceLineFailsGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS=onlyOneSubject", id -> null));
+    }
+
+    @Test
+    @DisplayName("missing subject in verdict evidence fails the verdict resolution gate")
+    void missingSubjectInVerdictEvidenceFailsGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS=subFire,subSilent", id -> null));
+    }
+
+    @Test
+    @DisplayName("wrong detector in verdict evidence fails the verdict resolution gate")
+    void wrongDetectorInVerdictEvidenceFailsGate() {
+        RecordingSubject fire = new RecordingSubject("subFire", "lib", "Cls", DetectorType.DEADLOCKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        RecordingSubject silent = new RecordingSubject("subSilent", "lib", "Cls", DetectorType.DEADLOCKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS=subFire,subSilent",
+                        id -> id.equals("subFire") ? fire : silent));
+    }
+
+    @Test
+    @DisplayName("wrong expectation in verdict evidence fails the verdict resolution gate")
+    void wrongExpectationInVerdictEvidenceFailsGate() {
+        RecordingSubject wrongFire = new RecordingSubject("subSilent", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        RecordingSubject rightSilent = new RecordingSubject("subSilent2", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS=subSilent,subSilent2",
+                        id -> id.equals("subSilent") ? wrongFire : rightSilent));
+    }
+
+    @Test
+    @DisplayName("valid verdict evidence passes the verdict resolution gate")
+    void validVerdictEvidencePassesGate() {
+        RecordingSubject fire = new RecordingSubject("subFire", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        RecordingSubject silent = new RecordingSubject("subSilent", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        assertDoesNotThrow(() ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS=subFire,subSilent",
+                        id -> id.equals("subFire") ? fire : silent));
+    }
+
+    @Test
+    @DisplayName("silent row never calling detector fails the silent row premise gate")
+    void silentRowNeverCallingDetectorFailsGate() {
+        String fakeSource = "void rowQuiet() { int x = 1; }";
+        RecordingSubject silent = new RecordingSubject("rowQuiet", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everySilentRowReachesItsDetector(fakeSource, List.of(silent)));
+    }
+
+    @Test
+    @DisplayName("silent row calling its detector passes the silent row premise gate")
+    void silentRowCallingDetectorPassesGate() {
+        String fakeSource = "void rowQuiet() { AsyncTestContext.lockLeakDetector(); }";
+        RecordingSubject silent = new RecordingSubject("rowQuiet", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        assertDoesNotThrow(() ->
+                CorpusGates.everySilentRowReachesItsDetector(fakeSource, List.of(silent)));
+    }
+
+    @Test
+    @DisplayName("agent row touching recording API fails the agent row premise gate")
+    void agentRowTouchingRecordingApiFailsGate() {
+        String fakeSource = "void loud() { AsyncTestContext.sharedInstanceMonitor(); }";
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.noAgentRowRecordedItsOwnFinding(fakeSource, List.of()));
+    }
+
+    @Test
+    @DisplayName("agent pair dropping a call in the silent row fails the premise gate")
+    void agentPairDroppingCallInSilentRowFailsGate() {
+        String fakeSource = """
+                void loud() { obj.methodA(); obj.methodB(); }
+                void quiet() { obj.methodA(); }
+                """;
+        RecordingSubject loud = new RecordingSubject("loud", "lib", "Cls", DetectorType.SIMPLE_DATE_FORMAT,
+                Contract.NOT_THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        RecordingSubject quiet = new RecordingSubject("quiet", "lib", "Cls", DetectorType.SIMPLE_DATE_FORMAT,
+                Contract.NOT_THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.noAgentRowRecordedItsOwnFinding(fakeSource, List.of(loud, quiet)));
+    }
+
+    @Test
+    @DisplayName("clean agent pair passes the premise gate")
+    void cleanAgentPairPassesGate() {
+        String fakeSource = """
+                void loud() { obj.format(); }
+                void quiet() { obj.format(); }
+                """;
+        RecordingSubject loud = new RecordingSubject("loud", "lib", "Cls", DetectorType.SIMPLE_DATE_FORMAT,
+                Contract.NOT_THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        RecordingSubject quiet = new RecordingSubject("quiet", "lib", "Cls", DetectorType.SIMPLE_DATE_FORMAT,
+                Contract.NOT_THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
+        assertDoesNotThrow(() ->
+                CorpusGates.noAgentRowRecordedItsOwnFinding(fakeSource, List.of(loud, quiet)));
     }
 
     // --- Fixtures ----------------------------------------------------------------------------
