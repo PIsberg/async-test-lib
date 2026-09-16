@@ -130,6 +130,58 @@ class MissedSignalPredicateTest {
                         + "earlier lost notify stays hidden; changing that is a deliberate model change");
     }
 
+    @Test
+    @DisplayName("an observed predicate re-check via recordPredicateCheck silences guarded poll after lost notify (#635)")
+    void observedPredicateRecheckSilencesGuardedPollAfterLostNotify() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+
+        runAndJoin(() -> {
+            synchronized (monitor) {
+                detector.recordNotify(monitor);
+                monitor.notifyAll();
+            }
+        });
+        runAndJoin(() -> {
+            synchronized (monitor) {
+                int polls = 0;
+                while (queueEmpty && polls++ < 2) {
+                    detector.recordPredicateCheck(monitor, !queueEmpty);
+                    detector.recordWait(monitor);
+                    monitor.wait(20);
+                    detector.recordWakeup(monitor);
+                    detector.recordPredicateCheck(monitor, !queueEmpty);
+                }
+            }
+        });
+
+        assertFalse(detector.analyze().hasIssues(),
+                "observed predicate check re-evaluated after wait, so wait is guarded and stays silent (#635):\n"
+                        + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("an unguarded wait without predicate check fires after lost notify (#635)")
+    void unguardedWaitWithoutPredicateCheckFiresAfterLostNotify() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+
+        runAndJoin(() -> {
+            synchronized (monitor) {
+                detector.recordNotify(monitor);
+                monitor.notifyAll();
+            }
+        });
+        runAndJoin(() -> {
+            synchronized (monitor) {
+                detector.recordWait(monitor);
+                monitor.wait(20);
+                detector.recordWakeup(monitor);
+            }
+        });
+
+        assertTrue(detector.analyze().hasIssues(),
+                "an unguarded wait without predicate check fires after lost notify (#635)");
+    }
+
     /** One waiter records a wait, another thread notifies while it waits, the waiter wakes. */
     private void deliverOneNotifyToAWaiter(MissedSignalDetector detector) throws Exception {
         CountDownLatch waiting = new CountDownLatch(1);
