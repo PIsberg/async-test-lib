@@ -1,6 +1,9 @@
 package com.example.corpus;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 /**
  * One recording-lane entry: a third-party class, a detector, and what the body did to it.
@@ -18,13 +21,14 @@ import se.deversity.asynctest.DetectorType;
  * claims rather than a bet on observing a race. The unmodified lanes cannot assert either, which
  * is why they gate only at the group level.
  *
- * @param testMethod  the {@code @AsyncTest} method in {@link CorpusRecordingLaneTest}
- * @param library     the artifact the class ships in, at the version this module resolves
- * @param className   the fully qualified class under test
- * @param detector    the detector the body records to, and the only one this row speaks for
- * @param contract    the class's own documented contract, for context
- * @param expectation what must happen, given what the body records
- * @param rationale   why that outcome follows from the recorded calls
+ * @param testMethod       the {@code @AsyncTest} method in {@link CorpusRecordingLaneTest}
+ * @param library          the artifact the class ships in, at the version this module resolves
+ * @param className        the fully qualified class under test
+ * @param detector         the detector the body records to, and the only one this row speaks for
+ * @param contract         the class's own documented contract, for context
+ * @param expectation      what must happen, given what the body records
+ * @param rationale        why that outcome follows from the recorded calls
+ * @param expectedSeverity the severity the finding is expected to carry, or {@code null} to default from model
  */
 record RecordingSubject(
         String testMethod,
@@ -33,7 +37,30 @@ record RecordingSubject(
         DetectorType detector,
         Contract contract,
         Expectation expectation,
-        String rationale) {
+        String rationale,
+        @Nullable IssueSeverity expectedSeverity) {
+
+    RecordingSubject(
+            String testMethod,
+            String library,
+            String className,
+            DetectorType detector,
+            Contract contract,
+            Expectation expectation,
+            String rationale) {
+        this(testMethod, library, className, detector, contract, expectation, rationale, null);
+    }
+
+    /** {@return the expected severity if declared, or derived from detector default severity for MUST_FIRE} */
+    public @Nullable IssueSeverity resolvedSeverity() {
+        if (expectedSeverity != null) {
+            return expectedSeverity;
+        }
+        if (expectation == Expectation.MUST_FIRE) {
+            return DetectorDefaultSeverity.of(detector).orElse(IssueSeverity.HIGH);
+        }
+        return null;
+    }
 
     /** What the recorded calls oblige the detector to do. */
     enum Expectation {

@@ -280,6 +280,45 @@ class CorpusGatesTest {
                         findings, CorpusLane.RECORDING));
     }
 
+    @Test
+    @DisplayName("a finding with mismatched expected severity fails the outcome gate")
+    void aFindingWithMismatchedExpectedSeverityFailsTheOutcomeGate() {
+        RecordingSubject firing = new RecordingSubject(
+                "test_method", "JDK", "java.lang.Object",
+                DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                RecordingSubject.Expectation.MUST_FIRE,
+                "locks ordered inconsistently",
+                IssueSeverity.CRITICAL);
+        List<CorpusRecorder.Finding> findings = List.of(
+                new CorpusRecorder.Finding("test_method",
+                        DetectorExposure.classOf(DetectorType.LOCK_ORDER),
+                        IssueSeverity.LOW, TrustTier.PROMPT,
+                        "lock order violation", "evidence"));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING, List.of(firing)));
+    }
+
+    @Test
+    @DisplayName("a finding matching expected severity passes the outcome gate")
+    void aFindingMatchingExpectedSeverityPassesTheOutcomeGate() {
+        RecordingSubject firing = new RecordingSubject(
+                "test_method", "JDK", "java.lang.Object",
+                DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                RecordingSubject.Expectation.MUST_FIRE,
+                "locks ordered inconsistently",
+                IssueSeverity.CRITICAL);
+        List<CorpusRecorder.Finding> findings = List.of(
+                new CorpusRecorder.Finding("test_method",
+                        DetectorExposure.classOf(DetectorType.LOCK_ORDER),
+                        IssueSeverity.CRITICAL, TrustTier.PROMPT,
+                        "lock order violation", "evidence"));
+
+        assertDoesNotThrow(() -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                findings, CorpusLane.RECORDING, List.of(firing)));
+    }
+
     // --- Collateral silence ------------------------------------------------------------------
 
     @Test
