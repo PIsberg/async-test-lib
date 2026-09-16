@@ -64,6 +64,12 @@ final class SpinLocks {
     private static final Map<Object, String> HANDLE_FIELDS = new ConcurrentHashMap<>();
 
     /**
+     * Fields each class binds through an {@code AtomicIntegerFieldUpdater.newUpdater} call,
+     * as {@code declaringClass -> Set<String> qualifiedFieldNames} (#619).
+     */
+    private static final Map<String, Set<String>> CLASS_UPDATER_FIELDS = new ConcurrentHashMap<>();
+
+    /**
      * Fields some thread has used as a spinlock flag.
      *
      * <p>Keeps the release check off the access path until a spinlock actually exists: the woven
@@ -127,15 +133,60 @@ final class SpinLocks {
         return field.isEmpty() ? null : field;
     }
 
+    /** Records that {@code ownerClass} binds {@code field} through an updater (#619). */
+    static void recordUpdaterField(String ownerClass, String field) {
+        CLASS_UPDATER_FIELDS.computeIfAbsent(ownerClass, k -> ConcurrentHashMap.newKeySet()).add(field);
+    }
+
+    static void resetForTesting() {
+        LOCKS.clear();
+        SPIN_FIELDS.clear();
+        HANDLE_FIELDS.clear();
+        CLASS_UPDATER_FIELDS.clear();
+    }
+
     /**
      * {@return the field an updater reaches, or {@code null}}
-     *
-     * <p>Only the woven binding in the owner's type initializer can say: an updater exposes no
-     * field name, so one created before the agent attached stays unresolved.
      */
     static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater) {
+        return fieldOf(updater, null);
+    }
+
+    /**
+     * {@return the field an updater reaches on {@code receiver}, or {@code null}}
+     *
+     * <p>If the updater was bound before the agent attached, its owner's type initializer never
+     * ran the woven binding call. We resolve it from the receiver's class hierarchy if exactly
+     * one updater field was recorded for that hierarchy (#619).
+     */
+    static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater,
+                                    @Nullable Object receiver) {
         String field = HANDLE_FIELDS.get(updater);
-        return field == null || field.isEmpty() ? null : field;
+        if (field != null) {
+            return field.isEmpty() ? null : field;
+        }
+        if (receiver == null || CLASS_UPDATER_FIELDS.isEmpty()) {
+            return null;
+        }
+        field = resolveFromHierarchy(receiver.getClass());
+        if (field != null) {
+            HANDLE_FIELDS.put(updater, field);
+            SPIN_FIELDS.add(field);
+            return field;
+        }
+        HANDLE_FIELDS.put(updater, "");
+        return null;
+    }
+
+    private static @Nullable String resolveFromHierarchy(Class<?> clazz) {
+        Set<String> matches = new java.util.HashSet<>();
+        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
+            Set<String> fields = CLASS_UPDATER_FIELDS.get(c.getName());
+            if (fields != null) {
+                matches.addAll(fields);
+            }
+        }
+        return matches.size() == 1 ? matches.iterator().next() : null;
     }
 
     /** {@return {@code declaringClass.field} for a direct {@code int} instance-field handle, else ""} */

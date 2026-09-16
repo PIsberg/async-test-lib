@@ -368,6 +368,22 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Records that {@code ownerClass} binds {@code qualifiedName} through an
+     * {@code AtomicIntegerFieldUpdater.newUpdater} call (#619).
+     *
+     * <p>Called at weave time by {@code AtomicFieldRegistry.recordIntUpdater} when visiting
+     * {@code <clinit>}, so updaters created before the agent attached can be resolved from their
+     * owner's recorded updater fields.
+     *
+     * @param ownerClass    the class passed to {@code newUpdater}, as a qualified name
+     * @param qualifiedName the field, as {@code declaringClass.field}
+     * @since 1.12.1
+     */
+    public static void atomicUpdaterFieldRecorded(String ownerClass, String qualifiedName) {
+        SpinLocks.recordUpdaterField(ownerClass, qualifiedName);
+    }
+
+    /**
      * Weaves {@code VarHandle.compareAndSet(receiver, expected, update)} on an {@code int} field.
      *
      * <p>A compare-and-swap from 0 to 1 on a flag field is a spinlock, and what is written while
@@ -476,8 +492,8 @@ public final class TelemetryRegistry {
         }
         AtomicIntegerFieldUpdater<Object> target = erased(updater);
         boolean won = target.compareAndSet(receiver, expected, update);
-        if (won && receiver != null && (expected == 0 && update == 1 || expected == 1 && update == 0)) {
-            String field = SpinLocks.fieldOf(updater);
+        if (won && receiver != null && ((expected == 0 && update == 1) || (expected == 1 && update == 0))) {
+            String field = SpinLocks.fieldOf(updater, receiver);
             if (field == null) {
                 return won;
             }
@@ -509,7 +525,7 @@ public final class TelemetryRegistry {
         if (receiver == null || updater == null) {
             return;
         }
-        String field = SpinLocks.fieldOf(updater);
+        String field = SpinLocks.fieldOf(updater, receiver);
         if (field != null && SpinLocks.isSpinField(field)) {
             SpinLocks.release(receiver, field);
         }
