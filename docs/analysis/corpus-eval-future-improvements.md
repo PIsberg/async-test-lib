@@ -26,6 +26,11 @@ the file holds 55. All are corrected, and `CorpusClaimsInDocsTest` now derives e
 two tests for the module README, and one that reads the module's own sources and fails on any
 sentence dividing by a roster the library no longer ships.
 
+Item 4 was closed on 2026-09-16: all five gates now have failing-direction tests in `CorpusGatesTest`.
+The gates (`everySubjectIsExercised`, `everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair`,
+`noAgentRowRecordedItsOwnFinding`, and `everyPairedDetectorIsExposed`) were parameterized to accept test suites,
+source, and subject lists, with the existing no-arg variants delegating to the static corpus defaults.
+
 What follows is the remainder, in the order worth doing them.
 
 ## 2. Nothing checks that `CorpusGatesTest` still bites
@@ -136,26 +141,12 @@ The cost is one field on `RecordingSubject` and 117 rows to fill in, and the ris
 printed states nothing. It is worth doing only if the value is written from the detector's model
 rather than from the last report.
 
-## 4. Five gates have no failing-direction test
+## 4. Five gates have no failing-direction test (Closed 2026-09-16)
 
-`CorpusGatesTest` covers every gate whose input can be synthesised. Five remain, for two different
-reasons, and both are recorded here rather than in a comment that only the next reader of that file
-would find.
-
-Four read only static module state, so the input that would fail them cannot be built without
-mutating `Corpus` or a lane's source: `everySubjectIsExercised`,
-`everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair` and
-`noAgentRowRecordedItsOwnFinding`. Each does fail loudly when its own input goes missing, which is
-the failure mode that actually threatens them.
-
-`everyPairedDetectorIsExposed` is uncovered from the other side: no lane exists in which a paired
-detector is unexposed, so there is no input that fails it. It is currently unfalsifiable rather
-than untested.
-
-The fix for both shapes is the same and is not small: let the gates take their corpus as an
-argument instead of reading the static one, so a test can hand them a corpus built for the
-occasion. That is a refactor of `CorpusGates`, `Corpus` and every caller, and it should be done
-when something else already needs it.
+Closed on 2026-09-16. `CorpusGates` exposes parameterized overloads for `everySubjectIsExercised`,
+`everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair`,
+`noAgentRowRecordedItsOwnFinding`, and `everyPairedDetectorIsExposed`. `CorpusGatesTest` covers both
+the failing and accepting directions for all five.
 
 ## 6. The refusal list is reviewed by nothing but a build
 
