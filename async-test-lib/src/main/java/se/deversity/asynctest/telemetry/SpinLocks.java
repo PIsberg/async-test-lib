@@ -138,12 +138,6 @@ final class SpinLocks {
         CLASS_UPDATER_FIELDS.computeIfAbsent(ownerClass, k -> ConcurrentHashMap.newKeySet()).add(field);
     }
 
-    static void resetForTesting() {
-        LOCKS.clear();
-        SPIN_FIELDS.clear();
-        HANDLE_FIELDS.clear();
-        CLASS_UPDATER_FIELDS.clear();
-    }
 
     /**
      * {@return the field an updater reaches, or {@code null}}
@@ -225,6 +219,7 @@ final class SpinLocks {
         LOCKS.clear();
         SPIN_FIELDS.clear();
         HANDLE_FIELDS.clear();
+        CLASS_UPDATER_FIELDS.clear();
         testHookBeforeWonBy = null;
     }
 
