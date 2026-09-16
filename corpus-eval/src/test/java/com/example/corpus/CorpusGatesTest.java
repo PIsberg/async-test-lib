@@ -255,6 +255,36 @@ class CorpusGatesTest {
                         findings, CorpusLane.RECORDING));
     }
 
+    @Test
+    @DisplayName("a finding with null severity fails the outcome gate: effective findings require severity")
+    void aFindingWithNullSeverityFailsTheOutcomeGate() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject firing = aFiringRow();
+        findings.removeIf(f -> f.subject().equals(firing.testMethod()));
+        findings.add(new CorpusRecorder.Finding(firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()), null, TrustTier.PROMPT,
+                "valid message", "evidence"));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("a finding with a blank message fails the outcome gate: effective findings require a message")
+    void aFindingWithBlankMessageFailsTheOutcomeGate() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject firing = aFiringRow();
+        findings.removeIf(f -> f.subject().equals(firing.testMethod()));
+        findings.add(new CorpusRecorder.Finding(firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()), IssueSeverity.HIGH, TrustTier.PROMPT,
+                "   ", "evidence"));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING));
+    }
+
     // --- Collateral silence ------------------------------------------------------------------
 
     @Test

@@ -402,18 +402,29 @@ final class CorpusGates {
         List<String> wrong = new ArrayList<>();
         for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
             String detectorClass = DetectorExposure.classOf(subject.detector());
-            boolean fired = findings.stream()
-                    .anyMatch(finding -> finding.subject().equals(subject.testMethod())
-                            && finding.detector().equals(detectorClass));
+            List<CorpusRecorder.Finding> matches = findings.stream()
+                    .filter(finding -> finding.subject().equals(subject.testMethod())
+                            && finding.detector().equals(detectorClass))
+                    .toList();
+            boolean fired = !matches.isEmpty();
 
             boolean shouldFire = subject.expectation() == RecordingSubject.Expectation.MUST_FIRE;
-            if (fired == shouldFire) {
+            if (fired != shouldFire) {
+                wrong.add((shouldFire ? "SILENT but must fire: " : "FIRED but must stay silent: ")
+                        + subject.testMethod() + " [" + detectorClass + "] - "
+                        + subject.rationale()
+                        + (fired ? "; it said: " + evidenceFor(findings, subject, detectorClass) : ""));
                 continue;
             }
-            wrong.add((shouldFire ? "SILENT but must fire: " : "FIRED but must stay silent: ")
-                    + subject.testMethod() + " [" + detectorClass + "] - "
-                    + subject.rationale()
-                    + (fired ? "; it said: " + evidenceFor(findings, subject, detectorClass) : ""));
+            if (shouldFire) {
+                boolean validDiagnostics = matches.stream().anyMatch(f ->
+                        f.severity() != null && f.message() != null && !f.message().isBlank());
+                if (!validDiagnostics) {
+                    wrong.add("FIRED with invalid diagnostics (null severity or blank message): "
+                            + subject.testMethod() + " [" + detectorClass + "] - "
+                            + subject.rationale());
+                }
+            }
         }
 
         assertTrue(wrong.isEmpty(),
