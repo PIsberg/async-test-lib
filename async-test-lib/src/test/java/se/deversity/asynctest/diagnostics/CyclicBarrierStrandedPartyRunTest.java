@@ -14,6 +14,7 @@ import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.E2E;
 import se.deversity.asynctest.FailOn;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Verifies that a barrier left a party short, with untimed waiters parked, is reported
  * when the round times out (#631).
  */
+@E2E
 class CyclicBarrierStrandedPartyRunTest {
 
     private static final String MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";
