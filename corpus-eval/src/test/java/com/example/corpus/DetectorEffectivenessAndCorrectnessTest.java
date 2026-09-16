@@ -177,4 +177,34 @@ class DetectorEffectivenessAndCorrectnessTest {
                 "all agent-fed detectors except EXPLICIT_GC must be reached through library bytecode");
         assertTrue(LibraryReach.unreached().containsKey(DetectorType.EXPLICIT_GC));
     }
+
+    @Test
+    @DisplayName("effectiveness: every firing subject resolves to a valid, non-degraded severity")
+    void everyFiringSubjectHasValidSeverity() {
+        List<RecordingSubject> firingRows = Corpus.subjectsFor(CorpusLane.RECORDING).stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                .toList();
+        assertEquals(118, firingRows.size(), "recording lane must hold exactly 118 MUST_FIRE rows");
+
+        long critical = 0;
+        long high = 0;
+        long medium = 0;
+        long low = 0;
+
+        for (RecordingSubject subject : firingRows) {
+            IssueSeverity severity = subject.resolvedSeverity();
+            assertNotNull(severity, "firing subject must have non-null resolved severity: " + subject.testMethod());
+            switch (severity) {
+                case CRITICAL -> critical++;
+                case HIGH -> high++;
+                case MEDIUM -> medium++;
+                case LOW -> low++;
+            }
+        }
+
+        assertEquals(118, critical + high + medium + low, "every row must map to a valid severity tier");
+        assertTrue(critical > 0, "must have critical severity findings");
+        assertTrue(high > 0, "must have high severity findings");
+        assertTrue(medium > 0, "must have medium severity findings");
+    }
 }

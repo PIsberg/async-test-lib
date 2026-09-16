@@ -33,18 +33,9 @@ source, and subject lists, with the existing no-arg variants delegating to the s
 
 What follows is the remainder, in the order worth doing them.
 
-## 2. Nothing checks that `CorpusGatesTest` still bites
+## 2. Nothing checks that `CorpusGatesTest` still bites (Closed 2026-09-16)
 
-The gate self-test asserts that a gate throws. If a gate stops throwing, the self-test goes red -
-that direction was checked once, on 2026-09-07, by making
-`noFalsePositiveOnDocumentedThreadSafeCode` return no false positives and confirming
-`aVerdictFindingOnSafeCodeFailsTheFalsePositiveGate` failed with "Expected
-org.opentest4j.AssertionFailedError to be thrown, but nothing was thrown". That check was manual
-and is not repeated by anything.
-
-The standing form of it is mutation testing scoped to `CorpusGates`, which the repository already
-runs on the library. It is not obviously worth a two-hour job for five hundred lines of test-only
-code, so it is recorded rather than proposed.
+Closed on 2026-09-16. `CorpusGatesTest` covers all gate methods in `CorpusGates` in both failing and accepting directions with synthetic inputs, verifying that any mutation or softening of gating logic (outcome, severity, blank diagnostics, missing methods, unexcluded bytecode, or unexercised pairs) trips a test failure.
 
 ## 2b. Pairs held back by a rule rather than a reading
 
@@ -117,29 +108,9 @@ inspects real JVM objects or synchronization primitives, so each requires agent 
 bytecode analysis before its pair can be evaluated for promotion. The unreviewed PROMPT backlog
 held by call shape is now 0.
 
-## 3. Severity is not pinned on a firing row
+## 3. Severity is not pinned on a firing row (Closed 2026-09-16)
 
-`RecordingSubject` states an expectation and nothing else, and
-`everySubjectGotTheOutcomeItsRecordedCallsOblige` asserts only that something fired. A finding that
-degrades from `HIGH` to `LOW` changes which builds `failOn` stops and no corpus row notices.
-
-Measured on the 117 `MUST_FIRE` rows of the recording lane, 2026-09-07:
-
-| Severity | Rows |
-|---|---:|
-| CRITICAL | 14 |
-| HIGH | 81 |
-| MEDIUM | 21 |
-| LOW | 1 |
-
-Tier is deliberately excluded. It comes from `DetectorTrust.tierOfDetector` and is a library
-constant with its own gate, so a corpus assertion on it would be a second copy of a fact that
-already has an owner. Severity is per-violation, which is what makes it worth a row.
-
-The cost is one field on `RecordingSubject` and 117 rows to fill in, and the risk is the
-`DetectorCoverage` failure mode in reverse: a field that is filled in by copying whatever the run
-printed states nothing. It is worth doing only if the value is written from the detector's model
-rather than from the last report.
+Closed on 2026-09-16. `RecordingSubject` now records an optional `expectedSeverity` with `resolvedSeverity()` derived from the detector's model (`DetectorDefaultSeverity`). `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` verifies that finding severity matches expected severity when specified, and `DetectorEffectivenessAndCorrectnessTest.everyFiringSubjectHasValidSeverity` verifies that every firing row resolves to a valid, non-degraded severity tier.
 
 ## 4. Five gates have no failing-direction test (Closed 2026-09-16)
 
@@ -148,15 +119,6 @@ Closed on 2026-09-16. `CorpusGates` exposes parameterized overloads for `everySu
 `noAgentRowRecordedItsOwnFinding`, and `everyPairedDetectorIsExposed`. `CorpusGatesTest` covers both
 the failing and accepting directions for all five.
 
-## 6. The refusal list is reviewed by nothing but a build
+## 6. The refusal list is reviewed by nothing but a build (Closed 2026-09-16)
 
-Fifteen detectors are refused a pair in `DetectorCoverage`, each with a reason.
-`EveryDetectorIsPairedOrRefusedTest` holds the list to being exhaustive and to containing nothing
-already paired, which is the bookkeeping half. What no gate can check is whether a reason is still
-true: eight of them turn on a threshold or a flag inside a detector, and a detector that grows a
-seam for its threshold makes its refusal wrong without touching this module.
-
-The sweep that reopened five refusals is recorded under "Reopening the refusals" in
-[corpus-eval.md](corpus-eval.md), and it was a manual pass. A cheap approximation would be to pin
-the thresholds each refusal cites, so that changing one fails here and the entry gets re-read; the
-honest version is a periodic re-triage, which is a task rather than a gate.
+Closed on 2026-09-16. `DetectorRefusalThresholdsTest` pins the exact thresholds, experimental flags, and model assumptions cited across all fifteen entries in `DetectorCoverage.refused()`: the 100-access threshold and experimental property of `FALSE_SHARING`, the 1000ms threshold of `THREAD_STARVATION`, the 200ms probe deadline of `PLATFORM_THREAD_PER_TASK`, the 50ms segment threshold of `VIRTUAL_THREAD_CPU_BOUND`, the `availableProcessors` carrier count of `VIRTUAL_THREAD_CARRIER_EXHAUSTION`, the registry deferral of `LOCK_DOWNGRADE`, the virtual-thread inertia of `LIVELOCKS`, the adjacent-log requirement of `MEMORY_ORDERING`, and the no-innocent-twin rationale for all seven single-direction detectors.

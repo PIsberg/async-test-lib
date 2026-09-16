@@ -331,6 +331,7 @@ final class SpinLocks {
             // other, so this acquire goes undeclared: its writes report rather than hide.
             return;
         }
+        lock.swapWon();
         Runnable hook = testHookBeforeWonBy;
         if (hook != null) {
             hook.run();
@@ -366,7 +367,7 @@ final class SpinLocks {
         /** The thread id of the last observed winner, or 0 after an observed release. */
         private final AtomicLong holder = new AtomicLong();
 
-        /** The total number of acquire sequences started, bumped before a won swap (#621). */
+        /** The total number of acquire sequences started, bumped on a won swap (#621). */
         private final AtomicLong acquires = new AtomicLong();
 
         /** The {@link #acquires} value at the time the current {@link #holder} won the lock (#621). */
@@ -389,15 +390,15 @@ final class SpinLocks {
         }
 
         void aboutToAcquire() {
-            if (!isLocked()) {
-                acquires.incrementAndGet();
-                holder.compareAndSet(holder.get(), 0L);
-            }
+            // No-op: speculative attempts before a won swap must not invalidate the active holder (#621, #653)
+        }
+
+        void swapWon() {
+            acquires.incrementAndGet();
         }
 
         void wonBy(long threadId) {
-            long count = acquires.incrementAndGet();
-            holderAcquire.set(count);
+            holderAcquire.set(acquires.get());
             holder.set(threadId);
         }
 
@@ -432,7 +433,7 @@ final class SpinLocks {
                 return false;
             }
             if (handle != null) {
-                return (int) handle.get(target) == 1;
+                return (int) handle.getVolatile(target) == 1;
             }
             if (updater != null) {
                 return updater.get(target) == 1;

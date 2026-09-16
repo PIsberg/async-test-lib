@@ -422,8 +422,13 @@ final class CorpusGates {
      */
     static void everySubjectGotTheOutcomeItsRecordedCallsOblige(
             List<CorpusRecorder.Finding> findings, CorpusLane lane) {
+        everySubjectGotTheOutcomeItsRecordedCallsOblige(findings, lane, Corpus.subjectsFor(lane));
+    }
+
+    static void everySubjectGotTheOutcomeItsRecordedCallsOblige(
+            List<CorpusRecorder.Finding> findings, CorpusLane lane, List<RecordingSubject> subjects) {
         List<String> wrong = new ArrayList<>();
-        for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
+        for (RecordingSubject subject : subjects) {
             String detectorClass = DetectorExposure.classOf(subject.detector());
             List<CorpusRecorder.Finding> matches = findings.stream()
                     .filter(finding -> finding.subject().equals(subject.testMethod())
@@ -446,6 +451,15 @@ final class CorpusGates {
                     wrong.add("FIRED with invalid diagnostics (null severity or blank message): "
                             + subject.testMethod() + " [" + detectorClass + "] - "
                             + subject.rationale());
+                }
+                IssueSeverity expected = subject.expectedSeverity();
+                if (expected != null) {
+                    boolean severityMatches = matches.stream().anyMatch(f -> f.severity() == expected);
+                    if (!severityMatches) {
+                        List<IssueSeverity> actual = matches.stream().map(CorpusRecorder.Finding::severity).toList();
+                        wrong.add("FIRED with unexpected severity: expected " + expected + " but got " + actual
+                                + " on " + subject.testMethod() + " [" + detectorClass + "]");
+                    }
                 }
             }
         }
