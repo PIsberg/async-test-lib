@@ -276,6 +276,19 @@ public class AtomicityValidator {
     /** Publication state per receiver identity; identity 0 (unknown or static) is not tracked. */
     private final Map<Integer, ReceiverState> receiverStates = new ConcurrentHashMap<>();
 
+    /** Maps receiver identity to a map of (generation -> threadId of that generation's taker). */
+    private final Map<Integer, Map<Integer, Long>> generationTakers = new ConcurrentHashMap<>();
+
+    private void recordTaker(int identity, int generation, long threadId) {
+        generationTakers.computeIfAbsent(identity, ignored -> new ConcurrentHashMap<>())
+                .putIfAbsent(generation, threadId);
+    }
+
+    private @Nullable Long takerOf(int identity, int generation) {
+        Map<Integer, Long> takers = generationTakers.get(identity);
+        return takers == null ? null : takers.get(generation);
+    }
+
     /**
      * {@return whether this access happens while {@code identity} is still exclusive to
      * {@code threadId}} Advances the state as a side effect: the first access from any other
@@ -290,6 +303,7 @@ public class AtomicityValidator {
         }
         ReceiverState state = receiverStates.computeIfAbsent(identity,
                 ignored -> new ReceiverState(threadId, 0));
+        recordTaker(identity, 0, state.firstThread);
         if (state.shared) {
             return false;
         }
@@ -804,8 +818,9 @@ public class AtomicityValidator {
         if (!enabled || identity == 0) {
             return;
         }
-        receiverStates.compute(identity, (ignored, previous) ->
+        ReceiverState state = receiverStates.compute(identity, (ignored, previous) ->
                 new ReceiverState(threadId, previous == null ? 1 : previous.generation + 1));
+        recordTaker(identity, state.generation, threadId);
     }
 
     /** {@return the ownership generation {@code identity} is currently in, 0 before any take} */
@@ -818,8 +833,8 @@ public class AtomicityValidator {
     }
 
     /**
-     * {@return {@code history} with the taker's exclusivity withdrawn wherever a still-open
-     * ownership generation was also touched by another thread} (#559)
+     * {@return {@code history} with the taker's exclusivity withdrawn wherever an ownership
+     * generation was also touched by an alias thread} (#559, #630)
      *
      * <p>A take makes the object exclusive to the taker until any other thread touches it, and the
      * first foreign access ends the exclusion from then on. In drain order that cannot catch an
@@ -828,19 +843,29 @@ public class AtomicityValidator {
      * access is left to agree with nothing but itself. The race is real whenever the alias kept
      * its reference from before the take.
      *
-     * <p>Only a later take can tell that apart from a hand-off the stream cannot see, because a
-     * take is the one event proving the object left the previous owner. So a generation that a
-     * further take closed keeps the exclusion, exactly as it did; the one the receiver is still
-     * in, and that another thread has touched, does not. Its taker's accesses are judged like
-     * everyone else's.
+     * <p>In a generation a later take closed, an access from the previous owner (the thread that
+     * took the previous generation, or built it in generation 0) is a late-published handoff
+     * access and does not withdraw exclusivity (#557). But an access from a thread that was
+     * neither this generation's taker nor the previous owner is an alias access, and withdraws
+     * the taker's exclusivity even though a later take closed the generation (#630).
      */
     private List<FieldAccessRecord> withdrawExclusivityFromContestedGenerations(
             List<FieldAccessRecord> history) {
-        Map<Integer, Integer> contested = new HashMap<>();
+        Map<Integer, Set<Integer>> contested = new HashMap<>();
         for (FieldAccessRecord access : history) {
-            if (access.generation > 0 && !access.exclusivePhase && access.identity != 0
-                    && access.generation == generationOf(access.identity)) {
-                contested.put(access.identity, access.generation);
+            if (access.generation > 0 && !access.exclusivePhase && access.identity != 0) {
+                int currentGen = generationOf(access.identity);
+                if (access.generation == currentGen) {
+                    contested.computeIfAbsent(access.identity, k -> new HashSet<>()).add(access.generation);
+                } else if (access.generation < currentGen) {
+                    Long takerG = takerOf(access.identity, access.generation);
+                    Long takerPrev = takerOf(access.identity, access.generation - 1);
+                    boolean isTaker = takerG != null && access.threadId == takerG;
+                    boolean isPreviousOwner = takerPrev != null && access.threadId == takerPrev;
+                    if (!isTaker && !isPreviousOwner) {
+                        contested.computeIfAbsent(access.identity, k -> new HashSet<>()).add(access.generation);
+                    }
+                }
             }
         }
         if (contested.isEmpty()) {
@@ -848,8 +873,8 @@ public class AtomicityValidator {
         }
         List<FieldAccessRecord> judged = new ArrayList<>(history.size());
         for (FieldAccessRecord access : history) {
-            Integer generation = contested.get(access.identity);
-            if (access.exclusivePhase && generation != null && generation == access.generation) {
+            Set<Integer> contestedGens = contested.get(access.identity);
+            if (access.exclusivePhase && contestedGens != null && contestedGens.contains(access.generation)) {
                 judged.add(new FieldAccessRecord(access.threadId, access.write, access.epoch,
                         access.ownerKnown, access.identity, access.fingerprint, access.ownMonitor,
                         access.methodMonitor, false, access.storedIdentity, access.generation));

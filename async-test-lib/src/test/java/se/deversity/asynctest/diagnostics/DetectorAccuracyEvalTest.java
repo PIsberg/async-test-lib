@@ -672,8 +672,8 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("atomicity: an alias inside a generation a later take closed is still excused (#559, #630)")
-    void atomicityAliasInAGenerationALaterTakeClosedIsStillExcused() {
+    @DisplayName("atomicity: an alias inside a generation a later take closed fires (#559, #630)")
+    void atomicityAliasInAGenerationALaterTakeClosedFires() {
         AtomicityValidator validator = new AtomicityValidator();
         String field = "chunk.allocated";
         validator.markInvocationStart();
@@ -686,13 +686,30 @@ class DetectorAccuracyEvalTest {
         validator.markInvocationStart();
         validator.recordOwnershipTaken(90, 5);
         agentAccess(validator, field, true, 5, NO_LOCKS, 90);
-        // A known false negative, pinned so a change to it is deliberate: a later take is the only
-        // evidence the stream has that generation 1 ended with thread 2, so thread 3's alias write
-        // inside it cannot be told from a late-published access by the previous owner (#630).
+        assertTrue(validator.analyze().hasIssues(),
+                "Thread 3 was neither generation 1's taker (thread 2) nor its previous owner (thread 1); "
+                        + "its alias access withdraws exclusivity even though a later take closed the generation (#630)");
+    }
+
+    @Test
+    @DisplayName("atomicity: a late-published access by the previous owner in a closed generation stays silent (#630)")
+    void atomicityLateAccessByPreviousOwnerInClosedGenerationStaysSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        agentAccess(validator, field, true, 1, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, 2);
+        agentAccess(validator, field, true, 2, NO_LOCKS, 90);
+        // Late-published access from thread 1 (the previous owner) during handoff:
+        agentAccess(validator, field, true, 1, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, 4);
+        agentAccess(validator, field, true, 4, NO_LOCKS, 90);
+        validator.markInvocationStart();
+        validator.recordOwnershipTaken(90, 5);
+        agentAccess(validator, field, true, 5, NO_LOCKS, 90);
         assertFalse(validator.analyze().hasIssues(),
-                "Boundary kept on purpose: a generation a further take closed keeps the taker's "
-                        + "exclusivity, alias or not. Withdrawing it there too brings back the "
-                        + "netty hand-off findings #557 removed; #630 tracks a narrower signal");
+                "Thread 1 was the previous owner handing off to thread 2; in a closed generation, "
+                        + "a late-published access by the previous owner does not withdraw exclusivity (#557, #630)");
     }
 
     /**
