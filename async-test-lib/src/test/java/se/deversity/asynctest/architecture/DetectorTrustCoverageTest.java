@@ -358,6 +358,21 @@ class DetectorTrustCoverageTest {
         }
     }
 
+    @Test
+    @DisplayName("condition variables, cyclic barrier, and reentrant lock are backed by corpus evidence at VERDICT tier")
+    void synchronizerCandidatesPromotedToVerdictWithCorpusEvidence() {
+        Map<DetectorType, List<String>> corpus = corpusEvidence();
+        for (DetectorType candidate : List.of(
+                DetectorType.CONDITION_VARIABLES,
+                DetectorType.CYCLIC_BARRIER,
+                DetectorType.REENTRANT_LOCK)) {
+            assertTrue(corpus.containsKey(candidate),
+                    candidate + " must be registered in " + CORPUS_EVIDENCE_RESOURCE);
+            assertEquals(TrustTier.VERDICT, DetectorTrust.tierOf(candidate),
+                    candidate + " must be classified as TrustTier.VERDICT");
+        }
+    }
+
     private static Path repoRoot() {
         Path dir = Path.of("").toAbsolutePath();
         for (int i = 0; i < 6 && dir != null; i++) {

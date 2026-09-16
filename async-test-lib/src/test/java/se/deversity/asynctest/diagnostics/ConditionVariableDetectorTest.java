@@ -173,4 +173,9 @@ public class ConditionVariableDetectorTest {
         assertTrue(reportStr.contains("CONDITION VARIABLE ISSUES DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Stuck Waiters"), "Report should mention stuck waiters");
     }
+
+    @Test
+    void trustTierIsVerdict() {
+        assertEquals(TrustTier.VERDICT, DetectorTrust.tierOf(se.deversity.asynctest.DetectorType.CONDITION_VARIABLES));
+    }
 }

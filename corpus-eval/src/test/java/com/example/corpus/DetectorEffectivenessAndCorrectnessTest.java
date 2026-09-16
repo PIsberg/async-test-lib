@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorFeed;
 import se.deversity.asynctest.diagnostics.DetectorFeeds;
+import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
@@ -206,5 +207,41 @@ class DetectorEffectivenessAndCorrectnessTest {
         assertTrue(critical > 0, "must have critical severity findings");
         assertTrue(high > 0, "must have high severity findings");
         assertTrue(medium > 0, "must have medium severity findings");
+    }
+
+    @Test
+    @DisplayName("effectiveness & correctness: promoted synchronizers have clean separation on real JVM state without heuristics")
+    void promotedSynchronizerCandidatesEffectivenessAndCorrectness() {
+        for (DetectorType detector : List.of(
+                DetectorType.CONDITION_VARIABLES,
+                DetectorType.CYCLIC_BARRIER,
+                DetectorType.REENTRANT_LOCK)) {
+            assertTrue(PairEvidence.promoted().contains(detector),
+                    detector + " must be promoted in verdict-evidence-corpus");
+            assertEquals(TrustTier.VERDICT, DetectorTrust.tierOf(detector),
+                    detector + " must be classified as TrustTier.VERDICT");
+            assertFalse(PairEvidence.heldBack(CorpusLane.RECORDING, detector) != null,
+                    detector + " must not be held back in PairEvidence");
+            assertFalse(PairEvidence.carriesPerFindingGrades(detector),
+                    detector + " must not carry per-finding grades");
+
+            List<RecordingSubject> subjects = Corpus.subjectsFor(CorpusLane.RECORDING).stream()
+                    .filter(s -> s.detector() == detector)
+                    .toList();
+            assertEquals(2, subjects.size(), detector + " must have exactly two subjects in recording lane");
+
+            RecordingSubject firing = subjects.stream()
+                    .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                    .findFirst()
+                    .orElseThrow();
+            RecordingSubject silent = subjects.stream()
+                    .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_STAY_SILENT)
+                    .findFirst()
+                    .orElseThrow();
+
+            assertEquals(firing.className(), silent.className(), "both subjects must name the same class");
+            assertNotNull(firing.rationale());
+            assertNotNull(silent.rationale());
+        }
     }
 }

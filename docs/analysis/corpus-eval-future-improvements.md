@@ -108,6 +108,13 @@ inspects real JVM objects or synchronization primitives, so each requires agent 
 bytecode analysis before its pair can be evaluated for promotion. The unreviewed PROMPT backlog
 held by call shape is now 0.
 
+**The fourth wave promotion, 2026-09-17.** Three synchronizer pairs held on model were re-read and
+promoted to VERDICT: `CONDITION_VARIABLES` (#592/#618 real parked waiter read from lock wait queue),
+`CYCLIC_BARRIER` (#595/#584 reuse decided with `isBroken()` on the real barrier at await), and
+`REENTRANT_LOCK` (#589/#608/#609 lock still held read from real lock at analysis with
+barging-verified starvation). Both directions are verified on real JVM constructs without heuristics,
+and all three are promoted in `verdict-evidence-corpus` with `REVIEWED_DESPITE_SHAPE` entries.
+
 ## 3. Severity is not pinned on a firing row (Closed 2026-09-16)
 
 Closed on 2026-09-16. `RecordingSubject` now records an optional `expectedSeverity` with `resolvedSeverity()` derived from the detector's model (`DetectorDefaultSeverity`). `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` verifies that finding severity matches expected severity when specified, and `DetectorEffectivenessAndCorrectnessTest.everyFiringSubjectHasValidSeverity` verifies that every firing row resolves to a valid, non-degraded severity tier.

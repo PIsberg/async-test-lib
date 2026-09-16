@@ -146,3 +146,20 @@ SHARED_CHARSET_CODER = recorded_charsetEncoder_sharedAcrossThreads, recorded_cha
 # Both corpus bodies take the real lock, and the silent half's write acquire really returns, so
 # the pair is decided by the JDK's own rule. LockUpgradeDeadlockAccuracyTest pins both directions.
 LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_readLock_releasedBeforeWriting
+
+# --- Fourth wave, 2026-09-17: synchronizers whose models decide on real JVM state.
+#
+# CONDITION_VARIABLES: since #592 stuck waiters are read from the lock's wait queue, and since
+# #618 the pair is rebuilt on a real parked waiter under registerCondition(lock, condition, name);
+# the lock's wait queue shows the waiter still parked on the unannounced condition.
+#
+# CYCLIC_BARRIER: since #595 nothing the body declares is a finding: reuse is decided with
+# isBroken() at the arrival or await (#584), and recordTimeout and recordBroken are only context
+# for that report.
+#
+# REENTRANT_LOCK: #589 made the finding a lock still held at analysis, read from the lock itself,
+# and a handled tryLock timeout context; #609 no longer reports a hold whose holder is still
+# working and #608 makes starvation a finding only when barging was seen on the lock.
+CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition_awaitedAndSignalled
+CYCLIC_BARRIER = recorded_cyclicBarrier_awaitedWhileBroken, recorded_cyclicBarrier_completedItsCycle
+REENTRANT_LOCK = recorded_reentrantLock_holdLeftTaken, recorded_reentrantLock_acquiredAndReleased
