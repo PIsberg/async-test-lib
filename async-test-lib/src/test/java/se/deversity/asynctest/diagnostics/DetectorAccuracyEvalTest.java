@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -2533,6 +2534,88 @@ class DetectorAccuracyEvalTest {
         assertFalse(monitor.analyzeThreadLocalLeaks().hasIssues(),
                 "every set was matched by a remove() in a finally block; there is no leak to "
                         + "report. Report:\n" + monitor.analyzeThreadLocalLeaks());
+    }
+
+    // ---- CyclicBarrierDetector ----
+
+    @Test
+    @DisplayName("cyclic barrier: a barrier left a party short with untimed waiters parked fires (true positive)")
+    void cyclicBarrierFiresWhenLeftAPartyShort() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(3);
+        detector.registerBarrier(barrier, "party-short", 3);
+
+        Thread p1 = new Thread(() -> {
+            detector.recordArrival(barrier);
+            detector.recordAwait(barrier);
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        Thread p2 = new Thread(() -> {
+            detector.recordArrival(barrier);
+            detector.recordAwait(barrier);
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        p1.setDaemon(true);
+        p2.setDaemon(true);
+        p1.start();
+        p2.start();
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (barrier.getNumberWaiting() < 2 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertEquals(2, barrier.getNumberWaiting(), "premise: two parties waiting");
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "a three-party barrier with only two parties arrived is left a party short: " + report);
+        assertTrue(report.getStrandedBarriers().contains(barrier));
+        assertEquals(2, report.getWaitingParties(barrier));
+
+        barrier.reset();
+        p1.join(1000);
+        p2.join(1000);
+    }
+
+    @Test
+    @DisplayName("cyclic barrier: all parties arrive and trip stays silent (true negative)")
+    void cyclicBarrierSilentWhenAllPartiesArriveAndTrip() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        detector.registerBarrier(barrier, "healthy", 2);
+
+        Thread p1 = new Thread(() -> {
+            detector.recordArrival(barrier);
+            detector.recordAwait(barrier);
+            try {
+                barrier.await();
+                detector.recordBarrierComplete(barrier);
+            } catch (Exception ignored) {
+            }
+        });
+        Thread p2 = new Thread(() -> {
+            detector.recordArrival(barrier);
+            detector.recordAwait(barrier);
+            try {
+                barrier.await();
+                detector.recordBarrierComplete(barrier);
+            } catch (Exception ignored) {
+            }
+        });
+        p1.start();
+        p2.start();
+        p1.join(5000);
+        p2.join(5000);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "every party arrived and the barrier tripped, so no issue: " + report);
     }
 
     // ---- ExchangerDetector ----
