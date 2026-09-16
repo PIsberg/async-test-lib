@@ -48,10 +48,14 @@ final class SilentRowPremise {
 
     /** {@return every silent row that never addresses its own detector, with what was searched} */
     static List<String> rowsThatNeverReachTheirDetector() {
-        String source = read();
+        return rowsThatNeverReachTheirDetector(read(), Corpus.recordingSubjects());
+    }
+
+    /** {@return every silent row in {@code subjects} that never addresses its own detector in {@code source}} */
+    static List<String> rowsThatNeverReachTheirDetector(String source, List<RecordingSubject> subjects) {
         List<String> broken = new ArrayList<>();
 
-        for (RecordingSubject subject : Corpus.recordingSubjects()) {
+        for (RecordingSubject subject : subjects) {
             if (subject.expectation() != RecordingSubject.Expectation.MUST_STAY_SILENT) {
                 continue;
             }
@@ -97,7 +101,7 @@ final class SilentRowPremise {
         return names;
     }
 
-    private static String read() {
+    static String read() {
         try {
             return Files.readString(SOURCE, StandardCharsets.UTF_8);
         } catch (IOException e) {
