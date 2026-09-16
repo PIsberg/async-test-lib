@@ -2957,19 +2957,18 @@ final class Corpus {
                     "java.util.concurrent.locks.Condition",
                     DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "an await is recorded as returning woken with no signal ever recorded for "
-                            + "that condition. Since #583 the detector pairs each await with the "
-                            + "signals made while it waited, so this is a wakeup nothing accounts "
-                            + "for, the Condition form of the lost-wakeup the missed-signal pair "
-                            + "covers for monitors"),
+                    "a consumer parks in await() on a condition registered with its lock, and "
+                            + "threads signal a different condition. At analysis the lock's wait "
+                            + "queue shows the waiter still parked on the unannounced condition "
+                            + "(#592, #618)"),
 
             new RecordingSubject("recorded_condition_awaitedAndSignalled", JDK,
                     "java.util.concurrent.locks.Condition",
                     DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same await with a recorded signal behind it and a recorded exit, which "
-                            + "is the whole handshake. The pair separates on whether anybody "
-                            + "ever announced the condition"),
+                    "the same waiter on a condition registered with its lock, correctly signalled "
+                            + "and joined before analysis, so the lock shows no thread parked "
+                            + "(#592, #618)"),
 
             // --- The value-lifecycle family: three detectors that ask whether a value was
             //     produced before it was consumed. Each silent row uses a key unique to its
