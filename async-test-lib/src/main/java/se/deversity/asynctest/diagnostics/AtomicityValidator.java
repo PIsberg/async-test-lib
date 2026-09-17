@@ -301,9 +301,14 @@ public class AtomicityValidator {
         if (identity == 0) {
             return false;
         }
-        ReceiverState state = receiverStates.computeIfAbsent(identity,
-                ignored -> new ReceiverState(threadId, 0));
-        recordTaker(identity, 0, state.firstThread);
+        // Generation 0's owner is known only when an access, not a take, created the state. A
+        // take drained ahead of the builder's accesses leaves it unknown on purpose: recording the
+        // first thread seen afterwards would name the taker as its own predecessor. Recording here
+        // also keeps the per-access path free of boxing (RunnerAllocationBudgetTest).
+        ReceiverState state = receiverStates.computeIfAbsent(identity, ignored -> {
+            recordTaker(identity, 0, threadId);
+            return new ReceiverState(threadId, 0);
+        });
         if (state.shared) {
             return false;
         }
@@ -845,7 +850,10 @@ public class AtomicityValidator {
      *
      * <p>In a generation a later take closed, an access from the previous owner (the thread that
      * took the previous generation, or built it in generation 0) is a late-published handoff
-     * access and does not withdraw exclusivity (#557). But an access from a thread that was
+     * access and does not withdraw exclusivity (#557). When the stream never saw who owned the
+     * previous generation, because the take drained before any access to the object, every
+     * foreign thread is given that benefit: the offerer's own write can drain after the take, and
+     * nothing in the stream tells it from an alias. But an access from a thread that was
      * neither this generation's taker nor the previous owner is an alias access, and withdraws
      * the taker's exclusivity even though a later take closed the generation (#630).
      */
@@ -861,7 +869,7 @@ public class AtomicityValidator {
                     Long takerG = takerOf(access.identity, access.generation);
                     Long takerPrev = takerOf(access.identity, access.generation - 1);
                     boolean isTaker = takerG != null && access.threadId == takerG;
-                    boolean isPreviousOwner = takerPrev != null && access.threadId == takerPrev;
+                    boolean isPreviousOwner = takerPrev == null || access.threadId == takerPrev;
                     if (!isTaker && !isPreviousOwner) {
                         contested.computeIfAbsent(access.identity, k -> new HashSet<>()).add(access.generation);
                     }
@@ -1442,6 +1450,7 @@ public class AtomicityValidator {
         lastOwnWriteEpoch.clear();
         atomicityViolations.clear();
         receiverStates.clear();
+        generationTakers.clear();
         invocationEpoch.set(0);
     }
     /**
