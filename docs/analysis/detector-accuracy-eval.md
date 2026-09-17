@@ -115,12 +115,16 @@ authority on which row is which - each outcome above is one assertion in it.
   agreeing with nothing, so the race was silent. A foreign access inside the generation the receiver
   is still in now withdraws the taker's exclusivity for the whole generation, and
   `atomicityAliasWritingAfterTheTakersLastAccessStillFires` fires (it was silent before) while
-  `atomicityTakesWithNoAliasStaySilent` stays silent. The boundary that remains is a generation a
-  later take closed: it keeps the exclusion, alias or not, because a later take is the only evidence
-  in a value-free stream that the object left the previous owner, and withdrawing it there too would
-  judge netty's hand-offs by the lockset again. `atomicityAliasInAGenerationALaterTakeClosedIsStillExcused`
-  pins that false negative, tracked in [#630](https://github.com/PIsberg/async-test-lib/issues/630).
-  Measured on corpus-eval lane one (local JDK 26): the rule withdrew exclusivity in 7 analyses, all
+  `atomicityTakesWithNoAliasStaySilent` stays silent. A generation a later take closed is judged
+  too ([#630](https://github.com/PIsberg/async-test-lib/issues/630)): an access by a thread that was
+  neither that generation's taker nor the previous generation's owner withdraws the exclusion, and
+  `atomicityAliasInAGenerationALaterTakeClosedFires` pins it. The previous owner's access stays a
+  hand-off whether it was published late (`atomicityLateAccessByPreviousOwnerInClosedGenerationStaysSilent`)
+  or drained after the take (`atomicityPreviousOwnerAccessDrainedAfterTheTakeStaysSilent`). The
+  boundary that remains is generation 1 of a receiver whose first recorded event is the take:
+  nothing names generation 0's owner, so every foreign access there is excused, alias or not.
+  Measured on corpus-eval lane one (local JDK 26), before #630 changed closed generations and not
+  re-run since: the rule withdrew exclusivity in 7 analyses, all
   in netty's `adaptiveByteBufAllocator_bufferAndRelease`, and the documented-thread-safe column
   stayed at 0 of 100 against main.
 - The rest of the Shared* family no longer has that limit; see the section below.

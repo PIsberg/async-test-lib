@@ -250,7 +250,9 @@ Three limits worth knowing before switching it on:
   (#555). Another thread's access inside the generation the receiver is still in withdraws the
   taker's exclusivity for that whole generation, including accesses the taker made before it, so
   an alias kept from before the take cannot hide behind the order its access was published in
-  (#559); a generation a later take closed keeps it
+  (#559). In a generation a later take closed, an access withdraws it only when its thread neither
+  took that generation nor owned the one before it: the previous owner's late access is a hand-off,
+  and when no access showed who owned generation 0, every thread gets that benefit
   ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
   so writes under them still report: `Unsafe.compareAndSwapInt`, and an
   `AtomicIntegerFieldUpdater` created before the agent attached, which exposes no field name to
