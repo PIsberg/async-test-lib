@@ -375,12 +375,31 @@ public final class TelemetryRegistry {
      * {@code <clinit>}, so updaters created before the agent attached can be resolved from their
      * owner's recorded updater fields.
      *
-     * @param ownerClass    the class passed to {@code newUpdater}, as a qualified name
-     * @param qualifiedName the field, as {@code declaringClass.field}
+     * <p>An empty {@code qualifiedName} records that {@code ownerClass} makes an updater whose
+     * owner or field name was not a constant, which keeps its hierarchy from being resolved.
+     *
+     * @param ownerClass    the class passed to {@code newUpdater}, as a qualified name, or the
+     *                      class making the call when {@code qualifiedName} is empty
+     * @param qualifiedName the field, as {@code declaringClass.field}, or empty when unreadable
      * @since 1.12.1
      */
     public static void atomicUpdaterFieldRecorded(String ownerClass, String qualifiedName) {
         SpinLocks.recordUpdaterField(ownerClass, qualifiedName);
+    }
+
+    /**
+     * Records that the weaver has scanned every method of {@code className}, whether or not it
+     * binds an updater (#619).
+     *
+     * <p>Called at weave time by {@code AtomicFieldRegistry.recordScanned}. A pre-attach updater is
+     * resolved from its receiver's hierarchy only when every class in it has been scanned, since
+     * one the weaver never saw may bind an updater nobody recorded.
+     *
+     * @param className the scanned class, as a qualified name
+     * @since 1.12.1
+     */
+    public static void atomicUpdaterClassScanned(String className) {
+        SpinLocks.recordScannedClass(className);
     }
 
     /**

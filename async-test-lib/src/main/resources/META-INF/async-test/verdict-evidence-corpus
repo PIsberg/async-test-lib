@@ -146,3 +146,22 @@ SHARED_CHARSET_CODER = recorded_charsetEncoder_sharedAcrossThreads, recorded_cha
 # Both corpus bodies take the real lock, and the silent half's write acquire really returns, so
 # the pair is decided by the JDK's own rule. LockUpgradeDeadlockAccuracyTest pins both directions.
 LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_readLock_releasedBeforeWriting
+
+# --- 2026-09-17: held on its model in the second reading (#571), promoted once the pair was re-read.
+#
+# REENTRANT_LOCK used to report a recorded tryLock timeout. #589 made the finding a lock still held
+# when the run is analysed, asked of the lock itself, with a timeout kept only as context; #609
+# reports that hold only when its holder has finished or sits idle in its pool, and #608 reports
+# starvation only when barging was seen on the lock. The firing half re-enters the real lock and
+# releases it once, so a hold really is left taken. The silent half has every worker take a second
+# lock with lock() and release it, contended but never left held. The halves also differ in the
+# recorded timeout, which decides nothing; PairEvidence.REVIEWED_DESPITE_SHAPE records that reading.
+#
+# What the pair does not reach: the starvation finding, which needs the caller's
+# recordStarvation(lock, ...) as well as barging seen on the lock, and the boundary the detector's
+# javadoc names, a lock held by an unrecorded virtual thread still working at analysis, which is
+# reported as if its holder had finished.
+#
+# The same re-read kept CYCLIC_BARRIER and CONDITION_VARIABLES at PROMPT on their model;
+# PairEvidence.HELD_ON_MODEL carries each reason.
+REENTRANT_LOCK = recorded_reentrantLock_holdLeftTaken, recorded_reentrantLock_acquiredAndReleased

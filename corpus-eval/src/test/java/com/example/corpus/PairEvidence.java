@@ -87,9 +87,17 @@ final class PairEvidence {
     private static final Map<DetectorType, String> HELD_ON_MODEL = new EnumMap<>(DetectorType.class);
 
     static {
-        // REVIEWED_DESPITE_SHAPE is empty on purpose. Adding an entry is a claim that someone read
-        // both bodies and found the differing call to be the defect itself. An entry with no such
+        // Adding an entry is a claim that someone read both bodies and found the differing call to
+        // be the defect itself, or context the detector does not decide on. An entry with no such
         // reading is worth less than the PROMPT tier it replaces.
+        //
+        // Read 2026-09-17, re-reading a #571 hold against the model #589, #608 and #609 left.
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.REENTRANT_LOCK, "only the firing half records "
+                + "recordLockTimeout, from the workers whose bounded tryLock backs off while the "
+                + "leaked hold is taken; the silent half has every worker take its lock with lock() "
+                + "and release it, contended, so it never times out. Since #589 a timeout is context "
+                + "and decides nothing: the finding is the lock itself still held at analysis by a "
+                + "holder that has finished or is idle in its pool (#609)");
 
         // Read 2026-09-14: each pair's two bodies and its detector's source, by a reviewer asked
         // to argue against promotion. The reason is the model property that decided it.
@@ -133,18 +141,24 @@ final class PairEvidence {
         // READ_WRITE_LOCK_FAIRNESS was held here as a liveness observation; #569 moved it to
         // ADVISORY, which is not a promotion candidate, so the hold no longer asks anything.
 
-        // Second reading, 2026-09-14 (#571). In all eight the body declares what the finding says
-        // and the detector never asks the object it names.
-        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "since #592 stuck waiters are read "
-                + "from the lock's wait queue, and since #618 the pair is rebuilt on a real parked "
-                + "waiter under registerCondition(lock, condition, name); the model no longer "
-                + "holds the pair back, so it needs the adversarial re-read against both bodies "
-                + "that promotion requires (#571)");
-        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "since #595 nothing the body declares is a "
-                + "finding: reuse is decided with isBroken() at the arrival or await (#584), and "
-                + "recordTimeout and recordBroken are only context for that report; the model no "
-                + "longer holds the pair back, so it needs the adversarial re-read against both "
-                + "bodies that promotion requires (#571)");
+        // Second reading, 2026-09-14 (#571). In all eight the body declared what the finding said
+        // and the detector never asked the object it named. CONDITION_VARIABLES, CYCLIC_BARRIER and
+        // REENTRANT_LOCK were re-read on 2026-09-17, once their models asked the real object.
+        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "re-read 2026-09-17: stuck waiters "
+                + "are read from the lock's wait queue (#592) and the pair parks a real waiter "
+                + "(#618), but both rows register with the three-argument registerCondition, which "
+                + "carries no predicate, so every thread still parked at analysis is reported stuck, "
+                + "and an idle consumer parked on an empty queue is correct code (#643). The silent "
+                + "twin signals and joins its consumer, so no row shows a consumer registered with "
+                + "its predicate staying silent while parked idle; needs that MUST_STAY_SILENT twin");
+        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "re-read 2026-09-17: reuse is decided with "
+                + "isBroken() at the recorded arrival or await (#584, #595), so a party that "
+                + "arrives after a timeout broke the barrier to cancel, catches "
+                + "BrokenBarrierException and calls reset(), as the report's own fix advises, "
+                + "draws the reuse finding (reproduced against the detector directly). The silent "
+                + "twin never breaks its barrier, so no row covers a handled break, and the "
+                + "stranded-party finding (#631) has no pair of its own; needs the handled-break "
+                + "twin and a reuse rule that it stays silent on");
         HELD_ON_MODEL.put(DetectorType.EXCHANGER, "#585 made orphaning the finding, decided from "
                 + "recorded starts against completions, timeouts and interrupts, so a handled timeout "
                 + "is silent; still held until re-read, because the counts are the body's own "
@@ -163,11 +177,9 @@ final class PairEvidence {
                 + "recorded unlock matched on a lock still write- or read-held at analysis, and the "
                 + "MUST_FIRE row no longer declares it; not yet re-read against that model, so it "
                 + "stays held until a reading confirms the rows separate on the real lock's state");
-        HELD_ON_MODEL.put(DetectorType.REENTRANT_LOCK, "#589 made the finding a lock still held "
-                + "at analysis, read from the lock itself, and a handled tryLock timeout context; "
-                + "#609 no longer reports a hold whose holder is still working and #608 makes "
-                + "starvation a finding only when barging was seen on the lock, so the model "
-                + "questions are answered; still held until the pair is re-read against that model");
+        // REENTRANT_LOCK was held here until the pair was re-read against #589, #608 and #609 on
+        // 2026-09-17; it is promoted in verdict-evidence-corpus, and REVIEWED_DESPITE_SHAPE says
+        // why the timeout only its firing half records decides nothing.
         HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "since #590 the finding is an unsignalled "
                 + "wait return the same thread does not follow with another wait; since #607 a "
                 + "deadline loop can close its last return with recordGaveUp, but that and "

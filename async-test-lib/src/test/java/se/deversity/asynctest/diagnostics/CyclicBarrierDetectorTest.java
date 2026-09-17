@@ -2,9 +2,11 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -193,28 +195,21 @@ public class CyclicBarrierDetectorTest {
         CyclicBarrier barrier = new CyclicBarrier(3);
         detector.registerBarrier(barrier, "strandedBarrier");
 
-        Thread p1 = new Thread(() -> {
+        Runnable untimedParty = () -> {
+            detector.recordAwait(barrier);
             try {
                 barrier.await();
             } catch (Exception ignored) {
             }
-        });
-        Thread p2 = new Thread(() -> {
-            try {
-                barrier.await();
-            } catch (Exception ignored) {
-            }
-        });
+        };
+        Thread p1 = new Thread(untimedParty);
+        Thread p2 = new Thread(untimedParty);
         p1.setDaemon(true);
         p2.setDaemon(true);
         p1.start();
         p2.start();
 
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (barrier.getNumberWaiting() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
-        }
-        assertEquals(2, barrier.getNumberWaiting(), "premise: two parties waiting");
+        awaitParked(barrier, 2, p1, p2);
 
         CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
         assertTrue(report.hasIssues());
@@ -235,6 +230,7 @@ public class CyclicBarrierDetectorTest {
         detector.registerBarrier(barrier, "timedOutBarrier", 2);
 
         Thread p1 = new Thread(() -> {
+            detector.recordAwait(barrier);
             try {
                 barrier.await();
             } catch (Exception ignored) {
@@ -243,11 +239,7 @@ public class CyclicBarrierDetectorTest {
         p1.setDaemon(true);
         p1.start();
 
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (barrier.getNumberWaiting() < 1 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
-        }
-        assertEquals(1, barrier.getNumberWaiting(), "premise: one party waiting");
+        awaitParked(barrier, 1, p1);
 
         detector.markRoundTimedOut();
 
@@ -269,9 +261,8 @@ public class CyclicBarrierDetectorTest {
         CyclicBarrierDetector detector = new CyclicBarrierDetector();
         CyclicBarrier barrier = new CyclicBarrier(2);
 
-        detector.recordArrival(barrier);
-
         Thread p1 = new Thread(() -> {
+            detector.recordArrival(barrier);
             try {
                 barrier.await();
             } catch (Exception ignored) {
@@ -280,10 +271,7 @@ public class CyclicBarrierDetectorTest {
         p1.setDaemon(true);
         p1.start();
 
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (barrier.getNumberWaiting() < 1 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
-        }
+        awaitParked(barrier, 1, p1);
 
         CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
         assertTrue(report.hasIssues());
@@ -293,5 +281,139 @@ public class CyclicBarrierDetectorTest {
 
         barrier.reset();
         p1.join(1000);
+    }
+
+    /**
+     * A barrier action runs holding the barrier's lock, so {@code getNumberWaiting()} and
+     * {@code isBroken()} block while it runs. The runner calls {@code markRoundTimedOut()} exactly
+     * when a round is stuck, which is when an action may be stuck too; if the probe takes that lock
+     * the runner never cancels its workers and the test hangs instead of failing.
+     */
+    @Test
+    void roundTimeoutProbeReturnsWhileABarrierActionHoldsTheBarrierLock() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CountDownLatch actionStarted = new CountDownLatch(1);
+        CountDownLatch releaseAction = new CountDownLatch(1);
+        CyclicBarrier barrier = new CyclicBarrier(1, () -> {
+            actionStarted.countDown();
+            try {
+                releaseAction.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        detector.registerBarrier(barrier, "blocked-action", 1);
+
+        Thread party = new Thread(() -> {
+            detector.recordAwait(barrier);
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        party.setDaemon(true);
+        party.start();
+        try {
+            assertTrue(actionStarted.await(5, TimeUnit.SECONDS), "premise: the barrier action is running");
+
+            AtomicReference<CyclicBarrierDetector.CyclicBarrierReport> report = new AtomicReference<>();
+            Thread probe = new Thread(() -> {
+                detector.markRoundTimedOut();
+                report.set(detector.analyze());
+            });
+            probe.setDaemon(true);
+            probe.start();
+            probe.join(2000);
+
+            assertFalse(probe.isAlive(),
+                    "markRoundTimedOut() and analyze() must not wait for the barrier lock a blocked action holds");
+            assertFalse(report.get().getStrandedBarriers().contains(barrier),
+                    "every party arrived; a running action is not a party short: " + report.get());
+        } finally {
+            releaseAction.countDown();
+            party.join(2000);
+        }
+    }
+
+    @Test
+    void timedAwaitStillParkedAtTimeoutIsNotStranded() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(3);
+        detector.registerBarrier(barrier, "timed-waiters", 3);
+
+        Runnable timedParty = () -> {
+            detector.recordAwait(barrier);
+            try {
+                barrier.await(30, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+            }
+        };
+        Thread p1 = new Thread(timedParty);
+        Thread p2 = new Thread(timedParty);
+        p1.setDaemon(true);
+        p2.setDaemon(true);
+        p1.start();
+        p2.start();
+        try {
+            awaitParked(barrier, 2, p1, p2);
+
+            detector.markRoundTimedOut();
+            CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+
+            assertFalse(report.hasIssues(),
+                    "a timed await ends on its own and breaks the barrier, so it is not stranded: " + report);
+        } finally {
+            barrier.reset();
+            p1.join(1000);
+            p2.join(1000);
+        }
+    }
+
+    @Test
+    void untimedWaiterThatRecordedNothingIsNotReported() throws Exception {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        detector.registerBarrier(barrier, "unrecorded-waiter", 2);
+
+        Thread outsider = new Thread(() -> {
+            try {
+                barrier.await();
+            } catch (Exception ignored) {
+            }
+        });
+        outsider.setDaemon(true);
+        outsider.start();
+        try {
+            awaitParked(barrier, 1, outsider);
+
+            detector.markRoundTimedOut();
+            CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+
+            assertFalse(report.hasIssues(),
+                    "only a waiter that recorded its await is attributed to the barrier: " + report);
+        } finally {
+            barrier.reset();
+            outsider.join(1000);
+        }
+    }
+
+    private static void awaitParked(CyclicBarrier barrier, int waiting, Thread... parties) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!allParked(parties) || barrier.getNumberWaiting() < waiting) {
+            if (System.nanoTime() > deadline) {
+                fail("premise: " + waiting + " parties parked on the barrier");
+            }
+            Thread.onSpinWait();
+        }
+    }
+
+    private static boolean allParked(Thread... parties) {
+        for (Thread t : parties) {
+            Thread.State state = t.getState();
+            if (state != Thread.State.WAITING && state != Thread.State.TIMED_WAITING) {
+                return false;
+            }
+        }
+        return true;
     }
 }

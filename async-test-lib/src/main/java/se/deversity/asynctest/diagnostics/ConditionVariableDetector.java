@@ -62,8 +62,9 @@ import org.jspecify.annotations.Nullable;
  * <p><strong>What is not a finding.</strong> A signal made while nobody waits is how correct
  * code runs whenever the producer gets there first: the consumer tests its predicate before it
  * awaits and never waits at all. The count is shown in the report as a note and does not decide
- * {@link ConditionVariableReport#hasIssues()}. Telling a lost wakeup from a satisfied predicate
- * needs the predicate, which this detector is never shown.
+ * {@link ConditionVariableReport#hasIssues()}. Telling a stuck waiter from an idle consumer needs
+ * the predicate, which the {@code registerCondition(lock, condition, ready, name)} overloads pass
+ * in (#643): a thread parked while {@code ready} is false is an idle consumer and only a note.
  *
  * <p><strong>Recording contract.</strong> Record a signal while holding the condition's lock,
  * before or right after calling {@code signal()}, so no waiter can record its exit first. Record
@@ -113,11 +114,19 @@ public class ConditionVariableDetector {
         final int parked;
         final boolean hasPredicate;
         final boolean predicateSatisfied;
+        /** What the predicate threw when evaluated, or {@code null} when it returned. */
+        final @Nullable String predicateFailure;
 
         WaitQueueResult(int parked, boolean hasPredicate, boolean predicateSatisfied) {
+            this(parked, hasPredicate, predicateSatisfied, null);
+        }
+
+        WaitQueueResult(int parked, boolean hasPredicate, boolean predicateSatisfied,
+                        @Nullable String predicateFailure) {
             this.parked = parked;
             this.hasPredicate = hasPredicate;
             this.predicateSatisfied = predicateSatisfied;
+            this.predicateFailure = predicateFailure;
         }
     }
 
@@ -221,7 +230,10 @@ public class ConditionVariableDetector {
      *             registers the condition without a lock
      * @param condition the Condition to monitor
      * @param ready supplier evaluated under the lock at analysis; returns {@code true} when the
-     *              condition the waiter waits for is already satisfied
+     *              condition the waiter waits for is already satisfied. A supplier that throws
+     *              leaves the parked threads unconfirmed, with the exception in the report. It is
+     *              not evaluated when {@code lock} is {@code null}, since the lock is what shows
+     *              a thread parked
      * @param name a descriptive name for reporting
      * @since 1.12.1
      */
@@ -245,7 +257,10 @@ public class ConditionVariableDetector {
      *             {@code condition}; {@code null} registers the condition without a lock
      * @param condition the Condition to monitor
      * @param ready supplier evaluated under the lock at analysis; returns {@code true} when the
-     *              condition the waiter waits for is already satisfied
+     *              condition the waiter waits for is already satisfied. A supplier that throws
+     *              leaves the parked threads unconfirmed, with the exception in the report. It is
+     *              not evaluated when {@code lock} is {@code null}, since the lock is what shows
+     *              a thread parked
      * @param name a descriptive name for reporting
      * @since 1.12.1
      */
@@ -267,13 +282,16 @@ public class ConditionVariableDetector {
             try {
                 int parked = lock.getWaitQueueLength(condition);
                 boolean satisfied = false;
+                String failure = null;
                 if (parked > 0 && ready != null) {
                     try {
                         satisfied = ready.getAsBoolean();
-                    } catch (RuntimeException | Error ignored) { // NOPMD EmptyCatchBlock — evaluation failure counts as unsatisfied
+                    } catch (RuntimeException | Error thrown) {
+                        // Neither satisfied nor idle: reported as unconfirmed, never silently idle.
+                        failure = thrown.toString();
                     }
                 }
-                return new WaitQueueResult(parked, ready != null, ready == null || satisfied);
+                return new WaitQueueResult(parked, ready != null, ready == null || satisfied, failure);
             } catch (IllegalArgumentException notThisLocksCondition) {
                 return new WaitQueueResult(NOT_OWNED, ready != null, false);
             } finally {
@@ -292,13 +310,16 @@ public class ConditionVariableDetector {
             try {
                 int parked = lock.getWaitQueueLength(condition);
                 boolean satisfied = false;
+                String failure = null;
                 if (parked > 0 && ready != null) {
                     try {
                         satisfied = ready.getAsBoolean();
-                    } catch (RuntimeException | Error ignored) { // NOPMD EmptyCatchBlock — evaluation failure counts as unsatisfied
+                    } catch (RuntimeException | Error thrown) {
+                        // Neither satisfied nor idle: reported as unconfirmed, never silently idle.
+                        failure = thrown.toString();
                     }
                 }
-                return new WaitQueueResult(parked, ready != null, ready == null || satisfied);
+                return new WaitQueueResult(parked, ready != null, ready == null || satisfied, failure);
             } catch (IllegalArgumentException notThisLocksCondition) {
                 return new WaitQueueResult(NOT_OWNED, ready != null, false);
             } finally {
@@ -488,7 +509,12 @@ public class ConditionVariableDetector {
             int parked = result.parked;
             if (parked > 0) {
                 if (result.hasPredicate) {
-                    if (result.predicateSatisfied) {
+                    if (result.predicateFailure != null) {
+                        report.unconfirmedWaits.add(String.format(
+                            "%s: %d thread(s) parked on the condition at analysis, but its predicate threw "
+                                + "%s, so they are neither confirmed stuck nor idle (%s)",
+                            state.name, parked, result.predicateFailure, lastSignal));
+                    } else if (result.predicateSatisfied) {
                         report.stuckWaiters.add(String.format(
                             "%s: %d thread(s) parked in await() at analysis while its predicate is satisfied, "
                                 + "read from the lock (%s; %d recorded await(s) still open)",

@@ -35,7 +35,7 @@ What follows is the remainder, in the order worth doing them.
 
 ## 2. Nothing checks that `CorpusGatesTest` still bites (Closed 2026-09-16)
 
-Closed on 2026-09-16. `CorpusGatesTest` covers all gate methods in `CorpusGates` in both failing and accepting directions with synthetic inputs, verifying that any mutation or softening of gating logic (outcome, severity, blank diagnostics, missing methods, unexcluded bytecode, or unexercised pairs) trips a test failure.
+Closed on 2026-09-16. `CorpusGatesTest` covers all gate methods in `CorpusGates` in both failing and accepting directions with synthetic inputs (outcome, severity, blank diagnostics, missing methods, unexcluded bytecode, or unexercised pairs), so softening a rejection one of those tests names turns it red. Whether every mutation of the gating logic would is not measured: PIT does not run on `corpus-eval`, so this is a statement about the cases written, not a mutation score.
 
 ## 2b. Pairs held back by a rule rather than a reading
 
@@ -104,13 +104,46 @@ detector is driven either by caller-asserted record methods (`recordForkWithoutJ
 introspection, by synthetic string IDs rather than actual JVM construct instances (e.g.
 `StructuredTaskScope`, `ScopedValue`, `StableValue`), or by arbitrary contention/ratio thresholds on
 types that are thread-safe by specification (e.g. `CopyOnWriteArrayList`, lock contention ratio). None
-inspects real JVM objects or synchronization primitives, so each requires agent instrumentation or
-bytecode analysis before its pair can be evaluated for promotion. The unreviewed PROMPT backlog
+inspects real JVM objects or synchronization primitives. For nineteen of them that is what holds the
+pair: each requires agent instrumentation or bytecode analysis before it can be evaluated for
+promotion. `COPY_ON_WRITE_COLLECTIONS` and `LOCK_CONTENTION` are held for a different reason, which
+their own entries give: each reports a throughput heuristic (a 20% write ratio, a 20% contention
+ratio or more than 5 contended acquisitions) rather than a correctness defect, so better observation
+alone would not make a finding a verdict. The unreviewed PROMPT backlog
 held by call shape is now 0.
 
-## 3. Severity is not pinned on a firing row (Closed 2026-09-16, expanded 2026-09-17)
+**Re-reading three second-reading holds, 2026-09-17.** `CONDITION_VARIABLES`, `CYCLIC_BARRIER` and
+`REENTRANT_LOCK` no longer fit the shape the second reading named: since #592, #595 and #589 each
+asks the real lock or barrier. Asking the object is necessary, not sufficient, and only one pair
+survived the re-read:
 
-Closed on 2026-09-16, expanded on 2026-09-17. `RecordingSubject` now records an optional `expectedSeverity` with `resolvedSeverity()` derived from the detector's model (`DetectorDefaultSeverity`). `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` verifies that finding severity matches expected severity when specified. `DetectorEffectivenessAndCorrectnessTest` validates that all 118 firing rows in the recording lane and all 34 firing rows in the agent-pair lane resolve to valid, non-degraded severity tiers.
+- `REENTRANT_LOCK` is promoted. The finding is a lock still held at analysis by a holder that has
+  finished or is idle in its pool (#609), and the firing row really leaves a re-entered hold taken.
+  Its halves differ only in a recorded `tryLock` timeout, which is context since #589, so the pair
+  sits in `PairEvidence.REVIEWED_DESPITE_SHAPE`. The pair does not reach the starvation finding
+  (#608) or the unrecorded virtual-thread holder the detector's javadoc names.
+- `CYCLIC_BARRIER` is held. A party that arrives at a barrier a timeout broke to cancel, catches
+  `BrokenBarrierException` and calls `reset()`, which is the report's own advice, still draws the
+  reuse finding, because the decision is `isBroken()` at the recorded arrival. That was reproduced
+  against the detector directly. The silent twin never breaks its barrier, and the stranded-party
+  finding (#631) has no pair.
+- `CONDITION_VARIABLES` is held. Both rows use the three-argument `registerCondition`, with no
+  predicate, under which any thread parked at analysis is stuck, and #643 exists because an idle
+  consumer parked on an empty queue is correct code. There is no silent twin registering its
+  predicate while a consumer sits parked idle.
+
+## 3. Severity is not pinned on a firing row (open: the gate exists, no row uses it)
+
+On 2026-09-16 `RecordingSubject` gained an optional `expectedSeverity`, and
+`CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` fails a firing row whose findings do
+not carry it. `CorpusGatesTest` shows that check rejecting a mismatch and accepting a match. No row
+in `Corpus` sets `expectedSeverity`, though, so in every real lane the check is skipped and a
+detector whose severity moves still passes. The 2026-09-17 tests that counted "resolved" severities
+per lane were removed: they derived the value from `DetectorDefaultSeverity` with a `HIGH` fallback,
+which asserts the library's own table rather than what a detector reported, and could not fail on a
+severity change. Closing this means pinning severities on rows from a recorded run, and only then
+letting the lanes enforce them. Whether each detector states a severity at all is gated in the
+library, by `DetectorSeverityMarkerTest`.
 
 ## 4. Gates have no failing-direction test (Closed 2026-09-16, completed 2026-09-17)
 
@@ -123,6 +156,6 @@ Closed on 2026-09-16. `DetectorRefusalThresholdsTest` pins the exact thresholds,
 ## 7. Harness and build verification suites (Added 2026-09-17)
 
 Completed on 2026-09-17:
-- `TestBodyFieldIsObservedTest`: Companion to `TestBodyCollectionIsObservedTest` pinning that `FieldAccessWeaver` instruments direct field mutation on an already-loaded test class, verifying true-positive detection by `AtomicityValidator` on racy compound field writes and true-negative silence on synchronized access.
+- `TestBodyFieldIsObservedTest`: Companion to `TestBodyCollectionIsObservedTest` pinning that `FieldAccessWeaver` instruments direct field mutation in the test class, woven at load time because the lane attaches the agent with `-javaagent` at startup, verifying true-positive detection by `AtomicityValidator` on racy compound field writes and true-negative silence on synchronized access.
 - `LibraryBuildTest`: Unit tests covering `LibraryBuild` staleness comparisons, timestamp edge cases, tree walking for `.class` files, and SHA-256 digest computation.
 

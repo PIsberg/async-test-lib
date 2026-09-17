@@ -1,6 +1,7 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.AtomicSpinLockTableBean;
+import com.example.agentfixture.InheritedUpdaterSpinLockBean;
 import com.example.agentfixture.PreAttachSpinLockTableBean;
 import com.example.agentfixture.PreAttachUpdaterSpinLockTableBean;
 import com.example.agentfixture.SpinLockTableBean;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
+import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
@@ -60,6 +62,7 @@ class SpinLockWeavingTest {
         // initializers that have already run, so only the retransformed call sites can see them.
         PreAttachSpinLockTableBean.initialise();
         PreAttachUpdaterSpinLockTableBean.initialise();
+        InheritedUpdaterSpinLockBean.initialise();
         AsyncTestAgent.selfAttach("includes=com.example.agentfixture,fields=true,collections=true");
     }
 
@@ -231,6 +234,37 @@ class SpinLockWeavingTest {
         assertQuiet(drive(new PreAttachUpdaterSpinLockTableBean()::growReleasedByWrite),
                 "the updater's type initializer ran before the attach, so the field it reaches must be "
                         + "resolved from the owner class's recorded updater fields");
+    }
+
+    @Test
+    @DisplayName("a pre-attach updater spinlock released through a call the weaver does not see guards nothing after it (#619)")
+    void preAttachUpdaterSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
+        assertUnobservedReleaseReported(
+                drive(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterUnobservedRelease));
+    }
+
+    @Test
+    @DisplayName("an updater bound in a superclass the weaver never scanned is not resolved to the subclass's field (#619)")
+    void updaterFromAnUnscannedSuperclassIsNotResolvedToTheSubclassField() {
+        InheritedUpdaterSpinLockBean bean = new InheritedUpdaterSpinLockBean();
+        try {
+            assertTrue(bean.acquireState());
+            assertFalse(HeldLocks.anyHeld(),
+                    "STATE is bound in UnwovenUpdaterBase, which the weaver never scanned, so the one "
+                            + "recorded field in the hierarchy, InheritedUpdaterSpinLockBean.busy, is not "
+                            + "the field STATE swaps. Declaring it would put a lock on the wrong flag in "
+                            + "the lockset and can excuse a race");
+            bean.releaseState();
+
+            assertTrue(bean.acquireBusy());
+            assertFalse(HeldLocks.anyHeld(),
+                    "with an unscanned class in the hierarchy the registry cannot tell BUSY from "
+                            + "STATE either; leaving it undeclared loses a guard, which reports rather "
+                            + "than hides");
+            bean.releaseBusy();
+        } finally {
+            HeldLocks.clear();
+        }
     }
 
     private static void assertQuiet(AtomicityValidator.AtomicityReport report, String shape) {

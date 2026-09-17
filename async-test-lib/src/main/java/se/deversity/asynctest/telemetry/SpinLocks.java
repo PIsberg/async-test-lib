@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The compare-and-swap spinlocks the woven hooks in {@link TelemetryRegistry} declare (#554, #558).
@@ -40,10 +40,34 @@ import java.util.concurrent.atomic.AtomicLong;
  * another thread's observed acquire changes the holder. Either drops the stale entry before the
  * next access is recorded.
  *
- * <p>To close the window where a stale holder reads the flag locked between another thread's won
- * swap and its holder write (#621), an acquire sequence bumps an acquire sequence counter and
- * clears the stale holder before the swap instruction lands. Re-confirmation requires both the
- * holder and the sequence counter to be unchanged since the thread won the lock.
+ * <h2>Revoking a stale holder before the next swap (#621)</h2>
+ *
+ * <p>Between another thread's won swap and that winner recording itself, the flag reads locked
+ * again and the holder still names the thread that released unobserved, so that thread's accesses
+ * would pass re-confirmation and share one lock with the winner's. A thread about to swap the
+ * flag from unlocked therefore first revokes a stale holder: it reads the holder's {@link Stamp},
+ * <em>then</em> the flag, and only if the flag reads unlocked does it compare-and-set that stamp
+ * away. A stamp is a fresh object, written by a winner after its swap has landed, which is what
+ * keeps this from ever revoking a live hold:
+ * <ul>
+ *   <li>a stamp read before a flag that reads unlocked belongs to a hold that had already ended;</li>
+ *   <li>if a winner's swap lands after that read and it writes its stamp, the revoking
+ *       compare-and-set finds a different object and fails, and no stamp is ever reused, so an
+ *       ABA cannot make it succeed;</li>
+ *   <li>if the revoking compare-and-set lands between a winner's swap and its stamp write, it
+ *       clears a stamp the winner does not own, and the winner's write then replaces it.</li>
+ * </ul>
+ * Checking the flag before reading the stamp, or clearing on the flag alone as #648 did, loses
+ * the first property: the swap and stamp write can both land between the check and the clear, and
+ * a lock the winner genuinely holds is revoked, which reports correct code.
+ *
+ * <p>One window stays open, and nothing short of observing the release closes it. If the stale
+ * holder's unobserved release lands after the next winner has read the flag locked but before that
+ * winner's swap, no revocation happens, and from the swap until the winner writes its stamp (a few
+ * instructions inside {@code declare}) the old holder still passes re-confirmation. An access the
+ * old holder records inside that span looks guarded by the winner's lock. Both halves have to
+ * fall in windows a few instructions wide on two threads at once, and each ends the moment the
+ * winner declares, but it is a real false negative, not a theoretical one.
  *
  * <h2>What identifies a lock</h2>
  *
@@ -57,6 +81,9 @@ final class SpinLocks {
     /** The pseudo-field an {@code AtomicBoolean} or {@code AtomicInteger} lock is keyed under. */
     private static final String ATOMIC = "#atomic";
 
+    /** The recorded field of a {@code newUpdater} call whose owner or name was not a constant (#619). */
+    static final String UNREADABLE = "";
+
     /**
      * Which field each {@code VarHandle} or {@code AtomicIntegerFieldUpdater} reaches, as
      * {@code declaringClass.field}; the empty string for a handle that was asked and cannot say.
@@ -66,6 +93,10 @@ final class SpinLocks {
     /**
      * Fields each class binds through an {@code AtomicIntegerFieldUpdater.newUpdater} call,
      * as {@code declaringClass -> Set<String> qualifiedFieldNames} (#619).
+     *
+     * <p>Every class the weaver finished scanning has an entry, an empty set when it binds nothing,
+     * so a class with no entry is one whose updaters nobody has seen. {@link #UNREADABLE} in a set
+     * marks a {@code newUpdater} call in that class whose arguments were not constants.
      */
     private static final Map<String, Set<String>> CLASS_UPDATER_FIELDS = new ConcurrentHashMap<>();
 
@@ -92,6 +123,20 @@ final class SpinLocks {
 
     /** A flag: the identity hash of its receiver or atomic object, and its field. */
     private record Key(int subject, String field) { }
+
+    /**
+     * One observed won acquire, compared by identity (#621), so deliberately a class and not a record.
+     *
+     * <p>Never reused: a revoking compare-and-set holds the stamp it read, and the same object
+     * written again by a later hold would let that stale read revoke the live one.
+     */
+    private static final class Stamp {
+        final long threadId;
+
+        Stamp(long threadId) {
+            this.threadId = threadId;
+        }
+    }
 
     private SpinLocks() {
     }
@@ -133,25 +178,38 @@ final class SpinLocks {
         return field.isEmpty() ? null : field;
     }
 
-    /** Records that {@code ownerClass} binds {@code field} through an updater (#619). */
+    /**
+     * Records that {@code ownerClass} binds {@code field} through an updater (#619), or, when
+     * {@code field} is {@link #UNREADABLE}, that it makes one the weaver could not read.
+     */
     static void recordUpdaterField(String ownerClass, String field) {
         CLASS_UPDATER_FIELDS.computeIfAbsent(ownerClass, k -> ConcurrentHashMap.newKeySet()).add(field);
     }
 
-
-    /**
-     * {@return the field an updater reaches, or {@code null}}
-     */
-    static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater) {
-        return fieldOf(updater, null);
+    /** Records that the weaver has scanned every method of {@code className} (#619). */
+    static void recordScannedClass(String className) {
+        CLASS_UPDATER_FIELDS.computeIfAbsent(className, k -> ConcurrentHashMap.newKeySet());
     }
 
     /**
      * {@return the field an updater reaches on {@code receiver}, or {@code null}}
      *
      * <p>If the updater was bound before the agent attached, its owner's type initializer never
-     * ran the woven binding call. We resolve it from the receiver's class hierarchy if exactly
-     * one updater field was recorded for that hierarchy (#619).
+     * ran the woven binding call. It is then resolved from the receiver's class hierarchy, but
+     * only when that hierarchy accounts for every updater it could hold (#619): every class in it
+     * outside the JDK has been scanned, none makes an updater the weaver could not read, and
+     * exactly one field was recorded across them. "One recorded field" alone is not "one updater":
+     * a superclass the agent was not told to weave can bind its own, and naming the subclass's
+     * flag for a swap through it would put a lock on the wrong flag in the lockset, which can
+     * excuse a race. Refusing only loses a guard.
+     *
+     * <p>Two limits remain. JDK superclasses are not scanned and are assumed to bind no updater a
+     * woven call site swaps. And an updater made in a class outside the receiver's hierarchy, on a
+     * field that class can reach, is recorded only if that class was scanned: an unscanned one can
+     * still leave a single recorded field that is the wrong one. Separately, the weave-time record
+     * goes to the registry the agent's own loader sees ({@code AtomicFieldRegistry}), so under a
+     * runner that loads the library in an isolated classloader this copy stays empty and every
+     * pre-attach updater stays unresolved, which reports rather than hides.
      */
     static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater,
                                     @Nullable Object receiver) {
@@ -173,14 +231,30 @@ final class SpinLocks {
     }
 
     private static @Nullable String resolveFromHierarchy(Class<?> clazz) {
-        Set<String> matches = new java.util.HashSet<>();
+        String found = null;
         for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
             Set<String> fields = CLASS_UPDATER_FIELDS.get(c.getName());
-            if (fields != null) {
-                matches.addAll(fields);
+            if (fields == null) {
+                if (isJdk(c)) {
+                    continue;
+                }
+                // Never scanned: it may bind an updater nobody recorded.
+                return null;
+            }
+            for (String field : fields) {
+                if (UNREADABLE.equals(field) || (found != null && !found.equals(field))) {
+                    return null;
+                }
+                found = field;
             }
         }
-        return matches.size() == 1 ? matches.iterator().next() : null;
+        return found;
+    }
+
+    @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"})
+    private static boolean isJdk(Class<?> type) {
+        ClassLoader loader = type.getClassLoader();
+        return loader == null || loader == ClassLoader.getPlatformClassLoader();
     }
 
     /** {@return {@code declaringClass.field} for a direct {@code int} instance-field handle, else ""} */
@@ -207,11 +281,24 @@ final class SpinLocks {
         }
     }
 
-    /** Test-only seam: called right before {@code wonBy} records the new winner (#621). */
-    private static volatile @Nullable Runnable testHookBeforeWonBy;
+    /**
+     * Test-only seam: runs on the winning thread once its swap has landed and before any of the
+     * lock's bookkeeping, which is the window #621 is about.
+     */
+    private static volatile @Nullable Runnable testHookAfterSwap;
 
-    static void setTestHookBeforeWonBy(@Nullable Runnable hook) {
-        testHookBeforeWonBy = hook;
+    static void setTestHookAfterSwap(@Nullable Runnable hook) {
+        testHookAfterSwap = hook;
+    }
+
+    /**
+     * Test-only seam: runs on a thread about to swap once it has read a stamp and seen the flag
+     * unlocked, and before it revokes that stamp.
+     */
+    private static volatile @Nullable Runnable testHookBeforeRevoke;
+
+    static void setTestHookBeforeRevoke(@Nullable Runnable hook) {
+        testHookBeforeRevoke = hook;
     }
 
     @SuppressWarnings("PMD.NullAssignment")
@@ -220,7 +307,8 @@ final class SpinLocks {
         SPIN_FIELDS.clear();
         HANDLE_FIELDS.clear();
         CLASS_UPDATER_FIELDS.clear();
-        testHookBeforeWonBy = null;
+        testHookAfterSwap = null;
+        testHookBeforeRevoke = null;
     }
 
     static @Nullable Lock lockFor(Object subject, String field) {
@@ -232,8 +320,8 @@ final class SpinLocks {
     }
 
     /**
-     * Prepares for a swap from 0 to 1 on {@code receiver}'s {@code field}, marking any stale
-     * holder as revoked before the swap instruction lands (#621).
+     * Prepares for a swap from 0 to 1 on {@code receiver}'s {@code field}, revoking a stale
+     * holder before the swap instruction lands (#621).
      */
     static void aboutToAcquire(@Nullable Object receiver, @Nullable VarHandle handle) {
         if (receiver == null || handle == null || !anySpinField()) {
@@ -253,7 +341,7 @@ final class SpinLocks {
         if (receiver == null || updater == null || !anySpinField()) {
             return;
         }
-        String field = fieldOf(updater);
+        String field = fieldOf(updater, receiver);
         if (field != null && isSpinField(field)) {
             aboutToAcquire(receiver, field);
         }
@@ -312,6 +400,10 @@ final class SpinLocks {
 
     private static void declare(Object subject, String field, @Nullable VarHandle handle,
                                 @Nullable AtomicIntegerFieldUpdater<Object> updater) {
+        Runnable hook = testHookAfterSwap;
+        if (hook != null) {
+            hook.run();
+        }
         Key key = new Key(System.identityHashCode(subject), field);
         Lock lock = LOCKS.get(key);
         if (lock == null) {
@@ -330,11 +422,6 @@ final class SpinLocks {
             // Two live objects share an identity hash. Sharing one lock would let one guard the
             // other, so this acquire goes undeclared: its writes report rather than hide.
             return;
-        }
-        lock.swapWon();
-        Runnable hook = testHookBeforeWonBy;
-        if (hook != null) {
-            hook.run();
         }
         lock.wonBy(Thread.currentThread().threadId());
         if (!HeldLocks.holds(lock)) {
@@ -364,14 +451,14 @@ final class SpinLocks {
         private final @Nullable VarHandle handle;
         private final @Nullable AtomicIntegerFieldUpdater<Object> updater;
 
-        /** The thread id of the last observed winner, or 0 after an observed release. */
-        private final AtomicLong holder = new AtomicLong();
-
-        /** The total number of acquire sequences started, bumped on a won swap (#621). */
-        private final AtomicLong acquires = new AtomicLong();
-
-        /** The {@link #acquires} value at the time the current {@link #holder} won the lock (#621). */
-        private final AtomicLong holderAcquire = new AtomicLong();
+        /**
+         * The last observed winner, or {@code null} after an observed release or a revocation.
+         *
+         * <p>A fresh {@link Stamp} per won acquire rather than a thread id, so a compare-and-set
+         * against a stamp read earlier can only match that one hold (#621). The one object this
+         * costs is allocated on an observed won acquire, never on a spin or an access.
+         */
+        private final AtomicReference<@Nullable Stamp> holder = new AtomicReference<>();
 
         Lock(Object subject, @Nullable VarHandle handle,
              @Nullable AtomicIntegerFieldUpdater<Object> updater) {
@@ -389,17 +476,27 @@ final class SpinLocks {
             return subject.get() == null;
         }
 
+        /**
+         * Revokes a holder whose hold has ended unobserved, before this thread's swap lands (#621).
+         *
+         * <p>The stamp is read before the flag, and that order is the whole argument (see the
+         * class javadoc): a stamp read ahead of a flag that reads unlocked cannot belong to a live
+         * hold, and a hold won after the read has a different stamp the compare-and-set cannot
+         * match. A contender spinning on a held lock reads the flag locked and writes nothing.
+         */
         void aboutToAcquire() {
-            // No-op: speculative attempts before a won swap must not invalidate the active holder (#621, #653)
-        }
-
-        void swapWon() {
-            acquires.incrementAndGet();
+            Stamp seen = holder.get();
+            if (seen != null && !isLocked()) {
+                Runnable hook = testHookBeforeRevoke;
+                if (hook != null) {
+                    hook.run();
+                }
+                holder.compareAndSet(seen, null);
+            }
         }
 
         void wonBy(long threadId) {
-            holderAcquire.set(acquires.get());
-            holder.set(threadId);
+            holder.set(new Stamp(threadId));
         }
 
         /**
@@ -411,7 +508,10 @@ final class SpinLocks {
          * genuinely holds, which would report its guarded writes.
          */
         void releasedBy(long threadId) {
-            holder.compareAndSet(threadId, 0L);
+            Stamp current = holder.get();
+            if (current != null && current.threadId == threadId) {
+                holder.compareAndSet(current, null);
+            }
         }
 
         /**
@@ -422,8 +522,8 @@ final class SpinLocks {
          */
         @Override
         public boolean stillHeld() {
-            return holder.get() == Thread.currentThread().threadId()
-                    && acquires.get() == holderAcquire.get()
+            Stamp current = holder.get();
+            return current != null && current.threadId == Thread.currentThread().threadId()
                     && isLocked();
         }
 

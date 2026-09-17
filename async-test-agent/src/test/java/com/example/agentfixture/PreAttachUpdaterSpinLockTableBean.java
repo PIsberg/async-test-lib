@@ -18,6 +18,7 @@ public final class PreAttachUpdaterSpinLockTableBean {
             AtomicIntegerFieldUpdater.newUpdater(PreAttachUpdaterSpinLockTableBean.class, "busy");
 
     private volatile Object[] table;
+    private volatile Object[] afterRelease;
     private volatile int busy;
 
     /** Forces initialisation, so the type initializer runs before the agent attaches. */
@@ -35,6 +36,24 @@ public final class PreAttachUpdaterSpinLockTableBean {
             }
         }
         Object[] seen = table;
+        return seen == null ? 0 : seen.length;
+    }
+
+    /**
+     * The unobserved-release twin: {@code getAndSet} releases through a call the weaver does not
+     * substitute, and {@link #afterRelease} is replaced with nothing held. A resolved pre-attach
+     * updater must not make that look guarded.
+     */
+    public int growThenWriteAfterUnobservedRelease() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndSet(this, 0);
+            }
+            afterRelease = next(afterRelease);
+        }
+        Object[] seen = afterRelease;
         return seen == null ? 0 : seen.length;
     }
 

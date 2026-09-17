@@ -17,10 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The canonical case a user writes first: a collection shared by the test body itself.
  *
  * <p>Separate from the corpus because it is not a third-party subject. It pins the path everything
- * else in this module depends on: the test class is loaded by JUnit before the runner attaches the
- * agent, so a finding here proves that retransformation reaches an already-loaded class and that
- * the call site in the body is rewritten. If this goes silent, every zero in the corpus report
- * becomes meaningless rather than informative.
+ * else in this module depends on: the lane attaches the agent with {@code -javaagent} at JVM
+ * startup, so the test class is woven as it loads, and a finding here proves that load-time weaving
+ * reaches the test class and that the call site in the body is rewritten. It says nothing about
+ * retransforming a class loaded before a dynamic attach; this lane never does one. If this goes
+ * silent, every zero in the corpus report becomes meaningless rather than informative.
  */
 class TestBodyCollectionIsObservedTest {
 
@@ -46,8 +47,8 @@ class TestBodyCollectionIsObservedTest {
             assertTrue(findings.violations().stream()
                             .anyMatch(v -> v.detector().contains("SharedCollection")),
                     "an unsynchronized HashMap written by four threads from the test body must be "
-                            + "reported. Nothing was: either the agent no longer retransforms the "
-                            + "already-loaded test class, or CollectionAccessWeaver stopped "
+                            + "reported. Nothing was: either the agent no longer weaves the test "
+                            + "class as it loads, or CollectionAccessWeaver stopped "
                             + "matching Map.put. Findings were: " + findings.violations() + ". "
                             + agentState());
         } finally {

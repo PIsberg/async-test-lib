@@ -7,29 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
 - **`MissedSignalDetector` observes predicate re-checks via `recordPredicateCheck` (#635).**
   Guardedness previously required the caller to declare `guarded = true|false` at `recordWait()`.
   New `recordPredicateCheck(Object monitor, boolean satisfied)` and
   `recordPredicateCheck(String conditionName, boolean satisfied)` (`@since 1.12.1`) allow
   observing a predicate re-evaluation occurring after wait wakeup, marking the completed wait
   as predicate-guarded and silencing false-positive missed signal reports. The corpus recording lane
-  MUST_FIRE row no longer declares its wait unguarded.
+  MUST_FIRE row no longer declares its wait unguarded. A check confirms only the thread's latest
+  wait, in the invocation round that wait woke up in, and never a wait recorded with an explicit
+  `guarded` flag: as first merged, a pooled worker's `if (!ready)` test in the next round marked
+  the previous round's unsignalled `if`-wait guarded and hid the lost signal, and a check after
+  `recordWait(monitor, false)` overrode the caller. The `satisfied` argument is not used in the
+  decision.
 
 - **`ConditionVariableDetector` distinguishes stranded condition waiters from idle consumers via waiter predicates (#643).**
   A thread parked on a condition at analysis was previously reported as a stuck waiter even if it was legitimately
   awaiting work. New `registerCondition` overloads accept a `BooleanSupplier ready` predicate evaluated under lock
   with `tryLock()`. When parked threads exist and the predicate is false, the waiter is recorded as an idle consumer
   in unconfirmed waits rather than failing the run; when the predicate is true or unspecified, parked threads are
-  reported as stuck waiters.
+  reported as stuck waiters. A predicate that throws leaves the parked threads unconfirmed and names the exception;
+  as first merged it was swallowed and read as an idle consumer, silencing the run.
 
 - **`CyclicBarrierDetector` reports barriers left a party short with untimed waiters parked (#631).**
   A barrier that never tripped because a party never arrived previously resulted in a round timeout
   without naming the barrier or indicating that it was left short. New `markRoundTimedOut()` on
-  `CyclicBarrierDetector`, called by `AsyncTestContext` before worker cancellation, captures
-  `getNumberWaiting() > 0` on registered barriers before runner cancellation interrupts them and
-  resets the waiting count to 0. `analyze()` also inspects live registered barriers at quiescent
-  analysis. The timeout error message now names `CyclicBarrierDetector` and surfaces the stranded
-  barrier, the number of waiting parties, and the short count.
+  `CyclicBarrierDetector`, called by `AsyncTestContext` before worker cancellation, records the
+  barriers left a party short before runner cancellation interrupts their waiters, and `analyze()`
+  applies the same check at quiescent analysis. The timeout error message now names
+  `CyclicBarrierDetector` and surfaces the stranded barrier, the number of waiting parties, and the
+  short count. A party counts as parked only when a thread that recorded an arrival or await on
+  the barrier is in an untimed `await()` there, read from the thread's state and stack rather than
+  from `getNumberWaiting()`: as first merged, that call took the barrier's lock on the runner
+  thread, so a barrier action blocked while holding it hung the round timeout instead of failing
+  it, and timed awaits and threads that recorded nothing were counted as stranded.
 
 - **`AtomicityValidator` withdraws exclusivity from closed ownership generations when touched by an alias (#630).**
   An ownership generation that a later take closed previously retained take-granted exclusivity even
@@ -37,17 +49,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now tracks the taker thread for each generation and distinguishes alias accesses from late-published
   handoff accesses by the previous owner: an access by a thread that was neither the generation's
   taker nor the previous owner withdraws the taker's exclusivity for that generation, exposing races
-  between the taker and the alias while preserving silence for clean object handoffs.
+  between the taker and the alias while preserving silence for clean object handoffs. Generation 0's
+  owner is recorded only when an access first creates the receiver's state, and an unknown previous
+  owner excuses the access (#557): as first merged, a take recorded before any access made the taker
+  generation 0's owner, so the offerer's write draining after the take was reported on a clean
+  handoff. `reset()` now also forgets the generation takers.
 
 - **Spinlock re-confirmation revokes a stale holder before another thread's won swap lands (#621).**
   A thread that released a spinlock flag through an unobserved call (such as `getAndSet(0)`)
   remained listed as the lock holder until another thread won a substituted compare-and-swap and
   recorded itself as holder. Between that swap and the holder write, the flag read locked and the
-  holder still named the previous thread, excusing accesses in that gap. An acquire sequence
-  counter is now bumped and any stale holder cleared before the swap instruction executes when the
-  flag is free; `Lock.stillHeld()` requires both the holder and the acquire sequence counter to be
-  unchanged since the winner took the lock. `SpinLocksTest` deterministically latches threads at
-  the three points with a test-only seam and pins the revocation.
+  holder still named the previous thread, excusing accesses in that gap. The holder is now a fresh
+  stamp object per observed won acquire; a contender reads the stamp, then the flag, and only when
+  the flag is free clears that exact stamp before its swap, so a stale holder is revoked and a
+  holder that won after the contender looked is not. As first merged, the revocation was
+  check-then-clear and could revoke a live holder (correct spinlock code reported as a race; 178 of
+  300 amplified `SpinLockWeavingTest` repetitions failed), and the later workaround moved the
+  bookkeeping after the swap, reopening the gap. The `SpinLocksTest` seam now pauses right after
+  the swap lands. One narrow window remains: an unobserved release landing between a contender's
+  flag check and its swap.
 
 - **`AsyncTestAgent` resolves `AtomicIntegerFieldUpdater` spinlock fields whose updater was bound before attach (#619).**
   When a class containing an `AtomicIntegerFieldUpdater` initializes before the agent attaches, its type
@@ -55,7 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance. On retransformation, the updater's field binding is now captured at weave time via
   `AtomicFieldRegistry.recordIntUpdater` and registered in `SpinLocks.recordUpdaterField`. When a CAS or
   release is subsequently encountered for an updater with no instance binding, `SpinLocks.fieldOf(updater, receiver)`
-  resolves the target field from the receiver class hierarchy when exactly one field updater is bound for it.
+  resolves the target field from the receiver class hierarchy when exactly one field updater is bound for it,
+  and only when every non-JDK class in that hierarchy was scanned by the weaver and none makes an updater
+  the weaver cannot read. As first merged, an updater bound in an unwoven superclass resolved to the
+  subclass's recorded field, declaring a lock on the wrong flag that could excuse a race.
 
 - **The remaining twenty-one unreviewed PROMPT corpus pairs were read and held back on their detector's model (#571).**
   `ASYNC_PIPELINE`, `COMPLETABLEFUTURE_CHAIN`, `CONSTRUCTOR_SAFETY`, `COPY_ON_WRITE_COLLECTIONS`,
@@ -539,6 +562,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shared one; a caller naming a `StampedLock` to `recordSleep(ms, monitor)` still records nothing.
 
 ### Changed
+
+- **`REENTRANT_LOCK` reaches `TrustTier.VERDICT`, taking it to 69 of 146; `CYCLIC_BARRIER` and
+  `CONDITION_VARIABLES` stay `PROMPT`.** All three were held in the second reading (#571) because
+  the body declared the finding, and all three now ask the real lock or barrier, so they were
+  re-read. `REENTRANT_LOCK`'s finding is a lock still held at analysis by a holder that has finished
+  or is idle in its pool (#589, #609), and its corpus pair really leaves a re-entered hold taken
+  against a contended lock that is released; the timeout only the firing half records is context,
+  which `PairEvidence.REVIEWED_DESPITE_SHAPE` states. `CYCLIC_BARRIER` still fires on a party that
+  arrives at a barrier broken to cancel and handles it with `reset()`, reproduced against the
+  detector, and its stranded-party finding (#631) has no pair. `CONDITION_VARIABLES` has no silent
+  twin for an idle consumer registered with its predicate, the case #643 exists for. Each hold's
+  reason is in `PairEvidence.HELD_ON_MODEL`. **Upgrade note:** a build gated on
+  `minTrust = VERDICT` now fails on a `REENTRANT_LOCK` finding. Verified with
+  `DetectorTrustCoverageTest` (red with the tier left at `PROMPT` beside the new evidence line) and
+  a full corpus-eval run against the installed library.
 
 - **The `CONDITION_VARIABLES` corpus recording pair runs against a real parked waiter under `registerCondition(lock, ...)` (#618).**
   The old recording pair simulated an abandoned await by having one thread record an await and then return without signalling, with no thread ever awaiting on the condition variable. The pair now registers the condition with `ConditionVariableDetector.registerCondition(CONDITION_LOCK, ...)`; the must-fire subject starts a background consumer parked in `UNSIGNALLED_CONDITION.await()` while worker threads signal another condition, leaving a stuck waiter detected via `getWaitQueueLength`, and the silent twin signals and joins a parked consumer on `SIGNALLED_CONDITION`, clearing all waiters before analysis.

@@ -2,7 +2,6 @@ package com.example.corpus;
 
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.DetectorType;
-import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 /**
@@ -28,7 +27,9 @@ import se.deversity.asynctest.diagnostics.IssueSeverity;
  * @param contract         the class's own documented contract, for context
  * @param expectation      what must happen, given what the body records
  * @param rationale        why that outcome follows from the recorded calls
- * @param expectedSeverity the severity the finding is expected to carry, or {@code null} to default from model
+ * @param expectedSeverity the severity the finding must carry, or {@code null} to leave severity
+ *                         unchecked. No row in {@link Corpus} sets one yet, so the severity half of
+ *                         the outcome gate runs only in {@code CorpusGatesTest}, never in a lane.
  */
 record RecordingSubject(
         String testMethod,
@@ -49,17 +50,6 @@ record RecordingSubject(
             Expectation expectation,
             String rationale) {
         this(testMethod, library, className, detector, contract, expectation, rationale, null);
-    }
-
-    /** {@return the expected severity if declared, or derived from detector default severity for MUST_FIRE} */
-    public @Nullable IssueSeverity resolvedSeverity() {
-        if (expectedSeverity != null) {
-            return expectedSeverity;
-        }
-        if (expectation == Expectation.MUST_FIRE) {
-            return DetectorDefaultSeverity.of(detector).orElse(IssueSeverity.HIGH);
-        }
-        return null;
     }
 
     /** What the recorded calls oblige the detector to do. */

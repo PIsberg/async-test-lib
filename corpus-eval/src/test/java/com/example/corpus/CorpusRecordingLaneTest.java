@@ -594,6 +594,14 @@ class CorpusRecordingLaneTest {
     /** Serializes the consumer setup/handshake for the signalled row so only one runs at a time (#618). */
     private static final Object SIGNALLED_CONSUMER_GATE = new Object();
 
+    /**
+     * Serializes starting the one consumer parked on {@link #UNSIGNALLED_CONDITION}. A plain monitor,
+     * not {@link #CONDITION_LOCK}: a {@code ReentrantLock} used as a {@code synchronized} target
+     * holds two unrelated locks under one name, and its monitor excludes nothing its
+     * {@code lock()} callers do.
+     */
+    private static final Object PARKED_CONSUMER_GATE = new Object();
+
     /** The consumer thread parked on {@link #UNSIGNALLED_CONDITION}, cleaned up after its test (#618). */
     private static volatile Thread parkedConditionConsumer;
 
@@ -3183,7 +3191,7 @@ class CorpusRecordingLaneTest {
         }
     }
 
-    /** The same lock acquired and released with no timeout: what an uncontended lock looks like. */
+    /** A lock every worker takes with lock() and releases: contended, never left held, no timeout. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_reentrantLock_acquiredAndReleased() {
         CorpusRecorder.countBodyExecution();
@@ -3277,7 +3285,7 @@ class CorpusRecordingLaneTest {
         detector.registerCondition(CONDITION_LOCK, UNSIGNALLED_CONDITION, "unsignalled");
         detector.registerCondition(CONDITION_LOCK, OTHER_CONDITION, "other");
         if (parkedConditionConsumer == null) {
-            synchronized (CONDITION_LOCK) {
+            synchronized (PARKED_CONSUMER_GATE) {
                 if (parkedConditionConsumer == null) {
                     CountDownLatch waiting = new CountDownLatch(1);
                     Thread waiter = new Thread(() -> {

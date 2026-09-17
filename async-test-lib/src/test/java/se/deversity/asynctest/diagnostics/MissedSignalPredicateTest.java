@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -180,6 +182,60 @@ class MissedSignalPredicateTest {
 
         assertTrue(detector.analyze().hasIssues(),
                 "an unguarded wait without predicate check fires after lost notify (#635)");
+    }
+
+    @Test
+    @DisplayName("a pooled worker's check in the next round does not guard its if-wait from the round before (#635)")
+    void aCheckInTheNextRoundDoesNotGuardAnIfWaitFromTheRoundBefore() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+        ExecutorService pooledWorker = Executors.newSingleThreadExecutor();
+        try {
+            runAndJoin(() -> {
+                synchronized (monitor) {
+                    detector.recordNotify(monitor); // lost: nobody is waiting yet
+                    monitor.notifyAll();
+                }
+            });
+            // Round 1: if (!ready) wait() -- tests once, before the wait, never after it.
+            pooledWorker.submit(() -> {
+                synchronized (monitor) {
+                    detector.recordPredicateCheck(monitor, !queueEmpty);
+                    detector.recordWait(monitor);
+                    monitor.wait(20);
+                    detector.recordWakeup(monitor);
+                }
+                return null;
+            }).get(JOIN_MS, TimeUnit.MILLISECONDS);
+            detector.markInvocationStart();
+            // Round 2: the same thread runs the body again and tests before any wait of its own.
+            pooledWorker.submit(() -> detector.recordPredicateCheck(monitor, !queueEmpty))
+                    .get(JOIN_MS, TimeUnit.MILLISECONDS);
+        } finally {
+            pooledWorker.shutdownNow();
+        }
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the round-2 check is that round's own test, not a re-test of round 1's if-wait, "
+                        + "so the unsignalled wait after the lost notify must still be reported");
+    }
+
+    @Test
+    @DisplayName("a predicate check does not override a wait declared unguarded (#599, #635)")
+    void aPredicateCheckDoesNotOverrideAWaitDeclaredUnguarded() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+
+        runAndJoin(() -> detector.recordNotify(monitor));
+        runAndJoin(() -> {
+            synchronized (monitor) {
+                detector.recordWait(monitor, false);
+                monitor.wait(20);
+                detector.recordWakeup(monitor);
+                detector.recordPredicateCheck(monitor, !queueEmpty);
+            }
+        });
+
+        assertTrue(detector.analyze().hasIssues(),
+                "recordWait(monitor, false) is the caller's answer; a later check must not undo it");
     }
 
     /** One waiter records a wait, another thread notifies while it waits, the waiter wakes. */

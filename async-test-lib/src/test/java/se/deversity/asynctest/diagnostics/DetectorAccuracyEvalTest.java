@@ -712,6 +712,58 @@ class DetectorAccuracyEvalTest {
                         + "a late-published access by the previous owner does not withdraw exclusivity (#557, #630)");
     }
 
+    @Test
+    @DisplayName("atomicity: the previous owner's access drained after the take stays silent (#557, #630)")
+    void atomicityPreviousOwnerAccessDrainedAfterTheTakeStaysSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        validator.recordOwnershipTaken(90, 2);
+        agentAccess(validator, field, true, 2, NO_LOCKS, 90);
+        // Thread 1 offered the chunk and wrote it under its lock before the take, but its event
+        // drained after the take, so the stream never saw thread 1 own generation 0.
+        agentAccess(validator, field, true, 1, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, 4);
+        agentAccess(validator, field, true, 4, NO_LOCKS, 90);
+        validator.markInvocationStart();
+        validator.recordOwnershipTaken(90, 5);
+        agentAccess(validator, field, true, 5, NO_LOCKS, 90);
+        assertFalse(validator.analyze().hasIssues(),
+                "The late-published hand-off above, drained in the other order: a take seen before "
+                        + "any access leaves generation 0's owner unknown, and an unknown predecessor "
+                        + "must not turn the offerer's write into an alias. Generation 1's taker is "
+                        + "not generation 0's owner either");
+    }
+
+    @Test
+    @DisplayName("atomicity: reset forgets which thread took each generation (#630)")
+    void atomicityResetForgetsGenerationTakers() {
+        AtomicityValidator validator = new AtomicityValidator();
+        lateAccessByPreviousOwner(validator, 1);
+        assertFalse(validator.analyze().hasIssues(), "Precondition: the first run is a clean hand-off");
+        validator.reset();
+        lateAccessByPreviousOwner(validator, 11);
+        assertFalse(validator.analyze().hasIssues(),
+                "The second run is the same clean hand-off on other threads. Takers remembered from "
+                        + "before reset() name threads 1 and 2 as generation 1's owners, and thread "
+                        + "11's late access then reads as an alias");
+    }
+
+    /** A build by {@code base}, a take by {@code base + 1}, a late access by the builder, two more takes. */
+    private static void lateAccessByPreviousOwner(AtomicityValidator validator, long base) {
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        agentAccess(validator, field, true, base, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, base + 1);
+        agentAccess(validator, field, true, base + 1, NO_LOCKS, 90);
+        agentAccess(validator, field, true, base, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, base + 3);
+        agentAccess(validator, field, true, base + 3, NO_LOCKS, 90);
+        validator.markInvocationStart();
+        validator.recordOwnershipTaken(90, base + 4);
+        agentAccess(validator, field, true, base + 4, NO_LOCKS, 90);
+    }
+
     /**
      * Three rounds of: a take by a new thread, that taker's unlocked read and write, and, when
      * {@code withAlias}, a write by thread 99 under its own lock after the taker's last access.
@@ -2583,8 +2635,11 @@ class DetectorAccuracyEvalTest {
         p1.start();
         p2.start();
 
+        // The detector reads the waiters' thread state, so wait until both are parked, not only counted.
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (barrier.getNumberWaiting() < 2 && System.nanoTime() < deadline) {
+        while ((barrier.getNumberWaiting() < 2
+                || p1.getState() != Thread.State.WAITING || p2.getState() != Thread.State.WAITING)
+                && System.nanoTime() < deadline) {
             Thread.onSpinWait();
         }
         assertEquals(2, barrier.getNumberWaiting(), "premise: two parties waiting");
