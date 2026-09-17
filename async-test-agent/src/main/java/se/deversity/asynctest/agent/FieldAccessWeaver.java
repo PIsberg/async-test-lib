@@ -173,14 +173,6 @@ final class FieldAccessWeaver {
                             (access & Opcodes.ACC_STATIC) != 0,
                             internalName, classConstantsUsable);
                 }
-
-                @Override
-                public void visitEnd() {
-                    // After every method, so a concurrent resolution never sees this class as
-                    // scanned before its updater fields are recorded (#619).
-                    AtomicFieldRegistry.recordScanned(internalName.replace('/', '.'));
-                    super.visitEnd();
-                }
             };
         }
     }
@@ -451,6 +443,7 @@ final class FieldAccessWeaver {
                 // Same arguments, same result, one static call instead of the virtual one.
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, hook,
                         spinLockHookDescriptor(owner, hook, descriptor), false);
+                dropResultOfVoidCallSite(owner, hook, descriptor);
             } else {
                 super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
             }
@@ -471,14 +464,6 @@ final class FieldAccessWeaver {
                 super.visitLdcInsn(boundField);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "atomicUpdaterBound",
                         "(Ljava/lang/Object;Ljava/lang/String;)V", false);
-                int lastDot = boundField.lastIndexOf('.');
-                if (lastDot > 0) {
-                    AtomicFieldRegistry.recordIntUpdater(boundField.substring(0, lastDot), boundField);
-                }
-            } else if (boundField == null && "newUpdater".equals(name) && INT_UPDATER.equals(owner)) {
-                // An updater whose owner or field name is not a constant: nothing can say which
-                // flag it swaps, so this class's hierarchy must not be resolved by elimination (#619).
-                AtomicFieldRegistry.recordIntUpdater(classInternalName.replace('/', '.'), "");
             }
             if (weaveFieldInstructions && isReferenceTake(opcode, owner, name, descriptor)) {
                 // The returned reference is on top of the stack: hand a copy to the registry and
@@ -510,10 +495,19 @@ final class FieldAccessWeaver {
          *   <li>an {@code AtomicInteger} used as the lock: {@code compareAndSet}, {@code set},
          *       {@code lazySet} (#558).</li>
          * </ul>
+         * The value-returning releases are substituted too (#658), because a release the weaver does
+         * not see leaves a window re-confirmation cannot close (see {@code SpinLocks}): on the
+         * handle {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange} (with an
+         * {@code int} or void call-site result), {@code weakCompareAndSet} and
+         * {@code weakCompareAndSetPlain}; on the updater {@code getAndSet}, {@code getAndAdd},
+         * {@code addAndGet}, {@code getAndDecrement}, {@code decrementAndGet} and
+         * {@code weakCompareAndSet}; on {@code AtomicInteger} the same six plus
+         * {@code compareAndExchange} and {@code weakCompareAndSetPlain}/{@code Volatile} in place of
+         * {@code weakCompareAndSet}; on {@code AtomicBoolean} {@code compareAndExchange} and
+         * {@code weakCompareAndSetPlain}/{@code Volatile}.
          * Every hook consumes exactly the stack the original call did and returns what it returned.
-         * A release through any other call ({@code getAndSet(0)}, {@code decrementAndGet()},
-         * {@code Unsafe}) is not substituted; the registry re-confirms a hold against the flag
-         * instead of relying on seeing it.
+         * A release through any other call is not substituted; the registry re-confirms a hold
+         * against the flag instead of relying on seeing it, and {@code SpinLocks} lists those forms.
          */
         private static @Nullable String spinLockHook(int opcode, String owner, String name,
                                                      String descriptor) {
@@ -528,6 +522,18 @@ final class FieldAccessWeaver {
                     case "set" -> "(Ljava/lang/Object;I)V".equals(descriptor) ? "setIntUpdater" : null;
                     case "lazySet" -> "(Ljava/lang/Object;I)V".equals(descriptor)
                             ? "lazySetIntUpdater" : null;
+                    case "getAndSet" -> "(Ljava/lang/Object;I)I".equals(descriptor)
+                            ? "getAndSetIntUpdater" : null;
+                    case "getAndAdd" -> "(Ljava/lang/Object;I)I".equals(descriptor)
+                            ? "getAndAddIntUpdater" : null;
+                    case "addAndGet" -> "(Ljava/lang/Object;I)I".equals(descriptor)
+                            ? "addAndGetIntUpdater" : null;
+                    case "getAndDecrement" -> "(Ljava/lang/Object;)I".equals(descriptor)
+                            ? "getAndDecrementIntUpdater" : null;
+                    case "decrementAndGet" -> "(Ljava/lang/Object;)I".equals(descriptor)
+                            ? "decrementAndGetIntUpdater" : null;
+                    case "weakCompareAndSet" -> "(Ljava/lang/Object;II)Z".equals(descriptor)
+                            ? "weakCompareAndSetIntUpdater" : null;
                     default -> null;
                 };
                 case ATOMIC_BOOLEAN -> switch (name) {
@@ -536,6 +542,12 @@ final class FieldAccessWeaver {
                     case "getAndSet" -> "(Z)Z".equals(descriptor) ? "getAndSetAtomicBoolean" : null;
                     case "set" -> "(Z)V".equals(descriptor) ? "setAtomicBoolean" : null;
                     case "lazySet" -> "(Z)V".equals(descriptor) ? "lazySetAtomicBoolean" : null;
+                    case "compareAndExchange" -> "(ZZ)Z".equals(descriptor)
+                            ? "compareAndExchangeAtomicBoolean" : null;
+                    case "weakCompareAndSetPlain" -> "(ZZ)Z".equals(descriptor)
+                            ? "weakCompareAndSetPlainAtomicBoolean" : null;
+                    case "weakCompareAndSetVolatile" -> "(ZZ)Z".equals(descriptor)
+                            ? "weakCompareAndSetVolatileAtomicBoolean" : null;
                     default -> null;
                 };
                 case ATOMIC_INTEGER -> switch (name) {
@@ -543,6 +555,19 @@ final class FieldAccessWeaver {
                             ? "compareAndSetAtomicInteger" : null;
                     case "set" -> "(I)V".equals(descriptor) ? "setAtomicInteger" : null;
                     case "lazySet" -> "(I)V".equals(descriptor) ? "lazySetAtomicInteger" : null;
+                    case "getAndSet" -> "(I)I".equals(descriptor) ? "getAndSetAtomicInteger" : null;
+                    case "getAndAdd" -> "(I)I".equals(descriptor) ? "getAndAddAtomicInteger" : null;
+                    case "addAndGet" -> "(I)I".equals(descriptor) ? "addAndGetAtomicInteger" : null;
+                    case "getAndDecrement" -> "()I".equals(descriptor)
+                            ? "getAndDecrementAtomicInteger" : null;
+                    case "decrementAndGet" -> "()I".equals(descriptor)
+                            ? "decrementAndGetAtomicInteger" : null;
+                    case "compareAndExchange" -> "(II)I".equals(descriptor)
+                            ? "compareAndExchangeAtomicInteger" : null;
+                    case "weakCompareAndSetPlain" -> "(II)Z".equals(descriptor)
+                            ? "weakCompareAndSetPlainAtomicInteger" : null;
+                    case "weakCompareAndSetVolatile" -> "(II)Z".equals(descriptor)
+                            ? "weakCompareAndSetVolatileAtomicInteger" : null;
                     default -> null;
                 };
                 default -> null;
@@ -556,17 +581,23 @@ final class FieldAccessWeaver {
             }
             int firstSemicolon = descriptor.indexOf(';');
             String tail = descriptor.substring(firstSemicolon + 1);
-            if ("compareAndSet".equals(name)) {
-                return "II)Z".equals(tail) ? "compareAndSetInt" : null;
-            }
-            if (!"I)V".equals(tail)) {
-                return null;
-            }
+            // compareAndSet and the weak swaps are declared boolean, so their descriptor is fixed.
+            // getAndSet, getAndAdd and compareAndExchange are declared Object: the call site says
+            // (int) when the result is used and void when it is a statement (#658); any other
+            // result type is left alone.
+            boolean intOrVoid = tail.endsWith(")I") || tail.endsWith(")V");
             return switch (name) {
-                case "set" -> "setInt";
-                case "setVolatile" -> "setVolatileInt";
-                case "setRelease" -> "setReleaseInt";
-                case "setOpaque" -> "setOpaqueInt";
+                case "compareAndSet" -> "II)Z".equals(tail) ? "compareAndSetInt" : null;
+                case "weakCompareAndSet" -> "II)Z".equals(tail) ? "weakCompareAndSetInt" : null;
+                case "weakCompareAndSetPlain" -> "II)Z".equals(tail) ? "weakCompareAndSetPlainInt" : null;
+                case "compareAndExchange" -> tail.startsWith("II)") && intOrVoid
+                        ? "compareAndExchangeInt" : null;
+                case "getAndSet" -> tail.startsWith("I)") && intOrVoid ? "getAndSetInt" : null;
+                case "getAndAdd" -> tail.startsWith("I)") && intOrVoid ? "getAndAddInt" : null;
+                case "set" -> "I)V".equals(tail) ? "setInt" : null;
+                case "setVolatile" -> "I)V".equals(tail) ? "setVolatileInt" : null;
+                case "setRelease" -> "I)V".equals(tail) ? "setReleaseInt" : null;
+                case "setOpaque" -> "I)V".equals(tail) ? "setOpaqueInt" : null;
                 default -> null;
             };
         }
@@ -580,11 +611,31 @@ final class FieldAccessWeaver {
          */
         private static String spinLockHookDescriptor(String owner, String hook, String descriptor) {
             if (VAR_HANDLE.equals(owner)) {
-                return "compareAndSetInt".equals(hook)
-                        ? "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z"
-                        : "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V";
+                return switch (hook) {
+                    case "compareAndSetInt", "weakCompareAndSetInt", "weakCompareAndSetPlainInt" ->
+                            "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z";
+                    case "compareAndExchangeInt" -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)I";
+                    case "getAndSetInt", "getAndAddInt" -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)I";
+                    default -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V";
+                };
             }
             return "(L" + owner + ";" + descriptor.substring(1);
+        }
+
+        /**
+         * Pops the value a {@code VarHandle} hook returns when its call site declared no result.
+         *
+         * <p>{@code getAndSet}, {@code getAndAdd} and {@code compareAndExchange} are declared to
+         * return {@code Object}, so a call used as a statement compiles with a {@code void}
+         * descriptor, while the hook that replaces it returns the {@code int}. One {@code POP}
+         * leaves the stack exactly as the void call would have: stack-neutral and branch-free
+         * (#658).
+         */
+        private void dropResultOfVoidCallSite(String owner, String hook, String descriptor) {
+            if (descriptor.endsWith(")V")
+                    && !spinLockHookDescriptor(owner, hook, descriptor).endsWith(")V")) {
+                super.visitInsn(Opcodes.POP);
+            }
         }
 
         /**

@@ -3,12 +3,21 @@ package se.deversity.asynctest.telemetry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 import se.deversity.asynctest.diagnostics.HeldLocks;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -274,47 +283,198 @@ class SpinLocksTest {
         assertTrue(HeldLocks.holds(lock), "A's lockset must still contain the spinlock");
     }
 
-    @Test
-    @DisplayName("a pre-attach updater resolves when its whole hierarchy is scanned and records one field (#619)")
-    void preAttachUpdaterResolvesWhenTheWholeHierarchyIsScannedWithOneField() {
-        SpinLocks.recordScannedClass(ResolveBase.class.getName());
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
+    /**
+     * #658: a contender reads the flag locked, and before its swap lands the holder releases
+     * through a value-returning form. The release must be observed, so that from the contender's
+     * swap until it writes its stamp the old holder does not pass re-confirmation.
+     */
+    @TestFactory
+    @DisplayName("a release through a value-returning form between a contender's check and its swap revokes the holder (#658)")
+    Stream<DynamicTest> releaseBetweenAContendersCheckAndItsSwapRevokesTheHolder() {
+        return Stream.of(
+                atomicIntegerCase("AtomicInteger.getAndSet(0)",
+                        count -> TelemetryRegistry.getAndSetAtomicInteger(count, 0)),
+                atomicIntegerCase("AtomicInteger.getAndAdd(-1)",
+                        count -> TelemetryRegistry.getAndAddAtomicInteger(count, -1)),
+                atomicIntegerCase("AtomicInteger.addAndGet(-1)",
+                        count -> TelemetryRegistry.addAndGetAtomicInteger(count, -1)),
+                atomicIntegerCase("AtomicInteger.getAndDecrement()",
+                        TelemetryRegistry::getAndDecrementAtomicInteger),
+                atomicIntegerCase("AtomicInteger.decrementAndGet()",
+                        TelemetryRegistry::decrementAndGetAtomicInteger),
+                atomicIntegerCase("AtomicInteger.compareAndExchange(1, 0)",
+                        count -> TelemetryRegistry.compareAndExchangeAtomicInteger(count, 1, 0)),
+                atomicIntegerCase("AtomicInteger.weakCompareAndSetPlain(1, 0)", count -> spinUntil(
+                        () -> TelemetryRegistry.weakCompareAndSetPlainAtomicInteger(count, 1, 0))),
+                atomicIntegerCase("AtomicInteger.weakCompareAndSetVolatile(1, 0)", count -> spinUntil(
+                        () -> TelemetryRegistry.weakCompareAndSetVolatileAtomicInteger(count, 1, 0))),
+                atomicBooleanCase("AtomicBoolean.compareAndExchange(true, false)",
+                        flag -> TelemetryRegistry.compareAndExchangeAtomicBoolean(flag, true, false)),
+                atomicBooleanCase("AtomicBoolean.weakCompareAndSetPlain(true, false)", flag -> spinUntil(
+                        () -> TelemetryRegistry.weakCompareAndSetPlainAtomicBoolean(flag, true, false))),
+                atomicBooleanCase("AtomicBoolean.weakCompareAndSetVolatile(true, false)", flag -> spinUntil(
+                        () -> TelemetryRegistry.weakCompareAndSetVolatileAtomicBoolean(flag, true, false))),
+                varHandleCase("VarHandle.getAndSet(bean, 0)",
+                        bean -> TelemetryRegistry.getAndSetInt(INT_HANDLE, bean, 0)),
+                varHandleCase("VarHandle.getAndAdd(bean, -1)",
+                        bean -> TelemetryRegistry.getAndAddInt(INT_HANDLE, bean, -1)),
+                varHandleCase("VarHandle.compareAndExchange(bean, 1, 0)",
+                        bean -> TelemetryRegistry.compareAndExchangeInt(INT_HANDLE, bean, 1, 0)),
+                varHandleCase("VarHandle.weakCompareAndSet(bean, 1, 0)", bean -> spinUntil(
+                        () -> TelemetryRegistry.weakCompareAndSetInt(INT_HANDLE, bean, 1, 0))),
+                varHandleCase("VarHandle.weakCompareAndSetPlain(bean, 1, 0)", bean -> spinUntil(
+                        () -> TelemetryRegistry.weakCompareAndSetPlainInt(INT_HANDLE, bean, 1, 0))),
+                updaterCase("AtomicIntegerFieldUpdater.getAndSet(bean, 0)",
+                        (updater, bean) -> TelemetryRegistry.getAndSetIntUpdater(updater, bean, 0)),
+                updaterCase("AtomicIntegerFieldUpdater.getAndAdd(bean, -1)",
+                        (updater, bean) -> TelemetryRegistry.getAndAddIntUpdater(updater, bean, -1)),
+                updaterCase("AtomicIntegerFieldUpdater.addAndGet(bean, -1)",
+                        (updater, bean) -> TelemetryRegistry.addAndGetIntUpdater(updater, bean, -1)),
+                updaterCase("AtomicIntegerFieldUpdater.getAndDecrement(bean)",
+                        TelemetryRegistry::getAndDecrementIntUpdater),
+                updaterCase("AtomicIntegerFieldUpdater.decrementAndGet(bean)",
+                        TelemetryRegistry::decrementAndGetIntUpdater),
+                updaterCase("AtomicIntegerFieldUpdater.weakCompareAndSet(bean, 1, 0)", (updater, bean) -> spinUntil(
+                        () -> TelemetryRegistry.weakCompareAndSetIntUpdater(updater, bean, 1, 0))));
+    }
 
-        assertEquals(SUB_BUSY, SpinLocks.fieldOf(
-                AtomicIntegerFieldUpdater.newUpdater(ResolveSub.class, "busy"), new ResolveSub()));
+    private static void spinUntil(BooleanSupplier attempt) {
+        while (!attempt.getAsBoolean()) {
+            Thread.onSpinWait();
+        }
+    }
+
+    private static DynamicTest atomicIntegerCase(String form, Consumer<AtomicInteger> release) {
+        return DynamicTest.dynamicTest(form, () -> {
+            AtomicInteger count = new AtomicInteger();
+            assertReleaseBetweenCheckAndSwapRevokes(form,
+                    () -> TelemetryRegistry.compareAndSetAtomicInteger(count, 0, 1),
+                    () -> SpinLocks.lockFor(count), () -> release.accept(count));
+        });
+    }
+
+    private static DynamicTest atomicBooleanCase(String form, Consumer<AtomicBoolean> release) {
+        return DynamicTest.dynamicTest(form, () -> {
+            AtomicBoolean flag = new AtomicBoolean();
+            assertReleaseBetweenCheckAndSwapRevokes(form,
+                    () -> TelemetryRegistry.compareAndSetAtomicBoolean(flag, false, true),
+                    () -> SpinLocks.lockFor(flag), () -> release.accept(flag));
+        });
+    }
+
+    private static DynamicTest varHandleCase(String form, Consumer<HolderBean> release) {
+        return DynamicTest.dynamicTest(form, () -> {
+            HolderBean bean = new HolderBean();
+            assertReleaseBetweenCheckAndSwapRevokes(form,
+                    () -> TelemetryRegistry.compareAndSetInt(INT_HANDLE, bean, 0, 1),
+                    () -> SpinLocks.lockFor(bean, SpinLocks.fieldOf(INT_HANDLE)),
+                    () -> release.accept(bean));
+        });
+    }
+
+    private static DynamicTest updaterCase(String form,
+            BiConsumer<AtomicIntegerFieldUpdater<HolderBean>, HolderBean> release) {
+        return DynamicTest.dynamicTest(form, () -> {
+            AtomicIntegerFieldUpdater<HolderBean> updater =
+                    AtomicIntegerFieldUpdater.newUpdater(HolderBean.class, "busy");
+            HolderBean bean = new HolderBean();
+            assertReleaseBetweenCheckAndSwapRevokes(form,
+                    () -> {
+                        TelemetryRegistry.atomicUpdaterBound(updater, "HolderBean.busy");
+                        return TelemetryRegistry.compareAndSetIntUpdater(updater, bean, 0, 1);
+                    },
+                    () -> SpinLocks.lockFor(bean, "HolderBean.busy"),
+                    () -> release.accept(updater, bean));
+        });
+    }
+
+    /**
+     * Runs the #658 interleaving: A holds; a contender reads the flag locked and pauses before its
+     * swap; A releases through {@code release}; the contender's swap lands and it pauses before
+     * writing its stamp. In that span A must neither pass re-confirmation nor keep the lock in its
+     * lockset.
+     */
+    private static void assertReleaseBetweenCheckAndSwapRevokes(String form, BooleanSupplier acquire,
+            Supplier<SpinLocks.Lock> lockOf, Runnable release) throws InterruptedException {
+        SpinLocks.resetForTesting();
+        HeldLocks.clear();
+        CountDownLatch checked = new CountDownLatch(1);
+        CountDownLatch released = new CountDownLatch(1);
+        CountDownLatch swapped = new CountDownLatch(1);
+        CountDownLatch verified = new CountDownLatch(1);
+        AtomicBoolean contenderWon = new AtomicBoolean();
+        Thread contender = new Thread(() -> contenderWon.set(acquire.getAsBoolean()),
+                "spin-lock-contender");
+        try {
+            assertTrue(acquire.getAsBoolean(), "A takes the flag");
+            SpinLocks.Lock lock = lockOf.get();
+            assertTrue(lock != null && HeldLocks.holds(lock), "A holds the lock after its acquire");
+
+            SpinLocks.setTestHookAfterCheck(() -> pauseOn(contender, checked, released));
+            SpinLocks.setTestHookAfterSwap(() -> pauseOn(contender, swapped, verified));
+            contender.start();
+            assertTrue(checked.await(5, TimeUnit.SECONDS), "the contender checked the flag while A held it");
+
+            release.run();
+            released.countDown();
+            assertTrue(swapped.await(5, TimeUnit.SECONDS), "the contender's swap landed after A's release");
+
+            boolean stillHeld = lock.stillHeld();
+            boolean inLockset = HeldLocks.holds(lock);
+            verified.countDown();
+            contender.join(5_000);
+
+            assertFalse(stillHeld, "A released through " + form + " after the contender checked the "
+                    + "flag and before its swap; from that swap until the contender's stamp write, A "
+                    + "must not pass re-confirmation, or its unguarded accesses look guarded (#658)");
+            assertFalse(inLockset, "the observed release through " + form + " must leave A's lockset");
+            assertTrue(contenderWon.get(), "the contender's swap must win once A released");
+        } finally {
+            released.countDown();
+            verified.countDown();
+            contender.join(5_000);
+            SpinLocks.resetForTesting();
+            HeldLocks.clear();
+        }
+    }
+
+    private static void pauseOn(Thread thread, CountDownLatch reached, CountDownLatch resume) {
+        if (Thread.currentThread() != thread) {
+            return;
+        }
+        reached.countDown();
+        try {
+            assertTrue(resume.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+
+    @Test
+    @DisplayName("an updater nothing bound resolves to the field it really swaps, or to nothing (#659)")
+    void unboundUpdaterResolvesToItsOwnFieldOrNothing() {
+        // Nothing records the binding, as for an updater made before the agent attached. The only
+        // answer that may come back is the field the updater swaps, read from the updater itself;
+        // this module's tests run without java.util.concurrent.atomic opened, so here that read is
+        // refused and the updater must stay unresolved rather than be guessed from the receiver.
+        String resolved = SpinLocks.fieldOf(baseStateUpdater());
+        boolean readable = AtomicIntegerFieldUpdater.class.getModule()
+                .isOpen("java.util.concurrent.atomic", SpinLocks.class.getModule());
+        if (readable) {
+            assertEquals(BASE_STATE, resolved);
+        } else {
+            assertNull(resolved, "an updater whose target cannot be read must not be named");
+        }
     }
 
     @Test
-    @DisplayName("an updater from a superclass the weaver never scanned is not resolved to the subclass's field (#619)")
-    void updaterFromAnUnscannedSuperclassIsNotResolvedToTheSubclassField() {
-        // ResolveBase binds its own updater, but the weaver never saw it: only the subclass's field
-        // is on record, and naming it for a swap through the base's updater is the wrong flag.
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
+    @DisplayName("an updater whose binding ran woven keeps the field that binding named (#558)")
+    void boundUpdaterKeepsItsBinding() {
+        AtomicIntegerFieldUpdater<ResolveSub> updater =
+                AtomicIntegerFieldUpdater.newUpdater(ResolveSub.class, "busy");
+        TelemetryRegistry.atomicUpdaterBound(updater, SUB_BUSY);
 
-        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
-    }
-
-    @Test
-    @DisplayName("a hierarchy that records two updater fields resolves neither (#619)")
-    void hierarchyWithTwoRecordedFieldsResolvesNeither() {
-        SpinLocks.recordScannedClass(ResolveBase.class.getName());
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        SpinLocks.recordUpdaterField(ResolveBase.class.getName(), BASE_STATE);
-        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
-
-        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
-    }
-
-    @Test
-    @DisplayName("a hierarchy with an updater the weaver could not read resolves nothing (#619)")
-    void hierarchyWithAnUnreadableUpdaterResolvesNothing() {
-        SpinLocks.recordScannedClass(ResolveBase.class.getName());
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        // The only thing on record is that the base makes an updater nobody could read.
-        SpinLocks.recordUpdaterField(ResolveBase.class.getName(), SpinLocks.UNREADABLE);
-
-        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
+        assertEquals(SUB_BUSY, SpinLocks.fieldOf(updater));
     }
 }

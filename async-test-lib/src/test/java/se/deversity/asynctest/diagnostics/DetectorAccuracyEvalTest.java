@@ -736,6 +736,60 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("atomicity: an alias in the first generation of an object offered to the queue it was taken from fires (#630)")
+    void atomicityAliasAfterAnObservedOfferAndATakeFirstFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        offerThenTakeFirst(validator, 7, 3);
+        assertTrue(validator.analyze().hasIssues(),
+                "Thread 1 offered the chunk to queue 7 and thread 2 polled it from queue 7, before "
+                        + "any access to the chunk was drained. The offer names the owner of "
+                        + "generation 0, so thread 3, which neither offered nor took the chunk, "
+                        + "wrote through an alias under a lock thread 2 never held");
+    }
+
+    @Test
+    @DisplayName("atomicity: a late write by the offerer in the first generation of an offered object stays silent (#557, #630)")
+    void atomicityOfferersLateWriteAfterATakeFirstStaysSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        offerThenTakeFirst(validator, 7, 1);
+        assertFalse(validator.analyze().hasIssues(),
+                "The same stream, but the write drained after the take comes from thread 1, the "
+                        + "thread that offered the chunk: a late-published hand-off access, which "
+                        + "#557 keeps silent");
+    }
+
+    @Test
+    @DisplayName("atomicity: an offer to another container does not name the owner of a take-first generation (#630)")
+    void atomicityOfferToAnotherContainerKeepsTheTakeFirstExcuse() {
+        AtomicityValidator validator = new AtomicityValidator();
+        offerThenTakeFirst(validator, 8, 3);
+        assertFalse(validator.analyze().hasIssues(),
+                "The alias stream, but the chunk was offered to queue 8 and taken out of queue 7. "
+                        + "Who put it where it was taken from is not in the stream, so the #557 "
+                        + "excuse still covers every thread there: silence, not a guessed owner");
+    }
+
+    /**
+     * An offer of identity 90 to {@code offeredTo} by thread 1, a take out of container 7 by
+     * thread 2 drained before any access, the unlocked write of thread 2, a write by
+     * {@code lateWriter} under its own lock, then two more takes.
+     */
+    private static void offerThenTakeFirst(AtomicityValidator validator, int offeredTo,
+                                           long lateWriter) {
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        validator.recordOwnershipOffered(90, offeredTo, 1);
+        validator.recordOwnershipTaken(90, 7, 2);
+        agentAccess(validator, field, true, 2, NO_LOCKS, 90);
+        agentAccess(validator, field, true, lateWriter, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, 7, 4);
+        agentAccess(validator, field, true, 4, NO_LOCKS, 90);
+        validator.markInvocationStart();
+        validator.recordOwnershipTaken(90, 7, 5);
+        agentAccess(validator, field, true, 5, NO_LOCKS, 90);
+    }
+
+    @Test
     @DisplayName("atomicity: reset forgets which thread took each generation (#630)")
     void atomicityResetForgetsGenerationTakers() {
         AtomicityValidator validator = new AtomicityValidator();

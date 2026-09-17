@@ -64,9 +64,8 @@ public final class SpinLockTableBean {
 
     /**
      * The second twin (#558): the acquire is observed, the release is an {@code int}
-     * {@code getAndSet} through the handle, which the weaver does not substitute, and the thread
-     * then replaces {@link #afterRelease} with nothing held. The lock must not outlive its release
-     * just because the release was invisible.
+     * {@code getAndSet} through the handle (observed since #658), and the thread then replaces
+     * {@link #afterRelease} with nothing held. The lock must not outlive its release.
      */
     public int growThenWriteAfterUnobservedRelease() {
         if (BUSY.compareAndSet(this, 0, 1)) {
@@ -74,6 +73,36 @@ public final class SpinLockTableBean {
                 table = next(table);
             } finally {
                 int ignored = (int) BUSY.getAndSet(this, 0);
+            }
+            afterRelease = next(afterRelease);
+        }
+        Object[] seen = afterRelease;
+        return seen == null ? 0 : seen.length;
+    }
+
+    /** Replaces the table under the spinlock, released by {@code getAndSet} used as a statement (#658). */
+    public int growReleasedByGetAndSetStatement() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndSet(this, 0);
+            }
+        }
+        Object[] seen = table;
+        return seen == null ? 0 : seen.length;
+    }
+
+    /**
+     * The unobserved twin: {@code getAndSetRelease} is a release the weaver does not substitute,
+     * and {@link #afterRelease} is then replaced with nothing held.
+     */
+    public int growThenWriteAfterGetAndSetRelease() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                int ignored = (int) BUSY.getAndSetRelease(this, 0);
             }
             afterRelease = next(afterRelease);
         }

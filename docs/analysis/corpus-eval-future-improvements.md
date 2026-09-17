@@ -123,7 +123,7 @@ survived the re-read:
   sits in `PairEvidence.REVIEWED_DESPITE_SHAPE`. The pair does not reach the starvation finding
   (#608) or the unrecorded virtual-thread holder the detector's javadoc names.
 - `CYCLIC_BARRIER` is held. A party that arrives at a barrier a timeout broke to cancel, catches
-  `BrokenBarrierException` and calls `reset()`, which is the report's own advice, still draws the
+  `BrokenBarrierException` and calls `reset()`, which is the report's own advice, still drew the
   reuse finding, because the decision is `isBroken()` at the recorded arrival. That was reproduced
   against the detector directly. The silent twin never breaks its barrier, and the stranded-party
   finding (#631) has no pair.
@@ -132,18 +132,32 @@ survived the re-read:
   consumer parked on an empty queue is correct code. There is no silent twin registering its
   predicate while a consumer sits parked idle.
 
-## 3. Severity is not pinned on a firing row (open: the gate exists, no row uses it)
+**Re-reading the same two with their twins, 2026-09-17 (#661, #662).** Both gaps above are closed
+and both detectors are still held, each for a reason the new rows could not have closed:
+
+- `CYCLIC_BARRIER`: a recorded `reset()` now recovers the reuse recorded before it, and the lane has
+  the handled-break twin and an untimed-against-timed stranded pair. One arrival at a broken barrier
+  is still the finding, so a late party that catches `BrokenBarrierException` and drops a barrier
+  broken to cancel it, with no reset, draws it. The detector's javadoc calls that cancellation
+  correct.
+- `CONDITION_VARIABLES`: the pair now registers the predicate and separates a consumer parked with
+  work waiting from the same consumer idle. The detector's other paths still decide from what the
+  body declared or from the lock alone: the three-argument registration reports an idle consumer,
+  a condition registered without its lock is stuck on a recorded await with no recorded exit, and a
+  missing signal is a recorded exit with no recorded signal. #657 is open on the predicate path.
+
+## 3. Severity is not pinned on a firing row (Closed 2026-09-17, #660)
 
 On 2026-09-16 `RecordingSubject` gained an optional `expectedSeverity`, and
 `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` fails a firing row whose findings do
-not carry it. `CorpusGatesTest` shows that check rejecting a mismatch and accepting a match. No row
-in `Corpus` sets `expectedSeverity`, though, so in every real lane the check is skipped and a
-detector whose severity moves still passes. The 2026-09-17 tests that counted "resolved" severities
-per lane were removed: they derived the value from `DetectorDefaultSeverity` with a `HIGH` fallback,
-which asserts the library's own table rather than what a detector reported, and could not fail on a
-severity change. Closing this means pinning severities on rows from a recorded run, and only then
-letting the lanes enforce them. Whether each detector states a severity at all is gated in the
-library, by `DetectorSeverityMarkerTest`.
+not carry it, but no row set one. On 2026-09-17 every MUST_FIRE row in both pair lanes was pinned:
+153 rows (119 recording, 34 agent-pair), at 101 HIGH, 27 MEDIUM, 24 CRITICAL and 1 LOW. The values
+were read from one run on JDK 26, Windows 11, from the lane reports, whose Observed column now prints
+each firing row's severities next to its count. `CorpusGates.everyFiringRowPinsItsSeverity` fails a
+MUST_FIRE row with no pinned value, in both pair lanes and in `CorpusGatesTest`, so a new row cannot
+arrive unpinned. What this does not show is that the values hold on JDK 21 and 25: severity is read
+from the report text, so a detector whose report adds a section on timing could move, and the CI
+matrix is the first place that would be seen.
 
 ## 4. Gates have no failing-direction test (Closed 2026-09-16, completed 2026-09-17)
 

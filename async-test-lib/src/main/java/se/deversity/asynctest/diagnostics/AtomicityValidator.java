@@ -279,6 +279,13 @@ public class AtomicityValidator {
     /** Maps receiver identity to a map of (generation -> threadId of that generation's taker). */
     private final Map<Integer, Map<Integer, Long>> generationTakers = new ConcurrentHashMap<>();
 
+    /** Who last offered an object with no recorded state yet, and to which container (#630). */
+    private record Offer(long threadId, int container) {
+    }
+
+    /** Maps receiver identity to its most recent {@link Offer}; see {@link #recordOwnershipOffered}. */
+    private final Map<Integer, Offer> offers = new ConcurrentHashMap<>();
+
     private void recordTaker(int identity, int generation, long threadId) {
         generationTakers.computeIfAbsent(identity, ignored -> new ConcurrentHashMap<>())
                 .putIfAbsent(generation, threadId);
@@ -302,7 +309,8 @@ public class AtomicityValidator {
             return false;
         }
         // Generation 0's owner is known only when an access, not a take, created the state. A
-        // take drained ahead of the builder's accesses leaves it unknown on purpose: recording the
+        // take drained ahead of the builder's accesses leaves it unknown on purpose, unless an
+        // offer to the container it was taken from named it (recordOwnershipOffered): recording the
         // first thread seen afterwards would name the taker as its own predecessor. Recording here
         // also keeps the per-access path free of boxing (RunnerAllocationBudgetTest).
         ReceiverState state = receiverStates.computeIfAbsent(identity, ignored -> {
@@ -820,12 +828,68 @@ public class AtomicityValidator {
      * @since 1.12.1
      */
     public void recordOwnershipTaken(int identity, long threadId) {
+        recordOwnershipTaken(identity, 0, threadId);
+    }
+
+    /**
+     * Records that {@code threadId} took the object with identity {@code identity} out of the
+     * container with identity {@code container}, which makes it exclusive to that thread again.
+     *
+     * <p>{@link #recordOwnershipTaken(int, long)} with the structure the object left. Knowing it
+     * lets a take that is the first recorded event for the object name the thread that last
+     * offered the object to that same container as generation 0's owner (#630); see
+     * {@link #recordOwnershipOffered}. A container of 0 means not known, which is what the
+     * two-argument form passes, and then no offer is consulted.
+     *
+     * @param identity  {@code System.identityHashCode} of the object taken
+     * @param container {@code System.identityHashCode} of the queue it was taken from, 0 when unknown
+     * @param threadId  the thread that took it
+     * @since 1.12.1
+     */
+    public void recordOwnershipTaken(int identity, int container, long threadId) {
         if (!enabled || identity == 0) {
             return;
         }
         ReceiverState state = receiverStates.compute(identity, (ignored, previous) ->
                 new ReceiverState(threadId, previous == null ? 1 : previous.generation + 1));
+        // Consumed by the first take either way: once a generation exists, the takers name every
+        // later previous owner, and a stale offer must not outlive the hand-off it described.
+        Offer offer = offers.isEmpty() ? null : offers.remove(identity);
+        // Only when the take is the first event for the object: an access that created the state
+        // already named generation 0's owner, and that owner stands.
+        if (state.generation == 1 && offer != null && container != 0
+                && offer.container == container && takerOf(identity, 0) == null) {
+            recordTaker(identity, 0, offer.threadId);
+        }
         recordTaker(identity, state.generation, threadId);
+    }
+
+    /**
+     * Records that {@code threadId} offered the object with identity {@code identity} to the
+     * container with identity {@code container}, a queue it is about to be taken out of.
+     *
+     * <p>The missing fact behind #630. When a take is the first event recorded for an object, no
+     * access has shown who owned it before, so an access in generation 1 by any thread other than
+     * the taker had to be excused: it might be the offerer's own late write (#557). An offer
+     * recorded before that take, into the container the take came out of, names that owner, and
+     * then only the offerer is excused. Offers are published before the structure accepts the
+     * element, so in drain order they always precede the take that removes it.
+     *
+     * <p>Only an object with no recorded state yet is remembered, and only the most recent offer:
+     * an object some access or take already described has an owner the stream showed. The offer
+     * is dropped at the next take of the object, whatever container that take names. Identity or
+     * container 0 records nothing.
+     *
+     * @param identity  {@code System.identityHashCode} of the object offered
+     * @param container {@code System.identityHashCode} of the queue it was offered to
+     * @param threadId  the thread that offered it
+     * @since 1.12.1
+     */
+    public void recordOwnershipOffered(int identity, int container, long threadId) {
+        if (!enabled || identity == 0 || container == 0 || receiverStates.containsKey(identity)) {
+            return;
+        }
+        offers.put(identity, new Offer(threadId, container));
     }
 
     /** {@return the ownership generation {@code identity} is currently in, 0 before any take} */
@@ -850,10 +914,11 @@ public class AtomicityValidator {
      *
      * <p>In a generation a later take closed, an access from the previous owner (the thread that
      * took the previous generation, or built it in generation 0) is a late-published handoff
-     * access and does not withdraw exclusivity (#557). When the stream never saw who owned the
-     * previous generation, because the take drained before any access to the object, every
-     * foreign thread is given that benefit: the offerer's own write can drain after the take, and
-     * nothing in the stream tells it from an alias. But an access from a thread that was
+     * access and does not withdraw exclusivity (#557). When the take drained before any access to
+     * the object, generation 0's owner is the thread that offered it to the container the take
+     * came out of, if that offer was recorded ({@link #recordOwnershipOffered}). When it was not,
+     * every foreign thread is given the benefit: the offerer's own write can drain after the take,
+     * and nothing in the stream tells it from an alias. But an access from a thread that was
      * neither this generation's taker nor the previous owner is an alias access, and withdraws
      * the taker's exclusivity even though a later take closed the generation (#630).
      */
@@ -1451,6 +1516,7 @@ public class AtomicityValidator {
         atomicityViolations.clear();
         receiverStates.clear();
         generationTakers.clear();
+        offers.clear();
         invocationEpoch.set(0);
     }
     /**

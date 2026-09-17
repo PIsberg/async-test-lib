@@ -94,8 +94,8 @@ public final class HeldLocks {
      * the lock itself whenever this thread's set is read.
      *
      * <p>A compare-and-swap spinlock is the case (#558). The agent sees the swap that takes it, but a
-     * release can go through a call it does not substitute - a {@code getAndSet}, a
-     * {@code decrementAndGet}, code it does not weave - and a lock that outlives its release makes
+     * release can go through a call it does not substitute - an {@code updateAndGet}, an
+     * {@code Unsafe} store, code it does not weave - and a lock that outlives its release makes
      * every later access on this thread look guarded, which hides a real race. Asking the flag
      * whether this thread still holds it turns an invisible release into an observed one the next
      * time the set matters. An entry whose {@link #stillHeld()} answers {@code false}, or throws,

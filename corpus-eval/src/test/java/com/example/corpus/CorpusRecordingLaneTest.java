@@ -583,6 +583,19 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.locks.Condition UNSIGNALLED_CONDITION =
             CONDITION_LOCK.newCondition();
 
+    /**
+     * The work queue the consumer on {@link #UNSIGNALLED_CONDITION} takes from. The loud row puts
+     * items on it, so the consumer's predicate holds while it stays parked (#661).
+     */
+    private static final java.util.ArrayDeque<String> UNSIGNALLED_QUEUE = new java.util.ArrayDeque<>();
+
+    /** The consumer on this condition idles: nothing is ever put on {@link #IDLE_QUEUE} (#661). */
+    private static final java.util.concurrent.locks.Condition IDLE_CONDITION =
+            CONDITION_LOCK.newCondition();
+
+    /** Always empty: the idle consumer's predicate is false for the whole run (#661). */
+    private static final java.util.ArrayDeque<String> IDLE_QUEUE = new java.util.ArrayDeque<>();
+
     /** Condition signalled while the consumer waits on {@link #UNSIGNALLED_CONDITION} (#618). */
     private static final java.util.concurrent.locks.Condition OTHER_CONDITION =
             CONDITION_LOCK.newCondition();
@@ -728,6 +741,30 @@ class CorpusRecordingLaneTest {
     private final AtomicBoolean constructionOpened = new AtomicBoolean();
 
     private final AtomicBoolean constructionClosed = new AtomicBoolean();
+
+    /**
+     * Broken by a timed-out await at the top of every body, then awaited, caught and reset (#662).
+     * Two parties, so a lone timed await on it always times out rather than tripping it.
+     */
+    private static final java.util.concurrent.CyclicBarrier RESET_BARRIER =
+            new java.util.concurrent.CyclicBarrier(2);
+
+    /** Serializes the break-await-reset cycle on {@link #RESET_BARRIER}, so one body's reset cannot repair another's break. */
+    private static final Object RESET_BARRIER_GATE = new Object();
+
+    /** Two parties and one untimed waiter: the waiter can never be joined (#631). */
+    private static final java.util.concurrent.CyclicBarrier STRANDING_BARRIER =
+            new java.util.concurrent.CyclicBarrier(2);
+
+    /** Two parties and one timed waiter: the same shortfall, bounded by the waiter's timeout. */
+    private static final java.util.concurrent.CyclicBarrier BOUNDED_BARRIER =
+            new java.util.concurrent.CyclicBarrier(2);
+
+    /** Serializes starting the one waiting party of the two short-barrier rows. */
+    private static final Object BARRIER_PARTY_GATE = new Object();
+
+    /** The party parked on a short barrier, released after its test. */
+    private static volatile Thread parkedBarrierParty;
 
     /** Sized to a thousand parties and given six: a barrier that can never trip. */
     private static final java.util.concurrent.CyclicBarrier UNREACHABLE_BARRIER =
@@ -956,6 +993,12 @@ class CorpusRecordingLaneTest {
             consumer.interrupt();
             consumer.join();
         }
+        Thread party = parkedBarrierParty;
+        if (party != null) {
+            parkedBarrierParty = null;
+            party.interrupt();   // breaks its barrier; the party leaves await() and ends
+            party.join();
+        }
     }
 
     @AfterAll
@@ -973,6 +1016,11 @@ class CorpusRecordingLaneTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+        Thread party = parkedBarrierParty;
+        if (party != null) {
+            parkedBarrierParty = null;
+            party.interrupt();
         }
         thePooledRowsPremiseHeld();
         theIllegalNotifyReallyThrew();
@@ -2718,6 +2766,72 @@ class CorpusRecordingLaneTest {
     }
 
     /**
+     * A lost notify, then an {@code if (!ready)} wait that times out, then a later check that finds
+     * the predicate still false and does not wait again.
+     *
+     * <p>The wait is not a loop: nothing after the wakeup re-tests the predicate before going on,
+     * and the unrelated check further down the body is not a back-edge. Since #656 the detector
+     * confirms a loop only from the waiter's next events on the condition in the same round, a
+     * satisfied check or an unsatisfied check followed by another wait, so this wait stays
+     * unconfirmed and the lost notify before it is the finding. Each execution uses its own
+     * monitor, so no other thread's notify can reach it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_missedSignal_repeatedIfCheck() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        boolean ready = false;
+        synchronized (monitor) {
+            detector.recordNotify(monitor);
+            monitor.notify();
+        }
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, ready);
+            if (!ready) {
+                detector.recordWait(monitor);
+                monitor.wait(20);
+                detector.recordWakeup(monitor);
+            }
+        }
+        // Later, unrelated to the wait above: the same predicate read again, still false, and
+        // the body moves on without waiting.
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, ready);
+        }
+    }
+
+    /**
+     * The same lost notify and timed wait inside {@code while (!ready)}, re-checking after the
+     * wakeup and finding the state set, so the loop exits.
+     *
+     * <p>The satisfied check right after the wakeup is what a loop records and an {@code if}
+     * does not: it confirms the wait as guarded, and a guarded wait is never reported. The state
+     * is set by the body after its wait, standing in for the producer whose flag the loop reads.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_missedSignal_whileLoopRecheck() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        boolean ready = false;
+        synchronized (monitor) {
+            detector.recordNotify(monitor);
+            monitor.notify();
+        }
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, ready);
+            while (!ready) {
+                detector.recordWait(monitor);
+                monitor.wait(20);
+                detector.recordWakeup(monitor);
+                ready = true;
+                detector.recordPredicateCheck(monitor, ready);
+            }
+        }
+    }
+
+    /**
      * An optimistic read whose validation comes back false.
      *
      * <p>{@code StampedLock}'s optimistic mode is documented as valid only once {@code validate}
@@ -3160,6 +3274,106 @@ class CorpusRecordingLaneTest {
     }
 
     /**
+     * A party arrives at a barrier a timeout broke, catches the {@code BrokenBarrierException} and
+     * calls {@code reset()}, which is the reuse report's own fix (#662). The loud twin is the same
+     * await with no reset, so the barrier stays broken for every later party.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_resetAfterABreak() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(RESET_BARRIER, "reset-barrier", 2);
+        synchronized (RESET_BARRIER_GATE) {
+            try {
+                RESET_BARRIER.await(1, TimeUnit.NANOSECONDS);   // a lone party: times out, breaks it
+                throw new IllegalStateException("a lone party cannot trip a two-party barrier");
+            } catch (java.util.concurrent.TimeoutException expected) {
+                // the break this row recovers from
+            } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+                throw new IllegalStateException("could not break the reset barrier", e);
+            }
+            detector.recordAwait(RESET_BARRIER);
+            try {
+                RESET_BARRIER.await();
+                throw new IllegalStateException("an await on a broken barrier must throw");
+            } catch (java.util.concurrent.BrokenBarrierException e) {
+                detector.recordBroken(RESET_BARRIER);
+                detector.recordReset(RESET_BARRIER);
+                RESET_BARRIER.reset();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
+     * One party parks in an untimed {@code await()} on a two-party barrier nobody else joins, so it
+     * is still parked at analysis, a party short for good (#631). The detector reads the recording
+     * thread's state and stack, never the barrier.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_partyLeftShortUntimed() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(STRANDING_BARRIER, "stranding-barrier", 2);
+        parkOneBarrierParty(detector, STRANDING_BARRIER, false);
+    }
+
+    /**
+     * The same shortfall, with the party waiting in {@code await(timeout, unit)}: a bounded wait
+     * ends by itself and breaks the barrier for every party, which is the report's own fix, so the
+     * party still parked at analysis is not stranded.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_partyLeftShortTimed() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(BOUNDED_BARRIER, "bounded-barrier", 2);
+        parkOneBarrierParty(detector, BOUNDED_BARRIER, true);
+    }
+
+    /**
+     * Starts the one waiting party of a short-barrier row, once per run, and returns once it is
+     * parked. The party records its arrival and await and then waits, timed or not; it leaves when
+     * {@code cleanUpParkedConditionConsumer} interrupts it after the test.
+     */
+    private static void parkOneBarrierParty(se.deversity.asynctest.diagnostics.CyclicBarrierDetector detector,
+                                            java.util.concurrent.CyclicBarrier barrier, boolean timed) {
+        if (parkedBarrierParty != null) {
+            return;
+        }
+        synchronized (BARRIER_PARTY_GATE) {
+            if (parkedBarrierParty != null) {
+                return;
+            }
+            Thread party = new Thread(() -> {
+                detector.recordArrival(barrier);
+                detector.recordAwait(barrier);
+                try {
+                    if (timed) {
+                        barrier.await(10, TimeUnit.MINUTES);
+                    } else {
+                        barrier.await();
+                    }
+                } catch (InterruptedException | java.util.concurrent.BrokenBarrierException
+                         | java.util.concurrent.TimeoutException e) {
+                    // released after the test
+                }
+            }, "corpus-barrier-party");
+            party.setDaemon(true);
+            party.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (barrier.getNumberWaiting() == 0 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            if (barrier.getNumberWaiting() != 1) {
+                throw new IllegalStateException("the barrier party never parked");
+            }
+            parkedBarrierParty = party;
+        }
+    }
+
+    /**
      * A hold re-entered and never released: the first worker in takes the lock twice and gives
      * it back once, and every other worker's bounded tryLock times out and backs off.
      *
@@ -3275,50 +3489,95 @@ class CorpusRecordingLaneTest {
     }
 
     /**
-     * A consumer parked in await() on a condition registered with its lock, while threads signal a
-     * different condition: the lock itself shows the stuck waiter at analysis (#592, #618).
+     * A consumer parked in await() on a condition registered with its lock and its predicate. The
+     * threads put work on its queue and then signal a different condition, so at analysis the lock
+     * shows the consumer parked while its predicate holds: a stuck waiter, not an idle one (#592,
+     * #618, #661). Every producer has released the lock by then, so no thread is queued on it.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_condition_awaitedWithNoSignal() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
-        detector.registerCondition(CONDITION_LOCK, UNSIGNALLED_CONDITION, "unsignalled");
+        detector.registerCondition(CONDITION_LOCK, UNSIGNALLED_CONDITION,
+                () -> !UNSIGNALLED_QUEUE.isEmpty(), "unsignalled");
         detector.registerCondition(CONDITION_LOCK, OTHER_CONDITION, "other");
-        if (parkedConditionConsumer == null) {
-            synchronized (PARKED_CONSUMER_GATE) {
-                if (parkedConditionConsumer == null) {
-                    CountDownLatch waiting = new CountDownLatch(1);
-                    Thread waiter = new Thread(() -> {
-                        CONDITION_LOCK.lock();
-                        try {
-                            detector.recordAwait(UNSIGNALLED_CONDITION, "unsignalled");
-                            waiting.countDown();
-                            while (true) {
-                                UNSIGNALLED_CONDITION.await();
-                            }
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        } finally {
-                            CONDITION_LOCK.unlock();
-                        }
-                    }, "corpus-unsignalled-condition-waiter");
-                    waiter.setDaemon(true);
-                    waiter.start();
-                    try {
-                        waiting.await();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    parkedConditionConsumer = waiter;
-                }
-            }
+        parkOneConsumer(detector, UNSIGNALLED_CONDITION, UNSIGNALLED_QUEUE, "unsignalled");
+        CONDITION_LOCK.lock();
+        try {
+            UNSIGNALLED_QUEUE.add("work");
+            detector.recordSignal(OTHER_CONDITION, "other", false);
+            OTHER_CONDITION.signal();
+        } finally {
+            CONDITION_LOCK.unlock();
         }
+    }
+
+    /**
+     * The same consumer registered the same way, idle on a queue nobody puts work on, while the
+     * threads signal a different condition. Parked with its predicate false is how a correct
+     * consumer loop spends an idle queue (#643), so it must stay silent (#661).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_condition_consumerIdleOnAnEmptyQueue() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.conditionVariableDetector();
+        detector.registerCondition(CONDITION_LOCK, IDLE_CONDITION,
+                () -> !IDLE_QUEUE.isEmpty(), "idle");
+        detector.registerCondition(CONDITION_LOCK, OTHER_CONDITION, "other");
+        parkOneConsumer(detector, IDLE_CONDITION, IDLE_QUEUE, "idle");
         CONDITION_LOCK.lock();
         try {
             detector.recordSignal(OTHER_CONDITION, "other", false);
             OTHER_CONDITION.signal();
         } finally {
             CONDITION_LOCK.unlock();
+        }
+    }
+
+    /**
+     * Starts the one consumer of a condition row, once per run, and returns once it is parked. The
+     * consumer is the textbook loop, {@code while (queue.isEmpty()) condition.await()}, recording its
+     * await and, after the loop, its exit. Its first predicate check always runs with the queue
+     * empty: the starting body holds {@link #PARKED_CONSUMER_GATE} until the consumer has recorded
+     * its await under {@link #CONDITION_LOCK}, and every producer needs that lock, which
+     * {@code await()} is what releases. An AQS condition does not return from {@code await()}
+     * without a signal or an interrupt, so the consumer stays parked until the test's cleanup.
+     */
+    private static void parkOneConsumer(se.deversity.asynctest.diagnostics.ConditionVariableDetector detector,
+                                        java.util.concurrent.locks.Condition condition,
+                                        java.util.ArrayDeque<String> queue, String name) {
+        if (parkedConditionConsumer != null) {
+            return;
+        }
+        synchronized (PARKED_CONSUMER_GATE) {
+            if (parkedConditionConsumer != null) {
+                return;
+            }
+            CountDownLatch waiting = new CountDownLatch(1);
+            Thread waiter = new Thread(() -> {
+                CONDITION_LOCK.lock();
+                try {
+                    while (queue.isEmpty()) {
+                        detector.recordAwait(condition, name);
+                        waiting.countDown();
+                        condition.await();
+                    }
+                    detector.recordAwaitExit(condition, name, false);
+                    queue.poll();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    CONDITION_LOCK.unlock();
+                }
+            }, "corpus-" + name + "-condition-waiter");
+            waiter.setDaemon(true);
+            waiter.start();
+            try {
+                waiting.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            parkedConditionConsumer = waiter;
         }
     }
 

@@ -388,6 +388,44 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("a firing row with no pinned severity fails the pinning gate (#660)")
+    void aFiringRowWithNoPinnedSeverityFailsThePinningGate() {
+        RecordingSubject unpinned = new RecordingSubject(
+                "test_method", "JDK", "java.lang.Object",
+                DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                RecordingSubject.Expectation.MUST_FIRE,
+                "locks ordered inconsistently");
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyFiringRowPinsItsSeverity(List.of(unpinned)));
+    }
+
+    @Test
+    @DisplayName("a pinned firing row and an unpinned silent row pass the pinning gate (#660)")
+    void pinnedFiringRowsAndUnpinnedSilentRowsPassThePinningGate() {
+        RecordingSubject pinned = new RecordingSubject(
+                "fires", "JDK", "java.lang.Object",
+                DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                RecordingSubject.Expectation.MUST_FIRE,
+                "locks ordered inconsistently",
+                IssueSeverity.CRITICAL);
+        RecordingSubject silent = new RecordingSubject(
+                "stays_silent", "JDK", "java.lang.Object",
+                DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                RecordingSubject.Expectation.MUST_STAY_SILENT,
+                "locks ordered consistently");
+
+        assertDoesNotThrow(() -> CorpusGates.everyFiringRowPinsItsSeverity(List.of(pinned, silent)));
+    }
+
+    @Test
+    @DisplayName("every real firing row in both pair lanes pins its severity (#660)")
+    void everyRealFiringRowPinsItsSeverity() {
+        assertDoesNotThrow(() -> CorpusGates.everyFiringRowPinsItsSeverity(CorpusLane.RECORDING));
+        assertDoesNotThrow(() -> CorpusGates.everyFiringRowPinsItsSeverity(CorpusLane.AGENT_PAIRS));
+    }
+
+    @Test
     @DisplayName("a finding matching expected severity passes the outcome gate")
     void aFindingMatchingExpectedSeverityPassesTheOutcomeGate() {
         RecordingSubject firing = new RecordingSubject(
@@ -808,7 +846,8 @@ class CorpusGatesTest {
         for (RecordingSubject subject : Corpus.subjectsFor(CorpusLane.RECORDING)) {
             if (subject.expectation() == RecordingSubject.Expectation.MUST_FIRE) {
                 findings.add(finding(subject.testMethod(),
-                        DetectorExposure.classOf(subject.detector())));
+                        DetectorExposure.classOf(subject.detector()), TrustTier.PROMPT,
+                        subject.expectedSeverity() != null ? subject.expectedSeverity() : IssueSeverity.HIGH));
             }
         }
         return findings;

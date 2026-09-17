@@ -225,6 +225,7 @@ final class CorpusGates {
         everyPairedDetectorIsExposed(lane);
         everyReportingDetectorWasExposed(findings, lane);
         everySubjectGotTheOutcomeItsRecordedCallsOblige(findings, lane);
+        everyFiringRowPinsItsSeverity(lane);
         noCollateralFindingOnASilentRow(findings, lane);
         if (lane == CorpusLane.AGENT_PAIRS) {
             noAgentRowRecordedItsOwnFinding();
@@ -521,6 +522,33 @@ final class CorpusGates {
                 "the recording lane's expectations follow from the calls each body makes, not "
                         + "from how the scheduler interleaved them, so every one of these is a "
                         + "change in what the detector concludes: " + String.join(" | ", wrong));
+    }
+
+    /**
+     * Every firing row states the severity its finding must carry (#660).
+     *
+     * <p>{@link #everySubjectGotTheOutcomeItsRecordedCallsOblige} checks a pinned severity and skips
+     * an unpinned one, so a row without a value is a row on which a detector's severity can move
+     * with nothing going red. Until 2026-09-17 that was every row. A new firing row fails here
+     * until it is pinned from a run: the recording lane's report prints each firing row's observed
+     * severities in its Observed column, which is where the value comes from.
+     *
+     * @param lane the pair lane whose rows to read
+     */
+    static void everyFiringRowPinsItsSeverity(CorpusLane lane) {
+        everyFiringRowPinsItsSeverity(Corpus.subjectsFor(lane));
+    }
+
+    static void everyFiringRowPinsItsSeverity(List<RecordingSubject> subjects) {
+        List<String> unpinned = subjects.stream()
+                .filter(subject -> subject.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                .filter(subject -> subject.expectedSeverity() == null)
+                .map(RecordingSubject::testMethod)
+                .toList();
+        assertTrue(unpinned.isEmpty(),
+                "these MUST_FIRE rows state no expectedSeverity, so the outcome gate cannot notice "
+                        + "their detector's severity moving; pin the value the lane report's "
+                        + "Observed column shows for each: " + unpinned);
     }
 
     /**

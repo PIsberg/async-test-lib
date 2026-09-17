@@ -120,9 +120,25 @@ authority on which row is which - each outcome above is one assertion in it.
   neither that generation's taker nor the previous generation's owner withdraws the exclusion, and
   `atomicityAliasInAGenerationALaterTakeClosedFires` pins it. The previous owner's access stays a
   hand-off whether it was published late (`atomicityLateAccessByPreviousOwnerInClosedGenerationStaysSilent`)
-  or drained after the take (`atomicityPreviousOwnerAccessDrainedAfterTheTakeStaysSilent`). The
-  boundary that remains is generation 1 of a receiver whose first recorded event is the take:
-  nothing names generation 0's owner, so every foreign access there is excused, alias or not.
+  or drained after the take (`atomicityPreviousOwnerAccessDrainedAfterTheTakeStaysSilent`). When
+  the take is the first recorded event for a receiver, an offer names generation 0's owner: the
+  queue hooks (`Queue.offer`, `Collection.add` on a `Queue`, `BlockingQueue.offer` in both forms and
+  `put`) publish the element and the queue's identity before the queue accepts it, and the `poll`
+  hooks publish the queue's identity with the take. An offer into the container the take came out
+  of excuses only the offerer, so an alias write there fires
+  (`atomicityAliasAfterAnObservedOfferAndATakeFirstFires`) while the offerer's late write stays
+  silent (`atomicityOfferersLateWriteAfterATakeFirstStaysSilent`). The boundary that remains is a
+  take-first generation with no matching offer, where every foreign access is still excused,
+  alias or not (`atomicityOfferToAnotherContainerKeepsTheTakeFirstExcuse`): a reference
+  `getAndSet` and a JCTools `poll`/`relaxedPoll`, whose woven take has no container on the stack
+  and whose offer (`set`, `lazySet`, `compareAndSet`, JCTools `offer`) is not woven at all; an
+  element that entered the queue through an unwoven method (`addAll`, `Deque.offerFirst`, `push`,
+  or code outside the agent's `includes`); and an offer drained into a different container than
+  the take names. The rule can over-report in one shape: an element offered to a queue by one
+  thread, removed by an unwoven call (`BlockingQueue.take`, `remove`, `drainTo`), and put back into
+  the same queue by another thread through an unwoven method before its first observed take. The
+  stale offer then names the first thread, and the second thread's late write reads as an alias.
+  Only the most recent offer counts, so any woven offer in between clears it.
   Measured on corpus-eval lane one (local JDK 26), before #630 changed closed generations and not
   re-run since: the rule withdrew exclusivity in 7 analyses, all
   in netty's `adaptiveByteBufAllocator_bufferAndRelease`, and the documented-thread-safe column

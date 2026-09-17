@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Detects reuse of a broken CyclicBarrier: an arrival or await on a barrier whose
@@ -27,6 +28,16 @@ import java.util.concurrent.CyclicBarrier;
  * is decided by asking the barrier rather than by what the body recorded. {@link #recordBroken}
  * and {@link #recordReset} are kept as context for that report; a recorded break on a barrier that
  * is not broken at the await reports nothing, and a break nobody recorded is still seen.
+ *
+ * <p>A recorded {@link #recordReset} recovers the reuse recorded on that barrier before it (#662). A
+ * party that arrives at a barrier something else broke cannot know it is broken until its await
+ * throws, so the arrival alone is not the defect; catching {@code BrokenBarrierException} and
+ * calling {@code reset()}, which is what the report advises, is correct. A later arrival at the
+ * barrier while it is broken again is reported as before, so a {@code recordReset} the body makes
+ * without really resetting is caught by the next arrival, which asks the barrier. What it can hide is
+ * only a reuse with no arrival after it, which errs towards silence. A party that catches the
+ * exception and drops the barrier without a reset is still reported: nothing observable separates
+ * that from a body that never looks at the barrier again.
  *
  * <p>The decision is taken when the arrival or await is recorded, so a barrier that breaks after
  * that check and before the await itself is missed. That errs towards silence.
@@ -55,7 +66,14 @@ public class CyclicBarrierDetector {
     private final Set<CyclicBarrier> timedOutBarriers = ConcurrentHashMap.newKeySet();
     /** Barriers with at least one recorded break; context for the reuse report, never a finding. */
     private final Set<CyclicBarrier> brokenBarriers = ConcurrentHashMap.newKeySet();
-    private final Set<CyclicBarrier> reuseAfterBrokenBarriers = ConcurrentHashMap.newKeySet();
+    /**
+     * Per barrier, the reset epoch in which an arrival or await last found it broken. The reuse
+     * is a finding at analysis only while that epoch is still current, that is, no reset was
+     * recorded after it (#662).
+     */
+    private final Map<CyclicBarrier, Long> reuseEpochs = new ConcurrentHashMap<>();
+    /** Per barrier, the number of recorded resets; the epoch a reuse is compared against. */
+    private final Map<CyclicBarrier, AtomicLong> resetEpochs = new ConcurrentHashMap<>();
     private final Map<CyclicBarrier, Integer> strandedBarriers = new ConcurrentHashMap<>();
     /**
      * The barrier each recording thread last said it was about to await. Read only when a round is
@@ -148,10 +166,15 @@ public class CyclicBarrierDetector {
      * anything: whether a later await is on a broken barrier is asked of the barrier at that
      * await, and after a completed reset it is not.
      *
+     * <p>It does recover the reuse recorded before it (#662): an arrival or await that found the
+     * barrier broken, followed by this reset, is a handled break and not a finding. An arrival that
+     * finds the barrier broken after it is judged on its own.
+     *
      * @param barrier the barrier being recorded, tracked by identity
      */
     public void recordReset(CyclicBarrier barrier) {
         if (barrier == null) return;
+        epochOf(barrier).incrementAndGet();
         if (barrier.getNumberWaiting() > 0) {
             brokenBarriers.add(barrier);
         }
@@ -170,10 +193,30 @@ public class CyclicBarrierDetector {
         checkBroken(barrier);
     }
 
+    /**
+     * The epoch is read before the barrier is asked, so a reset recorded between the two leaves
+     * this reuse in the epoch that reset closed rather than in the one after it.
+     */
     private void checkBroken(CyclicBarrier barrier) {
+        long epoch = epochOf(barrier).get();
         if (barrier.isBroken()) {
-            reuseAfterBrokenBarriers.add(barrier);
+            reuseEpochs.merge(barrier, epoch, Math::max);
         }
+    }
+
+    private AtomicLong epochOf(CyclicBarrier barrier) {
+        return resetEpochs.computeIfAbsent(barrier, b -> new AtomicLong());
+    }
+
+    /** The barriers whose last reuse no recorded reset followed. */
+    private Set<CyclicBarrier> unrecoveredReuse() {
+        Set<CyclicBarrier> unrecovered = new HashSet<>();
+        for (Map.Entry<CyclicBarrier, Long> entry : reuseEpochs.entrySet()) {
+            if (entry.getValue() == epochOf(entry.getKey()).get()) {
+                unrecovered.add(entry.getKey());
+            }
+        }
+        return unrecovered;
     }
 
     /**
@@ -215,7 +258,7 @@ public class CyclicBarrierDetector {
             barrierRegistry,
             timedOutBarriers,
             brokenBarriers,
-            reuseAfterBrokenBarriers,
+            unrecoveredReuse(),
             strandedBarriers
         );
     }

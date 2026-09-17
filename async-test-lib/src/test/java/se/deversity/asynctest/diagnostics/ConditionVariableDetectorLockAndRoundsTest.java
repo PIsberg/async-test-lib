@@ -84,6 +84,24 @@ class ConditionVariableDetectorLockAndRoundsTest {
         }
     }
 
+    private static int waitQueueLength(ReentrantLock lock, Condition condition) {
+        lock.lock();
+        try {
+            return lock.getWaitQueueLength(condition);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private static int waitQueueLength(ReentrantReadWriteLock lock, Condition condition) {
+        lock.writeLock().lock();
+        try {
+            return lock.getWaitQueueLength(condition);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
     @Nested
     @DisplayName("#593: an await is not merged across a round boundary")
     class Rounds {
@@ -361,6 +379,86 @@ class ConditionVariableDetectorLockAndRoundsTest {
             } finally {
                 waiter.interrupt();
                 waiter.join(10_000);
+            }
+        }
+
+        /**
+         * #657: two consumers parked, one item arrives, {@code signal()} moves consumer 1 from the
+         * condition to the lock's entry queue. Until consumer 1 re-acquires the lock and takes the
+         * item, the lock shows consumer 2 parked on the condition while {@code ready} is true. In a
+         * real run the analysis reaches that state by barging in with {@code tryLock()} before
+         * consumer 1 re-acquires, a window no test can hit on demand.
+         *
+         * <p>The test holds the window open instead: the producer thread (this one) keeps the lock
+         * after {@code signal()} and runs the analysis while still holding it. {@code tryLock()} is
+         * reentrant, so the query succeeds and reads exactly what a barging analysis reads: one
+         * thread on the condition, one thread queued on the lock, predicate satisfied. Nothing in
+         * this state is stuck: consumer 2 stays parked because consumer 1 is about to consume.
+         */
+        @Test
+        @DisplayName("#657: a signalled consumer still queued to re-acquire the lock leaves the other consumer unconfirmed, not stuck")
+        void signalledConsumerQueuedOnTheLockIsNotAStuckWaiter() throws Exception {
+            boolean[] itemReady = {false};
+            detector.registerCondition(lock, condition, () -> itemReady[0], NAME);
+            Thread consumer1 = parkOn(lock, condition, () -> waitQueueLength(lock, condition) == 1);
+            Thread consumer2 = parkOn(lock, condition, () -> waitQueueLength(lock, condition) == 2);
+            lock.lock();
+            try {
+                itemReady[0] = true;
+                condition.signal();
+                assertEquals(1, lock.getWaitQueueLength(condition), "one consumer is still on the condition");
+                assertTrue(lock.hasQueuedThreads(), "the signalled consumer is queued to re-acquire the lock");
+
+                var report = detector.analyze();
+
+                assertEquals(0, report.stuckWaiters.size(),
+                        "a signalled consumer is queued to re-acquire the lock and take the item; the "
+                                + "consumer still parked is not stuck. Report:\n" + report);
+                assertFalse(report.hasIssues(), report.toString());
+                assertTrue(report.unconfirmedWaits.stream().anyMatch(
+                                note -> note.contains("queued to acquire the lock")
+                                        && note.contains("unrelated contention")),
+                        "the note must say why the waiter is unconfirmed and that the queued threads "
+                                + "could also be unrelated contention. Report:\n" + report);
+            } finally {
+                lock.unlock();
+                consumer2.interrupt();
+                consumer1.join(10_000);
+                consumer2.join(10_000);
+            }
+        }
+
+        /** #657 on a {@link ReentrantReadWriteLock}: the condition and the re-acquire both belong to the write lock. */
+        @Test
+        @DisplayName("#657: write-lock condition: a signalled consumer still queued on the write lock leaves the other unconfirmed")
+        void writeLockSignalledConsumerQueuedIsNotAStuckWaiter() throws Exception {
+            ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+            Condition writeCondition = rw.writeLock().newCondition();
+            boolean[] itemReady = {false};
+            detector.registerCondition(rw, writeCondition, () -> itemReady[0], NAME);
+            Thread consumer1 = parkOn(rw.writeLock(), writeCondition, () -> waitQueueLength(rw, writeCondition) == 1);
+            Thread consumer2 = parkOn(rw.writeLock(), writeCondition, () -> waitQueueLength(rw, writeCondition) == 2);
+            rw.writeLock().lock();
+            try {
+                itemReady[0] = true;
+                writeCondition.signal();
+                assertEquals(1, rw.getWaitQueueLength(writeCondition), "one consumer is still on the condition");
+                assertTrue(rw.hasQueuedThreads(), "the signalled consumer is queued to re-acquire the write lock");
+
+                var report = detector.analyze();
+
+                assertEquals(0, report.stuckWaiters.size(),
+                        "a signalled consumer is queued to re-acquire the write lock; the consumer still "
+                                + "parked is not stuck. Report:\n" + report);
+                assertFalse(report.hasIssues(), report.toString());
+                assertTrue(report.unconfirmedWaits.stream().anyMatch(
+                                note -> note.contains("queued to acquire the lock")),
+                        report.toString());
+            } finally {
+                rw.writeLock().unlock();
+                consumer2.interrupt();
+                consumer1.join(10_000);
+                consumer2.join(10_000);
             }
         }
 

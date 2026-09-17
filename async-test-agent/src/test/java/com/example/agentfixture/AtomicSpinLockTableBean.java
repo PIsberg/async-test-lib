@@ -9,9 +9,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the receiver: {@code busy.compareAndSet(false, true)} on an {@link AtomicBoolean}, or
  * {@code compareAndSet(0, 1)} on an {@link AtomicInteger} (#558).
  *
- * <p>The twins acquire through a shape the weaver observes and release through one it does not
- * ({@code compareAndExchange}, {@code decrementAndGet}), then write a second table outside the
- * lock. That write must not read as guarded by a lock the thread no longer holds.
+ * <p>The twins acquire through a shape the weaver observes, release, then write a second table
+ * outside the lock. That write must not read as guarded by a lock the thread no longer holds,
+ * whether the release is observed ({@code compareAndExchange}, {@code decrementAndGet}, #658) or
+ * not ({@code setPlain}, {@code updateAndGet}).
  */
 public final class AtomicSpinLockTableBean {
 
@@ -101,6 +102,56 @@ public final class AtomicSpinLockTableBean {
                 table = next(table);
             } finally {
                 intBusy.decrementAndGet();
+            }
+            afterRelease = next(afterRelease);
+        }
+        return length(afterRelease);
+    }
+
+    /** {@code compareAndSet(0, 1)} on an {@code AtomicInteger}, released by {@code decrementAndGet()} (#658). */
+    public int growIntegerReleasedByDecrementAndGet() {
+        if (intBusy.compareAndSet(0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                intBusy.decrementAndGet();
+            }
+        }
+        return length(table);
+    }
+
+    /** {@code compareAndSet(false, true)}, released by {@code compareAndExchange(true, false)} (#658). */
+    public int growBooleanReleasedByCompareAndExchange() {
+        if (busy.compareAndSet(false, true)) {
+            try {
+                table = next(table);
+            } finally {
+                busy.compareAndExchange(true, false);
+            }
+        }
+        return length(table);
+    }
+
+    /** The unobserved twin: a {@code setPlain(false)} release, then an unguarded write. */
+    public int growBooleanThenWriteAfterSetPlain() {
+        if (busy.compareAndSet(false, true)) {
+            try {
+                table = next(table);
+            } finally {
+                busy.setPlain(false);
+            }
+            afterRelease = next(afterRelease);
+        }
+        return length(afterRelease);
+    }
+
+    /** The unobserved twin: an {@code updateAndGet} release, then an unguarded write. */
+    public int growIntegerThenWriteAfterUpdateAndGet() {
+        if (intBusy.compareAndSet(0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                intBusy.updateAndGet(held -> 0);
             }
             afterRelease = next(afterRelease);
         }

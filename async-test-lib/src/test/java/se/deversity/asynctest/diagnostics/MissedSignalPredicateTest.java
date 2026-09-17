@@ -238,6 +238,108 @@ class MissedSignalPredicateTest {
                 "recordWait(monitor, false) is the caller's answer; a later check must not undo it");
     }
 
+    @Test
+    @DisplayName("an if-wait followed later in the same body by an unrelated unsatisfied check still fires (#656)")
+    void anIfWaitFollowedByALaterUnrelatedCheckStillFires() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+
+        runAndJoin(() -> detector.recordNotify(monitor)); // lost: nobody is waiting yet
+        runAndJoin(() -> {
+            synchronized (monitor) {
+                detector.recordPredicateCheck(monitor, !queueEmpty);
+                if (queueEmpty) { // if, not while: tested once before the wait
+                    detector.recordWait(monitor);
+                    monitor.wait(20);
+                    detector.recordWakeup(monitor);
+                }
+            }
+            // Later in the same body, for another reason: no wait follows this test.
+            synchronized (monitor) {
+                detector.recordPredicateCheck(monitor, !queueEmpty);
+            }
+        });
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a loop that finds its predicate still false waits again; this body tested once "
+                        + "more and did not, so the check is not a re-test and the unsignalled "
+                        + "wait after the lost notify must be reported");
+    }
+
+    @Test
+    @DisplayName("a notify by the waiter after its wakeup closes the re-check window (#656)")
+    void aNotifyByTheWaiterClosesTheRecheckWindow() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+
+        runAndJoin(() -> detector.recordNotify(monitor)); // lost: nobody is waiting yet
+        runAndJoin(() -> {
+            detector.recordWait(monitor);
+            detector.recordWakeup(monitor);
+            detector.recordNotify(monitor); // the body moved on: a loop does not signal inside itself
+            detector.recordPredicateCheck(monitor, true);
+        });
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the check follows a notify of the waiter's own, not the wakeup, so it is not the "
+                        + "loop's re-test and must not guard the unsignalled wait");
+    }
+
+    @Test
+    @DisplayName("a while loop that re-tests, waits again, then finds the predicate satisfied stays silent (#656)")
+    void aWhileLoopThatWaitsAgainThenFindsItsPredicateStaysSilent() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+
+        runAndJoin(() -> detector.recordNotify(monitor)); // lost: nobody is waiting yet
+        runAndJoin(() -> {
+            synchronized (monitor) {
+                int wakeups = 0;
+                boolean ready = false;
+                detector.recordPredicateCheck(monitor, ready);
+                while (!ready) {
+                    detector.recordWait(monitor);
+                    monitor.wait(20);
+                    detector.recordWakeup(monitor);
+                    ready = ++wakeups == 2; // the state arrives with the second timeout
+                    detector.recordPredicateCheck(monitor, ready);
+                }
+            }
+        });
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the first wait was re-tested and followed by another wait, the second was re-tested "
+                        + "and found satisfied: both are the loop's, neither is a lost wakeup:\n"
+                        + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("waits that can no longer be confirmed are folded into counts, within and across rounds (#656)")
+    void waitsThatCanNoLongerBeConfirmedAreFoldedIntoCounts() throws Exception {
+        MissedSignalDetector detector = new MissedSignalDetector();
+        runAndJoin(() -> detector.recordNotify(monitor)); // lost: every wait below follows it
+
+        // A fresh thread per round, as with virtual threads: each wait is closed by the round.
+        for (int round = 0; round < 200; round++) {
+            detector.markInvocationStart();
+            runAndJoin(() -> {
+                detector.recordWait(monitor);
+                detector.recordWakeup(monitor);
+            });
+        }
+        // One thread, many waits in one round: each is closed by the next wait.
+        detector.markInvocationStart();
+        runAndJoin(() -> {
+            for (int wait = 0; wait < 200; wait++) {
+                detector.recordWait(monitor);
+                detector.recordWakeup(monitor);
+            }
+        });
+
+        assertTrue(detector.retainedWaits() <= 1,
+                "only the latest wait can still be confirmed by a re-check; retained "
+                        + detector.retainedWaits());
+        assertTrue(detector.analyze().toString().contains("400 wait(s)"),
+                "folding must keep the count, not drop the waits:\n" + detector.analyze());
+    }
+
     /** One waiter records a wait, another thread notifies while it waits, the waiter wakes. */
     private void deliverOneNotifyToAWaiter(MissedSignalDetector detector) throws Exception {
         CountDownLatch waiting = new CountDownLatch(1);

@@ -8,6 +8,9 @@ import java.lang.constant.ConstantDesc;
 import java.lang.constant.ConstantDescs;
 import java.lang.invoke.VarHandle;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -29,9 +32,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <h2>Why a hold is re-confirmed rather than trusted</h2>
  *
- * <p>The weaver sees the acquire and the common releases, but not every release: a
- * {@code getAndSet(0)}, a {@code decrementAndGet()}, a {@code compareAndExchange}, or a release in
- * code it does not weave. A lock that stayed declared after such a release would make every later
+ * <p>The weaver sees the acquire and the common releases, but not every release: an
+ * {@code updateAndGet}, a {@code getAndSetRelease}, an {@code Unsafe} store, or a release in code it
+ * does not weave (the full list is below). A lock that stayed declared after such a release would make every later
  * access on that thread look guarded, and if every thread did the same, a real race would read as
  * consistently locked. That is the one direction this library must never take. So each
  * {@link Lock} is {@link HeldLocks.Revocable}: whenever the thread's lockset is read, the lock is
@@ -61,13 +64,45 @@ import java.util.concurrent.atomic.AtomicReference;
  * the first property: the swap and stamp write can both land between the check and the clear, and
  * a lock the winner genuinely holds is revoked, which reports correct code.
  *
- * <p>One window stays open, and nothing short of observing the release closes it. If the stale
- * holder's unobserved release lands after the next winner has read the flag locked but before that
- * winner's swap, no revocation happens, and from the swap until the winner writes its stamp (a few
- * instructions inside {@code declare}) the old holder still passes re-confirmation. An access the
- * old holder records inside that span looks guarded by the winner's lock. Both halves have to
- * fall in windows a few instructions wide on two threads at once, and each ends the moment the
- * winner declares, but it is a real false negative, not a theoretical one.
+ * <h2>A release between a contender's check and its swap (#658)</h2>
+ *
+ * <p>The stamp cannot close one window, and only observing the release does. If the holder's
+ * release lands after the next winner has read the flag locked but before that winner's swap, no
+ * revocation happens, and from the swap until the winner writes its stamp (a few instructions
+ * inside {@code declare}) the old holder would still pass re-confirmation, so an access it records
+ * there would look guarded by the winner's lock. An observed release closes that: it clears the
+ * releasing thread's stamp and pops the lock from its lockset, and it runs on the releasing thread,
+ * so that thread records nothing between its release and the bookkeeping, whichever side of it the
+ * winner's swap and stamp write fall. The weaver therefore substitutes the value-returning releases
+ * too, not only {@code set} and the swap back: a plain write of the flag field; on a
+ * {@code VarHandle} {@code set}, {@code setVolatile}, {@code setRelease}, {@code setOpaque},
+ * {@code compareAndSet}, {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange},
+ * {@code weakCompareAndSet} and {@code weakCompareAndSetPlain}; on an updater {@code compareAndSet},
+ * {@code set}, {@code lazySet}, {@code getAndSet}, {@code getAndAdd}, {@code addAndGet},
+ * {@code getAndDecrement}, {@code decrementAndGet} and {@code weakCompareAndSet}; on an
+ * {@code AtomicInteger} {@code compareAndSet}, {@code set}, {@code lazySet}, {@code getAndSet},
+ * {@code getAndAdd}, {@code addAndGet}, {@code getAndDecrement}, {@code decrementAndGet},
+ * {@code compareAndExchange}, {@code weakCompareAndSetPlain} and {@code weakCompareAndSetVolatile};
+ * on an {@code AtomicBoolean} {@code compareAndSet}, {@code getAndSet}, {@code set},
+ * {@code lazySet}, {@code compareAndExchange}, {@code weakCompareAndSetPlain} and
+ * {@code weakCompareAndSetVolatile}.
+ *
+ * <p>The window stays open for a release through anything else, which is not observed:
+ * <ul>
+ *   <li>on a {@code VarHandle}: the {@code Acquire}/{@code Release} variants of
+ *       {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange} and
+ *       {@code weakCompareAndSet}, the {@code getAndBitwise} forms, and any call site whose declared
+ *       result is neither {@code int} nor void (an {@code Object} or {@code long} result);</li>
+ *   <li>on an updater or {@code AtomicInteger}: {@code getAndUpdate}, {@code updateAndGet},
+ *       {@code getAndAccumulate}, {@code accumulateAndGet}, and the deprecated
+ *       {@code weakCompareAndSet} on {@code AtomicInteger};</li>
+ *   <li>on either atomic: {@code setPlain}, {@code setOpaque}, {@code setRelease}, and the
+ *       deprecated {@code AtomicBoolean.weakCompareAndSet};</li>
+ *   <li>a release through a subclass-typed call site, {@code Unsafe}, JNI, reflection, or in code
+ *       the agent does not weave (the JDK, excluded packages, classes it could not retransform).</li>
+ * </ul>
+ * Both halves still have to fall in windows a few instructions wide on two threads at once, and
+ * each ends the moment the winner declares, but for those forms it is a real false negative.
  *
  * <h2>What identifies a lock</h2>
  *
@@ -81,24 +116,11 @@ final class SpinLocks {
     /** The pseudo-field an {@code AtomicBoolean} or {@code AtomicInteger} lock is keyed under. */
     private static final String ATOMIC = "#atomic";
 
-    /** The recorded field of a {@code newUpdater} call whose owner or name was not a constant (#619). */
-    static final String UNREADABLE = "";
-
     /**
      * Which field each {@code VarHandle} or {@code AtomicIntegerFieldUpdater} reaches, as
      * {@code declaringClass.field}; the empty string for a handle that was asked and cannot say.
      */
     private static final Map<Object, String> HANDLE_FIELDS = new ConcurrentHashMap<>();
-
-    /**
-     * Fields each class binds through an {@code AtomicIntegerFieldUpdater.newUpdater} call,
-     * as {@code declaringClass -> Set<String> qualifiedFieldNames} (#619).
-     *
-     * <p>Every class the weaver finished scanning has an entry, an empty set when it binds nothing,
-     * so a class with no entry is one whose updaters nobody has seen. {@link #UNREADABLE} in a set
-     * marks a {@code newUpdater} call in that class whose arguments were not constants.
-     */
-    private static final Map<String, Set<String>> CLASS_UPDATER_FIELDS = new ConcurrentHashMap<>();
 
     /**
      * Fields some thread has used as a spinlock flag.
@@ -179,82 +201,85 @@ final class SpinLocks {
     }
 
     /**
-     * Records that {@code ownerClass} binds {@code field} through an updater (#619), or, when
-     * {@code field} is {@link #UNREADABLE}, that it makes one the weaver could not read.
+     * {@return the field an updater reaches, or {@code null} when it cannot be told}
+     *
+     * <p>An updater whose binding call ran woven was named by it. One bound before the agent
+     * attached never ran that call, and is resolved from the updater itself (#659): its target
+     * class and field offset, read from the JDK's implementation, matched against an updater this
+     * method makes for each {@code volatile int} field of that class. That names the field the swap
+     * really touches, wherever the updater was made, so nothing is assumed about which classes the
+     * weaver scanned or what a JDK superclass binds. #619 inferred the field from the receiver's
+     * hierarchy instead, and an updater made in an unscanned class, or in a JDK superclass, could
+     * leave exactly one recorded field that was the wrong one, which puts a lock on a flag nobody
+     * took. Resolving here, at the woven call site, also works in whichever copy of the library the
+     * woven class's own loader reaches, which weave-time records did not.
+     *
+     * <p>Reading the implementation needs {@code java.util.concurrent.atomic} open to this class's
+     * module. The agent opens it to the unnamed module of every loader whose classes it weaves, and
+     * that loader's ancestors. Where that has not happened (no agent, a library copy defined by a
+     * loader outside that chain, a named module, or a JDK whose implementation no longer has the
+     * {@code offset} and {@code tclass} fields and three-argument constructor this reads), the
+     * updater stays unresolved and a spinlock through it is not declared, which reports rather
+     * than hides.
      */
-    static void recordUpdaterField(String ownerClass, String field) {
-        CLASS_UPDATER_FIELDS.computeIfAbsent(ownerClass, k -> ConcurrentHashMap.newKeySet()).add(field);
+    static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater) {
+        String field = HANDLE_FIELDS.get(updater);
+        if (field == null) {
+            field = describe(updater);
+            HANDLE_FIELDS.put(updater, field);
+            if (!field.isEmpty()) {
+                SPIN_FIELDS.add(field);
+            }
+        }
+        return field.isEmpty() ? null : field;
     }
 
-    /** Records that the weaver has scanned every method of {@code className} (#619). */
-    static void recordScannedClass(String className) {
-        CLASS_UPDATER_FIELDS.computeIfAbsent(className, k -> ConcurrentHashMap.newKeySet());
-    }
+    /** The JDK's one {@code AtomicIntegerFieldUpdater} implementation, the only shape read. */
+    private static final String UPDATER_IMPL =
+            "java.util.concurrent.atomic.AtomicIntegerFieldUpdater$AtomicIntegerFieldUpdaterImpl";
 
     /**
-     * {@return the field an updater reaches on {@code receiver}, or {@code null}}
+     * {@return {@code targetClass.field} for the field {@code updater} really swaps, else ""}
      *
-     * <p>If the updater was bound before the agent attached, its owner's type initializer never
-     * ran the woven binding call. It is then resolved from the receiver's class hierarchy, but
-     * only when that hierarchy accounts for every updater it could hold (#619): every class in it
-     * outside the JDK has been scanned, none makes an updater the weaver could not read, and
-     * exactly one field was recorded across them. "One recorded field" alone is not "one updater":
-     * a superclass the agent was not told to weave can bind its own, and naming the subclass's
-     * flag for a swap through it would put a lock on the wrong flag in the lockset, which can
-     * excuse a race. Refusing only loses a guard.
-     *
-     * <p>Two limits remain. JDK superclasses are not scanned and are assumed to bind no updater a
-     * woven call site swaps. And an updater made in a class outside the receiver's hierarchy, on a
-     * field that class can reach, is recorded only if that class was scanned: an unscanned one can
-     * still leave a single recorded field that is the wrong one. Separately, the weave-time record
-     * goes to the registry the agent's own loader sees ({@code AtomicFieldRegistry}), so under a
-     * runner that loads the library in an isolated classloader this copy stays empty and every
-     * pre-attach updater stays unresolved, which reports rather than hides.
+     * <p>"" whenever the answer is not certain: the implementation is not the JDK's, it cannot be
+     * read, or zero or several fields of the target class share the updater's offset.
      */
-    static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater,
-                                    @Nullable Object receiver) {
-        String field = HANDLE_FIELDS.get(updater);
-        if (field != null) {
-            return field.isEmpty() ? null : field;
-        }
-        if (receiver == null || CLASS_UPDATER_FIELDS.isEmpty()) {
-            return null;
-        }
-        field = resolveFromHierarchy(receiver.getClass());
-        if (field != null) {
-            HANDLE_FIELDS.put(updater, field);
-            SPIN_FIELDS.add(field);
-            return field;
-        }
-        HANDLE_FIELDS.put(updater, "");
-        return null;
-    }
-
-    private static @Nullable String resolveFromHierarchy(Class<?> clazz) {
-        String found = null;
-        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
-            Set<String> fields = CLASS_UPDATER_FIELDS.get(c.getName());
-            if (fields == null) {
-                if (isJdk(c)) {
+    @SuppressWarnings("ReferenceEquality")
+    private static String describe(AtomicIntegerFieldUpdater<?> updater) {
+        try {
+            Class<?> impl = updater.getClass();
+            if (!UPDATER_IMPL.equals(impl.getName()) || impl.getClassLoader() != null) {
+                return "";
+            }
+            Field offsetField = impl.getDeclaredField("offset");
+            Field targetField = impl.getDeclaredField("tclass");
+            Constructor<?> make = impl.getDeclaredConstructor(Class.class, String.class, Class.class);
+            if (!offsetField.trySetAccessible() || !targetField.trySetAccessible()
+                    || !make.trySetAccessible()) {
+                return "";
+            }
+            long offset = offsetField.getLong(updater);
+            Class<?> target = (Class<?>) targetField.get(updater);
+            String found = null;
+            for (Field candidate : target.getDeclaredFields()) {
+                int modifiers = candidate.getModifiers();
+                if (candidate.getType() != int.class || !Modifier.isVolatile(modifiers)
+                        || Modifier.isStatic(modifiers)) {
                     continue;
                 }
-                // Never scanned: it may bind an updater nobody recorded.
-                return null;
-            }
-            for (String field : fields) {
-                if (UNREADABLE.equals(field) || (found != null && !found.equals(field))) {
-                    return null;
+                // Made as the target class itself, which the constructor's access check always allows.
+                Object twin = make.newInstance(target, candidate.getName(), target);
+                if (offsetField.getLong(twin) == offset) {
+                    if (found != null) {
+                        return "";
+                    }
+                    found = candidate.getName();
                 }
-                found = field;
             }
+            return found == null ? "" : target.getName() + '.' + found;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) { // NOPMD - unresolved is the safe answer
+            return "";
         }
-        return found;
-    }
-
-    @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"})
-    private static boolean isJdk(Class<?> type) {
-        ClassLoader loader = type.getClassLoader();
-        return loader == null || loader == ClassLoader.getPlatformClassLoader();
     }
 
     /** {@return {@code declaringClass.field} for a direct {@code int} instance-field handle, else ""} */
@@ -301,14 +326,24 @@ final class SpinLocks {
         testHookBeforeRevoke = hook;
     }
 
+    /**
+     * Test-only seam: runs on a thread about to swap once it has finished checking for a stale
+     * holder, and before its swap lands, which is the window #658 is about.
+     */
+    private static volatile @Nullable Runnable testHookAfterCheck;
+
+    static void setTestHookAfterCheck(@Nullable Runnable hook) {
+        testHookAfterCheck = hook;
+    }
+
     @SuppressWarnings("PMD.NullAssignment")
     static void resetForTesting() {
         LOCKS.clear();
         SPIN_FIELDS.clear();
         HANDLE_FIELDS.clear();
-        CLASS_UPDATER_FIELDS.clear();
         testHookAfterSwap = null;
         testHookBeforeRevoke = null;
+        testHookAfterCheck = null;
     }
 
     static @Nullable Lock lockFor(Object subject, String field) {
@@ -341,7 +376,7 @@ final class SpinLocks {
         if (receiver == null || updater == null || !anySpinField()) {
             return;
         }
-        String field = fieldOf(updater, receiver);
+        String field = fieldOf(updater);
         if (field != null && isSpinField(field)) {
             aboutToAcquire(receiver, field);
         }
@@ -492,6 +527,10 @@ final class SpinLocks {
                     hook.run();
                 }
                 holder.compareAndSet(seen, null);
+            }
+            Runnable afterCheck = testHookAfterCheck;
+            if (afterCheck != null) {
+                afterCheck.run();
             }
         }
 
