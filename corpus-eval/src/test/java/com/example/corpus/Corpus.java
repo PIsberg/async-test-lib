@@ -2888,6 +2888,34 @@ final class Corpus {
                             + "completion - and never broken. That is the ordinary use, and it "
                             + "is what the harness itself does on every round"),
 
+            new RecordingSubject("recorded_cyclicBarrier_resetAfterABreak", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a party awaits a barrier a timed-out await broke, catches "
+                            + "BrokenBarrierException and calls reset(), which is the reuse "
+                            + "report's own fix. The await really found the barrier broken; the "
+                            + "recorded reset recovers it, and the barrier is whole for the next "
+                            + "body (#662)"),
+
+            new RecordingSubject("recorded_cyclicBarrier_partyLeftShortUntimed", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one party of a two-party barrier parks in an untimed await() nobody else "
+                            + "joins, so it is still parked at analysis with no way to leave. The "
+                            + "detector reads the recording thread's state and the frame under "
+                            + "CyclicBarrier.dowait, not the barrier (#631)"),
+
+            new RecordingSubject("recorded_cyclicBarrier_partyLeftShortTimed", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same shortfall with the party in await(timeout, unit): still parked "
+                            + "at analysis, but a bounded wait ends by itself and breaks the "
+                            + "barrier for every party, which is the stranded report's own fix "
+                            + "(#631)"),
+
             new RecordingSubject("recorded_reentrantLock_holdLeftTaken", JDK,
                     "java.util.concurrent.locks.ReentrantLock",
                     DetectorType.REENTRANT_LOCK, Contract.THREAD_SAFE,

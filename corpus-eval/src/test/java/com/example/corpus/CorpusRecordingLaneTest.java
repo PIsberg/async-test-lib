@@ -729,6 +729,30 @@ class CorpusRecordingLaneTest {
 
     private final AtomicBoolean constructionClosed = new AtomicBoolean();
 
+    /**
+     * Broken by a timed-out await at the top of every body, then awaited, caught and reset (#662).
+     * Two parties, so a lone timed await on it always times out rather than tripping it.
+     */
+    private static final java.util.concurrent.CyclicBarrier RESET_BARRIER =
+            new java.util.concurrent.CyclicBarrier(2);
+
+    /** Serializes the break-await-reset cycle on {@link #RESET_BARRIER}, so one body's reset cannot repair another's break. */
+    private static final Object RESET_BARRIER_GATE = new Object();
+
+    /** Two parties and one untimed waiter: the waiter can never be joined (#631). */
+    private static final java.util.concurrent.CyclicBarrier STRANDING_BARRIER =
+            new java.util.concurrent.CyclicBarrier(2);
+
+    /** Two parties and one timed waiter: the same shortfall, bounded by the waiter's timeout. */
+    private static final java.util.concurrent.CyclicBarrier BOUNDED_BARRIER =
+            new java.util.concurrent.CyclicBarrier(2);
+
+    /** Serializes starting the one waiting party of the two short-barrier rows. */
+    private static final Object BARRIER_PARTY_GATE = new Object();
+
+    /** The party parked on a short barrier, released after its test. */
+    private static volatile Thread parkedBarrierParty;
+
     /** Sized to a thousand parties and given six: a barrier that can never trip. */
     private static final java.util.concurrent.CyclicBarrier UNREACHABLE_BARRIER =
             new java.util.concurrent.CyclicBarrier(THREADS);
@@ -956,6 +980,12 @@ class CorpusRecordingLaneTest {
             consumer.interrupt();
             consumer.join();
         }
+        Thread party = parkedBarrierParty;
+        if (party != null) {
+            parkedBarrierParty = null;
+            party.interrupt();   // breaks its barrier; the party leaves await() and ends
+            party.join();
+        }
     }
 
     @AfterAll
@@ -973,6 +1003,11 @@ class CorpusRecordingLaneTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+        Thread party = parkedBarrierParty;
+        if (party != null) {
+            parkedBarrierParty = null;
+            party.interrupt();
         }
         thePooledRowsPremiseHeld();
         theIllegalNotifyReallyThrew();
@@ -3157,6 +3192,106 @@ class CorpusRecordingLaneTest {
         detector.recordArrival(COMPLETED_BARRIER);
         detector.recordAwait(COMPLETED_BARRIER);
         detector.recordBarrierComplete(COMPLETED_BARRIER);
+    }
+
+    /**
+     * A party arrives at a barrier a timeout broke, catches the {@code BrokenBarrierException} and
+     * calls {@code reset()}, which is the reuse report's own fix (#662). The loud twin is the same
+     * await with no reset, so the barrier stays broken for every later party.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_resetAfterABreak() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(RESET_BARRIER, "reset-barrier", 2);
+        synchronized (RESET_BARRIER_GATE) {
+            try {
+                RESET_BARRIER.await(1, TimeUnit.NANOSECONDS);   // a lone party: times out, breaks it
+                throw new IllegalStateException("a lone party cannot trip a two-party barrier");
+            } catch (java.util.concurrent.TimeoutException expected) {
+                // the break this row recovers from
+            } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+                throw new IllegalStateException("could not break the reset barrier", e);
+            }
+            detector.recordAwait(RESET_BARRIER);
+            try {
+                RESET_BARRIER.await();
+                throw new IllegalStateException("an await on a broken barrier must throw");
+            } catch (java.util.concurrent.BrokenBarrierException e) {
+                detector.recordBroken(RESET_BARRIER);
+                detector.recordReset(RESET_BARRIER);
+                RESET_BARRIER.reset();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
+     * One party parks in an untimed {@code await()} on a two-party barrier nobody else joins, so it
+     * is still parked at analysis, a party short for good (#631). The detector reads the recording
+     * thread's state and stack, never the barrier.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_partyLeftShortUntimed() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(STRANDING_BARRIER, "stranding-barrier", 2);
+        parkOneBarrierParty(detector, STRANDING_BARRIER, false);
+    }
+
+    /**
+     * The same shortfall, with the party waiting in {@code await(timeout, unit)}: a bounded wait
+     * ends by itself and breaks the barrier for every party, which is the report's own fix, so the
+     * party still parked at analysis is not stranded.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_partyLeftShortTimed() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(BOUNDED_BARRIER, "bounded-barrier", 2);
+        parkOneBarrierParty(detector, BOUNDED_BARRIER, true);
+    }
+
+    /**
+     * Starts the one waiting party of a short-barrier row, once per run, and returns once it is
+     * parked. The party records its arrival and await and then waits, timed or not; it leaves when
+     * {@code cleanUpParkedConditionConsumer} interrupts it after the test.
+     */
+    private static void parkOneBarrierParty(se.deversity.asynctest.diagnostics.CyclicBarrierDetector detector,
+                                            java.util.concurrent.CyclicBarrier barrier, boolean timed) {
+        if (parkedBarrierParty != null) {
+            return;
+        }
+        synchronized (BARRIER_PARTY_GATE) {
+            if (parkedBarrierParty != null) {
+                return;
+            }
+            Thread party = new Thread(() -> {
+                detector.recordArrival(barrier);
+                detector.recordAwait(barrier);
+                try {
+                    if (timed) {
+                        barrier.await(10, TimeUnit.MINUTES);
+                    } else {
+                        barrier.await();
+                    }
+                } catch (InterruptedException | java.util.concurrent.BrokenBarrierException
+                         | java.util.concurrent.TimeoutException e) {
+                    // released after the test
+                }
+            }, "corpus-barrier-party");
+            party.setDaemon(true);
+            party.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (barrier.getNumberWaiting() == 0 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            if (barrier.getNumberWaiting() != 1) {
+                throw new IllegalStateException("the barrier party never parked");
+            }
+            parkedBarrierParty = party;
+        }
     }
 
     /**
