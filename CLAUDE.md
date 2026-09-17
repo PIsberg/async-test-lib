@@ -166,3 +166,11 @@ Guardrails for module `async-test-lib` are maintained in that module's own files
 Invariants 8 and 9 are the short version. This library runs inside somebody else's test suite, so
 its output is somebody else's build log; the full conventions and the reasoning are in
 [docs/architecture/logging.md](docs/architecture/logging.md).
+
+## Core Principles
+
+1. **Think Before Coding**: Surface assumptions and tradeoffs explicitly; push back if simpler alternatives exist.
+2. **Simplicity First**: Minimum code to solve the problem; zero speculative abstractions, unrequested features, or over-engineering.
+3. **Surgical Changes**: Touch only lines required for the task; match local style; clean only own orphans, never unrelated code.
+4. **Goal-Driven Execution**: Define verifiable test criteria first; loop until verified before declaring completion.
+
