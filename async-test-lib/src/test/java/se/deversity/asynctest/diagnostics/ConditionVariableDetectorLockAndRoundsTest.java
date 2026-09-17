@@ -323,6 +323,29 @@ class ConditionVariableDetectorLockAndRoundsTest {
         }
 
         @Test
+        @DisplayName("#643: a predicate that throws leaves the parked consumer unconfirmed, not silently idle")
+        void predicateThatThrowsIsNotReadAsAnIdleConsumer() throws Exception {
+            detector.registerCondition(lock, condition, () -> {
+                throw new IllegalStateException("queue closed");
+            }, NAME);
+            Thread waiter = parkOn(lock, condition, () -> hasWaiters(lock, condition));
+            try {
+                var report = detector.analyze();
+                assertEquals(0, report.stuckWaiters.size(), report.toString());
+                assertFalse(report.toString().contains("idle consumer"),
+                        "a predicate that could not be evaluated says nothing about whether the "
+                                + "consumer is idle. Report:\n" + report);
+                assertTrue(report.unconfirmedWaits.stream().anyMatch(
+                                note -> note.contains("predicate threw") && note.contains("queue closed")),
+                        "the note must name the failure so the caller can fix the predicate. Report:\n"
+                                + report);
+            } finally {
+                waiter.interrupt();
+                waiter.join(10_000);
+            }
+        }
+
+        @Test
         @DisplayName("#643: a consumer parked on a condition whose predicate is satisfied is reported as a stuck waiter")
         void consumerParkedWhilePredicateSatisfiedFires() throws Exception {
             boolean[] queueNotEmpty = {true};

@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   awaiting work. New `registerCondition` overloads accept a `BooleanSupplier ready` predicate evaluated under lock
   with `tryLock()`. When parked threads exist and the predicate is false, the waiter is recorded as an idle consumer
   in unconfirmed waits rather than failing the run; when the predicate is true or unspecified, parked threads are
-  reported as stuck waiters.
+  reported as stuck waiters. A predicate that throws leaves the parked threads unconfirmed and names the exception;
+  as first merged it was swallowed and read as an idle consumer, silencing the run.
 
 - **`CyclicBarrierDetector` reports barriers left a party short with untimed waiters parked (#631).**
   A barrier that never tripped because a party never arrived previously resulted in a round timeout
