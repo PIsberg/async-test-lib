@@ -550,11 +550,24 @@ green, just later.
 
 **Skipped is not passed.** Every lane that can lack credit (Inquisitor, Copilot, evals) says
 SKIPPED in its step summary when it does; a green job with a SKIPPED summary is a job that did not
-run, and the required-checks list only contains lanes that cannot skip. Since 2026-08-15 the
+run, and the required-checks list only contains lanes that cannot skip. Since 2026-09-17 the
 required checks on `main` are: `Build Maven Project (21)`, `Build Maven Project (25)`,
 `Gradle Test Suite (21)`, `Test Suite (21, ubuntu-latest)`, `Guardrail Drift`,
-`Locked Files Guard`, `Architecture Diagram Drift`. Branch protection is repository
-configuration, not a file here; this sentence is the record of what was set and why.
+`Locked Files Guard`, `Architecture Diagram Drift`, `E2E Tests` and `Corpus Eval`. Branch
+protection is repository configuration, not a file here; this sentence is the record of what was
+set and why.
+
+**The two summary checks were required by their own comments before they were required by GitHub.**
+`e2e-tests.yml` and `corpus.yml` each end in an `if: always()` summary job whose stated purpose, in
+both files, is to be "one stable required check" for its workflow, and the paragraph above on the
+E2E check says the same. Neither context was in the list, which was read back from
+`required_status_checks` on 2026-09-17 and held seven entries: both workflows ran on every pull
+request to `main`, both went red when a leg failed, and neither could block a merge. The 59
+detectors that carry `VERDICT` on corpus evidence, and the 148 example projects, were gated by
+nothing but someone noticing a red tick. Both contexts were added the same day. A summary job is
+the right thing to require precisely because it cannot skip: it runs on `always()` and reads its
+legs' results, so a lane that did not run is reported through it instead of dropping out of the
+list.
 
 **AI lanes run on Copilot Free, by decision.** No Anthropic key is required or configured. The
 Inquisitor workflow stays in the repository as the law-enforcing lane for anyone who adds

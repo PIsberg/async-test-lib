@@ -23,7 +23,10 @@ name: Corpus Eval
 #
 # "Corpus Eval" (the summary job below) is the stable required check for this workflow, mirroring
 # "E2E Tests" in e2e-tests.yml. The per-JDK legs keep the names they had while this lived there, so
-# any branch protection naming them individually is unaffected.
+# any branch protection naming them individually is unaffected. This sentence described an intent
+# rather than a setting until 2026-09-17: neither summary context was in main's required-checks
+# list, so a red eval went unnoticed unless somebody looked. Both were added that day, and
+# docs/QUALITY_GATES.md carries the list.
 
 on:
   push:
