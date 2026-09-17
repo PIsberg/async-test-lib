@@ -33,11 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CyclicBarrierDetector` reports barriers left a party short with untimed waiters parked (#631).**
   A barrier that never tripped because a party never arrived previously resulted in a round timeout
   without naming the barrier or indicating that it was left short. New `markRoundTimedOut()` on
-  `CyclicBarrierDetector`, called by `AsyncTestContext` before worker cancellation, captures
-  `getNumberWaiting() > 0` on registered barriers before runner cancellation interrupts them and
-  resets the waiting count to 0. `analyze()` also inspects live registered barriers at quiescent
-  analysis. The timeout error message now names `CyclicBarrierDetector` and surfaces the stranded
-  barrier, the number of waiting parties, and the short count.
+  `CyclicBarrierDetector`, called by `AsyncTestContext` before worker cancellation, records the
+  barriers left a party short before runner cancellation interrupts their waiters, and `analyze()`
+  applies the same check at quiescent analysis. The timeout error message now names
+  `CyclicBarrierDetector` and surfaces the stranded barrier, the number of waiting parties, and the
+  short count. A party counts as parked only when a thread that recorded an arrival or await on
+  the barrier is in an untimed `await()` there, read from the thread's state and stack rather than
+  from `getNumberWaiting()`: as first merged, that call took the barrier's lock on the runner
+  thread, so a barrier action blocked while holding it hung the round timeout instead of failing
+  it, and timed awaits and threads that recorded nothing were counted as stranded.
 
 - **`AtomicityValidator` withdraws exclusivity from closed ownership generations when touched by an alias (#630).**
   An ownership generation that a later take closed previously retained take-granted exclusivity even
