@@ -136,4 +136,9 @@ public class ReentrantLockDetectorTest {
             detector.analyze();
         });
     }
+
+    @Test
+    void trustTierIsVerdict() {
+        assertEquals(TrustTier.VERDICT, DetectorTrust.tierOf(se.deversity.asynctest.DetectorType.REENTRANT_LOCK));
+    }
 }

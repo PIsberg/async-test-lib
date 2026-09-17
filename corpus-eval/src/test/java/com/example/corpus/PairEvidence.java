@@ -87,9 +87,20 @@ final class PairEvidence {
     private static final Map<DetectorType, String> HELD_ON_MODEL = new EnumMap<>(DetectorType.class);
 
     static {
-        // REVIEWED_DESPITE_SHAPE is empty on purpose. Adding an entry is a claim that someone read
-        // both bodies and found the differing call to be the defect itself. An entry with no such
-        // reading is worth less than the PROMPT tier it replaces.
+        // Reviewed 2026-09-17 (wave 4): each pair's differing calls are the defect itself or
+        // diagnostic context, and the finding is decided on real JVM state without heuristics.
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.CONDITION_VARIABLES,
+                "the stuck waiter never exits await(), so recordAwaitExit is called only in the "
+                        + "silent twin; the finding is decided by the real lock's wait queue");
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.CYCLIC_BARRIER,
+                "the broken barrier throws BrokenBarrierException and records recordBroken, whereas "
+                        + "the completed cycle records recordArrival and recordBarrierComplete; the "
+                        + "finding is decided by isBroken() on the real barrier at await");
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.REENTRANT_LOCK,
+                "the re-entered hold in the firing row causes tryLock timeouts for competing workers "
+                        + "so recordLockTimeout is recorded as context, while the uncontended silent "
+                        + "row acquires and releases without timeout; the finding is decided by "
+                        + "isLocked() on the real lock at analysis");
 
         // Read 2026-09-14: each pair's two bodies and its detector's source, by a reviewer asked
         // to argue against promotion. The reason is the model property that decided it.
@@ -133,18 +144,11 @@ final class PairEvidence {
         // READ_WRITE_LOCK_FAIRNESS was held here as a liveness observation; #569 moved it to
         // ADVISORY, which is not a promotion candidate, so the hold no longer asks anything.
 
-        // Second reading, 2026-09-14 (#571). In all eight the body declares what the finding says
-        // and the detector never asks the object it names.
-        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "since #592 stuck waiters are read "
-                + "from the lock's wait queue, and since #618 the pair is rebuilt on a real parked "
-                + "waiter under registerCondition(lock, condition, name); the model no longer "
-                + "holds the pair back, so it needs the adversarial re-read against both bodies "
-                + "that promotion requires (#571)");
-        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "since #595 nothing the body declares is a "
-                + "finding: reuse is decided with isBroken() at the arrival or await (#584), and "
-                + "recordTimeout and recordBroken are only context for that report; the model no "
-                + "longer holds the pair back, so it needs the adversarial re-read against both "
-                + "bodies that promotion requires (#571)");
+        // Second reading, 2026-09-14 (#571).
+        // CONDITION_VARIABLES was held here; since #592 stuck waiters are read from the lock's wait
+        // queue and since #618 the pair is rebuilt on a real parked waiter; promoted in wave 4.
+        // CYCLIC_BARRIER was held here; since #595 reuse is decided with isBroken() at the arrival
+        // or await (#584); promoted in wave 4.
         HELD_ON_MODEL.put(DetectorType.EXCHANGER, "#585 made orphaning the finding, decided from "
                 + "recorded starts against completions, timeouts and interrupts, so a handled timeout "
                 + "is silent; still held until re-read, because the counts are the body's own "
@@ -163,11 +167,8 @@ final class PairEvidence {
                 + "recorded unlock matched on a lock still write- or read-held at analysis, and the "
                 + "MUST_FIRE row no longer declares it; not yet re-read against that model, so it "
                 + "stays held until a reading confirms the rows separate on the real lock's state");
-        HELD_ON_MODEL.put(DetectorType.REENTRANT_LOCK, "#589 made the finding a lock still held "
-                + "at analysis, read from the lock itself, and a handled tryLock timeout context; "
-                + "#609 no longer reports a hold whose holder is still working and #608 makes "
-                + "starvation a finding only when barging was seen on the lock, so the model "
-                + "questions are answered; still held until the pair is re-read against that model");
+        // REENTRANT_LOCK was held here; #589 made the finding a lock still held at analysis, read
+        // from the lock itself, #609 handles working holder, and #608 checks barging; promoted in wave 4.
         HELD_ON_MODEL.put(DetectorType.WAKEUP_ISSUES, "since #590 the finding is an unsignalled "
                 + "wait return the same thread does not follow with another wait; since #607 a "
                 + "deadline loop can close its last return with recordGaveUp, but that and "

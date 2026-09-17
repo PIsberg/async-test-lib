@@ -294,4 +294,9 @@ public class CyclicBarrierDetectorTest {
         barrier.reset();
         p1.join(1000);
     }
+
+    @Test
+    void trustTierIsVerdict() {
+        assertEquals(TrustTier.VERDICT, DetectorTrust.tierOf(se.deversity.asynctest.DetectorType.CYCLIC_BARRIER));
+    }
 }
