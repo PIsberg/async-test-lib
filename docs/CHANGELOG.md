@@ -55,11 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A thread that released a spinlock flag through an unobserved call (such as `getAndSet(0)`)
   remained listed as the lock holder until another thread won a substituted compare-and-swap and
   recorded itself as holder. Between that swap and the holder write, the flag read locked and the
-  holder still named the previous thread, excusing accesses in that gap. An acquire sequence
-  counter is now bumped and any stale holder cleared before the swap instruction executes when the
-  flag is free; `Lock.stillHeld()` requires both the holder and the acquire sequence counter to be
-  unchanged since the winner took the lock. `SpinLocksTest` deterministically latches threads at
-  the three points with a test-only seam and pins the revocation.
+  holder still named the previous thread, excusing accesses in that gap. The holder is now a fresh
+  stamp object per observed won acquire; a contender reads the stamp, then the flag, and only when
+  the flag is free clears that exact stamp before its swap, so a stale holder is revoked and a
+  holder that won after the contender looked is not. As first merged, the revocation was
+  check-then-clear and could revoke a live holder (correct spinlock code reported as a race; 178 of
+  300 amplified `SpinLockWeavingTest` repetitions failed), and the later workaround moved the
+  bookkeeping after the swap, reopening the gap. The `SpinLocksTest` seam now pauses right after
+  the swap lands. One narrow window remains: an unobserved release landing between a contender's
+  flag check and its swap.
 
 - **`AsyncTestAgent` resolves `AtomicIntegerFieldUpdater` spinlock fields whose updater was bound before attach (#619).**
   When a class containing an `AtomicIntegerFieldUpdater` initializes before the agent attaches, its type
@@ -67,7 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance. On retransformation, the updater's field binding is now captured at weave time via
   `AtomicFieldRegistry.recordIntUpdater` and registered in `SpinLocks.recordUpdaterField`. When a CAS or
   release is subsequently encountered for an updater with no instance binding, `SpinLocks.fieldOf(updater, receiver)`
-  resolves the target field from the receiver class hierarchy when exactly one field updater is bound for it.
+  resolves the target field from the receiver class hierarchy when exactly one field updater is bound for it,
+  and only when every non-JDK class in that hierarchy was scanned by the weaver and none makes an updater
+  the weaver cannot read. As first merged, an updater bound in an unwoven superclass resolved to the
+  subclass's recorded field, declaring a lock on the wrong flag that could excuse a race.
 
 - **The remaining twenty-one unreviewed PROMPT corpus pairs were read and held back on their detector's model (#571).**
   `ASYNC_PIPELINE`, `COMPLETABLEFUTURE_CHAIN`, `CONSTRUCTOR_SAFETY`, `COPY_ON_WRITE_COLLECTIONS`,
