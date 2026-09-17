@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-09-17
+
 ### Fixed
 
 - **Spinlock releases through value-returning calls are observed (#658, #621).** `getAndSet`,
