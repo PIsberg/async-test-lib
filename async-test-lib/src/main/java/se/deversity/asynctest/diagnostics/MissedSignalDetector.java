@@ -1,6 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,11 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * erase a live waiter, making the next notify read as lost).
  *
  * <p><strong>Say whether the wait is guarded.</strong> The detector cannot see the predicate, so
- * {@link #recordWait(Object, boolean)} asks the caller (#599), or the caller records each
- * evaluation with {@link #recordPredicateCheck(Object, boolean)} (#635). A check recorded after a
- * wakeup, by the same thread and in the same invocation round, marks that wait guarded when the
- * caller did not declare it. The sequence alone cannot tell a {@code while} loop from an
- * {@code if} that happens to test again later in the same body. A guarded wait is never reported:
+ * {@link #recordWait(Object, boolean)} asks the caller (#599). A guarded wait is never reported:
  * its loop re-tests the state a lost notify would have changed, so a consumer polling after the
  * last producer finished, whose timed wait runs out by design, stays silent. An unguarded wait is
  * judged against every notify lost before it, so a lost notify followed by one that reached some
@@ -49,6 +47,22 @@ import java.util.concurrent.atomic.AtomicLong;
  * which reports the guarded poll above and misses the hidden unguarded wait. Record the monitor
  * itself rather than a name where you can: named conditions share state with every other monitor
  * recorded under the same name.
+ *
+ * <p><strong>Or record the loop.</strong> A caller that records every predicate evaluation with
+ * {@link #recordPredicateCheck(Object, boolean)} (#635) lets the detector confirm an undeclared
+ * wait as a loop's from the waiting thread's own next events on the condition, in the same
+ * invocation round (#656): a check right after the wakeup that finds the predicate satisfied, or
+ * one that finds it unsatisfied followed by another wait. A wait reached through that back-edge is
+ * also confirmed when its last check is unsatisfied and no wait follows, which is how a bounded
+ * poll gives up. Anything else closes the window: a notify by the waiter, a wait with no check
+ * before it, or the end of the round. {@code if (!ready) wait()} followed later by a check that
+ * finds {@code ready} still false is therefore reported. A wait that can no longer be confirmed is
+ * folded into a count, so the detector keeps at most one woken wait per thread per condition.
+ *
+ * <p>What the recorded sequence still cannot distinguish, because the calls are identical:
+ * {@code if (!ready) wait()} followed later in the same body by a check that finds {@code ready}
+ * true reads as a loop that exited; and two consecutive {@code if (!ready) wait()} blocks read as a
+ * loop that waited again. Declare such a wait with {@code recordWait(monitor, false)}.
  *
  * <p>Usage:
  * <pre>{@code
@@ -83,24 +97,24 @@ public class MissedSignalDetector {
     /** A recorded wait whose wakeup has not been recorded yet. */
     private static final class OpenWait {
         final Thread thread;
-        Guard guard;
+        final Guard guard;
         /** The condition's notify count when the wait began. */
         final long notifiesAtStart;
         /** Whether the most recent notify before this wait found nobody waiting. */
         final boolean afterLostNotify;
         /** How many notifies before this wait found nobody waiting. */
         final int lostNotifiesAtStart;
-        /** The invocation round the wait began in. */
-        final long epoch;
+        /** Whether this wait is the loop's back-edge: its thread re-tested and waited again. */
+        final boolean loopObserved;
 
         OpenWait(Thread thread, Guard guard, long notifiesAtStart, boolean afterLostNotify,
-                 int lostNotifiesAtStart, long epoch) {
+                 int lostNotifiesAtStart, boolean loopObserved) {
             this.thread = thread;
             this.guard = guard;
             this.notifiesAtStart = notifiesAtStart;
             this.afterLostNotify = afterLostNotify;
             this.lostNotifiesAtStart = lostNotifiesAtStart;
-            this.epoch = epoch;
+            this.loopObserved = loopObserved;
         }
 
         /** {@return whether this wait needed a notify that was lost and none has arrived since} */
@@ -117,35 +131,33 @@ public class MissedSignalDetector {
         }
     }
 
-    /** A wait that completed, tracked until analysis to observe whether a predicate recheck occurs (#635). */
-    private static final class CompletedWait {
-        final Thread thread;
-        Guard guard;
-        final long notifiesAtStart;
-        final boolean afterLostNotify;
-        final int lostNotifiesAtStart;
-        final long notifiesAtWakeup;
+    /**
+     * An undeclared wait its thread has woken from, which that thread's next events on the
+     * condition in the same round may still confirm as a loop's (#635, #656).
+     */
+    private static final class PendingWait {
+        /** Whether the wait, judged unguarded, needed a lost notify and none arrived before the wakeup. */
+        final boolean missedItsSignal;
+        /** Whether the wait itself followed a back-edge of its thread's loop. */
+        final boolean loopObserved;
         /** The invocation round the wakeup was recorded in. */
-        final long wakeupEpoch;
+        final long epoch;
+        /** Whether a check after the wakeup found the predicate unsatisfied. */
+        boolean checkedUnsatisfied;
 
-        CompletedWait(Thread thread, Guard guard, long notifiesAtStart, boolean afterLostNotify,
-                      int lostNotifiesAtStart, long notifiesAtWakeup, long wakeupEpoch) {
-            this.thread = thread;
-            this.guard = guard;
-            this.notifiesAtStart = notifiesAtStart;
-            this.afterLostNotify = afterLostNotify;
-            this.lostNotifiesAtStart = lostNotifiesAtStart;
-            this.notifiesAtWakeup = notifiesAtWakeup;
-            this.wakeupEpoch = wakeupEpoch;
+        PendingWait(boolean missedItsSignal, boolean loopObserved, long epoch) {
+            this.missedItsSignal = missedItsSignal;
+            this.loopObserved = loopObserved;
+            this.epoch = epoch;
         }
 
-        boolean missedItsSignal() {
-            boolean noNotifySince = notifiesAtWakeup == notifiesAtStart;
-            return switch (guard) {
-                case GUARDED -> false;
-                case UNGUARDED -> lostNotifiesAtStart > 0 && noNotifySince;
-                case UNKNOWN -> afterLostNotify && noNotifySince;
-            };
+        /**
+         * {@return whether the wait was a loop's when no further wait follows} A loop that has
+         * already waited again and now finds its predicate still unsatisfied is a bounded poll
+         * giving up; a first wait with no back-edge behind it has shown no loop at all.
+         */
+        boolean confirmedWithoutAnotherWait() {
+            return checkedUnsatisfied && loopObserved;
         }
     }
 
@@ -153,7 +165,13 @@ public class MissedSignalDetector {
     private static final class ConditionState {
         final String label;
         private final List<OpenWait> openWaits = new ArrayList<>();
-        private final List<CompletedWait> completedWaits = new ArrayList<>();
+        /**
+         * At most one per thread: the latest undeclared wait it woke from, kept only until the
+         * thread's next event on this condition or the end of its round settles it.
+         */
+        private final Map<Thread, PendingWait> pendingWaits = new HashMap<>();
+        /** Settled waits that ended without the notify they needed. */
+        private int unsignalledWaits;
         private long notifies;
         private int notifiesWithNoWaiter;
         private boolean lastNotifyLost;
@@ -163,8 +181,15 @@ public class MissedSignalDetector {
         }
 
         synchronized void waitStarted(Thread thread, Guard guard, long epoch) {
+            PendingWait previous = pendingWaits.remove(thread);
+            boolean backEdge = false;
+            if (previous != null) {
+                // Re-tested after the wakeup, found the predicate false, and waited again: a loop.
+                backEdge = previous.epoch == epoch && previous.checkedUnsatisfied;
+                settle(previous, backEdge || previous.confirmedWithoutAnotherWait());
+            }
             openWaits.add(new OpenWait(thread, guard, notifies, lastNotifyLost, notifiesWithNoWaiter,
-                    epoch));
+                    backEdge));
         }
 
         synchronized void wokeUp(Thread thread, long epoch) {
@@ -172,8 +197,18 @@ public class MissedSignalDetector {
                 OpenWait wait = openWaits.get(i);
                 if (wait.thread.equals(thread)) { // Thread keeps Object's identity equals
                     openWaits.remove(i);
-                    completedWaits.add(new CompletedWait(thread, wait.guard, wait.notifiesAtStart,
-                            wait.afterLostNotify, wait.lostNotifiesAtStart, notifies, epoch));
+                    boolean missed = wait.missedItsSignal(notifies);
+                    if (wait.guard != Guard.UNKNOWN) {
+                        if (missed) {
+                            unsignalledWaits++; // the caller declared it: nothing left to confirm
+                        }
+                        return;
+                    }
+                    PendingWait replaced = pendingWaits.put(thread,
+                            new PendingWait(missed, wait.loopObserved, epoch));
+                    if (replaced != null) { // waitStarted settled it already; kept for safety
+                        settle(replaced, replaced.confirmedWithoutAnotherWait());
+                    }
                     return;
                 }
             }
@@ -181,33 +216,34 @@ public class MissedSignalDetector {
         }
 
         /**
-         * A check confirms only the thread's latest wait, only in the round that wait belongs to,
-         * and only when the caller did not declare the wait itself. A pooled worker's check in the
-         * next round is that round's {@code if (!ready)} before its own wait, not a re-test of the
-         * earlier one, and an explicit {@code recordWait(monitor, false)} is the caller's answer.
+         * Only the thread's own next events after a wakeup, in the same round, can confirm the wait
+         * as a loop's: a check that finds the predicate satisfied (the loop exits), or a check that
+         * finds it unsatisfied followed by another wait (the back-edge, settled in
+         * {@link #waitStarted}). A check in a later round is that round's own test, and an
+         * explicit {@code recordWait(monitor, false)} never became pending.
          */
-        synchronized void predicateChecked(Thread thread, long epoch) {
-            for (int i = openWaits.size() - 1; i >= 0; i--) {
-                OpenWait wait = openWaits.get(i);
-                if (wait.thread.equals(thread)) {
-                    if (wait.guard == Guard.UNKNOWN && wait.epoch == epoch) {
-                        wait.guard = Guard.GUARDED;
-                    }
-                    return;
-                }
+        synchronized void predicateChecked(Thread thread, boolean satisfied, long epoch) {
+            PendingWait pending = pendingWaits.get(thread);
+            if (pending == null) {
+                return; // a test before this thread's wait, or after its wait was settled
             }
-            for (int i = completedWaits.size() - 1; i >= 0; i--) {
-                CompletedWait wait = completedWaits.get(i);
-                if (wait.thread.equals(thread)) {
-                    if (wait.guard == Guard.UNKNOWN && wait.wakeupEpoch == epoch) {
-                        wait.guard = Guard.GUARDED;
-                    }
-                    return;
-                }
+            if (pending.epoch != epoch) {
+                pendingWaits.remove(thread);
+                settle(pending, pending.confirmedWithoutAnotherWait());
+            } else if (satisfied) {
+                pendingWaits.remove(thread);
+                settle(pending, true);
+            } else {
+                pending.checkedUnsatisfied = true;
             }
         }
 
-        synchronized void notified() {
+        synchronized void notified(Thread thread) {
+            // A loop does not signal between its wakeup and its re-test: the body has moved on.
+            PendingWait pending = pendingWaits.remove(thread);
+            if (pending != null) {
+                settle(pending, pending.confirmedWithoutAnotherWait());
+            }
             notifies++;
             lastNotifyLost = openWaits.isEmpty();
             if (lastNotifyLost) {
@@ -215,11 +251,33 @@ public class MissedSignalDetector {
             }
         }
 
+        /** Settles every woken wait from a round before {@code epoch}: nothing can confirm it now. */
+        synchronized void closeRoundsBefore(long epoch) {
+            for (Iterator<PendingWait> it = pendingWaits.values().iterator(); it.hasNext(); ) {
+                PendingWait pending = it.next();
+                if (pending.epoch < epoch) {
+                    it.remove();
+                    settle(pending, pending.confirmedWithoutAnotherWait());
+                }
+            }
+        }
+
+        /** Folds a wait that can no longer change into the count; must hold the monitor. */
+        private void settle(PendingWait wait, boolean confirmedLoop) {
+            if (!confirmedLoop && wait.missedItsSignal) {
+                unsignalledWaits++;
+            }
+        }
+
+        synchronized int retainedWaits() {
+            return openWaits.size() + pendingWaits.size();
+        }
+
         synchronized void describeInto(List<String> findings) {
-            int unsignalledWaits = 0;
-            for (CompletedWait wait : completedWaits) {
-                if (wait.missedItsSignal()) {
-                    unsignalledWaits++;
+            int ended = unsignalledWaits;
+            for (PendingWait wait : pendingWaits.values()) {
+                if (wait.missedItsSignal && !wait.confirmedWithoutAnotherWait()) {
+                    ended++;
                 }
             }
             int stillWaiting = 0;
@@ -228,13 +286,13 @@ public class MissedSignalDetector {
                     stillWaiting++;
                 }
             }
-            if (unsignalledWaits + stillWaiting > 0) {
+            if (ended + stillWaiting > 0) {
                 findings.add(String.format(
                         "%s: %d wait(s) began after a notify no thread was waiting for and received "
                                 + "no notify of their own (%d ended unsignalled, %d still waiting; "
                                 + "%d of %d notify call(s) found no waiter) — SIGNAL LOST, "
                                 + "potential indefinite wait!",
-                        label, unsignalledWaits + stillWaiting, unsignalledWaits, stillWaiting,
+                        label, ended + stillWaiting, ended, stillWaiting,
                         notifiesWithNoWaiter, notifies));
             }
         }
@@ -250,12 +308,19 @@ public class MissedSignalDetector {
     /**
      * Internal: called at the start of each invocation round. A predicate check confirms only a
      * wait from its own round, so a pooled worker's {@code if (!ready)} in the next round does not
-     * read as a re-test of the wait it made in this one.
+     * read as a re-test of the wait it made in this one; every woken wait of the closed round is
+     * settled into a count here, so memory does not grow with the number of waits (#656).
      *
      * @since 1.12.1
      */
     public void markInvocationStart() {
-        invocationEpoch.incrementAndGet();
+        long epoch = invocationEpoch.incrementAndGet();
+        if (conditions.isEmpty()) {
+            return;
+        }
+        for (ConditionState state : conditions.values()) {
+            state.closeRoundsBefore(epoch);
+        }
     }
 
     /**
@@ -333,36 +398,41 @@ public class MissedSignalDetector {
     }
 
     /**
-     * Records that the calling thread evaluated the condition's state predicate (e.g. in a
-     * {@code while (!ready)} loop). A predicate check observed after {@link #recordWakeup}, in the
-     * same invocation round, confirms that the wait re-tests its condition, making it
-     * predicate-guarded (#635). It never overrides a wait recorded with an explicit
-     * {@code guarded} flag.
+     * Records that the calling thread evaluated the condition's state predicate, as a
+     * {@code while (!ready)} loop does before its first wait and after every wakeup. Record every
+     * evaluation, with its outcome.
+     *
+     * <p>A wait recorded without a {@code guarded} flag is confirmed as a loop's only by its own
+     * thread's next events on the condition in the same invocation round (#656): a check that
+     * finds the predicate satisfied right after the wakeup (the loop exits), or a check that finds
+     * it unsatisfied followed by another wait (the loop's back-edge). A wait reached through such a
+     * back-edge is also confirmed when its last check finds the predicate unsatisfied and no wait
+     * follows, which is how a bounded poll gives up. A notify by the same thread, a wait with no
+     * check before it, or the end of the round closes the window, and the wait is judged by the
+     * #586 rule. It never overrides a wait recorded with an explicit {@code guarded} flag.
      *
      * @param conditionName the name of the condition
-     * @param satisfied {@code true} if the condition predicate was satisfied; recorded for the
-     *        caller's readability, not used in the decision
+     * @param satisfied {@code true} if the predicate held, so the loop would exit
      * @since 1.12.1
      */
     public void recordPredicateCheck(String conditionName, boolean satisfied) {
         if (conditionName == null) return;
-        byName(conditionName).predicateChecked(Thread.currentThread(), invocationEpoch.get());
+        byName(conditionName).predicateChecked(Thread.currentThread(), satisfied, invocationEpoch.get());
     }
 
     /**
-     * Records that the calling thread evaluated the monitor's state predicate. A predicate check
-     * observed after {@link #recordWakeup(Object)}, in the same invocation round, confirms that
-     * the wait re-tests its condition, making it predicate-guarded (#635). It never overrides a
-     * wait recorded with {@link #recordWait(Object, boolean)}.
+     * Records that the calling thread evaluated the monitor's state predicate; see
+     * {@link #recordPredicateCheck(String, boolean)} for what confirms a wait as a loop's and what
+     * stays indistinguishable (#635, #656). It never overrides a wait recorded with
+     * {@link #recordWait(Object, boolean)}.
      *
      * @param monitor the monitor object
-     * @param satisfied {@code true} if the condition predicate was satisfied; recorded for the
-     *        caller's readability, not used in the decision
+     * @param satisfied {@code true} if the predicate held, so the loop would exit
      * @since 1.12.1
      */
     public void recordPredicateCheck(Object monitor, boolean satisfied) {
         if (monitor == null) return;
-        byMonitor(monitor).predicateChecked(Thread.currentThread(), invocationEpoch.get());
+        byMonitor(monitor).predicateChecked(Thread.currentThread(), satisfied, invocationEpoch.get());
     }
 
     /**
@@ -374,7 +444,7 @@ public class MissedSignalDetector {
      */
     public void recordNotify(String conditionName) {
         if (conditionName == null) return;
-        byName(conditionName).notified();
+        byName(conditionName).notified(Thread.currentThread());
     }
 
     /**
@@ -385,7 +455,7 @@ public class MissedSignalDetector {
      */
     public void recordNotify(Object monitor) {
         if (monitor == null) return;
-        byMonitor(monitor).notified();
+        byMonitor(monitor).notified(Thread.currentThread());
     }
 
     /**
@@ -424,6 +494,15 @@ public class MissedSignalDetector {
     }
 
     // ---- Internal ----------------------------------------------------------
+
+    /** {@return how many wait records all conditions still hold}; for the memory-bound test. */
+    int retainedWaits() {
+        int retained = 0;
+        for (ConditionState state : conditions.values()) {
+            retained += state.retainedWaits();
+        }
+        return retained;
+    }
 
     private ConditionState byName(String conditionName) {
         return conditions.computeIfAbsent(conditionName, name -> new ConditionState((String) name));
