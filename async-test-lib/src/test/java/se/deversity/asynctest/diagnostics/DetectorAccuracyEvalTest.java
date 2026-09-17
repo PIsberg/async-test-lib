@@ -2583,8 +2583,11 @@ class DetectorAccuracyEvalTest {
         p1.start();
         p2.start();
 
+        // The detector reads the waiters' thread state, so wait until both are parked, not only counted.
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (barrier.getNumberWaiting() < 2 && System.nanoTime() < deadline) {
+        while ((barrier.getNumberWaiting() < 2
+                || p1.getState() != Thread.State.WAITING || p2.getState() != Thread.State.WAITING)
+                && System.nanoTime() < deadline) {
             Thread.onSpinWait();
         }
         assertEquals(2, barrier.getNumberWaiting(), "premise: two parties waiting");

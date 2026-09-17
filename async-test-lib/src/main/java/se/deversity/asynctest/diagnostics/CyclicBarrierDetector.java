@@ -30,6 +30,23 @@ import java.util.concurrent.CyclicBarrier;
  *
  * <p>The decision is taken when the arrival or await is recorded, so a barrier that breaks after
  * that check and before the await itself is missed. That errs towards silence.
+ *
+ * <p>A barrier left a party short is the second finding (#631): a thread that recorded an arrival or
+ * await on it is still parked in an untimed {@code await()} when the runner times the round out, or
+ * when the run is analyzed, and fewer threads than the barrier's parties are parked there. It is
+ * decided from the recording threads' own state and stack, never by asking the barrier:
+ * {@code getNumberWaiting()} and {@code isBroken()} take the barrier's lock, a barrier action runs
+ * holding that lock, and a round stuck in its action would leave the runner stuck in the probe
+ * instead of failing the round. What that costs:
+ * <ul>
+ *   <li>A thread that recorded nothing is not seen, so neither is a waiter the body did not report.</li>
+ *   <li>A timed {@code await(timeout, unit)} is not stranded, because its timeout ends it and breaks
+ *       the barrier for every party; a barrier with one is not reported.</li>
+ *   <li>A barrier with a recorded thread inside {@code await()} but not parked in it, for example the
+ *       thread running a blocked barrier action, is not reported: its parties did arrive.</li>
+ *   <li>A thread is attributed to the barrier it last recorded. One that records barrier A and then
+ *       awaits barrier B without recording is counted against A.</li>
+ * </ul>
  */
 public class CyclicBarrierDetector {
 
@@ -40,6 +57,15 @@ public class CyclicBarrierDetector {
     private final Set<CyclicBarrier> brokenBarriers = ConcurrentHashMap.newKeySet();
     private final Set<CyclicBarrier> reuseAfterBrokenBarriers = ConcurrentHashMap.newKeySet();
     private final Map<CyclicBarrier, Integer> strandedBarriers = new ConcurrentHashMap<>();
+    /**
+     * The barrier each recording thread last said it was about to await. Read only when a round is
+     * judged; a replaced value allocates nothing, so a worker recording every round costs one entry.
+     */
+    private final Map<Thread, CyclicBarrier> recordedWaiters = new ConcurrentHashMap<>();
+
+    private static final String UNREGISTERED = "<unregistered barrier>";
+    private static final String CONDITION_OBJECT =
+        "java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject";
 
     /**
      * Register a CyclicBarrier for monitoring.
@@ -52,7 +78,7 @@ public class CyclicBarrierDetector {
         if (barrier == null) return;
         int resolvedParties = parties > 0 ? parties : barrier.getParties();
         barrierRegistry.compute(barrier, (k, existing) -> {
-            if (existing == null || "<unregistered barrier>".equals(existing.name)) {
+            if (existing == null || UNREGISTERED.equals(existing.name)) {
                 return new BarrierInfo(name, resolvedParties);
             }
             return existing;
@@ -72,7 +98,8 @@ public class CyclicBarrierDetector {
     }
 
     private void autoRegister(CyclicBarrier barrier) {
-        barrierRegistry.putIfAbsent(barrier, new BarrierInfo("<unregistered barrier>", barrier.getParties()));
+        barrierRegistry.computeIfAbsent(barrier, b -> new BarrierInfo(UNREGISTERED, b.getParties()));
+        recordedWaiters.put(Thread.currentThread(), barrier);
     }
 
     /**
@@ -163,36 +190,27 @@ public class CyclicBarrierDetector {
      * Tells the detector the runner has timed the current round out and is about to interrupt its
      * workers. Called by the runner, not by test bodies.
      *
-     * <p>At this moment, workers parked on untimed {@code await()} calls have not yet been
-     * interrupted, so {@link CyclicBarrier#getNumberWaiting()} reveals any barrier left short of its
-     * required parties. Once the runner cancels worker futures, the interrupt breaks the barrier and
-     * resets {@code getNumberWaiting()} to 0.
+     * <p>At this moment the workers parked on untimed {@code await()} calls have not been interrupted
+     * yet, so a barrier left a party short is still visible; once the runner cancels them, the
+     * interrupt breaks the barrier and the evidence is gone. The barrier itself is never asked: its
+     * lock may be held by a barrier action that is the reason the round is stuck, and this runs on
+     * the runner thread before it cancels anything.
      *
      * @since 1.12.1
      */
     public void markRoundTimedOut() {
-        for (Map.Entry<CyclicBarrier, BarrierInfo> entry : barrierRegistry.entrySet()) {
-            CyclicBarrier barrier = entry.getKey();
-            int waiting = barrier.getNumberWaiting();
-            if (waiting > 0 && !barrier.isBroken()) {
-                strandedBarriers.put(barrier, waiting);
-            }
-        }
+        collectStranded(true);
     }
 
     /**
-     * Analyze barrier usage and return report.
+     * Analyze barrier usage and return report. A barrier a recording thread is still parked on,
+     * untimed and a party short, is reported here as well, for a body whose waiters outlive it
+     * without the round timing out.
      *
      * @return the findings this detector collected during the run
      */
     public CyclicBarrierReport analyze() {
-        for (Map.Entry<CyclicBarrier, BarrierInfo> entry : barrierRegistry.entrySet()) {
-            CyclicBarrier barrier = entry.getKey();
-            int waiting = barrier.getNumberWaiting();
-            if (waiting > 0 && !barrier.isBroken()) {
-                strandedBarriers.putIfAbsent(barrier, waiting);
-            }
-        }
+        collectStranded(false);
         return new CyclicBarrierReport(
             barrierRegistry,
             timedOutBarriers,
@@ -200,6 +218,65 @@ public class CyclicBarrierDetector {
             reuseAfterBrokenBarriers,
             strandedBarriers
         );
+    }
+
+    /**
+     * Counts, per barrier, the recording threads parked in an untimed await on it, without taking
+     * the barrier's lock. A barrier with a recorded thread inside await() in any other way (timed,
+     * running the barrier action, or acquiring the lock) is excused: it is not a party short.
+     */
+    private void collectStranded(boolean timedOut) {
+        Map<CyclicBarrier, Integer> parked = new HashMap<>();
+        Set<CyclicBarrier> excused = new HashSet<>();
+        for (Map.Entry<Thread, CyclicBarrier> entry : recordedWaiters.entrySet()) {
+            CyclicBarrier barrier = entry.getValue();
+            AwaitState state = awaitStateOf(entry.getKey());
+            if (state == AwaitState.UNTIMED_PARKED) {
+                parked.merge(barrier, 1, Integer::sum);
+            } else if (state == AwaitState.OTHERWISE_IN_AWAIT) {
+                excused.add(barrier);
+            }
+        }
+        for (Map.Entry<CyclicBarrier, Integer> entry : parked.entrySet()) {
+            CyclicBarrier barrier = entry.getKey();
+            int waiting = entry.getValue();
+            if (excused.contains(barrier) || waiting >= barrier.getParties()) {
+                continue;
+            }
+            if (timedOut) {
+                strandedBarriers.put(barrier, waiting);
+            } else {
+                strandedBarriers.putIfAbsent(barrier, waiting);
+            }
+        }
+    }
+
+    private enum AwaitState { UNTIMED_PARKED, OTHERWISE_IN_AWAIT, NOT_IN_AWAIT }
+
+    /**
+     * Where a thread is relative to {@code CyclicBarrier.await}, read from its state and stack. An
+     * untimed await parks in {@code ConditionObject.await()} directly under
+     * {@code CyclicBarrier.dowait}; a timed one parks in {@code awaitNanos}. A stack shaped any other
+     * way errs towards silence.
+     */
+    private static AwaitState awaitStateOf(Thread thread) {
+        Thread.State state = thread.getState();
+        if (state == Thread.State.NEW || state == Thread.State.TERMINATED) {
+            return AwaitState.NOT_IN_AWAIT;
+        }
+        StackTraceElement[] frames = thread.getStackTrace();
+        for (int i = 0; i < frames.length; i++) {
+            StackTraceElement frame = frames[i];
+            if ("dowait".equals(frame.getMethodName())
+                    && CyclicBarrier.class.getName().equals(frame.getClassName())) {
+                boolean untimedPark = i > 0
+                    && state == Thread.State.WAITING
+                    && "await".equals(frames[i - 1].getMethodName())
+                    && CONDITION_OBJECT.equals(frames[i - 1].getClassName());
+                return untimedPark ? AwaitState.UNTIMED_PARKED : AwaitState.OTHERWISE_IN_AWAIT;
+            }
+        }
+        return AwaitState.NOT_IN_AWAIT;
     }
 
     /**
@@ -330,7 +407,7 @@ public class CyclicBarrierDetector {
          */
         private BarrierInfo infoFor(CyclicBarrier barrier) {
             BarrierInfo info = barrierRegistry.get(barrier);
-            return info != null ? info : new BarrierInfo("<unregistered barrier>", barrier.getParties());
+            return info != null ? info : new BarrierInfo(UNREGISTERED, barrier.getParties());
         }
 
         /** The recorded context for a reuse finding: what the body said broke the barrier, if anything. */
