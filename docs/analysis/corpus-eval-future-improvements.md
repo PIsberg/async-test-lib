@@ -104,8 +104,12 @@ detector is driven either by caller-asserted record methods (`recordForkWithoutJ
 introspection, by synthetic string IDs rather than actual JVM construct instances (e.g.
 `StructuredTaskScope`, `ScopedValue`, `StableValue`), or by arbitrary contention/ratio thresholds on
 types that are thread-safe by specification (e.g. `CopyOnWriteArrayList`, lock contention ratio). None
-inspects real JVM objects or synchronization primitives, so each requires agent instrumentation or
-bytecode analysis before its pair can be evaluated for promotion. The unreviewed PROMPT backlog
+inspects real JVM objects or synchronization primitives. For nineteen of them that is what holds the
+pair: each requires agent instrumentation or bytecode analysis before it can be evaluated for
+promotion. `COPY_ON_WRITE_COLLECTIONS` and `LOCK_CONTENTION` are held for a different reason, which
+their own entries give: each reports a throughput heuristic (a 20% write ratio, a 20% contention
+ratio or more than 5 contended acquisitions) rather than a correctness defect, so better observation
+alone would not make a finding a verdict. The unreviewed PROMPT backlog
 held by call shape is now 0.
 
 ## 3. Severity is not pinned on a firing row (open: the gate exists, no row uses it)
