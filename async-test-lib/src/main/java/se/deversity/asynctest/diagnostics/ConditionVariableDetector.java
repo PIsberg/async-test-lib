@@ -65,6 +65,10 @@ import org.jspecify.annotations.Nullable;
  * {@link ConditionVariableReport#hasIssues()}. Telling a stuck waiter from an idle consumer needs
  * the predicate, which the {@code registerCondition(lock, condition, ready, name)} overloads pass
  * in (#643): a thread parked while {@code ready} is false is an idle consumer and only a note.
+ * Neither is a thread parked while {@code ready} holds and other threads are queued to acquire the
+ * lock: a signalled waiter sits in that queue until it re-acquires, and a {@code tryLock()} that
+ * barges in first sees the waiters it did not wake still parked (#657). That is a note, which
+ * unrelated contention on the lock at analysis can also produce.
  *
  * <p><strong>Recording contract.</strong> Record a signal while holding the condition's lock,
  * before or right after calling {@code signal()}, so no waiter can record its exit first. Record
@@ -116,17 +120,23 @@ public class ConditionVariableDetector {
         final boolean predicateSatisfied;
         /** What the predicate threw when evaluated, or {@code null} when it returned. */
         final @Nullable String predicateFailure;
+        /**
+         * The predicate held and other threads were queued to acquire the lock at the same moment:
+         * one of them may be a signalled waiter about to re-acquire and consume (#657).
+         */
+        final boolean lockQueued;
 
         WaitQueueResult(int parked, boolean hasPredicate, boolean predicateSatisfied) {
-            this(parked, hasPredicate, predicateSatisfied, null);
+            this(parked, hasPredicate, predicateSatisfied, null, false);
         }
 
         WaitQueueResult(int parked, boolean hasPredicate, boolean predicateSatisfied,
-                        @Nullable String predicateFailure) {
+                        @Nullable String predicateFailure, boolean lockQueued) {
             this.parked = parked;
             this.hasPredicate = hasPredicate;
             this.predicateSatisfied = predicateSatisfied;
             this.predicateFailure = predicateFailure;
+            this.lockQueued = lockQueued;
         }
     }
 
@@ -226,6 +236,13 @@ public class ConditionVariableDetector {
      * <p>A thread parked on the condition while {@code ready} is false is an idle consumer waiting
      * for work and is noted in the report as context without failing the run (#643).
      *
+     * <p>A thread parked while {@code ready} holds is not confirmed stuck either when other threads
+     * are queued to acquire the lock at analysis ({@code lock.hasQueuedThreads()}): a waiter that
+     * {@code signal()} woke is in that queue until it re-acquires the lock and consumes, and the
+     * waiters it did not wake stay parked meanwhile. It is a note, not a finding (#657). The same
+     * note appears when the queued threads are unrelated contention, so a real stuck waiter behind a
+     * contended lock is noted rather than reported.
+     *
      * @param lock the lock whose {@code newCondition()} made {@code condition}; {@code null}
      *             registers the condition without a lock
      * @param condition the Condition to monitor
@@ -252,6 +269,13 @@ public class ConditionVariableDetector {
      *
      * <p>A thread parked on the condition while {@code ready} is false is an idle consumer waiting
      * for work and is noted in the report as context without failing the run (#643).
+     *
+     * <p>A thread parked while {@code ready} holds is not confirmed stuck either when other threads
+     * are queued to acquire the lock at analysis ({@code lock.hasQueuedThreads()}): a waiter that
+     * {@code signal()} woke is queued for the write lock until it re-acquires it and consumes, and
+     * the waiters it did not wake stay parked meanwhile. It is a note, not a finding (#657). The
+     * query counts queued readers too, which cannot consume, so a real stuck waiter behind readers
+     * or other contention is noted rather than reported.
      *
      * @param lock the read-write lock whose {@code writeLock().newCondition()} made
      *             {@code condition}; {@code null} registers the condition without a lock
@@ -291,7 +315,10 @@ public class ConditionVariableDetector {
                         failure = thrown.toString();
                     }
                 }
-                return new WaitQueueResult(parked, ready != null, ready == null || satisfied, failure);
+                // Read under the lock, with the predicate: a signalled waiter sits in this queue until
+                // it re-acquires, so tryLock() barging in first sees the rest still parked (#657).
+                boolean queued = satisfied && lock.hasQueuedThreads();
+                return new WaitQueueResult(parked, ready != null, ready == null || satisfied, failure, queued);
             } catch (IllegalArgumentException notThisLocksCondition) {
                 return new WaitQueueResult(NOT_OWNED, ready != null, false);
             } finally {
@@ -319,7 +346,10 @@ public class ConditionVariableDetector {
                         failure = thrown.toString();
                     }
                 }
-                return new WaitQueueResult(parked, ready != null, ready == null || satisfied, failure);
+                // Readers and writers alike: the public API cannot tell them apart. A queued reader
+                // cannot consume, so it only ever turns a finding into a note, never the reverse (#657).
+                boolean queued = satisfied && lock.hasQueuedThreads();
+                return new WaitQueueResult(parked, ready != null, ready == null || satisfied, failure, queued);
             } catch (IllegalArgumentException notThisLocksCondition) {
                 return new WaitQueueResult(NOT_OWNED, ready != null, false);
             } finally {
@@ -514,6 +544,14 @@ public class ConditionVariableDetector {
                             "%s: %d thread(s) parked on the condition at analysis, but its predicate threw "
                                 + "%s, so they are neither confirmed stuck nor idle (%s)",
                             state.name, parked, result.predicateFailure, lastSignal));
+                    } else if (result.predicateSatisfied && result.lockQueued) {
+                        report.unconfirmedWaits.add(String.format(
+                            "%s: %d thread(s) parked on the condition at analysis while its predicate is "
+                                + "satisfied, but other threads were queued to acquire the lock: a signalled "
+                                + "waiter may be about to re-acquire it and consume, so they are not confirmed "
+                                + "stuck (the queued threads may instead be unrelated contention, which would "
+                                + "hide a real stuck waiter here; %s)",
+                            state.name, parked, lastSignal));
                     } else if (result.predicateSatisfied) {
                         report.stuckWaiters.add(String.format(
                             "%s: %d thread(s) parked in await() at analysis while its predicate is satisfied, "
