@@ -48,6 +48,26 @@ curl -s https://repo1.maven.org/maven2/se/deversity/async-test-lib/async-test-li
 Sweep against a **release**, not an RC and not the working tree. If the user names a version
 that is not on Central, stop and say so.
 
+### Before a release: sweep under a throwaway version
+
+When the consumers are already on the latest release, re-sweeping it proves nothing. The useful
+run is the one before the tag, while a consumer break can still change what ships. Do it without
+touching any release coordinate in `~/.m2`:
+
+1. Add a detached worktree of this repo at `origin/main`. Set `<version>` in the four reactor poms
+   (`pom.xml`, `async-test-lib/`, `async-test-agent/`, `async-test-analysis/`) to a version that
+   can never be published, such as `<next>-SWEEP`.
+2. Install it: `mvn -B -q install -DskipTests -Djacoco.skip=true -Dcheckstyle.skip=true
+   -Dpmd.skip=true -Dspotbugs.skip=true -Djapicmp.skip=true -Dcyclonedx.skip=true`.
+   Check that the jar carries a class added since the last release (`jar tf`).
+3. Pin each consumer worktree (section 4) to that version without committing, and run section 5.
+   skill3 needs `mavenLocal()` added.
+4. Delete `~/.m2/repository/se/deversity/async-test-lib/*/<next>-SWEEP` afterwards.
+
+After the release publishes, run the normal sweep against Central and open the PRs from that
+run. The release's own `mvn clean verify` can leave an `async-test-lib/<next>/*.lastUpdated`
+marker in `~/.m2` from a failed lookup; delete it before that run. Used for 1.12.1 on 2026-09-17.
+
 ## 2. Discover the consumers
 
 ```bash
@@ -61,6 +81,11 @@ you are on a clean branch.
 
 Anything it prints that section 3 does not describe is a new consumer. Add it there.
 
+Most of its output is not consumers. It also lists every checkout under `/c/dev/private`,
+including this repo's own worktrees (the fixtures, corpus-eval and 148 examples each, repeated
+per worktree) and stale worktrees of consumers such as `vibetags-cov`, which still pin old
+versions. Filter to the repo names in section 3 before reading versions.
+
 ## 3. The known consumers
 
 Everything in this table was measured, and each column exists because getting it wrong produces
@@ -68,10 +93,22 @@ a green run that proves nothing.
 
 | Repo | Declares it in | Build command | Async classes |
 |---|---|---|---|
-| `blindbean` | `blindbean-tests/pom.xml` (bare `<version>`) | `./mvnw -B -pl blindbean-tests -am test` | 11 |
+| `blindbean` | `blindbean-tests/pom.xml` (bare `<version>`) | `./mvnw -B -pl blindbean-tests -am test` | 7 (29 methods) |
 | `vibetags` | `vibetags-parent/pom.xml` (property) **only** | see below | 6 |
 | `skill3` | `build.gradle` (literal) | `./gradlew --no-daemon test` | 1 (8 methods) |
-| `nanometer` | `pom.xml` (property, consumed via `dependencyManagement`) **and** `nanometer-api/build.gradle.kts` **and** `nanometer-example/build.gradle.kts` | `mvn -B -U -pl nanometer-api -am test` | 1 (2 methods) |
+| `nanometer` | `pom.xml` (`asynctest.version` property, consumed via `dependencyManagement`) **and** `nanometer-api/build.gradle.kts` **and** `nanometer-example/build.gradle.kts` (literals) | `mvn -B -U -pl nanometer-api -am test` | 1 (2 methods) |
+
+Measured 2026-09-17 on 1.12.1. Whole-suite totals from that sweep, for spotting a run that
+quietly shrank: blindbean 223, vibetags 3122 + 6 (Maven) and 3128 (Gradle), skill3 8,
+nanometer-api 11.
+
+**Count the async classes from the source, not from this table.** The table drifts: blindbean
+sat at 11 here for several releases while the source had 7, because the old count included
+FHE-named tests that carry no `@AsyncTest`. Before treating a lower count as a regression:
+
+```bash
+git -C <repo> grep -l "@AsyncTest" origin/main -- '*src/test*'
+```
 
 `codekarta` is **not** a consumer — checked 2026-08-08, no dependency and no `@AsyncTest`, only
 a passing mention in a `vibetags-usage` skill doc. Do not go looking again unless
@@ -103,27 +140,46 @@ check is a plugin prerequisite, not an execution. vibetags has no `mvnw`, so use
 blindbean wrapper has already downloaded:
 
 ```bash
-ls ~/.m2/wrapper/dists/            # apache-maven-3.9.11 was there on 2026-09-06
-M39=~/.m2/wrapper/dists/apache-maven-3.9.11/*/bin/mvn
+ls ~/.m2/wrapper/dists/            # apache-maven-3.9.11 was there on 2026-09-17
+M39=$(echo ~/.m2/wrapper/dists/apache-maven-3.9.11/*/bin/mvn)
 ```
+
+Expand the glob with `echo` as above. A bare `M39=~/.../*/bin/mvn` assignment keeps the `*`
+literally, and `"$M39"` then fails with exit 127 in under a second. Building it from `ls -d` has
+the same result when an `ls -F` style alias appends `*` to the executable's name. Either way no
+test runs, so read the log for a test count, not just the exit code.
 
 Build order, and the tier that matters:
 
 ```bash
-cd vibetags-annotations && mvn -B -q install -DskipTests   # published to ~/.m2 for both builds
-cd ../vibetags          && mvn -B test -Pe2e               # 2616 tests (2026-09-06)
-cd ../vibetags          && ./gradlew --no-daemon test -Pe2e
+cd vibetags-annotations && "$M39" -B -q install -DskipTests   # published to ~/.m2 for both builds
+cd ../vibetags          && "$M39" -B test -Pe2e               # 3122 + 6 tests (2026-09-17)
+cd ../vibetags          && ./gradlew --no-daemon test -Pe2e   # 3128 tests (2026-09-17)
 ```
 
-**`-Pe2e` is not optional here.** Most of the five `@AsyncTest` classes (GuardrailFileWriterAsyncTest,
-ModuleSidecarAsyncTest, VibeTagsLoggerAsyncTest, VibeTagsLoggerConcurrencyTest, WriteCacheAsyncTest;
-the fifth appeared between 1.9.2 and 1.9.4) carry `@Tag("e2e")`, so
-a plain `mvn test` runs only `WriteCacheAsyncTest`, reports 957 green tests, and would sign off
-on a bump having exercised a quarter of the async surface.
+The Maven tier runs two surefire executions, so the **last** `Tests run:` summary in the log reads
+`6`. That is the second execution, not the total; take both summaries before calling the run
+hollow. Gradle prints no count at all: sum `tests="..."` across `build/test-results/test/*.xml`.
+
+**`-Pe2e` is not optional here.** Five of the six `@AsyncTest` classes carry `@Tag("e2e")`:
+EnforcementBaselineAsyncTest, GuardrailFileWriterAsyncTest, LazyFileAppenderAsyncTest,
+ModuleSidecarAsyncTest and VibeTagsLoggerAsyncTest. Only WriteCacheAsyncTest is untagged
+(checked against `origin/main` on 2026-09-17), so a plain `mvn test` exercises one of the six and
+still goes green. `VibeTagsLoggerConcurrencyTest` also appears in the results; it has no
+`@AsyncTest` and does not count toward the six.
 
 ### skill3
 
-Plain `./gradlew --no-daemon test`. No tag split.
+Plain `./gradlew --no-daemon test`. No tag split. Its only repository is `mavenCentral()`, so a
+pre-release sweep (section 1) must add `mavenLocal()` in the worktree or Gradle cannot resolve the
+throwaway version. Pass `--refresh-dependencies` on the run against Central.
+
+### nanometer
+
+Run the Maven build. The two `build.gradle.kts` files carry their own literals: bump them in the
+same commit so both builds stay on one version, and say in the PR that only the Maven build ran
+locally. Confirm what resolved with
+`mvn -B -pl nanometer-api dependency:tree -Dincludes=se.deversity.async-test-lib`.
 
 ## 4. Branch gently
 
@@ -144,6 +200,14 @@ git -C <repo> worktree add -b chore/async-test-lib-<version> /c/dev/private/.wt-
 
 Always branch from `origin/main`, never from whatever is checked out, or unrelated commits ride
 into the PR. Clean up with `git -C <repo> worktree remove <path>` once the PR is open.
+
+A vibetags worktree fails that removal with `Filename too long`, and leaves the directory behind.
+Delete it with a long-path-aware call, then prune:
+
+```powershell
+Remove-Item -LiteralPath '\\?\C:\dev\private\<worktree>' -Recurse -Force
+git -C vibetags worktree prune
+```
 
 Do not assume a checkout stays put: during the 2026-08-08 sweep blindbean was switched to
 another branch mid-run by a different agent. The pushed branch and PR were unaffected, which is
@@ -197,7 +261,20 @@ Branch `chore/async-test-lib-<version>`. The PR body must carry the evidence, no
 - for a break: the compiler error, what changed upstream, why the fix is right
 - that the artifact was sha1-verified against Central
 
+Write the body to a file with a quoted heredoc (`<<'EOF'`) and pass `--body-file`. An inline
+`--body "..."` lets bash run every backticked span as a command, and the PR opens with a
+mangled description.
+
 Open the PRs. **Do not merge them** — that is the user's call, in their repos.
+
+Then follow each PR's checks to the end. `gh pr checks --watch` exits 0 when no check ran at all,
+so count what passed rather than trusting the exit code:
+
+```bash
+gh pr checks <n> -R PIsberg/<repo> --json bucket --jq '.[].bucket' | sort | uniq -c
+```
+
+On 2026-09-17: blindbean 20 pass, vibetags 21 pass and 1 skipping, skill3 5 pass, nanometer 9 pass.
 
 ## 8. Report
 
