@@ -108,16 +108,13 @@ inspects real JVM objects or synchronization primitives, so each requires agent 
 bytecode analysis before its pair can be evaluated for promotion. The unreviewed PROMPT backlog
 held by call shape is now 0.
 
-## 3. Severity is not pinned on a firing row (Closed 2026-09-16)
+## 3. Severity is not pinned on a firing row (Closed 2026-09-16, expanded 2026-09-17)
 
-Closed on 2026-09-16. `RecordingSubject` now records an optional `expectedSeverity` with `resolvedSeverity()` derived from the detector's model (`DetectorDefaultSeverity`). `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` verifies that finding severity matches expected severity when specified, and `DetectorEffectivenessAndCorrectnessTest.everyFiringSubjectHasValidSeverity` verifies that every firing row resolves to a valid, non-degraded severity tier.
+Closed on 2026-09-16, expanded on 2026-09-17. `RecordingSubject` now records an optional `expectedSeverity` with `resolvedSeverity()` derived from the detector's model (`DetectorDefaultSeverity`). `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` verifies that finding severity matches expected severity when specified. `DetectorEffectivenessAndCorrectnessTest` validates that all 118 firing rows in the recording lane and all 34 firing rows in the agent-pair lane resolve to valid, non-degraded severity tiers.
 
-## 4. Five gates have no failing-direction test (Closed 2026-09-16)
+## 4. Gates have no failing-direction test (Closed 2026-09-16, completed 2026-09-17)
 
-Closed on 2026-09-16. `CorpusGates` exposes parameterized overloads for `everySubjectIsExercised`,
-`everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair`,
-`noAgentRowRecordedItsOwnFinding`, and `everyPairedDetectorIsExposed`. `CorpusGatesTest` covers both
-the failing and accepting directions for all five.
+Closed on 2026-09-16, completed on 2026-09-17. `CorpusGates` exposes parameterized overloads for all six gates whose input can be synthesized: `everySubjectIsExercised`, `everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair`, `noAgentRowRecordedItsOwnFinding`, `everyPairedDetectorIsExposed`, and `checkLibraryExclusionLane`. `CorpusGatesTest` covers both failing and accepting directions for all six gates.
 
 ## 6. The refusal list is reviewed by nothing but a build (Closed 2026-09-16)
 
