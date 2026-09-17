@@ -7,10 +7,10 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
  * A volatile table replaced only under a compare-and-swap spinlock taken through an
  * {@link AtomicIntegerFieldUpdater}, the shape older netty and JDK-style code uses (#558).
  *
- * <p>The release shapes the weaver observes are the swap back, a {@code set} through the updater
- * and a plain write of the flag. The last method releases with {@code getAndSet}, which the weaver
- * does not substitute, and then writes a second table outside the lock: that write must not read as
- * guarded by a lock the thread no longer holds.
+ * <p>The release shapes the weaver observes are the swap back, a {@code set} or {@code getAndSet}
+ * through the updater (#658) and a plain write of the flag. The twins release, observed or not
+ * ({@code getAndUpdate}), and then write a second table outside the lock: that write must not read
+ * as guarded by a lock the thread no longer holds.
  */
 public final class UpdaterSpinLockTableBean {
 
@@ -59,8 +59,8 @@ public final class UpdaterSpinLockTableBean {
     }
 
     /**
-     * The twin: the acquire is observed, the release ({@code getAndSet}) is not, and the thread then
-     * replaces {@link #afterRelease} with nothing held. Two threads do that with nothing excluding
+     * The twin: the acquire and the release ({@code getAndSet}, #658) are observed, and the thread
+     * then replaces {@link #afterRelease} with nothing held. Two threads do that with nothing excluding
      * them, which is a race whatever the lockset believed.
      */
     public int growThenWriteAfterUnobservedRelease() {
@@ -69,6 +69,34 @@ public final class UpdaterSpinLockTableBean {
                 table = next(table);
             } finally {
                 BUSY.getAndSet(this, 0);
+            }
+            afterRelease = next(afterRelease);
+        }
+        return length(afterRelease);
+    }
+
+    /** Replaces the table under the spinlock, released by {@code getAndSet} through the updater (#658). */
+    public int growReleasedByGetAndSet() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndSet(this, 0);
+            }
+        }
+        return length(table);
+    }
+
+    /**
+     * The unobserved twin: {@code getAndUpdate} releases through a call the weaver does not
+     * substitute, and {@link #afterRelease} is then replaced with nothing held.
+     */
+    public int growThenWriteAfterGetAndUpdate() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndUpdate(this, held -> 0);
             }
             afterRelease = next(afterRelease);
         }

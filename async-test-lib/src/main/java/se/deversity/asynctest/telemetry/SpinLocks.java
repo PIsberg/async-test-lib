@@ -29,9 +29,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <h2>Why a hold is re-confirmed rather than trusted</h2>
  *
- * <p>The weaver sees the acquire and the common releases, but not every release: a
- * {@code getAndSet(0)}, a {@code decrementAndGet()}, a {@code compareAndExchange}, or a release in
- * code it does not weave. A lock that stayed declared after such a release would make every later
+ * <p>The weaver sees the acquire and the common releases, but not every release: an
+ * {@code updateAndGet}, a {@code getAndSetRelease}, an {@code Unsafe} store, or a release in code it
+ * does not weave (the full list is below). A lock that stayed declared after such a release would make every later
  * access on that thread look guarded, and if every thread did the same, a real race would read as
  * consistently locked. That is the one direction this library must never take. So each
  * {@link Lock} is {@link HeldLocks.Revocable}: whenever the thread's lockset is read, the lock is
@@ -61,13 +61,45 @@ import java.util.concurrent.atomic.AtomicReference;
  * the first property: the swap and stamp write can both land between the check and the clear, and
  * a lock the winner genuinely holds is revoked, which reports correct code.
  *
- * <p>One window stays open, and nothing short of observing the release closes it. If the stale
- * holder's unobserved release lands after the next winner has read the flag locked but before that
- * winner's swap, no revocation happens, and from the swap until the winner writes its stamp (a few
- * instructions inside {@code declare}) the old holder still passes re-confirmation. An access the
- * old holder records inside that span looks guarded by the winner's lock. Both halves have to
- * fall in windows a few instructions wide on two threads at once, and each ends the moment the
- * winner declares, but it is a real false negative, not a theoretical one.
+ * <h2>A release between a contender's check and its swap (#658)</h2>
+ *
+ * <p>The stamp cannot close one window, and only observing the release does. If the holder's
+ * release lands after the next winner has read the flag locked but before that winner's swap, no
+ * revocation happens, and from the swap until the winner writes its stamp (a few instructions
+ * inside {@code declare}) the old holder would still pass re-confirmation, so an access it records
+ * there would look guarded by the winner's lock. An observed release closes that: it clears the
+ * releasing thread's stamp and pops the lock from its lockset, and it runs on the releasing thread,
+ * so that thread records nothing between its release and the bookkeeping, whichever side of it the
+ * winner's swap and stamp write fall. The weaver therefore substitutes the value-returning releases
+ * too, not only {@code set} and the swap back: a plain write of the flag field; on a
+ * {@code VarHandle} {@code set}, {@code setVolatile}, {@code setRelease}, {@code setOpaque},
+ * {@code compareAndSet}, {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange},
+ * {@code weakCompareAndSet} and {@code weakCompareAndSetPlain}; on an updater {@code compareAndSet},
+ * {@code set}, {@code lazySet}, {@code getAndSet}, {@code getAndAdd}, {@code addAndGet},
+ * {@code getAndDecrement}, {@code decrementAndGet} and {@code weakCompareAndSet}; on an
+ * {@code AtomicInteger} {@code compareAndSet}, {@code set}, {@code lazySet}, {@code getAndSet},
+ * {@code getAndAdd}, {@code addAndGet}, {@code getAndDecrement}, {@code decrementAndGet},
+ * {@code compareAndExchange}, {@code weakCompareAndSetPlain} and {@code weakCompareAndSetVolatile};
+ * on an {@code AtomicBoolean} {@code compareAndSet}, {@code getAndSet}, {@code set},
+ * {@code lazySet}, {@code compareAndExchange}, {@code weakCompareAndSetPlain} and
+ * {@code weakCompareAndSetVolatile}.
+ *
+ * <p>The window stays open for a release through anything else, which is not observed:
+ * <ul>
+ *   <li>on a {@code VarHandle}: the {@code Acquire}/{@code Release} variants of
+ *       {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange} and
+ *       {@code weakCompareAndSet}, the {@code getAndBitwise} forms, and any call site whose declared
+ *       result is neither {@code int} nor void (an {@code Object} or {@code long} result);</li>
+ *   <li>on an updater or {@code AtomicInteger}: {@code getAndUpdate}, {@code updateAndGet},
+ *       {@code getAndAccumulate}, {@code accumulateAndGet}, and the deprecated
+ *       {@code weakCompareAndSet} on {@code AtomicInteger};</li>
+ *   <li>on either atomic: {@code setPlain}, {@code setOpaque}, {@code setRelease}, and the
+ *       deprecated {@code AtomicBoolean.weakCompareAndSet};</li>
+ *   <li>a release through a subclass-typed call site, {@code Unsafe}, JNI, reflection, or in code
+ *       the agent does not weave (the JDK, excluded packages, classes it could not retransform).</li>
+ * </ul>
+ * Both halves still have to fall in windows a few instructions wide on two threads at once, and
+ * each ends the moment the winner declares, but for those forms it is a real false negative.
  *
  * <h2>What identifies a lock</h2>
  *
@@ -301,6 +333,16 @@ final class SpinLocks {
         testHookBeforeRevoke = hook;
     }
 
+    /**
+     * Test-only seam: runs on a thread about to swap once it has finished checking for a stale
+     * holder, and before its swap lands, which is the window #658 is about.
+     */
+    private static volatile @Nullable Runnable testHookAfterCheck;
+
+    static void setTestHookAfterCheck(@Nullable Runnable hook) {
+        testHookAfterCheck = hook;
+    }
+
     @SuppressWarnings("PMD.NullAssignment")
     static void resetForTesting() {
         LOCKS.clear();
@@ -309,6 +351,7 @@ final class SpinLocks {
         CLASS_UPDATER_FIELDS.clear();
         testHookAfterSwap = null;
         testHookBeforeRevoke = null;
+        testHookAfterCheck = null;
     }
 
     static @Nullable Lock lockFor(Object subject, String field) {
@@ -492,6 +535,10 @@ final class SpinLocks {
                     hook.run();
                 }
                 holder.compareAndSet(seen, null);
+            }
+            Runnable afterCheck = testHookAfterCheck;
+            if (afterCheck != null) {
+                afterCheck.run();
             }
         }
 

@@ -4,6 +4,7 @@ import com.example.agentfixture.AtomicSpinLockTableBean;
 import com.example.agentfixture.InheritedUpdaterSpinLockBean;
 import com.example.agentfixture.PreAttachSpinLockTableBean;
 import com.example.agentfixture.PreAttachUpdaterSpinLockTableBean;
+import com.example.agentfixture.SpinLockHandOffBean;
 import com.example.agentfixture.SpinLockTableBean;
 import com.example.agentfixture.UpdaterSpinLockTableBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
@@ -17,10 +18,13 @@ import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
+import java.lang.reflect.Method;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,13 +42,18 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * <p>The unobserved-release twins are the ones that matter most. A lock whose release the weaver
  * cannot see would make every later write on that thread look guarded, which hides a real race; a
  * spinlock therefore counts as held only while its flag still reads locked with this thread as its
- * holder, and those twins release through a call the weaver does not substitute.
+ * holder. Some twins release through a call the weaver does not substitute ({@code setPlain},
+ * {@code updateAndGet}, {@code getAndUpdate}, {@code getAndSetRelease}); the rest release through
+ * a form it observes since #658 and must fire all the same.
  *
  * <p>Separate class because {@code selfAttach} is at-most-once per JVM and this class needs
  * {@code fields=true,collections=true}; {@code reuseForks=false} gives it its own fork.
  */
 @Tag("e2e")
 class SpinLockWeavingTest {
+
+    /** The registry's package-private spinlock table, reached reflectively for its test seams. */
+    private static final String SPIN_LOCKS = "se.deversity.asynctest.telemetry.SpinLocks";
 
     @BeforeAll
     static void attachWithFieldAndCollectionWeaving() {
@@ -128,7 +137,7 @@ class SpinLockWeavingTest {
     }
 
     @Test
-    @DisplayName("a VarHandle spinlock released through a call the weaver does not see guards nothing after it")
+    @DisplayName("a VarHandle spinlock released by getAndSet guards nothing after it")
     void varHandleSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         SpinLockTableBean bean = new SpinLockTableBean();
         AtomicityValidator.AtomicityReport report =
@@ -161,7 +170,7 @@ class SpinLockWeavingTest {
     }
 
     @Test
-    @DisplayName("an updater spinlock released through a call the weaver does not see guards nothing after it")
+    @DisplayName("an updater spinlock released by getAndSet guards nothing after it")
     void updaterSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new UpdaterSpinLockTableBean()::growThenWriteAfterUnobservedRelease));
@@ -205,14 +214,14 @@ class SpinLockWeavingTest {
     }
 
     @Test
-    @DisplayName("an AtomicBoolean spinlock released through a call the weaver does not see guards nothing after it")
+    @DisplayName("an AtomicBoolean spinlock released by compareAndExchange guards nothing after it")
     void atomicBooleanSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new AtomicSpinLockTableBean()::growBooleanThenWriteAfterUnobservedRelease));
     }
 
     @Test
-    @DisplayName("an AtomicInteger spinlock released through a call the weaver does not see guards nothing after it")
+    @DisplayName("an AtomicInteger spinlock released by decrementAndGet guards nothing after it")
     void atomicIntegerSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new AtomicSpinLockTableBean()::growIntegerThenWriteAfterUnobservedRelease));
@@ -237,7 +246,7 @@ class SpinLockWeavingTest {
     }
 
     @Test
-    @DisplayName("a pre-attach updater spinlock released through a call the weaver does not see guards nothing after it (#619)")
+    @DisplayName("a pre-attach updater spinlock released by getAndSet guards nothing after it (#619)")
     void preAttachUpdaterSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterUnobservedRelease));
@@ -264,6 +273,173 @@ class SpinLockWeavingTest {
             bean.releaseBusy();
         } finally {
             HeldLocks.clear();
+        }
+    }
+
+    // ---- Releases through value-returning forms (#658) -----------------------------------------
+
+    @Test
+    @DisplayName("an AtomicInteger spinlock released by decrementAndGet guards the table (#658)")
+    void atomicIntegerSpinLockReleasedByDecrementAndGetGuardsTheTable() throws Exception {
+        assertQuiet(drive(new AtomicSpinLockTableBean()::growIntegerReleasedByDecrementAndGet),
+                "intBusy.compareAndSet(0, 1), released by intBusy.decrementAndGet()");
+    }
+
+    @Test
+    @DisplayName("an AtomicBoolean spinlock released by compareAndExchange guards the table (#658)")
+    void atomicBooleanSpinLockReleasedByCompareAndExchangeGuardsTheTable() throws Exception {
+        assertQuiet(drive(new AtomicSpinLockTableBean()::growBooleanReleasedByCompareAndExchange),
+                "busy.compareAndSet(false, true), released by busy.compareAndExchange(true, false)");
+    }
+
+    @Test
+    @DisplayName("an updater spinlock released by getAndSet guards the table (#658)")
+    void updaterSpinLockReleasedByGetAndSetGuardsTheTable() throws Exception {
+        assertQuiet(drive(new UpdaterSpinLockTableBean()::growReleasedByGetAndSet),
+                "AtomicIntegerFieldUpdater.compareAndSet(this, 0, 1), released by getAndSet(this, 0)");
+    }
+
+    @Test
+    @DisplayName("a VarHandle spinlock released by a getAndSet statement guards the table (#658)")
+    void varHandleSpinLockReleasedByGetAndSetStatementGuardsTheTable() throws Exception {
+        assertQuiet(drive(new SpinLockTableBean()::growReleasedByGetAndSetStatement),
+                "VarHandle.compareAndSet(this, 0, 1), released by a void getAndSet(this, 0)");
+    }
+
+    @Test
+    @DisplayName("an AtomicBoolean spinlock released by setPlain, which is not woven, guards nothing after it")
+    void atomicBooleanSpinLockReleasedBySetPlainDoesNotExcuseLaterWrites() throws Exception {
+        assertUnobservedReleaseReported(
+                drive(new AtomicSpinLockTableBean()::growBooleanThenWriteAfterSetPlain));
+    }
+
+    @Test
+    @DisplayName("an AtomicInteger spinlock released by updateAndGet, which is not woven, guards nothing after it")
+    void atomicIntegerSpinLockReleasedByUpdateAndGetDoesNotExcuseLaterWrites() throws Exception {
+        assertUnobservedReleaseReported(
+                drive(new AtomicSpinLockTableBean()::growIntegerThenWriteAfterUpdateAndGet));
+    }
+
+    @Test
+    @DisplayName("an updater spinlock released by getAndUpdate, which is not woven, guards nothing after it")
+    void updaterSpinLockReleasedByGetAndUpdateDoesNotExcuseLaterWrites() throws Exception {
+        assertUnobservedReleaseReported(
+                drive(new UpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
+    }
+
+    @Test
+    @DisplayName("a VarHandle spinlock released by getAndSetRelease, which is not woven, guards nothing after it")
+    void varHandleSpinLockReleasedByGetAndSetReleaseDoesNotExcuseLaterWrites() throws Exception {
+        assertUnobservedReleaseReported(
+                drive(new SpinLockTableBean()::growThenWriteAfterGetAndSetRelease));
+    }
+
+    @Test
+    @DisplayName("a pre-attach updater spinlock released by getAndUpdate, which is not woven, guards nothing after it")
+    void preAttachUpdaterSpinLockReleasedByGetAndUpdateDoesNotExcuseLaterWrites() throws Exception {
+        assertUnobservedReleaseReported(
+                drive(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
+    }
+
+    // ---- A woven release between a contender's check and its swap (#658) -----------------------
+
+    @Test
+    @DisplayName("a woven AtomicInteger.decrementAndGet release between a contender's check and its swap revokes the holder (#658)")
+    void wovenDecrementAndGetReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("AtomicInteger.decrementAndGet()",
+                bean::acquireInteger, bean::releaseIntegerByDecrementAndGet,
+                () -> lockFor(new Class<?>[] {Object.class}, bean.intLock()));
+    }
+
+    @Test
+    @DisplayName("a woven VarHandle.getAndSet statement release between a contender's check and its swap revokes the holder (#658)")
+    void wovenVarHandleGetAndSetReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("VarHandle.getAndSet(this, 0)",
+                bean::acquireHandle, bean::releaseHandleByGetAndSet,
+                () -> lockFor(new Class<?>[] {Object.class, String.class}, bean,
+                        SpinLockHandOffBean.class.getName() + ".busy"));
+    }
+
+    /** A lock lookup through the package-private registry, which only reflection can reach from here. */
+    @FunctionalInterface
+    private interface LockLookup {
+        Object find() throws ReflectiveOperationException;
+    }
+
+    private static Object lockFor(Class<?>[] parameters, Object... arguments)
+            throws ReflectiveOperationException {
+        Method lookup = Class.forName(SPIN_LOCKS).getDeclaredMethod("lockFor", parameters);
+        lookup.setAccessible(true);
+        return lookup.invoke(null, arguments);
+    }
+
+    private static void setSeam(String setter, Runnable hook) throws ReflectiveOperationException {
+        Method seam = Class.forName(SPIN_LOCKS).getDeclaredMethod(setter, Runnable.class);
+        seam.setAccessible(true);
+        seam.invoke(null, hook);
+    }
+
+    /**
+     * The #658 interleaving through woven call sites: this thread holds, a contender reads the flag
+     * locked and pauses before its swap, this thread releases, and the contender pauses again once
+     * its swap has landed and before it records itself. In that span this thread must not still
+     * hold the spinlock, or its unguarded writes there look guarded.
+     */
+    private static void assertWovenReleaseBetweenCheckAndSwapRevokes(String form, BooleanSupplier acquire,
+            Runnable release, LockLookup lockLookup) throws Exception {
+        CountDownLatch checked = new CountDownLatch(1);
+        CountDownLatch released = new CountDownLatch(1);
+        CountDownLatch swapped = new CountDownLatch(1);
+        CountDownLatch verified = new CountDownLatch(1);
+        AtomicBoolean contenderWon = new AtomicBoolean();
+        Thread contender = new Thread(() -> contenderWon.set(acquire.getAsBoolean()),
+                "spin-lock-woven-contender");
+        HeldLocks.clear();
+        try {
+            assertTrue(acquire.getAsBoolean(), "this thread takes the flag through the woven swap");
+            HeldLocks.Revocable lock = (HeldLocks.Revocable) lockLookup.find();
+            assertTrue(lock != null && HeldLocks.holds(lock),
+                    "the woven swap must declare the spinlock before the window can be tested");
+
+            setSeam("setTestHookAfterCheck", () -> pauseOn(contender, checked, released));
+            setSeam("setTestHookAfterSwap", () -> pauseOn(contender, swapped, verified));
+            contender.start();
+            assertTrue(checked.await(5, TimeUnit.SECONDS), "the contender checked the flag while it was held");
+
+            release.run();
+            released.countDown();
+            assertTrue(swapped.await(5, TimeUnit.SECONDS), "the contender's swap landed after the release");
+
+            boolean stillHeld = lock.stillHeld();
+            boolean inLockset = HeldLocks.holds(lock);
+            verified.countDown();
+            contender.join(5_000);
+
+            assertFalse(stillHeld, "the release through " + form + " is woven, so from the contender's "
+                    + "swap until its stamp write the releasing thread must not pass re-confirmation");
+            assertFalse(inLockset, "the woven release through " + form + " must leave the lockset");
+            assertTrue(contenderWon.get(), "the contender's swap must win once the flag was released");
+        } finally {
+            released.countDown();
+            verified.countDown();
+            contender.join(5_000);
+            setSeam("setTestHookAfterCheck", null);
+            setSeam("setTestHookAfterSwap", null);
+            HeldLocks.clear();
+        }
+    }
+
+    private static void pauseOn(Thread thread, CountDownLatch reached, CountDownLatch resume) {
+        if (Thread.currentThread() != thread) {
+            return;
+        }
+        reached.countDown();
+        try {
+            assertTrue(resume.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

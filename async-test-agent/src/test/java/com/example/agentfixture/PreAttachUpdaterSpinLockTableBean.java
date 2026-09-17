@@ -40,9 +40,9 @@ public final class PreAttachUpdaterSpinLockTableBean {
     }
 
     /**
-     * The unobserved-release twin: {@code getAndSet} releases through a call the weaver does not
-     * substitute, and {@link #afterRelease} is replaced with nothing held. A resolved pre-attach
-     * updater must not make that look guarded.
+     * The released-then-unguarded twin: {@code getAndSet} releases (observed since #658), and
+     * {@link #afterRelease} is replaced with nothing held. A resolved pre-attach updater must not
+     * make that look guarded.
      */
     public int growThenWriteAfterUnobservedRelease() {
         if (BUSY.compareAndSet(this, 0, 1)) {
@@ -50,6 +50,23 @@ public final class PreAttachUpdaterSpinLockTableBean {
                 table = next(table);
             } finally {
                 BUSY.getAndSet(this, 0);
+            }
+            afterRelease = next(afterRelease);
+        }
+        Object[] seen = afterRelease;
+        return seen == null ? 0 : seen.length;
+    }
+
+    /**
+     * The unobserved twin: {@code getAndUpdate} releases through a call the weaver does not
+     * substitute, and {@link #afterRelease} is replaced with nothing held.
+     */
+    public int growThenWriteAfterGetAndUpdate() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndUpdate(this, held -> 0);
             }
             afterRelease = next(afterRelease);
         }

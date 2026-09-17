@@ -657,6 +657,404 @@ public final class TelemetryRegistry {
         count.lazySet(value);
     }
 
+    // ---- Releases through the value-returning forms (#658) --------------------------------------
+    //
+    // A holder that ended its hold through one of these used to be invisible: a contender that had
+    // just read the flag locked could land its swap before the stale hold was re-confirmed, and the
+    // old holder then passed re-confirmation until the contender wrote its stamp (#658). Each hook
+    // performs the original operation first and returns its result unchanged, then releases on the
+    // calling thread when the operation left the flag at anything but the locked value. Releasing
+    // after the operation opens no window of its own: the releasing thread is inside the hook, so
+    // it records no access between the two, and a release only ever clears this thread's own hold.
+
+    /**
+     * Weaves {@code VarHandle.getAndSet} on an {@code int} field; storing anything but 1 releases (#658).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is written
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndSetInt(VarHandle handle, Object receiver, int value) {
+        int previous = (int) handle.withInvokeBehavior().getAndSet(receiver, value);
+        if (value != 1) {
+            releaseIfSpinLockField(handle, receiver);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code VarHandle.getAndAdd} on an {@code int} field; a result other than 1 releases (#658).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is written
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndAddInt(VarHandle handle, Object receiver, int delta) {
+        int previous = (int) handle.withInvokeBehavior().getAndAdd(receiver, delta);
+        if (previous + delta != 1) {
+            releaseIfSpinLockField(handle, receiver);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code VarHandle.compareAndExchange} on an {@code int} field; a won exchange to
+     * anything but 1 releases (#658).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is swapped
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.12.1
+     */
+    public static int compareAndExchangeInt(VarHandle handle, Object receiver, int expected,
+                                            int update) {
+        int witness = (int) handle.withInvokeBehavior().compareAndExchange(receiver, expected, update);
+        if (witness == expected && update != 1) {
+            releaseIfSpinLockField(handle, receiver);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code VarHandle.weakCompareAndSet} on an {@code int} field; a won swap to anything
+     * but 1 releases (#658).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is swapped
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean weakCompareAndSetInt(VarHandle handle, Object receiver, int expected,
+                                               int update) {
+        boolean won = handle.withInvokeBehavior().weakCompareAndSet(receiver, expected, update);
+        if (won && update != 1) {
+            releaseIfSpinLockField(handle, receiver);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code VarHandle.weakCompareAndSetPlain} on an {@code int} field; a won swap to
+     * anything but 1 releases (#658).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is swapped
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean weakCompareAndSetPlainInt(VarHandle handle, Object receiver, int expected,
+                                                    int update) {
+        boolean won = handle.withInvokeBehavior().weakCompareAndSetPlain(receiver, expected, update);
+        if (won && update != 1) {
+            releaseIfSpinLockField(handle, receiver);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.getAndSet}; storing anything but 1 releases (#658).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is written
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
+                                          int value) {
+        int previous = erased(updater).getAndSet(receiver, value);
+        if (value != 1) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.getAndAdd}; a result other than 1 releases (#658).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is written
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndAddIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
+                                          int delta) {
+        int previous = erased(updater).getAndAdd(receiver, delta);
+        if (previous + delta != 1) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.addAndGet}; a result other than 1 releases (#658).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is written
+     * @param delta    the value to add
+     * @return the updated value
+     * @since 1.12.1
+     */
+    public static int addAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
+                                          int delta) {
+        int current = erased(updater).addAndGet(receiver, delta);
+        if (current != 1) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return current;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.getAndDecrement}; a result other than 1 releases (#658).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is written
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndDecrementIntUpdater(AtomicIntegerFieldUpdater<?> updater,
+                                                Object receiver) {
+        int previous = erased(updater).getAndDecrement(receiver);
+        if (previous != 2) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.decrementAndGet}; a result other than 1 releases (#658).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is written
+     * @return the updated value
+     * @since 1.12.1
+     */
+    public static int decrementAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
+                                                Object receiver) {
+        int current = erased(updater).decrementAndGet(receiver);
+        if (current != 1) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return current;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.weakCompareAndSet}; a won swap to anything but 1
+     * releases (#658).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is swapped
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean weakCompareAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
+                                                      Object receiver, int expected, int update) {
+        boolean won = erased(updater).weakCompareAndSet(receiver, expected, update);
+        if (won && update != 1) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.getAndSet}; storing anything but 1 releases (#658).
+     *
+     * @param count the atomic the call site invoked
+     * @param value the value to store
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndSetAtomicInteger(AtomicInteger count, int value) {
+        int previous = count.getAndSet(value);
+        if (value != 1) {
+            SpinLocks.release(count);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.getAndAdd}; a result other than 1 releases (#658).
+     *
+     * @param count the atomic the call site invoked
+     * @param delta the value to add
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndAddAtomicInteger(AtomicInteger count, int delta) {
+        int previous = count.getAndAdd(delta);
+        if (previous + delta != 1) {
+            SpinLocks.release(count);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.addAndGet}; a result other than 1 releases (#658).
+     *
+     * @param count the atomic the call site invoked
+     * @param delta the value to add
+     * @return the updated value
+     * @since 1.12.1
+     */
+    public static int addAndGetAtomicInteger(AtomicInteger count, int delta) {
+        int current = count.addAndGet(delta);
+        if (current != 1) {
+            SpinLocks.release(count);
+        }
+        return current;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.getAndDecrement}; a result other than 1 releases (#658).
+     *
+     * @param count the atomic the call site invoked
+     * @return the previous value
+     * @since 1.12.1
+     */
+    public static int getAndDecrementAtomicInteger(AtomicInteger count) {
+        int previous = count.getAndDecrement();
+        if (previous != 2) {
+            SpinLocks.release(count);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.decrementAndGet}; a result other than 1 releases (#658).
+     *
+     * @param count the atomic the call site invoked
+     * @return the updated value
+     * @since 1.12.1
+     */
+    public static int decrementAndGetAtomicInteger(AtomicInteger count) {
+        int current = count.decrementAndGet();
+        if (current != 1) {
+            SpinLocks.release(count);
+        }
+        return current;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.compareAndExchange}; a won exchange to anything but 1 releases (#658).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.12.1
+     */
+    public static int compareAndExchangeAtomicInteger(AtomicInteger count, int expected, int update) {
+        int witness = count.compareAndExchange(expected, update);
+        if (witness == expected && update != 1) {
+            SpinLocks.release(count);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.weakCompareAndSetPlain}; a won swap to anything but 1 releases (#658).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean weakCompareAndSetPlainAtomicInteger(AtomicInteger count, int expected,
+                                                              int update) {
+        boolean won = count.weakCompareAndSetPlain(expected, update);
+        if (won && update != 1) {
+            SpinLocks.release(count);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.weakCompareAndSetVolatile}; a won swap to anything but 1
+     * releases (#658).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean weakCompareAndSetVolatileAtomicInteger(AtomicInteger count, int expected,
+                                                                 int update) {
+        boolean won = count.weakCompareAndSetVolatile(expected, update);
+        if (won && update != 1) {
+            SpinLocks.release(count);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicBoolean.compareAndExchange}; a won exchange to {@code false} releases (#658).
+     *
+     * @param flag     the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.12.1
+     */
+    public static boolean compareAndExchangeAtomicBoolean(AtomicBoolean flag, boolean expected,
+                                                          boolean update) {
+        boolean witness = flag.compareAndExchange(expected, update);
+        if (witness == expected && !update) {
+            SpinLocks.release(flag);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicBoolean.weakCompareAndSetPlain}; a won swap to {@code false} releases (#658).
+     *
+     * @param flag     the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean weakCompareAndSetPlainAtomicBoolean(AtomicBoolean flag, boolean expected,
+                                                              boolean update) {
+        boolean won = flag.weakCompareAndSetPlain(expected, update);
+        if (won && !update) {
+            SpinLocks.release(flag);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicBoolean.weakCompareAndSetVolatile}; a won swap to {@code false} releases (#658).
+     *
+     * @param flag     the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.12.1
+     */
+    public static boolean weakCompareAndSetVolatileAtomicBoolean(AtomicBoolean flag,
+                                                                 boolean expected, boolean update) {
+        boolean won = flag.weakCompareAndSetVolatile(expected, update);
+        if (won && !update) {
+            SpinLocks.release(flag);
+        }
+        return won;
+    }
+
     /**
      * The target an ownership-taken event carries instead of a field identifier.
      *
