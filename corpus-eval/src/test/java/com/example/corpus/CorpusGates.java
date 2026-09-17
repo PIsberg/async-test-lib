@@ -498,9 +498,10 @@ final class CorpusGates {
             }
             if (shouldFire) {
                 boolean validDiagnostics = matches.stream().anyMatch(f ->
-                        f.severity() != null && f.message() != null && !f.message().isBlank());
+                        f.severity() != null && f.message() != null && !f.message().isBlank()
+                                && f.evidence() != null && !f.evidence().isBlank());
                 if (!validDiagnostics) {
-                    wrong.add("FIRED with invalid diagnostics (null severity or blank message): "
+                    wrong.add("FIRED with invalid diagnostics (null severity, blank message, or blank evidence): "
                             + subject.testMethod() + " [" + detectorClass + "] - "
                             + subject.rationale());
                 }

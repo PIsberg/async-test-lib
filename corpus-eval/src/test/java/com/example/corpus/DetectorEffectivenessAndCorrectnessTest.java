@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorFeed;
 import se.deversity.asynctest.diagnostics.DetectorFeeds;
+import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
@@ -14,9 +15,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
+import org.opentest4j.AssertionFailedError;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -302,5 +306,82 @@ class DetectorEffectivenessAndCorrectnessTest {
                 assertFalse(subject.rationale().isBlank(), "rationale must not be blank for " + subject.testMethod());
             }
         }
+    }
+
+    @Test
+    @DisplayName("correctness: every MUST_FIRE row in the recording lane has a corresponding MUST_STAY_SILENT twin for the exact same detector")
+    void everyMustFireRowInRecordingLaneHasSilentTwin() {
+        List<RecordingSubject> subjects = Corpus.subjectsFor(CorpusLane.RECORDING);
+        List<RecordingSubject> firingRows = subjects.stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                .toList();
+        List<RecordingSubject> silentRows = subjects.stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_STAY_SILENT)
+                .toList();
+
+        List<String> missingTwins = new ArrayList<>();
+        for (RecordingSubject fireRow : firingRows) {
+            boolean hasTwin = silentRows.stream()
+                    .anyMatch(s -> s.detector() == fireRow.detector());
+            if (!hasTwin) {
+                missingTwins.add(fireRow.testMethod() + " (" + fireRow.detector() + ")");
+            }
+        }
+        assertTrue(missingTwins.isEmpty(),
+                "correctness defect: every MUST_FIRE row in recording lane must have at least one MUST_STAY_SILENT twin: "
+                        + missingTwins);
+    }
+
+    @Test
+    @DisplayName("correctness: all paired detectors across lanes map to matching trust tiers in DetectorTrust")
+    void allPairedDetectorsMapToMatchingTrustTiers() {
+        Set<DetectorType> promoted = PairEvidence.promoted();
+        for (CorpusLane lane : List.of(CorpusLane.RECORDING, CorpusLane.AGENT_PAIRS)) {
+            Set<DetectorType> paired = Corpus.pairedDetectors(lane);
+            for (DetectorType detector : paired) {
+                TrustTier tier = DetectorTrust.tierOf(detector);
+                assertNotNull(tier, "detector " + detector + " in " + lane.propertyValue() + " must have a non-null trust tier");
+                assertTrue(tier == TrustTier.VERDICT || tier == TrustTier.PROMPT || tier == TrustTier.ADVISORY || tier == TrustTier.FACT,
+                        "detector " + detector + " in " + lane.propertyValue() + " has unexpected tier: " + tier);
+
+                if (promoted.contains(detector)) {
+                    assertEquals(TrustTier.VERDICT, tier,
+                            "promoted detector " + detector + " must carry TrustTier.VERDICT");
+                }
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("effectiveness: findings on firing subjects require non-null severity, message, and evidence")
+    void firingSubjectFindingsRequireDiagnosticsAndEvidence() {
+        RecordingSubject firing = Corpus.subjectsFor(CorpusLane.RECORDING).stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                .findFirst()
+                .orElseThrow();
+
+        CorpusRecorder.Finding nullEvidence = new CorpusRecorder.Finding(
+                firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()),
+                IssueSeverity.HIGH,
+                TrustTier.PROMPT,
+                "diagnostic message",
+                null);
+
+        CorpusRecorder.Finding blankEvidence = new CorpusRecorder.Finding(
+                firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()),
+                IssueSeverity.HIGH,
+                TrustTier.PROMPT,
+                "diagnostic message",
+                "   ");
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        List.of(nullEvidence), CorpusLane.RECORDING, List.of(firing)));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        List.of(blankEvidence), CorpusLane.RECORDING, List.of(firing)));
     }
 }

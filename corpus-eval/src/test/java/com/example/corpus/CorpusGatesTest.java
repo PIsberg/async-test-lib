@@ -338,6 +338,36 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("a finding with null evidence fails the outcome gate: effective findings require evidence")
+    void aFindingWithNullEvidenceFailsTheOutcomeGate() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject firing = aFiringRow();
+        findings.removeIf(f -> f.subject().equals(firing.testMethod()));
+        findings.add(new CorpusRecorder.Finding(firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()), IssueSeverity.HIGH, TrustTier.PROMPT,
+                "valid message", null));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("a finding with blank evidence fails the outcome gate: effective findings require evidence")
+    void aFindingWithBlankEvidenceFailsTheOutcomeGate() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject firing = aFiringRow();
+        findings.removeIf(f -> f.subject().equals(firing.testMethod()));
+        findings.add(new CorpusRecorder.Finding(firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()), IssueSeverity.HIGH, TrustTier.PROMPT,
+                "valid message", "   "));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING));
+    }
+
+    @Test
     @DisplayName("a finding with mismatched expected severity fails the outcome gate")
     void aFindingWithMismatchedExpectedSeverityFailsTheOutcomeGate() {
         RecordingSubject firing = new RecordingSubject(
