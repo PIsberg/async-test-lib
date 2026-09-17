@@ -144,13 +144,18 @@ final class PairEvidence {
         // Second reading, 2026-09-14 (#571). In all eight the body declared what the finding said
         // and the detector never asked the object it named. CONDITION_VARIABLES, CYCLIC_BARRIER and
         // REENTRANT_LOCK were re-read on 2026-09-17, once their models asked the real object.
-        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "re-read 2026-09-17: stuck waiters "
-                + "are read from the lock's wait queue (#592) and the pair parks a real waiter "
-                + "(#618), but both rows register with the three-argument registerCondition, which "
-                + "carries no predicate, so every thread still parked at analysis is reported stuck, "
-                + "and an idle consumer parked on an empty queue is correct code (#643). The silent "
-                + "twin signals and joins its consumer, so no row shows a consumer registered with "
-                + "its predicate staying silent while parked idle; needs that MUST_STAY_SILENT twin");
+        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "re-read 2026-09-17 after #661: the "
+                + "pair now separates on the object, a consumer parked while the predicate it "
+                + "registered holds (work arrived, the wrong condition signalled) against the same "
+                + "consumer idle with it false, both through registerCondition(lock, condition, "
+                + "ready, name). The tier is the detector's, though, and its other findings are not "
+                + "decided that way: the lock-only registration still reports an idle parked "
+                + "consumer as stuck (#643 keeps it as the weaker claim), a condition registered "
+                + "without its lock is stuck on a recorded await with no recorded exit, and a "
+                + "missing signal is a recordAwaitExit(..., false) with no recordSignal, both the "
+                + "body's own declarations; #657 (a signalled waiter still queued for the lock "
+                + "read as stuck) is open on the predicate path itself. Needs the declared and "
+                + "lock-only stuck waiters to become notes, or those paths split from this one");
         HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "re-read 2026-09-17 after #662: a recorded "
                 + "reset() now recovers the reuse recorded before it, and the lane holds the "
                 + "handled-break twin and a stranded-party pair (untimed against timed await, "

@@ -1231,6 +1231,19 @@ used to record a `tryLock` timeout alone) against a lock taken and released; a
 phaser terminated against one that advanced a phase; an exchange whose partner never arrived
 against one that met and completed; an await nobody signalled against the whole handshake.
 
+Four rows joined the two families on 2026-09-17, each a twin the promotion re-read said was
+missing. `recorded_cyclicBarrier_resetAfterABreak` breaks its barrier with a timed-out await, then
+awaits it, catches `BrokenBarrierException` and resets it, which is the reuse report's own advice
+and stopped drawing the reuse finding once a recorded `reset()` recovered the reuse before it
+(#662). `recorded_cyclicBarrier_partyLeftShortUntimed` and `recorded_cyclicBarrier_partyLeftShortTimed`
+give the stranded-party finding (#631) a pair: one party of a two-party barrier still parked at
+analysis, in `await()` against `await(timeout, unit)`. `recorded_condition_consumerIdleOnAnEmptyQueue`
+is the idle consumer #643 exists for, registered through `registerCondition(lock, condition, ready,
+name)` with its queue empty, and the firing row now registers the same way with work on its queue,
+so the pair separates on whether the thing the waiter waits for arrived (#661). All four came out
+as stated on the first run. Both detectors stay PROMPT all the same; `PairEvidence.HELD_ON_MODEL`
+says why, and in both cases it is a finding the pairs cannot reach rather than one they get wrong.
+
 `ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
 **57 of 146**, in 117 rows.
 

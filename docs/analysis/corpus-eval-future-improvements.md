@@ -123,7 +123,7 @@ survived the re-read:
   sits in `PairEvidence.REVIEWED_DESPITE_SHAPE`. The pair does not reach the starvation finding
   (#608) or the unrecorded virtual-thread holder the detector's javadoc names.
 - `CYCLIC_BARRIER` is held. A party that arrives at a barrier a timeout broke to cancel, catches
-  `BrokenBarrierException` and calls `reset()`, which is the report's own advice, still draws the
+  `BrokenBarrierException` and calls `reset()`, which is the report's own advice, still drew the
   reuse finding, because the decision is `isBroken()` at the recorded arrival. That was reproduced
   against the detector directly. The silent twin never breaks its barrier, and the stranded-party
   finding (#631) has no pair.
@@ -131,6 +131,20 @@ survived the re-read:
   predicate, under which any thread parked at analysis is stuck, and #643 exists because an idle
   consumer parked on an empty queue is correct code. There is no silent twin registering its
   predicate while a consumer sits parked idle.
+
+**Re-reading the same two with their twins, 2026-09-17 (#661, #662).** Both gaps above are closed
+and both detectors are still held, each for a reason the new rows could not have closed:
+
+- `CYCLIC_BARRIER`: a recorded `reset()` now recovers the reuse recorded before it, and the lane has
+  the handled-break twin and an untimed-against-timed stranded pair. One arrival at a broken barrier
+  is still the finding, so a late party that catches `BrokenBarrierException` and drops a barrier
+  broken to cancel it, with no reset, draws it. The detector's javadoc calls that cancellation
+  correct.
+- `CONDITION_VARIABLES`: the pair now registers the predicate and separates a consumer parked with
+  work waiting from the same consumer idle. The detector's other paths still decide from what the
+  body declared or from the lock alone: the three-argument registration reports an idle consumer,
+  a condition registered without its lock is stuck on a recorded await with no recorded exit, and a
+  missing signal is a recorded exit with no recorded signal. #657 is open on the predicate path.
 
 ## 3. Severity is not pinned on a firing row (open: the gate exists, no row uses it)
 

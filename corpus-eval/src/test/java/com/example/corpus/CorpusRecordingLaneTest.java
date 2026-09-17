@@ -583,6 +583,19 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.locks.Condition UNSIGNALLED_CONDITION =
             CONDITION_LOCK.newCondition();
 
+    /**
+     * The work queue the consumer on {@link #UNSIGNALLED_CONDITION} takes from. The loud row puts
+     * items on it, so the consumer's predicate holds while it stays parked (#661).
+     */
+    private static final java.util.ArrayDeque<String> UNSIGNALLED_QUEUE = new java.util.ArrayDeque<>();
+
+    /** The consumer on this condition idles: nothing is ever put on {@link #IDLE_QUEUE} (#661). */
+    private static final java.util.concurrent.locks.Condition IDLE_CONDITION =
+            CONDITION_LOCK.newCondition();
+
+    /** Always empty: the idle consumer's predicate is false for the whole run (#661). */
+    private static final java.util.ArrayDeque<String> IDLE_QUEUE = new java.util.ArrayDeque<>();
+
     /** Condition signalled while the consumer waits on {@link #UNSIGNALLED_CONDITION} (#618). */
     private static final java.util.concurrent.locks.Condition OTHER_CONDITION =
             CONDITION_LOCK.newCondition();
@@ -3410,50 +3423,95 @@ class CorpusRecordingLaneTest {
     }
 
     /**
-     * A consumer parked in await() on a condition registered with its lock, while threads signal a
-     * different condition: the lock itself shows the stuck waiter at analysis (#592, #618).
+     * A consumer parked in await() on a condition registered with its lock and its predicate. The
+     * threads put work on its queue and then signal a different condition, so at analysis the lock
+     * shows the consumer parked while its predicate holds: a stuck waiter, not an idle one (#592,
+     * #618, #661). Every producer has released the lock by then, so no thread is queued on it.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_condition_awaitedWithNoSignal() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
-        detector.registerCondition(CONDITION_LOCK, UNSIGNALLED_CONDITION, "unsignalled");
+        detector.registerCondition(CONDITION_LOCK, UNSIGNALLED_CONDITION,
+                () -> !UNSIGNALLED_QUEUE.isEmpty(), "unsignalled");
         detector.registerCondition(CONDITION_LOCK, OTHER_CONDITION, "other");
-        if (parkedConditionConsumer == null) {
-            synchronized (PARKED_CONSUMER_GATE) {
-                if (parkedConditionConsumer == null) {
-                    CountDownLatch waiting = new CountDownLatch(1);
-                    Thread waiter = new Thread(() -> {
-                        CONDITION_LOCK.lock();
-                        try {
-                            detector.recordAwait(UNSIGNALLED_CONDITION, "unsignalled");
-                            waiting.countDown();
-                            while (true) {
-                                UNSIGNALLED_CONDITION.await();
-                            }
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        } finally {
-                            CONDITION_LOCK.unlock();
-                        }
-                    }, "corpus-unsignalled-condition-waiter");
-                    waiter.setDaemon(true);
-                    waiter.start();
-                    try {
-                        waiting.await();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    parkedConditionConsumer = waiter;
-                }
-            }
+        parkOneConsumer(detector, UNSIGNALLED_CONDITION, UNSIGNALLED_QUEUE, "unsignalled");
+        CONDITION_LOCK.lock();
+        try {
+            UNSIGNALLED_QUEUE.add("work");
+            detector.recordSignal(OTHER_CONDITION, "other", false);
+            OTHER_CONDITION.signal();
+        } finally {
+            CONDITION_LOCK.unlock();
         }
+    }
+
+    /**
+     * The same consumer registered the same way, idle on a queue nobody puts work on, while the
+     * threads signal a different condition. Parked with its predicate false is how a correct
+     * consumer loop spends an idle queue (#643), so it must stay silent (#661).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_condition_consumerIdleOnAnEmptyQueue() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.conditionVariableDetector();
+        detector.registerCondition(CONDITION_LOCK, IDLE_CONDITION,
+                () -> !IDLE_QUEUE.isEmpty(), "idle");
+        detector.registerCondition(CONDITION_LOCK, OTHER_CONDITION, "other");
+        parkOneConsumer(detector, IDLE_CONDITION, IDLE_QUEUE, "idle");
         CONDITION_LOCK.lock();
         try {
             detector.recordSignal(OTHER_CONDITION, "other", false);
             OTHER_CONDITION.signal();
         } finally {
             CONDITION_LOCK.unlock();
+        }
+    }
+
+    /**
+     * Starts the one consumer of a condition row, once per run, and returns once it is parked. The
+     * consumer is the textbook loop, {@code while (queue.isEmpty()) condition.await()}, recording its
+     * await and, after the loop, its exit. Its first predicate check always runs with the queue
+     * empty: the starting body holds {@link #PARKED_CONSUMER_GATE} until the consumer has recorded
+     * its await under {@link #CONDITION_LOCK}, and every producer needs that lock, which
+     * {@code await()} is what releases. An AQS condition does not return from {@code await()}
+     * without a signal or an interrupt, so the consumer stays parked until the test's cleanup.
+     */
+    private static void parkOneConsumer(se.deversity.asynctest.diagnostics.ConditionVariableDetector detector,
+                                        java.util.concurrent.locks.Condition condition,
+                                        java.util.ArrayDeque<String> queue, String name) {
+        if (parkedConditionConsumer != null) {
+            return;
+        }
+        synchronized (PARKED_CONSUMER_GATE) {
+            if (parkedConditionConsumer != null) {
+                return;
+            }
+            CountDownLatch waiting = new CountDownLatch(1);
+            Thread waiter = new Thread(() -> {
+                CONDITION_LOCK.lock();
+                try {
+                    while (queue.isEmpty()) {
+                        detector.recordAwait(condition, name);
+                        waiting.countDown();
+                        condition.await();
+                    }
+                    detector.recordAwaitExit(condition, name, false);
+                    queue.poll();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    CONDITION_LOCK.unlock();
+                }
+            }, "corpus-" + name + "-condition-waiter");
+            waiter.setDaemon(true);
+            waiter.start();
+            try {
+                waiting.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            parkedConditionConsumer = waiter;
         }
     }
 

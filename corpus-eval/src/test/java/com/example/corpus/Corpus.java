@@ -2985,10 +2985,21 @@ final class Corpus {
                     "java.util.concurrent.locks.Condition",
                     DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "a consumer parks in await() on a condition registered with its lock, and "
-                            + "threads signal a different condition. At analysis the lock's wait "
-                            + "queue shows the waiter still parked on the unannounced condition "
-                            + "(#592, #618)"),
+                    "a consumer parks in await() on a condition registered with its lock and "
+                            + "its predicate, and threads put work on its queue and then signal a "
+                            + "different condition. At analysis the lock's wait queue shows the "
+                            + "waiter still parked while its predicate holds, with no thread "
+                            + "queued on the lock (#592, #618, #661)"),
+
+            new RecordingSubject("recorded_condition_consumerIdleOnAnEmptyQueue", JDK,
+                    "java.util.concurrent.locks.Condition",
+                    DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same consumer registered the same way, parked on a queue nobody puts "
+                            + "work on while threads signal a different condition. Parked with its "
+                            + "predicate false is an idle consumer, which is correct code (#643); "
+                            + "the pair separates on whether the work the waiter waits for arrived "
+                            + "(#661)"),
 
             new RecordingSubject("recorded_condition_awaitedAndSignalled", JDK,
                     "java.util.concurrent.locks.Condition",
