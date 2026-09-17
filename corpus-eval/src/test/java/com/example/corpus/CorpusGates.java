@@ -319,7 +319,7 @@ final class CorpusGates {
      * grants it against a case that fires on a bug and a case that stays silent on the correct
      * twin. Its own gate resolves that evidence by reflection over its own test methods, which
      * cannot reach this module: this module depends on the library, so the library cannot depend
-     * back. 55 detectors are classified VERDICT on the strength of pairs that live here, named
+     * back. 59 detectors are classified VERDICT on the strength of pairs that live here, named
      * in {@code META-INF/async-test/verdict-evidence-corpus}.
      *
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
@@ -332,8 +332,8 @@ final class CorpusGates {
         String resource = "/META-INF/async-test/verdict-evidence-corpus";
         String content;
         try (java.io.InputStream in = CorpusGates.class.getResourceAsStream(resource)) {
-            assertTrue(in != null, resource + " is not on the classpath, so the eight VERDICT "
-                    + "tiers this module backs cannot be checked from either side");
+            assertTrue(in != null, resource + " is not on the classpath, so the VERDICT tiers "
+                    + "this module backs cannot be checked from either side");
             content = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException("Could not read " + resource, e);

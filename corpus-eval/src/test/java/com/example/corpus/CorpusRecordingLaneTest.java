@@ -3191,7 +3191,7 @@ class CorpusRecordingLaneTest {
         }
     }
 
-    /** The same lock acquired and released with no timeout: what an uncontended lock looks like. */
+    /** A lock every worker takes with lock() and releases: contended, never left held, no timeout. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_reentrantLock_acquiredAndReleased() {
         CorpusRecorder.countBodyExecution();

@@ -559,6 +559,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`REENTRANT_LOCK` reaches `TrustTier.VERDICT`, taking it to 69 of 146; `CYCLIC_BARRIER` and
+  `CONDITION_VARIABLES` stay `PROMPT`.** All three were held in the second reading (#571) because
+  the body declared the finding, and all three now ask the real lock or barrier, so they were
+  re-read. `REENTRANT_LOCK`'s finding is a lock still held at analysis by a holder that has finished
+  or is idle in its pool (#589, #609), and its corpus pair really leaves a re-entered hold taken
+  against a contended lock that is released; the timeout only the firing half records is context,
+  which `PairEvidence.REVIEWED_DESPITE_SHAPE` states. `CYCLIC_BARRIER` still fires on a party that
+  arrives at a barrier broken to cancel and handles it with `reset()`, reproduced against the
+  detector, and its stranded-party finding (#631) has no pair. `CONDITION_VARIABLES` has no silent
+  twin for an idle consumer registered with its predicate, the case #643 exists for. Each hold's
+  reason is in `PairEvidence.HELD_ON_MODEL`. **Upgrade note:** a build gated on
+  `minTrust = VERDICT` now fails on a `REENTRANT_LOCK` finding. Verified with
+  `DetectorTrustCoverageTest` (red with the tier left at `PROMPT` beside the new evidence line) and
+  a full corpus-eval run against the installed library.
+
 - **The `CONDITION_VARIABLES` corpus recording pair runs against a real parked waiter under `registerCondition(lock, ...)` (#618).**
   The old recording pair simulated an abandoned await by having one thread record an await and then return without signalling, with no thread ever awaiting on the condition variable. The pair now registers the condition with `ConditionVariableDetector.registerCondition(CONDITION_LOCK, ...)`; the must-fire subject starts a background consumer parked in `UNSIGNALLED_CONDITION.await()` while worker threads signal another condition, leaving a stuck waiter detected via `getWaitQueueLength`, and the silent twin signals and joins a parked consumer on `SIGNALLED_CONDITION`, clearing all waiters before analysis.
 

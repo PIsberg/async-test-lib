@@ -112,6 +112,26 @@ ratio or more than 5 contended acquisitions) rather than a correctness defect, s
 alone would not make a finding a verdict. The unreviewed PROMPT backlog
 held by call shape is now 0.
 
+**Re-reading three second-reading holds, 2026-09-17.** `CONDITION_VARIABLES`, `CYCLIC_BARRIER` and
+`REENTRANT_LOCK` no longer fit the shape the second reading named: since #592, #595 and #589 each
+asks the real lock or barrier. Asking the object is necessary, not sufficient, and only one pair
+survived the re-read:
+
+- `REENTRANT_LOCK` is promoted. The finding is a lock still held at analysis by a holder that has
+  finished or is idle in its pool (#609), and the firing row really leaves a re-entered hold taken.
+  Its halves differ only in a recorded `tryLock` timeout, which is context since #589, so the pair
+  sits in `PairEvidence.REVIEWED_DESPITE_SHAPE`. The pair does not reach the starvation finding
+  (#608) or the unrecorded virtual-thread holder the detector's javadoc names.
+- `CYCLIC_BARRIER` is held. A party that arrives at a barrier a timeout broke to cancel, catches
+  `BrokenBarrierException` and calls `reset()`, which is the report's own advice, still draws the
+  reuse finding, because the decision is `isBroken()` at the recorded arrival. That was reproduced
+  against the detector directly. The silent twin never breaks its barrier, and the stranded-party
+  finding (#631) has no pair.
+- `CONDITION_VARIABLES` is held. Both rows use the three-argument `registerCondition`, with no
+  predicate, under which any thread parked at analysis is stuck, and #643 exists because an idle
+  consumer parked on an empty queue is correct code. There is no silent twin registering its
+  predicate while a consumer sits parked idle.
+
 ## 3. Severity is not pinned on a firing row (open: the gate exists, no row uses it)
 
 On 2026-09-16 `RecordingSubject` gained an optional `expectedSeverity`, and

@@ -2902,8 +2902,8 @@ final class Corpus {
                     "java.util.concurrent.locks.ReentrantLock",
                     DetectorType.REENTRANT_LOCK, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same lock acquired and released by every thread with no timeout "
-                            + "recorded, which is what an uncontended lock looks like and what "
+                    "a second lock taken with lock() and released by every thread, contended "
+                            + "but never left held and with no timeout recorded, which is what "
                             + "most locks in most programs do"),
 
             new RecordingSubject("recorded_phaser_terminated", JDK,
