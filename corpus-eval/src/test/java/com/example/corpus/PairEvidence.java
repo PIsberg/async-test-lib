@@ -153,8 +153,8 @@ final class PairEvidence {
                 + "consumer as stuck (#643 keeps it as the weaker claim), a condition registered "
                 + "without its lock is stuck on a recorded await with no recorded exit, and a "
                 + "missing signal is a recordAwaitExit(..., false) with no recordSignal, both the "
-                + "body's own declarations; #657 (a signalled waiter still queued for the lock "
-                + "read as stuck) is open on the predicate path itself. Needs the declared and "
+                + "body's own declarations (#657, a signalled waiter still queued for the lock, "
+                + "is now a note on the predicate path). Needs the declared and "
                 + "lock-only stuck waiters to become notes, or those paths split from this one");
         HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "re-read 2026-09-17 after #662: a recorded "
                 + "reset() now recovers the reuse recorded before it, and the lane holds the "
