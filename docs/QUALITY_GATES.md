@@ -563,7 +563,7 @@ both files, is to be "one stable required check" for its workflow, and the parag
 E2E check says the same. Neither context was in the list, which was read back from
 `required_status_checks` on 2026-09-17 and held seven entries: both workflows ran on every pull
 request to `main`, both went red when a leg failed, and neither could block a merge. The 59
-detectors that carry `VERDICT` on corpus evidence, and the 148 example projects, were gated by
+`VERDICT` tiers that rest on corpus evidence, and the 148 example projects, were gated by
 nothing but someone noticing a red tick. Both contexts were added the same day. A summary job is
 the right thing to require precisely because it cannot skip: it runs on `always()` and reads its
 legs' results, so a lane that did not run is reported through it instead of dropping out of the
