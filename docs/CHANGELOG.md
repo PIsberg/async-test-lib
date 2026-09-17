@@ -9,6 +9,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Spinlock releases through value-returning calls are observed (#658, #621).** `getAndSet`,
+  `getAndAdd`, `addAndGet`, `getAndDecrement`, `decrementAndGet`, `compareAndExchange` and the weak
+  swaps on `VarHandle`, `AtomicIntegerFieldUpdater`, `AtomicInteger` and `AtomicBoolean` are now
+  woven as releases, so a holder that releases between a contender's flag check and its swap no
+  longer reads as guarded until the contender declares. Releases the weaver still does not see
+  (`getAndUpdate`/`updateAndGet`, `setPlain`/`setRelease`, `VarHandle` acquire/release variants,
+  `Unsafe`, reflection) are listed in the `SpinLocks` javadoc.
+
+- **A pre-attach `AtomicIntegerFieldUpdater` is resolved from its own target (#659).** The updater's
+  target class and field offset are read from the JDK implementation at the woven call site, in
+  whichever library copy the woven class's loader reaches, so resolution works under isolated
+  classloaders and never names the wrong flag for an updater made in an unscanned or JDK class.
+  With `fields=true` the agent opens `java.util.concurrent.atomic` to the unnamed modules of woven
+  classes' loaders and their ancestors. This replaces #619's weave-time hierarchy records; if the
+  target cannot be read the updater stays unresolved and accesses are reported, not excused.
+
+- **`AtomicityValidator` names the offerer as owner of a take-first generation (#630).** When a queue
+  `poll` is the first recorded event for an object, the thread that offered it to that same queue
+  (now published by the queue offer hooks) is generation 0's owner, so an alias write in that
+  generation fires while the offerer's own late write stays silent. Takes from reference
+  `getAndSet` slots and JCTools queues still excuse every thread, because their offer is not
+  observed.
+
+- **`MissedSignalDetector` takes only the waiter's next call for a loop re-test (#656).** A wait
+  recorded without `guarded` is confirmed as a loop's only by its thread's next calls on the
+  condition in the same round: a satisfied check right after the wakeup, or an unsatisfied check
+  followed by another wait. `if (!ready) wait()` followed later by an unrelated check is reported
+  again, and the `satisfied` argument of `recordPredicateCheck` is now used. Woken waits that can no
+  longer be confirmed are folded into a count, so memory no longer grows with every wait.
+
+- **`ConditionVariableDetector` no longer reports a signalled waiter queued on the lock as stuck (#657).**
+  With a predicate registered, a thread parked while `ready` holds is now a note rather than a stuck waiter
+  when other threads are queued on the lock at analysis: a waiter woken by `signal()` may still be queued to
+  re-acquire the lock, and a `tryLock()` that barged in ahead of it saw the remaining consumers parked while
+  the item was not yet taken. Unrelated contention on the lock gives the same note, which says so.
+
+- **`CyclicBarrierDetector` treats a recorded `reset()` as recovery (#662).** A party that arrives at
+  a broken barrier, catches `BrokenBarrierException` and resets it no longer draws the reuse
+  finding; reuse with no reset after it still fires.
+
+- **Corpus: firing rows pin their severity, and new twins for two synchronizers (#660, #661, #662).**
+  Every MUST_FIRE row in the recording and agent-pair lanes pins its expected severity, lane reports
+  print observed severities, and `CorpusGates.everyFiringRowPinsItsSeverity` rejects an unpinned
+  firing row. `CYCLIC_BARRIER` gains a handled-break silent twin and a stranded-party pair (#631);
+  `CONDITION_VARIABLES` gains an idle-consumer twin on the predicate registration. Both stay
+  `PROMPT`; `PairEvidence.HELD_ON_MODEL` records why.
+
 - **`MissedSignalDetector` observes predicate re-checks via `recordPredicateCheck` (#635).**
   Guardedness previously required the caller to declare `guarded = true|false` at `recordWait()`.
   New `recordPredicateCheck(Object monitor, boolean satisfied)` and
