@@ -261,20 +261,20 @@ Underneath, which legs run depends on the event:
 |---|---|---|
 | Consumer Fixture (JDK 21, 25) | every PR and push | Resolves the built artifact from a local repo and drives it through the public API only, one `@AsyncTest` fixture per `DetectorType` |
 | Examples Shard (PR) | PRs that change `examples/**` **or** library sources | See below |
-| Examples Reactor | push to `main`/`develop`, and nightly | All 127 example projects, four shards |
+| Examples Reactor | push to `main`/`develop`, and nightly | All 148 example projects, four shards |
 
 **The PR filter used to ask the wrong question.** It watched `examples/**` only, so it answered
-"did you edit an example?" when what matters is "could you have broken the examples?" — and the 127
-examples all consume the built artifact. A library-only PR therefore ran zero of them and went
+"did you edit an example?" when what matters is "could you have broken the examples?", and the
+148 examples all consume the built artifact. A library-only PR therefore ran zero of them and went
 green, with any breakage surfacing after merge or overnight.
 
 `examples-detect` now also watches `async-test-*/src/main/**` and the root build files. A library
-change runs a deterministic every-4th sample (32 of 127) rather than the full reactor: enough to
-catch a systemic break at PR time, cheap enough to afford on every library PR. A PR that changes
-both gets the union, deduplicated. `gradle-tests.yml` mirrors this exactly.
+change runs a deterministic every-4th sample, 37 of the 148 examples, rather than the full
+reactor: enough to catch a systemic break at PR time, cheap enough to afford on every library PR.
+A PR that changes both gets the union, deduplicated. `gradle-tests.yml` mirrors this exactly.
 
-The sample is a sample, not coverage — the full reactor on push and nightly is still what proves
-all 127 build. This only moves discovery of the common failure earlier.
+The sample is a sample, not coverage. The full reactor on push and nightly is still what proves
+all 148 examples build; this only moves discovery of the common failure earlier.
 
 ## Mutation testing
 
@@ -550,11 +550,24 @@ green, just later.
 
 **Skipped is not passed.** Every lane that can lack credit (Inquisitor, Copilot, evals) says
 SKIPPED in its step summary when it does; a green job with a SKIPPED summary is a job that did not
-run, and the required-checks list only contains lanes that cannot skip. Since 2026-08-15 the
+run, and the required-checks list only contains lanes that cannot skip. Since 2026-09-17 the
 required checks on `main` are: `Build Maven Project (21)`, `Build Maven Project (25)`,
 `Gradle Test Suite (21)`, `Test Suite (21, ubuntu-latest)`, `Guardrail Drift`,
-`Locked Files Guard`, `Architecture Diagram Drift`. Branch protection is repository
-configuration, not a file here; this sentence is the record of what was set and why.
+`Locked Files Guard`, `Architecture Diagram Drift`, `E2E Tests` and `Corpus Eval`. Branch
+protection is repository configuration, not a file here; this sentence is the record of what was
+set and why.
+
+**The two summary checks were required by their own comments before they were required by GitHub.**
+`e2e-tests.yml` and `corpus.yml` each end in an `if: always()` summary job whose stated purpose, in
+both files, is to be "one stable required check" for its workflow, and the paragraph above on the
+E2E check says the same. Neither context was in the list, which was read back from
+`required_status_checks` on 2026-09-17 and held seven entries: both workflows ran on every pull
+request to `main`, both went red when a leg failed, and neither could block a merge. The 59
+`VERDICT` tiers that rest on corpus evidence, and the 148 example projects, were gated by
+nothing but someone noticing a red tick. Both contexts were added the same day. A summary job is
+the right thing to require precisely because it cannot skip: it runs on `always()` and reads its
+legs' results, so a lane that did not run is reported through it instead of dropping out of the
+list.
 
 **AI lanes run on Copilot Free, by decision.** No Anthropic key is required or configured. The
 Inquisitor workflow stays in the repository as the law-enforcing lane for anyone who adds

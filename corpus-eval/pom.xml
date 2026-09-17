@@ -218,19 +218,21 @@
                                      accessors are woven and most subjects are invisible.
                                      collections=true adds the other half: a class that keeps its
                                      state in a JDK collection writes no field of its own, so
-                                     without it three of the nine documented-unsafe subjects
-                                     reported nothing at all. -->
+                                     without it three of the nine documented-unsafe subjects the
+                                     corpus held when this was measured reported nothing at
+                                     all. -->
                                 <asynctest.agent>excludes=org.apache.maven.surefire,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
                     <!-- Lane three: nothing attached, and the bodies cooperate. A different
                          measurement over a different denominator, which is why it writes its own
-                         report and never merges into the other two. The corpus records nothing by
-                         hand, which is what makes its findings attributable to unmodified code and
-                         also what leaves 137 of the 142 detectors with an exposure of zero in both
-                         other lanes. This lane gives a named handful of them a denominator, by
-                         calling the recording API the way a user following AsyncTestContext does.
+                         report and never merges into the unmodified lanes. The corpus records
+                         nothing by hand, which is what makes its findings attributable to
+                         unmodified code and also what leaves 125 of the 146 detectors with an
+                         exposure of zero in those lanes. This lane gives a named handful of them
+                         a denominator, by calling the recording API the way a user following
+                         AsyncTestContext does.
                          The agent stays detached on purpose: with both feeds live a finding could
                          have come from either, and every assertion here depends on each finding
                          being attributable to a record* call the body made. -->

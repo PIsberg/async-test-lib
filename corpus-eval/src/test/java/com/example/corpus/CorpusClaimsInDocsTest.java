@@ -45,6 +45,18 @@ class CorpusClaimsInDocsTest {
     private static final Path README = repoRoot().resolve("README.md");
     private static final Path EVAL = repoRoot().resolve("docs/analysis/corpus-eval.md");
     private static final Path MODULE_README = repoRoot().resolve("corpus-eval/README.md");
+    private static final Path WORKFLOW = repoRoot().resolve(".github/workflows/corpus.yml");
+    private static final Path MODULE_POM = repoRoot().resolve("corpus-eval/pom.xml");
+
+    /**
+     * The both-directions evidence that backs a VERDICT tier from this corpus.
+     *
+     * <p>Read from the working tree rather than from the library on the classpath, which this
+     * module resolves from the local repository: a stale install would make this gate agree with
+     * a jar instead of with the source the same pull request changes.
+     */
+    private static final Path VERDICT_EVIDENCE = repoRoot().resolve(
+            "async-test-lib/src/main/resources/META-INF/async-test/verdict-evidence-corpus");
 
     @Test
     @DisplayName("the subject counts in README and the corpus eval match the corpus")
@@ -125,14 +137,14 @@ class CorpusClaimsInDocsTest {
     }
 
     @Test
-    @DisplayName("no source in this module counts against a roster the library no longer ships")
+    @DisplayName("no source, workflow or pom here counts against a roster the library no longer ships")
     void theModulesOwnJavadocCountsAgainstTheCurrentRoster() throws IOException {
         int roster = DetectorType.values().length;
         Pattern denominator = Pattern.compile("of the (\\d+)\\b");
 
         List<String> stale = new ArrayList<>();
-        for (Path source : sources()) {
-            Matcher matcher = denominator.matcher(read(source));
+        for (Path source : claimBearingFiles()) {
+            Matcher matcher = denominator.matcher(flattened(source));
             while (matcher.find()) {
                 int stated = Integer.parseInt(matcher.group(1));
                 if (stated >= ROSTER_SIZED && stated != roster) {
@@ -151,6 +163,29 @@ class CorpusClaimsInDocsTest {
                         + "comment counts as a claim: phrase one so it does not: " + stale);
     }
 
+    @Test
+    @DisplayName("the workflow states the lane count and the VERDICT evidence this module produces")
+    void theWorkflowHeaderAgreesWithTheModule() {
+        int lanes = CorpusLane.values().length;
+        long verdicts = corpusBackedVerdicts();
+
+        List<String> stale = new ArrayList<>();
+        checkCount(stale, WORKFLOW, flattened(WORKFLOW), lanes, "lanes per run",
+                "CorpusLane declares " + lanes + " lanes and corpus-eval/pom.xml runs one Surefire "
+                        + "execution for each of them");
+        checkCount(stale, WORKFLOW, flattened(WORKFLOW), verdicts, "detectors carry VERDICT",
+                "verdict-evidence-corpus names " + verdicts + " detectors whose VERDICT tier rests "
+                        + "on a pair measured in this module");
+
+        assertTrue(stale.isEmpty(),
+                "the workflow header is what a reader who never opens this module reads about it, "
+                        + "and it was also the only file describing the module that nothing here "
+                        + "read: on 2026-09-17 it said three lanes where CorpusLane declares "
+                        + lanes + ", and nine VERDICT detectors where the evidence file names "
+                        + verdicts + ". Both had been true, two waves of corpus growth earlier: "
+                        + stale);
+    }
+
     /**
      * The floor above which "of the N" is read as a claim about the detector roster.
      *
@@ -160,11 +195,50 @@ class CorpusClaimsInDocsTest {
      */
     private static final int ROSTER_SIZED = 100;
 
-    /** {@return every Java source in this module} */
-    private static List<Path> sources() throws IOException {
+    /**
+     * {@return every file in or about this module whose prose states a count}
+     *
+     * <p>The Java sources, plus the two build files that describe the module to a reader who has
+     * not opened it: the workflow that runs it, and the pom that declares its lanes. Both sat
+     * outside every check in this class until 2026-09-17, and both had gone stale, one of them by
+     * a whole lane count.
+     */
+    private static List<Path> claimBearingFiles() throws IOException {
         try (Stream<Path> tree = Files.walk(repoRoot().resolve("corpus-eval/src"))) {
-            return tree.filter(path -> path.toString().endsWith(".java")).toList();
+            List<Path> files = new ArrayList<>(
+                    tree.filter(path -> path.toString().endsWith(".java")).toList());
+            files.add(WORKFLOW);
+            files.add(MODULE_POM);
+            return files;
         }
+    }
+
+    /**
+     * {@return {@code file}'s text with comment markers and line breaks flattened away}
+     *
+     * <p>A claim in a build file wraps across lines that each carry the comment's indentation, and
+     * in YAML a leading {@code #}. "five\n# lanes per run" is the same sentence as "five lanes per
+     * run" and only the second is findable, so without this the checks here would report every
+     * wrapped claim as missing and be deleted for crying wolf.
+     */
+    private static String flattened(Path file) {
+        return read(file).replaceAll("(?m)^\\s*#\\s?", " ").replaceAll("\\s+", " ");
+    }
+
+    /**
+     * {@return how many detectors carry a VERDICT tier on a pair measured in this module}
+     *
+     * <p>One line per detector in {@link #VERDICT_EVIDENCE}, comments and blanks aside. That file
+     * is the thing {@code DetectorTrustCoverageTest} resolves a promotion against, so it is the
+     * count the workflow header is claiming when it says how much rests on this eval.
+     */
+    private static long corpusBackedVerdicts() {
+        return read(VERDICT_EVIDENCE).lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                .map(line -> line.split("=", 2)[0].strip())
+                .distinct()
+                .count();
     }
 
     /**
@@ -206,7 +280,17 @@ class CorpusClaimsInDocsTest {
      */
     private static void checkCount(List<String> stale, Path document, long count, String noun,
                                    String because) {
-        String text = read(document);
+        checkCount(stale, document, read(document), count, noun, because);
+    }
+
+    /**
+     * Records a stale claim unless {@code text} states {@code count} before {@code noun}.
+     *
+     * <p>The text is passed separately so a build file can be read through {@link
+     * #flattened(Path)} while the failure still names the file a reader would open.
+     */
+    private static void checkCount(List<String> stale, Path document, String text, long count,
+                                   String noun, String because) {
         if (!text.contains(count + " " + noun) && !text.contains(word(count) + " " + noun)) {
             stale.add(repoRoot().relativize(document) + " no longer says \"" + count + " " + noun
                     + "\" (or \"" + word(count) + " " + noun + "\"), and " + because);
