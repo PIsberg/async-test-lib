@@ -49,7 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now tracks the taker thread for each generation and distinguishes alias accesses from late-published
   handoff accesses by the previous owner: an access by a thread that was neither the generation's
   taker nor the previous owner withdraws the taker's exclusivity for that generation, exposing races
-  between the taker and the alias while preserving silence for clean object handoffs.
+  between the taker and the alias while preserving silence for clean object handoffs. Generation 0's
+  owner is recorded only when an access first creates the receiver's state, and an unknown previous
+  owner excuses the access (#557): as first merged, a take recorded before any access made the taker
+  generation 0's owner, so the offerer's write draining after the take was reported on a clean
+  handoff. `reset()` now also forgets the generation takers.
 
 - **Spinlock re-confirmation revokes a stale holder before another thread's won swap lands (#621).**
   A thread that released a spinlock flag through an unobserved call (such as `getAndSet(0)`)
