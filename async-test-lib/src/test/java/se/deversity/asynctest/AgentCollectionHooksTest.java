@@ -14,7 +14,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.telemetry.TelemetryEventBuffer;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -30,6 +36,68 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * because woven third-party code runs in plenty of places where there is not.
  */
 class AgentCollectionHooksTest {
+
+    @Test
+    @DisplayName("the queue hooks publish each offer before the take that removes it, naming the queue (#630)")
+    void queueHooksPublishOffersAheadOfTakesWithTheQueueIdentity() throws InterruptedException {
+        List<String> ownership = Collections.synchronizedList(new ArrayList<>());
+        Object chunk = new Object();
+        Object buffer = new Object();
+        Queue<Object> queue = new ArrayDeque<>();
+        BlockingQueue<Object> blocking = new LinkedBlockingQueue<>();
+        int chunkId = System.identityHashCode(chunk);
+        int bufferId = System.identityHashCode(buffer);
+        TelemetryRegistry.start(new TelemetryEventBuffer.DrainCallback() {
+            @Override
+            public void onEvent(long threadId, @Nullable String targetField, boolean isWrite) {
+                // Only the full-shape overload below carries what this test reads.
+            }
+
+            @Override
+            public void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                                long lockFingerprint, boolean volatileField, int constantTag,
+                                int identity, boolean afterVolatileRead, int ownMonitor,
+                                int methodMonitor, int storedIdentity) {
+                if ((identity == chunkId || identity == bufferId) && targetField != null
+                        && targetField.startsWith("#ownership-")) {
+                    ownership.add(targetField + " " + (identity == chunkId ? "chunk" : "buffer")
+                            + " from " + (storedIdentity == System.identityHashCode(queue)
+                            ? "queue" : storedIdentity == System.identityHashCode(blocking)
+                            ? "blocking" : String.valueOf(storedIdentity)));
+                }
+            }
+        });
+        try {
+            AgentCollectionHooks.queueOffer(queue, chunk);
+            assertEquals(chunk, AgentCollectionHooks.queuePoll(queue), "poll hands the chunk back");
+            AgentCollectionHooks.collectionAdd(queue, chunk);
+            assertEquals(chunk, AgentCollectionHooks.queuePoll(queue), "add then poll round-trips");
+            AgentConcurrencyUtilHooks.put(blocking, buffer);
+            assertEquals(buffer, AgentConcurrencyUtilHooks.poll(blocking), "put then poll");
+            AgentConcurrencyUtilHooks.offer(blocking, buffer);
+            assertEquals(buffer, AgentConcurrencyUtilHooks.poll(blocking, 1, TimeUnit.SECONDS),
+                    "offer then timed poll");
+            AgentConcurrencyUtilHooks.offer(blocking, buffer, 1, TimeUnit.SECONDS);
+            assertEquals(buffer, AgentConcurrencyUtilHooks.poll(blocking), "timed offer then poll");
+            TelemetryRegistry.flush();
+        } finally {
+            TelemetryRegistry.stop();
+        }
+        List<String> offerThenTake = List.of(
+                "#ownership-offered chunk from queue", "#ownership-taken chunk from queue");
+        List<String> blockingOfferThenTake = List.of(
+                "#ownership-offered buffer from blocking", "#ownership-taken buffer from blocking");
+        List<String> expected = new ArrayList<>();
+        expected.addAll(offerThenTake);
+        expected.addAll(offerThenTake);
+        expected.addAll(blockingOfferThenTake);
+        expected.addAll(blockingOfferThenTake);
+        expected.addAll(blockingOfferThenTake);
+        assertEquals(expected, ownership,
+                "Every offer hook must publish the element and its queue before the take hook "
+                        + "publishes the same pair: the validator names generation 0's owner only "
+                        + "from an offer it drained first, into the container the take names");
+    }
 
     @Test
     @DisplayName("every hook performs the operation it replaced, with no context installed")

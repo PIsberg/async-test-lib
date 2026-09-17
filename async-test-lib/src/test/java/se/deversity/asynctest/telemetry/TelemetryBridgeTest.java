@@ -20,6 +20,8 @@ class TelemetryBridgeTest {
     // filtering assertions deterministic regardless of the current thread's id.
     private static final long WORKER_A = 900_001L;
     private static final long WORKER_B = 900_002L;
+    private static final long WORKER_C = 900_003L;
+    private static final long WORKER_D = 900_004L;
     private static final long NON_WORKER = 700_007L;
 
     @BeforeEach
@@ -97,6 +99,47 @@ class TelemetryBridgeTest {
                             .anyMatch(s -> s.contains("com.example.Order.total")),
                     "The drained field must be attributed as a cross-thread race");
         }
+    }
+
+    @Test
+    void anOfferEventNamesTheOwnerBeforeATakeFirstGeneration() {
+        // What the queue hooks publish (#630): the offer and the take carry the queue's identity
+        // in the stored-identity slot. Only the offerer's late write is a hand-off; a write by a
+        // third worker is an alias, and the bridge has to route both events for that to show.
+        assertTrue(offerTakeAndWriteThroughTheBridge(WORKER_C).hasIssues(),
+                "A worker that neither offered nor took the chunk wrote to it under its own lock");
+        assertFalse(offerTakeAndWriteThroughTheBridge(WORKER_A).hasIssues(),
+                "The late write came from the worker that offered the chunk, a hand-off (#557)");
+    }
+
+    private static AtomicityValidator.AtomicityReport offerTakeAndWriteThroughTheBridge(
+            long lateWriter) {
+        AtomicityValidator av = new AtomicityValidator();
+        String field = "com.example.Chunk.allocated";
+        int chunk = 90;
+        int queue = 7;
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activate(av, Set.of(WORKER_A, WORKER_B, WORKER_C, WORKER_D))) {
+            av.markInvocationStart();
+            bridge.onEvent(WORKER_A, TelemetryRegistry.OWNERSHIP_OFFERED, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_B, TelemetryRegistry.OWNERSHIP_TAKEN, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_B, field, true, 0L, false, Integer.MIN_VALUE, chunk, false,
+                    0, 0, 0);
+            bridge.onEvent(lateWriter, field, true, 0x1111L, false, Integer.MIN_VALUE, chunk,
+                    false, 0, 0, 0);
+            bridge.onEvent(WORKER_D, TelemetryRegistry.OWNERSHIP_TAKEN, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_D, field, true, 0L, false, Integer.MIN_VALUE, chunk, false,
+                    0, 0, 0);
+            av.markInvocationStart();
+            bridge.onEvent(WORKER_B, TelemetryRegistry.OWNERSHIP_TAKEN, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_B, field, true, 0L, false, Integer.MIN_VALUE, chunk, false,
+                    0, 0, 0);
+        }
+        return av.analyzeAtomicity();
     }
 
     @Test

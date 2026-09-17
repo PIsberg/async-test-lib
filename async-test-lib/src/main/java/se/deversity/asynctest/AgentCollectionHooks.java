@@ -175,6 +175,10 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Collection.add}. @param receiver the collection @param element the element @return whether it changed */
     public static boolean collectionAdd(Collection<Object> receiver, Object element) {
         record(receiver, "add", true);
+        if (receiver instanceof Queue) {
+            // Queue.add is an offer that throws instead of returning false (#630).
+            TelemetryRegistry.ownershipOffered(element, receiver);
+        }
         return receiver.add(element);
     }
 
@@ -211,6 +215,8 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Queue.offer}. @param receiver the queue @param element the element @return whether it was accepted */
     public static boolean queueOffer(Queue<Object> receiver, Object element) {
         record(receiver, "offer", true);
+        // Before the offer, so the take that removes the element drains after it (#630).
+        TelemetryRegistry.ownershipOffered(element, receiver);
         return receiver.offer(element);
     }
 
@@ -219,7 +225,7 @@ public final class AgentCollectionHooks {
         record(receiver, "poll", true);
         Object taken = receiver.poll();
         // The element left the queue, so it is this thread's alone as far as the queue goes (#555).
-        TelemetryRegistry.ownershipTaken(taken);
+        TelemetryRegistry.ownershipTaken(taken, receiver);
         return taken;
     }
 

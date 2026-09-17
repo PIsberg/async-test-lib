@@ -398,7 +398,13 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (TelemetryRegistry.OWNERSHIP_TAKEN.equals(qualifiedName)) {
             // Not a field access: a worker took the object with this identity out of a queue or
             // an atomic slot, which starts a new ownership generation for it (#555).
-            atomicityValidator.recordOwnershipTaken(identity, threadId);
+            atomicityValidator.recordOwnershipTaken(identity, storedIdentity, threadId);
+            return;
+        }
+        if (TelemetryRegistry.OWNERSHIP_OFFERED.equals(qualifiedName)) {
+            // Not a field access either: a worker is handing the object to the queue whose
+            // identity rides in the stored-identity slot (#630).
+            atomicityValidator.recordOwnershipOffered(identity, storedIdentity, threadId);
             return;
         }
         String field = fieldIdentifier(qualifiedName);

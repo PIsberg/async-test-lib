@@ -282,6 +282,8 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.observeQueue(receiver);
         }
+        // Before the offer, so the take that removes the element drains after it (#630).
+        TelemetryRegistry.ownershipOffered(element, receiver);
         boolean added = receiver.offer(element);
         if (detector != null) {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);
@@ -310,6 +312,7 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.observeQueue(receiver);
         }
+        TelemetryRegistry.ownershipOffered(element, receiver);
         boolean added = receiver.offer(element, timeout, unit);
         if (detector != null) {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);
@@ -358,7 +361,7 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
         }
-        TelemetryRegistry.ownershipTaken(taken);
+        TelemetryRegistry.ownershipTaken(taken, receiver);
         return taken;
     }
 
@@ -377,7 +380,7 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.recordPoll(receiver, receiver.getClass().getName(), taken != null);
         }
-        TelemetryRegistry.ownershipTaken(taken);
+        TelemetryRegistry.ownershipTaken(taken, receiver);
         return taken;
     }
 
@@ -394,6 +397,7 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.observeQueue(receiver);
         }
+        TelemetryRegistry.ownershipOffered(element, receiver);
         receiver.put(element);
         if (detector != null) {
             detector.recordPut(receiver, receiver.getClass().getName());

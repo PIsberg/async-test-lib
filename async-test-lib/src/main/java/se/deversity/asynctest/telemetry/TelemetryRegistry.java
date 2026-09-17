@@ -686,11 +686,58 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static void ownershipTaken(@Nullable Object taken) {
+        ownershipTaken(taken, null);
+    }
+
+    /**
+     * Records that the calling thread took {@code taken} out of {@code container}.
+     *
+     * <p>{@link #ownershipTaken(Object)} for the hooks that have the queue in hand. The container's
+     * identity rides in the event's stored-identity slot, which an ownership event does not
+     * otherwise use, so it can be matched against the {@link #ownershipOffered offer} that put the
+     * object there (#630). The weaver's {@code getAndSet} and JCTools takes pass no container: the
+     * slot or queue has left the stack by the time the taken reference is on it.
+     *
+     * @param taken     the object that left the queue, or {@code null}
+     * @param container the queue it left, or {@code null} when unknown
+     * @since 1.12.1
+     */
+    public static void ownershipTaken(@Nullable Object taken, @Nullable Object container) {
         if (taken == null || STOPPED.get()) {
             return;
         }
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,
-                Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0, 0);
+                Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
+                container == null ? 0 : System.identityHashCode(container));
+    }
+
+    /**
+     * The target an ownership-offered event carries; see {@link #OWNERSHIP_TAKEN}.
+     */
+    static final String OWNERSHIP_OFFERED = "#ownership-offered";
+
+    /**
+     * Records that the calling thread is about to offer {@code offered} to {@code container}.
+     *
+     * <p>Emitted by the queue hooks before the structure is asked to accept the element, never
+     * after: the slot this claims in the buffer is then ahead of any take that removes the element,
+     * so the drain always sees the offer first. That order is what lets a take that is the first
+     * event recorded for an object name the thread that handed it over (#630). An offer the queue
+     * rejects still records, and is harmless: nothing takes that element out of that queue.
+     *
+     * <p>Allocation-free and non-throwing like every other hook on this path.
+     *
+     * @param offered   the element being offered, or {@code null}
+     * @param container the queue it is offered to
+     * @since 1.12.1
+     */
+    public static void ownershipOffered(@Nullable Object offered, @Nullable Object container) {
+        if (offered == null || container == null || STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, false, 0L, false,
+                Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
+                System.identityHashCode(container));
     }
 
     /**
