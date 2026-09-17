@@ -132,6 +132,6 @@ Closed on 2026-09-16. `DetectorRefusalThresholdsTest` pins the exact thresholds,
 ## 7. Harness and build verification suites (Added 2026-09-17)
 
 Completed on 2026-09-17:
-- `TestBodyFieldIsObservedTest`: Companion to `TestBodyCollectionIsObservedTest` pinning that `FieldAccessWeaver` instruments direct field mutation on an already-loaded test class, verifying true-positive detection by `AtomicityValidator` on racy compound field writes and true-negative silence on synchronized access.
+- `TestBodyFieldIsObservedTest`: Companion to `TestBodyCollectionIsObservedTest` pinning that `FieldAccessWeaver` instruments direct field mutation in the test class, woven at load time because the lane attaches the agent with `-javaagent` at startup, verifying true-positive detection by `AtomicityValidator` on racy compound field writes and true-negative silence on synchronized access.
 - `LibraryBuildTest`: Unit tests covering `LibraryBuild` staleness comparisons, timestamp edge cases, tree walking for `.class` files, and SHA-256 digest computation.
 

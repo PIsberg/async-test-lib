@@ -54,7 +54,9 @@ class StubDataSourceTest {
         assertSame(conn, conn.unwrap(Connection.class));
         assertTrue(conn.isWrapperFor(Connection.class));
 
-        assertEquals(conn, conn);
+        // Called directly: a collection lookup short-circuits on reference identity and would
+        // never reach the proxy's equals, which is the method under test here.
+        assertTrue(conn.equals(conn), "a proxied connection must be equal to itself through equals()");
         Connection other = ds.getConnection();
         assertFalse(conn.equals(other));
         assertEquals(System.identityHashCode(conn), conn.hashCode());

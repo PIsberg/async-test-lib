@@ -17,10 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Pins the instruction-level weaving path: {@code FieldAccessWeaver} weaves an observation call in
  * front of every {@code GETFIELD} and {@code PUTFIELD} instruction, and captures lock state around
- * {@code MONITORENTER}/{@code MONITOREXIT}. Because the test class is loaded by JUnit before the
- * runner attaches the agent, a finding on the unguarded field proves that retransformation reaches
- * the already-loaded test class and that field access instructions are rewritten and forwarded into
- * {@code AtomicityValidator}.
+ * {@code MONITORENTER}/{@code MONITOREXIT}. The lane attaches the agent with {@code -javaagent} at
+ * JVM startup, so the test class is woven as it loads, and a finding on the unguarded field proves
+ * that load-time weaving reaches the test class and that field access instructions are rewritten
+ * and forwarded into {@code AtomicityValidator}. It says nothing about retransforming a class loaded
+ * before a dynamic attach; this lane never does one.
  *
  * <p>The guarded field provides the symmetric control: every mutation happens inside
  * {@code synchronized (lock)}, so {@code AtomicityValidator} must remain silent on it while reporting
@@ -59,7 +60,7 @@ class TestBodyFieldIsObservedTest {
                                             .contains("TestBodyFieldIsObservedTest.racingCounter")),
                     "an unsynchronized field incremented by four threads from the test body must be "
                             + "reported by AtomicityValidator. Nothing was: either the agent no longer "
-                            + "retransforms the already-loaded test class, or FieldAccessWeaver stopped "
+                            + "weaves the test class as it loads, or FieldAccessWeaver stopped "
                             + "matching GETFIELD/PUTFIELD. Findings were: " + findings.violations() + ". "
                             + agentState());
 
