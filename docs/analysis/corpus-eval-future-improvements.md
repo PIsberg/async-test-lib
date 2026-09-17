@@ -35,7 +35,7 @@ What follows is the remainder, in the order worth doing them.
 
 ## 2. Nothing checks that `CorpusGatesTest` still bites (Closed 2026-09-16)
 
-Closed on 2026-09-16. `CorpusGatesTest` covers all gate methods in `CorpusGates` in both failing and accepting directions with synthetic inputs, verifying that any mutation or softening of gating logic (outcome, severity, blank diagnostics, missing methods, unexcluded bytecode, or unexercised pairs) trips a test failure.
+Closed on 2026-09-16. `CorpusGatesTest` covers all gate methods in `CorpusGates` in both failing and accepting directions with synthetic inputs (outcome, severity, blank diagnostics, missing methods, unexcluded bytecode, or unexercised pairs), so softening a rejection one of those tests names turns it red. Whether every mutation of the gating logic would is not measured: PIT does not run on `corpus-eval`, so this is a statement about the cases written, not a mutation score.
 
 ## 2b. Pairs held back by a rule rather than a reading
 
@@ -108,9 +108,18 @@ inspects real JVM objects or synchronization primitives, so each requires agent 
 bytecode analysis before its pair can be evaluated for promotion. The unreviewed PROMPT backlog
 held by call shape is now 0.
 
-## 3. Severity is not pinned on a firing row (Closed 2026-09-16, expanded 2026-09-17)
+## 3. Severity is not pinned on a firing row (open: the gate exists, no row uses it)
 
-Closed on 2026-09-16, expanded on 2026-09-17. `RecordingSubject` now records an optional `expectedSeverity` with `resolvedSeverity()` derived from the detector's model (`DetectorDefaultSeverity`). `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` verifies that finding severity matches expected severity when specified. `DetectorEffectivenessAndCorrectnessTest` validates that all 118 firing rows in the recording lane and all 34 firing rows in the agent-pair lane resolve to valid, non-degraded severity tiers.
+On 2026-09-16 `RecordingSubject` gained an optional `expectedSeverity`, and
+`CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` fails a firing row whose findings do
+not carry it. `CorpusGatesTest` shows that check rejecting a mismatch and accepting a match. No row
+in `Corpus` sets `expectedSeverity`, though, so in every real lane the check is skipped and a
+detector whose severity moves still passes. The 2026-09-17 tests that counted "resolved" severities
+per lane were removed: they derived the value from `DetectorDefaultSeverity` with a `HIGH` fallback,
+which asserts the library's own table rather than what a detector reported, and could not fail on a
+severity change. Closing this means pinning severities on rows from a recorded run, and only then
+letting the lanes enforce them. Whether each detector states a severity at all is gated in the
+library, by `DetectorSeverityMarkerTest`.
 
 ## 4. Gates have no failing-direction test (Closed 2026-09-16, completed 2026-09-17)
 
