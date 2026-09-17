@@ -14,7 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("SpinLocks: compare-and-swap spinlock lifecycle and reconfirmation (#621)")
@@ -32,6 +34,21 @@ class SpinLocksTest {
 
     static final class HolderBean {
         volatile int busy;
+    }
+
+    static class ResolveBase {
+        volatile int state;
+    }
+
+    static final class ResolveSub extends ResolveBase {
+        volatile int busy;
+    }
+
+    private static final String SUB_BUSY = ResolveSub.class.getName() + ".busy";
+    private static final String BASE_STATE = ResolveBase.class.getName() + ".state";
+
+    private static AtomicIntegerFieldUpdater<ResolveBase> baseStateUpdater() {
+        return AtomicIntegerFieldUpdater.newUpdater(ResolveBase.class, "state");
     }
 
     @BeforeEach
@@ -255,5 +272,49 @@ class SpinLocksTest {
                 "B saw the flag free before A won, so what B may revoke is only the hold that had "
                         + "already ended; revoking A's live hold would report A's guarded writes");
         assertTrue(HeldLocks.holds(lock), "A's lockset must still contain the spinlock");
+    }
+
+    @Test
+    @DisplayName("a pre-attach updater resolves when its whole hierarchy is scanned and records one field (#619)")
+    void preAttachUpdaterResolvesWhenTheWholeHierarchyIsScannedWithOneField() {
+        SpinLocks.recordScannedClass(ResolveBase.class.getName());
+        SpinLocks.recordScannedClass(ResolveSub.class.getName());
+        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
+
+        assertEquals(SUB_BUSY, SpinLocks.fieldOf(
+                AtomicIntegerFieldUpdater.newUpdater(ResolveSub.class, "busy"), new ResolveSub()));
+    }
+
+    @Test
+    @DisplayName("an updater from a superclass the weaver never scanned is not resolved to the subclass's field (#619)")
+    void updaterFromAnUnscannedSuperclassIsNotResolvedToTheSubclassField() {
+        // ResolveBase binds its own updater, but the weaver never saw it: only the subclass's field
+        // is on record, and naming it for a swap through the base's updater is the wrong flag.
+        SpinLocks.recordScannedClass(ResolveSub.class.getName());
+        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
+
+        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
+    }
+
+    @Test
+    @DisplayName("a hierarchy that records two updater fields resolves neither (#619)")
+    void hierarchyWithTwoRecordedFieldsResolvesNeither() {
+        SpinLocks.recordScannedClass(ResolveBase.class.getName());
+        SpinLocks.recordScannedClass(ResolveSub.class.getName());
+        SpinLocks.recordUpdaterField(ResolveBase.class.getName(), BASE_STATE);
+        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
+
+        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
+    }
+
+    @Test
+    @DisplayName("a hierarchy with an updater the weaver could not read resolves nothing (#619)")
+    void hierarchyWithAnUnreadableUpdaterResolvesNothing() {
+        SpinLocks.recordScannedClass(ResolveBase.class.getName());
+        SpinLocks.recordScannedClass(ResolveSub.class.getName());
+        // The only thing on record is that the base makes an updater nobody could read.
+        SpinLocks.recordUpdaterField(ResolveBase.class.getName(), SpinLocks.UNREADABLE);
+
+        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
     }
 }

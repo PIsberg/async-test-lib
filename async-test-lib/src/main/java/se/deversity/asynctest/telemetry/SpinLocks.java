@@ -81,6 +81,9 @@ final class SpinLocks {
     /** The pseudo-field an {@code AtomicBoolean} or {@code AtomicInteger} lock is keyed under. */
     private static final String ATOMIC = "#atomic";
 
+    /** The recorded field of a {@code newUpdater} call whose owner or name was not a constant (#619). */
+    static final String UNREADABLE = "";
+
     /**
      * Which field each {@code VarHandle} or {@code AtomicIntegerFieldUpdater} reaches, as
      * {@code declaringClass.field}; the empty string for a handle that was asked and cannot say.
@@ -90,6 +93,10 @@ final class SpinLocks {
     /**
      * Fields each class binds through an {@code AtomicIntegerFieldUpdater.newUpdater} call,
      * as {@code declaringClass -> Set<String> qualifiedFieldNames} (#619).
+     *
+     * <p>Every class the weaver finished scanning has an entry, an empty set when it binds nothing,
+     * so a class with no entry is one whose updaters nobody has seen. {@link #UNREADABLE} in a set
+     * marks a {@code newUpdater} call in that class whose arguments were not constants.
      */
     private static final Map<String, Set<String>> CLASS_UPDATER_FIELDS = new ConcurrentHashMap<>();
 
@@ -171,19 +178,38 @@ final class SpinLocks {
         return field.isEmpty() ? null : field;
     }
 
-    /** Records that {@code ownerClass} binds {@code field} through an updater (#619). */
+    /**
+     * Records that {@code ownerClass} binds {@code field} through an updater (#619), or, when
+     * {@code field} is {@link #UNREADABLE}, that it makes one the weaver could not read.
+     */
     static void recordUpdaterField(String ownerClass, String field) {
         CLASS_UPDATER_FIELDS.computeIfAbsent(ownerClass, k -> ConcurrentHashMap.newKeySet()).add(field);
     }
 
-
+    /** Records that the weaver has scanned every method of {@code className} (#619). */
+    static void recordScannedClass(String className) {
+        CLASS_UPDATER_FIELDS.computeIfAbsent(className, k -> ConcurrentHashMap.newKeySet());
+    }
 
     /**
      * {@return the field an updater reaches on {@code receiver}, or {@code null}}
      *
      * <p>If the updater was bound before the agent attached, its owner's type initializer never
-     * ran the woven binding call. We resolve it from the receiver's class hierarchy if exactly
-     * one updater field was recorded for that hierarchy (#619).
+     * ran the woven binding call. It is then resolved from the receiver's class hierarchy, but
+     * only when that hierarchy accounts for every updater it could hold (#619): every class in it
+     * outside the JDK has been scanned, none makes an updater the weaver could not read, and
+     * exactly one field was recorded across them. "One recorded field" alone is not "one updater":
+     * a superclass the agent was not told to weave can bind its own, and naming the subclass's
+     * flag for a swap through it would put a lock on the wrong flag in the lockset, which can
+     * excuse a race. Refusing only loses a guard.
+     *
+     * <p>Two limits remain. JDK superclasses are not scanned and are assumed to bind no updater a
+     * woven call site swaps. And an updater made in a class outside the receiver's hierarchy, on a
+     * field that class can reach, is recorded only if that class was scanned: an unscanned one can
+     * still leave a single recorded field that is the wrong one. Separately, the weave-time record
+     * goes to the registry the agent's own loader sees ({@code AtomicFieldRegistry}), so under a
+     * runner that loads the library in an isolated classloader this copy stays empty and every
+     * pre-attach updater stays unresolved, which reports rather than hides.
      */
     static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater,
                                     @Nullable Object receiver) {
@@ -205,14 +231,30 @@ final class SpinLocks {
     }
 
     private static @Nullable String resolveFromHierarchy(Class<?> clazz) {
-        Set<String> matches = new java.util.HashSet<>();
+        String found = null;
         for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
             Set<String> fields = CLASS_UPDATER_FIELDS.get(c.getName());
-            if (fields != null) {
-                matches.addAll(fields);
+            if (fields == null) {
+                if (isJdk(c)) {
+                    continue;
+                }
+                // Never scanned: it may bind an updater nobody recorded.
+                return null;
+            }
+            for (String field : fields) {
+                if (UNREADABLE.equals(field) || (found != null && !found.equals(field))) {
+                    return null;
+                }
+                found = field;
             }
         }
-        return matches.size() == 1 ? matches.iterator().next() : null;
+        return found;
+    }
+
+    @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"})
+    private static boolean isJdk(Class<?> type) {
+        ClassLoader loader = type.getClassLoader();
+        return loader == null || loader == ClassLoader.getPlatformClassLoader();
     }
 
     /** {@return {@code declaringClass.field} for a direct {@code int} instance-field handle, else ""} */
