@@ -207,4 +207,33 @@ class DetectorEffectivenessAndCorrectnessTest {
         assertTrue(high > 0, "must have high severity findings");
         assertTrue(medium > 0, "must have medium severity findings");
     }
+
+    @Test
+    @DisplayName("effectiveness: every firing subject in agent pairs resolves to a valid, non-degraded severity")
+    void everyAgentPairFiringSubjectHasValidSeverity() {
+        List<RecordingSubject> firingRows = Corpus.subjectsFor(CorpusLane.AGENT_PAIRS).stream()
+                .filter(s -> s.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                .toList();
+        assertEquals(34, firingRows.size(), "agent-pairs lane must hold exactly 34 MUST_FIRE rows");
+
+        long critical = 0;
+        long high = 0;
+        long medium = 0;
+        long low = 0;
+
+        for (RecordingSubject subject : firingRows) {
+            IssueSeverity severity = subject.resolvedSeverity();
+            assertNotNull(severity, "firing subject must have non-null resolved severity: " + subject.testMethod());
+            switch (severity) {
+                case CRITICAL -> critical++;
+                case HIGH -> high++;
+                case MEDIUM -> medium++;
+                case LOW -> low++;
+            }
+        }
+
+        assertEquals(34, critical + high + medium + low, "every row must map to a valid severity tier");
+        assertTrue(critical > 0, "must have critical severity findings");
+        assertTrue(high > 0, "must have high severity findings");
+    }
 }

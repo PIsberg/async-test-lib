@@ -38,8 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * input it must accept: a gate that throws on everything is no more use than one that throws on
  * nothing, and only the pair tells them apart.
  *
- * <p>All gates whose input can be synthesised, including the five gates parameterized to take
- * their subjects or source, are covered in both failing and accepting directions.
+ * <p>All gates whose input can be synthesised, including the gates parameterized to take
+ * their subjects, source, or execution parameters, are covered in both failing and accepting
+ * directions.
  *
  * <p>It runs in the agent-on lane because it needs no measurement, only the gate code and the
  * static corpus. That the agent is attached in that fork is itself used once, by the test that
@@ -562,6 +563,72 @@ class CorpusGatesTest {
                 Contract.NOT_THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
         assertDoesNotThrow(() ->
                 CorpusGates.noAgentRowRecordedItsOwnFinding(fakeSource, List.of(loud, quiet)));
+    }
+
+    // --- Library exclusion lane gate ---------------------------------------------------------
+
+    @Test
+    @DisplayName("empty library rows fails the library exclusion gate")
+    void emptyLibraryRowsFailsLibraryExclusionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of(), 50, List.of(), List.of("com.google.common."), 0));
+    }
+
+    @Test
+    @DisplayName("missing async test method fails the library exclusion gate")
+    void missingAsyncTestMethodFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("otherMethod"), 50, List.of(row), List.of("com.google.common."), 50));
+    }
+
+    @Test
+    @DisplayName("uncovered library package fails the library exclusion gate")
+    void uncoveredLibraryPackageFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("guavaSubject"), 50, List.of(row), List.of("org.apache.commons."), 50));
+    }
+
+    @Test
+    @DisplayName("execution count mismatch fails the library exclusion gate")
+    void executionCountMismatchFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("guavaSubject"), 50, List.of(row), List.of("com.google.common."), 49));
+    }
+
+    @Test
+    @DisplayName("still firing library row fails the library exclusion gate")
+    void stillFiringLibraryRowFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        CorpusRecorder.Finding finding = finding("guavaSubject", DetectorExposure.classOf(DetectorType.LOCK_LEAKS));
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(finding), Set.of("guavaSubject"), 50, List.of(row), List.of("com.google.common."), 50));
+    }
+
+    @Test
+    @DisplayName("clean excluded library rows pass the library exclusion gate")
+    void cleanExcludedLibraryRowsPassLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertDoesNotThrow(() ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("guavaSubject"), 50, List.of(row), List.of("com.google.common."), 50));
     }
 
     // --- Fixtures ----------------------------------------------------------------------------

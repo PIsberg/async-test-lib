@@ -137,28 +137,37 @@ final class CorpusGates {
         CorpusLane lane = CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED;
         theAgentIsAttachedTheWayThisLaneRequires(lane);
         List<RecordingSubject> rows = Corpus.subjectsFor(lane);
-        assertFalse(rows.isEmpty(), "the library-exclusion lane found no library rows to run");
-
-        Set<String> methods = Arrays.stream(laneTest.getDeclaredMethods())
+        Set<String> declaredMethods = Arrays.stream(laneTest.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(AsyncTest.class))
                 .map(Method::getName)
                 .collect(Collectors.toUnmodifiableSet());
+        checkLibraryExclusionLane(findings, declaredMethods, executionsPerRow, rows,
+                excludedPrefixes(), CorpusRecorder.bodyExecutions());
+    }
+
+    static void checkLibraryExclusionLane(List<CorpusRecorder.Finding> findings,
+                                          Set<String> declaredMethods,
+                                          int executionsPerRow,
+                                          List<RecordingSubject> rows,
+                                          List<String> excludedPrefixes,
+                                          long bodyExecutions) {
+        assertFalse(rows.isEmpty(), "the library-exclusion lane found no library rows to run");
+
         List<String> missing = rows.stream().map(RecordingSubject::testMethod)
-                .filter(name -> !methods.contains(name)).toList();
+                .filter(name -> !declaredMethods.contains(name)).toList();
         assertTrue(missing.isEmpty(), "library rows with no @AsyncTest method: " + missing);
 
-        List<String> excluded = excludedPrefixes();
         List<String> notExcluded = rows.stream()
-                .filter(row -> excluded.stream().noneMatch(prefix -> row.className().startsWith(prefix)))
+                .filter(row -> excludedPrefixes.stream().noneMatch(prefix -> row.className().startsWith(prefix)))
                 .map(row -> row.testMethod() + " (" + row.className() + ")")
                 .toList();
         assertTrue(notExcluded.isEmpty(),
                 "these library rows name a class the agent's excludes= list does not cover, so "
                         + "their library is still woven in this lane and silence proves nothing. "
                         + "Add the package to the agent-pairs-library-excluded execution in "
-                        + "corpus-eval/pom.xml. Excluded: " + excluded + "; uncovered: " + notExcluded);
+                        + "corpus-eval/pom.xml. Excluded: " + excludedPrefixes + "; uncovered: " + notExcluded);
 
-        assertEquals(rows.size() * executionsPerRow, CorpusRecorder.bodyExecutions(),
+        assertEquals((long) rows.size() * executionsPerRow, bodyExecutions,
                 "every library row must run its full " + executionsPerRow + " executions here, or "
                         + "a silent row may be a row that did not run");
 
