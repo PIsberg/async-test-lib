@@ -38,8 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * input it must accept: a gate that throws on everything is no more use than one that throws on
  * nothing, and only the pair tells them apart.
  *
- * <p>All gates whose input can be synthesised, including the five gates parameterized to take
- * their subjects or source, are covered in both failing and accepting directions.
+ * <p>All gates whose input can be synthesised, including the gates parameterized to take
+ * their subjects, source, or execution parameters, are covered in both failing and accepting
+ * directions.
  *
  * <p>It runs in the agent-on lane because it needs no measurement, only the gate code and the
  * static corpus. That the agent is attached in that fork is itself used once, by the test that
@@ -171,6 +172,62 @@ class CorpusGatesTest {
                         CorpusLane.AGENT_ON));
     }
 
+    @Test
+    @DisplayName("an exposed reporting detector passes the exposure gate")
+    void anExposedDetectorReportingPassesTheExposureGate() {
+        assertDoesNotThrow(() -> CorpusGates.everyReportingDetectorWasExposed(
+                List.of(finding(aSubjectWith(Contract.NOT_THREAD_SAFE).testMethod(),
+                        DetectorExposure.classOf(DetectorType.DEADLOCKS))),
+                CorpusLane.AGENT_ON));
+    }
+
+    // --- Attribution -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("an unresolvable finding subject fails the attribution gate")
+    void anOrphanFindingFailsTheAttributionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyFindingIsAttributed(
+                        List.of(finding("orphanSubject", someDetectorClass())), List.of(), id -> null));
+    }
+
+    @Test
+    @DisplayName("an unresolvable crash subject fails the attribution gate")
+    void anOrphanCrashFailsTheAttributionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyFindingIsAttributed(
+                        List.of(), List.of(new CorpusRecorder.Crash("orphanCrash", "java.lang.RuntimeException")), id -> null));
+    }
+
+    @Test
+    @DisplayName("attributed findings and crashes pass the attribution gate")
+    void attributedFindingsAndCrashesPassTheAttributionGate() {
+        Subject subject = aSubjectWith(Contract.THREAD_SAFE);
+        assertDoesNotThrow(() ->
+                CorpusGates.everyFindingIsAttributed(
+                        List.of(finding(subject.testMethod(), someDetectorClass())),
+                        List.of(new CorpusRecorder.Crash(subject.testMethod(), "java.lang.RuntimeException")),
+                        id -> subject));
+    }
+
+    @Test
+    @DisplayName("an unresolvable recording finding fails the recording attribution gate")
+    void anOrphanRecordingFindingFailsTheAttributionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyRecordingFindingIsAttributed(
+                        List.of(finding("orphanRecordingSubject", someDetectorClass())), id -> null));
+    }
+
+    @Test
+    @DisplayName("attributed recording findings pass the recording attribution gate")
+    void attributedRecordingFindingPassesTheAttributionGate() {
+        RecordingSubject row = new RecordingSubject("recSubject", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertDoesNotThrow(() ->
+                CorpusGates.everyRecordingFindingIsAttributed(
+                        List.of(finding("recSubject", someDetectorClass())), id -> id.equals("recSubject") ? row : null));
+    }
+
     // --- Detection ---------------------------------------------------------------------------
 
     @Test
@@ -274,6 +331,36 @@ class CorpusGatesTest {
         findings.add(new CorpusRecorder.Finding(firing.testMethod(),
                 DetectorExposure.classOf(firing.detector()), IssueSeverity.HIGH, TrustTier.PROMPT,
                 "   ", "evidence"));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("a finding with null evidence fails the outcome gate: effective findings require evidence")
+    void aFindingWithNullEvidenceFailsTheOutcomeGate() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject firing = aFiringRow();
+        findings.removeIf(f -> f.subject().equals(firing.testMethod()));
+        findings.add(new CorpusRecorder.Finding(firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()), IssueSeverity.HIGH, TrustTier.PROMPT,
+                "valid message", null));
+
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                        findings, CorpusLane.RECORDING));
+    }
+
+    @Test
+    @DisplayName("a finding with blank evidence fails the outcome gate: effective findings require evidence")
+    void aFindingWithBlankEvidenceFailsTheOutcomeGate() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject firing = aFiringRow();
+        findings.removeIf(f -> f.subject().equals(firing.testMethod()));
+        findings.add(new CorpusRecorder.Finding(firing.testMethod(),
+                DetectorExposure.classOf(firing.detector()), IssueSeverity.HIGH, TrustTier.PROMPT,
+                "valid message", "   "));
 
         assertThrows(AssertionFailedError.class,
                 () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
@@ -429,6 +516,29 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("a missing test method fails the recording subject exercise gate")
+    void missingRecordingAsyncTestMethodFailsSubjectExerciseGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyRecordingSubjectIsExercised(DummySubjectSuite.class,
+                        Set.of("subjectA", "subjectB", "subjectC")));
+    }
+
+    @Test
+    @DisplayName("an unregistered test method fails the recording subject exercise gate")
+    void unregisteredRecordingAsyncTestMethodFailsSubjectExerciseGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyRecordingSubjectIsExercised(DummySubjectSuite.class, Set.of("subjectA")));
+    }
+
+    @Test
+    @DisplayName("matching subjects pass the recording subject exercise gate")
+    void matchingRecordingSubjectsPassSubjectExerciseGate() {
+        assertDoesNotThrow(() ->
+                CorpusGates.everyRecordingSubjectIsExercised(DummySubjectSuite.class,
+                        Set.of("subjectA", "subjectB")));
+    }
+
+    @Test
     @DisplayName("an unexposed paired detector fails the paired exposure gate")
     void unexposedPairedDetectorFailsPairedExposureGate() {
         assertThrows(AssertionFailedError.class, () ->
@@ -562,6 +672,132 @@ class CorpusGatesTest {
                 Contract.NOT_THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat");
         assertDoesNotThrow(() ->
                 CorpusGates.noAgentRowRecordedItsOwnFinding(fakeSource, List.of(loud, quiet)));
+    }
+
+    // --- Library exclusion lane gate ---------------------------------------------------------
+
+    @Test
+    @DisplayName("empty library rows fails the library exclusion gate")
+    void emptyLibraryRowsFailsLibraryExclusionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of(), 50, List.of(), List.of("com.google.common."), 0));
+    }
+
+    @Test
+    @DisplayName("missing async test method fails the library exclusion gate")
+    void missingAsyncTestMethodFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("otherMethod"), 50, List.of(row), List.of("com.google.common."), 50));
+    }
+
+    @Test
+    @DisplayName("uncovered library package fails the library exclusion gate")
+    void uncoveredLibraryPackageFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("guavaSubject"), 50, List.of(row), List.of("org.apache.commons."), 50));
+    }
+
+    @Test
+    @DisplayName("execution count mismatch fails the library exclusion gate")
+    void executionCountMismatchFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("guavaSubject"), 50, List.of(row), List.of("com.google.common."), 49));
+    }
+
+    @Test
+    @DisplayName("still firing library row fails the library exclusion gate")
+    void stillFiringLibraryRowFailsLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        CorpusRecorder.Finding finding = finding("guavaSubject", DetectorExposure.classOf(DetectorType.LOCK_LEAKS));
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(finding), Set.of("guavaSubject"), 50, List.of(row), List.of("com.google.common."), 50));
+    }
+
+    @Test
+    @DisplayName("clean excluded library rows pass the library exclusion gate")
+    void cleanExcludedLibraryRowsPassLibraryExclusionGate() {
+        RecordingSubject row = new RecordingSubject(
+                "guavaSubject", "com.google.guava:guava", "com.google.common.cache.LocalCache",
+                DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertDoesNotThrow(() ->
+                CorpusGates.checkLibraryExclusionLane(
+                        List.of(), Set.of("guavaSubject"), 50, List.of(row), List.of("com.google.common."), 50));
+    }
+
+    // --- Lane Premises -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a silent deadlock row running after deadlock started fails the deadlock order premise")
+    void silentDeadlockRowOnDirtyJvmFailsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.theDeadlockRowsRanInOrder(false, true));
+    }
+
+    @Test
+    @DisplayName("a silent deadlock row running on a clean JVM passes the deadlock order premise")
+    void silentDeadlockRowOnCleanJvmPassesPremise() {
+        assertDoesNotThrow(() ->
+                CorpusGates.theDeadlockRowsRanInOrder(true, false));
+    }
+
+    @Test
+    @DisplayName("more than one physical connection fails the pooled rows premise")
+    void multipleConnectionsFailPooledRowsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.thePooledRowsPremiseHeld(2, 6));
+    }
+
+    @Test
+    @DisplayName("zero physical connections fail the pooled rows premise")
+    void zeroConnectionsFailPooledRowsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.thePooledRowsPremiseHeld(0, 6));
+    }
+
+    @Test
+    @DisplayName("a single thread using the pool fails the pooled rows premise")
+    void singleThreadFailsPooledRowsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.thePooledRowsPremiseHeld(1, 1));
+    }
+
+    @Test
+    @DisplayName("one connection reaching multiple threads passes the pooled rows premise")
+    void singleConnectionMultipleThreadsPassesPooledRowsPremise() {
+        assertDoesNotThrow(() ->
+                CorpusGates.thePooledRowsPremiseHeld(1, 6));
+    }
+
+    @Test
+    @DisplayName("an unexpected notify outcome fails the illegal notify premise")
+    void unexpectedNotifyOutcomeFailsIllegalNotifyPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.theIllegalNotifyReallyThrew("NullPointerException"));
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.theIllegalNotifyReallyThrew(null));
+    }
+
+    @Test
+    @DisplayName("IllegalMonitorStateException passes the illegal notify premise")
+    void illegalMonitorStateExceptionPassesIllegalNotifyPremise() {
+        assertDoesNotThrow(() ->
+                CorpusGates.theIllegalNotifyReallyThrew("IllegalMonitorStateException"));
     }
 
     // --- Fixtures ----------------------------------------------------------------------------

@@ -101,7 +101,7 @@ final class LibraryBuild {
      * @param classes the working tree's compiled output for it
      * @param what    what to call the artifact in the failure message
      */
-    private static Optional<String> complaintAbout(Optional<Path> jar, Path classes, String what) {
+    static Optional<String> complaintAbout(Optional<Path> jar, Path classes, String what) {
         if (jar.isEmpty() || Files.isDirectory(jar.get()) || !Files.isDirectory(classes)) {
             return Optional.empty();
         }
@@ -155,7 +155,7 @@ final class LibraryBuild {
         }
     }
 
-    private static String digestOf(Path jar) {
+    static String digestOf(Path jar) {
         try (InputStream in = Files.newInputStream(jar)) {
             MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
             byte[] buffer = new byte[8192];
@@ -182,7 +182,7 @@ final class LibraryBuild {
     }
 
     /** {@return the newest modification time among the class files under {@code root}} */
-    private static long newestClassIn(Path root) {
+    static long newestClassIn(Path root) {
         long[] newest = {0L};
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<>() {

@@ -181,3 +181,11 @@ Detailed per-element guardrails live in scoped rule files that load automaticall
 - `se.deversity.asynctest.telemetry.TelemetryBridge` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-lib -->
 <!-- VIBETAGS-END -->
+
+## Core Principles
+
+1. **Think Before Coding**: Surface assumptions and tradeoffs explicitly; push back if simpler alternatives exist.
+2. **Simplicity First**: Minimum code to solve the problem; zero speculative abstractions, unrequested features, or over-engineering.
+3. **Surgical Changes**: Touch only lines required for the task; match local style; clean only own orphans, never unrelated code.
+4. **Goal-Driven Execution**: Define verifiable test criteria first; loop until verified before declaring completion.
+

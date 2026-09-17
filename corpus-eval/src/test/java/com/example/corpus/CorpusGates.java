@@ -137,28 +137,37 @@ final class CorpusGates {
         CorpusLane lane = CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED;
         theAgentIsAttachedTheWayThisLaneRequires(lane);
         List<RecordingSubject> rows = Corpus.subjectsFor(lane);
-        assertFalse(rows.isEmpty(), "the library-exclusion lane found no library rows to run");
-
-        Set<String> methods = Arrays.stream(laneTest.getDeclaredMethods())
+        Set<String> declaredMethods = Arrays.stream(laneTest.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(AsyncTest.class))
                 .map(Method::getName)
                 .collect(Collectors.toUnmodifiableSet());
+        checkLibraryExclusionLane(findings, declaredMethods, executionsPerRow, rows,
+                excludedPrefixes(), CorpusRecorder.bodyExecutions());
+    }
+
+    static void checkLibraryExclusionLane(List<CorpusRecorder.Finding> findings,
+                                          Set<String> declaredMethods,
+                                          int executionsPerRow,
+                                          List<RecordingSubject> rows,
+                                          List<String> excludedPrefixes,
+                                          long bodyExecutions) {
+        assertFalse(rows.isEmpty(), "the library-exclusion lane found no library rows to run");
+
         List<String> missing = rows.stream().map(RecordingSubject::testMethod)
-                .filter(name -> !methods.contains(name)).toList();
+                .filter(name -> !declaredMethods.contains(name)).toList();
         assertTrue(missing.isEmpty(), "library rows with no @AsyncTest method: " + missing);
 
-        List<String> excluded = excludedPrefixes();
         List<String> notExcluded = rows.stream()
-                .filter(row -> excluded.stream().noneMatch(prefix -> row.className().startsWith(prefix)))
+                .filter(row -> excludedPrefixes.stream().noneMatch(prefix -> row.className().startsWith(prefix)))
                 .map(row -> row.testMethod() + " (" + row.className() + ")")
                 .toList();
         assertTrue(notExcluded.isEmpty(),
                 "these library rows name a class the agent's excludes= list does not cover, so "
                         + "their library is still woven in this lane and silence proves nothing. "
                         + "Add the package to the agent-pairs-library-excluded execution in "
-                        + "corpus-eval/pom.xml. Excluded: " + excluded + "; uncovered: " + notExcluded);
+                        + "corpus-eval/pom.xml. Excluded: " + excludedPrefixes + "; uncovered: " + notExcluded);
 
-        assertEquals(rows.size() * executionsPerRow, CorpusRecorder.bodyExecutions(),
+        assertEquals((long) rows.size() * executionsPerRow, bodyExecutions,
                 "every library row must run its full " + executionsPerRow + " executions here, or "
                         + "a silent row may be a row that did not run");
 
@@ -223,6 +232,40 @@ final class CorpusGates {
         }
         everyCorpusBackedVerdictResolvesToItsPair();
         everySilentRowReachesItsDetector();
+    }
+
+    /**
+     * Refuses a run where the silent deadlock row ran on an already deadlocked JVM.
+     */
+    static void theDeadlockRowsRanInOrder(boolean silentRowRanOnCleanJvm, boolean deadlockStarted) {
+        assertTrue(silentRowRanOnCleanJvm,
+                "the silent deadlock row has to run before the row that deadlocks two threads "
+                        + "permanently, or its silence is measuring the wrong JVM. It observed "
+                        + "DEADLOCK_STARTED=" + deadlockStarted + " when it ran");
+    }
+
+    /**
+     * Refuses a run where the pooled connection premise did not hold.
+     */
+    static void thePooledRowsPremiseHeld(int physicalConnections, int threadsThatUsedThePool) {
+        assertEquals(1, physicalConnections,
+                "the pool is sized to one so that every thread gets the same physical connection; "
+                        + "with more than one, the silent row proves nothing about reuse across "
+                        + "threads. Saw " + physicalConnections + " distinct connections");
+        assertTrue(threadsThatUsedThePool > 1,
+                "that one connection has to reach more than one thread, or the detector "
+                        + "short-circuits before it reaches the rule under test and the silence "
+                        + "is not evidence. Saw " + threadsThatUsedThePool + " thread(s)");
+    }
+
+    /**
+     * Refuses a run where notifyAll outside a monitor did not throw IllegalMonitorStateException.
+     */
+    static void theIllegalNotifyReallyThrew(String outcome) {
+        assertEquals("IllegalMonitorStateException", outcome,
+                "the loud notify row claims the monitor is not held, and notifyAll outside a "
+                        + "monitor must throw IllegalMonitorStateException. The JVM said: "
+                        + outcome);
     }
 
 
@@ -362,12 +405,16 @@ final class CorpusGates {
 
     /** A recording test method without a row would be a subject with no stated expectation. */
     static void everyRecordingSubjectIsExercised(CorpusLane lane, Class<?> laneTest) {
+        Set<String> declared = Corpus.subjectsFor(lane).stream()
+                .map(RecordingSubject::testMethod)
+                .collect(Collectors.toUnmodifiableSet());
+        everyRecordingSubjectIsExercised(laneTest, declared);
+    }
+
+    static void everyRecordingSubjectIsExercised(Class<?> laneTest, Set<String> declared) {
         Set<String> exercised = Arrays.stream(laneTest.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(AsyncTest.class))
                 .map(Method::getName)
-                .collect(Collectors.toUnmodifiableSet());
-        Set<String> declared = Corpus.subjectsFor(lane).stream()
-                .map(RecordingSubject::testMethod)
                 .collect(Collectors.toUnmodifiableSet());
 
         assertEquals(declared, exercised,
@@ -376,10 +423,15 @@ final class CorpusGates {
     }
 
     static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings,
-                                                          CorpusLane lane) {
+                                                  CorpusLane lane) {
+        everyRecordingFindingIsAttributed(findings, subject -> Corpus.pairByTestMethod(lane, subject));
+    }
+
+    static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings,
+                                                  java.util.function.Function<String, RecordingSubject> resolver) {
         List<String> orphans = findings.stream()
                 .map(CorpusRecorder.Finding::subject)
-                .filter(subject -> Corpus.pairByTestMethod(lane, subject) == null)
+                .filter(subject -> resolver.apply(subject) == null)
                 .distinct()
                 .toList();
         assertTrue(orphans.isEmpty(), "findings attributed to no recording subject: " + orphans);
@@ -446,9 +498,10 @@ final class CorpusGates {
             }
             if (shouldFire) {
                 boolean validDiagnostics = matches.stream().anyMatch(f ->
-                        f.severity() != null && f.message() != null && !f.message().isBlank());
+                        f.severity() != null && f.message() != null && !f.message().isBlank()
+                                && f.evidence() != null && !f.evidence().isBlank());
                 if (!validDiagnostics) {
-                    wrong.add("FIRED with invalid diagnostics (null severity or blank message): "
+                    wrong.add("FIRED with invalid diagnostics (null severity, blank message, or blank evidence): "
                             + subject.testMethod() + " [" + detectorClass + "] - "
                             + subject.rationale());
                 }
@@ -624,17 +677,23 @@ final class CorpusGates {
     }
 
     static void everyFindingIsAttributed(List<CorpusRecorder.Finding> findings,
-                                                 List<CorpusRecorder.Crash> crashes) {
+                                         List<CorpusRecorder.Crash> crashes) {
+        everyFindingIsAttributed(findings, crashes, Corpus::byTestMethod);
+    }
+
+    static void everyFindingIsAttributed(List<CorpusRecorder.Finding> findings,
+                                         List<CorpusRecorder.Crash> crashes,
+                                         java.util.function.Function<String, Subject> resolver) {
         List<String> orphans = findings.stream()
                 .map(CorpusRecorder.Finding::subject)
-                .filter(subject -> Corpus.byTestMethod(subject) == null)
+                .filter(subject -> resolver.apply(subject) == null)
                 .distinct()
                 .toList();
         assertTrue(orphans.isEmpty(), "findings attributed to no subject: " + orphans);
 
         List<String> orphanCrashes = crashes.stream()
                 .map(CorpusRecorder.Crash::subject)
-                .filter(subject -> Corpus.byTestMethod(subject) == null)
+                .filter(subject -> resolver.apply(subject) == null)
                 .distinct()
                 .toList();
         assertTrue(orphanCrashes.isEmpty(), "crashes attributed to no subject: " + orphanCrashes);
@@ -663,12 +722,18 @@ final class CorpusGates {
      * "looked and saw nothing" depends on this holding.
      */
     static void everyReportingDetectorWasExposed(List<CorpusRecorder.Finding> findings,
-                                                         CorpusLane lane) {
+                                                 CorpusLane lane) {
+        everyReportingDetectorWasExposed(findings, lane, type -> DetectorExposure.isExposed(type, lane));
+    }
+
+    static void everyReportingDetectorWasExposed(List<CorpusRecorder.Finding> findings,
+                                                 CorpusLane lane,
+                                                 java.util.function.Predicate<DetectorType> isExposed) {
         List<String> unexposed = findings.stream()
                 .map(CorpusRecorder.Finding::detector)
                 .distinct()
                 .filter(detector -> DetectorExposure.typeOf(detector)
-                        .map(type -> !DetectorExposure.isExposed(type, lane))
+                        .map(type -> !isExposed.test(type))
                         .orElse(true))
                 .toList();
 

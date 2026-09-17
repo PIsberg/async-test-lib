@@ -1037,14 +1037,7 @@ class CorpusRecordingLaneTest {
      * green result and the row would be measuring nothing.
      */
     private static void thePooledRowsPremiseHeld() {
-        assertEquals(1, PHYSICAL_CONNECTIONS.size(),
-                "the pool is sized to one so that every thread gets the same physical connection; "
-                        + "with more than one, the silent row proves nothing about reuse across "
-                        + "threads. Saw " + PHYSICAL_CONNECTIONS.size() + " distinct connections");
-        assertTrue(THREADS_THAT_USED_THE_POOL.size() > 1,
-                "that one connection has to reach more than one thread, or the detector "
-                        + "short-circuits before it reaches the rule under test and the silence "
-                        + "is not evidence. Saw " + THREADS_THAT_USED_THE_POOL.size() + " thread(s)");
+        CorpusGates.thePooledRowsPremiseHeld(PHYSICAL_CONNECTIONS.size(), THREADS_THAT_USED_THE_POOL.size());
     }
 
     /**
@@ -1058,10 +1051,7 @@ class CorpusRecordingLaneTest {
      * something other than what the rationale claims.
      */
     private static void theIllegalNotifyReallyThrew() {
-        assertEquals("IllegalMonitorStateException", ILLEGAL_NOTIFY_OUTCOME.get(),
-                "the loud notify row claims the monitor is not held, and notifyAll outside a "
-                        + "monitor must throw IllegalMonitorStateException. The JVM said: "
-                        + ILLEGAL_NOTIFY_OUTCOME.get());
+        CorpusGates.theIllegalNotifyReallyThrew(ILLEGAL_NOTIFY_OUTCOME.get());
     }
 
     // --- LatchMisuse and BlockingQueue -------------------------------------------------------
