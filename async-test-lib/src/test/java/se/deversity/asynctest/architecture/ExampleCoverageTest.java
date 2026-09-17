@@ -108,34 +108,52 @@ class ExampleCoverageTest {
     }
 
     /**
-     * A prose claim in {@code examples/README.md} about how many examples there are.
+     * A prose claim about how many examples there are.
      *
-     * <p>Two alternatives, both anchored on a word, so a version number or a detector count
+     * <p>Three alternatives, each anchored on a word, so a version number or a detector count
      * cannot match. The first catches "the 148 examples" and "99 of the 148 examples"; the
      * second catches "builds all 148 and runs their enabled tests", where the noun arrives
-     * too late for the first to reach it.
+     * too late for the first to reach it; the third catches "All 148 example projects", which is
+     * how the pipeline table in {@code docs/QUALITY_GATES.md} words it.
      */
-    private static final Pattern EXAMPLE_COUNT =
-            Pattern.compile("\\b(\\d{2,4}) examples\\b|builds all (\\d{2,4})\\b");
+    private static final Pattern EXAMPLE_COUNT = Pattern.compile(
+            "\\b(\\d{2,4}) examples\\b|builds all (\\d{2,4})\\b|\\b(\\d{2,4}) example projects\\b");
+
+    /**
+     * Every file that states how many examples there are, which is more than the index.
+     *
+     * <p>{@code examples/README.md} was the only one read until 2026-09-17, and the other three
+     * had all stopped at 127 while 148 directories were on disk: the pipeline table and the
+     * sampling paragraphs in {@code docs/QUALITY_GATES.md}, and the comment above the every-4th
+     * sample in both workflows that implement it. A reader deciding whether a library-only pull
+     * request covers the examples reads those, not the index.
+     */
+    private static final List<String> FILES_CLAIMING_AN_EXAMPLE_COUNT = List.of(
+            "examples/README.md",
+            "docs/QUALITY_GATES.md",
+            ".github/workflows/e2e-tests.yml",
+            ".github/workflows/gradle-tests.yml");
 
     @Test
-    @DisplayName("examples/README.md states the real number of examples")
+    @DisplayName("every file stating an example count states the real number of examples")
     void proseExampleCountsMatchTheDirectoriesOnDisk() {
         Path root = repoRoot();
         int expected = exampleDirs(root).size();
-        String readme = read(root.resolve("examples/README.md"));
 
         List<String> wrong = new ArrayList<>();
-        Matcher m = EXAMPLE_COUNT.matcher(readme);
-        while (m.find()) {
-            String digits = m.group(1) != null ? m.group(1) : m.group(2);
-            if (Integer.parseInt(digits) != expected) {
-                wrong.add(m.group().trim() + " (should be " + expected + ")");
+        for (String file : FILES_CLAIMING_AN_EXAMPLE_COUNT) {
+            Matcher m = EXAMPLE_COUNT.matcher(read(root.resolve(file)));
+            while (m.find()) {
+                String digits = m.group(1) != null ? m.group(1)
+                        : m.group(2) != null ? m.group(2) : m.group(3);
+                if (Integer.parseInt(digits) != expected) {
+                    wrong.add(file + ": " + m.group().trim() + " (should be " + expected + ")");
+                }
             }
         }
 
         assertTrue(wrong.isEmpty(),
-                "examples/README.md states an example count that is not " + expected + ", which "
+                "these files state an example count that is not " + expected + ", which "
                         + "is how many example directories exist. Stale claims: " + wrong
                         + ". This is the same failure mode DetectorCatalogCoverageTest exists to "
                         + "prevent for detector counts: a number a reader can check in a minute, "

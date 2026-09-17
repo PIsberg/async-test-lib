@@ -261,20 +261,20 @@ Underneath, which legs run depends on the event:
 |---|---|---|
 | Consumer Fixture (JDK 21, 25) | every PR and push | Resolves the built artifact from a local repo and drives it through the public API only, one `@AsyncTest` fixture per `DetectorType` |
 | Examples Shard (PR) | PRs that change `examples/**` **or** library sources | See below |
-| Examples Reactor | push to `main`/`develop`, and nightly | All 127 example projects, four shards |
+| Examples Reactor | push to `main`/`develop`, and nightly | All 148 example projects, four shards |
 
 **The PR filter used to ask the wrong question.** It watched `examples/**` only, so it answered
-"did you edit an example?" when what matters is "could you have broken the examples?" — and the 127
-examples all consume the built artifact. A library-only PR therefore ran zero of them and went
+"did you edit an example?" when what matters is "could you have broken the examples?", and the
+148 examples all consume the built artifact. A library-only PR therefore ran zero of them and went
 green, with any breakage surfacing after merge or overnight.
 
 `examples-detect` now also watches `async-test-*/src/main/**` and the root build files. A library
-change runs a deterministic every-4th sample (32 of 127) rather than the full reactor: enough to
-catch a systemic break at PR time, cheap enough to afford on every library PR. A PR that changes
-both gets the union, deduplicated. `gradle-tests.yml` mirrors this exactly.
+change runs a deterministic every-4th sample, 37 of the 148 examples, rather than the full
+reactor: enough to catch a systemic break at PR time, cheap enough to afford on every library PR.
+A PR that changes both gets the union, deduplicated. `gradle-tests.yml` mirrors this exactly.
 
-The sample is a sample, not coverage — the full reactor on push and nightly is still what proves
-all 127 build. This only moves discovery of the common failure earlier.
+The sample is a sample, not coverage. The full reactor on push and nightly is still what proves
+all 148 examples build; this only moves discovery of the common failure earlier.
 
 ## Mutation testing
 
