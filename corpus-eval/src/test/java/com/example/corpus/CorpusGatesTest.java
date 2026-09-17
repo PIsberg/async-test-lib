@@ -710,6 +710,66 @@ class CorpusGatesTest {
                         List.of(), Set.of("guavaSubject"), 50, List.of(row), List.of("com.google.common."), 50));
     }
 
+    // --- Lane Premises -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a silent deadlock row running after deadlock started fails the deadlock order premise")
+    void silentDeadlockRowOnDirtyJvmFailsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.theDeadlockRowsRanInOrder(false, true));
+    }
+
+    @Test
+    @DisplayName("a silent deadlock row running on a clean JVM passes the deadlock order premise")
+    void silentDeadlockRowOnCleanJvmPassesPremise() {
+        assertDoesNotThrow(() ->
+                CorpusGates.theDeadlockRowsRanInOrder(true, false));
+    }
+
+    @Test
+    @DisplayName("more than one physical connection fails the pooled rows premise")
+    void multipleConnectionsFailPooledRowsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.thePooledRowsPremiseHeld(2, 6));
+    }
+
+    @Test
+    @DisplayName("zero physical connections fail the pooled rows premise")
+    void zeroConnectionsFailPooledRowsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.thePooledRowsPremiseHeld(0, 6));
+    }
+
+    @Test
+    @DisplayName("a single thread using the pool fails the pooled rows premise")
+    void singleThreadFailsPooledRowsPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.thePooledRowsPremiseHeld(1, 1));
+    }
+
+    @Test
+    @DisplayName("one connection reaching multiple threads passes the pooled rows premise")
+    void singleConnectionMultipleThreadsPassesPooledRowsPremise() {
+        assertDoesNotThrow(() ->
+                CorpusGates.thePooledRowsPremiseHeld(1, 6));
+    }
+
+    @Test
+    @DisplayName("an unexpected notify outcome fails the illegal notify premise")
+    void unexpectedNotifyOutcomeFailsIllegalNotifyPremise() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.theIllegalNotifyReallyThrew("NullPointerException"));
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.theIllegalNotifyReallyThrew(null));
+    }
+
+    @Test
+    @DisplayName("IllegalMonitorStateException passes the illegal notify premise")
+    void illegalMonitorStateExceptionPassesIllegalNotifyPremise() {
+        assertDoesNotThrow(() ->
+                CorpusGates.theIllegalNotifyReallyThrew("IllegalMonitorStateException"));
+    }
+
     // --- Fixtures ----------------------------------------------------------------------------
 
     /** {@return every MUST_FIRE row of the recording lane, reporting from its own detector} */

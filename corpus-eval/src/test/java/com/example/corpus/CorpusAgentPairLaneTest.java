@@ -703,10 +703,7 @@ class CorpusAgentPairLaneTest {
      * reason - silent because the finding was already everywhere - and nothing would say so.
      */
     private static void theDeadlockRowsRanInOrder() {
-        assertTrue(SILENT_ROW_RAN_ON_A_CLEAN_JVM.get(),
-                "the silent deadlock row has to run before the row that deadlocks two threads "
-                        + "permanently, or its silence is measuring the wrong JVM. It observed "
-                        + "DEADLOCK_STARTED=" + DEADLOCK_STARTED.get() + " when it ran");
+        CorpusGates.theDeadlockRowsRanInOrder(SILENT_ROW_RAN_ON_A_CLEAN_JVM.get(), DEADLOCK_STARTED.get());
     }
 
     // --- Through library bytecode -----------------------------------------------------------

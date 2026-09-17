@@ -234,6 +234,40 @@ final class CorpusGates {
         everySilentRowReachesItsDetector();
     }
 
+    /**
+     * Refuses a run where the silent deadlock row ran on an already deadlocked JVM.
+     */
+    static void theDeadlockRowsRanInOrder(boolean silentRowRanOnCleanJvm, boolean deadlockStarted) {
+        assertTrue(silentRowRanOnCleanJvm,
+                "the silent deadlock row has to run before the row that deadlocks two threads "
+                        + "permanently, or its silence is measuring the wrong JVM. It observed "
+                        + "DEADLOCK_STARTED=" + deadlockStarted + " when it ran");
+    }
+
+    /**
+     * Refuses a run where the pooled connection premise did not hold.
+     */
+    static void thePooledRowsPremiseHeld(int physicalConnections, int threadsThatUsedThePool) {
+        assertEquals(1, physicalConnections,
+                "the pool is sized to one so that every thread gets the same physical connection; "
+                        + "with more than one, the silent row proves nothing about reuse across "
+                        + "threads. Saw " + physicalConnections + " distinct connections");
+        assertTrue(threadsThatUsedThePool > 1,
+                "that one connection has to reach more than one thread, or the detector "
+                        + "short-circuits before it reaches the rule under test and the silence "
+                        + "is not evidence. Saw " + threadsThatUsedThePool + " thread(s)");
+    }
+
+    /**
+     * Refuses a run where notifyAll outside a monitor did not throw IllegalMonitorStateException.
+     */
+    static void theIllegalNotifyReallyThrew(String outcome) {
+        assertEquals("IllegalMonitorStateException", outcome,
+                "the loud notify row claims the monitor is not held, and notifyAll outside a "
+                        + "monitor must throw IllegalMonitorStateException. The JVM said: "
+                        + outcome);
+    }
+
 
     /**
      * Refuses a MUST_STAY_SILENT row that never addresses the detector it names.

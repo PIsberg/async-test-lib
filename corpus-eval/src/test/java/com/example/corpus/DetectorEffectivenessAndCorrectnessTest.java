@@ -236,4 +236,71 @@ class DetectorEffectivenessAndCorrectnessTest {
         assertTrue(critical > 0, "must have critical severity findings");
         assertTrue(high > 0, "must have high severity findings");
     }
+
+    @Test
+    @DisplayName("correctness: every subject in Corpus has valid ground truth, evidence, and source citation")
+    void everySubjectHasValidGroundTruthAndSource() {
+        List<Subject> subjects = Corpus.subjects();
+        assertEquals(139, subjects.size(), "the corpus must hold 139 subjects");
+
+        Set<String> methodNames = new TreeSet<>();
+        for (Subject subject : subjects) {
+            assertNotNull(subject.testMethod(), "testMethod must not be null");
+            assertFalse(subject.testMethod().isBlank(), "testMethod must not be blank");
+            assertTrue(methodNames.add(subject.testMethod()),
+                    "duplicate testMethod in Corpus.subjects(): " + subject.testMethod());
+
+            assertNotNull(subject.library(), "library must not be null for " + subject.testMethod());
+            assertFalse(subject.library().isBlank(), "library must not be blank for " + subject.testMethod());
+
+            assertNotNull(subject.className(), "className must not be null for " + subject.testMethod());
+            assertFalse(subject.className().isBlank(), "className must not be blank for " + subject.testMethod());
+
+            assertNotNull(subject.contract(), "contract must not be null for " + subject.testMethod());
+
+            assertNotNull(subject.evidence(), "evidence must not be null for " + subject.testMethod());
+            assertFalse(subject.evidence().isBlank(), "evidence must not be blank for " + subject.testMethod());
+
+            assertNotNull(subject.source(), "source must not be null for " + subject.testMethod());
+            assertFalse(subject.source().isBlank(), "source must not be blank for " + subject.testMethod());
+            if (subject.library().startsWith("jdk:")) {
+                assertTrue(subject.source().startsWith("java.base/") && subject.source().endsWith(".java"),
+                        "JDK source must be a java.base path for " + subject.testMethod() + ": " + subject.source());
+            } else {
+                assertTrue(subject.source().contains(":"),
+                        "third-party library source must be in file:line format for " + subject.testMethod() + ": " + subject.source());
+                String linePart = subject.source().substring(subject.source().lastIndexOf(':') + 1);
+                int line = Integer.parseInt(linePart);
+                assertTrue(line > 0, "source line number must be positive for " + subject.testMethod());
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("correctness: all recording and agent subjects have unique test methods and complete metadata")
+    void allPairedSubjectsHaveUniqueMethodsAndCompleteMetadata() {
+        for (CorpusLane lane : List.of(CorpusLane.RECORDING, CorpusLane.AGENT_PAIRS)) {
+            List<RecordingSubject> subjects = Corpus.subjectsFor(lane);
+            Set<String> methodNames = new TreeSet<>();
+            for (RecordingSubject subject : subjects) {
+                assertNotNull(subject.testMethod(), "testMethod must not be null in " + lane);
+                assertFalse(subject.testMethod().isBlank(), "testMethod must not be blank in " + lane);
+                assertTrue(methodNames.add(subject.testMethod()),
+                        "duplicate testMethod in " + lane + ": " + subject.testMethod());
+
+                assertNotNull(subject.library(), "library must not be null for " + subject.testMethod());
+                assertFalse(subject.library().isBlank(), "library must not be blank for " + subject.testMethod());
+
+                assertNotNull(subject.className(), "className must not be null for " + subject.testMethod());
+                assertFalse(subject.className().isBlank(), "className must not be blank for " + subject.testMethod());
+
+                assertNotNull(subject.detector(), "detector must not be null for " + subject.testMethod());
+                assertNotNull(subject.contract(), "contract must not be null for " + subject.testMethod());
+                assertNotNull(subject.expectation(), "expectation must not be null for " + subject.testMethod());
+
+                assertNotNull(subject.rationale(), "rationale must not be null for " + subject.testMethod());
+                assertFalse(subject.rationale().isBlank(), "rationale must not be blank for " + subject.testMethod());
+            }
+        }
+    }
 }

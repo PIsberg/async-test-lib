@@ -114,7 +114,7 @@ Closed on 2026-09-16, expanded on 2026-09-17. `RecordingSubject` now records an 
 
 ## 4. Gates have no failing-direction test (Closed 2026-09-16, completed 2026-09-17)
 
-Closed on 2026-09-16, completed on 2026-09-17. `CorpusGates` exposes parameterized overloads for all six gates whose input can be synthesized: `everySubjectIsExercised`, `everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair`, `noAgentRowRecordedItsOwnFinding`, `everyPairedDetectorIsExposed`, and `checkLibraryExclusionLane`. `CorpusGatesTest` covers both failing and accepting directions for all six gates.
+Closed on 2026-09-16, completed on 2026-09-17. `CorpusGates` exposes parameterized overloads for all gates whose input can be synthesized (including `everySubjectIsExercised`, `everyRecordingSubjectIsExercised`, `everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair`, `noAgentRowRecordedItsOwnFinding`, `everyPairedDetectorIsExposed`, `checkLibraryExclusionLane`, `everyFindingIsAttributed`, `everyRecordingFindingIsAttributed`, and `everyReportingDetectorWasExposed`), as well as lane premise gates (`theDeadlockRowsRanInOrder`, `thePooledRowsPremiseHeld`, `theIllegalNotifyReallyThrew`). `CorpusGatesTest` covers all 18 gates and premises in `CorpusGates` in both failing and accepting directions.
 
 ## 6. The refusal list is reviewed by nothing but a build (Closed 2026-09-16)
 
