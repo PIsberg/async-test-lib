@@ -222,4 +222,67 @@ class CyclicBarrierDetectorAccuracyTest {
         assertTrue(rendered.contains("a timeout was recorded earlier"),
                 () -> "the report says what broke the barrier: " + rendered);
     }
+
+    // --- #662: a handled break followed by reset() is recovery, not reuse -----------------------
+
+    @Test
+    @DisplayName("a party that arrives at a broken barrier, catches BrokenBarrierException and resets it is not reported")
+    void arrivalAtABrokenBarrierHandledWithResetIsSilent() {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenBarrier();   // a timeout broke it before this party arrived
+        detector.registerBarrier(barrier, "handled-break", 2);
+
+        detector.recordArrival(barrier);
+        detector.recordAwait(barrier);
+        try {
+            barrier.await();
+            throw new AssertionError("premise: the await fails on a broken barrier");
+        } catch (BrokenBarrierException e) {
+            detector.recordBroken(barrier);
+            detector.recordReset(barrier);   // the fix the reuse report itself prescribes
+            barrier.reset();
+        } catch (InterruptedException e) {
+            throw new AssertionError("premise: nothing interrupts this thread", e);
+        }
+        assertFalse(barrier.isBroken(), "premise: reset() repaired the barrier");
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "a handled break followed by reset() is correct: " + report);
+    }
+
+    @Test
+    @DisplayName("a party that catches BrokenBarrierException and awaits the still-broken barrier again is reported")
+    void brokenBarrierRetriedWithoutResetFires() {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenBarrier();
+        detector.registerBarrier(barrier, "retried-break", 2);
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            detector.recordAwait(barrier);
+            assertThrows(BrokenBarrierException.class, barrier::await,
+                    "premise: nothing reset the barrier, so every await fails at once");
+            detector.recordBroken(barrier);
+        }
+
+        var report = detector.analyze();
+        assertTrue(report.getReuseAfterBrokenBarriers().contains(barrier),
+                "retrying a barrier nobody reset fails every attempt: " + report);
+    }
+
+    @Test
+    @DisplayName("a reset recovers only the reuse recorded before it: a later break awaited without a reset is reported")
+    void reuseAfterAResetThatWasFollowedByAnotherBreakFires() {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenBarrier();
+        detector.registerBarrier(barrier, "broke-again", 2);
+
+        detector.recordAwait(barrier);
+        detector.recordReset(barrier);
+        barrier.reset();
+
+        assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
+        detector.recordAwait(barrier);   // broken again, and nobody resets it this time
+
+        assertTrue(detector.analyze().getReuseAfterBrokenBarriers().contains(barrier));
+    }
 }
