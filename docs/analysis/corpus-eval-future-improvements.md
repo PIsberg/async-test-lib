@@ -146,18 +146,18 @@ and both detectors are still held, each for a reason the new rows could not have
   a condition registered without its lock is stuck on a recorded await with no recorded exit, and a
   missing signal is a recorded exit with no recorded signal. #657 is open on the predicate path.
 
-## 3. Severity is not pinned on a firing row (open: the gate exists, no row uses it)
+## 3. Severity is not pinned on a firing row (Closed 2026-09-17, #660)
 
 On 2026-09-16 `RecordingSubject` gained an optional `expectedSeverity`, and
 `CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige` fails a firing row whose findings do
-not carry it. `CorpusGatesTest` shows that check rejecting a mismatch and accepting a match. No row
-in `Corpus` sets `expectedSeverity`, though, so in every real lane the check is skipped and a
-detector whose severity moves still passes. The 2026-09-17 tests that counted "resolved" severities
-per lane were removed: they derived the value from `DetectorDefaultSeverity` with a `HIGH` fallback,
-which asserts the library's own table rather than what a detector reported, and could not fail on a
-severity change. Closing this means pinning severities on rows from a recorded run, and only then
-letting the lanes enforce them. Whether each detector states a severity at all is gated in the
-library, by `DetectorSeverityMarkerTest`.
+not carry it, but no row set one. On 2026-09-17 every MUST_FIRE row in both pair lanes was pinned:
+153 rows (119 recording, 34 agent-pair), at 101 HIGH, 27 MEDIUM, 24 CRITICAL and 1 LOW. The values
+were read from one run on JDK 26, Windows 11, from the lane reports, whose Observed column now prints
+each firing row's severities next to its count. `CorpusGates.everyFiringRowPinsItsSeverity` fails a
+MUST_FIRE row with no pinned value, in both pair lanes and in `CorpusGatesTest`, so a new row cannot
+arrive unpinned. What this does not show is that the values hold on JDK 21 and 25: severity is read
+from the report text, so a detector whose report adds a section on timing could move, and the CI
+matrix is the first place that would be seen.
 
 ## 4. Gates have no failing-direction test (Closed 2026-09-16, completed 2026-09-17)
 

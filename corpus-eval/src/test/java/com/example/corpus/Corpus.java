@@ -1,6 +1,7 @@
 package com.example.corpus;
 
 import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -921,7 +922,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "format() writes into the instance's own Calendar before reading it back, so "
                             + "two threads in one instance interleave a write with a read. The "
-                            + "class javadoc says to synchronize or give each thread its own"),
+                            + "class javadoc says to synchronize or give each thread its own",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_simpleDateFormat_oneInstancePerThread", JDK,
                     "java.text.SimpleDateFormat",
@@ -937,7 +939,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a Matcher carries the append position and the group bounds of the last "
                             + "match, so find() on a shared one leaves group() reading another "
-                            + "thread's result. Pattern is thread-safe and Matcher is not"),
+                            + "thread's result. Pattern is thread-safe and Matcher is not",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_matcher_oneInstancePerThread", JDK,
                     "java.util.regex.Matcher",
@@ -954,7 +957,8 @@ final class Corpus {
                     "update() accumulates into the instance and digest() drains it, so two "
                             + "threads sharing one produce a hash over an interleaving of both "
                             + "inputs. This one is silent in production: the digest is wrong, "
-                            + "not absent"),
+                            + "not absent",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_messageDigest_oneInstancePerThread", JDK,
                     "java.security.MessageDigest",
@@ -972,7 +976,8 @@ final class Corpus {
                             + "and caches it, so a set() from another thread invalidates a read "
                             + "already in flight. Calendar's own javadoc states no thread-safety "
                             + "contract, so the ground truth here is that field cache, not a "
-                            + "quoted sentence"),
+                            + "quoted sentence",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_calendar_oneInstancePerThread", JDK,
                     "java.util.Calendar",
@@ -988,7 +993,8 @@ final class Corpus {
                     "append() reads count, writes the array and then writes count back, "
                             + "unsynchronized by design - StringBuffer exists because "
                             + "StringBuilder dropped the locking. A shared one loses appends or "
-                            + "throws from the array copy"),
+                            + "throws from the array copy",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_stringBuilder_oneInstancePerThread", JDK,
                     "java.lang.StringBuilder",
@@ -1005,7 +1011,8 @@ final class Corpus {
                     "DecimalFormat inherits NumberFormat's mutable digit list and formats "
                             + "through it, so a shared instance interleaves two numbers into one "
                             + "buffer. NumberFormat's javadoc states formats are not "
-                            + "synchronized"),
+                            + "synchronized",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_decimalFormat_oneInstancePerThread", JDK,
                     "java.text.DecimalFormat",
@@ -1020,7 +1027,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a Formatter appends into the Appendable it was constructed over and keeps "
                             + "the last IOException, so sharing one interleaves output as well "
-                            + "as error state. Its javadoc requires external synchronization"),
+                            + "as error state. Its javadoc requires external synchronization",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_formatter_oneInstancePerThread", JDK,
                     "java.util.Formatter",
@@ -1041,7 +1049,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the body acquires and never releases, so acquireCount exceeds releaseCount. "
                             + "A leaked permit is the semaphore bug that does not announce "
-                            + "itself: the pool just gets smaller until it is empty"),
+                            + "itself: the pool just gets smaller until it is empty",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_semaphore_permitReturnedInFinally", JDK,
                     "java.util.concurrent.Semaphore",
@@ -1059,7 +1068,8 @@ final class Corpus {
                     "await(1, MILLISECONDS) on a latch nothing counts down must return false, and "
                             + "the discarded false is the finding. The count is one and no thread "
                             + "in the run can reach it, so the timeout is structural rather than "
-                            + "a race the scheduler might win"),
+                            + "a race the scheduler might win",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_countDownLatch_awaitSawItsCount", JDK,
                     "java.util.concurrent.CountDownLatch",
@@ -1089,7 +1099,8 @@ final class Corpus {
                             + "Nothing declares the count here: it has to be read off getCount() "
                             + "before the first countDown, which is the inference this row "
                             + "measures. A latch counted past zero released waiters its author "
-                            + "believed were still gated"),
+                            + "believed were still gated",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_latchMisuse_countedDownExactly", JDK,
                     "java.util.concurrent.CountDownLatch",
@@ -1107,7 +1118,8 @@ final class Corpus {
                     "a queue of two put and offered to before anything is polled peaks at two of "
                             + "two, which is the 90% saturation threshold. The bound is nowhere in "
                             + "the body: remainingCapacity() + size() is where it comes from. One "
-                            + "thread's own queue, so the peak is arithmetic rather than a race"),
+                            + "thread's own queue, so the peak is arithmetic rather than a race",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("agent_blockingQueue_drainedAsItFilled", JDK,
                     "java.util.concurrent.ArrayBlockingQueue",
@@ -1125,7 +1137,8 @@ final class Corpus {
                             + "returns is popped before anything can read it, and that element "
                             + "is gone with nothing in the program knowing. The weaver reads the "
                             + "POP after the call and hands the popped boolean to the detector "
-                            + "(#454); the finding is the drop, not the rejection"),
+                            + "(#454); the finding is the drop, not the rejection",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("agent_blockingQueue_discardedOfferAccepted", JDK,
                     "java.util.concurrent.ArrayBlockingQueue",
@@ -1145,7 +1158,8 @@ final class Corpus {
                     "sleeping inside a synchronized method holds the monitor for the whole "
                             + "duration, so every other thread waits on a lock whose holder is "
                             + "doing nothing. Whether a sleep is a bug depends entirely on that, "
-                            + "which is why the substitution carries the monitor with it"),
+                            + "which is why the substitution carries the monitor with it",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("agent_sleep_holdingNothing", JDK,
                     "java.lang.Thread",
@@ -1162,7 +1176,8 @@ final class Corpus {
                     "a one-millisecond sleep with a write stamp held, so every reader and writer "
                             + "of the lock waits on a thread doing nothing. StampedLock records no "
                             + "owner; the finding rests on the thread's own lockset entry and the "
-                            + "lock being write-locked, which is the shape #543 made reportable"),
+                            + "lock being write-locked, which is the shape #543 made reportable",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("agent_sleepStamped_afterReleasingTheWriteStamp", JDK,
                     "java.util.concurrent.locks.StampedLock",
@@ -1178,7 +1193,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the body nests B inside A and then A inside B, which puts both edges in the "
                             + "pooled graph and closes a two-cycle. That is the deadlock, "
-                            + "recorded without having to suffer one"),
+                            + "recorded without having to suffer one",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_lockOrder_nestedOneWay", JDK,
                     "java.util.concurrent.locks.ReentrantLock",
@@ -1194,7 +1210,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "lock() with no unlock() leaves acquireCount above releaseCount and the lock "
                             + "held at analysis. This is the bug an early return or a thrown "
-                            + "exception writes for you when the unlock is not in a finally"),
+                            + "exception writes for you when the unlock is not in a finally",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_lock_releasedInFinally", JDK,
                     "java.util.concurrent.locks.ReentrantLock",
@@ -1210,7 +1227,8 @@ final class Corpus {
                     "the body unlocks after a tryLock that returned false, releasing a lock this "
                             + "call never took. StampedLock is not reentrant, so a write lock the "
                             + "thread already holds refuses its own tryLock every time - the "
-                            + "failure is a property of the type, not of who else is running"),
+                            + "failure is a property of the type, not of who else is running",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_tryLock_unlockedOnlyWhenAcquired", JDK,
                     "java.util.concurrent.locks.StampedLock",
@@ -1235,7 +1253,8 @@ final class Corpus {
                     "HashFunction.newHasher() is documented to return \"an initialized, stateful "
                             + "Hasher\", and the SHA-256 one keeps that state in a cloned "
                             + "MessageDigest. Every thread puts into the one hasher, so every "
-                            + "thread's update lands on the same digest from inside Guava"),
+                            + "thread's update lands on the same digest from inside Guava",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_guavaHasher_oneHasherPerHash", GUAVA,
                     "com.google.common.hash.Hasher",
@@ -1253,7 +1272,8 @@ final class Corpus {
                     "StdDateFormat caches a cloned Calendar in a field on first use and reads "
                             + "every date field back out of it; its own javadoc says the blueprint "
                             + "Calendar \"Cannot be used as is, due to thread-safety issues\". One "
-                            + "shared instance puts every thread on that one Calendar"),
+                            + "shared instance puts every thread on that one Calendar",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_jacksonStdDateFormat_oneFormatPerCall", JACKSON,
                     "com.fasterxml.jackson.databind.util.StdDateFormat",
@@ -1269,7 +1289,8 @@ final class Corpus {
                     "a resolved JavaType is shared freely - TypeFactory caches them - but the "
                             + "StringBuilder getGenericSignature appends into is the caller's, and "
                             + "every thread passes the same one. The appends are in "
-                            + "TypeBase._classSignature, not in this module"),
+                            + "TypeBase._classSignature, not in this module",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_jacksonSignature_oneBuilderPerCall", JACKSON,
                     "com.fasterxml.jackson.databind.JavaType",
@@ -1289,7 +1310,8 @@ final class Corpus {
                     "StdDateFormat parses RFC 1123 text with a SimpleDateFormat it clones into a "
                             + "field typed DateFormat, and its javadoc says the blueprint formats "
                             + "\"cannot be used as is, due to thread-safety issues\". One shared "
-                            + "instance puts every thread in that one SimpleDateFormat's parse"),
+                            + "instance puts every thread in that one SimpleDateFormat's parse",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_jacksonRfc1123Parse_oneFormatPerCall", JACKSON,
                     "com.fasterxml.jackson.databind.util.StdDateFormat",
@@ -1304,7 +1326,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "NumberUtils is a stateless utility, but parseNumber(String, Class, "
                             + "NumberFormat) parses with the format the caller hands it, and every "
-                            + "thread hands it the same DecimalFormat. The parse is Spring's"),
+                            + "thread hands it the same DecimalFormat. The parse is Spring's",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_springParseNumber_oneFormatPerCall", SPRING,
                     "org.springframework.util.NumberUtils",
@@ -1319,7 +1342,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "Joiner documents itself as thread-safe and is, but appendTo(StringBuilder, "
                             + "Iterable) writes into the caller's builder through Appendable, and "
-                            + "every thread passes the same one"),
+                            + "every thread passes the same one",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_guavaJoinerAppendTo_oneBuilderPerCall", GUAVA,
                     "com.google.common.base.Joiner",
@@ -1333,7 +1357,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "FormattableUtils is a stateless helper, but append(seq, formatter, ...) pads the "
                             + "text and calls formatter.format on the Formatter it is handed, and "
-                            + "every thread hands it the same one. The format call is commons-lang3's"),
+                            + "every thread hands it the same one. The format call is commons-lang3's",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_lang3FormattableAppend_oneFormatterPerCall", LANG3,
                     "org.apache.commons.lang3.text.FormattableUtils",
@@ -1348,7 +1373,8 @@ final class Corpus {
                     "getCount(Matcher) resets the Matcher it is handed and calls find() on it until "
                             + "it fails, in Groovy's class file, and every thread hands it the same "
                             + "one. Groovy states no contract; Matcher's javadoc does: not safe for "
-                            + "use by multiple concurrent threads (#545)"),
+                            + "use by multiple concurrent threads (#545)",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_groovyMatcherCount_oneMatcherPerCall", GROOVY,
                     "org.codehaus.groovy.runtime.StringGroovyMethods",
@@ -1363,7 +1389,8 @@ final class Corpus {
                     "the Monitor javadoc says a boolean enter \"should always appear as the "
                             + "condition of an if statement\". This one does not: tryEnter fails "
                             + "on a monitor another thread occupies, and leave() unlocks a lock "
-                            + "the worker never took. Both lock calls are Guava's"),
+                            + "the worker never took. Both lock calls are Guava's",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_guavaMonitorTryEnter_leftOnlyWhenEntered", GUAVA,
                     "com.google.common.util.concurrent.Monitor",
@@ -1379,7 +1406,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "enter() with no leave(). The Monitor javadoc says a void enter \"should "
                             + "always be followed immediately by a try/finally block\"; without "
-                            + "one, the ReentrantLock inside the monitor stays held"),
+                            + "one, the ReentrantLock inside the monitor stays held",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_guavaMonitorEnter_leftInFinally", GUAVA,
                     "com.google.common.util.concurrent.Monitor",
@@ -1394,7 +1422,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "B entered inside A, then A inside B. Monitor.enter is a ReentrantLock.lock "
                             + "in Guava's class file, so the two edges come from there and close "
-                            + "the same two-cycle the ReentrantLock row writes by hand"),
+                            + "the same two-cycle the ReentrantLock row writes by hand",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_guavaMonitorOrder_nestedOneWay", GUAVA,
                     "com.google.common.util.concurrent.Monitor",
@@ -1409,7 +1438,8 @@ final class Corpus {
                     "HikariCP's quietlySleep, a stateless static helper, called while a Guava "
                             + "monitor is occupied. The lock is recorded from Guava's woven lock "
                             + "and the sleep from HikariCP's woven Thread.sleep, and neither "
-                            + "library's code knows about the other"),
+                            + "library's code knows about the other",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("agent_hikariSleep_afterLeavingTheMonitor", HIKARI,
                     "com.zaxxer.hikari.util.UtilityElf",
@@ -1424,7 +1454,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "awaitUninterruptibly makes the timed await itself, on a latch of one that "
                             + "nothing counts down, so the await Guava made times out and the "
-                            + "body drops the false Guava returns"),
+                            + "body drops the false Guava returns",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_guavaLatchAwait_sawItsCount", GUAVA,
                     "com.google.common.util.concurrent.Uninterruptibles",
@@ -1440,7 +1471,8 @@ final class Corpus {
                     "the await Guava makes on a latch of one never returns true and nothing ever "
                             + "counts it down, which is LatchMisuseDetector's missing-countdown "
                             + "condition: a gate its author believed would open. The detector needs "
-                            + "no library countDown for it, only Guava's await (#545)"),
+                            + "no library countDown for it, only Guava's await (#545)",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("agent_guavaLatchAwait_countedDownBeforeTheAwait", GUAVA,
                     "com.google.common.util.concurrent.Uninterruptibles",
@@ -1455,7 +1487,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "two putUninterruptibly calls into a queue of two before any take, so the "
                             + "peak Guava's woven put observes reaches the bound. The bound is "
-                            + "read off the queue, not written in the body"),
+                            + "read off the queue, not written in the body",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("agent_guavaQueuePut_drainedAsItFilled", GUAVA,
                     "com.google.common.util.concurrent.Uninterruptibles",
@@ -1469,7 +1502,8 @@ final class Corpus {
                     DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "tryAcquireUninterruptibly takes the permit with Guava's woven tryAcquire, "
-                            + "and nothing releases it, so acquisitions exceed releases"),
+                            + "and nothing releases it, so acquisitions exceed releases",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("agent_guavaSemaphore_permitReturnedInFinally", GUAVA,
                     "com.google.common.util.concurrent.Uninterruptibles",
@@ -1500,7 +1534,8 @@ final class Corpus {
                     "two daemon threads take two monitors in opposite order and stay there. "
                             + "findDeadlockedThreads() reports any deadlocked thread in the JVM, "
                             + "not only a worker, which is what lets the corpus write a real "
-                            + "deadlock without the workers being the ones stuck in it")
+                            + "deadlock without the workers being the ones stuck in it",
+                    IssueSeverity.CRITICAL)
     );
 
     /**
@@ -1530,7 +1565,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the latch is registered with a count of one and counted down twice, which is "
                             + "the extraCountDowns condition exactly. A latch counted past zero "
-                            + "released waiters that its author believed were still gated"),
+                            + "released waiters that its author believed were still gated",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_latch_countedDownExactly", JDK,
                     "java.util.concurrent.CountDownLatch",
@@ -1547,7 +1583,8 @@ final class Corpus {
                     "five offers into a queue registered with capacity five and nothing taken "
                             + "out, so the observed peak reaches the 90% saturation threshold. "
                             + "Nothing drains it, which is what makes the peak monotone and the "
-                            + "outcome independent of how the threads interleaved"),
+                            + "outcome independent of how the threads interleaved",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_blockingQueue_drainedAsItFilled", JDK,
                     "java.util.concurrent.ArrayBlockingQueue",
@@ -1581,7 +1618,8 @@ final class Corpus {
                     "every thread records against the one CRC32, with nothing held, so the "
                             + "instance's thread set exceeds one and its lockset is empty. update "
                             + "accumulates into the instance and getValue reads it back, so a "
-                            + "shared one checksums an interleaving of everybody's bytes"),
+                            + "shared one checksums an interleaving of everybody's bytes",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_checksum_oneInstancePerThread", JDK,
                     "java.util.zip.CRC32",
@@ -1597,7 +1635,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "one Deflater recorded by every thread with no lock held. A Deflater holds a "
                             + "native compression stream and an input buffer between calls, which "
-                            + "is why it also needs an explicit end()"),
+                            + "is why it also needs an explicit end()",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_deflater_oneInstancePerThread", JDK,
                     "java.util.zip.Deflater",
@@ -1613,7 +1652,8 @@ final class Corpus {
                     "the one derivation object, recorded from every thread unguarded. This is the "
                             + "detector with a verbatim JDK citation behind it: javax.crypto.KDF "
                             + "states that its methods are not thread-safe and that threads "
-                            + "sharing one object should synchronize amongst themselves"),
+                            + "sharing one object should synchronize amongst themselves",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_kdf_guardedByItsOwnMonitor", JDK,
                     "javax.crypto.SecretKeyFactory",
@@ -1630,7 +1670,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "one TimeZone whose raw offset every thread records mutating. setRawOffset "
                             + "and setID are the documented mutators; a zone reached from a "
-                            + "static field and then adjusted is the shape this models"),
+                            + "static field and then adjusted is the shape this models",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_timeZone_oneInstancePerThread", JDK,
                     "java.util.TimeZone",
@@ -1647,7 +1688,8 @@ final class Corpus {
                     "one DocumentBuilder parsed from every thread. DocumentBuilderFactory's own "
                             + "javadoc states it is not guaranteed to be thread safe and that an "
                             + "application should use one builder per thread, which is the "
-                            + "contract this row is the violation of"),
+                            + "contract this row is the violation of",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_xmlParser_oneInstancePerThread", JDK,
                     "javax.xml.parsers.DocumentBuilder",
@@ -1670,7 +1712,8 @@ final class Corpus {
                     "half the threads hold Alpha and ask for Beta while the other half do the "
                             + "reverse, which is the cycle findCycles walks. This is the deadlock "
                             + "the JVM's own class-init lock produces, recorded rather than "
-                            + "suffered: a real one wedges both classes permanently"),
+                            + "suffered: a real one wedges both classes permanently",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_classInit_eachInitialiserCompleted", JDK,
                     "java.lang.Class",
@@ -1693,7 +1736,8 @@ final class Corpus {
                     "the body records a config mutation after every thread has recorded a use, "
                             + "which is the detector's stated precondition. Jackson documents the "
                             + "mapper as thread-safe once configured, and reconfiguring a shared "
-                            + "one is the exception its own javadoc names"),
+                            + "one is the exception its own javadoc names",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_objectMapper_configuredThenShared", JACKSON,
                     "com.fasterxml.jackson.databind.ObjectMapper",
@@ -1710,7 +1754,8 @@ final class Corpus {
                     DetectorType.CACHE_CONCURRENCY, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "reads and writes are recorded against a map its own javadoc says is not "
-                            + "synchronized, which is the read/write race the detector exists for"),
+                            + "synchronized, which is the read/write race the detector exists for",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_caffeineAsMap_getAndPut", CAFFEINE,
                     "com.github.benmanes.caffeine.cache.Cache",
@@ -1729,7 +1774,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "get-then-put on one key from six threads. Each call is atomic and the pair "
                             + "is not, which is the lost update the detector reports; the class "
-                            + "is thread-safe and the caller is still wrong"),
+                            + "is thread-safe and the caller is still wrong",
+                    IssueSeverity.HIGH),
 
             // recorded_caffeineAsMap_computeIfAbsent stood here and was removed for #410. It
             // demonstrated the atomic primitive that fixes the row above, and as evidence it was
@@ -1762,7 +1808,8 @@ final class Corpus {
                     "one connection is checked out once and then used by every thread without "
                             + "ever being released, which is the bug a pool exists to prevent. "
                             + "The pool is correct and the caller defeated it, so the finding is "
-                            + "owed however thread-safe HikariDataSource itself is"),
+                            + "owed however thread-safe HikariDataSource itself is",
+                    IssueSeverity.HIGH),
 
             // --- SharedMessageDigest: the pair differs by a lock, not by an instance. Both rows
             //     share one digest with six threads; only one of them holds its monitor.
@@ -1774,7 +1821,8 @@ final class Corpus {
                     "one SHA-256 instance is recorded from six threads with nothing held, which "
                             + "is both halves of the detector's rule met by construction. The "
                             + "JDK's own javadoc says a MessageDigest is not safe for use by "
-                            + "multiple threads without external synchronization"),
+                            + "multiple threads without external synchronization",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_messageDigest_guardedByItsOwnMonitor", JDK,
                     "java.security.MessageDigest",
@@ -1795,7 +1843,8 @@ final class Corpus {
                     "one HmacSHA256 carries its running state in one object's fields and is "
                             + "recorded from six threads with nothing held. Mac's javadoc makes "
                             + "no thread-safety promise, and interleaved update() calls corrupt "
-                            + "the MAC rather than failing loudly"),
+                            + "the MAC rather than failing loudly",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_mac_confinedToOneThreadEach", JDK,
                     "javax.crypto.Mac",
@@ -1824,7 +1873,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the identical lifecycle with the release left out. A ByteBuf is reference "
                             + "counted and the caller owns the release, so opens outnumbering "
-                            + "closes is a leak whatever the schedule did"),
+                            + "closes is a leak whatever the schedule did",
+                    IssueSeverity.MEDIUM),
 
             // --- ConcurrentMapComputeRecursion: the pair differs by whether the mapping function
             //     touches its own map. Reaching this one at all took a measurement (#341).
@@ -1859,7 +1909,8 @@ final class Corpus {
                             + "therefore raised from inside a mapping function that really ran, "
                             + "which is what the detector's contract asks for. The class is "
                             + "thread-safe and the caller is still wrong: the nested update is "
-                            + "overwritten by the outer one and lost with nothing thrown"),
+                            + "overwritten by the outer one and lost with nothing thrown",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_caffeineAsMap_selfContainedMerge", CAFFEINE,
                     "com.github.benmanes.caffeine.cache.Cache",
@@ -1889,7 +1940,8 @@ final class Corpus {
                             + "key-scoped, and this version usually returns normally rather than "
                             + "throwing, which is why it survives review and why it is worth "
                             + "reporting: the map is updated in an order the caller did not "
-                            + "intend, silently"),
+                            + "intend, silently",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_caffeineTwoMaps_nestedMerge", CAFFEINE,
                     "com.github.benmanes.caffeine.cache.Cache",
@@ -1922,7 +1974,8 @@ final class Corpus {
                             + "without it leaves each next() individually synchronized and the "
                             + "traversal as a whole unprotected, which is a "
                             + "ConcurrentModificationException or a silently skipped element. The "
-                            + "class is thread-safe and the caller is still wrong"),
+                            + "class is thread-safe and the caller is still wrong",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_synchronizedCollection_iteratedHoldingLock", COLLECTIONS4,
                     "org.apache.commons.collections4.collection.SynchronizedCollection",
@@ -1954,7 +2007,8 @@ final class Corpus {
                             + "is documented to support concurrent modification and that buys the "
                             + "iterator nothing: the cursor is unsynchronized state of its own, "
                             + "and sharing it skips or duplicates elements. Thread-safe class, "
-                            + "unsafe caller"),
+                            + "unsafe caller",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_concurrentHashMultiset_iteratorPerThread", GUAVA,
                     "com.google.common.collect.ConcurrentHashMultiset",
@@ -1978,7 +2032,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "its own javadoc says in bold that the implementation is not synchronized, and "
                             + "every thread in the run mutates it. This is the case the detector "
-                            + "exists for and the one it gets right"),
+                            + "exists for and the one it gets right",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_concurrentMultiset_concurrentAdd", GUAVA,
                     "com.google.common.collect.ConcurrentHashMultiset",
@@ -2010,7 +2065,8 @@ final class Corpus {
                     "a MutableInt is put in a map as a key and then mutated, which changes the "
                             + "hash the map filed it under. The entry becomes unreachable by "
                             + "equal keys and the map cannot repair itself, whatever "
-                            + "synchronization the caller adds"),
+                            + "synchronization the caller adds",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_mutableIntKey_neverMutated", LANG3,
                     "org.apache.commons.lang3.mutable.MutableInt",
@@ -2059,7 +2115,8 @@ final class Corpus {
                     "rewind() and a relative get() are recorded from six threads with nothing "
                             + "held. Both mutate the cursor the Buffer javadoc leaves "
                             + "unprotected, so several positional threads with an empty lock "
-                            + "set is met by construction, which is the detector's whole rule"),
+                            + "set is met by construction, which is the detector's whole rule",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_byteBuffer_absoluteGetsShared", JDK,
                     "java.nio.ByteBuffer",
@@ -2085,7 +2142,8 @@ final class Corpus {
                             + "channel. FileChannel serializes each call internally, but the "
                             + "offset a read starts from depends on every other thread's "
                             + "progress, so the I/O lands at positions no caller chose - the "
-                            + "class is thread-safe and the caller is still wrong"),
+                            + "class is thread-safe and the caller is still wrong",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_fileChannel_positionalReadsShared", JDK,
                     "java.nio.channels.FileChannel",
@@ -2110,7 +2168,8 @@ final class Corpus {
                     "one WeakHashMap is recorded from six threads with nothing held. Its own "
                             + "javadoc says the class is not synchronized, and its GC-driven "
                             + "expunge mutates the table on every get and put, which is the "
-                            + "hazard the detector names"),
+                            + "hazard the detector names",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_weakHashMap_guardedByItsOwnMonitor", JDK,
                     "java.util.WeakHashMap",
@@ -2135,7 +2194,8 @@ final class Corpus {
                     "one UTF-8 encoder is recorded from six threads with nothing held. Its "
                             + "javadoc says instances are not safe for use by multiple "
                             + "concurrent threads, and the state machine behind that sentence "
-                            + "is advanced by every reset() and encode() the bodies make"),
+                            + "is advanced by every reset() and encode() the bodies make",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_charsetEncoder_encoderPerThread", JDK,
                     "java.nio.charset.CharsetEncoder",
@@ -2160,7 +2220,8 @@ final class Corpus {
                             + "shutdown is ever recorded. ExecutorService's javadoc says an "
                             + "unused executor should be shut down to allow reclamation of its "
                             + "resources; its non-daemon workers otherwise outlive the test, "
-                            + "and the finding follows from the recorded lifecycle alone"),
+                            + "and the finding follows from the recorded lifecycle alone",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_executor_shutdownAndAwaited", JDK,
                     "java.util.concurrent.ExecutorService",
@@ -2190,7 +2251,8 @@ final class Corpus {
                             + "really terminates the timer's single task-execution thread - the "
                             + "failure mode where every remaining task is cancelled with "
                             + "nothing reported. The body awaits the task before returning, so "
-                            + "the record precedes analysis by construction"),
+                            + "the record precedes analysis by construction",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_timer_tasksCompleteWithoutException", JDK,
                     "java.util.Timer",
@@ -2215,7 +2277,8 @@ final class Corpus {
                             + "timer's single thread until the wall clock is past the waiter's own "
                             + "scheduledExecutionTime, so the waiter falls due while another task "
                             + "holds the thread - starvation observed from the tasks' instants, "
-                            + "with no duration threshold"),
+                            + "with no duration threshold",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_timer_slowTaskWithNothingDueBehindIt", JDK,
                     "java.util.Timer",
@@ -2238,7 +2301,8 @@ final class Corpus {
                             + "body ever records an inspection. An exception thrown by such a "
                             + "task is captured in the Future and discarded with it, which is "
                             + "the silent-failure mode the detector exists for; the finding "
-                            + "follows from the absent call, so no schedule can remove it"),
+                            + "follows from the absent call, so no schedule can remove it",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_future_inspectedAfterSubmit", JDK,
                     "java.util.concurrent.Future",
@@ -2266,7 +2330,8 @@ final class Corpus {
                             + "Object's javadoc says throws IllegalMonitorStateException. The "
                             + "row does not merely assert that: it calls notifyAll for real "
                             + "once and records the exception the JVM throws, so the premise "
-                            + "behind every finding is verified rather than stated"),
+                            + "behind every finding is verified rather than stated",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_notify_holdingTheMonitor", JDK,
                     "java.lang.Object",
@@ -2292,7 +2357,8 @@ final class Corpus {
                             + "cleared, which is what the JDK does to it on throw. The "
                             + "cancellation signal is then unobservable to every layer above, "
                             + "and the finding follows from the recorded handling rather than "
-                            + "from any interleaving"),
+                            + "from any interleaving",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_interruptedException_flagRestored", JDK,
                     "java.lang.InterruptedException",
@@ -2316,7 +2382,8 @@ final class Corpus {
                             + "the leaked file descriptor the detector exists for. One "
                             + "instance rather than one per body because the leak is the "
                             + "point and 240 of them would exhaust the runner rather than "
-                            + "demonstrate anything"),
+                            + "demonstrate anything",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_inputStream_closedInTheOpeningThread", JDK,
                     "java.io.InputStream",
@@ -2340,7 +2407,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a blocking wait is recorded while a monitor is held, so the blocked thread "
                             + "keeps the monitor no other thread can now take. That is the "
-                            + "lockout, and it follows from the order of the recorded calls"),
+                            + "lockout, and it follows from the order of the recorded calls",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_blockingCall_afterReleasingTheMonitor", JDK,
                     "java.lang.Object",
@@ -2357,7 +2425,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a blocking call is recorded between task entry and exit. A pool worker "
                             + "parked on something other than its own join starves the pool it "
-                            + "belongs to, which is why ForkJoinPool has managedBlock at all"),
+                            + "belongs to, which is why ForkJoinPool has managedBlock at all",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_blockingCall_afterLeavingTheForkJoinTask", JDK,
                     "java.util.concurrent.ForkJoinTask",
@@ -2374,7 +2443,8 @@ final class Corpus {
                     "a join is recorded inside a completion callback, which blocks the thread "
                             + "that is supposed to be running continuations and can stall every "
                             + "other stage sharing it. CompletableFuture is thread-safe and the "
-                            + "caller is still wrong"),
+                            + "caller is still wrong",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_blockingCall_afterTheCallbackReturned", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -2395,7 +2465,8 @@ final class Corpus {
                     "the monitor is a string literal, and literals are interned per JVM, so "
                             + "unrelated code that happens to lock the same text shares this "
                             + "lock without either side knowing. String is immutable and "
-                            + "thread-safe; what is wrong is using one as a monitor"),
+                            + "thread-safe; what is wrong is using one as a monitor",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_synchronized_onAPrivateLockObject", JDK,
                     "java.lang.Object",
@@ -2412,7 +2483,8 @@ final class Corpus {
                     "the monitor is a boxed Integer, and Integer.valueOf caches small values, "
                             + "so two unrelated places boxing the same number get the same "
                             + "object. The sharing is invisible at the call site, which is what "
-                            + "makes it worth reporting"),
+                            + "makes it worth reporting",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_lock_onAPrivateObject", JDK,
                     "java.lang.Object",
@@ -2431,7 +2503,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a get and a set are recorded as a read-modify-write from six threads. Each "
                             + "call is atomic and the sequence is not, so an update between them "
-                            + "is overwritten and lost - the reason compareAndSet exists"),
+                            + "is overwritten and lost - the reason compareAndSet exists",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_atomicInteger_getThenCompareAndSet", JDK,
                     "java.util.concurrent.atomic.AtomicInteger",
@@ -2452,7 +2525,8 @@ final class Corpus {
                     "a wait is recorded as not guarded by a condition loop, which the javadoc "
                             + "says is wrong however the schedule behaves: a wait may return "
                             + "spuriously, and a caller that treats the return as the condition "
-                            + "proceeds on a state that never held"),
+                            + "proceeds on a state that never held",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_wait_insideAConditionLoop", JDK,
                     "java.lang.Object",
@@ -2472,7 +2546,8 @@ final class Corpus {
                     "the task starts with an empty diagnostic context and ends holding a key it "
                             + "put there. On a pooled thread that key is inherited by whatever "
                             + "task runs next, which is how one request's id ends up on another "
-                            + "request's log lines"),
+                            + "request's log lines",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_mdc_contextClearedBeforeTaskEnd", JDK,
                     "java.util.Map",
@@ -2493,7 +2568,8 @@ final class Corpus {
                     "an untimed wait is recorded, which parks the thread until some other "
                             + "thread chooses to notify it. If that notify is lost or never "
                             + "sent the thread waits forever, and the difference between a "
-                            + "wedged process and a slow one is whether a timeout was passed"),
+                            + "wedged process and a slow one is whether a timeout was passed",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_wait_withATimeoutAndANotify", JDK,
                     "java.lang.Object",
@@ -2511,7 +2587,8 @@ final class Corpus {
                             + "recorded on it afterwards ends with no notify in between. A signal "
                             + "delivered before the waiter arrives is not queued - it is simply "
                             + "lost - and the wait that follows blocks for a notification that "
-                            + "has already been and gone"),
+                            + "has already been and gone",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_notify_afterAWaiterArrived", JDK,
                     "java.lang.Object",
@@ -2529,7 +2606,8 @@ final class Corpus {
                     "data is read under an optimistic stamp and the validation that follows "
                             + "returns false, so the read saw a value a writer was changing. "
                             + "StampedLock's optimistic mode is documented as valid only when "
-                            + "validate() confirms it, which is exactly what did not happen"),
+                            + "validate() confirms it, which is exactly what did not happen",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_optimisticRead_validatedBeforeUse", JDK,
                     "java.util.concurrent.locks.StampedLock",
@@ -2549,7 +2627,8 @@ final class Corpus {
                     "a thread holding the read lock attempts the write lock without releasing "
                             + "it. ReentrantReadWriteLock does not support upgrading, and the "
                             + "write acquisition waits for readers that include the caller "
-                            + "itself, which is a deadlock the caller cannot be woken from"),
+                            + "itself, which is a deadlock the caller cannot be woken from",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_readLock_releasedBeforeWriting", JDK,
                     "java.util.concurrent.locks.ReentrantReadWriteLock",
@@ -2569,7 +2648,8 @@ final class Corpus {
                     "a value is read on a thread that never entered a binding for it. A scoped "
                             + "value is only defined inside the dynamic scope that bound it, so "
                             + "the read outside one is either an exception or a stale value "
-                            + "from somewhere the caller did not mean"),
+                            + "from somewhere the caller did not mean",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_scopedValue_readInsideItsBinding", JDK,
                     "java.lang.ScopedValue",
@@ -2589,7 +2669,8 @@ final class Corpus {
                     "one lambda instance is executed by six threads and records a mutation of "
                             + "the state it captured. A lambda that keeps state is an object "
                             + "with a field, and sharing it across threads races on that field "
-                            + "exactly as sharing any other mutable object would"),
+                            + "exactly as sharing any other mutable object would",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_lambda_confinedToItsOwnThread", JDK,
                     "java.lang.Runnable",
@@ -2610,7 +2691,8 @@ final class Corpus {
                     "six threads write one process-global key. The properties table is "
                             + "synchronized so nothing corrupts, and that is the point: the "
                             + "race is over which value the rest of the process reads, and it "
-                            + "reaches every library in the JVM rather than just the caller"),
+                            + "reaches every library in the JVM rather than just the caller",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_systemProperty_mutatedOnAPrivateKey", JDK,
                     "java.lang.System",
@@ -2630,7 +2712,8 @@ final class Corpus {
                     "a get on a weak reference is recorded as having returned null where the "
                             + "caller expected a referent. Nothing about the reference is "
                             + "wrong; what is wrong is code that checks a weak reference and "
-                            + "then uses it as if the collector had agreed to wait"),
+                            + "then uses it as if the collector had agreed to wait",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_weakReference_readWithAStrongReferent", JDK,
                     "java.lang.ref.WeakReference",
@@ -2652,7 +2735,8 @@ final class Corpus {
                     "one array has its elements written by six threads. Declaring the field "
                             + "volatile publishes the array reference and gives the element "
                             + "writes no ordering or visibility at all, which is why this looks "
-                            + "safe in review and is not"),
+                            + "safe in review and is not",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_volatileArray_confinedToOneThread", JDK,
                     "java.lang.Object",
@@ -2673,7 +2757,8 @@ final class Corpus {
                     "a future completes exceptionally and no handler is ever recorded for it. "
                             + "The exception is then held inside the future and discarded with "
                             + "it, so the failure is invisible to the code that asked for the "
-                            + "work - the same silent-loss shape as an ignored Future"),
+                            + "work - the same silent-loss shape as an ignored Future",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_completableFuture_failureHandled", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -2690,7 +2775,8 @@ final class Corpus {
                     "a future is created and no completion is ever recorded, so anything "
                             + "waiting on it waits for a result that is not coming. A "
                             + "manually-completed future whose completing path is missed is a "
-                            + "hang, not an error, which is why it is worth a detector"),
+                            + "hang, not an error, which is why it is worth a detector",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_completableFuture_completedBeforeTheBodyReturned", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -2710,7 +2796,8 @@ final class Corpus {
                     "a queue is declared with no capacity bound. The class is thread-safe and "
                             + "that is not the hazard: an unbounded queue converts a producer "
                             + "that outruns its consumer from backpressure into heap growth, "
-                            + "and the failure arrives much later as an OutOfMemoryError"),
+                            + "and the failure arrives much later as an OutOfMemoryError",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_blockingQueue_createdWithACapacity", JDK,
                     "java.util.concurrent.ArrayBlockingQueue",
@@ -2732,7 +2819,8 @@ final class Corpus {
                     "writes dominate the recorded operations on a copy-on-write list. Every "
                             + "write copies the whole backing array, so the cost is quadratic "
                             + "in a workload like this - correct, and the wrong data structure, "
-                            + "which is exactly what an advisory detector is for"),
+                            + "which is exactly what an advisory detector is for",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_copyOnWrite_underAReadHeavyWorkload", JDK,
                     "java.util.concurrent.CopyOnWriteArrayList",
@@ -2753,7 +2841,8 @@ final class Corpus {
                     "a parallel pipeline records a stateful operation. The stream contract asks "
                             + "for non-interfering, stateless lambdas precisely because the "
                             + "framework may run them on any thread in any order, so a "
-                            + "stateful one races on state the pipeline never promised to guard"),
+                            + "stateful one races on state the pipeline never promised to guard",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_parallelStream_withStatelessOperations", JDK,
                     "java.util.stream.Stream",
@@ -2773,7 +2862,8 @@ final class Corpus {
                     "a thread-local is initialised and no cleanup is ever recorded. The value "
                             + "then lives as long as the thread does, which on a pooled thread "
                             + "means forever, and it keeps its whole reference graph alive with "
-                            + "it"),
+                            + "it",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_threadLocal_cleanedUpAfterUse", JDK,
                     "java.lang.ThreadLocal",
@@ -2794,7 +2884,8 @@ final class Corpus {
                     "the classic broken singleton: both checks, inside synchronized, on a "
                             + "non-volatile field. Without volatile another thread can see the "
                             + "reference before the constructor's writes, so it hands out a "
-                            + "partially built object - the reason the idiom needed fixing"),
+                            + "partially built object - the reason the idiom needed fixing",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_doubleCheckedLocking_withVolatile", JDK,
                     "java.lang.Object",
@@ -2814,7 +2905,8 @@ final class Corpus {
                     "the monitor is a fresh object each time, which is what locking on a "
                             + "non-final field looks like once somebody reassigns it. Two "
                             + "threads then synchronize on different objects and exclude "
-                            + "nobody, while the code reads as guarded"),
+                            + "nobody, while the code reads as guarded",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_synchronized_onAFinalLock", JDK,
                     "java.lang.Object",
@@ -2834,7 +2926,8 @@ final class Corpus {
                     "a final field is recorded as mutated. Final fields carry a freeze "
                             + "guarantee that the memory model relies on, and writing one after "
                             + "construction voids it: other threads may keep observing the old "
-                            + "value indefinitely, with no synchronization able to repair it"),
+                            + "value indefinitely, with no synchronization able to repair it",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_finalField_onlyRead", JDK,
                     "java.lang.reflect.Field",
@@ -2855,7 +2948,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the object being synchronized on is also handed out by an accessor. Any "
                             + "caller can then hold your lock for as long as it likes, and "
-                            + "neither side can see the other's locking in review"),
+                            + "neither side can see the other's locking in review",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_lock_keptPrivate", JDK,
                     "java.lang.Object",
@@ -2878,7 +2972,8 @@ final class Corpus {
                             + "so each await throws BrokenBarrierException at once. The detector "
                             + "asks the barrier's isBroken() at the await; a recorded break on its "
                             + "own is not the finding, because breaking a barrier is how its "
-                            + "parties are cancelled (#584)"),
+                            + "parties are cancelled (#584)",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_cyclicBarrier_completedItsCycle", JDK,
                     "java.util.concurrent.CyclicBarrier",
@@ -2905,7 +3000,8 @@ final class Corpus {
                     "one party of a two-party barrier parks in an untimed await() nobody else "
                             + "joins, so it is still parked at analysis with no way to leave. The "
                             + "detector reads the recording thread's state and the frame under "
-                            + "CyclicBarrier.dowait, not the barrier (#631)"),
+                            + "CyclicBarrier.dowait, not the barrier (#631)",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_cyclicBarrier_partyLeftShortTimed", JDK,
                     "java.util.concurrent.CyclicBarrier",
@@ -2924,7 +3020,8 @@ final class Corpus {
                             + "when the bodies are done and every later lock() would park for "
                             + "good. The recorded acquire and release pair balances; the lock "
                             + "itself is the evidence. A recorded tryLock timeout is no longer "
-                            + "this row, because backing off on one is correct (#589)"),
+                            + "this row, because backing off on one is correct (#589)",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_reentrantLock_acquiredAndReleased", JDK,
                     "java.util.concurrent.locks.ReentrantLock",
@@ -2942,7 +3039,8 @@ final class Corpus {
                             + "deregistered. That terminated it, so the arrival returns a "
                             + "negative phase rather than blocking, and the party is silently no "
                             + "longer synchronizing with anyone. Since #587 termination alone is "
-                            + "not the finding; the late arrival is"),
+                            + "not the finding; the late arrival is",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_phaser_advancedThroughItsPhase", JDK,
                     "java.util.concurrent.Phaser",
@@ -2960,7 +3058,8 @@ final class Corpus {
                             + "no timeout, no interrupt. An Exchanger needs exactly two threads to "
                             + "meet, and the one that arrived is still inside exchange() waiting "
                             + "for a partner that is not coming. A recorded timeout is no longer "
-                            + "this row, because a timed exchange that handles it has left (#585)"),
+                            + "this row, because a timed exchange that handles it has left (#585)",
+                    IssueSeverity.CRITICAL),
             new RecordingSubject("recorded_exchanger_exchangedNothing", JDK,
                     "java.util.concurrent.Exchanger",
                     DetectorType.EXCHANGER, Contract.THREAD_SAFE,
@@ -2989,7 +3088,8 @@ final class Corpus {
                             + "its predicate, and threads put work on its queue and then signal a "
                             + "different condition. At analysis the lock's wait queue shows the "
                             + "waiter still parked while its predicate holds, with no thread "
-                            + "queued on the lock (#592, #618, #661)"),
+                            + "queued on the lock (#592, #618, #661)",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_condition_consumerIdleOnAnEmptyQueue", JDK,
                     "java.util.concurrent.locks.Condition",
@@ -3021,7 +3121,8 @@ final class Corpus {
                     "a value goes A to B and back to A. A compare-and-set that only checks the "
                             + "value cannot tell that state from one that never moved, so it "
                             + "succeeds on a stale premise - the hazard that stamped and marked "
-                            + "references exist to close"),
+                            + "references exist to close",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_aba_valueMovedOnwards", JDK,
                     "java.util.concurrent.atomic.AtomicReference",
@@ -3038,7 +3139,8 @@ final class Corpus {
                     "a read is recorded against a stable value nothing has set. A "
                             + "write-once holder read before its write hands back the "
                             + "uninitialised state, and because the holder is meant to be set "
-                            + "exactly once there is no later correction"),
+                            + "exactly once there is no later correction",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_stableValue_setBeforeItWasRead", JDK,
                     "java.lang.Object",
@@ -3055,7 +3157,8 @@ final class Corpus {
                     "a plain get and a plain set are recorded as one read-modify-write. "
                             + "VarHandle gives the caller the ordering they ask for and plain "
                             + "mode asks for none, so the pair is neither atomic nor ordered - "
-                            + "the same lost update as the AtomicInteger row, one level down"),
+                            + "the same lost update as the AtomicInteger row, one level down",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_varHandle_volatileGetThenAtomicUpdate", JDK,
                     "java.lang.invoke.VarHandle",
@@ -3077,7 +3180,8 @@ final class Corpus {
                     "a thread is started and its end is never recorded, so it is still running "
                             + "when the run is analysed. A test that leaks a thread per "
                             + "execution leaks them by the hundred, and each one holds "
-                            + "everything it referenced"),
+                            + "everything it referenced",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_thread_startedAndJoined", JDK,
                     "java.lang.Thread",
@@ -3094,7 +3198,8 @@ final class Corpus {
                     "a thread with no uncaught-exception handler is recorded as dying from one. "
                             + "The default handler prints to stderr and the thread disappears, "
                             + "so in a build log the work simply stops happening with nothing "
-                            + "failing"),
+                            + "failing",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_thread_diedWithAHandlerInstalled", JDK,
                     "java.lang.Thread",
@@ -3111,7 +3216,8 @@ final class Corpus {
                     "a live non-daemon thread is recorded, which is the one kind that keeps the "
                             + "JVM from exiting. A suite that leaves one behind hangs after the "
                             + "last test passes, and the symptom is a build that never returns "
-                            + "rather than a failure"),
+                            + "rather than a failure",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_thread_leftAsADaemon", JDK,
                     "java.lang.Thread",
@@ -3128,7 +3234,8 @@ final class Corpus {
                     "the factory hands back a thread with the default name, no daemon flag and "
                             + "no handler. Each of those is a diagnosis problem later: an "
                             + "unnamed thread in a dump says nothing about which pool it "
-                            + "belongs to, and a missing handler loses its failures"),
+                            + "belongs to, and a missing handler loses its failures",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_threadFactory_producedAConfiguredThread", JDK,
                     "java.util.concurrent.ThreadFactory",
@@ -3148,7 +3255,8 @@ final class Corpus {
                     "an inheritable thread-local is set on a declared pool thread. Inheritance "
                             + "happens at thread creation, so a pooled worker keeps whatever the "
                             + "thread that created the pool had - and every task after it reads "
-                            + "a value belonging to somebody else"),
+                            + "a value belonging to somebody else",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_inheritableThreadLocal_confinedToItsOwnName", JDK,
                     "java.lang.InheritableThreadLocal",
@@ -3165,7 +3273,8 @@ final class Corpus {
                     "a value is set during one task and still readable in the next task on the "
                             + "same thread. On a pool that is one request reading another "
                             + "request's context, which is a correctness problem long before it "
-                            + "is a leak"),
+                            + "is a leak",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_threadLocal_clearedAtTheTaskBoundary", JDK,
                     "java.lang.ThreadLocal",
@@ -3184,7 +3293,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "six threads read, modify and write one lambda's captured variable with no "
                             + "lock declared. Two threads that read the same value both write "
-                            + "back one increment, so an update is lost with nothing thrown"),
+                            + "back one increment, so an update is lost with nothing thrown",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_lambda_readModifyWriteUnderAGuard", JDK,
                     "java.lang.Runnable",
@@ -3202,7 +3312,8 @@ final class Corpus {
                     "a record holding a mutable list is shared across threads. Records make the "
                             + "reference final and say nothing about what it points at, so the "
                             + "shallow immutability reads as a safety guarantee it does not "
-                            + "provide"),
+                            + "provide",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_record_sharedWithImmutableComponents", JDK,
                     "java.lang.Record",
@@ -3219,7 +3330,8 @@ final class Corpus {
                     "one generator is recorded from six threads. SplittableRandom's javadoc "
                             + "says instances are not thread-safe and that split() exists "
                             + "precisely so each thread can have its own; sharing one corrupts "
-                            + "the sequence rather than merely contending on it"),
+                            + "the sequence rather than merely contending on it",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_splittableRandom_splitPerThread", JDK,
                     "java.util.SplittableRandom",
@@ -3239,7 +3351,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a future is created and the chain is never joined or handled, so nothing "
                             + "ever observes its outcome. A dangling chain runs for its side "
-                            + "effects and reports neither result nor failure to anyone"),
+                            + "effects and reports neither result nor failure to anyone",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_completableFuture_chainJoined", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -3257,7 +3370,8 @@ final class Corpus {
                             + "the common pool runs. Blocking a pool worker on work that pool "
                             + "must run is how the default parallelism deadlocks under load, "
                             + "and the common pool is one per JVM so the blast radius is the "
-                            + "whole process"),
+                            + "whole process",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_completableFuture_blockedOnADedicatedPool", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -3274,7 +3388,8 @@ final class Corpus {
                     "two threads attempt to complete one future and one of them loses. "
                             + "complete() returning false is the loser being told its value was "
                             + "discarded, and a caller that ignores that return has silently "
-                            + "dropped a result somebody computed"),
+                            + "dropped a result somebody computed",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_completableFuture_completedOnce", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -3291,7 +3406,8 @@ final class Corpus {
                     "a cancel is recorded with mayInterruptIfRunning, which CompletableFuture's "
                             + "javadoc says has no effect on it. The caller believes the work "
                             + "stopped, the future completes exceptionally, and the task carries "
-                            + "on holding whatever it holds"),
+                            + "on holding whatever it holds",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_completableFuture_cancelAfterTheWorkFinished", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -3307,7 +3423,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "an allOf is recorded and never awaited. The combinator's whole purpose is "
                             + "to be waited on; building one and dropping it means the "
-                            + "constituents' failures go the way of any unobserved future"),
+                            + "constituents' failures go the way of any unobserved future",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_completableFuture_combinatorAwaited", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -3328,7 +3445,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a scope is opened and closed with nothing forked into it. A scope with no "
                             + "subtasks is either dead code or a fork that was lost in a "
-                            + "refactor, and the construct's cost buys nothing either way"),
+                            + "refactor, and the construct's cost buys nothing either way",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_scope_forkedJoinedAndRead", JDK,
                     "java.util.concurrent.StructuredTaskScope",
@@ -3343,7 +3461,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a subtask is forked and the scope closes without a join. Close cancels "
                             + "whatever is still running, so the work is abandoned mid-flight "
-                            + "and its result and its failure are both discarded"),
+                            + "and its result and its failure are both discarded",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_taskScope_joinedBeforeClosing", JDK,
                     "java.util.concurrent.StructuredTaskScope",
@@ -3358,7 +3477,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "one joiner is bound to two different scopes. A joiner accumulates the "
                             + "results of the scope it belongs to, so reusing one merges two "
-                            + "scopes' outcomes into state neither scope's owner expects"),
+                            + "scopes' outcomes into state neither scope's owner expects",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_scopeJoiner_boundToOneScope", JDK,
                     "java.util.concurrent.StructuredTaskScope",
@@ -3375,7 +3495,8 @@ final class Corpus {
                     "the configuration the caller asked for and the one that took effect differ. "
                             + "A scope built with a name and a timeout that are quietly not the "
                             + "ones in force is a debugging trap: the thread dump and the "
-                            + "deadline both say something the code does not"),
+                            + "deadline both say something the code does not",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_scope_configurationApplied", JDK,
                     "java.util.concurrent.StructuredTaskScope",
@@ -3391,7 +3512,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a subtask's result handle is read after its scope has closed. The handle is "
                             + "only defined for the scope's lifetime, so a read past the close "
-                            + "is the structured-concurrency form of using a closed resource"),
+                            + "is the structured-concurrency form of using a closed resource",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_scopeResult_readBeforeTheScopeClosed", JDK,
                     "java.util.concurrent.StructuredTaskScope",
@@ -3412,7 +3534,8 @@ final class Corpus {
                     "one field identifier is recorded with a different value from every thread. "
                             + "Threads disagreeing about what a field holds is the definition of "
                             + "a visibility failure, and without a happens-before edge nothing "
-                            + "obliges one thread's write to become visible to another"),
+                            + "obliges one thread's write to become visible to another",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_field_readConsistentlyAcrossThreads", JDK,
                     "java.lang.Object",
@@ -3430,7 +3553,8 @@ final class Corpus {
                             + "without waiting again, which is an if guard taking the spurious "
                             + "wakeup Object.wait's javadoc warns of as the condition. Code that "
                             + "treats the return as the condition acts on a state nobody "
-                            + "established"),
+                            + "established",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_wait_returnedWithoutANotify_thenWaitedAgain", JDK,
                     "java.lang.Object",
@@ -3447,7 +3571,8 @@ final class Corpus {
                     "fields of an object are read by other threads while its construction is "
                             + "still open. A reference that escapes its constructor can be seen "
                             + "with its final fields unset, which is the one hazard no amount of "
-                            + "later synchronization can repair"),
+                            + "later synchronization can repair",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_object_accessedAfterConstruction", JDK,
                     "java.lang.Object",
@@ -3465,7 +3590,8 @@ final class Corpus {
                     "a synchronizer expecting a thousand parties is recorded receiving six. A "
                             + "barrier whose party count is never reached is a permanent stall, "
                             + "and the count is a construction-time constant rather than "
-                            + "anything the schedule decides"),
+                            + "anything the schedule decides",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_barrier_partiesArrivedAndAdvanced", JDK,
                     "java.util.concurrent.CyclicBarrier",
@@ -3482,7 +3608,8 @@ final class Corpus {
                     "a task is recorded as rejected by a pool of one with a queue of one. "
                             + "Rejection is the pool telling the caller it dropped work, and the "
                             + "default policy throws it back at whoever submitted - a failure "
-                            + "that arrives far from the sizing decision that caused it"),
+                            + "that arrives far from the sizing decision that caused it",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_threadPool_ranItsWorkToCompletion", JDK,
                     "java.util.concurrent.ThreadPoolExecutor",
@@ -3499,7 +3626,8 @@ final class Corpus {
                     "events are published to a stage and none is ever recorded as processed. An "
                             + "asynchronous stage that accepts work and never accounts for it is "
                             + "how a queue silently becomes a bin, and the counts say so without "
-                            + "any timing being involved"),
+                            + "any timing being involved",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_pipelineStage_publishedAndProcessed", JDK,
                     "java.lang.Object",
@@ -3516,7 +3644,8 @@ final class Corpus {
                     "readers outnumber writers by an order of magnitude on one lock. A "
                             + "non-fair read-write lock lets a steady stream of readers keep a "
                             + "writer waiting indefinitely, which is a liveness problem the "
-                            + "lock is behaving correctly to produce"),
+                            + "lock is behaving correctly to produce",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_readWriteLock_balancedItsTraffic", JDK,
                     "java.util.concurrent.locks.ReentrantReadWriteLock",
@@ -3533,7 +3662,8 @@ final class Corpus {
                     "one field is recorded as initialised by every thread that looked at it. A "
                             + "lazy initialisation that runs more than once has produced more "
                             + "than one instance of something meant to be unique, and every "
-                            + "caller after the first holds an object the others do not"),
+                            + "caller after the first holds an object the others do not",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_lazyInit_initialisedOnce", JDK,
                     "java.lang.Object",
@@ -3550,7 +3680,8 @@ final class Corpus {
                     "a monitor is recorded as contended on most of the attempts to take it. "
                             + "Nothing is broken; the lock is the bottleneck, which is a "
                             + "throughput fact the caller cannot see from the code and can only "
-                            + "get from a count"),
+                            + "get from a count",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_lock_takenWithoutContention", JDK,
                     "java.lang.Object",
@@ -3566,7 +3697,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "six threads write one object's field with nothing held. That is the "
                             + "textbook data race, and the detector's lock fingerprint is empty "
-                            + "across every recorded access because there is no lock to see"),
+                            + "across every recorded access because there is no lock to see",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_field_writtenUnderTheObjectsMonitor", JDK,
                     "java.lang.Object",
@@ -3590,7 +3722,8 @@ final class Corpus {
                     "an inheritable thread-local is set on a virtual thread and never removed. "
                             + "Every virtual thread inherits a copy, and where a pool has eight "
                             + "carriers an application may have a million virtual threads, so "
-                            + "the per-thread cost that was invisible becomes the heap"),
+                            + "the per-thread cost that was invisible becomes the heap",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_virtualThread_contextRemoved", JDK,
                     "java.lang.Thread",
@@ -3607,7 +3740,8 @@ final class Corpus {
                     "more virtual threads queue for a resource of capacity one than it can ever "
                             + "serve, and none is recorded as acquiring it. Virtual threads make "
                             + "it trivial to have more work in flight than the pool behind it, "
-                            + "and the queue forms where nobody is looking"),
+                            + "and the queue forms where nobody is looking",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_virtualThreads_withinResourceCapacity", JDK,
                     "java.lang.Thread",
@@ -3625,7 +3759,8 @@ final class Corpus {
                             + "it. A monitor serialises whatever asks for it, so a construct "
                             + "whose whole point is unbounded concurrency ends up single-file - "
                             + "and on older runtimes each blocked virtual thread also pinned its "
-                            + "carrier"),
+                            + "carrier",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_virtualThreads_acquiredTheMonitor", JDK,
                     "java.lang.Object",
@@ -3642,7 +3777,8 @@ final class Corpus {
                     "a distinct cached instance is recorded for each virtual thread. A "
                             + "ThreadLocal cache is an optimisation that assumes few, long-lived "
                             + "threads; with virtual threads it becomes an allocation per task, "
-                            + "which is the opposite of what it was added for"),
+                            + "which is the opposite of what it was added for",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_threadLocalCache_sharedAcrossVirtualThreads", JDK,
                     "java.lang.ThreadLocal",
@@ -3659,7 +3795,8 @@ final class Corpus {
                     "a fixed pool is built over a virtual-thread factory. Pooling exists to "
                             + "amortise the cost of creating a thread, and creating a virtual "
                             + "thread costs almost nothing - so the pool caps the concurrency "
-                            + "the caller was trying to buy and gives nothing back"),
+                            + "the caller was trying to buy and gives nothing back",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_executor_pooledItsPlatformThreads", JDK,
                     "java.util.concurrent.ThreadPoolExecutor",
@@ -3678,7 +3815,8 @@ final class Corpus {
                     "six threads write the same eight bytes of one segment with no guard named. "
                             + "Off-heap memory has none of the protections the heap has: there "
                             + "is no header, no type check and no bounds beyond what the caller "
-                            + "declares, so a torn write is simply wrong bytes"),
+                            + "declares, so a torn write is simply wrong bytes",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_memorySegment_disjointWrites", JDK,
                     "java.lang.foreign.MemorySegment",
@@ -3696,7 +3834,8 @@ final class Corpus {
                     "a segment allocated in a confined arena is accessed by threads other than "
                             + "the one that opened it. Confinement is the arena's entire safety "
                             + "argument - it is what lets it skip synchronization - so an escape "
-                            + "removes the guarantee rather than merely bending it"),
+                            + "removes the guarantee rather than merely bending it",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_confinedArena_accessedByItsOwner", JDK,
                     "java.lang.foreign.Arena",
@@ -3715,7 +3854,8 @@ final class Corpus {
                     "a gatherer is declared parallel with no combiner and then integrated from "
                             + "six threads. A parallel pipeline splits the work and has nothing "
                             + "to merge the halves with, so the integrator's state is shared "
-                            + "rather than combined"),
+                            + "rather than combined",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_gatherer_sequentialWithACombiner", JDK,
                     "java.util.stream.Gatherer",
@@ -3732,7 +3872,8 @@ final class Corpus {
                     "a lazy constant's computation is recorded as finishing with no value. A "
                             + "holder meant to be computed once and kept forever that ends up "
                             + "holding nothing will be recomputed by every later caller, which "
-                            + "is the opposite of the memoisation it was written for"),
+                            + "is the opposite of the memoisation it was written for",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_lazyConstant_computedToAValue", JDK,
                     "java.lang.Object",
@@ -3748,7 +3889,8 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a lazily computed entry finishes with no value, so the key stays absent. "
                             + "Every later lookup recomputes it, which turns a cache into a "
-                            + "guarantee that the expensive path runs every time"),
+                            + "guarantee that the expensive path runs every time",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_lazyCollection_entryComputedToAValue", JDK,
                     "java.util.Map",
@@ -3770,7 +3912,8 @@ final class Corpus {
                             + "is a contention finding rather than a corruption one: its seed is "
                             + "a single CAS every caller retries on, which is why "
                             + "ThreadLocalRandom exists. The row is here because the pair below "
-                            + "shows the detector still distinguishes confinement"),
+                            + "shows the detector still distinguishes confinement",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_random_confinedToOneThreadEach", JDK,
                     "java.util.Random",
@@ -3788,7 +3931,8 @@ final class Corpus {
                     "a task on a single-threaded scheduler is recorded taking five seconds. The "
                             + "duration is a parameter rather than a measurement, so the row "
                             + "states a slow task rather than waiting for one: on a scheduler of "
-                            + "one, a task that overruns delays every task behind it"),
+                            + "one, a task that overruns delays every task behind it",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_scheduledExecutor_taskFinishedPromptly", JDK,
                     "java.util.concurrent.ScheduledExecutorService",
@@ -3805,7 +3949,8 @@ final class Corpus {
                     "a task is recorded as forked and never joined. Fork-join's whole contract "
                             + "is that every fork is joined: an unjoined task's result is "
                             + "discarded and its exception with it, and the pool cannot help "
-                            + "because it does not know the caller stopped caring"),
+                            + "because it does not know the caller stopped caring",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_forkJoin_forkedAndJoined", JDK,
                     "java.util.concurrent.ForkJoinPool",
@@ -3821,7 +3966,8 @@ final class Corpus {
                     "ten thousand loop iterations are recorded before any yield, which is the "
                             + "detector's stated spin threshold. A spin that long is a core held "
                             + "at full power to wait, and it starves whatever it is waiting for "
-                            + "on a machine with fewer cores than spinners"),
+                            + "on a machine with fewer cores than spinners",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_spinLoop_yieldedOften", JDK,
                     "java.lang.Thread",
@@ -3838,7 +3984,8 @@ final class Corpus {
                     "a request is recorded as sent and no response is ever recorded for it. "
                             + "HttpClient is thread-safe and that is not the question: a request "
                             + "in flight that nobody accounts for holds a connection from a "
-                            + "bounded pool until it times out, which starves every later call"),
+                            + "bounded pool until it times out, which starves every later call",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_httpRequest_answered", JDK,
                     "java.net.http.HttpClient",
@@ -3855,7 +4002,8 @@ final class Corpus {
                     "every recorded compare-and-set fails. A failed CAS is work thrown away and "
                             + "retried, so an atomic under this much contention costs more than "
                             + "the lock it replaced - which is what LongAdder exists for. "
-                            + "Nothing is incorrect here, which is why the finding is advisory"),
+                            + "Nothing is incorrect here, which is why the finding is advisory",
+                    IssueSeverity.LOW),
 
             new RecordingSubject("recorded_atomic_casSucceededFirstTime", JDK,
                     "java.util.concurrent.atomic.AtomicLong",
@@ -3872,7 +4020,8 @@ final class Corpus {
                     "a task on a pool of one is recorded waiting for another task on the same "
                             + "pool. The sibling cannot start until this one finishes and this "
                             + "one will not finish until the sibling does, which is a deadlock "
-                            + "the pool has no way to break"),
+                            + "the pool has no way to break",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_executor_taskWaitedWithThreadsToSpare", JDK,
                     "java.util.concurrent.ExecutorService",
@@ -3890,7 +4039,8 @@ final class Corpus {
                     "every thread of a pool of one is recorded blocked waiting on a future. A "
                             + "pool whose workers are all parked on results has nobody left to "
                             + "produce them, which is the same shape as the sibling deadlock "
-                            + "seen from the future's end"),
+                            + "seen from the future's end",
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_future_blockedWithThreadsToSpare", JDK,
                     "java.util.concurrent.ExecutorService",
@@ -3907,7 +4057,8 @@ final class Corpus {
                     "an onNext is recorded after the subscriber has already been completed. The "
                             + "Reactive Streams rule the Flow API adopts is that onComplete is "
                             + "terminal and nothing may follow it, so a subscriber that receives "
-                            + "one is being handed state it has already torn down"),
+                            + "one is being handed state it has already torn down",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_flowSubscriber_signalledInOrder", JDK,
                     "java.util.concurrent.Flow",
@@ -3929,7 +4080,8 @@ final class Corpus {
                             + "leaked stamp is a lock nobody can release and every later writer "
                             + "waits on it forever. Since #588 the detector infers the leak from "
                             + "the acquisition no unlock matched, and reports it only while the "
-                            + "lock itself is still write-held at analysis"),
+                            + "lock itself is still write-held at analysis",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_stampedLock_stampReleased", JDK,
                     "java.util.concurrent.locks.StampedLock",
@@ -3947,7 +4099,8 @@ final class Corpus {
                     "an InterruptedException is recorded as caught and no restore is ever "
                             + "recorded. This is the same defect the INTERRUPT_SWALLOWING pair "
                             + "covers, seen by the monitor that counts catches against restores "
-                            + "rather than by the one that reads a per-catch flag"),
+                            + "rather than by the one that reads a per-catch flag",
+                    IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_interruptedException_restoredAfterCatching", JDK,
                     "java.lang.InterruptedException",
@@ -3964,7 +4117,8 @@ final class Corpus {
                             + "thread-safe, so this is a contention note rather than a "
                             + "corruption claim - and entropy draws serialise, which makes the "
                             + "queue behind a shared instance longer than the one behind a "
-                            + "shared Random"),
+                            + "shared Random",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_secureRandom_confinedToOneThreadEach", JDK,
                     "java.security.SecureRandom",

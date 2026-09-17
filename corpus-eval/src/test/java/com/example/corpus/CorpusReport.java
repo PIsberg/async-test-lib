@@ -168,7 +168,8 @@ final class CorpusReport {
                     .append(detectorClass).append("` | ")
                     .append(subject.contract()).append(" | ")
                     .append(subject.expectation()).append(" | ")
-                    .append(fired ? "fired (" + mine.size() + ")" : "silent").append(" | ")
+                    .append(fired ? "fired (" + mine.size() + ", " + severitiesOf(mine) + ")" : "silent")
+                    .append(" | ")
                     .append(fired == shouldFire ? "as stated" : "**MISMATCH**").append(" |\n");
         }
 
@@ -499,6 +500,22 @@ final class CorpusReport {
                     .append(finding.evidence().replace("|", "\\|").replace("\n", " ")).append(" |\n");
         }
         return out.append('\n').toString();
+    }
+
+    /**
+     * {@return the distinct severities of {@code findings}, in severity order, joined by '/'}
+     *
+     * <p>Printed next to a firing row's count so that a run is the record a row's
+     * {@code expectedSeverity} is pinned from (#660).
+     */
+    static String severitiesOf(List<CorpusRecorder.Finding> findings) {
+        return findings.stream()
+                .map(CorpusRecorder.Finding::severity)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .sorted()
+                .map(Enum::name)
+                .collect(java.util.stream.Collectors.joining("/"));
     }
 
     private static String row(String label, long value) {

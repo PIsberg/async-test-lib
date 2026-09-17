@@ -28,8 +28,9 @@ import se.deversity.asynctest.diagnostics.IssueSeverity;
  * @param expectation      what must happen, given what the body records
  * @param rationale        why that outcome follows from the recorded calls
  * @param expectedSeverity the severity the finding must carry, or {@code null} to leave severity
- *                         unchecked. No row in {@link Corpus} sets one yet, so the severity half of
- *                         the outcome gate runs only in {@code CorpusGatesTest}, never in a lane.
+ *                         unchecked. Every MUST_FIRE row in {@link Corpus} sets one, read from a
+ *                         lane run (#660), and {@code CorpusGates.everyFiringRowPinsItsSeverity}
+ *                         fails a firing row that does not.
  */
 record RecordingSubject(
         String testMethod,
