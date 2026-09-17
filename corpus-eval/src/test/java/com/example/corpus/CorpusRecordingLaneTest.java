@@ -2766,6 +2766,72 @@ class CorpusRecordingLaneTest {
     }
 
     /**
+     * A lost notify, then an {@code if (!ready)} wait that times out, then a later check that finds
+     * the predicate still false and does not wait again.
+     *
+     * <p>The wait is not a loop: nothing after the wakeup re-tests the predicate before going on,
+     * and the unrelated check further down the body is not a back-edge. Since #656 the detector
+     * confirms a loop only from the waiter's next events on the condition in the same round, a
+     * satisfied check or an unsatisfied check followed by another wait, so this wait stays
+     * unconfirmed and the lost notify before it is the finding. Each execution uses its own
+     * monitor, so no other thread's notify can reach it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_missedSignal_repeatedIfCheck() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        boolean ready = false;
+        synchronized (monitor) {
+            detector.recordNotify(monitor);
+            monitor.notify();
+        }
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, ready);
+            if (!ready) {
+                detector.recordWait(monitor);
+                monitor.wait(20);
+                detector.recordWakeup(monitor);
+            }
+        }
+        // Later, unrelated to the wait above: the same predicate read again, still false, and
+        // the body moves on without waiting.
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, ready);
+        }
+    }
+
+    /**
+     * The same lost notify and timed wait inside {@code while (!ready)}, re-checking after the
+     * wakeup and finding the state set, so the loop exits.
+     *
+     * <p>The satisfied check right after the wakeup is what a loop records and an {@code if}
+     * does not: it confirms the wait as guarded, and a guarded wait is never reported. The state
+     * is set by the body after its wait, standing in for the producer whose flag the loop reads.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_missedSignal_whileLoopRecheck() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        boolean ready = false;
+        synchronized (monitor) {
+            detector.recordNotify(monitor);
+            monitor.notify();
+        }
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, ready);
+            while (!ready) {
+                detector.recordWait(monitor);
+                monitor.wait(20);
+                detector.recordWakeup(monitor);
+                ready = true;
+                detector.recordPredicateCheck(monitor, ready);
+            }
+        }
+    }
+
+    /**
      * An optimistic read whose validation comes back false.
      *
      * <p>{@code StampedLock}'s optimistic mode is documented as valid only once {@code validate}

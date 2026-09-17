@@ -2599,6 +2599,27 @@ final class Corpus {
                             + "The pair separates on whether the wait received a notify, not on "
                             + "how the threads were scheduled: each execution has its own monitor"),
 
+            new RecordingSubject("recorded_missedSignal_repeatedIfCheck", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a notify is lost, then an if (!ready) wait times out and the body goes on; "
+                            + "a later check finds the predicate still false and nothing waits "
+                            + "again. Recorded predicate checks do not make a loop: since #656 a "
+                            + "wait is confirmed as guarded only by the waiter's next events in "
+                            + "the same round, and an unsatisfied check with no wait after it is "
+                            + "not one",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("recorded_missedSignal_whileLoopRecheck", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same lost notify and timed wait inside while (!ready), with the "
+                            + "predicate re-checked right after the wakeup and found satisfied, so "
+                            + "the loop exits. The halves call the same detector methods and "
+                            + "differ only in whether the check after the wakeup is satisfied"),
+
             new RecordingSubject("recorded_optimisticRead_usedWithoutValidating", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.OPTIMISTIC_READ_VALIDATION, Contract.THREAD_SAFE,
