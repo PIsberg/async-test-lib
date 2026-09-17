@@ -172,6 +172,62 @@ class CorpusGatesTest {
                         CorpusLane.AGENT_ON));
     }
 
+    @Test
+    @DisplayName("an exposed reporting detector passes the exposure gate")
+    void anExposedDetectorReportingPassesTheExposureGate() {
+        assertDoesNotThrow(() -> CorpusGates.everyReportingDetectorWasExposed(
+                List.of(finding(aSubjectWith(Contract.NOT_THREAD_SAFE).testMethod(),
+                        DetectorExposure.classOf(DetectorType.DEADLOCKS))),
+                CorpusLane.AGENT_ON));
+    }
+
+    // --- Attribution -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("an unresolvable finding subject fails the attribution gate")
+    void anOrphanFindingFailsTheAttributionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyFindingIsAttributed(
+                        List.of(finding("orphanSubject", someDetectorClass())), List.of(), id -> null));
+    }
+
+    @Test
+    @DisplayName("an unresolvable crash subject fails the attribution gate")
+    void anOrphanCrashFailsTheAttributionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyFindingIsAttributed(
+                        List.of(), List.of(new CorpusRecorder.Crash("orphanCrash", "java.lang.RuntimeException")), id -> null));
+    }
+
+    @Test
+    @DisplayName("attributed findings and crashes pass the attribution gate")
+    void attributedFindingsAndCrashesPassTheAttributionGate() {
+        Subject subject = aSubjectWith(Contract.THREAD_SAFE);
+        assertDoesNotThrow(() ->
+                CorpusGates.everyFindingIsAttributed(
+                        List.of(finding(subject.testMethod(), someDetectorClass())),
+                        List.of(new CorpusRecorder.Crash(subject.testMethod(), "java.lang.RuntimeException")),
+                        id -> subject));
+    }
+
+    @Test
+    @DisplayName("an unresolvable recording finding fails the recording attribution gate")
+    void anOrphanRecordingFindingFailsTheAttributionGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyRecordingFindingIsAttributed(
+                        List.of(finding("orphanRecordingSubject", someDetectorClass())), id -> null));
+    }
+
+    @Test
+    @DisplayName("attributed recording findings pass the recording attribution gate")
+    void attributedRecordingFindingPassesTheAttributionGate() {
+        RecordingSubject row = new RecordingSubject("recSubject", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        assertDoesNotThrow(() ->
+                CorpusGates.everyRecordingFindingIsAttributed(
+                        List.of(finding("recSubject", someDetectorClass())), id -> id.equals("recSubject") ? row : null));
+    }
+
     // --- Detection ---------------------------------------------------------------------------
 
     @Test
@@ -427,6 +483,29 @@ class CorpusGatesTest {
     void matchingSubjectsPassSubjectExerciseGate() {
         assertDoesNotThrow(() ->
                 CorpusGates.everySubjectIsExercised(DummySubjectSuite.class, Set.of("subjectA", "subjectB")));
+    }
+
+    @Test
+    @DisplayName("a missing test method fails the recording subject exercise gate")
+    void missingRecordingAsyncTestMethodFailsSubjectExerciseGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyRecordingSubjectIsExercised(DummySubjectSuite.class,
+                        Set.of("subjectA", "subjectB", "subjectC")));
+    }
+
+    @Test
+    @DisplayName("an unregistered test method fails the recording subject exercise gate")
+    void unregisteredRecordingAsyncTestMethodFailsSubjectExerciseGate() {
+        assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyRecordingSubjectIsExercised(DummySubjectSuite.class, Set.of("subjectA")));
+    }
+
+    @Test
+    @DisplayName("matching subjects pass the recording subject exercise gate")
+    void matchingRecordingSubjectsPassSubjectExerciseGate() {
+        assertDoesNotThrow(() ->
+                CorpusGates.everyRecordingSubjectIsExercised(DummySubjectSuite.class,
+                        Set.of("subjectA", "subjectB")));
     }
 
     @Test

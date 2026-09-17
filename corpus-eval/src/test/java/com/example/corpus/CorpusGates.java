@@ -371,12 +371,16 @@ final class CorpusGates {
 
     /** A recording test method without a row would be a subject with no stated expectation. */
     static void everyRecordingSubjectIsExercised(CorpusLane lane, Class<?> laneTest) {
+        Set<String> declared = Corpus.subjectsFor(lane).stream()
+                .map(RecordingSubject::testMethod)
+                .collect(Collectors.toUnmodifiableSet());
+        everyRecordingSubjectIsExercised(laneTest, declared);
+    }
+
+    static void everyRecordingSubjectIsExercised(Class<?> laneTest, Set<String> declared) {
         Set<String> exercised = Arrays.stream(laneTest.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(AsyncTest.class))
                 .map(Method::getName)
-                .collect(Collectors.toUnmodifiableSet());
-        Set<String> declared = Corpus.subjectsFor(lane).stream()
-                .map(RecordingSubject::testMethod)
                 .collect(Collectors.toUnmodifiableSet());
 
         assertEquals(declared, exercised,
@@ -385,10 +389,15 @@ final class CorpusGates {
     }
 
     static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings,
-                                                          CorpusLane lane) {
+                                                  CorpusLane lane) {
+        everyRecordingFindingIsAttributed(findings, subject -> Corpus.pairByTestMethod(lane, subject));
+    }
+
+    static void everyRecordingFindingIsAttributed(List<CorpusRecorder.Finding> findings,
+                                                  java.util.function.Function<String, RecordingSubject> resolver) {
         List<String> orphans = findings.stream()
                 .map(CorpusRecorder.Finding::subject)
-                .filter(subject -> Corpus.pairByTestMethod(lane, subject) == null)
+                .filter(subject -> resolver.apply(subject) == null)
                 .distinct()
                 .toList();
         assertTrue(orphans.isEmpty(), "findings attributed to no recording subject: " + orphans);
@@ -633,17 +642,23 @@ final class CorpusGates {
     }
 
     static void everyFindingIsAttributed(List<CorpusRecorder.Finding> findings,
-                                                 List<CorpusRecorder.Crash> crashes) {
+                                         List<CorpusRecorder.Crash> crashes) {
+        everyFindingIsAttributed(findings, crashes, Corpus::byTestMethod);
+    }
+
+    static void everyFindingIsAttributed(List<CorpusRecorder.Finding> findings,
+                                         List<CorpusRecorder.Crash> crashes,
+                                         java.util.function.Function<String, Subject> resolver) {
         List<String> orphans = findings.stream()
                 .map(CorpusRecorder.Finding::subject)
-                .filter(subject -> Corpus.byTestMethod(subject) == null)
+                .filter(subject -> resolver.apply(subject) == null)
                 .distinct()
                 .toList();
         assertTrue(orphans.isEmpty(), "findings attributed to no subject: " + orphans);
 
         List<String> orphanCrashes = crashes.stream()
                 .map(CorpusRecorder.Crash::subject)
-                .filter(subject -> Corpus.byTestMethod(subject) == null)
+                .filter(subject -> resolver.apply(subject) == null)
                 .distinct()
                 .toList();
         assertTrue(orphanCrashes.isEmpty(), "crashes attributed to no subject: " + orphanCrashes);
@@ -672,12 +687,18 @@ final class CorpusGates {
      * "looked and saw nothing" depends on this holding.
      */
     static void everyReportingDetectorWasExposed(List<CorpusRecorder.Finding> findings,
-                                                         CorpusLane lane) {
+                                                 CorpusLane lane) {
+        everyReportingDetectorWasExposed(findings, lane, type -> DetectorExposure.isExposed(type, lane));
+    }
+
+    static void everyReportingDetectorWasExposed(List<CorpusRecorder.Finding> findings,
+                                                 CorpusLane lane,
+                                                 java.util.function.Predicate<DetectorType> isExposed) {
         List<String> unexposed = findings.stream()
                 .map(CorpusRecorder.Finding::detector)
                 .distinct()
                 .filter(detector -> DetectorExposure.typeOf(detector)
-                        .map(type -> !DetectorExposure.isExposed(type, lane))
+                        .map(type -> !isExposed.test(type))
                         .orElse(true))
                 .toList();
 
