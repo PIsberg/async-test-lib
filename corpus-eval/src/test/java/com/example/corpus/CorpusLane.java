@@ -18,7 +18,8 @@ package com.example.corpus;
  * exposure of zero in every lane and "no false positive from detector X" and "X never ran" stay
  * the same row for 86% of the roster.
  *
- * <p>Surefire sets {@code corpus.lane} per execution; a plain {@code mvn test} runs all three.
+ * <p>Surefire sets {@code corpus.lane} per execution; a plain {@code mvn test} runs every lane
+ * declared here.
  */
 enum CorpusLane {
 

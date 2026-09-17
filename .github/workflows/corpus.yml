@@ -3,15 +3,18 @@ name: Corpus Eval
 # What the detectors say about code nobody here wrote.
 #
 # corpus-eval/ exercises third-party classes whose own javadoc states a thread-safety contract,
-# under @AsyncTest, in three lanes per run: the agent attached; the same subjects with nothing
-# attached, as the control the exposure table rests on; and a recording lane whose bodies call the
-# recording API, which is a different measurement over a different denominator. The gates that must
+# under @AsyncTest, in five lanes per run: the agent attached, which is the lane every published
+# number comes from; the same subjects with nothing attached, as the control the exposure table
+# rests on; a recording lane whose bodies call the recording API, which is a different measurement
+# over a different denominator; an agent-pair lane, which reaches the detectors no record* call
+# can; and that lane's library rows again with the libraries excluded from weaving, which is what
+# holds a library pair's finding to having come from inside the library. The gates that must
 # hold every run live in CorpusGates; the numbers are in the uploaded reports, one set per JDK, and
 # the analysis is docs/analysis/corpus-eval.md.
 #
 # Its own workflow rather than a job in e2e-tests.yml, because this eval answers a question about
 # the product rather than about the build: whether a finding on somebody else's code means their
-# code is wrong. It publishes numbers that the README and the trust tiers both rest on - nine
+# code is wrong. It publishes numbers that the README and the trust tiers both rest on - 59
 # detectors carry VERDICT on the strength of pairs measured here - so it earns a history and a
 # badge of its own, and a workflow_dispatch for running it against a library change without waiting
 # for the whole end-to-end suite.
@@ -114,11 +117,11 @@ jobs:
         run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
 
       # Measures what the detectors report on third-party classes whose javadoc states a
-      # thread-safety contract. Three lanes per run: the agent attached; the same subjects with
-      # nothing attached, as the control the exposure table rests on; and a recording lane whose
-      # bodies do call the recording API, which is a different measurement over a different
-      # denominator and writes its own report. The gates that must hold every run live in
-      # CorpusGates; the numbers are in the uploaded reports, one set per JDK.
+      # thread-safety contract. One `mvn test` runs all five lanes CorpusLane declares, each as
+      # its own Surefire execution with its own report: agent-on, agent-off, recording,
+      # agent-pairs and agent-pairs-library-excluded, described at the top of this file. The
+      # gates that must hold every run live in CorpusGates; the numbers are in the uploaded
+      # reports, one set per JDK.
       - name: Run corpus eval
         run: mvn "-Dmaven.repo.local=.m2/repository" -f corpus-eval/pom.xml test
 
