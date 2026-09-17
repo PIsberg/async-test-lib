@@ -849,6 +849,11 @@ public final class AsyncTestContext {
         if (concurrentMapComputeRecursionDetector != null) {
             concurrentMapComputeRecursionDetector.markInvocationStart();
         }
+        // A predicate check confirms only a wait from its own round; a pooled worker's check in
+        // the next round is that round's own test before its wait, not a re-test (#635).
+        if (missedSignalDetector != null) {
+            missedSignalDetector.markInvocationStart();
+        }
         // An unsignalled wait return is excused only by a second wait from the same thread; a
         // pooled worker's wait in the next round is a fresh body execution, not that re-check (#590).
         if (wakeupDetector != null) {

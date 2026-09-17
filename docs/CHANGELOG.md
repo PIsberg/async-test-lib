@@ -7,13 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
 - **`MissedSignalDetector` observes predicate re-checks via `recordPredicateCheck` (#635).**
   Guardedness previously required the caller to declare `guarded = true|false` at `recordWait()`.
   New `recordPredicateCheck(Object monitor, boolean satisfied)` and
   `recordPredicateCheck(String conditionName, boolean satisfied)` (`@since 1.12.1`) allow
   observing a predicate re-evaluation occurring after wait wakeup, marking the completed wait
   as predicate-guarded and silencing false-positive missed signal reports. The corpus recording lane
-  MUST_FIRE row no longer declares its wait unguarded.
+  MUST_FIRE row no longer declares its wait unguarded. A check confirms only the thread's latest
+  wait, in the invocation round that wait woke up in, and never a wait recorded with an explicit
+  `guarded` flag: as first merged, a pooled worker's `if (!ready)` test in the next round marked
+  the previous round's unsignalled `if`-wait guarded and hid the lost signal, and a check after
+  `recordWait(monitor, false)` overrode the caller. The `satisfied` argument is not used in the
+  decision.
 
 - **`ConditionVariableDetector` distinguishes stranded condition waiters from idle consumers via waiter predicates (#643).**
   A thread parked on a condition at analysis was previously reported as a stuck waiter even if it was legitimately

@@ -254,6 +254,63 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                         + " -> " + report);
     }
 
+    /** A lost notify and an if-wait in round one; the same pooled thread tests again in round two. */
+    public static class MissedSignalCheckInNextRound {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+        static final Object MONITOR = new Object();
+
+        // One platform worker, so the same pool thread runs both rounds: round two's check would
+        // read as a re-test of round one's wait unless the runner closes the round (#635).
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
+                   detectAll = false, detectMissedSignals = true)
+        void body() {
+            var d = AsyncTestContext.missedSignalDetector();
+            if (EXECUTIONS.getAndIncrement() == 0) {
+                d.recordNotify(MONITOR); // nobody waiting: lost
+                d.recordWait(MONITOR);
+                d.recordWakeup(MONITOR); // the timed wait ran out, unsignalled
+            } else {
+                d.recordPredicateCheck(MONITOR, true);
+            }
+        }
+    }
+
+    /** The same history with the check inside round one, after the wakeup: a guarded loop. */
+    public static class MissedSignalCheckInSameRound {
+        static final Object MONITOR = new Object();
+
+        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
+                   detectAll = false, detectMissedSignals = true)
+        void body() {
+            var d = AsyncTestContext.missedSignalDetector();
+            d.recordNotify(MONITOR);
+            d.recordWait(MONITOR);
+            d.recordWakeup(MONITOR);
+            d.recordPredicateCheck(MONITOR, true);
+        }
+    }
+
+    @Test
+    @DisplayName("a predicate check in the next round does not guard the wait of the round before")
+    void missedSignalCheckInNextRoundDoesNotGuard() {
+        run(MissedSignalCheckInNextRound.class);
+        String report = REPORTS.get("MissedSignalDetector");
+        assertTrue(report != null && report.contains("SIGNAL LOST"),
+                "round two's check was taken as a re-test of round one's unsignalled wait. "
+                        + "AsyncTestContext.markInvocationStart must reach this detector (#635). "
+                        + "Reports: " + REPORTS.keySet() + " -> " + report);
+    }
+
+    @Test
+    @DisplayName("a check after the wakeup in the same round guards it, so the report above is not the recording alone")
+    void missedSignalCheckInSameRoundGuards() {
+        run(MissedSignalCheckInSameRound.class);
+        String report = REPORTS.get("MissedSignalDetector");
+        assertTrue(report == null || !report.contains("SIGNAL LOST"),
+                "a check after the wakeup in the same round re-tests the predicate and must "
+                        + "silence the wait (#635). Report: " + report);
+    }
+
     /** An await round one never exits, then a complete signalled wait in round two, on one thread. */
     public static class ConditionAwaitAbandonedCrossRound {
         static final AtomicInteger EXECUTIONS = new AtomicInteger();
