@@ -356,8 +356,9 @@ public final class TelemetryRegistry {
      * Records that {@code updater} is an {@code AtomicIntegerFieldUpdater} on {@code qualifiedName}.
      *
      * <p>Emitted by the weaver right after a {@code newUpdater} call that returns one, the
-     * updater counterpart of {@link #varHandleBound} (#558). An updater exposes no field name, so
-     * without this call a spinlock taken through it is never declared.
+     * updater counterpart of {@link #varHandleBound} (#558). An updater exposes no field name; one
+     * bound before the agent attached never makes this call and is resolved by reading its target
+     * from the JDK's implementation instead, where the agent has opened that to this copy (#659).
      *
      * @param updater       the updater the binding returned
      * @param qualifiedName the field, as {@code declaringClass.field}
@@ -365,41 +366,6 @@ public final class TelemetryRegistry {
      */
     public static void atomicUpdaterBound(@Nullable Object updater, String qualifiedName) {
         SpinLocks.bound(updater, qualifiedName);
-    }
-
-    /**
-     * Records that {@code ownerClass} binds {@code qualifiedName} through an
-     * {@code AtomicIntegerFieldUpdater.newUpdater} call (#619).
-     *
-     * <p>Called at weave time by {@code AtomicFieldRegistry.recordIntUpdater} when visiting
-     * {@code <clinit>}, so updaters created before the agent attached can be resolved from their
-     * owner's recorded updater fields.
-     *
-     * <p>An empty {@code qualifiedName} records that {@code ownerClass} makes an updater whose
-     * owner or field name was not a constant, which keeps its hierarchy from being resolved.
-     *
-     * @param ownerClass    the class passed to {@code newUpdater}, as a qualified name, or the
-     *                      class making the call when {@code qualifiedName} is empty
-     * @param qualifiedName the field, as {@code declaringClass.field}, or empty when unreadable
-     * @since 1.12.1
-     */
-    public static void atomicUpdaterFieldRecorded(String ownerClass, String qualifiedName) {
-        SpinLocks.recordUpdaterField(ownerClass, qualifiedName);
-    }
-
-    /**
-     * Records that the weaver has scanned every method of {@code className}, whether or not it
-     * binds an updater (#619).
-     *
-     * <p>Called at weave time by {@code AtomicFieldRegistry.recordScanned}. A pre-attach updater is
-     * resolved from its receiver's hierarchy only when every class in it has been scanned, since
-     * one the weaver never saw may bind an updater nobody recorded.
-     *
-     * @param className the scanned class, as a qualified name
-     * @since 1.12.1
-     */
-    public static void atomicUpdaterClassScanned(String className) {
-        SpinLocks.recordScannedClass(className);
     }
 
     /**
@@ -512,7 +478,7 @@ public final class TelemetryRegistry {
         AtomicIntegerFieldUpdater<Object> target = erased(updater);
         boolean won = target.compareAndSet(receiver, expected, update);
         if (won && receiver != null && ((expected == 0 && update == 1) || (expected == 1 && update == 0))) {
-            String field = SpinLocks.fieldOf(updater, receiver);
+            String field = SpinLocks.fieldOf(updater);
             if (field == null) {
                 return won;
             }
@@ -544,7 +510,7 @@ public final class TelemetryRegistry {
         if (receiver == null || updater == null) {
             return;
         }
-        String field = SpinLocks.fieldOf(updater, receiver);
+        String field = SpinLocks.fieldOf(updater);
         if (field != null && SpinLocks.isSpinField(field)) {
             SpinLocks.release(receiver, field);
         }

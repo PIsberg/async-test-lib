@@ -92,7 +92,7 @@ import org.jspecify.annotations.Nullable;
  */
 @AICore(
     sensitivity = "Critical",
-    note = "The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave accesses and double-count every one. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while neither weaver adds members — the Advice is a method-entry prologue, and FieldAccessWeaver inserts a stack-neutral, branch-free call before each field instruction, a DUP plus call after a reference getAndSet on an atomic slot (the ownership take, #555), and replaces an int VarHandle, AtomicIntegerFieldUpdater, AtomicBoolean or AtomicInteger compareAndSet/set call, or a value-returning release such as getAndSet, decrementAndGet or compareAndExchange, with a static hook consuming the same stack and returning the same result, plus one POP where a VarHandle call site declared a void result (the spinlock, #554, #558, #658), so frames stay valid and only maxStack grows (COMPUTE_MAXS, never COMPUTE_FRAMES, which would load classes from inside the agent). Nothing may throw out of premain — an exception there aborts JVM startup, which is why install() catches Throwable and releases the gate rather than propagating. The Premain-Class / Agent-Class manifest entries live in this module's jar, which is why attaching uses -javaagent:async-test-agent.jar."
+    note = "The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave accesses and double-count every one. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while neither weaver adds members — the Advice is a method-entry prologue, and FieldAccessWeaver inserts a stack-neutral, branch-free call before each field instruction, a DUP plus call after a reference getAndSet on an atomic slot (the ownership take, #555), and replaces an int VarHandle, AtomicIntegerFieldUpdater, AtomicBoolean or AtomicInteger compareAndSet/set call, or a value-returning release such as getAndSet, decrementAndGet or compareAndExchange, with a static hook consuming the same stack and returning the same result, plus one POP where a VarHandle call site declared a void result (the spinlock, #554, #558, #658), so frames stay valid and only maxStack grows (COMPUTE_MAXS, never COMPUTE_FRAMES, which would load classes from inside the agent). With fields=true, install and the transformer also open java.util.concurrent.atomic to the unnamed module of the loader of each woven class and of its ancestors (UpdaterAccess, #659): the library resolves an updater bound before the attach by reading the JDK implementation from whichever library copy the woven class reaches, and that opening must fail silently like the rest of install. Nothing may throw out of premain — an exception there aborts JVM startup, which is why install() catches Throwable and releases the gate rather than propagating. The Premain-Class / Agent-Class manifest entries live in this module's jar, which is why attaching uses -javaagent:async-test-agent.jar."
 )
 public final class AsyncTestAgent {
 
@@ -376,6 +376,11 @@ public final class AsyncTestAgent {
                     .disableClassFormatChanges();
         }
         boolean weaveFields = options.fields();
+        if (weaveFields) {
+            // The library copy beside the agent resolves pre-attach updaters by reading the JDK's
+            // implementation (#659); each woven loader gets the same in the transformer below.
+            UpdaterAccess.openTo(inst, AsyncTestAgent.class.getClassLoader());
+        }
         // Resolved once, here, rather than per transformation: the hook class lives in the library
         // jar, and a classpath that cannot see it must fail while installing the agent, not later
         // from inside somebody's woven test body.
@@ -386,6 +391,11 @@ public final class AsyncTestAgent {
                         typeIgnore.matches(typeDescription) || bootstrapIgnore.matches(classLoader))
                 .type(typeMatcher(options.includes()))
                 .transform((b, typeDescription, classLoader, module, protectionDomain) -> {
+                    if (weaveFields) {
+                        // Before any woven call site of this class can run: it resolves updaters
+                        // in the library copy its own loader reaches, which may not be ours (#659).
+                        UpdaterAccess.openTo(inst, classLoader);
+                    }
                     // The accessor Advice is the default mode's whole story and must stand down
                     // when field instructions are woven: a getter's body contains the GETFIELD,
                     // so with fields=true the Advice reported every accessor-shaped method a

@@ -7,7 +7,8 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
  *
  * <p>The weaver never scans this class, so the registry has no record that {@code STATE} exists.
  * A subclass that is woven records only its own updater field, and "exactly one recorded field in
- * the hierarchy" would then name the subclass's flag for a swap through {@code STATE} (#619).
+ * the hierarchy" would then name the subclass's flag for a swap through {@code STATE} (#619). The
+ * same holds for a JDK superclass, which is why #659 resolves an updater from its own target.
  */
 public class UnwovenUpdaterBase {
 

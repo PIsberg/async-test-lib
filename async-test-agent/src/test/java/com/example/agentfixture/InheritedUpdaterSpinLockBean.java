@@ -9,9 +9,10 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
  * that has another (#619).
  *
  * <p>The test initialises it before the agent attaches, so neither updater's binding call runs
- * woven and both can only be resolved from recorded updater fields. Only {@code busy} is ever
- * recorded, which is exactly why neither may be resolved: a swap through {@code STATE} named as
- * {@code busy} would declare a lock on a flag the swap never touched.
+ * woven. #619 resolved such updaters from the fields recorded in the receiver's hierarchy, where
+ * only {@code busy} is ever recorded; a swap through {@code STATE} named as {@code busy} would
+ * declare a lock on a flag the swap never touched. Since #659 each resolves from its own target
+ * class and offset: {@code STATE} to {@code state}, {@code BUSY} to {@code busy}.
  */
 public final class InheritedUpdaterSpinLockBean extends UnwovenUpdaterBase {
 

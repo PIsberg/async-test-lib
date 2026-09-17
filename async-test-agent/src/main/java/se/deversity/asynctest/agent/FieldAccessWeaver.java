@@ -173,14 +173,6 @@ final class FieldAccessWeaver {
                             (access & Opcodes.ACC_STATIC) != 0,
                             internalName, classConstantsUsable);
                 }
-
-                @Override
-                public void visitEnd() {
-                    // After every method, so a concurrent resolution never sees this class as
-                    // scanned before its updater fields are recorded (#619).
-                    AtomicFieldRegistry.recordScanned(internalName.replace('/', '.'));
-                    super.visitEnd();
-                }
             };
         }
     }
@@ -472,14 +464,6 @@ final class FieldAccessWeaver {
                 super.visitLdcInsn(boundField);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "atomicUpdaterBound",
                         "(Ljava/lang/Object;Ljava/lang/String;)V", false);
-                int lastDot = boundField.lastIndexOf('.');
-                if (lastDot > 0) {
-                    AtomicFieldRegistry.recordIntUpdater(boundField.substring(0, lastDot), boundField);
-                }
-            } else if (boundField == null && "newUpdater".equals(name) && INT_UPDATER.equals(owner)) {
-                // An updater whose owner or field name is not a constant: nothing can say which
-                // flag it swaps, so this class's hierarchy must not be resolved by elimination (#619).
-                AtomicFieldRegistry.recordIntUpdater(classInternalName.replace('/', '.'), "");
             }
             if (weaveFieldInstructions && isReferenceTake(opcode, owner, name, descriptor)) {
                 // The returned reference is on top of the stack: hand a copy to the registry and

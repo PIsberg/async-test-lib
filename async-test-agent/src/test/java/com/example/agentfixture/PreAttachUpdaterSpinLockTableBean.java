@@ -9,8 +9,8 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
  *
  * <p>Its type initializer has already run by the time the weaver sees it, so the call that tells
  * the registry which field {@code BUSY} is an updater on never executes. The call sites are still
- * woven on retransformation, and the updater has to be resolved from the owner's recorded updater
- * fields.
+ * woven on retransformation, and the updater has to be resolved from its own target class and
+ * field offset (#659).
  */
 public final class PreAttachUpdaterSpinLockTableBean {
 

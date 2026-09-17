@@ -2,11 +2,13 @@ package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.AtomicSpinLockTableBean;
 import com.example.agentfixture.InheritedUpdaterSpinLockBean;
+import com.example.agentfixture.OutsideUpdaterTargetBean;
 import com.example.agentfixture.PreAttachSpinLockTableBean;
 import com.example.agentfixture.PreAttachUpdaterSpinLockTableBean;
 import com.example.agentfixture.SpinLockHandOffBean;
 import com.example.agentfixture.SpinLockTableBean;
 import com.example.agentfixture.UpdaterSpinLockTableBean;
+import com.example.unwovenfixture.OutsideUpdaterMaker;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -19,6 +21,8 @@ import se.deversity.asynctest.telemetry.TelemetryBridge;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -27,6 +31,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -72,7 +79,62 @@ class SpinLockWeavingTest {
         PreAttachSpinLockTableBean.initialise();
         PreAttachUpdaterSpinLockTableBean.initialise();
         InheritedUpdaterSpinLockBean.initialise();
+        OutsideUpdaterMaker.initialise();
+        OutsideUpdaterTargetBean.initialise();
+        isolatedBean = loadIsolatedBeforeAttach();
         AsyncTestAgent.selfAttach("includes=com.example.agentfixture,fields=true,collections=true");
+    }
+
+    /** {@code IsolatedUpdaterSpinLockBean} as its own child-first loader defined it (#659). */
+    private static Class<?> isolatedBean;
+
+    private static final String ISOLATED_BEAN = "com.example.agentfixture.IsolatedUpdaterSpinLockBean";
+
+    /**
+     * Loads and initialises the isolated fixture in a loader that defines its own copy of the
+     * library, the way a runner with an isolated test classloader does.
+     */
+    private static Class<?> loadIsolatedBeforeAttach() {
+        try {
+            URL library = TelemetryRegistry.class.getProtectionDomain().getCodeSource().getLocation();
+            URL fixtures = SpinLockWeavingTest.class.getProtectionDomain().getCodeSource().getLocation();
+            ClassLoader loader = new ChildFirstLoader(new URL[] {library, fixtures},
+                    SpinLockWeavingTest.class.getClassLoader());
+            return Class.forName(ISOLATED_BEAN, true, loader);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Defines the library and the isolated fixture itself, and delegates everything else. */
+    private static final class ChildFirstLoader extends URLClassLoader {
+
+        ChildFirstLoader(URL[] urls, ClassLoader parent) {
+            super(urls, parent);
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            boolean own = ISOLATED_BEAN.equals(name)
+                    || (name.startsWith("se.deversity.asynctest.") && !name.startsWith("se.deversity.asynctest.agent."));
+            if (!own) {
+                return super.loadClass(name, resolve);
+            }
+            synchronized (getClassLoadingLock(name)) {
+                Class<?> loaded = findLoadedClass(name);
+                if (loaded == null) {
+                    try {
+                        loaded = findClass(name);
+                    } catch (ClassNotFoundException e) {
+                        loaded = super.loadClass(name, false);
+                    }
+                }
+                if (resolve) {
+                    resolveClass(loaded);
+                }
+                return loaded;
+            }
+        }
     }
 
     @AfterEach
@@ -242,7 +304,7 @@ class SpinLockWeavingTest {
     void preAttachUpdaterSpinLockGuardsTheTable() throws Exception {
         assertQuiet(drive(new PreAttachUpdaterSpinLockTableBean()::growReleasedByWrite),
                 "the updater's type initializer ran before the attach, so the field it reaches must be "
-                        + "resolved from the owner class's recorded updater fields");
+                        + "resolved from the updater's own target class and offset (#659)");
     }
 
     @Test
@@ -253,27 +315,76 @@ class SpinLockWeavingTest {
     }
 
     @Test
-    @DisplayName("an updater bound in a superclass the weaver never scanned is not resolved to the subclass's field (#619)")
-    void updaterFromAnUnscannedSuperclassIsNotResolvedToTheSubclassField() {
+    @DisplayName("an updater bound in a superclass the weaver never scanned locks its own field, never the subclass's (#619, #659)")
+    void updaterFromAnUnscannedSuperclassIsNotResolvedToTheSubclassField() throws Exception {
         InheritedUpdaterSpinLockBean bean = new InheritedUpdaterSpinLockBean();
+        String state = "com.example.unwovenfixture.UnwovenUpdaterBase.state";
+        String busy = InheritedUpdaterSpinLockBean.class.getName() + ".busy";
         try {
             assertTrue(bean.acquireState());
-            assertFalse(HeldLocks.anyHeld(),
-                    "STATE is bound in UnwovenUpdaterBase, which the weaver never scanned, so the one "
-                            + "recorded field in the hierarchy, InheritedUpdaterSpinLockBean.busy, is not "
-                            + "the field STATE swaps. Declaring it would put a lock on the wrong flag in "
-                            + "the lockset and can excuse a race");
+            assertNull(fieldLockFor(bean, busy),
+                    "STATE is bound in UnwovenUpdaterBase, which the weaver never scanned, and swaps "
+                            + "state, not busy. A lock on busy would be the wrong flag in the lockset "
+                            + "and can excuse a race");
+            Object stateLock = fieldLockFor(bean, state);
+            assertNotNull(stateLock, "STATE names its own target class and offset, which is the field "
+                    + "it swaps whatever the weaver scanned (#659); JDK superclasses resolve the same way");
             bean.releaseState();
 
             assertTrue(bean.acquireBusy());
-            assertFalse(HeldLocks.anyHeld(),
-                    "with an unscanned class in the hierarchy the registry cannot tell BUSY from "
-                            + "STATE either; leaving it undeclared loses a guard, which reports rather "
-                            + "than hides");
+            Object busyLock = fieldLockFor(bean, busy);
+            assertNotNull(busyLock, "BUSY resolves to busy from the updater itself");
+            assertNotSame(stateLock, busyLock, "two flags are two locks");
             bean.releaseBusy();
         } finally {
             HeldLocks.clear();
         }
+    }
+
+    @Test
+    @DisplayName("an updater an unscanned class makes on a woven receiver's field locks that field, not the receiver's own flag (#659)")
+    void updaterMadeOutsideTheReceiversHierarchyLocksItsOwnField() throws Exception {
+        OutsideUpdaterTargetBean bean = new OutsideUpdaterTargetBean();
+        String state = OutsideUpdaterTargetBean.class.getName() + ".state";
+        String busy = OutsideUpdaterTargetBean.class.getName() + ".busy";
+        try {
+            assertTrue(bean.acquireOutside());
+            assertNull(fieldLockFor(bean, busy),
+                    "OutsideUpdaterMaker.STATE swaps state; the receiver's only recorded updater field is "
+                            + "busy, and naming it for this swap would declare a lock on a flag nobody "
+                            + "took, shared with every real busy holder");
+            assertNotNull(fieldLockFor(bean, state),
+                    "the swap is resolved from the updater's own target class and offset");
+            bean.releaseOutside();
+        } finally {
+            HeldLocks.clear();
+        }
+    }
+
+    @Test
+    @DisplayName("a pre-attach updater under an isolated classloader resolves in that loader's registry copy (#659)")
+    void preAttachUpdaterUnderAnIsolatedLoaderResolvesInThatLoadersRegistry() throws Exception {
+        ClassLoader loader = isolatedBean.getClassLoader();
+        Class<?> isolatedHeldLocks = Class.forName("se.deversity.asynctest.diagnostics.HeldLocks", true, loader);
+        assertNotSame(HeldLocks.class, isolatedHeldLocks,
+                "the fixture must reach its own copy of the library, or this proves nothing");
+        Method anyHeld = isolatedHeldLocks.getMethod("anyHeld");
+        Object bean = isolatedBean.getConstructor().newInstance();
+        try {
+            assertTrue((boolean) isolatedBean.getMethod("acquire").invoke(bean));
+            assertTrue((boolean) anyHeld.invoke(null),
+                    "the updater was bound before the attach, in a loader whose registry copy the "
+                            + "agent's weave-time records never reach; resolution has to happen in the "
+                            + "copy the woven call site calls");
+            assertTrue((boolean) isolatedBean.getMethod("release").invoke(bean));
+            assertFalse((boolean) anyHeld.invoke(null), "the swap back releases it");
+        } finally {
+            isolatedHeldLocks.getMethod("clear").invoke(null);
+        }
+    }
+
+    private static Object fieldLockFor(Object receiver, String field) throws ReflectiveOperationException {
+        return lockFor(new Class<?>[] {Object.class, String.class}, receiver, field);
     }
 
     // ---- Releases through value-returning forms (#658) -----------------------------------------

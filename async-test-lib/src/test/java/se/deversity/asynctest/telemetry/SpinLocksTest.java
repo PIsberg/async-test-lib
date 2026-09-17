@@ -452,47 +452,29 @@ class SpinLocksTest {
 
 
     @Test
-    @DisplayName("a pre-attach updater resolves when its whole hierarchy is scanned and records one field (#619)")
-
-    void preAttachUpdaterResolvesWhenTheWholeHierarchyIsScannedWithOneField() {
-        SpinLocks.recordScannedClass(ResolveBase.class.getName());
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
-
-        assertEquals(SUB_BUSY, SpinLocks.fieldOf(
-                AtomicIntegerFieldUpdater.newUpdater(ResolveSub.class, "busy"), new ResolveSub()));
+    @DisplayName("an updater nothing bound resolves to the field it really swaps, or to nothing (#659)")
+    void unboundUpdaterResolvesToItsOwnFieldOrNothing() {
+        // Nothing records the binding, as for an updater made before the agent attached. The only
+        // answer that may come back is the field the updater swaps, read from the updater itself;
+        // this module's tests run without java.util.concurrent.atomic opened, so here that read is
+        // refused and the updater must stay unresolved rather than be guessed from the receiver.
+        String resolved = SpinLocks.fieldOf(baseStateUpdater());
+        boolean readable = AtomicIntegerFieldUpdater.class.getModule()
+                .isOpen("java.util.concurrent.atomic", SpinLocks.class.getModule());
+        if (readable) {
+            assertEquals(BASE_STATE, resolved);
+        } else {
+            assertNull(resolved, "an updater whose target cannot be read must not be named");
+        }
     }
 
     @Test
-    @DisplayName("an updater from a superclass the weaver never scanned is not resolved to the subclass's field (#619)")
-    void updaterFromAnUnscannedSuperclassIsNotResolvedToTheSubclassField() {
-        // ResolveBase binds its own updater, but the weaver never saw it: only the subclass's field
-        // is on record, and naming it for a swap through the base's updater is the wrong flag.
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
+    @DisplayName("an updater whose binding ran woven keeps the field that binding named (#558)")
+    void boundUpdaterKeepsItsBinding() {
+        AtomicIntegerFieldUpdater<ResolveSub> updater =
+                AtomicIntegerFieldUpdater.newUpdater(ResolveSub.class, "busy");
+        TelemetryRegistry.atomicUpdaterBound(updater, SUB_BUSY);
 
-        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
-    }
-
-    @Test
-    @DisplayName("a hierarchy that records two updater fields resolves neither (#619)")
-    void hierarchyWithTwoRecordedFieldsResolvesNeither() {
-        SpinLocks.recordScannedClass(ResolveBase.class.getName());
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        SpinLocks.recordUpdaterField(ResolveBase.class.getName(), BASE_STATE);
-        SpinLocks.recordUpdaterField(ResolveSub.class.getName(), SUB_BUSY);
-
-        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
-    }
-
-    @Test
-    @DisplayName("a hierarchy with an updater the weaver could not read resolves nothing (#619)")
-    void hierarchyWithAnUnreadableUpdaterResolvesNothing() {
-        SpinLocks.recordScannedClass(ResolveBase.class.getName());
-        SpinLocks.recordScannedClass(ResolveSub.class.getName());
-        // The only thing on record is that the base makes an updater nobody could read.
-        SpinLocks.recordUpdaterField(ResolveBase.class.getName(), SpinLocks.UNREADABLE);
-
-        assertNull(SpinLocks.fieldOf(baseStateUpdater(), new ResolveSub()));
+        assertEquals(SUB_BUSY, SpinLocks.fieldOf(updater));
     }
 }

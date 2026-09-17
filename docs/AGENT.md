@@ -235,14 +235,21 @@ Three limits worth knowing before switching it on:
   `AtomicIntegerFieldUpdater` bound by a `newUpdater` call the weaver saw (`compareAndSet`,
   released by the swap back, `set`, `lazySet` or the holder's write), and for an `AtomicBoolean` or
   `AtomicInteger` that is the lock itself (`compareAndSet(false, true)`, `!getAndSet(true)`,
-  `compareAndSet(0, 1)`, released by the swap back, `set` or `lazySet`). A handle bound before the
-  agent attached is resolved from its own descriptor (#558).
+  `compareAndSet(0, 1)`, released by the swap back, `set` or `lazySet`). The value-returning
+  releases are substituted too (#658): `getAndSet`, `getAndAdd`, `compareAndExchange` and the weak
+  swaps on the handle, `getAndSet`, `getAndAdd`, `addAndGet`, `getAndDecrement`, `decrementAndGet`
+  and `weakCompareAndSet` on the updater and the `AtomicInteger`, and `compareAndExchange` and the
+  weak swaps on both atomics. A handle bound before the agent attached is resolved from its own
+  descriptor (#558), and an updater bound before it from its own target class and field offset,
+  which the agent opens `java.util.concurrent.atomic` to read (#659).
   A spinlock is never trusted past what its flag says: it counts as held only while the flag
   still reads locked and this thread is its last observed winner, re-checked whenever the lockset
-  is read. A release through a call the weaver does not substitute (`getAndSet(0)`,
-  `decrementAndGet()`, `compareAndExchange`, unwoven code) therefore drops the lock before the
+  is read. A release through a call the weaver does not substitute (`updateAndGet`,
+  `getAndSetRelease`, `setPlain`, `Unsafe`, unwoven code) therefore drops the lock before the
   next access is recorded instead of leaving it declared, which would make every later write on
-  that thread look guarded. Separately, the
+  that thread look guarded. One narrow window survives for those forms: a release landing between
+  another thread's check of the flag and its swap leaves the old holder passing that re-check until
+  the new holder records itself (#658; the forms are listed in `SpinLocks`). Separately, the
   object a reference `getAndSet` returns, or a `Queue.poll` or JCTools `MessagePassingQueue`
   `poll`/`relaxedPoll` hands back, is reported as taken: it
   starts a new ownership generation, exclusive to the taker until another thread touches it, and
@@ -258,8 +265,9 @@ Three limits worth knowing before switching it on:
   JCTools take, does every thread get that benefit
   ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
   so writes under them still report: `Unsafe.compareAndSwapInt`, and an
-  `AtomicIntegerFieldUpdater` created before the agent attached, which exposes no field name to
-  resolve.
+  `AtomicIntegerFieldUpdater` created before the agent attached whose target cannot be read (a
+  library copy in a loader outside the woven loader chains, a named module, or a JDK whose updater
+  implementation changed shape).
 - **Thread-safe types are skipped.** A receiver from `java.util.concurrent`, a
   `Collections.synchronizedX` wrapper, a `Hashtable` or a `Vector` synchronizes where nothing can
   be woven, so recording it would report every shared use. Those calls are delegated and never
