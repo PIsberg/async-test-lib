@@ -54,7 +54,7 @@ class SpinLocksTest {
 
         CountDownLatch swapDone = new CountDownLatch(1);
         CountDownLatch verifyDone = new CountDownLatch(1);
-        SpinLocks.setTestHookBeforeWonBy(() -> {
+        SpinLocks.setTestHookAfterSwap(() -> {
             swapDone.countDown();
             try {
                 assertTrue(verifyDone.await(5, TimeUnit.SECONDS));
@@ -93,7 +93,7 @@ class SpinLocksTest {
 
         CountDownLatch swapDone = new CountDownLatch(1);
         CountDownLatch verifyDone = new CountDownLatch(1);
-        SpinLocks.setTestHookBeforeWonBy(() -> {
+        SpinLocks.setTestHookAfterSwap(() -> {
             swapDone.countDown();
             try {
                 assertTrue(verifyDone.await(5, TimeUnit.SECONDS));
@@ -133,7 +133,7 @@ class SpinLocksTest {
 
         CountDownLatch swapDone = new CountDownLatch(1);
         CountDownLatch verifyDone = new CountDownLatch(1);
-        SpinLocks.setTestHookBeforeWonBy(() -> {
+        SpinLocks.setTestHookAfterSwap(() -> {
             swapDone.countDown();
             try {
                 assertTrue(verifyDone.await(5, TimeUnit.SECONDS));
@@ -189,7 +189,7 @@ class SpinLocksTest {
 
         CountDownLatch swapDone = new CountDownLatch(1);
         CountDownLatch verifyDone = new CountDownLatch(1);
-        SpinLocks.setTestHookBeforeWonBy(() -> {
+        SpinLocks.setTestHookAfterSwap(() -> {
             swapDone.countDown();
             try {
                 assertTrue(verifyDone.await(5, TimeUnit.SECONDS));
@@ -211,5 +211,49 @@ class SpinLocksTest {
 
         verifyDone.countDown();
         threadB.join();
+    }
+
+    @Test
+    @DisplayName("a contender that saw the flag free does not revoke a holder that won after it looked (#621)")
+    void contenderThatSawTheFlagFreeDoesNotRevokeAHolderThatWonAfterItLooked() throws Exception {
+        AtomicBoolean flag = new AtomicBoolean();
+        assertTrue(TelemetryRegistry.compareAndSetAtomicBoolean(flag, false, true));
+        SpinLocks.Lock lock = SpinLocks.lockFor(flag);
+        assertTrue(lock != null && HeldLocks.holds(lock), "Thread A holds lock after acquire");
+
+        // Thread A releases unobserved, leaving a stale holder behind for B to find.
+        flag.set(false);
+
+        CountDownLatch contenderChecked = new CountDownLatch(1);
+        CountDownLatch holderWon = new CountDownLatch(1);
+        Thread threadB = new Thread(() ->
+                assertFalse(TelemetryRegistry.compareAndSetAtomicBoolean(flag, false, true),
+                        "A took the flag while B was paused, so B's swap must fail"),
+                "spin-lock-contender");
+        SpinLocks.setTestHookBeforeRevoke(() -> {
+            if (Thread.currentThread() != threadB) {
+                return;
+            }
+            // B has read the stale holder and seen the flag free; A now wins and declares.
+            contenderChecked.countDown();
+            try {
+                assertTrue(holderWon.await(5, TimeUnit.SECONDS));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        threadB.start();
+        assertTrue(contenderChecked.await(5, TimeUnit.SECONDS));
+
+        assertTrue(TelemetryRegistry.compareAndSetAtomicBoolean(flag, false, true),
+                "A wins the flag while B is paused between its check and its revocation");
+        holderWon.countDown();
+        threadB.join();
+
+        assertTrue(flag.get(), "A still holds the flag");
+        assertTrue(lock.stillHeld(),
+                "B saw the flag free before A won, so what B may revoke is only the hold that had "
+                        + "already ended; revoking A's live hold would report A's guarded writes");
+        assertTrue(HeldLocks.holds(lock), "A's lockset must still contain the spinlock");
     }
 }
