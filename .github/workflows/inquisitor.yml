@@ -77,7 +77,7 @@ jobs:
 
       - name: Run the Inquisitor
         if: env.HAVE_KEY == 'true'
-        uses: anthropics/claude-code-action@9cdae7f0d995e3ba7c33f226087fdf82a59cd520 # v1
+        uses: anthropics/claude-code-action@51db78a4b844e144f8d02425cb280435c04a3474 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
