@@ -14,7 +14,7 @@ name: Corpus Eval
 #
 # Its own workflow rather than a job in e2e-tests.yml, because this eval answers a question about
 # the product rather than about the build: whether a finding on somebody else's code means their
-# code is wrong. It publishes numbers that the README and the trust tiers both rest on - 60
+# code is wrong. It publishes numbers that the README and the trust tiers both rest on - 61
 # detectors carry VERDICT on the strength of pairs measured here - so it earns a history and a
 # badge of its own, and a workflow_dispatch for running it against a library change without waiting
 # for the whole end-to-end suite.

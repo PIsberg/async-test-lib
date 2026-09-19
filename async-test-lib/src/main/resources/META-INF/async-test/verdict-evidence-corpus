@@ -182,3 +182,21 @@ REENTRANT_LOCK = recorded_reentrantLock_holdLeftTaken, recorded_reentrantLock_ac
 # party comes back and the reuse is missed, and a reset nobody recorded with no recorded arrival
 # while the barrier was whole, after which the party's next broken arrival is reported.
 CYCLIC_BARRIER = recorded_cyclicBarrier_awaitedWhileBroken, recorded_cyclicBarrier_cancelledAndDropped
+
+# --- 2026-09-19, #666: held on its model since the second reading, promoted once the model changed.
+#
+# CONDITION_VARIABLES had three findings decided from the body's records or the lock alone: a
+# thread parked on a condition registered with its lock but no predicate (an idle consumer parks the
+# same way), a recorded await with no exit on a condition registered without its lock, and a missing
+# signal, a recordAwaitExit(..., false) with no recordSignal. All three are notes now. The one
+# finding left is a thread the lock's getWaitQueueLength shows parked while the predicate registered
+# with registerCondition(lock, condition, ready, name) holds, with no thread queued to re-acquire the
+# lock (#657). Both halves below start the same textbook consumer loop through one helper, register
+# the same way and make the same calls; they differ only in whether work arrived on the queue while
+# the threads signalled a different condition. ConditionVariableDetectorLockAndRoundsTest and
+# DetectorAccuracyEvalTest pin both directions.
+#
+# What the pair does not reach: a stuck waiter behind unrelated contention on the lock at analysis,
+# which is noted rather than reported (#657), and a predicate that is wrong about what the waiter
+# waits for, which the detector evaluates but cannot check.
+CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition_consumerIdleOnAnEmptyQueue

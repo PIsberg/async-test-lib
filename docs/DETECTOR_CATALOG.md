@@ -164,7 +164,7 @@ still produces a finding, and so does inconsistent locking - two threads holding
 have excluded nothing, which is a race however many locks were involved.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 70 VERDICT, 60 PROMPT, 11 FACT and 5
+tier is one a reader has to rank alone. The split is 71 VERDICT, 59 PROMPT, 11 FACT and 5
 ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
 detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
 statements about the kind of claim a finding makes rather than about missing evidence - a FACT

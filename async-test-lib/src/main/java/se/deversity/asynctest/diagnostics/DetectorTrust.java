@@ -109,7 +109,7 @@ public final class DetectorTrust {
             row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.VERDICT),
             row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.VERDICT),
             row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.VERDICT),
-            row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.PROMPT),
+            row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.VERDICT),
             row(DetectorType.SIMPLE_DATE_FORMAT, "SimpleDateFormatDetector", "SimpleDateFormat", TrustTier.VERDICT),
             row(DetectorType.PARALLEL_STREAMS, "ParallelStreamDetector", "ParallelStreams", TrustTier.PROMPT),
             row(DetectorType.RESOURCE_LEAKS, "ResourceLeakDetector", "ResourceLeaks", TrustTier.VERDICT),

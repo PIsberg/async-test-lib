@@ -1248,7 +1248,9 @@ On 2026-09-19 `recorded_cyclicBarrier_cancelledAndDropped` joined as the silent 
 cancellation without a reset: a barrier broken to cancel its parties, awaited once by a late party
 that catches `BrokenBarrierException` and drops it. Since #665 reuse is a party coming back to a
 barrier it already saw broken, so `recorded_cyclicBarrier_awaitedWhileBroken` now catches the break
-and awaits again in the same body, and `CYCLIC_BARRIER` is promoted on that pair.
+and awaits again in the same body, and `CYCLIC_BARRIER` is promoted on that pair. The same day
+#666 made every `CONDITION_VARIABLES` finding outside the predicate registration a note, and the
+detector is promoted on the pair #661 completed, with no row changed.
 
 `ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
 **57 of 146**, in 117 rows.

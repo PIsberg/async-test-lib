@@ -157,6 +157,15 @@ because a body runs on a fresh virtual thread. Only silent rows record `recordRe
 reach: a barrier shared across rounds on fresh virtual threads, where no party comes back, and an
 unrecorded reset with no recorded arrival while the barrier was whole.
 
+**`CONDITION_VARIABLES` promoted, 2026-09-19 (#666).** The three paths the re-read above named are
+notes now: a thread parked on a condition registered with its lock but no predicate, a recorded
+await with no exit on a condition registered without its lock, and a missing signal. The one
+finding left is a thread the lock shows parked while the registered predicate holds, with nobody
+queued on the lock (#657), which is what the existing pair already separates on: the firing and
+idle rows register the same way, share one consumer helper and make the same calls. No row
+changed. What the pair does not reach: a stuck waiter behind unrelated contention on the lock,
+noted rather than reported, and a predicate that is wrong about what the waiter waits for.
+
 ## 3. Severity is not pinned on a firing row (Closed 2026-09-17, #660)
 
 On 2026-09-16 `RecordingSubject` gained an optional `expectedSeverity`, and
