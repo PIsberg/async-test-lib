@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
  * with no {@code reset()} in between, so its await throws {@code BrokenBarrierException} again and
  * keeps failing every caller until somebody resets the barrier (#665).
  *
- * <p>A party is the recording thread. It has seen the barrier broken when one of its arrivals or
+ * <p>A party is the recording thread, or on a virtual thread the runner's worker slot, since the
+ * thread itself lasts one round. It has seen the barrier broken when one of its arrivals or
  * awaits found {@code isBroken()} true, or when it recorded a timeout or a break on it. Its next
  * arrival or await that finds the barrier broken, with no reset in between, is the finding. One
  * arrival that hits a break is not: a party cannot know a barrier is broken until its await throws,
@@ -28,9 +29,9 @@ import org.jspecify.annotations.Nullable;
  * that finds the barrier whole after it was seen broken proves a reset happened, recorded or not,
  * and closes what every party had seen. What this costs:
  * <ul>
- *   <li>A barrier shared across rounds on fresh threads (for example {@code useVirtualThreads}) is
- *       never come back to by the same party, so its reuse is not reported. That errs towards
- *       silence.</li>
+ *   <li>A barrier shared across rounds on fresh <em>platform</em> threads is never come back to by
+ *       the same party, so its reuse is not reported. That errs towards silence. On virtual
+ *       threads the party is the runner's worker slot, which does come back (#693).</li>
  *   <li>A party that saw the break, after which somebody reset the barrier without recording it and
  *       nobody recorded an arrival while it was whole, and which then arrives at a barrier broken
  *       again, is reported: nothing recorded shows the reset.</li>
@@ -97,9 +98,9 @@ public class CyclicBarrierDetector {
      */
     private final Set<CyclicBarrier> seenBroken = ConcurrentHashMap.newKeySet();
     /**
-     * What each party has seen of each barrier, keyed on the barrier and the thread id. Created only
+     * What each party has seen of each barrier, keyed on the barrier and the party. Created only
      * when a party sees a barrier broken, so the healthy path allocates nothing here. Each entry is
-     * written only by its own thread.
+     * written only by its own party (see {@link PartyState}).
      */
     private final Map<PartyKey, PartyState> parties = new ConcurrentHashMap<>();
     private final Map<CyclicBarrier, Integer> strandedBarriers = new ConcurrentHashMap<>();
@@ -246,7 +247,7 @@ public class CyclicBarrierDetector {
         }
         seenBroken.add(barrier);
         PartyState state = parties.computeIfAbsent(
-            new PartyKey(barrier, Thread.currentThread().threadId()), k -> new PartyState());
+            new PartyKey(barrier, currentParty()), k -> new PartyState());
         if (await && state.arrivalOpen) {
             state.arrivalOpen = false;   // the await of the arrival already judged
             return state;
@@ -263,7 +264,7 @@ public class CyclicBarrierDetector {
     private void sawBroken(CyclicBarrier barrier) {
         long epoch = epochOf(barrier).get();
         PartyState state = parties.computeIfAbsent(
-            new PartyKey(barrier, Thread.currentThread().threadId()), k -> new PartyState());
+            new PartyKey(barrier, currentParty()), k -> new PartyState());
         state.sawBrokenIn = epoch;
         state.arrivalOpen = false;
     }
@@ -316,16 +317,39 @@ public class CyclicBarrierDetector {
         );
     }
 
-    /** A party of a barrier: the barrier, by identity, and the recording thread's id. */
-    private record PartyKey(CyclicBarrier barrier, long threadId) {
+    /**
+     * A party of a barrier: the barrier, by identity, and who the party is. That is the recording
+     * thread's id, except on a virtual thread the runner gave a worker slot, where it is the slot.
+     */
+    private record PartyKey(CyclicBarrier barrier, long party) {
     }
 
-    /** What one party has seen of one barrier. Written only by that party's own thread. */
+    /**
+     * {@return who the calling thread is, as a party}
+     *
+     * <p>A virtual-thread run gives every body execution a fresh thread, so a thread id names a
+     * party for one round only and reuse that spans rounds was invisible (#693). The runner's
+     * worker slot survives the thread, so it is the party there. Thread ids are positive, so
+     * slots are mapped below zero and the two cannot collide. Platform threads keep their id:
+     * what a platform-thread run reports does not change.
+     */
+    private static long currentParty() {
+        Thread thread = Thread.currentThread();
+        int slot = thread.isVirtual() ? WorkerSlot.current() : WorkerSlot.NONE;
+        return slot >= 0 ? -1L - slot : thread.threadId();
+    }
+
+    /**
+     * What one party has seen of one barrier. One writer at a time: the party's own thread, or,
+     * for a slot party, whichever thread holds that slot in the current round. Rounds do not
+     * overlap, and the fields are volatile so the next round's thread reads what the last wrote
+     * without leaning on how the runner happens to hand rounds over.
+     */
     private static final class PartyState {
         /** The reset epoch in which this party last saw the barrier broken, or -1 if never. */
-        long sawBrokenIn = -1;
+        volatile long sawBrokenIn = -1;
         /** Whether this party's last event was an arrival, whose await is the same attempt. */
-        boolean arrivalOpen;
+        volatile boolean arrivalOpen;
     }
 
     /**

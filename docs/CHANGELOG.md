@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`CyclicBarrierDetector` sees a broken barrier reused across rounds on virtual threads (#693).**
+  With `useVirtualThreads = true` every body execution runs on a fresh virtual thread, so "the same
+  party came back" could never be true of a thread and a barrier left broken from one round to the
+  next was not reported. On a virtual thread the party is now the runner's worker slot, the
+  worker's index within its round, which does come back. The runner hands it over through a new
+  `AsyncTestContext.install(ctx, workerSlot)`, and `uninstall()` clears it under the same
+  ThreadLocal symmetry rule as the context. Platform-thread runs keep thread-id parties, so what
+  they report does not change, and reuse across rounds on fresh platform threads is still missed.
+
 - **The agent opens `java.util.concurrent.atomic` only to the library copy that reads it (#668).**
   With `fields=true` it used to open the package to the unnamed module of every woven class's
   loader and of each ancestor. It now resolves `TelemetryRegistry` through each woven loader, as

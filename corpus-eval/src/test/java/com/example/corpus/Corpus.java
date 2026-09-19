@@ -3027,6 +3027,20 @@ final class Corpus {
                             + "how its parties are cancelled (#584)",
                     IssueSeverity.CRITICAL),
 
+            new RecordingSubject("recorded_cyclicBarrier_awaitedAgainNextRound", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every body awaits the shared broken barrier once, catches "
+                            + "BrokenBarrierException and leaves; the reuse is the next round's "
+                            + "body doing the same with no reset in between. Each body is a fresh "
+                            + "virtual thread, so no thread ever comes back: the party that does "
+                            + "is the runner's worker slot, which the detector keys parties on "
+                            + "for virtual threads (#693). cancelledAndDropped makes the same "
+                            + "three calls on a barrier that does not outlive the body and stays "
+                            + "silent",
+                    IssueSeverity.CRITICAL),
+
             new RecordingSubject("recorded_cyclicBarrier_completedItsCycle", JDK,
                     "java.util.concurrent.CyclicBarrier",
                     DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,

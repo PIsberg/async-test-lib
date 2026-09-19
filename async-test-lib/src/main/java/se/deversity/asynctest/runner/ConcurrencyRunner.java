@@ -812,6 +812,8 @@ public class ConcurrencyRunner {
         // `failures`, so nothing here changes normal (non-timeout) behavior.
         List<Future<?>> workerFutures = new ArrayList<>(threads);
         for (int t = 0; t < threads; t++) {
+            // The one identity a worker keeps across rounds when its thread does not (#693).
+            final int workerSlot = t;
             workerFutures.add(executor.submit(() -> {
                 // latch.countDown() MUST always run, regardless of any failure in
                 // install / test body / uninstall / snapshot. Without this guarantee
@@ -826,7 +828,7 @@ public class ConcurrencyRunner {
 
                 boolean installed = false;
                 try {
-                    AsyncTestContext.install(phase2Context);
+                    AsyncTestContext.install(phase2Context, workerSlot);
                     installed = true;
                     try {
                         barrier.arrive();

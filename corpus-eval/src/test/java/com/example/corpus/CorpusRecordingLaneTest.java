@@ -527,6 +527,9 @@ class CorpusRecordingLaneTest {
     /** The barrier the loud row awaits; broken for real before any body runs, and never reset. */
     private static final java.util.concurrent.CyclicBarrier BROKEN_BARRIER = brokenBarrier();
 
+    /** Broken the same way, and awaited once per body: only a later round comes back to it (#693). */
+    private static final java.util.concurrent.CyclicBarrier CROSS_ROUND_BARRIER = brokenBarrier();
+
     private static java.util.concurrent.CyclicBarrier brokenBarrier() {
         java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(THREADS);
         try {
@@ -3368,6 +3371,22 @@ class CorpusRecordingLaneTest {
         for (int attempt = 0; attempt < 2; attempt++) {   // the retry is the defect
             awaitAndCatchTheBreak(detector, BROKEN_BARRIER);
         }
+    }
+
+    /**
+     * The same defect with the retry a round apart: every body awaits the shared broken barrier
+     * once, catches the break and leaves, and the next round's body does it again. No body comes
+     * back within its own execution, and each runs on a fresh virtual thread, so the only party
+     * that returns is the runner's worker slot (#693). Its silent twin is
+     * {@link #recorded_cyclicBarrier_cancelledAndDropped}: the same three calls on a barrier that
+     * does not outlive the body.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_awaitedAgainNextRound() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        detector.registerBarrier(CROSS_ROUND_BARRIER, "cross-round-barrier", THREADS);
+        awaitAndCatchTheBreak(detector, CROSS_ROUND_BARRIER);   // once per body; the next round is the reuse
     }
 
     /**
