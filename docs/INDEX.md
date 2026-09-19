@@ -1,6 +1,6 @@
 # Documentation Index
 
-75 documents, one router. Every path below is relative to this file.
+87 documents, one router. Every path below is relative to this file.
 
 **There are no per-directory indexes, deliberately.** `DocsIndexCoverageTest` requires a direct
 link from *this* file to every document under `docs/`, not a transitive one, so a second index in
@@ -44,7 +44,19 @@ Three paths, depending on why you came.
 |----------|---------|
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | How to write an `@AsyncTest` that actually finds bugs |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration options in depth |
-| [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md) | All 146 detectors with buggy-vs-fixed examples, their trust tiers and what feeds each |
+| [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md) | All 146 detectors with buggy-vs-fixed examples, their trust tiers and what feeds each. Hub for the rows below |
+| [detector-catalog/01-foundations.md](detector-catalog/01-foundations.md) | Entries 1 to 8. Phases 1 to 3: deadlock, visibility, carrier pinning, pool deadlock, lock and ThreadLocal leaks, non-atomic collection updates, livelock |
+| [detector-catalog/02-phase-2-core-and-monitors.md](detector-catalog/02-phase-2-core-and-monitors.md) | Entries 9 to 28. Phase 2 core and monitors: false sharing, ABA, lock order, memory ordering, semaphores, CompletableFuture, SimpleDateFormat, parallel streams |
+| [detector-catalog/03-phase-2-additional-and-utilities.md](detector-catalog/03-phase-2-additional-and-utilities.md) | Entries 29 to 44. Phase 2 additional concurrency and utilities: latches, barriers, locks, double-checked locking, Phaser, StampedLock, ForkJoinPool |
+| [detector-catalog/04-hygiene-and-resources.md](detector-catalog/04-hygiene-and-resources.md) | Entries 45 to 52. Phases 3 and 4: races, busy-waiting, atomicity, interrupts, thread leaks, sleep in a lock, unbounded queues, starvation |
+| [detector-catalog/05-common-types-and-virtual-threads.md](detector-catalog/05-common-types-and-virtual-threads.md) | Entries 53 to 62. Phases 5 and 6: Calendar, shared collections, Timer, copy-on-write, StringBuilder, structured concurrency, ScopedValue, virtual threads |
+| [detector-catalog/06-patterns-lifecycle-environment.md](detector-catalog/06-patterns-lifecycle-environment.md) | Entries 63 to 81. Phases 7 to 9: HTTP clients, stream closing, caches, executor shutdown, nested monitors, InheritableThreadLocal, ConcurrentMap recursion, ForkJoinTask blocking |
+| [detector-catalog/07-types-and-operations.md](detector-catalog/07-types-and-operations.md) | Entries 82 to 96. Phases 11 and 12: Matcher, DecimalFormat, WeakReference, MessageDigest, MDC, system properties, explicit GC, deprecated thread APIs, uncaught exceptions |
+| [detector-catalog/08-categories-primitives-async.md](detector-catalog/08-categories-primitives-async.md) | Entries 97 to 110. Phases 13 to 15: daemon threads, notify, SecureRandom, JDBC connections, stateful crypto, this-escape, ThreadLocalRandom, spurious wakeups, tryLock |
+| [detector-catalog/09-stateful-jdk-and-coordination.md](detector-catalog/09-stateful-jdk-and-coordination.md) | Entries 111 to 120. Phases 17 and 19: ByteBuffer, charset coders, checksums, FileChannel position, iterators, contended atomics, JSON mappers, latches, executors, futures |
+| [detector-catalog/10-jdk-25-26.md](detector-catalog/10-jdk-25-26.md) | Entries 121 to 126. Phases 16 and 18: StableValue, StructuredTaskScope, Gatherer, LazyConstant, final-field mutation and KDF, wired into `detectAll` |
+| [detector-catalog/11-flow-and-ffm.md](detector-catalog/11-flow-and-ffm.md) | Entries 127 to 135. Phases 19 and 20: Flow publishers, confined arenas, memory segments, VarHandle, records, static-init deadlock, virtual-thread pooling, thread-per-task, SplittableRandom |
+| [detector-catalog/12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 146. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
 | [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously — and `AsyncFindings`, for asserting on what the detectors reported |
 | [MIGRATION.md](MIGRATION.md) | Moving an existing test suite onto `@AsyncTest` |
 
