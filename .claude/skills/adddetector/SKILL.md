@@ -199,8 +199,11 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories${{FACTORY}}
 ```
 
 ### 9. Docs (increment counts + catalog entry)
-- `docs/DETECTOR_CATALOG.md` — add a short entry in the right category; bump the "N detectors"
-  total near the top.
+- `docs/detector-catalog/` — add a numbered `### N. Name` entry (next number after the highest)
+  to the phase file it belongs in, usually the last one; a new phase gets a new `NN-*.md` file,
+  plus its row in the `DETECTOR_CATALOG.md` hub table and in `docs/INDEX.md`. Then bump the
+  "N detectors" total at the top of `docs/DETECTOR_CATALOG.md`. `DetectorCatalogCoverageTest`
+  counts entries across the hub and every phase file.
 - `docs/CHANGELOG.md` — add a line under the current version.
 - `README.md` — bump the detector-count mentions.
   > Heads-up: the counts in README/catalog are already inconsistent with the true enum count.

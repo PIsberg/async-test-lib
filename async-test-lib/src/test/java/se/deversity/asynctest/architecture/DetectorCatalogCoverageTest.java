@@ -95,7 +95,14 @@ class DetectorCatalogCoverageTest {
     @Test
     @DisplayName("the catalog documents every detector, numbered contiguously")
     void catalogCoversEveryDetectorType() {
-        String catalog = read(repoRoot().resolve("docs/DETECTOR_CATALOG.md"));
+        // The hub carries severity, trust tiers and feeds; the numbered entries live in the phase
+        // files under docs/detector-catalog/ (#680). Numbering stays global across all of them.
+        StringBuilder combined =
+                new StringBuilder(read(repoRoot().resolve("docs/DETECTOR_CATALOG.md")));
+        for (Path phase : markdownFiles(repoRoot().resolve("docs/detector-catalog"))) {
+            combined.append('\n').append(read(phase));
+        }
+        String catalog = combined.toString();
 
         SortedSet<Integer> numbers = new TreeSet<>();
         List<Integer> all = new ArrayList<>();
@@ -109,14 +116,14 @@ class DetectorCatalogCoverageTest {
         int expected = DetectorType.values().length;
 
         assertEquals(expected, all.size(),
-                "DETECTOR_CATALOG.md has " + all.size() + " numbered entries but DetectorType "
+                "DETECTOR_CATALOG.md and docs/detector-catalog/ have " + all.size() + " numbered entries but DetectorType "
                         + "declares " + expected + ". Every detector needs an entry, and an entry "
                         + "that carries a letter or no marker at all does not count as one — that "
                         + "is exactly how this drifted into looking like seven detectors were "
                         + "undocumented when they were merely unnumbered.");
 
         assertEquals(all.size(), numbers.size(),
-                "DETECTOR_CATALOG.md reuses an entry number. Duplicates make the catalog "
+                "The detector catalog reuses an entry number. Duplicates make the catalog "
                         + "un-navigable and hide a missing entry behind a matching total.");
 
         assertEquals(1, numbers.first(), "Catalog numbering must start at 1.");
