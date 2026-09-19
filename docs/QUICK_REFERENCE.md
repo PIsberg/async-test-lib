@@ -119,7 +119,7 @@ Group ID:     se.deversity.async-test-lib
 Artifact ID:  async-test
 Version:      1.1.0
 Scope:        test
-License:      MIT
+License:      PolyForm Noncommercial 1.0.0
 URL:          https://github.com/PIsberg/async-test-lib
 Repository:   https://repo1.maven.org/maven2
 ```
@@ -136,7 +136,7 @@ Gradle:  'se.deversity.async-test-lib:async-test-lib:1.12.1'
 <name>Async Test Library</name>
 <description>Enterprise-grade JUnit 5 concurrency testing...</description>
 <url>https://github.com/PIsberg/async-test-lib</url>
-<license><name>MIT License</name></license>
+<license><name>PolyForm Noncommercial License 1.0.0</name></license>
 
 <!-- Distribution -->
 <distributionManagement>

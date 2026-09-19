@@ -22,4 +22,6 @@ For issues, questions, or feature requests:
 
 ## License
 
-MIT License - See LICENSE file for details
+[PolyForm Noncommercial License 1.0.0](../LICENSE): free for non-commercial use. Commercial use
+needs an annual licence key; pricing and terms are in the README's
+[License](../README.md#license) section.

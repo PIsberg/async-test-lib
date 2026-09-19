@@ -339,8 +339,9 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 ## License Distribution
 
 Each artifact includes:
-- LICENSE file (MIT License)
+- LICENSE file (PolyForm Noncommercial License 1.0.0)
 - NOTICE file (dependencies)
 - License headers in source files
 
-Users must comply with MIT License terms when using the library.
+Non-commercial users must comply with the PolyForm Noncommercial License 1.0.0 terms. Commercial
+use needs an annual licence key; see the README's [License](../README.md#license) section.
