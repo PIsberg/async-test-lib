@@ -13,11 +13,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * An {@link AsyncTestListener} that writes detector findings to a structured JSON report.
@@ -62,9 +59,7 @@ public final class JsonReportListener implements AsyncTestListener {
     private static final String REPORT_FILENAME = "async-test-report.json";
     private static final String VERSION = ReportListeners.libraryVersion();
 
-    private final List<DetectorFinding> findings = new CopyOnWriteArrayList<>();
-    private final String outputDir;
-    private final AtomicBoolean flushed = new AtomicBoolean(false);
+    private final ReportSink sink;
 
     /**
      * Creates a listener that auto-detects the output directory (Maven or Gradle build dir).
@@ -91,17 +86,16 @@ public final class JsonReportListener implements AsyncTestListener {
      * @param registerShutdownHook whether to register a JVM shutdown hook for auto-flush
      */
     public JsonReportListener(String outputDir, boolean registerShutdownHook) {
-        this.outputDir = outputDir;
+        this.sink = new ReportSink(outputDir, REPORT_FILENAME, "JSON", JsonReportListener::writeJson);
         if (registerShutdownHook) {
-            Runtime.getRuntime().addShutdownHook(
-                new Thread(this::flush, "async-test-json-report-flush"));
+            sink.flushOnShutdown("async-test-json-report-flush");
         }
     }
 
     @Override
     public void onStructuredReport(String detectorName, IssueSeverity severity,
             @AIInputSanitized(SanitizerType.XSS) String report) {
-        findings.add(new DetectorFinding(detectorName, severity, report, System.currentTimeMillis()));
+        sink.add(detectorName, severity, report);
     }
 
     /**
@@ -111,19 +105,7 @@ public final class JsonReportListener implements AsyncTestListener {
      * @return the path of the written report file, or {@code null} if there were no findings
      */
     public @Nullable Path flush() {
-        if (findings.isEmpty() || !flushed.compareAndSet(false, true)) {
-            return null;
-        }
-        try {
-            Path dir = Paths.get(outputDir);
-            Files.createDirectories(dir);
-            Path jsonFile = dir.resolve(REPORT_FILENAME);
-            writeJson(jsonFile, List.copyOf(findings));
-            return jsonFile;
-        } catch (IOException e) {
-            System.err.println("async-test: Failed to write JSON report: " + e.getMessage());
-            return null;
-        }
+        return sink.flush();
     }
 
     /**
@@ -132,7 +114,7 @@ public final class JsonReportListener implements AsyncTestListener {
      * @return the number of findings written so far
      */
     public int getFindingCount() {
-        return findings.size();
+        return sink.count();
     }
 
     private static void writeJson(Path jsonFile, List<DetectorFinding> snapshot) throws IOException {
