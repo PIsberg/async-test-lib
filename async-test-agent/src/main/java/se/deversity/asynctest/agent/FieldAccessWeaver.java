@@ -15,6 +15,8 @@ import net.bytebuddy.jar.asm.Type;
 import net.bytebuddy.pool.TypePool;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Map;
+
 /**
  * Weaves an observation call in front of every field instruction in a method body, so a field
  * touched directly — the {@code count++} inside a method, which is the most common shape of a
@@ -81,64 +83,64 @@ final class FieldAccessWeaver {
      * The {@code AtomicIntegerFieldUpdater} calls substituted, by name, with the exact descriptor
      * each is matched on; the hook is the name plus {@code IntUpdater} (#558, #658, #667).
      */
-    private static final java.util.Map<String, String> INT_UPDATER_FORMS = java.util.Map.ofEntries(
-            java.util.Map.entry("compareAndSet", "(Ljava/lang/Object;II)Z"),
-            java.util.Map.entry("weakCompareAndSet", "(Ljava/lang/Object;II)Z"),
-            java.util.Map.entry("set", "(Ljava/lang/Object;I)V"),
-            java.util.Map.entry("lazySet", "(Ljava/lang/Object;I)V"),
-            java.util.Map.entry("getAndSet", "(Ljava/lang/Object;I)I"),
-            java.util.Map.entry("getAndAdd", "(Ljava/lang/Object;I)I"),
-            java.util.Map.entry("addAndGet", "(Ljava/lang/Object;I)I"),
-            java.util.Map.entry("getAndDecrement", "(Ljava/lang/Object;)I"),
-            java.util.Map.entry("decrementAndGet", "(Ljava/lang/Object;)I"),
-            java.util.Map.entry("getAndUpdate", "(Ljava/lang/Object;" + UNARY + ")I"),
-            java.util.Map.entry("updateAndGet", "(Ljava/lang/Object;" + UNARY + ")I"),
-            java.util.Map.entry("getAndAccumulate", "(Ljava/lang/Object;I" + BINARY + ")I"),
-            java.util.Map.entry("accumulateAndGet", "(Ljava/lang/Object;I" + BINARY + ")I"));
+    private static final Map<String, String> INT_UPDATER_FORMS = Map.ofEntries(
+            Map.entry("compareAndSet", "(Ljava/lang/Object;II)Z"),
+            Map.entry("weakCompareAndSet", "(Ljava/lang/Object;II)Z"),
+            Map.entry("set", "(Ljava/lang/Object;I)V"),
+            Map.entry("lazySet", "(Ljava/lang/Object;I)V"),
+            Map.entry("getAndSet", "(Ljava/lang/Object;I)I"),
+            Map.entry("getAndAdd", "(Ljava/lang/Object;I)I"),
+            Map.entry("addAndGet", "(Ljava/lang/Object;I)I"),
+            Map.entry("getAndDecrement", "(Ljava/lang/Object;)I"),
+            Map.entry("decrementAndGet", "(Ljava/lang/Object;)I"),
+            Map.entry("getAndUpdate", "(Ljava/lang/Object;" + UNARY + ")I"),
+            Map.entry("updateAndGet", "(Ljava/lang/Object;" + UNARY + ")I"),
+            Map.entry("getAndAccumulate", "(Ljava/lang/Object;I" + BINARY + ")I"),
+            Map.entry("accumulateAndGet", "(Ljava/lang/Object;I" + BINARY + ")I"));
 
     /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
-    private static final java.util.Map<String, String> ATOMIC_BOOLEAN_FORMS = java.util.Map.ofEntries(
-            java.util.Map.entry("compareAndSet", "(ZZ)Z"),
-            java.util.Map.entry("getAndSet", "(Z)Z"),
-            java.util.Map.entry("set", "(Z)V"),
-            java.util.Map.entry("lazySet", "(Z)V"),
-            java.util.Map.entry("setPlain", "(Z)V"),
-            java.util.Map.entry("setOpaque", "(Z)V"),
-            java.util.Map.entry("setRelease", "(Z)V"),
-            java.util.Map.entry("compareAndExchange", "(ZZ)Z"),
-            java.util.Map.entry("compareAndExchangeAcquire", "(ZZ)Z"),
-            java.util.Map.entry("compareAndExchangeRelease", "(ZZ)Z"),
-            java.util.Map.entry("weakCompareAndSet", "(ZZ)Z"),
-            java.util.Map.entry("weakCompareAndSetPlain", "(ZZ)Z"),
-            java.util.Map.entry("weakCompareAndSetVolatile", "(ZZ)Z"),
-            java.util.Map.entry("weakCompareAndSetAcquire", "(ZZ)Z"),
-            java.util.Map.entry("weakCompareAndSetRelease", "(ZZ)Z"));
+    private static final Map<String, String> ATOMIC_BOOLEAN_FORMS = Map.ofEntries(
+            Map.entry("compareAndSet", "(ZZ)Z"),
+            Map.entry("getAndSet", "(Z)Z"),
+            Map.entry("set", "(Z)V"),
+            Map.entry("lazySet", "(Z)V"),
+            Map.entry("setPlain", "(Z)V"),
+            Map.entry("setOpaque", "(Z)V"),
+            Map.entry("setRelease", "(Z)V"),
+            Map.entry("compareAndExchange", "(ZZ)Z"),
+            Map.entry("compareAndExchangeAcquire", "(ZZ)Z"),
+            Map.entry("compareAndExchangeRelease", "(ZZ)Z"),
+            Map.entry("weakCompareAndSet", "(ZZ)Z"),
+            Map.entry("weakCompareAndSetPlain", "(ZZ)Z"),
+            Map.entry("weakCompareAndSetVolatile", "(ZZ)Z"),
+            Map.entry("weakCompareAndSetAcquire", "(ZZ)Z"),
+            Map.entry("weakCompareAndSetRelease", "(ZZ)Z"));
 
     /** The {@code AtomicInteger} calls substituted; the hook is the name plus {@code AtomicInteger}. */
-    private static final java.util.Map<String, String> ATOMIC_INTEGER_FORMS = java.util.Map.ofEntries(
-            java.util.Map.entry("compareAndSet", "(II)Z"),
-            java.util.Map.entry("set", "(I)V"),
-            java.util.Map.entry("lazySet", "(I)V"),
-            java.util.Map.entry("setPlain", "(I)V"),
-            java.util.Map.entry("setOpaque", "(I)V"),
-            java.util.Map.entry("setRelease", "(I)V"),
-            java.util.Map.entry("getAndSet", "(I)I"),
-            java.util.Map.entry("getAndAdd", "(I)I"),
-            java.util.Map.entry("addAndGet", "(I)I"),
-            java.util.Map.entry("getAndDecrement", "()I"),
-            java.util.Map.entry("decrementAndGet", "()I"),
-            java.util.Map.entry("compareAndExchange", "(II)I"),
-            java.util.Map.entry("compareAndExchangeAcquire", "(II)I"),
-            java.util.Map.entry("compareAndExchangeRelease", "(II)I"),
-            java.util.Map.entry("weakCompareAndSet", "(II)Z"),
-            java.util.Map.entry("weakCompareAndSetPlain", "(II)Z"),
-            java.util.Map.entry("weakCompareAndSetVolatile", "(II)Z"),
-            java.util.Map.entry("weakCompareAndSetAcquire", "(II)Z"),
-            java.util.Map.entry("weakCompareAndSetRelease", "(II)Z"),
-            java.util.Map.entry("getAndUpdate", "(" + UNARY + ")I"),
-            java.util.Map.entry("updateAndGet", "(" + UNARY + ")I"),
-            java.util.Map.entry("getAndAccumulate", "(I" + BINARY + ")I"),
-            java.util.Map.entry("accumulateAndGet", "(I" + BINARY + ")I"));
+    private static final Map<String, String> ATOMIC_INTEGER_FORMS = Map.ofEntries(
+            Map.entry("compareAndSet", "(II)Z"),
+            Map.entry("set", "(I)V"),
+            Map.entry("lazySet", "(I)V"),
+            Map.entry("setPlain", "(I)V"),
+            Map.entry("setOpaque", "(I)V"),
+            Map.entry("setRelease", "(I)V"),
+            Map.entry("getAndSet", "(I)I"),
+            Map.entry("getAndAdd", "(I)I"),
+            Map.entry("addAndGet", "(I)I"),
+            Map.entry("getAndDecrement", "()I"),
+            Map.entry("decrementAndGet", "()I"),
+            Map.entry("compareAndExchange", "(II)I"),
+            Map.entry("compareAndExchangeAcquire", "(II)I"),
+            Map.entry("compareAndExchangeRelease", "(II)I"),
+            Map.entry("weakCompareAndSet", "(II)Z"),
+            Map.entry("weakCompareAndSetPlain", "(II)Z"),
+            Map.entry("weakCompareAndSetVolatile", "(II)Z"),
+            Map.entry("weakCompareAndSetAcquire", "(II)Z"),
+            Map.entry("weakCompareAndSetRelease", "(II)Z"),
+            Map.entry("getAndUpdate", "(" + UNARY + ")I"),
+            Map.entry("updateAndGet", "(" + UNARY + ")I"),
+            Map.entry("getAndAccumulate", "(I" + BINARY + ")I"),
+            Map.entry("accumulateAndGet", "(I" + BINARY + ")I"));
 
     /** Internal names of the reference slots whose offers and takes are substituted (#664). */
     private static final String ATOMIC_REFERENCE = "java/util/concurrent/atomic/AtomicReference";
@@ -150,7 +152,7 @@ final class FieldAccessWeaver {
     private static final String OBJECT = "Ljava/lang/Object;";
 
     /** The {@code AtomicReference} calls substituted; the hook is the name plus {@code AtomicReference}. */
-    private static final java.util.Map<String, String> ATOMIC_REFERENCE_FORMS = java.util.Map.of(
+    private static final Map<String, String> ATOMIC_REFERENCE_FORMS = Map.of(
             "set", "(" + OBJECT + ")V",
             "lazySet", "(" + OBJECT + ")V",
             "setRelease", "(" + OBJECT + ")V",
@@ -158,14 +160,14 @@ final class FieldAccessWeaver {
             "getAndSet", "(" + OBJECT + ")" + OBJECT);
 
     /** The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus {@code ReferenceUpdater}. */
-    private static final java.util.Map<String, String> REFERENCE_UPDATER_FORMS = java.util.Map.of(
+    private static final Map<String, String> REFERENCE_UPDATER_FORMS = Map.of(
             "set", "(" + OBJECT + OBJECT + ")V",
             "lazySet", "(" + OBJECT + OBJECT + ")V",
             "compareAndSet", "(" + OBJECT + OBJECT + OBJECT + ")Z",
             "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT);
 
     /** The {@code AtomicReferenceArray} calls substituted; the hook is the name plus {@code ReferenceArray}. */
-    private static final java.util.Map<String, String> REFERENCE_ARRAY_FORMS = java.util.Map.of(
+    private static final Map<String, String> REFERENCE_ARRAY_FORMS = Map.of(
             "set", "(I" + OBJECT + ")V",
             "lazySet", "(I" + OBJECT + ")V",
             "setRelease", "(I" + OBJECT + ")V",
@@ -704,7 +706,7 @@ final class FieldAccessWeaver {
          * match is what makes the substitution stack-neutral: the hook takes the receiver and then
          * exactly these parameters, and returns exactly this result.
          */
-        private static @Nullable String atomicHook(java.util.Map<String, String> forms, String name,
+        private static @Nullable String atomicHook(Map<String, String> forms, String name,
                                                    String descriptor, String suffix) {
             return descriptor.equals(forms.get(name)) ? name + suffix : null;
         }
