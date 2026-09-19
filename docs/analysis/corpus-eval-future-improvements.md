@@ -146,6 +146,26 @@ and both detectors are still held, each for a reason the new rows could not have
   a condition registered without its lock is stuck on a recorded await with no recorded exit, and a
   missing signal is a recorded exit with no recorded signal. #657 is open on the predicate path.
 
+**`CYCLIC_BARRIER` promoted, 2026-09-19 (#665).** Reuse is now a party (the recording thread)
+coming back to a barrier it already saw broken with no reset in between, recorded or observed from
+the barrier when a later arrival finds it whole. One arrival that hits a break is silent, so the
+late party that drops a barrier broken to cancel it no longer fires. The new silent row,
+`recorded_cyclicBarrier_cancelledAndDropped`, makes the loud row's three calls on a barrier broken
+to cancel and never comes back; the loud row now retries its broken barrier in the same body,
+because a body runs on a fresh virtual thread. Only silent rows record `recordReset` and
+`recordBarrierComplete`, which `PairEvidence.REVIEWED_DESPITE_SHAPE` records. What the pair does not
+reach: a barrier shared across rounds on fresh virtual threads, where no party comes back, and an
+unrecorded reset with no recorded arrival while the barrier was whole.
+
+**`CONDITION_VARIABLES` promoted, 2026-09-19 (#666).** The three paths the re-read above named are
+notes now: a thread parked on a condition registered with its lock but no predicate, a recorded
+await with no exit on a condition registered without its lock, and a missing signal. The one
+finding left is a thread the lock shows parked while the registered predicate holds, with nobody
+queued on the lock (#657), which is what the existing pair already separates on: the firing and
+idle rows register the same way, share one consumer helper and make the same calls. No row
+changed. What the pair does not reach: a stuck waiter behind unrelated contention on the lock,
+noted rather than reported, and a predicate that is wrong about what the waiter waits for.
+
 ## 3. Severity is not pinned on a firing row (Closed 2026-09-17, #660)
 
 On 2026-09-16 `RecordingSubject` gained an optional `expectedSeverity`, and

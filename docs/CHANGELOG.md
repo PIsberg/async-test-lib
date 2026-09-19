@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`MissedSignalDetector.recordLoopStart(Object)` and `recordLoopEnd(Object)` mark a `while (!ready)` loop around waits on a monitor (#669).** Once a monitor has a marked loop, an undeclared wait inside one is guarded and a wait outside every mark is judged unguarded, so `if (!ready) wait()` followed later by a check that finds `ready` true, and two consecutive `if (!ready) wait()` blocks, are reported where the marked loop stays silent. Monitors nobody marks keep the `recordPredicateCheck` reading.
+
 ### Fixed
 
 - **The agent opens `java.util.concurrent.atomic` only to the library copy that reads it (#668).**
@@ -44,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`addAll`, `offerFirst`, `push`, code outside `includes`), removals not reported as a take, and
   `VarHandle` takes from a static field or an array element. JCTools is matched by name and tested
   against a stand-in interface; no corpus row runs the real netty or JCTools queue yet.
+
+- **`CyclicBarrierDetector` reports reuse only when a party comes back to a barrier it already saw broken, with no `reset()` in between (#665).** One arrival that hits a break, such as a late party that catches `BrokenBarrierException` and drops a barrier broken to cancel it, is now silent; a reset is recorded with `recordReset` or observed when a later arrival finds the barrier whole. **Behaviour change:** a body that records a single arrival or await at a broken barrier no longer gets the reuse finding. `CYCLIC_BARRIER` is promoted to `TrustTier.VERDICT` on a new corpus silent twin for cancellation without a reset, so a build gated on `minTrust = VERDICT` now fails on its findings.
+
+- **`ConditionVariableDetector` reports only a thread the lock shows parked while its registered predicate holds (#666).** A thread parked on a condition registered with its lock but no predicate, a recorded await with no exit on a condition registered without its lock, an await abandoned in an earlier round, and a missing signal (`recordAwaitExit(..., false)` with no `recordSignal`) are now notes in the report. **Behaviour change:** register with `registerCondition(lock, condition, ready, name)` to keep a stuck-waiter finding. `CONDITION_VARIABLES` is promoted to `TrustTier.VERDICT` on its existing predicate pair, so a build gated on `minTrust = VERDICT` now fails on its findings.
 
 ## [1.12.1] - 2026-09-17
 

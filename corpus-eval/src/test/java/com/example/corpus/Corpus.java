@@ -2620,6 +2620,35 @@ final class Corpus {
                             + "the loop exits. The halves call the same detector methods and "
                             + "differ only in whether the check after the wakeup is satisfied"),
 
+            new RecordingSubject("recorded_missedSignal_markedIfThenSatisfiedCheck", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "on a monitor whose loops are marked, a notify is lost, then an if (!ready) "
+                            + "wait times out and a later check finds ready true. Unmarked, that "
+                            + "check read as the loop exiting (#656); with recordLoopStart and "
+                            + "recordLoopEnd around the monitor's real loop, a wait outside every "
+                            + "mark is an if's (#669)",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("recorded_missedSignal_markedConsecutiveIfs", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same marked monitor and lost notify, then two consecutive if (!ready) "
+                            + "waits and a later check that still finds ready false. Unmarked, the "
+                            + "second wait read as a back-edge and the check as a poll giving up "
+                            + "(#656); outside every marked loop neither wait is a loop's (#669)",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("recorded_missedSignal_markedWhileLoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same marked monitor and lost notify, with the wait inside a marked "
+                            + "while (!ready) loop that re-checks after the wakeup and exits. All "
+                            + "three rows make the same calls; the marks carry the back-edge (#669)"),
+
             new RecordingSubject("recorded_optimisticRead_usedWithoutValidating", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.OPTIMISTIC_READ_VALIDATION, Contract.THREAD_SAFE,
@@ -2990,10 +3019,12 @@ final class Corpus {
                     DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "every party awaits a barrier that a timed-out await broke and nobody reset, "
-                            + "so each await throws BrokenBarrierException at once. The detector "
-                            + "asks the barrier's isBroken() at the await; a recorded break on its "
-                            + "own is not the finding, because breaking a barrier is how its "
-                            + "parties are cancelled (#584)",
+                            + "catches BrokenBarrierException and awaits it again, so the retry "
+                            + "fails at once too. The detector asks the barrier's isBroken() at "
+                            + "each await and reports the party coming back to a barrier it "
+                            + "already saw broken with no reset in between (#665); a recorded "
+                            + "break on its own is not the finding, because breaking a barrier is "
+                            + "how its parties are cancelled (#584)",
                     IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_cyclicBarrier_completedItsCycle", JDK,
@@ -3013,6 +3044,15 @@ final class Corpus {
                             + "report's own fix. The await really found the barrier broken; the "
                             + "recorded reset recovers it, and the barrier is whole for the next "
                             + "body (#662)"),
+
+            new RecordingSubject("recorded_cyclicBarrier_cancelledAndDropped", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the loud row's calls on a barrier broken to cancel its parties: the late "
+                            + "party awaits it once, catches BrokenBarrierException and drops it "
+                            + "with no reset. That is correct cancellation, and one arrival at a "
+                            + "broken barrier is not reuse (#665)"),
 
             new RecordingSubject("recorded_cyclicBarrier_partyLeftShortUntimed", JDK,
                     "java.util.concurrent.CyclicBarrier",

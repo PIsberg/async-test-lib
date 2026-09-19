@@ -1244,6 +1244,21 @@ so the pair separates on whether the thing the waiter waits for arrived (#661). 
 as stated on the first run. Both detectors stay PROMPT all the same; `PairEvidence.HELD_ON_MODEL`
 says why, and in both cases it is a finding the pairs cannot reach rather than one they get wrong.
 
+On 2026-09-19 `recorded_cyclicBarrier_cancelledAndDropped` joined as the silent twin for
+cancellation without a reset: a barrier broken to cancel its parties, awaited once by a late party
+that catches `BrokenBarrierException` and drops it. Since #665 reuse is a party coming back to a
+barrier it already saw broken, so `recorded_cyclicBarrier_awaitedWhileBroken` now catches the break
+and awaits again in the same body, and `CYCLIC_BARRIER` is promoted on that pair. The same day
+#666 made every `CONDITION_VARIABLES` finding outside the predicate registration a note, and the
+detector is promoted on the pair #661 completed, with no row changed.
+
+Three `MISSED_SIGNAL` rows joined the same day for #669's loop marks. On a monitor whose real
+loop is marked with `recordLoopStart`/`recordLoopEnd`, `recorded_missedSignal_markedIfThenSatisfiedCheck`
+and `recorded_missedSignal_markedConsecutiveIfs` are the two `if (!ready) wait()` shapes #656 left
+reading as a loop, and both must fire; `recorded_missedSignal_markedWhileLoop` is the marked loop
+and must stay silent. All three make the same calls through shared helpers. The detector stays
+PROMPT: `PairEvidence.HELD_ON_MODEL` says why.
+
 `ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
 **57 of 146**, in 117 rows.
 

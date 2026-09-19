@@ -109,8 +109,8 @@ class ConditionVariableDetectorLockAndRoundsTest {
         private final Condition condition = new ReentrantLock().newCondition();
 
         @Test
-        @DisplayName("an await abandoned in one round is still reported after the same thread awaits in the next")
-        void anAwaitAbandonedInAnEarlierRoundIsStillReported() throws Exception {
+        @DisplayName("an await abandoned in one round is still noted after the same thread awaits in the next")
+        void anAwaitAbandonedInAnEarlierRoundIsStillNoted() throws Exception {
             detector.registerCondition(condition, NAME);
             // Round one: the body records its await and throws before it records the exit.
             on(waiterA, () -> detector.recordAwait(condition, NAME));
@@ -121,11 +121,12 @@ class ConditionVariableDetectorLockAndRoundsTest {
             on(waiterA, () -> detector.recordAwaitExit(condition, NAME, false));
 
             var report = detector.analyze();
-            assertTrue(report.hasIssues(),
+            assertFalse(report.hasIssues(),
+                    "without its lock the abandoned await is the body's record, a note (#666). "
+                            + "Report:\n" + report);
+            assertEquals(1, report.unconfirmedWaits.stream().filter(n -> n.contains("earlier round")).count(),
                     "round one's await never exited; round two's exit closes round two's await, "
                             + "not that one. Report:\n" + report);
-            assertEquals(1, report.stuckWaiters.size(), report.toString());
-            assertTrue(report.stuckWaiters.get(0).contains("earlier round"), report.toString());
         }
 
         @Test
@@ -139,7 +140,7 @@ class ConditionVariableDetectorLockAndRoundsTest {
             on(waiterA, () -> detector.recordAwaitExit(condition, NAME, false)); // nothing signalled it
 
             var report = detector.analyze();
-            assertEquals(1, report.missingSignals.size(),
+            assertEquals(1, report.unsignalledWakeups.size(),
                     "round two's await started after the only signal and returned as woken with "
                             + "nothing signalling it. Report:\n" + report);
         }
@@ -185,17 +186,20 @@ class ConditionVariableDetectorLockAndRoundsTest {
         private final Condition condition = lock.newCondition();
 
         @Test
-        @DisplayName("a thread parked on the condition at analysis fires, even with no await recorded")
-        void aThreadParkedAtAnalysisIsReadFromTheLock() throws Exception {
+        @DisplayName("#666: with the lock but no predicate, a thread parked at analysis is read from the lock and noted, not reported")
+        void aThreadParkedAtAnalysisIsReadFromTheLockAndNoted() throws Exception {
             detector.registerCondition(lock, condition, NAME);
             Thread waiter = parkOn(lock, condition, () -> hasWaiters(lock, condition));
             try {
                 var report = detector.analyze();
-                assertTrue(report.hasIssues(),
-                        "the lock reports a thread parked on the condition that nothing signalled. "
-                                + "Report:\n" + report);
-                assertEquals(1, report.stuckWaiters.size(), report.toString());
-                assertTrue(report.stuckWaiters.get(0).contains("read from the lock"), report.toString());
+                assertFalse(report.hasIssues(),
+                        "an idle consumer parks exactly like a stuck one; without the predicate the "
+                                + "lock cannot tell them apart. Report:\n" + report);
+                assertEquals(0, report.stuckWaiters.size(), report.toString());
+                assertTrue(report.unconfirmedWaits.stream().anyMatch(
+                                n -> n.contains("read from the lock") && n.contains("no predicate")),
+                        "the note must say the lock shows it parked and what would decide it. Report:\n"
+                                + report);
             } finally {
                 waiter.interrupt();
                 waiter.join(10_000);
@@ -300,7 +304,10 @@ class ConditionVariableDetectorLockAndRoundsTest {
             });
             try {
                 var report = detector.analyze();
-                assertEquals(1, report.stuckWaiters.size(), report.toString());
+                assertEquals(0, report.stuckWaiters.size(), report.toString());
+                assertTrue(report.unconfirmedWaits.stream().anyMatch(
+                        n -> n.contains("1 thread(s) parked in await() at analysis, read from the lock")),
+                        report.toString());
             } finally {
                 waiter.interrupt();
                 waiter.join(10_000);
@@ -316,7 +323,7 @@ class ConditionVariableDetectorLockAndRoundsTest {
             detector.registerCondition(lock, condition, NAME);
 
             var report = detector.analyze();
-            assertEquals(1, report.missingSignals.size(),
+            assertEquals(1, report.unsignalledWakeups.size(),
                     "a later registration with the lock must not discard the recorded missing "
                             + "signal. Report:\n" + report);
         }

@@ -2835,6 +2835,66 @@ class DetectorAccuracyEvalTest {
                 "every party arrived and the barrier tripped, so no issue: " + report);
     }
 
+    /** A two-party barrier broken for real by a timed await nobody can join. */
+    private static CyclicBarrier brokenTwoPartyBarrier() {
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        try {
+            barrier.await(1, TimeUnit.NANOSECONDS);
+        } catch (java.util.concurrent.TimeoutException expected) {
+            // the break is the premise
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        assertTrue(barrier.isBroken(), "premise: a timed-out await breaks the barrier");
+        return barrier;
+    }
+
+    /** Awaits a broken barrier as a party would: record, await, catch the break, record it. */
+    private static void awaitBroken(CyclicBarrierDetector detector, CyclicBarrier barrier) {
+        detector.recordArrival(barrier);
+        detector.recordAwait(barrier);
+        try {
+            barrier.await();
+        } catch (java.util.concurrent.BrokenBarrierException e) {
+            detector.recordBroken(barrier);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
+    @DisplayName("cyclic barrier: each party coming back to a barrier it saw broken, no reset between, fires (true positive, #665)")
+    void cyclicBarrierFiresWhenAPartyReusesABarrierItSawBroken() throws InterruptedException {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenTwoPartyBarrier();
+        detector.registerBarrier(barrier, "reused-after-break", 2);
+
+        Runnable retries = () -> {
+            awaitBroken(detector, barrier);
+            awaitBroken(detector, barrier);   // the bug: back again, nobody reset it
+        };
+        onTwoThreads(retries, retries);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertTrue(report.getReuseAfterBrokenBarriers().contains(barrier),
+                "a second arrival at a barrier the party already saw broken fails again: " + report);
+    }
+
+    @Test
+    @DisplayName("cyclic barrier: each party arriving once at a cancelled barrier and dropping it, no reset, stays silent (true negative, #665)")
+    void cyclicBarrierSilentWhenLatePartiesDropACancelledBarrier() throws InterruptedException {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenTwoPartyBarrier();
+        detector.registerBarrier(barrier, "cancelled-and-dropped", 2);
+
+        Runnable dropsIt = () -> awaitBroken(detector, barrier);   // and never comes back
+        onTwoThreads(dropsIt, dropsIt);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "a barrier broken to cancel its parties and then dropped is correct: " + report);
+    }
+
     // ---- ExchangerDetector ----
 
     @Test
@@ -2989,8 +3049,8 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("condition variable: the producer signals the wrong condition, the consumer stays parked (true positive)")
-    void conditionVariableFiresWhenTheProducerSignalsTheWrongCondition() throws InterruptedException {
+    @DisplayName("condition variable, registered without its lock: the stranded consumer is a note, not a finding (pinned false negative, #666)")
+    void conditionVariableWithoutItsLockOnlyNotesTheStrandedConsumer() throws InterruptedException {
         ConditionVariableDetector detector = new ConditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
@@ -3011,9 +3071,11 @@ class DetectorAccuracyEvalTest {
 
         try {
             var report = detector.analyze();
-            assertTrue(report.hasIssues(),
-                    "the item is ready but the consumer is parked on a condition nobody signalled. "
-                            + "Report:\n" + report);
+            assertFalse(report.hasIssues(),
+                    "without the lock only the body's records say the consumer waits, so the "
+                            + "stranded consumer is a note; register the lock and predicate to have it "
+                            + "decided (#666). Report:\n" + report);
+            assertTrue(report.toString().contains("still waiting at analysis"), report.toString());
         } finally {
             consumer.interrupt();
             consumer.join();
@@ -3245,8 +3307,8 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("condition variable, lock registered: a consumer parked on the condition nobody signalled fires from the lock (true positive)")
-    void conditionVariableWithItsLockFiresOnAConsumerTheLockShowsParked() throws InterruptedException {
+    @DisplayName("condition variable, lock but no predicate: a consumer the lock shows parked is a note, not a finding (pinned false negative, #666)")
+    void conditionVariableWithItsLockOnlyNotesAConsumerTheLockShowsParked() throws InterruptedException {
         ConditionVariableDetector detector = new ConditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
@@ -3267,9 +3329,11 @@ class DetectorAccuracyEvalTest {
 
         try {
             var report = detector.analyze();
-            assertTrue(report.hasIssues() && report.toString().contains("read from the lock"),
-                    "the lock shows the consumer parked on not-empty, which nobody signalled (#592). "
-                            + "Report:\n" + report);
+            assertFalse(report.hasIssues(),
+                    "an idle consumer parks the same way, so without the predicate the lock's count "
+                            + "is a note (#666). Report:\n" + report);
+            assertTrue(report.toString().contains("read from the lock"),
+                    "the note still says what the lock showed (#592). Report:\n" + report);
         } finally {
             consumer.interrupt();
             consumer.join();

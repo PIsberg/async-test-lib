@@ -323,6 +323,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                    detectAll = false, detectConditionVariableIssues = true)
         void body() {
             var d = AsyncTestContext.conditionVariableDetector();
+            USED.set(d);
             d.registerCondition(CONDITION, "cross-round");
             d.recordAwait(CONDITION, "cross-round");
             if (EXECUTIONS.getAndIncrement() == 0) {
@@ -342,6 +343,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
                    detectAll = false, detectConditionVariableIssues = true)
         void body() {
             var d = AsyncTestContext.conditionVariableDetector();
+            USED.set(d);
             d.registerCondition(CONDITION, "loop");
             d.recordAwait(CONDITION, "loop");
             d.recordSignal(CONDITION, "loop", false);
@@ -351,25 +353,41 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         }
     }
 
+    /**
+     * The detector the last condition fixture ran against. Since #666 an abandoned await on a
+     * condition registered without its lock is a note, which never reaches a report listener, so
+     * the binding is read from the detector's own analysis after the run.
+     */
+    /** The abandoned-await note; the activity line also names earlier rounds, so match the note. */
+    private static final String ABANDONED = "recorded in an earlier round never exited";
+
+    static final java.util.concurrent.atomic.AtomicReference<se.deversity.asynctest.diagnostics.ConditionVariableDetector>
+            USED = new java.util.concurrent.atomic.AtomicReference<>();
+
     @Test
-    @DisplayName("an await abandoned in round one is reported after the pooled thread awaits in round two")
-    void conditionAwaitAbandonedCrossRoundIsReported() {
+    @DisplayName("an await abandoned in round one is noted after the pooled thread awaits in round two")
+    void conditionAwaitAbandonedCrossRoundIsNoted() {
         ConditionAwaitAbandonedCrossRound.EXECUTIONS.set(0);
+        USED.set(null);
         run(ConditionAwaitAbandonedCrossRound.class);
-        String report = REPORTS.get("ConditionVariableDetector");
-        assertTrue(report != null && report.contains("earlier round"),
+        String report = USED.get() == null ? null : USED.get().analyze().toString();
+        assertTrue(report != null && report.contains(ABANDONED),
                 "round one's await never exited; round two's exit closes round two's await. "
                         + "AsyncTestContext.markInvocationStart must reach this detector (#593). "
-                        + "Reports: " + REPORTS.keySet() + " -> " + report);
+                        + "Report: " + report);
     }
 
     @Test
-    @DisplayName("a loop re-awaiting inside each round is one wait per round, so the finding above is not the re-await alone")
+    @DisplayName("a loop re-awaiting inside each round is one wait per round, so the note above is not the re-await alone")
     void conditionLoopReAwaitEachRoundIsSilent() {
+        USED.set(null);
         run(ConditionLoopReAwaitEachRound.class);
-        assertFalse(REPORTS.containsKey("ConditionVariableDetector"),
+        String report = USED.get() == null ? null : USED.get().analyze().toString();
+        assertTrue(report != null && !report.contains(ABANDONED),
                 "a while loop that awaits again before its single recorded exit abandons nothing. "
-                        + "Report: " + REPORTS.get("ConditionVariableDetector"));
+                        + "Report: " + report);
+        assertFalse(REPORTS.containsKey("ConditionVariableDetector"),
+                "Report: " + REPORTS.get("ConditionVariableDetector"));
     }
 
     /** A write release in round one and a read acquire in round two, on one pooled thread. */

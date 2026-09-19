@@ -21,6 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * signal that could have woken it, per condition and per thread, and a timed-out await is not a
  * missing signal.
  *
+ * <p>Since #666 a missing signal, and a recorded await with no lock to read it from, are notes and
+ * not findings: both are decided from the body's own records. The pairing is still pinned here,
+ * through the notes it produces.
+ *
  * <p>Each recording runs on a single-thread executor, so "waiter A" and "waiter B" are two real
  * threads and every step happens in the order written.
  */
@@ -74,21 +78,23 @@ class ConditionVariableDetectorModelTest {
         on(waiterB, () -> detector.recordAwaitExit(condition, NAME, false));
 
         var report = detector.analyze();
-        assertTrue(report.hasIssues(),
+        assertFalse(report.hasIssues(), "a missing signal is a note since #666. Report:\n" + report);
+        assertEquals(1, report.unsignalledWakeups.size(),
                 "two awaits returned as woken and only one signal() was delivered while they "
                         + "waited, so one wakeup had no signal behind it. Report:\n" + report);
-        assertEquals(1, report.missingSignals.size(), report.toString());
     }
 
     @Test
-    @DisplayName("an await that returns as woken with no signal ever recorded fires")
-    void wokenAwaitWithNoSignalFires() throws Exception {
+    @DisplayName("an await that returns as woken with no signal ever recorded is noted, not reported (#666)")
+    void wokenAwaitWithNoSignalIsNoted() throws Exception {
         detector.registerCondition(condition, NAME);
         on(waiterA, () -> detector.recordAwait(condition, NAME));
         on(waiterA, () -> detector.recordAwaitExit(condition, NAME, false));
 
-        assertTrue(detector.analyze().hasIssues(),
-                "an await that returned as woken with nothing signalling the condition");
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), report.toString());
+        assertEquals(1, report.unsignalledWakeups.size(),
+                "an await that returned as woken with nothing signalling the condition. Report:\n" + report);
     }
 
     @Test
@@ -99,7 +105,7 @@ class ConditionVariableDetectorModelTest {
         on(waiterA, () -> detector.recordAwait(condition, NAME));
         on(waiterA, () -> detector.recordAwaitExit(condition, NAME, false));
 
-        assertTrue(detector.analyze().hasIssues(),
+        assertEquals(1, detector.analyze().unsignalledWakeups.size(),
                 "the only signal went out while nobody waited, so it cannot have woken the await "
                         + "that started afterwards");
     }
@@ -140,9 +146,10 @@ class ConditionVariableDetectorModelTest {
         on(waiterA, () -> detector.recordAwait(condition, NAME));
 
         var report = detector.analyze();
-        assertEquals(1, report.stuckWaiters.size(),
+        assertFalse(report.hasIssues(), "no lock registered: a note since #666. Report:\n" + report);
+        assertEquals(1, report.unconfirmedWaits.size(),
                 "the one thread still inside an await must still be counted. Report:\n" + report);
-        assertTrue(report.stuckWaiters.get(0).contains(": 1 thread"), report.toString());
+        assertTrue(report.unconfirmedWaits.get(0).contains(": 1 thread"), report.toString());
     }
 
     @Test

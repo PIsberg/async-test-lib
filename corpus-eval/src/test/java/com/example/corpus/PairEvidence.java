@@ -98,6 +98,14 @@ final class PairEvidence {
                 + "and release it, contended, so it never times out. Since #589 a timeout is context "
                 + "and decides nothing: the finding is the lock itself still held at analysis by a "
                 + "holder that has finished or is idle in its pool (#609)");
+        // Read 2026-09-19, after #665 made reuse a party coming back to a barrier it saw broken.
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.CYCLIC_BARRIER, "only silent rows record "
+                + "recordReset and recordBarrierComplete. recordBarrierComplete decides nothing (its "
+                + "javadoc says so). recordReset is the fix itself in resetAfterABreak, the call the "
+                + "reuse report prescribes, and a reset is also observed from the barrier when a "
+                + "later arrival finds it whole, so the recording is not what separates the halves. "
+                + "The decisive pair, awaitedWhileBroken against cancelledAndDropped, calls the same "
+                + "three methods and differs only in whether the party comes back to the barrier");
 
         // Read 2026-09-14: each pair's two bodies and its detector's source, by a reviewer asked
         // to argue against promotion. The reason is the model property that decided it.
@@ -144,36 +152,26 @@ final class PairEvidence {
         // Second reading, 2026-09-14 (#571). In all eight the body declared what the finding said
         // and the detector never asked the object it named. CONDITION_VARIABLES, CYCLIC_BARRIER and
         // REENTRANT_LOCK were re-read on 2026-09-17, once their models asked the real object.
-        HELD_ON_MODEL.put(DetectorType.CONDITION_VARIABLES, "re-read 2026-09-17 after #661: the "
-                + "pair now separates on the object, a consumer parked while the predicate it "
-                + "registered holds (work arrived, the wrong condition signalled) against the same "
-                + "consumer idle with it false, both through registerCondition(lock, condition, "
-                + "ready, name). The tier is the detector's, though, and its other findings are not "
-                + "decided that way: the lock-only registration still reports an idle parked "
-                + "consumer as stuck (#643 keeps it as the weaker claim), a condition registered "
-                + "without its lock is stuck on a recorded await with no recorded exit, and a "
-                + "missing signal is a recordAwaitExit(..., false) with no recordSignal, both the "
-                + "body's own declarations (#657, a signalled waiter still queued for the lock, "
-                + "is now a note on the predicate path). Needs the declared and "
-                + "lock-only stuck waiters to become notes, or those paths split from this one");
-        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "re-read 2026-09-17 after #662: a recorded "
-                + "reset() now recovers the reuse recorded before it, and the lane holds the "
-                + "handled-break twin and a stranded-party pair (untimed against timed await, "
-                + "#631). Still held, because one arrival at a broken barrier is the finding: a "
-                + "party that arrives late at a barrier broken to cancel its parties, catches "
-                + "BrokenBarrierException and drops the barrier without a reset is the correct "
-                + "cancellation the detector's own javadoc describes, and draws the reuse finding. "
-                + "Needs reuse to mean a party coming back to a barrier it already saw broken with "
-                + "no reset in between, which reverses the single-arrival cases "
-                + "CyclicBarrierDetectorAccuracyTest pins today");
+        // CONDITION_VARIABLES was held here until #666 made the lock-only, lock-less and
+        // missing-signal paths notes; it is promoted in verdict-evidence-corpus.
+        // CYCLIC_BARRIER was held here until #665 made reuse a party coming back to a barrier it
+        // already saw broken; it is promoted in verdict-evidence-corpus, and
+        // REVIEWED_DESPITE_SHAPE says why the reset only its silent rows record is not the separator.
         HELD_ON_MODEL.put(DetectorType.EXCHANGER, "#585 made orphaning the finding, decided from "
                 + "recorded starts against completions, timeouts and interrupts, so a handled timeout "
                 + "is silent; still held until re-read, because the counts are the body's own "
                 + "declaration and an Exchanger exposes no waiter count to check a start against");
         HELD_ON_MODEL.put(DetectorType.MISSED_SIGNAL, "since #586 a lost notify is a finding only "
-                + "when a later wait receives no notify; #599 let a caller declare guardedness and "
-                + "#635 observes predicate re-checks via recordPredicateCheck, but the real monitor's "
-                + "waiters remain invisible; still held until an agent-woven loop check or full re-read (#571)");
+                + "when a later wait receives no notify; #599 let a caller declare guardedness, "
+                + "#635 observes predicate re-checks via recordPredicateCheck, and #669's "
+                + "recordLoopStart/recordLoopEnd marks give the loop back-edge, so the if-wait "
+                + "shapes #656 could not separate now fire beside a silent marked loop. Still held: "
+                + "every input is the body's record. Whether a notify found nobody waiting, and "
+                + "whether a wait received one, come from recordNotify/recordWait/recordWakeup, "
+                + "because Object exposes no waiter or notify state to ask, and an unmarked "
+                + "monitor still reads the two if shapes as a loop. Needs the agent to weave "
+                + "Object.wait/notify (the real waiter set and the loop back-edge) before a "
+                + "re-read (#571)");
         HELD_ON_MODEL.put(DetectorType.PHASER, "since #587 termination is context and the finding "
                 + "is an arrival whose returned phase is negative on a phaser with no party left "
                 + "registered, read from the real phaser; the rewritten pair has not been re-read "

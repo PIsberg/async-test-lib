@@ -69,31 +69,129 @@ class CyclicBarrierDetectorAccuracyTest {
     }
 
     @Test
-    @DisplayName("an await on a barrier that is broken is reported, recorded break or not")
+    @DisplayName("a party that awaits a broken barrier a second time with no reset between is reported, recorded break or not")
     void awaitOnABrokenBarrierFires() {
         var detector = new CyclicBarrierDetector();
         CyclicBarrier barrier = brokenBarrier();   // broken by a timeout nobody recorded
         detector.registerBarrier(barrier, "reused", 2);
 
-        detector.recordAwait(barrier);
-        assertThrows(BrokenBarrierException.class, barrier::await,
-                "premise: the await fails immediately on a broken barrier");
+        for (int attempt = 0; attempt < 2; attempt++) {
+            detector.recordAwait(barrier);   // no recordBroken: the barrier alone decides
+            assertThrows(BrokenBarrierException.class, barrier::await,
+                    "premise: the await fails immediately on a broken barrier");
+        }
 
         var report = detector.analyze();
-        assertTrue(report.hasIssues(), "an await on a broken barrier fails every caller: " + report);
+        assertTrue(report.hasIssues(), "coming back to a barrier already seen broken fails again: " + report);
         assertTrue(report.getReuseAfterBrokenBarriers().contains(barrier));
     }
 
     @Test
-    @DisplayName("an arrival at a barrier that is broken is reported the same as an await")
-    void arrivalAtABrokenBarrierFires() {
+    @DisplayName("#665: one arrival at a broken barrier is not reported; the party cannot know until its await throws")
+    void singleArrivalAtABrokenBarrierIsSilent() {
         var detector = new CyclicBarrierDetector();
         CyclicBarrier barrier = brokenBarrier();
         detector.registerBarrier(barrier, "arrived", 2);
 
         detector.recordArrival(barrier);
+        detector.recordAwait(barrier);   // the same attempt: an arrival and its await are one arrival
 
-        assertTrue(detector.analyze().getReuseAfterBrokenBarriers().contains(barrier));
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "a single arrival that hits the break is not reuse: " + report);
+    }
+
+    @Test
+    @DisplayName("#665: a late party that catches BrokenBarrierException from a cancelled barrier and drops it, no reset, is not reported")
+    void lateArrivalAtACancelledBarrierDroppedWithoutResetIsSilent() throws Exception {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = new CyclicBarrier(3);
+        detector.registerBarrier(barrier, "cancelled-late", 3);
+
+        Thread early = new Thread(() -> {
+            detector.recordArrival(barrier);
+            detector.recordAwait(barrier);
+            try {
+                barrier.await();
+            } catch (BrokenBarrierException | InterruptedException e) {
+                detector.recordBroken(barrier);
+            }
+        });
+        early.setDaemon(true);
+        early.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (barrier.getNumberWaiting() == 0 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertTrue(barrier.getNumberWaiting() == 1, "premise: the early party is waiting");
+        early.interrupt();   // cancel: interrupting a waiting party breaks the barrier for every party
+        early.join(5000);
+        assertTrue(barrier.isBroken(), "premise: the barrier is left broken, and nobody resets it");
+
+        // The late party arrives, its await throws, and it handles that by dropping the barrier.
+        detector.recordArrival(barrier);
+        detector.recordAwait(barrier);
+        try {
+            barrier.await();
+            throw new AssertionError("premise: the await fails on a broken barrier");
+        } catch (BrokenBarrierException e) {
+            detector.recordBroken(barrier);   // and never touches the barrier again
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "cancelling by breaking a barrier and dropping it is correct for every party: " + report);
+    }
+
+    @Test
+    @DisplayName("#665: parties that each arrive once at a broken barrier are not reported; reuse is per party")
+    void differentPartiesArrivingOnceEachAreSilent() throws Exception {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenBarrier();
+        detector.registerBarrier(barrier, "one-arrival-each", 2);
+
+        Runnable party = () -> {
+            detector.recordAwait(barrier);
+            try {
+                barrier.await();
+            } catch (BrokenBarrierException e) {
+                detector.recordBroken(barrier);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        for (int i = 0; i < 3; i++) {
+            Thread t = new Thread(party);
+            t.start();
+            t.join(5000);
+        }
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "no party came back to the broken barrier: " + report);
+    }
+
+    @Test
+    @DisplayName("#665: a barrier seen whole between a party's two arrivals was reset, recorded or not")
+    void barrierSeenWholeBetweenTwoArrivalsIsSilent() throws Exception {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenBarrier();
+        detector.registerBarrier(barrier, "healed-unrecorded", 2);
+
+        detector.recordAwait(barrier);   // this party sees it broken once
+        assertThrows(BrokenBarrierException.class, barrier::await);
+
+        Thread coordinator = new Thread(() -> {
+            barrier.reset();                  // resets it without recording the reset
+            detector.recordArrival(barrier);  // and the next recorded arrival finds it whole
+        });
+        coordinator.start();
+        coordinator.join(5000);
+        assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
+
+        detector.recordAwait(barrier);   // broken again, by a break this party had not seen
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "the barrier was seen whole between the two arrivals, so a reset happened: " + report);
     }
 
     @Test
@@ -153,8 +251,9 @@ class CyclicBarrierDetectorAccuracyTest {
         barrier.reset();
         assertTrue(released.await(5, TimeUnit.SECONDS), "premise: the reset released the party");
 
-        // Later the barrier breaks again, unrecorded, and is awaited.
+        // Later the barrier breaks again, unrecorded, and is awaited twice with no reset (#665).
         assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
+        detector.recordAwait(barrier);
         detector.recordAwait(barrier);
 
         String rendered = detector.analyze().toString();
@@ -270,8 +369,8 @@ class CyclicBarrierDetectorAccuracyTest {
     }
 
     @Test
-    @DisplayName("a reset recovers only the reuse recorded before it: a later break awaited without a reset is reported")
-    void reuseAfterAResetThatWasFollowedByAnotherBreakFires() {
+    @DisplayName("#665: after a reset, a party's next arrival at a barrier broken again is its first, not reuse")
+    void arrivalAfterAResetThatWasFollowedByAnotherBreakIsSilent() {
         var detector = new CyclicBarrierDetector();
         CyclicBarrier barrier = brokenBarrier();
         detector.registerBarrier(barrier, "broke-again", 2);
@@ -281,7 +380,26 @@ class CyclicBarrierDetectorAccuracyTest {
         barrier.reset();
 
         assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
-        detector.recordAwait(barrier);   // broken again, and nobody resets it this time
+        detector.recordAwait(barrier);   // broken again, by a break the party learns of only here
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "the reset closed what the party had seen: " + report);
+    }
+
+    @Test
+    @DisplayName("a reset recovers only what was seen before it: a later break awaited twice without a reset is reported")
+    void reuseAfterAResetThatWasFollowedByAnotherBreakFires() {
+        var detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenBarrier();
+        detector.registerBarrier(barrier, "broke-again-twice", 2);
+
+        detector.recordAwait(barrier);
+        detector.recordReset(barrier);
+        barrier.reset();
+
+        assertThrows(TimeoutException.class, () -> barrier.await(1, TimeUnit.NANOSECONDS));
+        detector.recordAwait(barrier);   // broken again: the first arrival since the reset
+        detector.recordAwait(barrier);   // and back again with nobody resetting it this time
 
         assertTrue(detector.analyze().getReuseAfterBrokenBarriers().contains(barrier));
     }

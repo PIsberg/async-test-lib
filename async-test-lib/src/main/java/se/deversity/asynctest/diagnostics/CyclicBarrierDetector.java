@@ -9,10 +9,32 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.jspecify.annotations.Nullable;
+
 /**
- * Detects reuse of a broken CyclicBarrier: an arrival or await on a barrier whose
- * {@code isBroken()} is true at that moment, so the await throws {@code BrokenBarrierException} for
- * every caller until somebody calls {@code reset()}.
+ * Detects reuse of a broken CyclicBarrier: a party coming back to a barrier it already saw broken,
+ * with no {@code reset()} in between, so its await throws {@code BrokenBarrierException} again and
+ * keeps failing every caller until somebody resets the barrier (#665).
+ *
+ * <p>A party is the recording thread. It has seen the barrier broken when one of its arrivals or
+ * awaits found {@code isBroken()} true, or when it recorded a timeout or a break on it. Its next
+ * arrival or await that finds the barrier broken, with no reset in between, is the finding. One
+ * arrival that hits a break is not: a party cannot know a barrier is broken until its await throws,
+ * so a late party that catches {@code BrokenBarrierException} and drops a barrier broken to cancel
+ * its parties is correct and stays silent. A {@code recordArrival} directly followed by the same
+ * thread's {@code recordAwait} is one arrival, not two.
+ *
+ * <p>A reset is either recorded with {@link #recordReset} or observed: any recorded arrival or await
+ * that finds the barrier whole after it was seen broken proves a reset happened, recorded or not,
+ * and closes what every party had seen. What this costs:
+ * <ul>
+ *   <li>A barrier shared across rounds on fresh threads (for example {@code useVirtualThreads}) is
+ *       never come back to by the same party, so its reuse is not reported. That errs towards
+ *       silence.</li>
+ *   <li>A party that saw the break, after which somebody reset the barrier without recording it and
+ *       nobody recorded an arrival while it was whole, and which then arrives at a barrier broken
+ *       again, is reported: nothing recorded shows the reset.</li>
+ * </ul>
  *
  * <p>A recorded timeout is not a finding (#595). A timed-out {@code await(timeout, unit)} breaks the
  * barrier for every party, and what the caller does next decides whether that is a defect: catching
@@ -29,15 +51,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * and {@link #recordReset} are kept as context for that report; a recorded break on a barrier that
  * is not broken at the await reports nothing, and a break nobody recorded is still seen.
  *
- * <p>A recorded {@link #recordReset} recovers the reuse recorded on that barrier before it (#662). A
- * party that arrives at a barrier something else broke cannot know it is broken until its await
- * throws, so the arrival alone is not the defect; catching {@code BrokenBarrierException} and
- * calling {@code reset()}, which is what the report advises, is correct. A later arrival at the
- * barrier while it is broken again is reported as before, so a {@code recordReset} the body makes
- * without really resetting is caught by the next arrival, which asks the barrier. What it can hide is
- * only a reuse with no arrival after it, which errs towards silence. A party that catches the
- * exception and drops the barrier without a reset is still reported: nothing observable separates
- * that from a body that never looks at the barrier again.
+ * <p>A recorded {@link #recordReset} closes what the parties had seen before it (#662), so catching
+ * {@code BrokenBarrierException} and calling {@code reset()}, which is what the report advises, is
+ * correct. A {@code recordReset} the body makes without really resetting is not taken on trust
+ * beyond that: a party's arrival while the barrier is still broken starts its count again, and its
+ * next one is reported.
  *
  * <p>The decision is taken when the arrival or await is recorded, so a barrier that breaks after
  * that check and before the await itself is missed. That errs towards silence.
@@ -66,14 +84,24 @@ public class CyclicBarrierDetector {
     private final Set<CyclicBarrier> timedOutBarriers = ConcurrentHashMap.newKeySet();
     /** Barriers with at least one recorded break; context for the reuse report, never a finding. */
     private final Set<CyclicBarrier> brokenBarriers = ConcurrentHashMap.newKeySet();
+    /** Barriers on which a party came back after seeing them broken, with no reset in between (#665). */
+    private final Set<CyclicBarrier> reusedBarriers = ConcurrentHashMap.newKeySet();
     /**
-     * Per barrier, the reset epoch in which an arrival or await last found it broken. The reuse
-     * is a finding at analysis only while that epoch is still current, that is, no reset was
-     * recorded after it (#662).
+     * Per barrier, the number of resets recorded or observed; what a party saw is compared
+     * against it, so a reset in between closes it (#662, #665).
      */
-    private final Map<CyclicBarrier, Long> reuseEpochs = new ConcurrentHashMap<>();
-    /** Per barrier, the number of recorded resets; the epoch a reuse is compared against. */
     private final Map<CyclicBarrier, AtomicLong> resetEpochs = new ConcurrentHashMap<>();
+    /**
+     * Barriers some arrival found broken and no later arrival has yet found whole. An arrival that
+     * finds one of these whole proves a reset happened, recorded or not, and opens a new epoch.
+     */
+    private final Set<CyclicBarrier> seenBroken = ConcurrentHashMap.newKeySet();
+    /**
+     * What each party has seen of each barrier, keyed on the barrier and the thread id. Created only
+     * when a party sees a barrier broken, so the healthy path allocates nothing here. Each entry is
+     * written only by its own thread.
+     */
+    private final Map<PartyKey, PartyState> parties = new ConcurrentHashMap<>();
     private final Map<CyclicBarrier, Integer> strandedBarriers = new ConcurrentHashMap<>();
     /**
      * The barrier each recording thread last said it was about to await. Read only when a round is
@@ -130,7 +158,10 @@ public class CyclicBarrierDetector {
     public void recordArrival(CyclicBarrier barrier) {
         if (barrier == null) return;
         autoRegister(barrier);
-        checkBroken(barrier);
+        PartyState state = checkBroken(barrier, false);
+        if (state != null) {
+            state.arrivalOpen = true;   // the await this arrival leads to is the same attempt
+        }
     }
 
     /**
@@ -145,6 +176,7 @@ public class CyclicBarrierDetector {
     public void recordTimeout(CyclicBarrier barrier) {
         if (barrier == null) return;
         timedOutBarriers.add(barrier);
+        sawBroken(barrier);
     }
 
     /**
@@ -157,6 +189,7 @@ public class CyclicBarrierDetector {
     public void recordBroken(CyclicBarrier barrier) {
         if (barrier == null) return;
         brokenBarriers.add(barrier);
+        sawBroken(barrier);
     }
 
     /**
@@ -166,9 +199,9 @@ public class CyclicBarrierDetector {
      * anything: whether a later await is on a broken barrier is asked of the barrier at that
      * await, and after a completed reset it is not.
      *
-     * <p>It does recover the reuse recorded before it (#662): an arrival or await that found the
-     * barrier broken, followed by this reset, is a handled break and not a finding. An arrival that
-     * finds the barrier broken after it is judged on its own.
+     * <p>It does close what every party had seen of the barrier before it (#662, #665): a party
+     * that found the barrier broken, followed by this reset, arrives afresh, and its next arrival at
+     * a barrier broken again is its first, not a reuse.
      *
      * @param barrier the barrier being recorded, tracked by identity
      */
@@ -190,33 +223,53 @@ public class CyclicBarrierDetector {
     public void recordAwait(CyclicBarrier barrier) {
         if (barrier == null) return;
         autoRegister(barrier);
-        checkBroken(barrier);
+        checkBroken(barrier, true);
     }
 
     /**
-     * The epoch is read before the barrier is asked, so a reset recorded between the two leaves
-     * this reuse in the epoch that reset closed rather than in the one after it.
+     * Asks the barrier at an arrival or await and judges it against what this party has seen. The
+     * epoch is read before the barrier is asked, so a reset recorded between the two leaves this
+     * arrival in the epoch that reset closed rather than in the one after it, which errs towards
+     * silence.
+     *
+     * @param await whether this is an await, which continues an arrival the same thread just recorded
+     * @return this party's state when the barrier was broken, or {@code null} when it was whole
      */
-    private void checkBroken(CyclicBarrier barrier) {
-        long epoch = epochOf(barrier).get();
-        if (barrier.isBroken()) {
-            reuseEpochs.merge(barrier, epoch, Math::max);
+    private @Nullable PartyState checkBroken(CyclicBarrier barrier, boolean await) {
+        AtomicLong epochs = epochOf(barrier);
+        long epoch = epochs.get();
+        if (!barrier.isBroken()) {
+            if (seenBroken.remove(barrier)) {
+                epochs.incrementAndGet();   // whole after a break: a reset happened, recorded or not
+            }
+            return null;
         }
+        seenBroken.add(barrier);
+        PartyState state = parties.computeIfAbsent(
+            new PartyKey(barrier, Thread.currentThread().threadId()), k -> new PartyState());
+        if (await && state.arrivalOpen) {
+            state.arrivalOpen = false;   // the await of the arrival already judged
+            return state;
+        }
+        if (state.sawBrokenIn == epoch) {
+            reusedBarriers.add(barrier);
+        }
+        state.sawBrokenIn = epoch;
+        state.arrivalOpen = false;
+        return state;
+    }
+
+    /** This party learned the barrier is broken, from a timeout or a break it recorded. */
+    private void sawBroken(CyclicBarrier barrier) {
+        long epoch = epochOf(barrier).get();
+        PartyState state = parties.computeIfAbsent(
+            new PartyKey(barrier, Thread.currentThread().threadId()), k -> new PartyState());
+        state.sawBrokenIn = epoch;
+        state.arrivalOpen = false;
     }
 
     private AtomicLong epochOf(CyclicBarrier barrier) {
         return resetEpochs.computeIfAbsent(barrier, b -> new AtomicLong());
-    }
-
-    /** The barriers whose last reuse no recorded reset followed. */
-    private Set<CyclicBarrier> unrecoveredReuse() {
-        Set<CyclicBarrier> unrecovered = new HashSet<>();
-        for (Map.Entry<CyclicBarrier, Long> entry : reuseEpochs.entrySet()) {
-            if (entry.getValue() == epochOf(entry.getKey()).get()) {
-                unrecovered.add(entry.getKey());
-            }
-        }
-        return unrecovered;
     }
 
     /**
@@ -258,9 +311,21 @@ public class CyclicBarrierDetector {
             barrierRegistry,
             timedOutBarriers,
             brokenBarriers,
-            unrecoveredReuse(),
+            reusedBarriers,
             strandedBarriers
         );
+    }
+
+    /** A party of a barrier: the barrier, by identity, and the recording thread's id. */
+    private record PartyKey(CyclicBarrier barrier, long threadId) {
+    }
+
+    /** What one party has seen of one barrier. Written only by that party's own thread. */
+    private static final class PartyState {
+        /** The reset epoch in which this party last saw the barrier broken, or -1 if never. */
+        long sawBrokenIn = -1;
+        /** Whether this party's last event was an arrival, whose await is the same attempt. */
+        boolean arrivalOpen;
     }
 
     /**
@@ -340,7 +405,8 @@ public class CyclicBarrierDetector {
          *                         report, never a finding on its own
          * @param brokenBarriers the barriers with a recorded break; context for the reuse report,
          *                       never a finding on its own
-         * @param reuseAfterBrokenBarriers the barriers arrived at or awaited while broken
+         * @param reuseAfterBrokenBarriers the barriers a party came back to after seeing them
+         *                                 broken, with no reset in between
          * @param strandedBarriers the barriers left a party short with untimed waiters parked
          * @since 1.12.1
          */
@@ -426,9 +492,10 @@ public class CyclicBarrierDetector {
         }
 
         /**
-         * Whether a finding was made: an arrival or await on a barrier that was broken at that
-         * moment, or a barrier left a party short with untimed waiters parked. A recorded break alone
-         * is not one (#584), and neither is a recorded timeout (#595): both are context for the report.
+         * Whether a finding was made: a party coming back to a barrier it already saw broken with no
+         * reset in between (#665), or a barrier left a party short with untimed waiters parked. A
+         * recorded break alone is not one (#584), neither is a recorded timeout (#595), and neither
+         * is one arrival that hits a break: all three are context for the report.
          *
          * @return whether there are issues
          */
@@ -474,7 +541,7 @@ public class CyclicBarrierDetector {
                 for (CyclicBarrier barrier : reuseAfterBrokenBarriers) {
                     BarrierInfo info = infoFor(barrier);
                     sb.append("    - ").append(info.name)
-                      .append(" (").append(info.parties).append(" parties; arrival or await() while barrier.isBroken() was true")
+                      .append(" (").append(info.parties).append(" parties; a party arrived again at a barrier it had already seen broken, with no reset() in between")
                       .append(whatBrokeIt(barrier)).append(")\n");
                 }
                 sb.append("  Why: await() on a broken barrier throws BrokenBarrierException immediately for every caller;\n");

@@ -165,3 +165,38 @@ LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_rea
 # The same re-read kept CYCLIC_BARRIER and CONDITION_VARIABLES at PROMPT on their model;
 # PairEvidence.HELD_ON_MODEL carries each reason.
 REENTRANT_LOCK = recorded_reentrantLock_holdLeftTaken, recorded_reentrantLock_acquiredAndReleased
+
+# --- 2026-09-19, #665: held on its model since the second reading, promoted once the model changed.
+#
+# CYCLIC_BARRIER reported one arrival at a broken barrier, so a late party that catches
+# BrokenBarrierException and drops a barrier broken to cancel it drew the reuse finding. Reuse is
+# now a party (the recording thread) coming back to a barrier it already saw broken, asked of the
+# barrier's isBroken() at each arrival, with no reset in between; a reset is recorded, or observed
+# when a later arrival finds the barrier whole. Both halves below make the same three calls
+# (registerBarrier, recordAwait, recordBroken) on a really broken barrier and differ only in whether
+# the party comes back to it. The lane also holds the handled-break twin (#662) and the stranded
+# pair, untimed against timed await (#631). CyclicBarrierDetectorAccuracyTest and
+# DetectorAccuracyEvalTest pin both directions.
+#
+# What the pair does not reach: a barrier shared across rounds on fresh virtual threads, where no
+# party comes back and the reuse is missed, and a reset nobody recorded with no recorded arrival
+# while the barrier was whole, after which the party's next broken arrival is reported.
+CYCLIC_BARRIER = recorded_cyclicBarrier_awaitedWhileBroken, recorded_cyclicBarrier_cancelledAndDropped
+
+# --- 2026-09-19, #666: held on its model since the second reading, promoted once the model changed.
+#
+# CONDITION_VARIABLES had three findings decided from the body's records or the lock alone: a
+# thread parked on a condition registered with its lock but no predicate (an idle consumer parks the
+# same way), a recorded await with no exit on a condition registered without its lock, and a missing
+# signal, a recordAwaitExit(..., false) with no recordSignal. All three are notes now. The one
+# finding left is a thread the lock's getWaitQueueLength shows parked while the predicate registered
+# with registerCondition(lock, condition, ready, name) holds, with no thread queued to re-acquire the
+# lock (#657). Both halves below start the same textbook consumer loop through one helper, register
+# the same way and make the same calls; they differ only in whether work arrived on the queue while
+# the threads signalled a different condition. ConditionVariableDetectorLockAndRoundsTest and
+# DetectorAccuracyEvalTest pin both directions.
+#
+# What the pair does not reach: a stuck waiter behind unrelated contention on the lock at analysis,
+# which is noted rather than reported (#657), and a predicate that is wrong about what the waiter
+# waits for, which the detector evaluates but cannot check.
+CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition_consumerIdleOnAnEmptyQueue

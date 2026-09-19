@@ -15,6 +15,17 @@ import org.jspecify.annotations.Nullable;
 /**
  * Detects {@link Condition} waits that no signal accounts for.
  *
+ * <p><strong>Findings and notes (#666).</strong> Only one thing is a finding: a thread the lock
+ * shows parked on the condition at analysis while the predicate registered with
+ * {@code registerCondition(lock, condition, ready, name)} already holds, with no thread queued to
+ * re-acquire the lock. Everything else below is a note in the report and does not decide
+ * {@link ConditionVariableReport#hasIssues()}: a thread parked on a condition registered with its
+ * lock but no predicate (an idle consumer parks the same way), a recorded await with no recorded exit
+ * on a condition registered without its lock, an await abandoned in an earlier round, and a missing
+ * signal, which is decided only from the body's own {@code recordAwaitExit(..., false)} with no
+ * {@code recordSignal}. Each is the body's declaration or the lock alone, and correct code produces
+ * them too.
+ *
  * <p><strong>The model.</strong> Every await is paired with the signals that could have woken it,
  * per condition and per thread:
  * <ul>
@@ -22,14 +33,14 @@ import org.jspecify.annotations.Nullable;
  *       wakeup; a {@code signalAll()} owes one to every such waiter;</li>
  *   <li>an await that exits as woken ({@code timedOut == false}) settles one owed wakeup. If
  *       none is owed, the await returned with no signal behind it and that is the
- *       <em>missing signal</em> finding;</li>
+ *       <em>missing signal</em> note;</li>
  *   <li>an await that exits with {@code timedOut == true} is a waiter that stopped waiting. It is
  *       not a finding: a bounded poll that is never signalled by design runs exactly this way;</li>
  *   <li>a thread still inside an await when the run is analysed is a <em>stuck waiter</em>;</li>
  *   <li>an exit recorded on a thread that has no open await is ignored, so the waiter count can
  *       never go negative.</li>
  * </ul>
- * Findings are therefore per wait, not per run: one signal anywhere does not silence a second
+ * Notes are therefore per wait, not per run: one signal anywhere does not silence a second
  * waiter that nothing woke (#583).
  *
  * <p><strong>Stuck waiters, read from the lock.</strong> Register a condition together with the
@@ -41,8 +52,9 @@ import org.jspecify.annotations.Nullable;
  * recorded it and then threw, or found its predicate true and never called {@code await()}) is a
  * note, not a finding (#592). A lock held by another thread at analysis, or a lock that did not
  * create the condition, cannot be read; nothing is reported from it and the report says so. With
- * a condition registered without its lock, a stuck waiter is still a recorded await with no
- * recorded exit.
+ * no predicate registered, a thread the lock shows parked is a note (#666), because an idle
+ * consumer parks exactly the same way. With a condition registered without its lock, a recorded
+ * await with no recorded exit is a note too.
  *
  * <p>The lock is read once the round's workers have quiesced. The runner interrupts a worker that
  * outlives the round timeout before analysis, and an interrupted await leaves the condition's
@@ -53,8 +65,8 @@ import org.jspecify.annotations.Nullable;
  * <p><strong>Rounds.</strong> A platform worker is reused by the next invocation round, and a
  * thread cannot be inside two awaits at once. An await a thread recorded in an earlier round and
  * never exited, followed by an await from the same thread in a later round, is an abandoned wait:
- * it is counted as a stuck waiter from that earlier round (a note when the lock is registered, as
- * above), and the new await starts with no wakeup owed to it (#593). A second await from the same
+ * it is noted as an abandoned wait from that earlier round, and the new await starts with no
+ * wakeup owed to it (#593). A second await from the same
  * thread within one round is the same wait continuing (a {@code while} loop that records its exit
  * once, after the loop), and a waiter that stays parked across a round boundary is not abandoned
  * by the boundary alone.
@@ -75,15 +87,16 @@ import org.jspecify.annotations.Nullable;
  * an exit only for the thread that recorded the await, with {@code timedOut} set from the timed
  * await's return value ({@code !condition.await(t, unit)}, or {@code awaitNanos(...) <= 0}).
  * A spurious wakeup recorded as woken reads as a missing signal; the JDK permits them, so
- * record the exit only once the loop's predicate check is done, or treat such a finding as a
- * prompt rather than a verdict.
+ * record the exit only once the loop's predicate check is done. That is one reason the missing
+ * signal is a note.
  *
  * <p>Usage:
  * <pre>{@code
  * @AsyncTest(threads = 4, detectConditionVariableIssues = true)
  * void consumerAndProducer() throws InterruptedException {
  *     var monitor = AsyncTestContext.conditionVariableDetector();
- *     monitor.registerCondition(lock, ready, "data-ready");   // lock: the ReentrantLock that made it
+ *     // lock: the ReentrantLock that made it; the predicate is what the waiter waits for
+ *     monitor.registerCondition(lock, ready, () -> dataReady, "data-ready");
  *
  *     lock.lock();
  *     try {
@@ -184,9 +197,10 @@ public class ConditionVariableDetector {
     private volatile boolean enabled = true;
 
     /**
-     * Register a Condition for monitoring. A stuck waiter on a condition registered this way is a
-     * recorded await with no recorded exit; register the owning lock as well to have the lock
-     * decide it.
+     * Register a Condition for monitoring. A recorded await with no recorded exit on a condition
+     * registered this way is a note, not a finding (#666); register the owning lock and the
+     * waiter's predicate with {@link #registerCondition(ReentrantLock, Condition, BooleanSupplier,
+     * String)} to have a stuck waiter decided.
      *
      * @param condition the Condition to monitor
      * @param name a descriptive name for reporting
@@ -199,10 +213,11 @@ public class ConditionVariableDetector {
     }
 
     /**
-     * Register a Condition together with the {@link ReentrantLock} that created it, so a stuck
-     * waiter is read from the lock's wait queue at analysis rather than from the recorded awaits.
-     * Registering the lock after a plain {@link #registerCondition(Condition, String)} keeps what
-     * was already recorded.
+     * Register a Condition together with the {@link ReentrantLock} that created it, so the waiters
+     * are read from the lock's wait queue at analysis rather than from the recorded awaits. With no
+     * predicate a thread parked there is a note, not a finding (#666): an idle consumer parks the
+     * same way. Registering the lock after a plain {@link #registerCondition(Condition, String)}
+     * keeps what was already recorded.
      *
      * @param lock the lock whose {@code newCondition()} made {@code condition}; {@code null}
      *             registers the condition without a lock
@@ -215,8 +230,9 @@ public class ConditionVariableDetector {
     }
 
     /**
-     * Register a Condition made by a {@link ReentrantReadWriteLock}'s write lock, so a stuck waiter
-     * is read from the lock's wait queue at analysis rather than from the recorded awaits.
+     * Register a Condition made by a {@link ReentrantReadWriteLock}'s write lock, so the waiters are
+     * read from the lock's wait queue at analysis rather than from the recorded awaits. With no
+     * predicate a thread parked there is a note, not a finding (#666).
      *
      * @param lock the read-write lock whose {@code writeLock().newCondition()} made
      *             {@code condition}; {@code null} registers the condition without a lock
@@ -509,7 +525,7 @@ public class ConditionVariableDetector {
 
     private static void analyze(ConditionState state, ConditionVariableReport report) {
         if (state.unsignalledWakeups > 0) {
-            report.missingSignals.add(String.format(
+            report.unsignalledWakeups.add(String.format(
                 "%s: %d await(s) returned as woken with no signal()/signalAll() recorded while "
                     + "they waited (%d signal(s) recorded in total, %d with nobody waiting)",
                 state.name, state.unsignalledWakeups,
@@ -523,11 +539,13 @@ public class ConditionVariableDetector {
         WaitQueueQuery waitQueue = state.waitQueue;
         if (waitQueue == null) {
             if (recordedOpen > 0) {
-                report.stuckWaiters.add(String.format(
-                    "%s: %d thread(s) still waiting at analysis (%s)", state.name, recordedOpen, lastSignal));
+                report.unconfirmedWaits.add(String.format(
+                    "%s: %d thread(s) still waiting at analysis by their recorded awaits, but the "
+                        + "condition was registered without its lock, so nothing confirms they are "
+                        + "parked or that what they wait for arrived (%s)", state.name, recordedOpen, lastSignal));
             }
             if (state.abandonedAwaits > 0) {
-                report.stuckWaiters.add(String.format(
+                report.unconfirmedWaits.add(String.format(
                     "%s: %d await(s) recorded in an earlier round never exited: the same thread "
                         + "awaited again in a later round, so that round's body ended inside the wait",
                     state.name, state.abandonedAwaits));
@@ -564,8 +582,10 @@ public class ConditionVariableDetector {
                             state.name, parked, lastSignal));
                     }
                 } else {
-                    report.stuckWaiters.add(String.format(
-                        "%s: %d thread(s) parked in await() at analysis, read from the lock (%s; %d "
+                    report.unconfirmedWaits.add(String.format(
+                        "%s: %d thread(s) parked in await() at analysis, read from the lock, but no predicate "
+                            + "was registered, so an idle consumer cannot be told from a stuck waiter; "
+                            + "register it with registerCondition(lock, condition, ready, name) (%s; %d "
                             + "recorded await(s) still open)", state.name, parked, lastSignal, recordedOpen));
                 }
             } else if (parked == LOCK_HELD) {
@@ -609,13 +629,20 @@ public class ConditionVariableDetector {
      */
     public static class ConditionVariableReport {
         private boolean enabled = true;
+        /** The findings: threads parked while their registered predicate holds (#643, #666). */
         final java.util.List<String> stuckWaiters = new java.util.ArrayList<>();
-        final java.util.List<String> missingSignals = new java.util.ArrayList<>();
+        /**
+         * Notes, not findings: awaits that returned as woken with no recorded signal behind them,
+         * decided from the body's own records alone (#666).
+         */
+        final java.util.List<String> unsignalledWakeups = new java.util.ArrayList<>();
         /** Notes, not findings: a signal with nobody waiting is normal predicate-guarded code. */
         final java.util.List<String> signalsWithNoWaiter = new java.util.ArrayList<>();
         /**
-         * Notes, not findings: recorded awaits the registered lock does not show parked, and locks
-         * that could not be read (#592).
+         * Notes, not findings: waiters nothing confirms are stuck. Recorded awaits the registered
+         * lock does not show parked, locks that could not be read (#592), threads parked with no
+         * predicate registered, recorded awaits on a condition registered without its lock, and
+         * awaits abandoned in an earlier round (#666).
          */
         final java.util.List<String> unconfirmedWaits = new java.util.ArrayList<>();
         final Map<String, String> threadActivity = new ConcurrentHashMap<>();
@@ -623,12 +650,12 @@ public class ConditionVariableDetector {
         /**
          * Check if any issues were detected.
          *
-         * @return {@code true} when an await returned with no signal behind it, or a thread was
-         *         waiting at analysis (read from the lock when it was registered, otherwise a
-         *         recorded await with no exit, including one abandoned in an earlier round)
+         * @return {@code true} when the registered lock showed a thread parked on the condition at
+         *         analysis while the registered predicate held (#666); every other observation is
+         *         a note
          */
         public boolean hasIssues() {
-            return !stuckWaiters.isEmpty() || !missingSignals.isEmpty();
+            return !stuckWaiters.isEmpty();
         }
 
         @Override
@@ -640,13 +667,6 @@ public class ConditionVariableDetector {
             StringBuilder sb = new StringBuilder();
             sb.append("CONDITION VARIABLE ISSUES DETECTED:\n");
 
-            if (!missingSignals.isEmpty()) {
-                sb.append("  Missing Signals (await woke with no signal behind it):\n");
-                for (String issue : missingSignals) {
-                    sb.append("    - ").append(issue).append("\n");
-                }
-            }
-
             if (!stuckWaiters.isEmpty()) {
                 sb.append("  Stuck Waiters:\n");
                 for (String issue : stuckWaiters) {
@@ -655,8 +675,17 @@ public class ConditionVariableDetector {
             }
 
             if (!unconfirmedWaits.isEmpty()) {
-                sb.append("  Note, not a finding (the registered lock decides stuck waiters):\n");
+                sb.append("  Note, not a finding (only a thread the lock shows parked while its "
+                        + "registered predicate holds is a stuck waiter):\n");
                 for (String note : unconfirmedWaits) {
+                    sb.append("    - ").append(note).append("\n");
+                }
+            }
+
+            if (!unsignalledWakeups.isEmpty()) {
+                sb.append("  Note, not a finding (an await recorded as woken with no recorded signal "
+                        + "behind it: an unrecorded signal site, a spurious wakeup, or a lost signal):\n");
+                for (String note : unsignalledWakeups) {
                     sb.append("    - ").append(note).append("\n");
                 }
             }
