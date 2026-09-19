@@ -7,7 +7,9 @@ import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -259,6 +261,18 @@ class AgentConcurrencyUtilHooksTest {
         AgentConcurrencyUtilHooks.offerResultDiscarded(false);
         assertEquals("q", AgentConcurrencyUtilHooks.poll(queue), "poll returns the head");
         assertNull(AgentConcurrencyUtilHooks.poll(queue), "and null once it is empty");
+
+        // take and drainTo (#664): each performs the operation, whatever it publishes.
+        AgentConcurrencyUtilHooks.put(queue, "t");
+        assertEquals("t", AgentConcurrencyUtilHooks.take(queue), "take returns the head");
+        AgentConcurrencyUtilHooks.put(queue, "d");
+        List<Object> drained = new ArrayList<>();
+        assertEquals(1, AgentConcurrencyUtilHooks.drainTo(queue, drained), "drainTo moves the element");
+        assertEquals(List.of("d"), drained);
+        AgentConcurrencyUtilHooks.put(queue, "m");
+        assertEquals(0, AgentConcurrencyUtilHooks.drainTo(queue, drained, 0), "maxElements 0 moves nothing");
+        assertEquals(1, AgentConcurrencyUtilHooks.drainTo(queue, drained, 1), "maxElements 1 moves one");
+        assertEquals(List.of("d", "m"), drained);
     }
 
     @Test
@@ -270,7 +284,7 @@ class AgentConcurrencyUtilHooksTest {
                 .filter(m -> m.getParameterTypes()[0] == BlockingQueue.class)
                 .sorted(Comparator.comparing(Method::toString))
                 .toList();
-        assertEquals(5, queueHooks.size(),
+        assertEquals(8, queueHooks.size(),
                 "the weaver's BlockingQueue entries and this class's hooks are one list; if that "
                         + "count moved, the new hook belongs in this gate too. Found: " + queueHooks);
 
@@ -279,6 +293,8 @@ class AgentConcurrencyUtilHooksTest {
             BlockingQueueDetector detector = AsyncTestContext.blockingQueueDetector();
             for (Method hook : queueHooks) {
                 BlockingQueue<Object> fresh = new ArrayBlockingQueue<>(4);
+                // One element already there, so take() returns instead of blocking the gate.
+                fresh.add("seed");
                 hook.invoke(null, argumentsFor(hook, fresh));
 
                 assertTrue(detector.analyze().toString().contains("queue@" + System.identityHashCode(fresh)),
@@ -308,6 +324,10 @@ class AgentConcurrencyUtilHooksTest {
         for (int i = 1; i < types.length; i++) {
             if (types[i] == long.class) {
                 arguments[i] = 1L;
+            } else if (types[i] == int.class) {
+                arguments[i] = 1;
+            } else if (types[i] == Collection.class) {
+                arguments[i] = new ArrayList<>();
             } else if (types[i] == TimeUnit.class) {
                 arguments[i] = TimeUnit.MILLISECONDS;
             } else {

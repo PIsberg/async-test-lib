@@ -158,8 +158,16 @@ Three limits worth knowing before switching it on:
   took that generation nor owned the one before it: the previous owner's late access is a hand-off,
   and when no access showed who owned generation 0, the thread that offered the object to the
   queue it was polled from is that owner, from the `collections=true` hooks for `Queue.offer`/`add`
-  and `BlockingQueue.offer`/`put`. Only when no such offer was recorded, which includes every reference `getAndSet` and
-  JCTools take, does every thread get that benefit
+  and `BlockingQueue.offer`/`put`, and from `fields=true` for a reference slot (`set`, `lazySet`,
+  `setRelease` or `compareAndSet` on an `AtomicReference`, an `AtomicReferenceFieldUpdater`, an
+  `AtomicReferenceArray` or an instance-field `VarHandle`) and a JCTools `offer`/`relaxedOffer`.
+  `BlockingQueue.take` is a take like `poll`, and `drainTo` drops every offer recorded into the
+  drained queue, so an element taken or drained and put back through an unwoven call cannot keep
+  naming its first offerer ([#664](https://github.com/PIsberg/async-test-lib/issues/664)); a
+  removal not reported as a take (`remove`, `removeIf`, unwoven code) still can. Only when no
+  such offer was recorded does every thread get that benefit: an element that entered through an
+  unwoven method (`addAll`, `Deque.offerFirst`, `push`, or code outside `includes`), or a
+  `VarHandle` take from a static field or an array element
   ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
   so writes under them still report: `Unsafe.compareAndSwapInt`, and an
   `AtomicIntegerFieldUpdater` created before the agent attached whose target cannot be read (a

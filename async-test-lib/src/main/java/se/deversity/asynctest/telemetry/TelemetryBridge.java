@@ -407,6 +407,12 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             atomicityValidator.recordOwnershipOffered(identity, storedIdentity, threadId);
             return;
         }
+        if (TelemetryRegistry.OWNERSHIP_DRAINED.equals(qualifiedName)) {
+            // A worker drained the queue whose identity rides in the stored-identity slot: offers
+            // into it are stale from here on (#664).
+            atomicityValidator.recordContainerDrained(storedIdentity, threadId);
+            return;
+        }
         String field = fieldIdentifier(qualifiedName);
         // A field under a lock-free protocol is not something a lockset can judge. Dropping the
         // event rather than passing it on keeps that honest: the detectors say nothing about the

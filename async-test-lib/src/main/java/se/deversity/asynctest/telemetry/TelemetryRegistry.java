@@ -15,6 +15,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.IntBinaryOperator;
 import java.util.function.IntUnaryOperator;
 
@@ -1750,9 +1753,9 @@ public final class TelemetryRegistry {
     /**
      * Records that the calling thread took {@code taken} out of a queue or an atomic slot.
      *
-     * <p>Emitted by the weaver after a reference {@code getAndSet} on a {@code VarHandle},
-     * {@code AtomicReference}, {@code AtomicReferenceFieldUpdater} or {@code AtomicReferenceArray},
-     * and by the queue hooks after a {@code poll} that returned an element. The value that came
+     * <p>Emitted by the weaver after a reference {@code getAndSet} on a {@code VarHandle} that
+     * reaches a static field or an array element, where no container is on the stack. Every other
+     * take names its container through {@link #ownershipTaken(Object, Object)}. The value that came
      * back is no longer in the slot or the queue, so the structure hands it to this thread and to
      * no other; the detector uses that to judge an object that moves between owners per owner
      * rather than across all of them (#555). A {@code null} result took nothing and records
@@ -1774,8 +1777,9 @@ public final class TelemetryRegistry {
      * <p>{@link #ownershipTaken(Object)} for the hooks that have the queue in hand. The container's
      * identity rides in the event's stored-identity slot, which an ownership event does not
      * otherwise use, so it can be matched against the {@link #ownershipOffered offer} that put the
-     * object there (#630). The weaver's {@code getAndSet} and JCTools takes pass no container: the
-     * slot or queue has left the stack by the time the taken reference is on it.
+     * object there (#630). The reference-slot {@code getAndSet} hooks pass the slot, and the woven
+     * JCTools {@code poll}/{@code relaxedPoll} passes its queue (#664); only a {@code VarHandle}
+     * {@code getAndSet} on a static field or an array element passes none.
      *
      * @param taken     the object that left the queue, or {@code null}
      * @param container the queue it left, or {@code null} when unknown
@@ -1798,7 +1802,8 @@ public final class TelemetryRegistry {
     /**
      * Records that the calling thread is about to offer {@code offered} to {@code container}.
      *
-     * <p>Emitted by the queue hooks before the structure is asked to accept the element, never
+     * <p>Emitted by the queue hooks, the reference-slot store hooks and the woven JCTools
+     * {@code offer}/{@code relaxedOffer} (#664) before the structure is asked to accept the element, never
      * after: the slot this claims in the buffer is then ahead of any take that removes the element,
      * so the drain always sees the offer first. That order is what lets a take that is the first
      * event recorded for an object name the thread that handed it over (#630). An offer the queue
@@ -1817,6 +1822,351 @@ public final class TelemetryRegistry {
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, false, 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
                 System.identityHashCode(container));
+    }
+
+    // ---- Reference slots: offers and takes with their container (#664) -------------------------
+    //
+    // A reference slot is a container of one: an AtomicReference, an AtomicReferenceArray element,
+    // or a reference field reached through an AtomicReferenceFieldUpdater or a VarHandle. The
+    // weaver substitutes these hooks for the call sites, so the slot is in hand at both ends: a
+    // store publishes the stored reference as offered to the slot before it lands, and a getAndSet
+    // publishes the reference it returns as taken out of the same slot. The container is the atomic
+    // or the array for the first two, and the receiver whose field is the slot for the other two,
+    // so two reference fields of one object read as one container, and so do the elements of one
+    // array; that can only match an offer to a take that took the same object out of a sibling
+    // slot. Each hook performs the original operation with its own exceptions and result.
+
+    /**
+     * Weaves {@code AtomicReference.set}: an offer of {@code value} to {@code slot} (#664).
+     *
+     * @param slot  the atomic the call site invoked
+     * @param value the reference to store
+     * @since 1.12.2
+     */
+    public static void setAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        ownershipOffered(value, slot);
+        slot.set(value);
+    }
+
+    /**
+     * Weaves {@code AtomicReference.lazySet}: an offer of {@code value} to {@code slot} (#664).
+     *
+     * @param slot  the atomic the call site invoked
+     * @param value the reference to store
+     * @since 1.12.2
+     */
+    public static void lazySetAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        ownershipOffered(value, slot);
+        slot.lazySet(value);
+    }
+
+    /**
+     * Weaves {@code AtomicReference.setRelease}: an offer of {@code value} to {@code slot} (#664).
+     *
+     * @param slot  the atomic the call site invoked
+     * @param value the reference to store
+     * @since 1.12.2
+     */
+    public static void setReleaseAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        ownershipOffered(value, slot);
+        slot.setRelease(value);
+    }
+
+    /**
+     * Weaves {@code AtomicReference.compareAndSet}: an offer of {@code update} to {@code slot}
+     * (#664), published before the swap like every offer, and harmless when the swap fails.
+     *
+     * @param slot     the atomic the call site invoked
+     * @param expected the reference the slot must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.12.2
+     */
+    public static boolean compareAndSetAtomicReference(AtomicReference<Object> slot,
+                                                       @Nullable Object expected,
+                                                       @Nullable Object update) {
+        ownershipOffered(update, slot);
+        return slot.compareAndSet(expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicReference.getAndSet}: the reference returned is taken out of {@code slot}
+     * (#555, #664).
+     *
+     * @param slot  the atomic the call site invoked
+     * @param value the reference to store
+     * @return the previous reference
+     * @since 1.12.2
+     */
+    public static @Nullable Object getAndSetAtomicReference(AtomicReference<Object> slot,
+                                                            @Nullable Object value) {
+        Object previous = slot.getAndSet(value);
+        ownershipTaken(previous, slot);
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.set}: an offer of {@code value} to the receiver's
+     * slot (#664).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @since 1.12.2
+     */
+    public static void setReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
+                                           Object receiver, @Nullable Object value) {
+        ownershipOffered(value, receiver);
+        updater.set(receiver, value);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.lazySet}: an offer of {@code value} to the
+     * receiver's slot (#664).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @since 1.12.2
+     */
+    public static void lazySetReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
+                                               Object receiver, @Nullable Object value) {
+        ownershipOffered(value, receiver);
+        updater.lazySet(receiver, value);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.compareAndSet}: an offer of {@code update} to the
+     * receiver's slot (#664).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param expected the reference the slot must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.12.2
+     */
+    public static boolean compareAndSetReferenceUpdater(
+            AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
+            @Nullable Object expected, @Nullable Object update) {
+        ownershipOffered(update, receiver);
+        return updater.compareAndSet(receiver, expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.getAndSet}: the reference returned is taken out of
+     * the receiver's slot (#555, #664). netty moves a chunk out of a magazine this way.
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @return the previous reference
+     * @since 1.12.2
+     */
+    public static @Nullable Object getAndSetReferenceUpdater(
+            AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
+            @Nullable Object value) {
+        Object previous = updater.getAndSet(receiver, value);
+        ownershipTaken(previous, receiver);
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.set}: an offer of {@code value} to the array (#664).
+     *
+     * @param slots the array the call site invoked
+     * @param index the element's index
+     * @param value the reference to store
+     * @since 1.12.2
+     */
+    public static void setReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                         @Nullable Object value) {
+        ownershipOffered(value, slots);
+        slots.set(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.lazySet}: an offer of {@code value} to the array (#664).
+     *
+     * @param slots the array the call site invoked
+     * @param index the element's index
+     * @param value the reference to store
+     * @since 1.12.2
+     */
+    public static void lazySetReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                             @Nullable Object value) {
+        ownershipOffered(value, slots);
+        slots.lazySet(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.setRelease}: an offer of {@code value} to the array (#664).
+     *
+     * @param slots the array the call site invoked
+     * @param index the element's index
+     * @param value the reference to store
+     * @since 1.12.2
+     */
+    public static void setReleaseReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                @Nullable Object value) {
+        ownershipOffered(value, slots);
+        slots.setRelease(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.compareAndSet}: an offer of {@code update} to the array (#664).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element's index
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.12.2
+     */
+    public static boolean compareAndSetReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                      @Nullable Object expected,
+                                                      @Nullable Object update) {
+        ownershipOffered(update, slots);
+        return slots.compareAndSet(index, expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.getAndSet}: the reference returned is taken out of the
+     * array (#555, #664).
+     *
+     * @param slots the array the call site invoked
+     * @param index the element's index
+     * @param value the reference to store
+     * @return the previous reference
+     * @since 1.12.2
+     */
+    public static @Nullable Object getAndSetReferenceArray(AtomicReferenceArray<Object> slots,
+                                                           int index, @Nullable Object value) {
+        Object previous = slots.getAndSet(index, value);
+        ownershipTaken(previous, slots);
+        return previous;
+    }
+
+    /**
+     * Weaves {@code VarHandle.set} on a reference instance field: an offer of {@code value} to the
+     * receiver's slot (#664).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @since 1.12.2
+     */
+    public static void setReferenceHandle(VarHandle handle, Object receiver, @Nullable Object value) {
+        ownershipOffered(value, receiver);
+        handle.withInvokeBehavior().set(receiver, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setVolatile} on a reference instance field: an offer (#664).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @since 1.12.2
+     */
+    public static void setVolatileReferenceHandle(VarHandle handle, Object receiver,
+                                                  @Nullable Object value) {
+        ownershipOffered(value, receiver);
+        handle.withInvokeBehavior().setVolatile(receiver, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setRelease} on a reference instance field: an offer (#664).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @since 1.12.2
+     */
+    public static void setReleaseReferenceHandle(VarHandle handle, Object receiver,
+                                                 @Nullable Object value) {
+        ownershipOffered(value, receiver);
+        handle.withInvokeBehavior().setRelease(receiver, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setOpaque} on a reference instance field: an offer (#664).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @since 1.12.2
+     */
+    public static void setOpaqueReferenceHandle(VarHandle handle, Object receiver,
+                                                @Nullable Object value) {
+        ownershipOffered(value, receiver);
+        handle.withInvokeBehavior().setOpaque(receiver, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.compareAndSet} on a reference instance field: an offer of
+     * {@code update} to the receiver's slot (#664).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.12.2
+     */
+    public static boolean compareAndSetReferenceHandle(VarHandle handle, Object receiver,
+                                                       @Nullable Object expected,
+                                                       @Nullable Object update) {
+        ownershipOffered(update, receiver);
+        return handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
+    }
+
+    /**
+     * Weaves {@code VarHandle.getAndSet} on a reference instance field: the reference returned is
+     * taken out of the receiver's slot (#555, #664). The weaver casts the result back to the type
+     * the call site declared, which is the cast the handle's own invocation would have made.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param value    the reference to store
+     * @return the previous reference
+     * @since 1.12.2
+     */
+    public static @Nullable Object getAndSetReferenceHandle(VarHandle handle, Object receiver,
+                                                            @Nullable Object value) {
+        Object previous = handle.withInvokeBehavior().getAndSet(receiver, value);
+        ownershipTaken(previous, receiver);
+        return previous;
+    }
+
+    /**
+     * The target a container-drained event carries instead of a field identifier (#664); see
+     * {@link #OWNERSHIP_TAKEN} for why a reserved name costs nothing on the access path.
+     */
+    static final String OWNERSHIP_DRAINED = "#ownership-drained";
+
+    /**
+     * Records that the calling thread drained {@code container}, removing elements the event does
+     * not name one by one.
+     *
+     * <p>Emitted by the {@code BlockingQueue.drainTo} hooks after the drain returns. Every offer
+     * recorded into that container before this event is stale from here on, and the detector drops
+     * them, so an element drained and put back through a call nothing observes cannot keep naming
+     * its first offerer as owner (#664). Published after the drain, so an offer that drains before
+     * it is dropped even when its element was not drained, which can only withhold a finding.
+     *
+     * <p>Allocation-free and non-throwing like every other hook on this path.
+     *
+     * @param container the queue that was drained, or {@code null}
+     * @since 1.12.2
+     */
+    public static void ownershipDrained(@Nullable Object container) {
+        if (container == null || STOPPED.get()) {
+            return;
+        }
+        int identity = System.identityHashCode(container);
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_DRAINED, false, 0L, false,
+                Integer.MIN_VALUE, identity, false, 0, 0, identity);
     }
 
     /**

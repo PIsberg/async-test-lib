@@ -13,4 +13,10 @@ public interface MessagePassingQueue<T> {
 
     /** @return the head, or {@code null} when empty */
     T relaxedPoll();
+
+    /** @param element the element @return whether it was accepted */
+    boolean offer(T element);
+
+    /** @return the head, or {@code null} when empty */
+    T poll();
 }

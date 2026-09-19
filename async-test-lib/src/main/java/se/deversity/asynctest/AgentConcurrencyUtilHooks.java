@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import java.util.Collection;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
@@ -382,6 +383,73 @@ public final class AgentConcurrencyUtilHooks {
         }
         TelemetryRegistry.ownershipTaken(taken, receiver);
         return taken;
+    }
+
+    /**
+     * Weaves {@code BlockingQueue.take()}.
+     *
+     * <p>A take hands the head to this thread exactly as {@code poll} does, so it is reported the
+     * same way, with the queue as container (#664). Unwoven, it left the offer that put the element
+     * there on record, and an element put back by another thread through a call nothing observes
+     * then named the first offerer as owner of its next generation.
+     *
+     * @param receiver the queue
+     * @return the head of the queue
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.12.2
+     */
+    public static Object take(BlockingQueue<Object> receiver) throws InterruptedException {
+        BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        Object taken = receiver.take();
+        if (detector != null) {
+            detector.recordTake(receiver, receiver.getClass().getName());
+        }
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /**
+     * Weaves {@code BlockingQueue.drainTo(Collection)}.
+     *
+     * <p>The elements move into {@code target} without being named one by one, so the drain is
+     * reported as a whole: every offer into this queue recorded before it is stale (#664).
+     *
+     * @param receiver the queue
+     * @param target   the collection the elements move to
+     * @return how many elements moved
+     * @since 1.12.2
+     */
+    public static int drainTo(BlockingQueue<Object> receiver, Collection<Object> target) {
+        BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        int drained = receiver.drainTo(target);
+        TelemetryRegistry.ownershipDrained(receiver);
+        return drained;
+    }
+
+    /**
+     * Weaves {@code BlockingQueue.drainTo(Collection, int)}, reported like {@link #drainTo(BlockingQueue, Collection)}.
+     *
+     * @param receiver    the queue
+     * @param target      the collection the elements move to
+     * @param maxElements the most elements to move
+     * @return how many elements moved
+     * @since 1.12.2
+     */
+    public static int drainTo(BlockingQueue<Object> receiver, Collection<Object> target,
+                              int maxElements) {
+        BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
+        if (detector != null) {
+            detector.observeQueue(receiver);
+        }
+        int drained = receiver.drainTo(target, maxElements);
+        TelemetryRegistry.ownershipDrained(receiver);
+        return drained;
     }
 
     /**
