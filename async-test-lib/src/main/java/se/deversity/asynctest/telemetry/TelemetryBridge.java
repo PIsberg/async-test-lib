@@ -110,6 +110,21 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     private final java.util.concurrent.atomic.LongAdder droppedNonWorkerEvents =
             new java.util.concurrent.atomic.LongAdder();
 
+    /**
+     * {@link #fieldIdentifier} results, per run. The agent's identifiers are weave-time constants,
+     * so the distinct set is the woven fields and accessors, and recomputing one per drained event
+     * was 10% of an event's cost for a field instruction and 23% for an accessor name (measured,
+     * #704): time the drain thread does not have when the ring is filling.
+     *
+     * <p>Capped, because manual {@code TelemetryRegistry.recordAccess} callers reach this too and
+     * their names are not bounded by anything. Past the cap a name is computed as before.
+     */
+    private final java.util.concurrent.ConcurrentMap<String, String> fieldIdentifiers =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** A soft bound on a per-run map; chosen as generous, not derived from a measured field count. */
+    static final int MAX_MEMOIZED_IDENTIFIERS = 4096;
+
     private TelemetryBridge(AtomicityValidator atomicityValidator, LongPredicate workerFilter) {
         this.atomicityValidator = atomicityValidator;
         this.workerFilter = workerFilter;
@@ -413,7 +428,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             atomicityValidator.recordContainerDrained(storedIdentity, threadId);
             return;
         }
-        String field = fieldIdentifier(qualifiedName);
+        String field = memoizedFieldIdentifier(qualifiedName);
         // A field under a lock-free protocol is not something a lockset can judge. Dropping the
         // event rather than passing it on keeps that honest: the detectors say nothing about the
         // field instead of saying the wrong thing about every access to it.
@@ -529,6 +544,21 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         String method = qualifiedName.substring(dot + 1);
         String property = propertyName(method);
         return property == null ? qualifiedName : qualifiedName.substring(0, dot + 1) + property;
+    }
+
+    /** {@link #fieldIdentifier}, remembered per run up to {@link #MAX_MEMOIZED_IDENTIFIERS} names. */
+    private String memoizedFieldIdentifier(String qualifiedName) {
+        String known = fieldIdentifiers.get(qualifiedName);
+        if (known != null) {
+            return known;
+        }
+        String field = fieldIdentifier(qualifiedName);
+        // A racing put stores the same value, so this needs no atomicity; the size check is only
+        // approximate under contention, which a soft cap can afford.
+        if (fieldIdentifiers.size() < MAX_MEMOIZED_IDENTIFIERS) {
+            fieldIdentifiers.put(qualifiedName, field);
+        }
+        return field;
     }
 
     /**
