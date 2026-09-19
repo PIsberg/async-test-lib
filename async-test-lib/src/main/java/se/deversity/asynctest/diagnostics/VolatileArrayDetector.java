@@ -85,13 +85,17 @@ public class VolatileArrayDetector {
                 String accessKey = Thread.currentThread().threadId() + ":write:" + index;
                 accesses.add(accessKey);
                 
-                // If multiple threads write to same array, it's problematic
+                // If multiple threads write to same array, it's problematic. An array already
+                // flagged stays flagged, so the scan over every recorded access is skipped for it.
+                if (problematicArrays.contains(info)) {
+                    return;
+                }
                 long uniqueThreads = accesses.stream()
                     .filter(a -> a.contains(":write:"))
                     .map(a -> COLON.split(a, -1)[0])
                     .distinct()
                     .count();
-                    
+
                 if (uniqueThreads > 1) {
                     problematicArrays.add(info);
                 }

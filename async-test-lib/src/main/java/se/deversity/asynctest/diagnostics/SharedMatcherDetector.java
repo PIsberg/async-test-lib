@@ -51,10 +51,10 @@ public class SharedMatcherDetector {
      */
     public void recordAccess(Object matcher, String name, Thread thread) {
         if (matcher == null || thread == null) return;
-        String label = name != null ? name
-                : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher);
+        // The fallback label is built only when the instance is first seen.
         MatcherState s = matchers.computeIfAbsent(
-                new IdentityKey(matcher), id -> new MatcherState(label));
+                new IdentityKey(matcher), id -> new MatcherState(name != null ? name
+                        : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher)));
         s.noteAccess(matcher);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());

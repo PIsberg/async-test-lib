@@ -78,11 +78,9 @@ public class FalseSharingDetector {
         
         String key = object.getClass().getName() + "." + fieldName;
 
-        // Try to estimate memory offset (this is approximate)
-        long offset = estimateMemoryOffset(object.getClass(), fieldName);
-
+        // The offset estimate is approximate, and reflective, so it runs on the first access only.
         FieldAccessInfo info = fieldAccess.computeIfAbsent(key,
-            k -> new FieldAccessInfo(fieldName, offset)
+            k -> new FieldAccessInfo(fieldName, estimateMemoryOffset(object.getClass(), fieldName))
         );
 
         info.accessCount.incrementAndGet();
