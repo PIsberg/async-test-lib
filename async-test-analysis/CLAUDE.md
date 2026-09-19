@@ -19,8 +19,8 @@ a design question, not a dependency to add.
 
 <rule>Elements listed in <core_elements> are well-tested core components. Make changes with extreme caution and verify comprehensive test coverage before proposing modifications.</rule>
   <scoped_rules>
-    <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Consult the referenced file before modifying an element.</note>
-    <element path="se.deversity.asynctest.analysis.StaticPinningScanner" rules=".claude/rules/se-deversity-asynctest-analysis-StaticPinningScanner.md"/>
+    <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Unless an entry carries an explicit path, its file is .claude/rules/{path, every non-alphanumeric character replaced by &#39;-&#39;}.md. Consult the file before modifying an element.</note>
+    <element path="se.deversity.asynctest.analysis.StaticPinningScanner"/>
   </scoped_rules>
 
 <rule>When you work on any element listed in <scoped_rules>, open its referenced rule file and apply the guardrails there. The rule files are the authoritative source for those elements.</rule>
