@@ -201,7 +201,7 @@ class DetectorFeedCoverageTest {
     }
     private static void assertHeadingMatches(String catalog, String heading, DetectorFeed feed) {
         Matcher section = Pattern
-                .compile("### " + heading + " \\((\\d+)\\)\n(.*?)(?=\n#|\n---)", Pattern.DOTALL)
+                .compile("### " + heading + " \\((\\d+)\\)\n(.*?)(?=\n#|\n---|\\z)", Pattern.DOTALL)
                 .matcher(catalog.replace("\r\n", "\n"));
         assertTrue(section.find(), "docs/DETECTOR_CATALOG.md must carry a '### " + heading
                 + " (N)' listing under 'What feeds each detector'");
