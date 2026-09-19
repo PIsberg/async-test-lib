@@ -93,9 +93,22 @@ public final class SpinLockTableBean {
         return seen == null ? 0 : seen.length;
     }
 
+    /** Replaces the table under the spinlock, released by {@code getAndSetRelease} used as a statement (#667). */
+    public int growReleasedByGetAndSetRelease() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndSetRelease(this, 0);
+            }
+        }
+        Object[] seen = table;
+        return seen == null ? 0 : seen.length;
+    }
+
     /**
-     * The unobserved twin: {@code getAndSetRelease} is a release the weaver does not substitute,
-     * and {@link #afterRelease} is then replaced with nothing held.
+     * The twin: {@code getAndSetRelease} releases (woven since #667), and {@link #afterRelease} is
+     * then replaced with nothing held.
      */
     public int growThenWriteAfterGetAndSetRelease() {
         if (BUSY.compareAndSet(this, 0, 1)) {

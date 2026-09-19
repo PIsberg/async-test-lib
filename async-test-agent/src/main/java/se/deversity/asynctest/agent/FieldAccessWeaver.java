@@ -64,6 +64,73 @@ final class FieldAccessWeaver {
     private static final String ATOMIC_BOOLEAN = "java/util/concurrent/atomic/AtomicBoolean";
     private static final String ATOMIC_INTEGER = "java/util/concurrent/atomic/AtomicInteger";
 
+    /** Descriptors of the int functional forms, which the update and accumulate calls take. */
+    private static final String UNARY = "Ljava/util/function/IntUnaryOperator;";
+    private static final String BINARY = "Ljava/util/function/IntBinaryOperator;";
+
+    /**
+     * The {@code AtomicIntegerFieldUpdater} calls substituted, by name, with the exact descriptor
+     * each is matched on; the hook is the name plus {@code IntUpdater} (#558, #658, #667).
+     */
+    private static final java.util.Map<String, String> INT_UPDATER_FORMS = java.util.Map.ofEntries(
+            java.util.Map.entry("compareAndSet", "(Ljava/lang/Object;II)Z"),
+            java.util.Map.entry("weakCompareAndSet", "(Ljava/lang/Object;II)Z"),
+            java.util.Map.entry("set", "(Ljava/lang/Object;I)V"),
+            java.util.Map.entry("lazySet", "(Ljava/lang/Object;I)V"),
+            java.util.Map.entry("getAndSet", "(Ljava/lang/Object;I)I"),
+            java.util.Map.entry("getAndAdd", "(Ljava/lang/Object;I)I"),
+            java.util.Map.entry("addAndGet", "(Ljava/lang/Object;I)I"),
+            java.util.Map.entry("getAndDecrement", "(Ljava/lang/Object;)I"),
+            java.util.Map.entry("decrementAndGet", "(Ljava/lang/Object;)I"),
+            java.util.Map.entry("getAndUpdate", "(Ljava/lang/Object;" + UNARY + ")I"),
+            java.util.Map.entry("updateAndGet", "(Ljava/lang/Object;" + UNARY + ")I"),
+            java.util.Map.entry("getAndAccumulate", "(Ljava/lang/Object;I" + BINARY + ")I"),
+            java.util.Map.entry("accumulateAndGet", "(Ljava/lang/Object;I" + BINARY + ")I"));
+
+    /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
+    private static final java.util.Map<String, String> ATOMIC_BOOLEAN_FORMS = java.util.Map.ofEntries(
+            java.util.Map.entry("compareAndSet", "(ZZ)Z"),
+            java.util.Map.entry("getAndSet", "(Z)Z"),
+            java.util.Map.entry("set", "(Z)V"),
+            java.util.Map.entry("lazySet", "(Z)V"),
+            java.util.Map.entry("setPlain", "(Z)V"),
+            java.util.Map.entry("setOpaque", "(Z)V"),
+            java.util.Map.entry("setRelease", "(Z)V"),
+            java.util.Map.entry("compareAndExchange", "(ZZ)Z"),
+            java.util.Map.entry("compareAndExchangeAcquire", "(ZZ)Z"),
+            java.util.Map.entry("compareAndExchangeRelease", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSet", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetPlain", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetVolatile", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetAcquire", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetRelease", "(ZZ)Z"));
+
+    /** The {@code AtomicInteger} calls substituted; the hook is the name plus {@code AtomicInteger}. */
+    private static final java.util.Map<String, String> ATOMIC_INTEGER_FORMS = java.util.Map.ofEntries(
+            java.util.Map.entry("compareAndSet", "(II)Z"),
+            java.util.Map.entry("set", "(I)V"),
+            java.util.Map.entry("lazySet", "(I)V"),
+            java.util.Map.entry("setPlain", "(I)V"),
+            java.util.Map.entry("setOpaque", "(I)V"),
+            java.util.Map.entry("setRelease", "(I)V"),
+            java.util.Map.entry("getAndSet", "(I)I"),
+            java.util.Map.entry("getAndAdd", "(I)I"),
+            java.util.Map.entry("addAndGet", "(I)I"),
+            java.util.Map.entry("getAndDecrement", "()I"),
+            java.util.Map.entry("decrementAndGet", "()I"),
+            java.util.Map.entry("compareAndExchange", "(II)I"),
+            java.util.Map.entry("compareAndExchangeAcquire", "(II)I"),
+            java.util.Map.entry("compareAndExchangeRelease", "(II)I"),
+            java.util.Map.entry("weakCompareAndSet", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetPlain", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetVolatile", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetAcquire", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetRelease", "(II)Z"),
+            java.util.Map.entry("getAndUpdate", "(" + UNARY + ")I"),
+            java.util.Map.entry("updateAndGet", "(" + UNARY + ")I"),
+            java.util.Map.entry("getAndAccumulate", "(I" + BINARY + ")I"),
+            java.util.Map.entry("accumulateAndGet", "(I" + BINARY + ")I"));
+
     /**
      * Owner prefixes (in internal, slash-separated form) whose fields are never woven.
      *
@@ -189,6 +256,25 @@ final class FieldAccessWeaver {
             }
         }
         return true;
+    }
+
+    /** A spinlock call substitution: the registry hook and the static descriptor it is invoked with. */
+    record SpinLockSubstitution(String hook, String descriptor) { }
+
+    /**
+     * {@return the substitution the weaver makes for an {@code invokevirtual} of
+     * {@code owner.name(descriptor)}, or {@code null} when the call is left alone}
+     *
+     * <p>For tests: the hook is emitted by name and descriptor, so a table entry whose hook the
+     * registry lacks compiles, weaves, and fails only when the user's code runs the call, with a
+     * {@code NoSuchMethodError}.
+     */
+    static @Nullable SpinLockSubstitution spinLockSubstitution(String owner, String name,
+                                                               String descriptor) {
+        String hook = FieldAccessMethodVisitor.spinLockHook(Opcodes.INVOKEVIRTUAL, owner, name,
+                descriptor);
+        return hook == null ? null : new SpinLockSubstitution(hook,
+                FieldAccessMethodVisitor.spinLockHookDescriptor(owner, hook, descriptor));
     }
 
     /**
@@ -495,19 +581,17 @@ final class FieldAccessWeaver {
          *   <li>an {@code AtomicInteger} used as the lock: {@code compareAndSet}, {@code set},
          *       {@code lazySet} (#558).</li>
          * </ul>
-         * The value-returning releases are substituted too (#658), because a release the weaver does
-         * not see leaves a window re-confirmation cannot close (see {@code SpinLocks}): on the
-         * handle {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange} (with an
-         * {@code int} or void call-site result), {@code weakCompareAndSet} and
-         * {@code weakCompareAndSetPlain}; on the updater {@code getAndSet}, {@code getAndAdd},
-         * {@code addAndGet}, {@code getAndDecrement}, {@code decrementAndGet} and
-         * {@code weakCompareAndSet}; on {@code AtomicInteger} the same six plus
-         * {@code compareAndExchange} and {@code weakCompareAndSetPlain}/{@code Volatile} in place of
-         * {@code weakCompareAndSet}; on {@code AtomicBoolean} {@code compareAndExchange} and
-         * {@code weakCompareAndSetPlain}/{@code Volatile}.
-         * Every hook consumes exactly the stack the original call did and returns what it returned.
-         * A release through any other call is not substituted; the registry re-confirms a hold
-         * against the flag instead of relying on seeing it, and {@code SpinLocks} lists those forms.
+         * The value-returning releases are substituted too (#658, #667), because a release the
+         * weaver does not see leaves a window re-confirmation cannot close (see {@code SpinLocks}):
+         * on the handle every {@code getAnd} form ({@code getAndSet}, {@code getAndAdd} and the
+         * {@code getAndBitwise} forms, each with its {@code Acquire} and {@code Release} variant),
+         * every {@code compareAndExchange} (all with an {@code int} or void call-site result) and
+         * every weak swap; on the atomics and the updater the forms their tables list, which
+         * include {@code setPlain}, {@code setOpaque}, {@code setRelease}, the update and
+         * accumulate forms and the deprecated {@code weakCompareAndSet}. Every hook consumes exactly
+         * the stack the original call did and returns what it returned. A release through any other
+         * call is not substituted; the registry re-confirms a hold against the flag instead of
+         * relying on seeing it, and {@code SpinLocks} lists those forms.
          */
         private static @Nullable String spinLockHook(int opcode, String owner, String name,
                                                      String descriptor) {
@@ -516,62 +600,25 @@ final class FieldAccessWeaver {
             }
             return switch (owner) {
                 case VAR_HANDLE -> varHandleHook(name, descriptor);
-                case INT_UPDATER -> switch (name) {
-                    case "compareAndSet" -> "(Ljava/lang/Object;II)Z".equals(descriptor)
-                            ? "compareAndSetIntUpdater" : null;
-                    case "set" -> "(Ljava/lang/Object;I)V".equals(descriptor) ? "setIntUpdater" : null;
-                    case "lazySet" -> "(Ljava/lang/Object;I)V".equals(descriptor)
-                            ? "lazySetIntUpdater" : null;
-                    case "getAndSet" -> "(Ljava/lang/Object;I)I".equals(descriptor)
-                            ? "getAndSetIntUpdater" : null;
-                    case "getAndAdd" -> "(Ljava/lang/Object;I)I".equals(descriptor)
-                            ? "getAndAddIntUpdater" : null;
-                    case "addAndGet" -> "(Ljava/lang/Object;I)I".equals(descriptor)
-                            ? "addAndGetIntUpdater" : null;
-                    case "getAndDecrement" -> "(Ljava/lang/Object;)I".equals(descriptor)
-                            ? "getAndDecrementIntUpdater" : null;
-                    case "decrementAndGet" -> "(Ljava/lang/Object;)I".equals(descriptor)
-                            ? "decrementAndGetIntUpdater" : null;
-                    case "weakCompareAndSet" -> "(Ljava/lang/Object;II)Z".equals(descriptor)
-                            ? "weakCompareAndSetIntUpdater" : null;
-                    default -> null;
-                };
-                case ATOMIC_BOOLEAN -> switch (name) {
-                    case "compareAndSet" -> "(ZZ)Z".equals(descriptor)
-                            ? "compareAndSetAtomicBoolean" : null;
-                    case "getAndSet" -> "(Z)Z".equals(descriptor) ? "getAndSetAtomicBoolean" : null;
-                    case "set" -> "(Z)V".equals(descriptor) ? "setAtomicBoolean" : null;
-                    case "lazySet" -> "(Z)V".equals(descriptor) ? "lazySetAtomicBoolean" : null;
-                    case "compareAndExchange" -> "(ZZ)Z".equals(descriptor)
-                            ? "compareAndExchangeAtomicBoolean" : null;
-                    case "weakCompareAndSetPlain" -> "(ZZ)Z".equals(descriptor)
-                            ? "weakCompareAndSetPlainAtomicBoolean" : null;
-                    case "weakCompareAndSetVolatile" -> "(ZZ)Z".equals(descriptor)
-                            ? "weakCompareAndSetVolatileAtomicBoolean" : null;
-                    default -> null;
-                };
-                case ATOMIC_INTEGER -> switch (name) {
-                    case "compareAndSet" -> "(II)Z".equals(descriptor)
-                            ? "compareAndSetAtomicInteger" : null;
-                    case "set" -> "(I)V".equals(descriptor) ? "setAtomicInteger" : null;
-                    case "lazySet" -> "(I)V".equals(descriptor) ? "lazySetAtomicInteger" : null;
-                    case "getAndSet" -> "(I)I".equals(descriptor) ? "getAndSetAtomicInteger" : null;
-                    case "getAndAdd" -> "(I)I".equals(descriptor) ? "getAndAddAtomicInteger" : null;
-                    case "addAndGet" -> "(I)I".equals(descriptor) ? "addAndGetAtomicInteger" : null;
-                    case "getAndDecrement" -> "()I".equals(descriptor)
-                            ? "getAndDecrementAtomicInteger" : null;
-                    case "decrementAndGet" -> "()I".equals(descriptor)
-                            ? "decrementAndGetAtomicInteger" : null;
-                    case "compareAndExchange" -> "(II)I".equals(descriptor)
-                            ? "compareAndExchangeAtomicInteger" : null;
-                    case "weakCompareAndSetPlain" -> "(II)Z".equals(descriptor)
-                            ? "weakCompareAndSetPlainAtomicInteger" : null;
-                    case "weakCompareAndSetVolatile" -> "(II)Z".equals(descriptor)
-                            ? "weakCompareAndSetVolatileAtomicInteger" : null;
-                    default -> null;
-                };
+                case INT_UPDATER -> atomicHook(INT_UPDATER_FORMS, name, descriptor, "IntUpdater");
+                case ATOMIC_BOOLEAN -> atomicHook(ATOMIC_BOOLEAN_FORMS, name, descriptor, "AtomicBoolean");
+                case ATOMIC_INTEGER -> atomicHook(ATOMIC_INTEGER_FORMS, name, descriptor, "AtomicInteger");
                 default -> null;
             };
+        }
+
+        /**
+         * {@return {@code name + suffix}, the registry hook for this atomic call, when its descriptor
+         * is the one {@code forms} lists for {@code name}, else {@code null}}
+         *
+         * <p>Every hook on an atomic is named for the method it replaces and the type it replaces it
+         * on, so the tables below hold only the exact descriptor each form is matched on. An exact
+         * match is what makes the substitution stack-neutral: the hook takes the receiver and then
+         * exactly these parameters, and returns exactly this result.
+         */
+        private static @Nullable String atomicHook(java.util.Map<String, String> forms, String name,
+                                                   String descriptor, String suffix) {
+            return descriptor.equals(forms.get(name)) ? name + suffix : null;
         }
 
         /** {@return the {@code VarHandle} hook for an {@code int} instance-field call, or {@code null}} */
@@ -582,22 +629,24 @@ final class FieldAccessWeaver {
             int firstSemicolon = descriptor.indexOf(';');
             String tail = descriptor.substring(firstSemicolon + 1);
             // compareAndSet and the weak swaps are declared boolean, so their descriptor is fixed.
-            // getAndSet, getAndAdd and compareAndExchange are declared Object: the call site says
+            // The getAnd forms and compareAndExchange are declared Object: the call site says
             // (int) when the result is used and void when it is a statement (#658); any other
             // result type is left alone.
             boolean intOrVoid = tail.endsWith(")I") || tail.endsWith(")V");
             return switch (name) {
-                case "compareAndSet" -> "II)Z".equals(tail) ? "compareAndSetInt" : null;
-                case "weakCompareAndSet" -> "II)Z".equals(tail) ? "weakCompareAndSetInt" : null;
-                case "weakCompareAndSetPlain" -> "II)Z".equals(tail) ? "weakCompareAndSetPlainInt" : null;
-                case "compareAndExchange" -> tail.startsWith("II)") && intOrVoid
-                        ? "compareAndExchangeInt" : null;
-                case "getAndSet" -> tail.startsWith("I)") && intOrVoid ? "getAndSetInt" : null;
-                case "getAndAdd" -> tail.startsWith("I)") && intOrVoid ? "getAndAddInt" : null;
-                case "set" -> "I)V".equals(tail) ? "setInt" : null;
-                case "setVolatile" -> "I)V".equals(tail) ? "setVolatileInt" : null;
-                case "setRelease" -> "I)V".equals(tail) ? "setReleaseInt" : null;
-                case "setOpaque" -> "I)V".equals(tail) ? "setOpaqueInt" : null;
+                case "compareAndSet", "weakCompareAndSet", "weakCompareAndSetPlain",
+                     "weakCompareAndSetAcquire", "weakCompareAndSetRelease" ->
+                        "II)Z".equals(tail) ? name + "Int" : null;
+                case "compareAndExchange", "compareAndExchangeAcquire", "compareAndExchangeRelease" ->
+                        tail.startsWith("II)") && intOrVoid ? name + "Int" : null;
+                case "getAndSet", "getAndSetAcquire", "getAndSetRelease",
+                     "getAndAdd", "getAndAddAcquire", "getAndAddRelease",
+                     "getAndBitwiseOr", "getAndBitwiseOrAcquire", "getAndBitwiseOrRelease",
+                     "getAndBitwiseAnd", "getAndBitwiseAndAcquire", "getAndBitwiseAndRelease",
+                     "getAndBitwiseXor", "getAndBitwiseXorAcquire", "getAndBitwiseXorRelease" ->
+                        tail.startsWith("I)") && intOrVoid ? name + "Int" : null;
+                case "set", "setVolatile", "setRelease", "setOpaque" ->
+                        "I)V".equals(tail) ? name + "Int" : null;
                 default -> null;
             };
         }
@@ -611,17 +660,19 @@ final class FieldAccessWeaver {
          */
         private static String spinLockHookDescriptor(String owner, String hook, String descriptor) {
             if (VAR_HANDLE.equals(owner)) {
-                return switch (hook) {
-                    case "compareAndSetInt", "weakCompareAndSetInt", "weakCompareAndSetPlainInt" ->
-                            "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z";
-                    case "compareAndExchangeInt" -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)I";
-                    case "getAndSetInt", "getAndAddInt" -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)I";
-                    default -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V";
-                };
+                if (hook.startsWith("compareAndSet") || hook.startsWith("weakCompareAndSet")) {
+                    return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z";
+                }
+                if (hook.startsWith("compareAndExchange")) {
+                    return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)I";
+                }
+                if (hook.startsWith("getAnd")) {
+                    return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)I";
+                }
+                return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V";
             }
             return "(L" + owner + ";" + descriptor.substring(1);
         }
-
         /**
          * Pops the value a {@code VarHandle} hook returns when its call site declared no result.
          *

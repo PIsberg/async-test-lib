@@ -8,9 +8,9 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
  * {@link AtomicIntegerFieldUpdater}, the shape older netty and JDK-style code uses (#558).
  *
  * <p>The release shapes the weaver observes are the swap back, a {@code set} or {@code getAndSet}
- * through the updater (#658) and a plain write of the flag. The twins release, observed or not
- * ({@code getAndUpdate}), and then write a second table outside the lock: that write must not read
- * as guarded by a lock the thread no longer holds.
+ * through the updater (#658), {@code getAndUpdate} (#667) and a plain write of the flag. The twins
+ * release and then write a second table outside the lock: that write must not read as guarded by a
+ * lock the thread no longer holds.
  */
 public final class UpdaterSpinLockTableBean {
 
@@ -87,9 +87,21 @@ public final class UpdaterSpinLockTableBean {
         return length(table);
     }
 
+    /** Replaces the table under the spinlock, released by {@code getAndUpdate} through the updater (#667). */
+    public int growReleasedByGetAndUpdate() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndUpdate(this, held -> 0);
+            }
+        }
+        return length(table);
+    }
+
     /**
-     * The unobserved twin: {@code getAndUpdate} releases through a call the weaver does not
-     * substitute, and {@link #afterRelease} is then replaced with nothing held.
+     * The twin: {@code getAndUpdate} releases (woven since #667), and {@link #afterRelease} is then
+     * replaced with nothing held.
      */
     public int growThenWriteAfterGetAndUpdate() {
         if (BUSY.compareAndSet(this, 0, 1)) {

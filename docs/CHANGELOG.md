@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cannot resolve the library opens nothing. `JdkUpdaterShapeCanaryTest` fails the build when a JDK
   changes the updater implementation's `tclass`/`offset` fields or constructor.
 
+- **The remaining spinlock release forms are observed (#667).** `setPlain`, `setOpaque` and
+  `setRelease` on `AtomicInteger` and `AtomicBoolean`; `getAndUpdate`, `updateAndGet`,
+  `getAndAccumulate` and `accumulateAndGet` on `AtomicInteger` and `AtomicIntegerFieldUpdater`
+  (the two `getAnd` forms read the flag after the call, since the new value is not on the stack);
+  the deprecated `weakCompareAndSet` and the `Acquire`/`Release` swaps on both atomics; and on an
+  `int` `VarHandle` the `Acquire`/`Release` variants of `getAndSet`, `getAndAdd`,
+  `compareAndExchange` and the weak swaps, plus all nine `getAndBitwise` forms. Each is a
+  substituted static hook with the call's own stack shape. A holder releasing through one of
+  them between a contender's flag check and its swap no longer passes re-confirmation until the
+  contender declares. Still unobserved, by design: `Unsafe`, JNI, reflection, subclass-typed call
+  sites, `VarHandle` call sites with an `Object` or `long` result, and unwoven code.
+
 ## [1.12.1] - 2026-09-17
 
 ### Fixed

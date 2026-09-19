@@ -141,8 +141,8 @@ Three limits worth knowing before switching it on:
   copy each woven loader resolves and to nothing else (#668).
   A spinlock is never trusted past what its flag says: it counts as held only while the flag
   still reads locked and this thread is its last observed winner, re-checked whenever the lockset
-  is read. A release through a call the weaver does not substitute (`updateAndGet`,
-  `getAndSetRelease`, `setPlain`, `Unsafe`, unwoven code) therefore drops the lock before the
+  is read. A release through a call the weaver does not substitute (`Unsafe`, JNI, reflection, a
+  `VarHandle` call site with an `Object` or `long` result, unwoven code) therefore drops the lock before the
   next access is recorded instead of leaving it declared, which would make every later write on
   that thread look guarded. One narrow window survives for those forms: a release landing between
   another thread's check of the flag and its swap leaves the old holder passing that re-check until
