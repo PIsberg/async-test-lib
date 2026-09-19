@@ -2835,6 +2835,66 @@ class DetectorAccuracyEvalTest {
                 "every party arrived and the barrier tripped, so no issue: " + report);
     }
 
+    /** A two-party barrier broken for real by a timed await nobody can join. */
+    private static CyclicBarrier brokenTwoPartyBarrier() {
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        try {
+            barrier.await(1, TimeUnit.NANOSECONDS);
+        } catch (java.util.concurrent.TimeoutException expected) {
+            // the break is the premise
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        assertTrue(barrier.isBroken(), "premise: a timed-out await breaks the barrier");
+        return barrier;
+    }
+
+    /** Awaits a broken barrier as a party would: record, await, catch the break, record it. */
+    private static void awaitBroken(CyclicBarrierDetector detector, CyclicBarrier barrier) {
+        detector.recordArrival(barrier);
+        detector.recordAwait(barrier);
+        try {
+            barrier.await();
+        } catch (java.util.concurrent.BrokenBarrierException e) {
+            detector.recordBroken(barrier);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
+    @DisplayName("cyclic barrier: each party coming back to a barrier it saw broken, no reset between, fires (true positive, #665)")
+    void cyclicBarrierFiresWhenAPartyReusesABarrierItSawBroken() throws InterruptedException {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenTwoPartyBarrier();
+        detector.registerBarrier(barrier, "reused-after-break", 2);
+
+        Runnable retries = () -> {
+            awaitBroken(detector, barrier);
+            awaitBroken(detector, barrier);   // the bug: back again, nobody reset it
+        };
+        onTwoThreads(retries, retries);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertTrue(report.getReuseAfterBrokenBarriers().contains(barrier),
+                "a second arrival at a barrier the party already saw broken fails again: " + report);
+    }
+
+    @Test
+    @DisplayName("cyclic barrier: each party arriving once at a cancelled barrier and dropping it, no reset, stays silent (true negative, #665)")
+    void cyclicBarrierSilentWhenLatePartiesDropACancelledBarrier() throws InterruptedException {
+        CyclicBarrierDetector detector = new CyclicBarrierDetector();
+        CyclicBarrier barrier = brokenTwoPartyBarrier();
+        detector.registerBarrier(barrier, "cancelled-and-dropped", 2);
+
+        Runnable dropsIt = () -> awaitBroken(detector, barrier);   // and never comes back
+        onTwoThreads(dropsIt, dropsIt);
+
+        CyclicBarrierDetector.CyclicBarrierReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "a barrier broken to cancel its parties and then dropped is correct: " + report);
+    }
+
     // ---- ExchangerDetector ----
 
     @Test
