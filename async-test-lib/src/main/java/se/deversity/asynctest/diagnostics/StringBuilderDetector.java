@@ -60,7 +60,6 @@ public class StringBuilderDetector {
     }
 
     private final Map<IdentityKey, BuilderState> builders = new ConcurrentHashMap<>();
-    private volatile boolean enabled = true;
 
     /**
      * Register a {@code StringBuilder} for monitoring.
@@ -69,7 +68,7 @@ public class StringBuilderDetector {
      * @param name    a descriptive label for reports
      */
     public void registerBuilder(StringBuilder builder, String name) {
-        if (!enabled || builder == null) return;
+        if (builder == null) return;
         builders.putIfAbsent(new IdentityKey(builder),
                 new BuilderState(name != null ? name : "StringBuilder@" + System.identityHashCode(builder)));
     }
@@ -121,7 +120,7 @@ public class StringBuilderDetector {
      * @param name    the label (should match registration)
      */
     public void recordRead(StringBuilder builder, String name) {
-        if (!enabled || builder == null) return;
+        if (builder == null) return;
         BuilderState state = resolve(builder, name);
         state.noteAccess(builder, false);
         state.readingThreads.add(Thread.currentThread().threadId());
@@ -136,7 +135,7 @@ public class StringBuilderDetector {
      * @param errorType a short description, e.g. "StringIndexOutOfBoundsException"
      */
     public void recordError(StringBuilder builder, String name, String errorType) {
-        if (!enabled || builder == null) return;
+        if (builder == null) return;
         BuilderState state = resolve(builder, name);
         // The thread that hit the error was using the builder, so it counts toward the sharing
         // the error finding now requires (#501). Recorded as a read: an exception says the call
@@ -146,7 +145,7 @@ public class StringBuilderDetector {
     }
 
     private void recordMutation(StringBuilder builder, String name, String type) {
-        if (!enabled || builder == null) return;
+        if (builder == null) return;
         BuilderState state = resolve(builder, name);
         state.noteAccess(builder, true);
         state.mutatingThreads.add(Thread.currentThread().threadId());
