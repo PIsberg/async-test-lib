@@ -98,6 +98,14 @@ final class PairEvidence {
                 + "and release it, contended, so it never times out. Since #589 a timeout is context "
                 + "and decides nothing: the finding is the lock itself still held at analysis by a "
                 + "holder that has finished or is idle in its pool (#609)");
+        // Read 2026-09-19, after #665 made reuse a party coming back to a barrier it saw broken.
+        REVIEWED_DESPITE_SHAPE.put(DetectorType.CYCLIC_BARRIER, "only silent rows record "
+                + "recordReset and recordBarrierComplete. recordBarrierComplete decides nothing (its "
+                + "javadoc says so). recordReset is the fix itself in resetAfterABreak, the call the "
+                + "reuse report prescribes, and a reset is also observed from the barrier when a "
+                + "later arrival finds it whole, so the recording is not what separates the halves. "
+                + "The decisive pair, awaitedWhileBroken against cancelledAndDropped, calls the same "
+                + "three methods and differs only in whether the party comes back to the barrier");
 
         // Read 2026-09-14: each pair's two bodies and its detector's source, by a reviewer asked
         // to argue against promotion. The reason is the model property that decided it.
@@ -156,16 +164,9 @@ final class PairEvidence {
                 + "body's own declarations (#657, a signalled waiter still queued for the lock, "
                 + "is now a note on the predicate path). Needs the declared and "
                 + "lock-only stuck waiters to become notes, or those paths split from this one");
-        HELD_ON_MODEL.put(DetectorType.CYCLIC_BARRIER, "re-read 2026-09-17 after #662: a recorded "
-                + "reset() now recovers the reuse recorded before it, and the lane holds the "
-                + "handled-break twin and a stranded-party pair (untimed against timed await, "
-                + "#631). Still held, because one arrival at a broken barrier is the finding: a "
-                + "party that arrives late at a barrier broken to cancel its parties, catches "
-                + "BrokenBarrierException and drops the barrier without a reset is the correct "
-                + "cancellation the detector's own javadoc describes, and draws the reuse finding. "
-                + "Needs reuse to mean a party coming back to a barrier it already saw broken with "
-                + "no reset in between, which reverses the single-arrival cases "
-                + "CyclicBarrierDetectorAccuracyTest pins today");
+        // CYCLIC_BARRIER was held here until #665 made reuse a party coming back to a barrier it
+        // already saw broken; it is promoted in verdict-evidence-corpus, and
+        // REVIEWED_DESPITE_SHAPE says why the reset only its silent rows record is not the separator.
         HELD_ON_MODEL.put(DetectorType.EXCHANGER, "#585 made orphaning the finding, decided from "
                 + "recorded starts against completions, timeouts and interrupts, so a handled timeout "
                 + "is silent; still held until re-read, because the counts are the body's own "

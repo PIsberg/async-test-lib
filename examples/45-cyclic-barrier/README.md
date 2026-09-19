@@ -19,13 +19,15 @@ stranded and the barrier never breaks.
 
 1. Open `BatchProcessorTest.java`.
 2. Remove the `@Disabled` annotation from `testProcessPhase_concurrent_detectsBrokenBarrier`.
-3. Run the test. The first round strands two workers and breaks the barrier; in later
-   rounds `CyclicBarrierDetector` sees workers arrive while `barrier.isBroken()` is true
-   and reports reuse of a broken barrier.
+3. Run the test. Each worker runs phase 2 and then phase 3. The first round strands two
+   workers and breaks the barrier; `CyclicBarrierDetector` sees workers come back for
+   phase 3 to a barrier they already saw broken (their own timeout, or a
+   `BrokenBarrierException`) with no `reset()` in between, and reports reuse of a broken
+   barrier.
 
 The detector asks the barrier rather than trusting a recorded break: breaking a
 barrier on purpose to cancel its parties, and then discarding it, is correct code and
-is not reported.
+is not reported, and neither is one arrival that hits the break.
 
 ## The Fix
 

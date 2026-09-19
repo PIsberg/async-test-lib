@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VarHandle` takes from a static field or an array element. JCTools is matched by name and tested
   against a stand-in interface; no corpus row runs the real netty or JCTools queue yet.
 
-- **`CyclicBarrierDetector` reports reuse only when a party comes back to a barrier it already saw broken, with no `reset()` in between (#665).** One arrival that hits a break, such as a late party that catches `BrokenBarrierException` and drops a barrier broken to cancel it, is now silent; a reset is recorded with `recordReset` or observed when a later arrival finds the barrier whole. **Behaviour change:** a body that records a single arrival or await at a broken barrier no longer gets the reuse finding.
+- **`CyclicBarrierDetector` reports reuse only when a party comes back to a barrier it already saw broken, with no `reset()` in between (#665).** One arrival that hits a break, such as a late party that catches `BrokenBarrierException` and drops a barrier broken to cancel it, is now silent; a reset is recorded with `recordReset` or observed when a later arrival finds the barrier whole. **Behaviour change:** a body that records a single arrival or await at a broken barrier no longer gets the reuse finding. `CYCLIC_BARRIER` is promoted to `TrustTier.VERDICT` on a new corpus silent twin for cancellation without a reset, so a build gated on `minTrust = VERDICT` now fails on its findings.
 
 ## [1.12.1] - 2026-09-17
 

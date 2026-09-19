@@ -32,11 +32,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * concurrently, so it never breaks.
  *
  * WHY @AsyncTest DETECTS:
- * With 8 threads running processPhase(2) round after round, the first round strands
- * two workers and their timeout breaks the barrier. In every later round the workers
- * arrive at a barrier whose isBroken() is true, and CyclicBarrierDetector reports
- * that arrival. A break on its own is not the finding: breaking a barrier to cancel
- * its parties, then dropping it, is correct.
+ * With 8 threads each running phase 2 and then phase 3, the first round strands two
+ * workers and their timeout breaks the barrier. Every worker then comes back to the
+ * barrier for phase 3 after it already saw it broken - its own timeout, or a
+ * BrokenBarrierException - with no reset in between, and CyclicBarrierDetector reports
+ * that reuse. A break on its own is not the finding, and neither is one arrival that
+ * hits it: breaking a barrier to cancel its parties, then dropping it, is correct.
  *
  * FIX:
  * Call barrier.reset() (or replace the barrier) once the failed phase is handled, or
@@ -91,10 +92,11 @@ class BatchProcessorTest {
     // -------------------------------------------------------------------------
 
     /**
-     * With 8 threads all calling processPhase(2), two of every eight throw before
-     * the barrier, so two workers are stranded; their timed-out await breaks the
-     * barrier and nothing resets it. Every later round arrives at a broken barrier,
-     * and CyclicBarrierDetector reports it by asking the barrier at the arrival.
+     * With 8 threads each calling processPhase(2) and then processPhase(3), two of
+     * every eight throw before the barrier, so two workers are stranded; their
+     * timed-out await breaks the barrier and nothing resets it. Each worker comes back
+     * for phase 3 to a barrier it already saw broken, and CyclicBarrierDetector reports
+     * that by asking the barrier at the arrival.
      *
      * To see the detection:
      * 1. Remove @Disabled
@@ -108,18 +110,25 @@ class BatchProcessorTest {
         var monitor = AsyncTestContext.cyclicBarrierMonitor();
         monitor.registerBarrier(processor.getBarrier(), "phase-barrier", 4);
 
-        // Asks the barrier whether it is already broken: the detector does not take a
-        // recorded break as the finding, because breaking a barrier to cancel is correct.
-        monitor.recordArrival(processor.getBarrier());
-        try {
-            processor.processPhase(2);
-            monitor.recordBarrierComplete(processor.getBarrier());
-        } catch (java.util.concurrent.BrokenBarrierException e) {
-            monitor.recordBroken(processor.getBarrier());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (RuntimeException e) {
-            // This worker threw before the barrier, or timed out waiting at it.
+        // A worker runs its phases in order. The detector asks the barrier at each arrival
+        // and reports a worker coming back to a barrier it already saw broken; a recorded
+        // break alone, or one arrival at a broken barrier, is not the finding.
+        for (int phase = 2; phase <= 3; phase++) {
+            monitor.recordArrival(processor.getBarrier());
+            try {
+                processor.processPhase(phase);
+                monitor.recordBarrierComplete(processor.getBarrier());
+            } catch (java.util.concurrent.BrokenBarrierException e) {
+                monitor.recordBroken(processor.getBarrier());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (RuntimeException e) {
+                if (e.getCause() instanceof java.util.concurrent.TimeoutException) {
+                    monitor.recordTimeout(processor.getBarrier());   // this worker's timeout broke it
+                }
+                // Otherwise this worker threw before the barrier.
+            }
         }
     }
 }

@@ -1244,6 +1244,12 @@ so the pair separates on whether the thing the waiter waits for arrived (#661). 
 as stated on the first run. Both detectors stay PROMPT all the same; `PairEvidence.HELD_ON_MODEL`
 says why, and in both cases it is a finding the pairs cannot reach rather than one they get wrong.
 
+On 2026-09-19 `recorded_cyclicBarrier_cancelledAndDropped` joined as the silent twin for
+cancellation without a reset: a barrier broken to cancel its parties, awaited once by a late party
+that catches `BrokenBarrierException` and drops it. Since #665 reuse is a party coming back to a
+barrier it already saw broken, so `recorded_cyclicBarrier_awaitedWhileBroken` now catches the break
+and awaits again in the same body, and `CYCLIC_BARRIER` is promoted on that pair.
+
 `ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
 **57 of 146**, in 117 rows.
 

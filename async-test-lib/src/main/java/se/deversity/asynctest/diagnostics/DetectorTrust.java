@@ -114,7 +114,7 @@ public final class DetectorTrust {
             row(DetectorType.PARALLEL_STREAMS, "ParallelStreamDetector", "ParallelStreams", TrustTier.PROMPT),
             row(DetectorType.RESOURCE_LEAKS, "ResourceLeakDetector", "ResourceLeaks", TrustTier.VERDICT),
             row(DetectorType.COUNTDOWN_LATCH, "CountDownLatchDetector", "CountDownLatch", TrustTier.VERDICT),
-            row(DetectorType.CYCLIC_BARRIER, "CyclicBarrierDetector", "CyclicBarrier", TrustTier.PROMPT),
+            row(DetectorType.CYCLIC_BARRIER, "CyclicBarrierDetector", "CyclicBarrier", TrustTier.VERDICT),
             row(DetectorType.REENTRANT_LOCK, "ReentrantLockDetector", "ReentrantLock", TrustTier.VERDICT),
             row(DetectorType.VOLATILE_ARRAY, "VolatileArrayDetector", "VolatileArray", TrustTier.VERDICT),
             row(DetectorType.DOUBLE_CHECKED_LOCKING, "DoubleCheckedLockingDetector", "DoubleCheckedLocking", TrustTier.VERDICT),

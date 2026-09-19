@@ -3246,17 +3246,51 @@ class CorpusRecordingLaneTest {
     // Four coordinators, one question: did the protocol complete, or did it end in the state the
     // class documents as terminal? Each pair records a finished cycle against an abandoned one.
 
-    /** An await on a barrier that really is broken: it fails at once, and keeps failing until a reset. */
+    /**
+     * An await on a barrier that really is broken, caught and retried with no reset: the retry
+     * fails at once too, and keeps failing until a reset. Each body retries itself, because a body
+     * runs on a fresh virtual thread and reuse is judged per party (#665).
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_cyclicBarrier_awaitedWhileBroken() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
         detector.registerBarrier(BROKEN_BARRIER, "broken-barrier", THREADS);
-        detector.recordAwait(BROKEN_BARRIER);
+        for (int attempt = 0; attempt < 2; attempt++) {   // the retry is the defect
+            awaitAndCatchTheBreak(detector, BROKEN_BARRIER);
+        }
+    }
+
+    /**
+     * A barrier broken to cancel its parties, one per body: the late party awaits it once, catches
+     * {@code BrokenBarrierException} and drops it without a reset, which is correct (#665). The
+     * loud twin makes the same calls and comes back to its barrier.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_cyclicBarrier_cancelledAndDropped() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.cyclicBarrierDetector();
+        java.util.concurrent.CyclicBarrier cancelled = new java.util.concurrent.CyclicBarrier(2);
         try {
-            BROKEN_BARRIER.await();
+            cancelled.await(1, TimeUnit.NANOSECONDS);   // the cancelling party gives up and breaks it
+            throw new IllegalStateException("a lone party cannot trip a two-party barrier");
+        } catch (java.util.concurrent.TimeoutException expected) {
+            // the cancellation this row's late party arrives after
+        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+            throw new IllegalStateException("could not cancel the barrier", e);
+        }
+        detector.registerBarrier(cancelled, "cancelled-barrier", 2);
+        awaitAndCatchTheBreak(detector, cancelled);   // once, and the barrier is dropped
+    }
+
+    /** One arrival at a barrier: record the await, await, and record the break it throws. */
+    private static void awaitAndCatchTheBreak(se.deversity.asynctest.diagnostics.CyclicBarrierDetector detector,
+                                              java.util.concurrent.CyclicBarrier barrier) {
+        detector.recordAwait(barrier);
+        try {
+            barrier.await();
         } catch (java.util.concurrent.BrokenBarrierException e) {
-            detector.recordBroken(BROKEN_BARRIER);
+            detector.recordBroken(barrier);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

@@ -2990,10 +2990,12 @@ final class Corpus {
                     DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "every party awaits a barrier that a timed-out await broke and nobody reset, "
-                            + "so each await throws BrokenBarrierException at once. The detector "
-                            + "asks the barrier's isBroken() at the await; a recorded break on its "
-                            + "own is not the finding, because breaking a barrier is how its "
-                            + "parties are cancelled (#584)",
+                            + "catches BrokenBarrierException and awaits it again, so the retry "
+                            + "fails at once too. The detector asks the barrier's isBroken() at "
+                            + "each await and reports the party coming back to a barrier it "
+                            + "already saw broken with no reset in between (#665); a recorded "
+                            + "break on its own is not the finding, because breaking a barrier is "
+                            + "how its parties are cancelled (#584)",
                     IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_cyclicBarrier_completedItsCycle", JDK,
@@ -3013,6 +3015,15 @@ final class Corpus {
                             + "report's own fix. The await really found the barrier broken; the "
                             + "recorded reset recovers it, and the barrier is whole for the next "
                             + "body (#662)"),
+
+            new RecordingSubject("recorded_cyclicBarrier_cancelledAndDropped", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.CYCLIC_BARRIER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the loud row's calls on a barrier broken to cancel its parties: the late "
+                            + "party awaits it once, catches BrokenBarrierException and drops it "
+                            + "with no reset. That is correct cancellation, and one arrival at a "
+                            + "broken barrier is not reuse (#665)"),
 
             new RecordingSubject("recorded_cyclicBarrier_partyLeftShortUntimed", JDK,
                     "java.util.concurrent.CyclicBarrier",
