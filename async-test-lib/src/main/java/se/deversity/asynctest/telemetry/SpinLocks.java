@@ -215,10 +215,11 @@ final class SpinLocks {
      * woven class's own loader reaches, which weave-time records did not.
      *
      * <p>Reading the implementation needs {@code java.util.concurrent.atomic} open to this class's
-     * module. The agent opens it to the unnamed module of every loader whose classes it weaves, and
-     * that loader's ancestors. Where that has not happened (no agent, a library copy defined by a
-     * loader outside that chain, a named module, or a JDK whose implementation no longer has the
-     * {@code offset} and {@code tclass} fields and three-argument constructor this reads), the
+     * module. The agent opens it, for each loader whose classes it weaves, to the module of the
+     * copy of this class that loader resolves, and to nothing else (#668). Where that has not
+     * happened (no agent, a woven loader that cannot resolve the library, or a JDK whose
+     * implementation no longer has the {@code offset} and {@code tclass} fields and three-argument
+     * constructor this reads, which {@code JdkUpdaterShapeCanaryTest} fails the build on), the
      * updater stays unresolved and a spinlock through it is not declared, which reports rather
      * than hides.
      */

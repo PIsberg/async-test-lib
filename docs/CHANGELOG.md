@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The agent opens `java.util.concurrent.atomic` only to the library copy that reads it (#668).**
+  With `fields=true` it used to open the package to the unnamed module of every woven class's
+  loader and of each ancestor. It now resolves `TelemetryRegistry` through each woven loader, as
+  the woven call sites do, and opens the package to that class's module alone, so an isolated test
+  classloader that only delegates to the library is no longer opened. The same lookup finds a
+  library copy in a sibling loader outside the woven chain (OSGi-style) and one in a named module on
+  a module path, so pre-attach updaters resolve there too instead of being reported. A loader that
+  cannot resolve the library opens nothing. `JdkUpdaterShapeCanaryTest` fails the build when a JDK
+  changes the updater implementation's `tclass`/`offset` fields or constructor.
+
 ## [1.12.1] - 2026-09-17
 
 ### Fixed
