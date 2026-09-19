@@ -32,7 +32,6 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -407,7 +406,7 @@ public class ConcurrencyRunner {
 
         // Set by the pre-round deadline check below, read by the catch block: the error it
         // throws has already been through timeoutError() — listeners notified, thread dump
-        // printed, Phase 1 and Phase 2 reports flushed. Its message then satisfies
+        // printed, detector reports flushed. Its message then satisfies
         // isTimeoutLike, so without this flag the catch sent it through timeoutError a
         // second time and one timeout produced two onTimeout callbacks and two copies of
         // every report. (Phase2Analysis already memoized the analysis itself; nothing
@@ -419,7 +418,7 @@ public class ConcurrencyRunner {
                 long remainingMs = remainingMillis(deadlineNanos);
                 if (remainingMs <= 0) {
                     timeoutAlreadyReported = true;
-                    throw timeoutError(effectiveTimeoutMs, null, phase1, phase2Analysis,
+                    throw timeoutError(effectiveTimeoutMs, null, phase2Analysis,
                             config.detectDeadlocks);
                 }
 
@@ -529,19 +528,10 @@ public class ConcurrencyRunner {
             // missing test (#426). It stays as the guard local to this branch.
             quiesceWorkers(executor, testMethod);
             if (isTimeoutLike(e)) {
-                throw timeoutError(effectiveTimeoutMs, e, phase1, phase2Analysis,
+                throw timeoutError(effectiveTimeoutMs, e, phase2Analysis,
                         config.detectDeadlocks);
             }
-            // Surface the seed of the failing round so the user can reproduce by
-            // pasting it into @AsyncTest(replaySeed=N).
-            System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
-                    + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
-            AsyncTestListenerRegistry.fireTestFailed(e);
-            phase1.printReports();
-            // Report-only: the failOn gate (analyzeAndGate, below) intentionally runs
-            // only on the success path — a test that already failed doesn't need a
-            // second, synthetic failure from detector findings on top of its own.
-            printPhase2Reports(phase2Analysis);
+            reportFailure(e, currentSeed, phase2Analysis);
             throw e;
         } catch (Throwable t) {
             // Same quiescence rule as the AssertionError branch: this path is reachable
@@ -549,12 +539,7 @@ public class ConcurrencyRunner {
             // interrupted out of latch.await by a JUnit-level timeout), and the reports
             // below must not read detector state that live workers are still writing.
             quiesceWorkers(executor, testMethod);
-            System.err.println("[AsyncTest] Failure with replaySeed=" + currentSeed
-                    + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
-            AsyncTestListenerRegistry.fireTestFailed(t);
-            phase1.printReports();
-            // Report-only — see the comment in the AssertionError branch above.
-            printPhase2Reports(phase2Analysis);
+            reportFailure(t, currentSeed, phase2Analysis);
             throw unwrap(t);
         } finally {
             executor.shutdownNow();
@@ -616,8 +601,8 @@ public class ConcurrencyRunner {
         // Runs on the caller thread after all workers finished and the executor
         // shut down — no shared mutable state is touched concurrently. The failOn
         // gate is intentionally success-path-only; failure/timeout paths above are
-        // report-only (see the comments in the catch blocks and in timeoutError).
-        analyzeAndGate(config, testMethod, phase1, phase2Analysis);
+        // report-only (see reportFailure and timeoutError).
+        analyzeAndGate(config, testMethod, phase2Analysis);
     }
 
     /**
@@ -683,9 +668,8 @@ public class ConcurrencyRunner {
      */
     private static void analyzeAndGate(AsyncTestConfig config,
                                        Method testMethod,
-                                       Phase1DetectorSet phase1,
                                        Phase2Analysis phase2Analysis) {
-        Map<String, String> reports = new LinkedHashMap<>(phase1.collectReports());
+        Map<String, String> reports = new LinkedHashMap<>();
         for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
             reports.putIfAbsent(finding.getKey(), "\n" + finding.getValue());
         }
@@ -1019,8 +1003,25 @@ public class ConcurrencyRunner {
     }
 
     /**
-     * Reports a timeout exactly once — listeners notified, thread dump printed, Phase 1 and
-     * Phase 2 reports flushed — and returns the {@link RoundTimeoutError} to throw.
+     * Reports a failed round that was not a timeout: the seed to replay it with, the
+     * {@code onTestFailed} event, then the detector reports.
+     *
+     * <p>Report-only. The {@code failOn} gate ({@link #analyzeAndGate}) intentionally runs only
+     * on the success path: a test that already failed does not need a second, synthetic
+     * failure from detector findings on top of its own. The caller quiesces the workers first.
+     */
+    private static void reportFailure(Throwable failure, long seed, Phase2Analysis phase2Analysis) {
+        // Surface the seed of the failing round so the user can reproduce by
+        // pasting it into @AsyncTest(replaySeed=N).
+        System.err.println("[AsyncTest] Failure with replaySeed=" + seed
+                + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
+        AsyncTestListenerRegistry.fireTestFailed(failure);
+        printPhase2Reports(phase2Analysis);
+    }
+
+    /**
+     * Reports a timeout exactly once — listeners notified, thread dump printed, detector
+     * reports flushed — and returns the {@link RoundTimeoutError} to throw.
      *
      * <p>Callers that throw the returned error from inside {@link #execute}'s try block must
      * set {@code timeoutAlreadyReported} first: the returned type satisfies
@@ -1034,7 +1035,6 @@ public class ConcurrencyRunner {
      */
     private static AssertionError timeoutError(long timeoutMs,
                                                @Nullable Throwable cause,
-                                               Phase1DetectorSet phase1,
                                                Phase2Analysis phase2Analysis,
                                                boolean detectDeadlocks) {
         AsyncTestListenerRegistry.fireTimeout(timeoutMs);
@@ -1042,13 +1042,12 @@ public class ConcurrencyRunner {
             DeadlockDetector.printThreadDump();
             DeadlockDetector.printLearningAndFix();
         }
-        phase1.printReports();
         // Report-only: this is a failure/timeout path, so the failOn gate in
         // analyzeAndGate (success-path-only) is never reached for this run.
         printPhase2Reports(phase2Analysis);
         AssertionError error = new RoundTimeoutError(
             "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue."
-            + findingSummary(phase1, phase2Analysis));
+            + findingSummary(phase2Analysis));
         if (cause != null) {
             error.initCause(cause);
         }
@@ -1075,9 +1074,8 @@ public class ConcurrencyRunner {
      * <p>Names only, not reports. The reports are already on stderr in full, and an assertion
      * message that inlined them would push the timeout itself off the top of the console.
      */
-    private static String findingSummary(Phase1DetectorSet phase1, Phase2Analysis phase2Analysis) {
-        Set<String> named = new LinkedHashSet<>(phase1.collectReports().keySet());
-        named.addAll(phase2Analysis.get().keySet());
+    private static String findingSummary(Phase2Analysis phase2Analysis) {
+        Set<String> named = phase2Analysis.get().keySet();
         if (named.isEmpty()) {
             return " No enabled detector produced a finding before the timeout.";
         }
