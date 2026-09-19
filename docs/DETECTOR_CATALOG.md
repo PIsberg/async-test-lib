@@ -304,20 +304,3 @@ recording is the feed:
 `VirtualThreadResourceSaturationDetector`, `VirtualThreadMonitorSerializationDetector`,
 `ThreadLocalCacheDegradationDetector`, `ScopeJoinerMisuseDetector`,
 `ScopeConfigurationMisuseDetector`, `ScopeResultEscapeDetector`, `LazyCollectionMisuseDetector`
-
-## Catalog Index by Phase
-
-| Phase | Category | Total Detectors | Example Detectors | Default Severity |
-|---|---|---|---|---|
-| **Phase 1** | Core Concurrency | 3 | Deadlock, Livelock, Visibility | `HIGH`/`CRITICAL` |
-| **Phase 2** | Resource Monitors | 15 | ThreadPoolDeadlock, MemoryOrdering, SemaphoreLeak | `HIGH` |
-| **Phase 3** | Lock Monitors | 12 | LockContention, StampedLock, TryLockMisuse | `MEDIUM`/`HIGH` |
-| **Phase 4** | Virtual Thread / Loom | 5 | CarrierPinning, CarrierExhaustion, CpuBoundTask | `HIGH` |
-| **Phase 5** | Future / Callback | 8 | CFExceptionLeak, CFCompletionLeak, FutureIgnored | `HIGH` |
-| **Phase 6** | Shared Util Monitors | 10 | SharedRandom, SimpleDateFormat, CalendarSharing | `MEDIUM` |
-| **Phase 7** | Threading Hygiene | 8 | DaemonThread, DeprecatedThreadApi, UncaughtException | `LOW`/`MEDIUM` |
-| **Phase 8** | Lock-Free Primitives | 8 | ABAProblem, OptimisticRead, VolatileArray | `HIGH` |
-| **Phase 9** | Barrier Coordination | 10 | CountDownLatch, CyclicBarrier, Phaser | `HIGH` |
-| **Phase 10**| Collection Safety | 10 | SynchronizedCollection, CopyOnWrite, MutableKey | `HIGH` |
-| **Phase 11**| System / Global | 10 | SystemPropertyMutation, ExplicitGC, MDCLeak | `LOW`/`MEDIUM` |
-| **Phase 12**| Miscellaneous | 12 | Statefulness, StreamClosing, WeakReferenceRace | `LOW`/`MEDIUM` |
