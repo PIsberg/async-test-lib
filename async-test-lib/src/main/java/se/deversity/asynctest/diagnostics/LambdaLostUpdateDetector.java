@@ -169,7 +169,7 @@ public final class LambdaLostUpdateDetector {
                 render(observedBefore),
                 render(written),
                 guard == null ? 0 : System.identityHashCode(guard),
-                guard != null && Thread.holdsLock(guard)));
+                SelfGuard.heldOn(guard)));
     }
 
     private static String render(Object value) {

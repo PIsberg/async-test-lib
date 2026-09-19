@@ -595,8 +595,8 @@ public class MissedSignalDetector {
     }
 
     private ConditionState byMonitor(Object monitor) {
-        return conditions.computeIfAbsent(new IdentityKey(monitor), key -> new ConditionState(
-                monitor.getClass().getSimpleName() + "@" + Integer.toHexString(key.hashCode())));
+        return conditions.computeIfAbsent(new IdentityKey(monitor),
+                key -> new ConditionState(key.toString()));
     }
 
     // ---- Report ------------------------------------------------------------
