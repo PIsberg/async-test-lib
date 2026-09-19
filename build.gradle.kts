@@ -181,6 +181,10 @@ subprojects {
         // Permit AsyncTestAgent.selfAttach() to attach to the forked test JVM
         // (self-attach is disabled by default since JDK 9). Mirrors the Maven surefire argLine.
         jvmArgs("-Djdk.attach.allowAttachSelf=true")
+        // Keep JaCoCo off the named-module fixture: its instrumentation gives the module a read
+        // edge to the class path before the agent attaches, which voids
+        // NamedModuleUpdaterWeavingTest's premise (#668). Mirrors the pom's prepare-agent excludes.
+        extensions.configure<JacocoTaskExtension> { excludes = listOf("com.example.namedfixture.*") }
 
         finalizedBy(tasks.named("jacocoTestReport"))
 

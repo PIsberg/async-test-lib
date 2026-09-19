@@ -351,6 +351,16 @@
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
+                        <configuration>
+                            <!-- NamedModuleUpdaterWeavingTest needs its named-module fixture to start
+                                 without a read edge to the class path. JaCoCo's instrumentation gives
+                                 it one before the agent attaches, which voids the test's premise
+                                 (#668). Test fixture code; no coverage is lost. Mirrored in
+                                 build.gradle.kts. -->
+                            <excludes>
+                                <exclude>com.example.namedfixture.*</exclude>
+                            </excludes>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>report</id>
