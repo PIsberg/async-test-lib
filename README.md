@@ -202,7 +202,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
    - **`-Dlicense.mock.mode=true`** — without a licence key the run stops with
      `LICENSE DENIED`. CI sets mock mode automatically (`CI` or `GITHUB_ACTIONS` in the
-     environment); a local run needs the flag. See [Licensing](#licensing).
+     environment); a local run needs the flag. See [License](#license).
    - **`-Dasynctest.agent=fields=true`** — attaches the instrumentation agent so a bare
      `counter++` is observed. **Without it this example passes and reports nothing.**
      `counter++` compiles to a field read and a field write with no method call, so
