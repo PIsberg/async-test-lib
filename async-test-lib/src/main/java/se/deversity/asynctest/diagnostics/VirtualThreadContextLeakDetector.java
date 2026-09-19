@@ -181,11 +181,7 @@ public class VirtualThreadContextLeakDetector {
     // ---- Helpers ----
 
     static boolean isVirtualThread(Thread thread) {
-        try {
-            return thread.isVirtual();
-        } catch (NoSuchMethodError e) {
-            return false;
-        }
+        return thread.isVirtual();
     }
 
     /**

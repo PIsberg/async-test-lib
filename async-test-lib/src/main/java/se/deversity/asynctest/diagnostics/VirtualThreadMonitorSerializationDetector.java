@@ -132,7 +132,7 @@ public final class VirtualThreadMonitorSerializationDetector {
         String name = label != null ? label : "monitor@" + id;
         MonitorState s = monitors.computeIfAbsent(key, k -> new MonitorState(name));
         raise(s.peakWaiting, s.waiting.incrementAndGet());
-        if (isVirtual(thread)) {
+        if (thread.isVirtual()) {
             raise(s.peakVirtualWaiting, s.virtualWaiting.incrementAndGet());
             s.virtualWaiters.add(thread.threadId());
         } else {
@@ -150,7 +150,7 @@ public final class VirtualThreadMonitorSerializationDetector {
         MonitorState s = state(monitor, thread);
         if (s == null) return;
         s.waiting.decrementAndGet();
-        if (isVirtual(thread)) s.virtualWaiting.decrementAndGet();
+        if (thread.isVirtual()) s.virtualWaiting.decrementAndGet();
         s.acquisitions.incrementAndGet();
     }
 
@@ -164,14 +164,6 @@ public final class VirtualThreadMonitorSerializationDetector {
         int current = peak.get();
         while (observed > current && !peak.compareAndSet(current, observed)) {
             current = peak.get();
-        }
-    }
-
-    private static boolean isVirtual(Thread thread) {
-        try {
-            return thread.isVirtual();
-        } catch (Throwable t) {
-            return false;   // pre-21 runtime: no virtual threads to find
         }
     }
 

@@ -112,20 +112,12 @@ public final class ThreadLocalCacheDegradationDetector {
         String name = threadLocalName != null ? threadLocalName : "threadLocal";
         CacheState s = caches.computeIfAbsent(name, CacheState::new);
         s.valueType = value.getClass().getSimpleName();
-        if (isVirtual(thread)) {
+        if (thread.isVirtual()) {
             s.virtualInstanceIds.add(new IdentityKey(value));
             s.virtualThreadIds.add(thread.threadId());
         } else {
             s.platformInstanceIds.add(new IdentityKey(value));
             s.platformThreadIds.add(thread.threadId());
-        }
-    }
-
-    private static boolean isVirtual(Thread thread) {
-        try {
-            return thread.isVirtual();
-        } catch (Throwable t) {
-            return false;   // pre-21 runtime: no virtual threads to find
         }
     }
 

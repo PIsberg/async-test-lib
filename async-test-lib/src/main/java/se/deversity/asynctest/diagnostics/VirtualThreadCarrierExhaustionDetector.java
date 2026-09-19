@@ -84,7 +84,7 @@ public class VirtualThreadCarrierExhaustionDetector {
      * @param thread  the thread entering the blocking state
      */
     public void recordBlockingStart(String reason, Thread thread) {
-        if (!isVirtual(thread)) return;
+        if (!thread.isVirtual()) return;
 
         activeBlocksByThread.put(thread.threadId(), reason != null ? reason : "unknown");
         int current = concurrentlyBlocked.incrementAndGet();
@@ -116,7 +116,7 @@ public class VirtualThreadCarrierExhaustionDetector {
      * @param thread  the thread that has unblocked
      */
     public void recordBlockingEnd(String reason, Thread thread) {
-        if (!isVirtual(thread)) return;
+        if (!thread.isVirtual()) return;
         activeBlocksByThread.remove(thread.threadId());
         concurrentlyBlocked.updateAndGet(v -> Math.max(0, v - 1));
     }
@@ -144,14 +144,6 @@ public class VirtualThreadCarrierExhaustionDetector {
             exhaustionEvents.get(),
             carrierCount
         );
-    }
-
-    private static boolean isVirtual(Thread thread) {
-        try {
-            return thread.isVirtual();
-        } catch (NoSuchMethodError e) {
-            return false;
-        }
     }
 
     private static int availableCarriers() {

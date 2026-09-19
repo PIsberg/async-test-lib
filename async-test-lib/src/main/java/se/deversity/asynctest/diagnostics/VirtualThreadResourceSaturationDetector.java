@@ -136,7 +136,7 @@ public final class VirtualThreadResourceSaturationDetector {
         ResourceState s = state(name, thread);
         if (s == null) return;
         raise(s.peakWaiting, s.waiting.incrementAndGet());
-        if (isVirtual(thread)) {
+        if (thread.isVirtual()) {
             raise(s.peakVirtualWaiting, s.virtualWaiting.incrementAndGet());
             s.virtualAcquirers.add(thread.threadId());
         } else {
@@ -175,7 +175,7 @@ public final class VirtualThreadResourceSaturationDetector {
         ResourceState s = state(name, thread);
         if (s == null) return;
         s.waiting.decrementAndGet();
-        if (isVirtual(thread)) s.virtualWaiting.decrementAndGet();
+        if (thread.isVirtual()) s.virtualWaiting.decrementAndGet();
     }
 
     private @Nullable ResourceState state(String name, Thread thread) {
@@ -188,14 +188,6 @@ public final class VirtualThreadResourceSaturationDetector {
         int current = peak.get();
         while (observed > current && !peak.compareAndSet(current, observed)) {
             current = peak.get();
-        }
-    }
-
-    private static boolean isVirtual(Thread thread) {
-        try {
-            return thread.isVirtual();
-        } catch (Throwable t) {
-            return false;   // pre-21 runtime: no virtual threads to find
         }
     }
 

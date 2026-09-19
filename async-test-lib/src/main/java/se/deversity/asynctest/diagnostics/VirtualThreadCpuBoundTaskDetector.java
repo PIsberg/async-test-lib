@@ -61,7 +61,7 @@ public class VirtualThreadCpuBoundTaskDetector {
         TaskRecord(String taskName, Thread thread) {
             this.taskName = taskName;
             this.threadId = thread.threadId();
-            this.isVirtual = isVirtual(thread);
+            this.isVirtual = thread.isVirtual();
             this.startNanos = System.nanoTime();
             this.lastYieldNanos = this.startNanos;
         }
@@ -195,14 +195,6 @@ public class VirtualThreadCpuBoundTaskDetector {
             maxObservedMs.get(),
             cpuThresholdMs
         );
-    }
-
-    private static boolean isVirtual(Thread thread) {
-        try {
-            return thread.isVirtual();
-        } catch (NoSuchMethodError e) {
-            return false;
-        }
     }
 
     /**
