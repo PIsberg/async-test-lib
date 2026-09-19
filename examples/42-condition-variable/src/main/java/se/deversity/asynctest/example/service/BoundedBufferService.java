@@ -123,6 +123,9 @@ public class BoundedBufferService {
         try { return buffer.size(); } finally { lock.unlock(); }
     }
 
+    /** {@return the lock both conditions belong to, so a test can register it with a detector} */
+    public ReentrantLock getLock() { return lock; }
+
     public Condition getNotEmpty() { return notEmpty; }
     public Condition getNotFull()  { return notFull; }
 }

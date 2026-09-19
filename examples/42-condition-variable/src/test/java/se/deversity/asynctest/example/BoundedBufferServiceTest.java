@@ -36,8 +36,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * WHY @AsyncTest DETECTS THE ISSUE:
  * Each worker parks a consumer on an empty buffer and then produces one item. The service
  * reports every await, await exit and signal to ConditionVariableDetector through its Probe.
- * When the run is analysed the consumers are still inside their await on notEmpty, with the
- * item in the buffer: a stuck waiter, which the detector reports.
+ * When the run is analysed the lock shows the consumers still parked on notEmpty while the
+ * predicate registered for it (the buffer is not empty) holds: a stuck waiter, which the
+ * detector reports.
  *
  * WHAT IS NOT REPORTED:
  * A signal made while nobody waits, and a poll that times out, are how correct code runs,
@@ -84,8 +85,11 @@ class BoundedBufferServiceTest {
     void testBuffer_concurrent_detectsStrandedConsumer() throws InterruptedException {
         ConditionVariableDetector monitor = AsyncTestContext.conditionVariableDetector();
         BoundedBufferService buffer = new BoundedBufferService(probe(monitor));
-        monitor.registerCondition(buffer.getNotEmpty(), "not-empty");
-        monitor.registerCondition(buffer.getNotFull(), "not-full");
+        // Registered with the lock that made each condition, and with what a consumer on
+        // not-empty waits for: the lock shows who is parked, the predicate says whether they
+        // should be. A consumer parked while the buffer is empty is idle, not stuck.
+        monitor.registerCondition(buffer.getLock(), buffer.getNotEmpty(), () -> buffer.size() > 0, "not-empty");
+        monitor.registerCondition(buffer.getLock(), buffer.getNotFull(), "not-full");
 
         // A consumer that is already waiting when the item arrives. Daemon, and bounded well
         // past the end of the run, so a stranded consumer neither hangs the build nor leaves

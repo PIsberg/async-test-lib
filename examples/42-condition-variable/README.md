@@ -21,12 +21,15 @@ forever, with `poll(timeout)` it returns empty-handed while the item sits there.
 1. Remove `@Disabled` from `testBuffer_concurrent_detectsStrandedConsumer`.
 2. Run: `mvn test` or `./gradlew test`
 3. The test fails with a **ConditionVariableDetector** report listing stuck
-   waiters on `not-empty`: threads still inside `await()` when the run was
-   analysed.
+   waiters on `not-empty`: threads the lock shows still parked in `await()` when
+   the run was analysed, while the buffer they wait on is not empty.
 
-The service reports every await, await exit and signal through its `Probe`, so
-the detector pairs each wait with the signals that could have woken it. A signal
-made while nobody waits, and a poll that times out, are how correct code runs,
-and neither is reported on its own.
+The test registers each condition with the lock that made it and, for
+`not-empty`, the predicate a consumer waits for (`buffer.size() > 0`). Only a
+thread parked while that predicate holds is a finding: a consumer parked on an
+empty buffer is idle, and a condition registered without its lock or predicate
+gets notes, not findings. The service also reports every await, await exit and
+signal through its `Probe`; a signal made while nobody waits, and a poll that
+times out, are how correct code runs, and neither is reported.
 
 **Fix**: `put()` signals `notEmpty`, the condition its consumers wait on.

@@ -51,7 +51,7 @@ public class ConditionVariableDetectorTest {
     }
 
     @Test
-    void testStuckWaiterDetection() {
+    void testRecordedAwaitWithoutItsLockIsANoteNotAFinding() {
         ConditionVariableDetector detector = new ConditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         Condition condition = lock.newCondition();
@@ -65,12 +65,15 @@ public class ConditionVariableDetectorTest {
         ConditionVariableDetector.ConditionVariableReport report = detector.analyze();
         
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect stuck waiter");
-        assertFalse(report.stuckWaiters.isEmpty(), "Should report stuck waiters");
+        // #666: registered without its lock, only the body's own records say it waits.
+        assertFalse(report.hasIssues(), "A recorded await with no lock to read it from is a note: " + report);
+        assertTrue(report.stuckWaiters.isEmpty(), report.toString());
+        assertTrue(report.unconfirmedWaits.stream().anyMatch(n -> n.contains("still waiting at analysis")),
+                report.toString());
     }
 
     @Test
-    void testMissingSignalDetection() {
+    void testMissingSignalIsANoteNotAFinding() {
         ConditionVariableDetector detector = new ConditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         Condition condition = lock.newCondition();
@@ -86,8 +89,9 @@ public class ConditionVariableDetectorTest {
         ConditionVariableDetector.ConditionVariableReport report = detector.analyze();
         
         assertNotNull(report);
-        assertTrue(report.hasIssues(), "Should detect missing signals");
-        assertFalse(report.missingSignals.isEmpty(), "Should report missing signals");
+        // #666: decided only from the body's own recordAwaitExit(..., false), so a note.
+        assertFalse(report.hasIssues(), "A missing signal is the body's declaration: " + report);
+        assertFalse(report.unsignalledWakeups.isEmpty(), "It is still shown as a note");
     }
 
     @Test
@@ -163,7 +167,7 @@ public class ConditionVariableDetectorTest {
         
         detector.registerCondition(condition, "test-condition");
         
-        // A thread left inside an await: the stuck-waiter finding
+        // A thread left inside an await, with no lock registered: a note (#666)
         detector.recordAwait(condition, "test-condition");
         
         ConditionVariableDetector.ConditionVariableReport report = detector.analyze();
@@ -171,6 +175,8 @@ public class ConditionVariableDetectorTest {
         String reportStr = report.toString();
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("CONDITION VARIABLE ISSUES DETECTED"), "Report should have header");
-        assertTrue(reportStr.contains("Stuck Waiters"), "Report should mention stuck waiters");
+        assertTrue(reportStr.contains("not a finding") && reportStr.contains("still waiting at analysis"),
+                "Report should show the unconfirmed waiter as a note: " + reportStr);
+        assertFalse(reportStr.contains("Stuck Waiters"), reportStr);
     }
 }

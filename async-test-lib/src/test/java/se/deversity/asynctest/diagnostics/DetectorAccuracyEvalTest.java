@@ -3049,8 +3049,8 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("condition variable: the producer signals the wrong condition, the consumer stays parked (true positive)")
-    void conditionVariableFiresWhenTheProducerSignalsTheWrongCondition() throws InterruptedException {
+    @DisplayName("condition variable, registered without its lock: the stranded consumer is a note, not a finding (pinned false negative, #666)")
+    void conditionVariableWithoutItsLockOnlyNotesTheStrandedConsumer() throws InterruptedException {
         ConditionVariableDetector detector = new ConditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
@@ -3071,9 +3071,11 @@ class DetectorAccuracyEvalTest {
 
         try {
             var report = detector.analyze();
-            assertTrue(report.hasIssues(),
-                    "the item is ready but the consumer is parked on a condition nobody signalled. "
-                            + "Report:\n" + report);
+            assertFalse(report.hasIssues(),
+                    "without the lock only the body's records say the consumer waits, so the "
+                            + "stranded consumer is a note; register the lock and predicate to have it "
+                            + "decided (#666). Report:\n" + report);
+            assertTrue(report.toString().contains("still waiting at analysis"), report.toString());
         } finally {
             consumer.interrupt();
             consumer.join();
@@ -3305,8 +3307,8 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
-    @DisplayName("condition variable, lock registered: a consumer parked on the condition nobody signalled fires from the lock (true positive)")
-    void conditionVariableWithItsLockFiresOnAConsumerTheLockShowsParked() throws InterruptedException {
+    @DisplayName("condition variable, lock but no predicate: a consumer the lock shows parked is a note, not a finding (pinned false negative, #666)")
+    void conditionVariableWithItsLockOnlyNotesAConsumerTheLockShowsParked() throws InterruptedException {
         ConditionVariableDetector detector = new ConditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         java.util.concurrent.locks.Condition notEmpty = lock.newCondition();
@@ -3327,9 +3329,11 @@ class DetectorAccuracyEvalTest {
 
         try {
             var report = detector.analyze();
-            assertTrue(report.hasIssues() && report.toString().contains("read from the lock"),
-                    "the lock shows the consumer parked on not-empty, which nobody signalled (#592). "
-                            + "Report:\n" + report);
+            assertFalse(report.hasIssues(),
+                    "an idle consumer parks the same way, so without the predicate the lock's count "
+                            + "is a note (#666). Report:\n" + report);
+            assertTrue(report.toString().contains("read from the lock"),
+                    "the note still says what the lock showed (#592). Report:\n" + report);
         } finally {
             consumer.interrupt();
             consumer.join();

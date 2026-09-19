@@ -273,15 +273,16 @@ class Phase02MonitorDetectorsFixtureTest {
 
         // The producer signals the wrong condition: the consumer waits on notEmpty, the item
         // arrives and notFull is signalled, so the consumer is still parked when the run is
-        // analysed. A signal with nobody waiting, or an await that times out, would not be
-        // reported: both are how correct code runs (#583).
+        // analysed, while the predicate it waits for holds. A signal with nobody waiting, or an
+        // await that times out, would not be reported: both are how correct code runs (#583).
+        // Only the lock-and-predicate registration decides a stuck waiter (#666).
         var conditionDetector = AsyncTestContext.conditionVariableDetector();
         ReentrantLock lock = new ReentrantLock();
         Condition notEmpty = lock.newCondition();
         Condition notFull = lock.newCondition();
-        conditionDetector.registerCondition(notEmpty, "fixture-not-empty");
-        conditionDetector.registerCondition(notFull, "fixture-not-full");
         boolean[] itemReady = {false};
+        conditionDetector.registerCondition(lock, notEmpty, () -> itemReady[0], "fixture-not-empty");
+        conditionDetector.registerCondition(lock, notFull, "fixture-not-full");
         java.util.concurrent.CountDownLatch waiting = new java.util.concurrent.CountDownLatch(1);
         Thread consumer = new Thread(() -> {
             lock.lock();
