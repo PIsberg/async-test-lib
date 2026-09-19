@@ -49,9 +49,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * <p>The unobserved-release twins are the ones that matter most. A lock whose release the weaver
  * cannot see would make every later write on that thread look guarded, which hides a real race; a
  * spinlock therefore counts as held only while its flag still reads locked with this thread as its
- * holder. Some twins release through a call the weaver does not substitute ({@code setPlain},
- * {@code updateAndGet}, {@code getAndUpdate}, {@code getAndSetRelease}); the rest release through
- * a form it observes since #658 and must fire all the same.
+ * holder. The twins release through a form the weaver observes, since #658 or since #667
+ * ({@code setPlain}, {@code updateAndGet}, {@code getAndUpdate}, {@code getAndSetRelease}), and
+ * must fire all the same: the write after the release is unguarded whichever form ended the hold.
  *
  * <p>Separate class because {@code selfAttach} is at-most-once per JVM and this class needs
  * {@code fields=true,collections=true}; {@code reuseForks=false} gives it its own fork.
@@ -417,36 +417,73 @@ class SpinLockWeavingTest {
                 "VarHandle.compareAndSet(this, 0, 1), released by a void getAndSet(this, 0)");
     }
 
+    // ---- Releases woven since #667 --------------------------------------------------------------
+
     @Test
-    @DisplayName("an AtomicBoolean spinlock released by setPlain, which is not woven, guards nothing after it")
+    @DisplayName("an AtomicBoolean spinlock released by setPlain guards the table (#667)")
+    void atomicBooleanSpinLockReleasedBySetPlainGuardsTheTable() throws Exception {
+        assertQuiet(drive(new AtomicSpinLockTableBean()::growBooleanReleasedBySetPlain),
+                "AtomicBoolean.compareAndSet(false, true), released by setPlain(false)");
+    }
+
+    @Test
+    @DisplayName("an AtomicInteger spinlock released by updateAndGet guards the table (#667)")
+    void atomicIntegerSpinLockReleasedByUpdateAndGetGuardsTheTable() throws Exception {
+        assertQuiet(drive(new AtomicSpinLockTableBean()::growIntegerReleasedByUpdateAndGet),
+                "AtomicInteger.compareAndSet(0, 1), released by updateAndGet(held -> 0)");
+    }
+
+    @Test
+    @DisplayName("an updater spinlock released by getAndUpdate guards the table (#667)")
+    void updaterSpinLockReleasedByGetAndUpdateGuardsTheTable() throws Exception {
+        assertQuiet(drive(new UpdaterSpinLockTableBean()::growReleasedByGetAndUpdate),
+                "AtomicIntegerFieldUpdater.compareAndSet(this, 0, 1), released by getAndUpdate");
+    }
+
+    @Test
+    @DisplayName("a VarHandle spinlock released by getAndSetRelease guards the table (#667)")
+    void varHandleSpinLockReleasedByGetAndSetReleaseGuardsTheTable() throws Exception {
+        assertQuiet(drive(new SpinLockTableBean()::growReleasedByGetAndSetRelease),
+                "VarHandle.compareAndSet(this, 0, 1), released by a void getAndSetRelease(this, 0)");
+    }
+
+    @Test
+    @DisplayName("a pre-attach updater spinlock released by getAndUpdate guards the table (#667)")
+    void preAttachUpdaterSpinLockReleasedByGetAndUpdateGuardsTheTable() throws Exception {
+        assertQuiet(drive(new PreAttachUpdaterSpinLockTableBean()::growReleasedByGetAndUpdate),
+                "a pre-attach AtomicIntegerFieldUpdater, released by getAndUpdate");
+    }
+
+    @Test
+    @DisplayName("an AtomicBoolean spinlock released by setPlain guards nothing after it")
     void atomicBooleanSpinLockReleasedBySetPlainDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new AtomicSpinLockTableBean()::growBooleanThenWriteAfterSetPlain));
     }
 
     @Test
-    @DisplayName("an AtomicInteger spinlock released by updateAndGet, which is not woven, guards nothing after it")
+    @DisplayName("an AtomicInteger spinlock released by updateAndGet guards nothing after it")
     void atomicIntegerSpinLockReleasedByUpdateAndGetDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new AtomicSpinLockTableBean()::growIntegerThenWriteAfterUpdateAndGet));
     }
 
     @Test
-    @DisplayName("an updater spinlock released by getAndUpdate, which is not woven, guards nothing after it")
+    @DisplayName("an updater spinlock released by getAndUpdate guards nothing after it")
     void updaterSpinLockReleasedByGetAndUpdateDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new UpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
     }
 
     @Test
-    @DisplayName("a VarHandle spinlock released by getAndSetRelease, which is not woven, guards nothing after it")
+    @DisplayName("a VarHandle spinlock released by getAndSetRelease guards nothing after it")
     void varHandleSpinLockReleasedByGetAndSetReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new SpinLockTableBean()::growThenWriteAfterGetAndSetRelease));
     }
 
     @Test
-    @DisplayName("a pre-attach updater spinlock released by getAndUpdate, which is not woven, guards nothing after it")
+    @DisplayName("a pre-attach updater spinlock released by getAndUpdate guards nothing after it")
     void preAttachUpdaterSpinLockReleasedByGetAndUpdateDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
                 drive(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
@@ -471,6 +508,73 @@ class SpinLockWeavingTest {
                 bean::acquireHandle, bean::releaseHandleByGetAndSet,
                 () -> lockFor(new Class<?>[] {Object.class, String.class}, bean,
                         SpinLockHandOffBean.class.getName() + ".busy"));
+    }
+
+    @Test
+    @DisplayName("a woven AtomicBoolean.setPlain release between a contender's check and its swap revokes the holder (#667)")
+    void wovenSetPlainReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("AtomicBoolean.setPlain(false)",
+                bean::acquireBoolean, bean::releaseBooleanBySetPlain,
+                () -> lockFor(new Class<?>[] {Object.class}, bean.booleanLock()));
+    }
+
+    @Test
+    @DisplayName("a woven AtomicInteger.getAndUpdate release between a contender's check and its swap revokes the holder (#667)")
+    void wovenGetAndUpdateReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("AtomicInteger.getAndUpdate(held -> 0)",
+                bean::acquireInteger, bean::releaseIntegerByGetAndUpdate,
+                () -> lockFor(new Class<?>[] {Object.class}, bean.intLock()));
+    }
+
+    @Test
+    @DisplayName("a woven AtomicInteger.accumulateAndGet release between a contender's check and its swap revokes the holder (#667)")
+    void wovenAccumulateAndGetReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("AtomicInteger.accumulateAndGet(0, (held, zero) -> zero)",
+                bean::acquireInteger, bean::releaseIntegerByAccumulateAndGet,
+                () -> lockFor(new Class<?>[] {Object.class}, bean.intLock()));
+    }
+
+    @Test
+    @DisplayName("a woven VarHandle.getAndSetRelease statement release between a contender's check and its swap revokes the holder (#667)")
+    void wovenGetAndSetReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("VarHandle.getAndSetRelease(this, 0)",
+                bean::acquireHandle, bean::releaseHandleByGetAndSetRelease,
+                () -> lockFor(new Class<?>[] {Object.class, String.class}, bean,
+                        SpinLockHandOffBean.class.getName() + ".busy"));
+    }
+
+    @Test
+    @DisplayName("a woven VarHandle.getAndBitwiseAnd release between a contender's check and its swap revokes the holder (#667)")
+    void wovenGetAndBitwiseAndReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("VarHandle.getAndBitwiseAnd(this, 0)",
+                bean::acquireHandle, bean::releaseHandleByGetAndBitwiseAnd,
+                () -> lockFor(new Class<?>[] {Object.class, String.class}, bean,
+                        SpinLockHandOffBean.class.getName() + ".busy"));
+    }
+
+    @Test
+    @DisplayName("a woven VarHandle.compareAndExchangeRelease release between a contender's check and its swap revokes the holder (#667)")
+    void wovenCompareAndExchangeReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("VarHandle.compareAndExchangeRelease(this, 1, 0)",
+                bean::acquireHandle, bean::releaseHandleByCompareAndExchangeRelease,
+                () -> lockFor(new Class<?>[] {Object.class, String.class}, bean,
+                        SpinLockHandOffBean.class.getName() + ".busy"));
+    }
+
+    @Test
+    @DisplayName("a woven updater getAndUpdate release between a contender's check and its swap revokes the holder (#667)")
+    void wovenUpdaterGetAndUpdateReleaseInTheCheckToSwapWindowRevokesTheHolder() throws Exception {
+        SpinLockHandOffBean bean = new SpinLockHandOffBean();
+        assertWovenReleaseBetweenCheckAndSwapRevokes("AtomicIntegerFieldUpdater.getAndUpdate(this, held -> 0)",
+                bean::acquireUpdater, bean::releaseUpdaterByGetAndUpdate,
+                () -> lockFor(new Class<?>[] {Object.class, String.class}, bean,
+                        SpinLockHandOffBean.class.getName() + ".updaterBusy"));
     }
 
     /** A lock lookup through the package-private registry, which only reflection can reach from here. */

@@ -32,9 +32,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <h2>Why a hold is re-confirmed rather than trusted</h2>
  *
- * <p>The weaver sees the acquire and the common releases, but not every release: an
- * {@code updateAndGet}, a {@code getAndSetRelease}, an {@code Unsafe} store, or a release in code it
- * does not weave (the full list is below). A lock that stayed declared after such a release would make every later
+ * <p>The weaver sees the acquire and the releases through the call forms listed below, but not
+ * every release: an {@code Unsafe} store, a reflective write, or a release in code it does not
+ * weave (the full list is below). A lock that stayed declared after such a release would make every later
  * access on that thread look guarded, and if every thread did the same, a real race would read as
  * consistently locked. That is the one direction this library must never take. So each
  * {@link Lock} is {@link HeldLocks.Revocable}: whenever the thread's lockset is read, the lock is
@@ -76,30 +76,29 @@ import java.util.concurrent.atomic.AtomicReference;
  * winner's swap and stamp write fall. The weaver therefore substitutes the value-returning releases
  * too, not only {@code set} and the swap back: a plain write of the flag field; on a
  * {@code VarHandle} {@code set}, {@code setVolatile}, {@code setRelease}, {@code setOpaque},
- * {@code compareAndSet}, {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange},
- * {@code weakCompareAndSet} and {@code weakCompareAndSetPlain}; on an updater {@code compareAndSet},
- * {@code set}, {@code lazySet}, {@code getAndSet}, {@code getAndAdd}, {@code addAndGet},
- * {@code getAndDecrement}, {@code decrementAndGet} and {@code weakCompareAndSet}; on an
- * {@code AtomicInteger} {@code compareAndSet}, {@code set}, {@code lazySet}, {@code getAndSet},
- * {@code getAndAdd}, {@code addAndGet}, {@code getAndDecrement}, {@code decrementAndGet},
- * {@code compareAndExchange}, {@code weakCompareAndSetPlain} and {@code weakCompareAndSetVolatile};
- * on an {@code AtomicBoolean} {@code compareAndSet}, {@code getAndSet}, {@code set},
- * {@code lazySet}, {@code compareAndExchange}, {@code weakCompareAndSetPlain} and
- * {@code weakCompareAndSetVolatile}.
+ * {@code compareAndSet}, every weak swap, and {@code getAndSet}, {@code getAndAdd},
+ * {@code compareAndExchange} and the {@code getAndBitwiseOr}/{@code And}/{@code Xor} forms, each
+ * with its {@code Acquire} and {@code Release} variant (#658, #667); on an updater
+ * {@code compareAndSet}, {@code set}, {@code lazySet}, {@code getAndSet}, {@code getAndAdd},
+ * {@code addAndGet}, {@code getAndDecrement}, {@code decrementAndGet}, {@code weakCompareAndSet},
+ * {@code getAndUpdate}, {@code updateAndGet}, {@code getAndAccumulate} and
+ * {@code accumulateAndGet}; on an {@code AtomicInteger} the same forms without the receiver, plus
+ * {@code setPlain}, {@code setOpaque}, {@code setRelease}, {@code compareAndExchange} and its
+ * {@code Acquire}/{@code Release} variants, and every weak swap including the deprecated
+ * {@code weakCompareAndSet}; on an {@code AtomicBoolean} {@code compareAndSet}, {@code getAndSet},
+ * {@code set}, {@code lazySet}, {@code setPlain}, {@code setOpaque}, {@code setRelease},
+ * {@code compareAndExchange} and its variants, and every weak swap. For {@code getAndUpdate} and
+ * {@code getAndAccumulate} the new value is not on the stack, so the hook reads the flag once the
+ * call returns; another thread's acquire landing first reads as locked and leaves the hold to
+ * re-confirmation.
  *
  * <p>The window stays open for a release through anything else, which is not observed:
  * <ul>
- *   <li>on a {@code VarHandle}: the {@code Acquire}/{@code Release} variants of
- *       {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange} and
- *       {@code weakCompareAndSet}, the {@code getAndBitwise} forms, and any call site whose declared
- *       result is neither {@code int} nor void (an {@code Object} or {@code long} result);</li>
- *   <li>on an updater or {@code AtomicInteger}: {@code getAndUpdate}, {@code updateAndGet},
- *       {@code getAndAccumulate}, {@code accumulateAndGet}, and the deprecated
- *       {@code weakCompareAndSet} on {@code AtomicInteger};</li>
- *   <li>on either atomic: {@code setPlain}, {@code setOpaque}, {@code setRelease}, and the
- *       deprecated {@code AtomicBoolean.weakCompareAndSet};</li>
+ *   <li>on a {@code VarHandle}: any call site whose declared result is neither {@code int} nor
+ *       void (an {@code Object} or {@code long} result);</li>
  *   <li>a release through a subclass-typed call site, {@code Unsafe}, JNI, reflection, or in code
- *       the agent does not weave (the JDK, excluded packages, classes it could not retransform).</li>
+ *       the agent does not weave (the JDK, excluded packages, classes it could not retransform).
+ *       These stay out of reach by design: there is no call site in woven code to substitute.</li>
  * </ul>
  * Both halves still have to fall in windows a few instructions wide on two threads at once, and
  * each ends the moment the winner declares, but for those forms it is a real false negative.

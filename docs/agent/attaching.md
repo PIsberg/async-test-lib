@@ -141,8 +141,8 @@ Three limits worth knowing before switching it on:
   copy each woven loader resolves and to nothing else (#668).
   A spinlock is never trusted past what its flag says: it counts as held only while the flag
   still reads locked and this thread is its last observed winner, re-checked whenever the lockset
-  is read. A release through a call the weaver does not substitute (`updateAndGet`,
-  `getAndSetRelease`, `setPlain`, `Unsafe`, unwoven code) therefore drops the lock before the
+  is read. A release through a call the weaver does not substitute (`Unsafe`, JNI, reflection, a
+  `VarHandle` call site with an `Object` or `long` result, unwoven code) therefore drops the lock before the
   next access is recorded instead of leaving it declared, which would make every later write on
   that thread look guarded. One narrow window survives for those forms: a release landing between
   another thread's check of the flag and its swap leaves the old holder passing that re-check until
@@ -158,8 +158,16 @@ Three limits worth knowing before switching it on:
   took that generation nor owned the one before it: the previous owner's late access is a hand-off,
   and when no access showed who owned generation 0, the thread that offered the object to the
   queue it was polled from is that owner, from the `collections=true` hooks for `Queue.offer`/`add`
-  and `BlockingQueue.offer`/`put`. Only when no such offer was recorded, which includes every reference `getAndSet` and
-  JCTools take, does every thread get that benefit
+  and `BlockingQueue.offer`/`put`, and from `fields=true` for a reference slot (`set`, `lazySet`,
+  `setRelease` or `compareAndSet` on an `AtomicReference`, an `AtomicReferenceFieldUpdater`, an
+  `AtomicReferenceArray` or an instance-field `VarHandle`) and a JCTools `offer`/`relaxedOffer`.
+  `BlockingQueue.take` is a take like `poll`, and `drainTo` drops every offer recorded into the
+  drained queue, so an element taken or drained and put back through an unwoven call cannot keep
+  naming its first offerer ([#664](https://github.com/PIsberg/async-test-lib/issues/664)); a
+  removal not reported as a take (`remove`, `removeIf`, unwoven code) still can. Only when no
+  such offer was recorded does every thread get that benefit: an element that entered through an
+  unwoven method (`addAll`, `Deque.offerFirst`, `push`, or code outside `includes`), or a
+  `VarHandle` take from a static field or an array element
   ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
   so writes under them still report: `Unsafe.compareAndSwapInt`, and an
   `AtomicIntegerFieldUpdater` created before the agent attached whose target cannot be read (a

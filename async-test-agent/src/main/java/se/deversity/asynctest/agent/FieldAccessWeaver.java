@@ -37,6 +37,15 @@ import org.jspecify.annotations.Nullable;
  * never requested. It also adds no fields, methods or interfaces, which is the invariant that keeps
  * {@code disableClassFormatChanges()} valid on the dynamic-attach path.
  *
+ * <p>The call-site rewrites keep the same rules. A substituted atomic, updater or {@code VarHandle}
+ * call becomes one {@code INVOKESTATIC} that consumes exactly the operands the call consumed and
+ * returns its result, plus one {@code POP} where a {@code VarHandle} call site declared no result,
+ * and one {@code CHECKCAST} to the declared type after a {@code VarHandle} reference
+ * {@code getAndSet} (#664). A JCTools {@code offer} is preceded by {@code DUP2, SWAP} and a static
+ * call consuming the two copies; a {@code poll} is bracketed by a {@code DUP} of the queue before it
+ * and {@code DUP_X1, SWAP} and a static call after it, which leave exactly the polled element. None
+ * of them branch.
+ *
  * <h4>What is deliberately not woven</h4>
  * <ul>
  *   <li>Fields whose <em>owner</em> is the JDK, Byte Buddy or this library. Without this a
@@ -63,6 +72,105 @@ final class FieldAccessWeaver {
     private static final String INT_UPDATER = "java/util/concurrent/atomic/AtomicIntegerFieldUpdater";
     private static final String ATOMIC_BOOLEAN = "java/util/concurrent/atomic/AtomicBoolean";
     private static final String ATOMIC_INTEGER = "java/util/concurrent/atomic/AtomicInteger";
+
+    /** Descriptors of the int functional forms, which the update and accumulate calls take. */
+    private static final String UNARY = "Ljava/util/function/IntUnaryOperator;";
+    private static final String BINARY = "Ljava/util/function/IntBinaryOperator;";
+
+    /**
+     * The {@code AtomicIntegerFieldUpdater} calls substituted, by name, with the exact descriptor
+     * each is matched on; the hook is the name plus {@code IntUpdater} (#558, #658, #667).
+     */
+    private static final java.util.Map<String, String> INT_UPDATER_FORMS = java.util.Map.ofEntries(
+            java.util.Map.entry("compareAndSet", "(Ljava/lang/Object;II)Z"),
+            java.util.Map.entry("weakCompareAndSet", "(Ljava/lang/Object;II)Z"),
+            java.util.Map.entry("set", "(Ljava/lang/Object;I)V"),
+            java.util.Map.entry("lazySet", "(Ljava/lang/Object;I)V"),
+            java.util.Map.entry("getAndSet", "(Ljava/lang/Object;I)I"),
+            java.util.Map.entry("getAndAdd", "(Ljava/lang/Object;I)I"),
+            java.util.Map.entry("addAndGet", "(Ljava/lang/Object;I)I"),
+            java.util.Map.entry("getAndDecrement", "(Ljava/lang/Object;)I"),
+            java.util.Map.entry("decrementAndGet", "(Ljava/lang/Object;)I"),
+            java.util.Map.entry("getAndUpdate", "(Ljava/lang/Object;" + UNARY + ")I"),
+            java.util.Map.entry("updateAndGet", "(Ljava/lang/Object;" + UNARY + ")I"),
+            java.util.Map.entry("getAndAccumulate", "(Ljava/lang/Object;I" + BINARY + ")I"),
+            java.util.Map.entry("accumulateAndGet", "(Ljava/lang/Object;I" + BINARY + ")I"));
+
+    /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
+    private static final java.util.Map<String, String> ATOMIC_BOOLEAN_FORMS = java.util.Map.ofEntries(
+            java.util.Map.entry("compareAndSet", "(ZZ)Z"),
+            java.util.Map.entry("getAndSet", "(Z)Z"),
+            java.util.Map.entry("set", "(Z)V"),
+            java.util.Map.entry("lazySet", "(Z)V"),
+            java.util.Map.entry("setPlain", "(Z)V"),
+            java.util.Map.entry("setOpaque", "(Z)V"),
+            java.util.Map.entry("setRelease", "(Z)V"),
+            java.util.Map.entry("compareAndExchange", "(ZZ)Z"),
+            java.util.Map.entry("compareAndExchangeAcquire", "(ZZ)Z"),
+            java.util.Map.entry("compareAndExchangeRelease", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSet", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetPlain", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetVolatile", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetAcquire", "(ZZ)Z"),
+            java.util.Map.entry("weakCompareAndSetRelease", "(ZZ)Z"));
+
+    /** The {@code AtomicInteger} calls substituted; the hook is the name plus {@code AtomicInteger}. */
+    private static final java.util.Map<String, String> ATOMIC_INTEGER_FORMS = java.util.Map.ofEntries(
+            java.util.Map.entry("compareAndSet", "(II)Z"),
+            java.util.Map.entry("set", "(I)V"),
+            java.util.Map.entry("lazySet", "(I)V"),
+            java.util.Map.entry("setPlain", "(I)V"),
+            java.util.Map.entry("setOpaque", "(I)V"),
+            java.util.Map.entry("setRelease", "(I)V"),
+            java.util.Map.entry("getAndSet", "(I)I"),
+            java.util.Map.entry("getAndAdd", "(I)I"),
+            java.util.Map.entry("addAndGet", "(I)I"),
+            java.util.Map.entry("getAndDecrement", "()I"),
+            java.util.Map.entry("decrementAndGet", "()I"),
+            java.util.Map.entry("compareAndExchange", "(II)I"),
+            java.util.Map.entry("compareAndExchangeAcquire", "(II)I"),
+            java.util.Map.entry("compareAndExchangeRelease", "(II)I"),
+            java.util.Map.entry("weakCompareAndSet", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetPlain", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetVolatile", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetAcquire", "(II)Z"),
+            java.util.Map.entry("weakCompareAndSetRelease", "(II)Z"),
+            java.util.Map.entry("getAndUpdate", "(" + UNARY + ")I"),
+            java.util.Map.entry("updateAndGet", "(" + UNARY + ")I"),
+            java.util.Map.entry("getAndAccumulate", "(I" + BINARY + ")I"),
+            java.util.Map.entry("accumulateAndGet", "(I" + BINARY + ")I"));
+
+    /** Internal names of the reference slots whose offers and takes are substituted (#664). */
+    private static final String ATOMIC_REFERENCE = "java/util/concurrent/atomic/AtomicReference";
+    private static final String REFERENCE_UPDATER =
+            "java/util/concurrent/atomic/AtomicReferenceFieldUpdater";
+    private static final String REFERENCE_ARRAY = "java/util/concurrent/atomic/AtomicReferenceArray";
+
+    /** The erased {@code Object} descriptor element the reference-slot tables are written in. */
+    private static final String OBJECT = "Ljava/lang/Object;";
+
+    /** The {@code AtomicReference} calls substituted; the hook is the name plus {@code AtomicReference}. */
+    private static final java.util.Map<String, String> ATOMIC_REFERENCE_FORMS = java.util.Map.of(
+            "set", "(" + OBJECT + ")V",
+            "lazySet", "(" + OBJECT + ")V",
+            "setRelease", "(" + OBJECT + ")V",
+            "compareAndSet", "(" + OBJECT + OBJECT + ")Z",
+            "getAndSet", "(" + OBJECT + ")" + OBJECT);
+
+    /** The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus {@code ReferenceUpdater}. */
+    private static final java.util.Map<String, String> REFERENCE_UPDATER_FORMS = java.util.Map.of(
+            "set", "(" + OBJECT + OBJECT + ")V",
+            "lazySet", "(" + OBJECT + OBJECT + ")V",
+            "compareAndSet", "(" + OBJECT + OBJECT + OBJECT + ")Z",
+            "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT);
+
+    /** The {@code AtomicReferenceArray} calls substituted; the hook is the name plus {@code ReferenceArray}. */
+    private static final java.util.Map<String, String> REFERENCE_ARRAY_FORMS = java.util.Map.of(
+            "set", "(I" + OBJECT + ")V",
+            "lazySet", "(I" + OBJECT + ")V",
+            "setRelease", "(I" + OBJECT + ")V",
+            "compareAndSet", "(I" + OBJECT + OBJECT + ")Z",
+            "getAndSet", "(I" + OBJECT + ")" + OBJECT);
 
     /**
      * Owner prefixes (in internal, slash-separated form) whose fields are never woven.
@@ -189,6 +297,39 @@ final class FieldAccessWeaver {
             }
         }
         return true;
+    }
+
+    /** A call substitution: the registry hook and the static descriptor it is invoked with. */
+    record Substitution(String hook, String descriptor) { }
+
+    /**
+     * {@return the substitution the weaver makes for an {@code invokevirtual} of
+     * {@code owner.name(descriptor)}, or {@code null} when the call is left alone}
+     *
+     * <p>For tests: the hook is emitted by name and descriptor, so a table entry whose hook the
+     * registry lacks compiles, weaves, and fails only when the user's code runs the call, with a
+     * {@code NoSuchMethodError}.
+     */
+    static @Nullable Substitution spinLockSubstitution(String owner, String name,
+                                                       String descriptor) {
+        String hook = FieldAccessMethodVisitor.spinLockHook(Opcodes.INVOKEVIRTUAL, owner, name,
+                descriptor);
+        return hook == null ? null : new Substitution(hook,
+                FieldAccessMethodVisitor.spinLockHookDescriptor(owner, hook, descriptor));
+    }
+
+    /**
+     * {@return the reference-slot substitution the weaver makes for an {@code invokevirtual} of
+     * {@code owner.name(descriptor)}, or {@code null} when the call is left alone (#664)}
+     *
+     * <p>For tests, for the reason {@link #spinLockSubstitution} gives.
+     */
+    static @Nullable Substitution referenceSlotSubstitution(String owner, String name,
+                                                            String descriptor) {
+        String hook = FieldAccessMethodVisitor.referenceSlotHook(Opcodes.INVOKEVIRTUAL, owner, name,
+                descriptor);
+        return hook == null ? null : new Substitution(hook,
+                FieldAccessMethodVisitor.referenceSlotHookDescriptor(owner, hook, descriptor));
     }
 
     /**
@@ -439,13 +580,45 @@ final class FieldAccessWeaver {
             String boundField = noteAtomicBinding(name);
             String hook = weaveFieldInstructions ? spinLockHook(opcode, owner, name, descriptor)
                     : null;
+            String slotHook = weaveFieldInstructions && hook == null
+                    ? referenceSlotHook(opcode, owner, name, descriptor) : null;
+            boolean messagePassingOffer = weaveFieldInstructions
+                    && isMessagePassingQueueCall(opcode, owner, name, descriptor, true);
+            boolean messagePassingPoll = weaveFieldInstructions
+                    && isMessagePassingQueueCall(opcode, owner, name, descriptor, false);
+            if (messagePassingOffer) {
+                // [queue, element] -> DUP2 -> SWAP -> [queue, element, element, queue]: the offer is
+                // published with its container before the queue is asked to accept it (#630, #664),
+                // and the call below still sees exactly its own two operands.
+                super.visitInsn(Opcodes.DUP2);
+                super.visitInsn(Opcodes.SWAP);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "ownershipOffered",
+                        "(Ljava/lang/Object;Ljava/lang/Object;)V", false);
+            }
+            if (messagePassingPoll) {
+                // A copy of the queue waits under the call, for the take below to name it.
+                super.visitInsn(Opcodes.DUP);
+            }
             if (hook != null) {
                 // Same arguments, same result, one static call instead of the virtual one.
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, hook,
                         spinLockHookDescriptor(owner, hook, descriptor), false);
                 dropResultOfVoidCallSite(owner, hook, descriptor);
+            } else if (slotHook != null) {
+                // The same substitution for a reference slot (#664): the hook publishes the offer or
+                // the take with the slot in hand, and returns what the call returned.
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, slotHook,
+                        referenceSlotHookDescriptor(owner, slotHook, descriptor), false);
+                castToCallSiteResult(owner, descriptor);
             } else {
                 super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+            }
+            if (messagePassingPoll) {
+                // [queue, taken] -> DUP_X1 -> SWAP -> [taken, taken, queue] -> call -> [taken].
+                super.visitInsn(Opcodes.DUP_X1);
+                super.visitInsn(Opcodes.SWAP);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "ownershipTaken",
+                        "(Ljava/lang/Object;Ljava/lang/Object;)V", false);
             }
             if (boundField != null && "findVarHandle".equals(name)
                     && descriptor.endsWith(")Ljava/lang/invoke/VarHandle;")) {
@@ -465,7 +638,8 @@ final class FieldAccessWeaver {
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "atomicUpdaterBound",
                         "(Ljava/lang/Object;Ljava/lang/String;)V", false);
             }
-            if (weaveFieldInstructions && isReferenceTake(opcode, owner, name, descriptor)) {
+            if (weaveFieldInstructions && slotHook == null
+                    && isReferenceTake(opcode, owner, name, descriptor)) {
                 // The returned reference is on top of the stack: hand a copy to the registry and
                 // leave the original where the caller expects it. Stack-neutral and branch-free.
                 super.visitInsn(Opcodes.DUP);
@@ -495,19 +669,17 @@ final class FieldAccessWeaver {
          *   <li>an {@code AtomicInteger} used as the lock: {@code compareAndSet}, {@code set},
          *       {@code lazySet} (#558).</li>
          * </ul>
-         * The value-returning releases are substituted too (#658), because a release the weaver does
-         * not see leaves a window re-confirmation cannot close (see {@code SpinLocks}): on the
-         * handle {@code getAndSet}, {@code getAndAdd}, {@code compareAndExchange} (with an
-         * {@code int} or void call-site result), {@code weakCompareAndSet} and
-         * {@code weakCompareAndSetPlain}; on the updater {@code getAndSet}, {@code getAndAdd},
-         * {@code addAndGet}, {@code getAndDecrement}, {@code decrementAndGet} and
-         * {@code weakCompareAndSet}; on {@code AtomicInteger} the same six plus
-         * {@code compareAndExchange} and {@code weakCompareAndSetPlain}/{@code Volatile} in place of
-         * {@code weakCompareAndSet}; on {@code AtomicBoolean} {@code compareAndExchange} and
-         * {@code weakCompareAndSetPlain}/{@code Volatile}.
-         * Every hook consumes exactly the stack the original call did and returns what it returned.
-         * A release through any other call is not substituted; the registry re-confirms a hold
-         * against the flag instead of relying on seeing it, and {@code SpinLocks} lists those forms.
+         * The value-returning releases are substituted too (#658, #667), because a release the
+         * weaver does not see leaves a window re-confirmation cannot close (see {@code SpinLocks}):
+         * on the handle every {@code getAnd} form ({@code getAndSet}, {@code getAndAdd} and the
+         * {@code getAndBitwise} forms, each with its {@code Acquire} and {@code Release} variant),
+         * every {@code compareAndExchange} (all with an {@code int} or void call-site result) and
+         * every weak swap; on the atomics and the updater the forms their tables list, which
+         * include {@code setPlain}, {@code setOpaque}, {@code setRelease}, the update and
+         * accumulate forms and the deprecated {@code weakCompareAndSet}. Every hook consumes exactly
+         * the stack the original call did and returns what it returned. A release through any other
+         * call is not substituted; the registry re-confirms a hold against the flag instead of
+         * relying on seeing it, and {@code SpinLocks} lists those forms.
          */
         private static @Nullable String spinLockHook(int opcode, String owner, String name,
                                                      String descriptor) {
@@ -516,62 +688,25 @@ final class FieldAccessWeaver {
             }
             return switch (owner) {
                 case VAR_HANDLE -> varHandleHook(name, descriptor);
-                case INT_UPDATER -> switch (name) {
-                    case "compareAndSet" -> "(Ljava/lang/Object;II)Z".equals(descriptor)
-                            ? "compareAndSetIntUpdater" : null;
-                    case "set" -> "(Ljava/lang/Object;I)V".equals(descriptor) ? "setIntUpdater" : null;
-                    case "lazySet" -> "(Ljava/lang/Object;I)V".equals(descriptor)
-                            ? "lazySetIntUpdater" : null;
-                    case "getAndSet" -> "(Ljava/lang/Object;I)I".equals(descriptor)
-                            ? "getAndSetIntUpdater" : null;
-                    case "getAndAdd" -> "(Ljava/lang/Object;I)I".equals(descriptor)
-                            ? "getAndAddIntUpdater" : null;
-                    case "addAndGet" -> "(Ljava/lang/Object;I)I".equals(descriptor)
-                            ? "addAndGetIntUpdater" : null;
-                    case "getAndDecrement" -> "(Ljava/lang/Object;)I".equals(descriptor)
-                            ? "getAndDecrementIntUpdater" : null;
-                    case "decrementAndGet" -> "(Ljava/lang/Object;)I".equals(descriptor)
-                            ? "decrementAndGetIntUpdater" : null;
-                    case "weakCompareAndSet" -> "(Ljava/lang/Object;II)Z".equals(descriptor)
-                            ? "weakCompareAndSetIntUpdater" : null;
-                    default -> null;
-                };
-                case ATOMIC_BOOLEAN -> switch (name) {
-                    case "compareAndSet" -> "(ZZ)Z".equals(descriptor)
-                            ? "compareAndSetAtomicBoolean" : null;
-                    case "getAndSet" -> "(Z)Z".equals(descriptor) ? "getAndSetAtomicBoolean" : null;
-                    case "set" -> "(Z)V".equals(descriptor) ? "setAtomicBoolean" : null;
-                    case "lazySet" -> "(Z)V".equals(descriptor) ? "lazySetAtomicBoolean" : null;
-                    case "compareAndExchange" -> "(ZZ)Z".equals(descriptor)
-                            ? "compareAndExchangeAtomicBoolean" : null;
-                    case "weakCompareAndSetPlain" -> "(ZZ)Z".equals(descriptor)
-                            ? "weakCompareAndSetPlainAtomicBoolean" : null;
-                    case "weakCompareAndSetVolatile" -> "(ZZ)Z".equals(descriptor)
-                            ? "weakCompareAndSetVolatileAtomicBoolean" : null;
-                    default -> null;
-                };
-                case ATOMIC_INTEGER -> switch (name) {
-                    case "compareAndSet" -> "(II)Z".equals(descriptor)
-                            ? "compareAndSetAtomicInteger" : null;
-                    case "set" -> "(I)V".equals(descriptor) ? "setAtomicInteger" : null;
-                    case "lazySet" -> "(I)V".equals(descriptor) ? "lazySetAtomicInteger" : null;
-                    case "getAndSet" -> "(I)I".equals(descriptor) ? "getAndSetAtomicInteger" : null;
-                    case "getAndAdd" -> "(I)I".equals(descriptor) ? "getAndAddAtomicInteger" : null;
-                    case "addAndGet" -> "(I)I".equals(descriptor) ? "addAndGetAtomicInteger" : null;
-                    case "getAndDecrement" -> "()I".equals(descriptor)
-                            ? "getAndDecrementAtomicInteger" : null;
-                    case "decrementAndGet" -> "()I".equals(descriptor)
-                            ? "decrementAndGetAtomicInteger" : null;
-                    case "compareAndExchange" -> "(II)I".equals(descriptor)
-                            ? "compareAndExchangeAtomicInteger" : null;
-                    case "weakCompareAndSetPlain" -> "(II)Z".equals(descriptor)
-                            ? "weakCompareAndSetPlainAtomicInteger" : null;
-                    case "weakCompareAndSetVolatile" -> "(II)Z".equals(descriptor)
-                            ? "weakCompareAndSetVolatileAtomicInteger" : null;
-                    default -> null;
-                };
+                case INT_UPDATER -> atomicHook(INT_UPDATER_FORMS, name, descriptor, "IntUpdater");
+                case ATOMIC_BOOLEAN -> atomicHook(ATOMIC_BOOLEAN_FORMS, name, descriptor, "AtomicBoolean");
+                case ATOMIC_INTEGER -> atomicHook(ATOMIC_INTEGER_FORMS, name, descriptor, "AtomicInteger");
                 default -> null;
             };
+        }
+
+        /**
+         * {@return {@code name + suffix}, the registry hook for this atomic call, when its descriptor
+         * is the one {@code forms} lists for {@code name}, else {@code null}}
+         *
+         * <p>Every hook on an atomic is named for the method it replaces and the type it replaces it
+         * on, so the tables below hold only the exact descriptor each form is matched on. An exact
+         * match is what makes the substitution stack-neutral: the hook takes the receiver and then
+         * exactly these parameters, and returns exactly this result.
+         */
+        private static @Nullable String atomicHook(java.util.Map<String, String> forms, String name,
+                                                   String descriptor, String suffix) {
+            return descriptor.equals(forms.get(name)) ? name + suffix : null;
         }
 
         /** {@return the {@code VarHandle} hook for an {@code int} instance-field call, or {@code null}} */
@@ -582,22 +717,24 @@ final class FieldAccessWeaver {
             int firstSemicolon = descriptor.indexOf(';');
             String tail = descriptor.substring(firstSemicolon + 1);
             // compareAndSet and the weak swaps are declared boolean, so their descriptor is fixed.
-            // getAndSet, getAndAdd and compareAndExchange are declared Object: the call site says
+            // The getAnd forms and compareAndExchange are declared Object: the call site says
             // (int) when the result is used and void when it is a statement (#658); any other
             // result type is left alone.
             boolean intOrVoid = tail.endsWith(")I") || tail.endsWith(")V");
             return switch (name) {
-                case "compareAndSet" -> "II)Z".equals(tail) ? "compareAndSetInt" : null;
-                case "weakCompareAndSet" -> "II)Z".equals(tail) ? "weakCompareAndSetInt" : null;
-                case "weakCompareAndSetPlain" -> "II)Z".equals(tail) ? "weakCompareAndSetPlainInt" : null;
-                case "compareAndExchange" -> tail.startsWith("II)") && intOrVoid
-                        ? "compareAndExchangeInt" : null;
-                case "getAndSet" -> tail.startsWith("I)") && intOrVoid ? "getAndSetInt" : null;
-                case "getAndAdd" -> tail.startsWith("I)") && intOrVoid ? "getAndAddInt" : null;
-                case "set" -> "I)V".equals(tail) ? "setInt" : null;
-                case "setVolatile" -> "I)V".equals(tail) ? "setVolatileInt" : null;
-                case "setRelease" -> "I)V".equals(tail) ? "setReleaseInt" : null;
-                case "setOpaque" -> "I)V".equals(tail) ? "setOpaqueInt" : null;
+                case "compareAndSet", "weakCompareAndSet", "weakCompareAndSetPlain",
+                     "weakCompareAndSetAcquire", "weakCompareAndSetRelease" ->
+                        "II)Z".equals(tail) ? name + "Int" : null;
+                case "compareAndExchange", "compareAndExchangeAcquire", "compareAndExchangeRelease" ->
+                        tail.startsWith("II)") && intOrVoid ? name + "Int" : null;
+                case "getAndSet", "getAndSetAcquire", "getAndSetRelease",
+                     "getAndAdd", "getAndAddAcquire", "getAndAddRelease",
+                     "getAndBitwiseOr", "getAndBitwiseOrAcquire", "getAndBitwiseOrRelease",
+                     "getAndBitwiseAnd", "getAndBitwiseAndAcquire", "getAndBitwiseAndRelease",
+                     "getAndBitwiseXor", "getAndBitwiseXorAcquire", "getAndBitwiseXorRelease" ->
+                        tail.startsWith("I)") && intOrVoid ? name + "Int" : null;
+                case "set", "setVolatile", "setRelease", "setOpaque" ->
+                        "I)V".equals(tail) ? name + "Int" : null;
                 default -> null;
             };
         }
@@ -611,17 +748,19 @@ final class FieldAccessWeaver {
          */
         private static String spinLockHookDescriptor(String owner, String hook, String descriptor) {
             if (VAR_HANDLE.equals(owner)) {
-                return switch (hook) {
-                    case "compareAndSetInt", "weakCompareAndSetInt", "weakCompareAndSetPlainInt" ->
-                            "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z";
-                    case "compareAndExchangeInt" -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)I";
-                    case "getAndSetInt", "getAndAddInt" -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)I";
-                    default -> "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V";
-                };
+                if (hook.startsWith("compareAndSet") || hook.startsWith("weakCompareAndSet")) {
+                    return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z";
+                }
+                if (hook.startsWith("compareAndExchange")) {
+                    return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)I";
+                }
+                if (hook.startsWith("getAnd")) {
+                    return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)I";
+                }
+                return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I)V";
             }
             return "(L" + owner + ";" + descriptor.substring(1);
         }
-
         /**
          * Pops the value a {@code VarHandle} hook returns when its call site declared no result.
          *
@@ -639,40 +778,138 @@ final class FieldAccessWeaver {
         }
 
         /**
-         * {@return whether this call swaps a reference out of an atomic slot}
+         * {@return the registry hook that replaces this reference-slot call, or {@code null}}
+         *
+         * <p>A reference slot is a container of one, and netty moves a chunk between magazines
+         * through one (#555): stored with {@code set}, {@code lazySet} or a compare-and-set, and
+         * taken with {@code getAndSet}. Substituting both ends puts the slot in the registry's hand
+         * at each, so a take-first generation can be matched to the offer that filled the slot
+         * (#664). The atomic calls are matched on their exact erased descriptors. A
+         * {@code VarHandle} call qualifies only with one object coordinate and a reference value,
+         * every operand a reference, which is the instance-field shape; a static field or an array
+         * element has a different operand count, and its {@code getAndSet} keeps the
+         * container-less take below.
+         */
+        private static @Nullable String referenceSlotHook(int opcode, String owner, String name,
+                                                          String descriptor) {
+            if (opcode != Opcodes.INVOKEVIRTUAL) {
+                return null;
+            }
+            return switch (owner) {
+                case ATOMIC_REFERENCE -> atomicHook(ATOMIC_REFERENCE_FORMS, name, descriptor,
+                        "AtomicReference");
+                case REFERENCE_UPDATER -> atomicHook(REFERENCE_UPDATER_FORMS, name, descriptor,
+                        "ReferenceUpdater");
+                case REFERENCE_ARRAY -> atomicHook(REFERENCE_ARRAY_FORMS, name, descriptor,
+                        "ReferenceArray");
+                case VAR_HANDLE -> referenceHandleHook(name, descriptor);
+                default -> null;
+            };
+        }
+
+        /** {@return the {@code VarHandle} hook for a reference instance-field call, or {@code null}} */
+        private static @Nullable String referenceHandleHook(String name, String descriptor) {
+            Type[] arguments = Type.getArgumentTypes(descriptor);
+            for (Type argument : arguments) {
+                if (!isReference(argument)) {
+                    return null;
+                }
+            }
+            Type result = Type.getReturnType(descriptor);
+            boolean matches = switch (name) {
+                case "set", "setVolatile", "setRelease", "setOpaque" ->
+                        arguments.length == 2 && result.getSort() == Type.VOID;
+                case "compareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
+                case "getAndSet" -> arguments.length == 2 && isReference(result);
+                default -> false;
+            };
+            return matches ? name + "ReferenceHandle" : null;
+        }
+
+        private static boolean isReference(Type type) {
+            return type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY;
+        }
+
+        /**
+         * {@return the static descriptor of a reference-slot hook}
+         *
+         * <p>An atomic's hook takes the atomic and then the call's own erased parameters. A
+         * {@code VarHandle} hook takes the handle and one {@code Object} per operand, and returns
+         * {@code Object} for a {@code getAndSet}, which {@link #castToCallSiteResult} narrows back.
+         */
+        private static String referenceSlotHookDescriptor(String owner, String hook,
+                                                          String descriptor) {
+            if (!VAR_HANDLE.equals(owner)) {
+                return "(L" + owner + ";" + descriptor.substring(1);
+            }
+            String result = hook.startsWith("getAndSet") ? "Ljava/lang/Object;"
+                    : hook.startsWith("compareAndSet") ? "Z" : "V";
+            return "(Ljava/lang/invoke/VarHandle;"
+                    + "Ljava/lang/Object;".repeat(Type.getArgumentTypes(descriptor).length)
+                    + ")" + result;
+        }
+
+        /**
+         * Casts a {@code VarHandle} reference hook's {@code Object} result to the type the call
+         * site declared.
+         *
+         * <p>A signature-polymorphic call site is verified against its own declared result, and no
+         * cast follows it in the bytecode, so the substituted {@code Object} must be narrowed where
+         * the call was. The handle's own invocation makes the same checked conversion, so the cast
+         * fails exactly when the original call would have. {@code CHECKCAST} is stack-neutral and
+         * branch-free, adds a constant-pool entry and no member, and resolves its class when it
+         * runs, never inside the agent. An atomic's hook already returns what the call returned.
+         */
+        private void castToCallSiteResult(String owner, String descriptor) {
+            if (!VAR_HANDLE.equals(owner)) {
+                return;
+            }
+            Type result = Type.getReturnType(descriptor);
+            if (isReference(result) && !"java/lang/Object".equals(result.getInternalName())) {
+                super.visitTypeInsn(Opcodes.CHECKCAST, result.getInternalName());
+            }
+        }
+
+        /**
+         * {@return whether this is an offer ({@code offering}) or a poll on JCTools'
+         * {@code MessagePassingQueue}}
+         *
+         * <p>JCTools' lock-free queue interface, which netty and others shade under their own
+         * package, so it is recognised by the tail of its name. netty's buffer recycler hands a
+         * pooled buffer to the next thread through it. Only calls typed by the interface match,
+         * with {@code offer}/{@code relaxedOffer} taking one element and {@code poll}/
+         * {@code relaxedPoll} returning one, which is the erased shape of every JCTools queue.
+         */
+        private static boolean isMessagePassingQueueCall(int opcode, String owner, String name,
+                                                         String descriptor, boolean offering) {
+            if (opcode != Opcodes.INVOKEINTERFACE
+                    || !owner.endsWith("jctools/queues/MessagePassingQueue")) {
+                return false;
+            }
+            return offering
+                    ? ("offer".equals(name) || "relaxedOffer".equals(name))
+                            && "(Ljava/lang/Object;)Z".equals(descriptor)
+                    : ("poll".equals(name) || "relaxedPoll".equals(name))
+                            && "()Ljava/lang/Object;".equals(descriptor);
+        }
+
+        /**
+         * {@return whether this call swaps a reference out of a {@code VarHandle} slot the
+         * substitution above does not cover}
          *
          * <p>{@code getAndSet} returns the value it replaced, and that value is no longer in the
-         * slot, so the slot hands it to this thread and to no other. That is how netty moves a
-         * chunk out of a magazine's next-in-line slot before using it without the magazine's lock
-         * (#555); without seeing the take, every such use reads as a race with the previous owner.
-         * Only the reference-returning forms count, because only an object can have an owner. A
-         * {@code VarHandle} call is signature-polymorphic, so its descriptor is whatever the call
-         * site declared; the return type is what decides.
+         * slot, so the slot hands it to this thread and to no other (#555). The atomic slots and a
+         * {@code VarHandle} on an instance field are substituted and report the take with their
+         * container; what is left is a {@code VarHandle} on a static field or an array element,
+         * where the take is still reported, without a container. A {@code VarHandle} call is
+         * signature-polymorphic, so its descriptor is whatever the call site declared; the return
+         * type is what decides.
          */
         private static boolean isReferenceTake(int opcode, String owner, String name,
                                                 String descriptor) {
-            if (opcode == Opcodes.INVOKEINTERFACE && owner.endsWith("jctools/queues/MessagePassingQueue")
-                    && ("relaxedPoll".equals(name) || "poll".equals(name))) {
-                // JCTools' lock-free queue interface, which netty and others shade under their own
-                // package: an element polled out of it is taken exactly as from java.util.Queue,
-                // which the collection weaver already reports. netty's buffer recycler hands a
-                // pooled buffer to the next thread this way.
-                int sort = Type.getReturnType(descriptor).getSort();
-                return sort == Type.OBJECT || sort == Type.ARRAY;
-            }
-            if (opcode != Opcodes.INVOKEVIRTUAL || !"getAndSet".equals(name)) {
-                return false;
-            }
-            if (!"java/lang/invoke/VarHandle".equals(owner)
-                    && !"java/util/concurrent/atomic/AtomicReference".equals(owner)
-                    && !"java/util/concurrent/atomic/AtomicReferenceFieldUpdater".equals(owner)
-                    && !"java/util/concurrent/atomic/AtomicReferenceArray".equals(owner)) {
-                return false;
-            }
-            int sort = Type.getReturnType(descriptor).getSort();
-            return sort == Type.OBJECT || sort == Type.ARRAY;
+            return opcode == Opcodes.INVOKEVIRTUAL && "getAndSet".equals(name)
+                    && VAR_HANDLE.equals(owner) && isReference(Type.getReturnType(descriptor));
         }
-
         @Override
         public void visitVarInsn(int opcode, int varIndex) {
             noteConstant(null);

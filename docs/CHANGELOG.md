@@ -19,6 +19,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cannot resolve the library opens nothing. `JdkUpdaterShapeCanaryTest` fails the build when a JDK
   changes the updater implementation's `tclass`/`offset` fields or constructor.
 
+- **The remaining spinlock release forms are observed (#667).** `setPlain`, `setOpaque` and
+  `setRelease` on `AtomicInteger` and `AtomicBoolean`; `getAndUpdate`, `updateAndGet`,
+  `getAndAccumulate` and `accumulateAndGet` on `AtomicInteger` and `AtomicIntegerFieldUpdater`
+  (the two `getAnd` forms read the flag after the call, since the new value is not on the stack);
+  the deprecated `weakCompareAndSet` and the `Acquire`/`Release` swaps on both atomics; and on an
+  `int` `VarHandle` the `Acquire`/`Release` variants of `getAndSet`, `getAndAdd`,
+  `compareAndExchange` and the weak swaps, plus all nine `getAndBitwise` forms. Each is a
+  substituted static hook with the call's own stack shape. A holder releasing through one of
+  them between a contender's flag check and its swap no longer passes re-confirmation until the
+  contender declares. Still unobserved, by design: `Unsafe`, JNI, reflection, subclass-typed call
+  sites, `VarHandle` call sites with an `Object` or `long` result, and unwoven code.
+
+- **Reference-slot and JCTools hand-offs name their owner (#664).** With `fields=true`, `set`,
+  `lazySet`, `setRelease` and `compareAndSet` on `AtomicReference`, `AtomicReferenceFieldUpdater`,
+  `AtomicReferenceArray` and an instance-field `VarHandle` publish an offer with the slot as
+  container, `getAndSet` on them publishes its take with the same container, and JCTools
+  `MessagePassingQueue` `offer`/`relaxedOffer`/`poll`/`relaxedPoll` do the same with the queue. A
+  take-first generation through these paths now names its offerer, so an alias write there fires
+  where every thread used to be excused. With `collections=true`, `BlockingQueue.take` reports a
+  take and both `drainTo` forms drop the offers recorded into the drained queue, which closes the
+  over-report where a stale offer named the wrong owner after an element was taken or drained and
+  put back through an unwoven call. Still excused: elements that entered through unwoven methods
+  (`addAll`, `offerFirst`, `push`, code outside `includes`), removals not reported as a take, and
+  `VarHandle` takes from a static field or an array element. JCTools is matched by name and tested
+  against a stand-in interface; no corpus row runs the real netty or JCTools queue yet.
+
 ## [1.12.1] - 2026-09-17
 
 ### Fixed

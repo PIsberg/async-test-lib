@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AgentConcurrencyUtilHooks;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -114,6 +115,19 @@ class DiscardedOfferWeavingTest {
 
         public static void offerResultDiscarded(boolean added) {
             DISCARDED.add(added);
+        }
+
+        public static Object take(BlockingQueue<Object> q) throws InterruptedException {
+            return q.take();
+        }
+
+        public static int drainTo(BlockingQueue<Object> q, Collection<Object> target) {
+            return q.drainTo(target);
+        }
+
+        public static int drainTo(BlockingQueue<Object> q, Collection<Object> target,
+                                  int maxElements) {
+            return q.drainTo(target, maxElements);
         }
     }
 

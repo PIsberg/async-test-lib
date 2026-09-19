@@ -422,7 +422,13 @@ final class CollectionAccessWeaver {
             Entry.call(BlockingQueue.class, "offer", "offer",
                     Object.class, long.class, TimeUnit.class)
                     .whenResultDiscarded("offerResultDiscarded"),
-            Entry.call(BlockingQueue.class, "poll", "poll", long.class, TimeUnit.class));
+            Entry.call(BlockingQueue.class, "poll", "poll", long.class, TimeUnit.class),
+            // take hands the head over like poll, and drainTo empties the queue without naming
+            // the elements; unwoven, both left stale offers on record (#664).
+            Entry.call(BlockingQueue.class, "take", "take"),
+            Entry.call(BlockingQueue.class, "drainTo", "drainTo", Collection.class),
+            Entry.call(BlockingQueue.class, "drainTo", "drainTo", Collection.class,
+                    int.class));
 
     /**
      * The static table: calls a detector's input maps onto that are not invoked on a receiver.

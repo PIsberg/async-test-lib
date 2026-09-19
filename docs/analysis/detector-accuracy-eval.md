@@ -127,17 +127,25 @@ authority on which row is which - each outcome above is one assertion in it.
   hooks publish the queue's identity with the take. An offer into the container the take came out
   of excuses only the offerer, so an alias write there fires
   (`atomicityAliasAfterAnObservedOfferAndATakeFirstFires`) while the offerer's late write stays
-  silent (`atomicityOfferersLateWriteAfterATakeFirstStaysSilent`). The boundary that remains is a
-  take-first generation with no matching offer, where every foreign access is still excused,
-  alias or not (`atomicityOfferToAnotherContainerKeepsTheTakeFirstExcuse`): a reference
-  `getAndSet` and a JCTools `poll`/`relaxedPoll`, whose woven take has no container on the stack
-  and whose offer (`set`, `lazySet`, `compareAndSet`, JCTools `offer`) is not woven at all; an
-  element that entered the queue through an unwoven method (`addAll`, `Deque.offerFirst`, `push`,
-  or code outside the agent's `includes`); and an offer drained into a different container than
-  the take names. The rule can over-report in one shape: an element offered to a queue by one
-  thread, removed by an unwoven call (`BlockingQueue.take`, `remove`, `drainTo`), and put back into
-  the same queue by another thread through an unwoven method before its first observed take. The
-  stale offer then names the first thread, and the second thread's late write reads as an alias.
+  silent (`atomicityOfferersLateWriteAfterATakeFirstStaysSilent`). Since
+  [#664](https://github.com/PIsberg/async-test-lib/issues/664) the reference slots
+  (`AtomicReference`, `AtomicReferenceFieldUpdater`, `AtomicReferenceArray`, an instance-field
+  `VarHandle`) and JCTools `offer`/`poll` publish the same offer and take with their container;
+  `OwnershipOfferWeavingTest` in the agent module pins both directions per shape through woven code.
+  The boundary that remains is a take-first generation with no matching offer, where every
+  foreign access is still excused, alias or not
+  (`atomicityOfferToAnotherContainerKeepsTheTakeFirstExcuse`): an element that entered the
+  queue through an unwoven method (`addAll`, `Deque.offerFirst`, `push`, or code outside the
+  agent's `includes`), a `VarHandle` take from a static field or an array element, and an offer
+  into a different container than the take names. The over-report #630 left open, an element
+  offered by one thread, removed and put back by another through unwoven calls, cannot arise
+  from `BlockingQueue.take` or `drainTo` any more: the take consumes the offer
+  (`atomicityOfferConsumedByAnObservedTakeKeepsTheReAddersWriteSilent`, twin
+  `atomicityAliasAfterAnObservedTakeAndPutBackFires`) and the drain drops every offer into the
+  queue (`atomicityStaleOfferDroppedByADrainKeepsTheTakeFirstExcuse`, twins
+  `atomicityOfferAfterADrainStillNamesTheOwner` and `atomicityDrainOfAnotherContainerKeepsTheOffer`).
+  It can still arise when the removal is not reported as a take: `Queue.remove()`,
+  `remove(Object)`, `removeIf`, or any removal in code outside `includes`.
   Only the most recent offer counts, so any woven offer in between clears it.
   Measured on corpus-eval lane one (local JDK 26), before #630 changed closed generations and not
   re-run since: the rule withdrew exclusivity in 7 analyses, all

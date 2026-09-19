@@ -57,9 +57,22 @@ public final class PreAttachUpdaterSpinLockTableBean {
         return seen == null ? 0 : seen.length;
     }
 
+    /** Replaces the table under the spinlock, released by {@code getAndUpdate} (#667). */
+    public int growReleasedByGetAndUpdate() {
+        if (BUSY.compareAndSet(this, 0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                BUSY.getAndUpdate(this, held -> 0);
+            }
+        }
+        Object[] seen = table;
+        return seen == null ? 0 : seen.length;
+    }
+
     /**
-     * The unobserved twin: {@code getAndUpdate} releases through a call the weaver does not
-     * substitute, and {@link #afterRelease} is replaced with nothing held.
+     * The twin: {@code getAndUpdate} releases (woven since #667), and {@link #afterRelease} is
+     * replaced with nothing held.
      */
     public int growThenWriteAfterGetAndUpdate() {
         if (BUSY.compareAndSet(this, 0, 1)) {

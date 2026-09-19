@@ -23,6 +23,16 @@ public final class LockedMessagePassingQueue<T> implements MessagePassingQueue<T
     }
 
     @Override
+    public boolean offer(T element) {
+        return relaxedOffer(element);
+    }
+
+    @Override
+    public T poll() {
+        return relaxedPoll();
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public synchronized T relaxedPoll() {
         if (size == 0) {

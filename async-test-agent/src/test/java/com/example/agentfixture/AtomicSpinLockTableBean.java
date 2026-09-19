@@ -11,8 +11,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>The twins acquire through a shape the weaver observes, release, then write a second table
  * outside the lock. That write must not read as guarded by a lock the thread no longer holds,
- * whether the release is observed ({@code compareAndExchange}, {@code decrementAndGet}, #658) or
- * not ({@code setPlain}, {@code updateAndGet}).
+ * whichever form the release takes ({@code compareAndExchange}, {@code decrementAndGet}, #658;
+ * {@code setPlain}, {@code updateAndGet}, #667).
  */
 public final class AtomicSpinLockTableBean {
 
@@ -132,7 +132,31 @@ public final class AtomicSpinLockTableBean {
         return length(table);
     }
 
-    /** The unobserved twin: a {@code setPlain(false)} release, then an unguarded write. */
+    /** {@code compareAndSet(false, true)}, released by {@code setPlain(false)} (#667). */
+    public int growBooleanReleasedBySetPlain() {
+        if (busy.compareAndSet(false, true)) {
+            try {
+                table = next(table);
+            } finally {
+                busy.setPlain(false);
+            }
+        }
+        return length(table);
+    }
+
+    /** {@code compareAndSet(0, 1)} on an {@code AtomicInteger}, released by {@code updateAndGet} (#667). */
+    public int growIntegerReleasedByUpdateAndGet() {
+        if (intBusy.compareAndSet(0, 1)) {
+            try {
+                table = next(table);
+            } finally {
+                intBusy.updateAndGet(held -> 0);
+            }
+        }
+        return length(table);
+    }
+
+    /** The twin: a {@code setPlain(false)} release (woven since #667), then an unguarded write. */
     public int growBooleanThenWriteAfterSetPlain() {
         if (busy.compareAndSet(false, true)) {
             try {
@@ -145,7 +169,7 @@ public final class AtomicSpinLockTableBean {
         return length(afterRelease);
     }
 
-    /** The unobserved twin: an {@code updateAndGet} release, then an unguarded write. */
+    /** The twin: an {@code updateAndGet} release (woven since #667), then an unguarded write. */
     public int growIntegerThenWriteAfterUpdateAndGet() {
         if (intBusy.compareAndSet(0, 1)) {
             try {

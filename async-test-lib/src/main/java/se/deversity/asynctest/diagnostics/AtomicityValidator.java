@@ -877,8 +877,9 @@ public class AtomicityValidator {
      *
      * <p>Only an object with no recorded state yet is remembered, and only the most recent offer:
      * an object some access or take already described has an owner the stream showed. The offer
-     * is dropped at the next take of the object, whatever container that take names. Identity or
-     * container 0 records nothing.
+     * is dropped at the next take of the object, whatever container that take names, and when its
+     * container is drained ({@link #recordContainerDrained}, #664). Identity or container 0
+     * records nothing.
      *
      * @param identity  {@code System.identityHashCode} of the object offered
      * @param container {@code System.identityHashCode} of the queue it was offered to
@@ -890,6 +891,27 @@ public class AtomicityValidator {
             return;
         }
         offers.put(identity, new Offer(threadId, container));
+    }
+
+    /**
+     * Records that {@code threadId} drained the container with identity {@code container}, a
+     * {@code BlockingQueue.drainTo} whose elements the stream does not name one by one.
+     *
+     * <p>Drops every offer recorded into that container (#664). Without this an element offered,
+     * drained, and put back by another thread through a call nothing observes keeps its first
+     * offer, and a take-first generation then names the first offerer as owner, so the re-adder's
+     * own late write reads as an alias. Dropping an offer only falls back to the #557 excuse, which
+     * can withhold a finding and never adds one. Container 0 records nothing.
+     *
+     * @param container {@code System.identityHashCode} of the drained queue
+     * @param threadId  the thread that drained it
+     * @since 1.12.2
+     */
+    public void recordContainerDrained(int container, long threadId) {
+        if (!enabled || container == 0 || offers.isEmpty()) {
+            return;
+        }
+        offers.values().removeIf(offer -> offer.container == container);
     }
 
     /** {@return the ownership generation {@code identity} is currently in, 0 before any take} */

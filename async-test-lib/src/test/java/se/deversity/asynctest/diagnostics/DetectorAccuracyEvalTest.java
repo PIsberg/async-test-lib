@@ -790,6 +790,97 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("atomicity: an offer the queue was later drained of does not name the owner of a take-first generation (#664)")
+    void atomicityStaleOfferDroppedByADrainKeepsTheTakeFirstExcuse() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        validator.recordOwnershipOffered(90, 7, 1);
+        // Thread 3 drains queue 7 and puts the chunk back through a call nothing observes.
+        validator.recordContainerDrained(7, 3);
+        takeFirstThenLateWrite(validator, field, 3);
+        assertFalse(validator.analyze().hasIssues(),
+                "Thread 1's offer went out with the drain; the chunk polled by thread 2 was put "
+                        + "back by thread 3, so thread 3's late write is a hand-off. A stale offer "
+                        + "naming thread 1 would make it an alias: the over-report #664 describes");
+    }
+
+    @Test
+    @DisplayName("atomicity: an offer recorded after a drain still names the owner of a take-first generation (#664)")
+    void atomicityOfferAfterADrainStillNamesTheOwner() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        validator.recordOwnershipOffered(90, 7, 1);
+        validator.recordContainerDrained(7, 3);
+        validator.recordOwnershipOffered(90, 7, 1);
+        takeFirstThenLateWrite(validator, field, 3);
+        assertTrue(validator.analyze().hasIssues(),
+                "Thread 1 offered the chunk again after the drain, so it owns generation 0 and "
+                        + "thread 3, which neither offered nor took it, wrote through an alias. A "
+                        + "drain drops the offers before it, not the ones after");
+    }
+
+    @Test
+    @DisplayName("atomicity: draining another container keeps the offer (#664)")
+    void atomicityDrainOfAnotherContainerKeepsTheOffer() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        validator.recordOwnershipOffered(90, 7, 1);
+        validator.recordContainerDrained(8, 3);
+        takeFirstThenLateWrite(validator, field, 3);
+        assertTrue(validator.analyze().hasIssues(),
+                "Queue 8 was drained, not queue 7: thread 1's offer into queue 7 still names "
+                        + "generation 0's owner, and thread 3's write is an alias");
+    }
+
+    @Test
+    @DisplayName("atomicity: an offer consumed by an observed take does not outlive it when the element is put back (#664)")
+    void atomicityOfferConsumedByAnObservedTakeKeepsTheReAddersWriteSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        validator.recordOwnershipOffered(90, 7, 1);
+        // The woven BlockingQueue.take: thread 3 takes the chunk and puts it back unobserved.
+        validator.recordOwnershipTaken(90, 7, 3);
+        takeFirstThenLateWrite(validator, field, 3);
+        assertFalse(validator.analyze().hasIssues(),
+                "Thread 3 took generation 1 and put the chunk back; thread 2 took generation 2, "
+                        + "so thread 3 owned the generation before and its late write is a hand-off");
+    }
+
+    @Test
+    @DisplayName("atomicity: after an observed take and put-back, a third thread's write still fires (#664)")
+    void atomicityAliasAfterAnObservedTakeAndPutBackFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        String field = "chunk.allocated";
+        validator.markInvocationStart();
+        validator.recordOwnershipOffered(90, 7, 1);
+        validator.recordOwnershipTaken(90, 7, 3);
+        takeFirstThenLateWrite(validator, field, 6);
+        assertTrue(validator.analyze().hasIssues(),
+                "Thread 6 neither took generation 2 (thread 2) nor owned generation 1 (thread 3); "
+                        + "its write under a lock thread 2 never held is an alias");
+    }
+
+    /**
+     * A take out of container 7 by thread 2, its unlocked write, a write by {@code lateWriter}
+     * under its own lock, then two more takes that close the generation.
+     */
+    private static void takeFirstThenLateWrite(AtomicityValidator validator, String field,
+                                               long lateWriter) {
+        validator.recordOwnershipTaken(90, 7, 2);
+        agentAccess(validator, field, true, 2, NO_LOCKS, 90);
+        agentAccess(validator, field, true, lateWriter, WRITE_LOCK, 90);
+        validator.recordOwnershipTaken(90, 7, 4);
+        agentAccess(validator, field, true, 4, NO_LOCKS, 90);
+        validator.markInvocationStart();
+        validator.recordOwnershipTaken(90, 7, 5);
+        agentAccess(validator, field, true, 5, NO_LOCKS, 90);
+    }
+
+    @Test
     @DisplayName("atomicity: reset forgets which thread took each generation (#630)")
     void atomicityResetForgetsGenerationTakers() {
         AtomicityValidator validator = new AtomicityValidator();

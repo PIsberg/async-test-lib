@@ -112,6 +112,45 @@ class TelemetryBridgeTest {
                 "The late write came from the worker that offered the chunk, a hand-off (#557)");
     }
 
+    @Test
+    void aDrainedEventDropsTheOfferBeforeIt() {
+        // What the BlockingQueue.drainTo hooks publish (#664): the drained queue's identity in the
+        // stored-identity slot. Worker C drained the queue and put the chunk back unobserved, so
+        // its late write is a hand-off; the stale offer from worker A must not name A as owner.
+        AtomicityValidator av = new AtomicityValidator();
+        String field = "com.example.Chunk.allocated";
+        int chunk = 90;
+        int queue = 7;
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activate(av, Set.of(WORKER_A, WORKER_B, WORKER_C, WORKER_D))) {
+            av.markInvocationStart();
+            bridge.onEvent(WORKER_A, TelemetryRegistry.OWNERSHIP_OFFERED, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_C, TelemetryRegistry.OWNERSHIP_DRAINED, false, 0L, false,
+                    Integer.MIN_VALUE, queue, false, 0, 0, queue);
+            bridge.onEvent(WORKER_B, TelemetryRegistry.OWNERSHIP_TAKEN, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_B, field, true, 0L, false, Integer.MIN_VALUE, chunk, false,
+                    0, 0, 0);
+            bridge.onEvent(WORKER_C, field, true, 0x1111L, false, Integer.MIN_VALUE, chunk,
+                    false, 0, 0, 0);
+            bridge.onEvent(WORKER_D, TelemetryRegistry.OWNERSHIP_TAKEN, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_D, field, true, 0L, false, Integer.MIN_VALUE, chunk, false,
+                    0, 0, 0);
+            av.markInvocationStart();
+            bridge.onEvent(WORKER_B, TelemetryRegistry.OWNERSHIP_TAKEN, false, 0L, false,
+                    Integer.MIN_VALUE, chunk, false, 0, 0, queue);
+            bridge.onEvent(WORKER_B, field, true, 0L, false, Integer.MIN_VALUE, chunk, false,
+                    0, 0, 0);
+        }
+        assertFalse(av.analyzeAtomicity().hasIssues(),
+                "The drain dropped worker A's offer, so the take-first generation keeps the #557 "
+                        + "excuse and worker C's write is not an alias. Without the drained event "
+                        + "this is the stream anOfferEventNamesTheOwnerBeforeATakeFirstGeneration "
+                        + "reports");
+    }
+
     private static AtomicityValidator.AtomicityReport offerTakeAndWriteThroughTheBridge(
             long lateWriter) {
         AtomicityValidator av = new AtomicityValidator();
