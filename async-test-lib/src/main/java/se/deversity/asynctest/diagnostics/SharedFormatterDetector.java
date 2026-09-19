@@ -50,10 +50,10 @@ public class SharedFormatterDetector {
      */
     public void recordAccess(Object formatter, String name, Thread thread) {
         if (formatter == null || thread == null) return;
-        String label = name != null ? name
-                : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter);
+        // The fallback label is built only when the instance is first seen.
         FormatterState s = formatters.computeIfAbsent(
-            new IdentityKey(formatter), id -> new FormatterState(label));
+            new IdentityKey(formatter), id -> new FormatterState(name != null ? name
+                        : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter)));
         s.noteAccess(formatter);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());

@@ -413,26 +413,18 @@ public class StructuredTaskScopeMisuseDetector {
             sb.append("  Scopes=").append(totalScopes)
               .append(", Forks=").append(totalForks).append("\n");
 
-            appendSection(sb, "Fork after join (IllegalStateException)", forkAfterJoinIssues);
-            appendSection(sb, "Subtask.get() before join (IllegalStateException)", resultBeforeJoinIssues);
-            appendSection(sb, "Owner-confinement violation (WrongThreadException)", confinementIssues);
-            appendSection(sb, "Scope closed without join (subtasks cancelled)", missingJoinIssues);
-            appendSection(sb, "Subtask.get() after join timeout (subtask cancelled, not SUCCESS)", resultAfterTimeoutIssues);
-            appendSection(sb, "onTimeout() fallback with cancelled subtasks (side effects half-applied)", timeoutSwallowedWarnings);
+            ReportSections.appendSection(sb, "Fork after join (IllegalStateException)", forkAfterJoinIssues);
+            ReportSections.appendSection(sb, "Subtask.get() before join (IllegalStateException)", resultBeforeJoinIssues);
+            ReportSections.appendSection(sb, "Owner-confinement violation (WrongThreadException)", confinementIssues);
+            ReportSections.appendSection(sb, "Scope closed without join (subtasks cancelled)", missingJoinIssues);
+            ReportSections.appendSection(sb, "Subtask.get() after join timeout (subtask cancelled, not SUCCESS)", resultAfterTimeoutIssues);
+            ReportSections.appendSection(sb, "onTimeout() fallback with cancelled subtasks (side effects half-applied)", timeoutSwallowedWarnings);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {

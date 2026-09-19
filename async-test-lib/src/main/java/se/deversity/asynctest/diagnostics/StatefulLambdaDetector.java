@@ -53,10 +53,10 @@ public class StatefulLambdaDetector {
      */
     public void recordExecution(Object lambda, String name, Thread thread) {
         if (lambda == null || thread == null) return;
-        String label = name != null ? name
-                : lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda);
+        // The fallback label is built only when the instance is first seen.
         LambdaState s = lambdas.computeIfAbsent(
-                new IdentityKey(lambda), id -> new LambdaState(label));
+                new IdentityKey(lambda), id -> new LambdaState(name != null ? name
+                        : lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda)));
         s.executingThreadIds.add(thread.threadId());
         s.executingThreadNames.add(thread.getName());
     }

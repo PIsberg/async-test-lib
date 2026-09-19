@@ -63,7 +63,6 @@ public class StructuredConcurrencyMisuseDetector {
         final String scopeType;
         volatile boolean joined = false;
         final AtomicInteger subtaskCount = new AtomicInteger(0);
-        final AtomicInteger resultAccessBeforeJoin = new AtomicInteger(0);
 
         ScopeRecord(String id, String scopeType) {
             this.id = id;
@@ -134,7 +133,6 @@ public class StructuredConcurrencyMisuseDetector {
     public void recordResultAccessed(String scopeId) {
         ScopeRecord rec = openScopes.get(scopeId);
         if (rec != null && !rec.joined) {
-            rec.resultAccessBeforeJoin.incrementAndGet();
             resultAccessedBeforeJoin.add(
                 "Scope " + rec.scopeType + " (id=" + rec.id + "): "
                 + "subtask result accessed before join() — returned value may be incomplete"
@@ -253,10 +251,10 @@ public class StructuredConcurrencyMisuseDetector {
             sb.append(IssueSeverity.HIGH.format())
               .append(": Structured concurrency misuse detected\n");
 
-            appendSection(sb, "Unclosed scopes (resource leak)", unclosedScopes);
-            appendSection(sb, "Scopes closed without join() (subtasks may not have completed)", closedWithoutJoin);
-            appendSection(sb, "Subtask results accessed before join() (unsafe)", resultAccessedBeforeJoin);
-            appendSection(sb, "Empty scopes (no subtasks forked)", emptyScopes);
+            ReportSections.appendSection(sb, "Unclosed scopes (resource leak)", unclosedScopes);
+            ReportSections.appendSection(sb, "Scopes closed without join() (subtasks may not have completed)", closedWithoutJoin);
+            ReportSections.appendSection(sb, "Subtask results accessed before join() (unsafe)", resultAccessedBeforeJoin);
+            ReportSections.appendSection(sb, "Empty scopes (no subtasks forked)", emptyScopes);
 
             if (maxNestingDepth > 3) {
                 sb.append("\n  Warning: max scope nesting depth = ").append(maxNestingDepth)
@@ -268,14 +266,6 @@ public class StructuredConcurrencyMisuseDetector {
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {

@@ -89,7 +89,6 @@ public class SleepInLockDetector {
         }
 
         Thread currentThread = Thread.currentThread();
-        StackTraceElement[] stackTrace = currentThread.getStackTrace();
 
         // Check if current thread holds any locks
         ThreadInfo threadInfo = analyzeThreadLocks(currentThread);
@@ -99,7 +98,7 @@ public class SleepInLockDetector {
                 threadInfo.lockName,
                 currentThread.getName(),
                 sleepDurationMs,
-                stackTrace,
+                currentThread.getStackTrace(),
                 threadInfo.lockType
             ));
         }

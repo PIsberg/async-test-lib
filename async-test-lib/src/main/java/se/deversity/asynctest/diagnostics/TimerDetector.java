@@ -216,7 +216,6 @@ public class TimerDetector {
     }
 
     private final Map<IdentityKey, TimerState> timers = new ConcurrentHashMap<>();
-    private volatile boolean enabled = true;
 
     /**
      * Register a {@code Timer} instance for monitoring.
@@ -225,7 +224,7 @@ public class TimerDetector {
      * @param name  a descriptive label used in reports
      */
     public void registerTimer(java.util.Timer timer, String name) {
-        if (!enabled || timer == null) return;
+        if (timer == null) return;
         timers.putIfAbsent(new IdentityKey(timer), new TimerState(label(timer, name)));
     }
 
@@ -237,7 +236,7 @@ public class TimerDetector {
      * @param taskName a descriptive name for the task
      */
     public void recordTaskSchedule(java.util.Timer timer, String name, String taskName) {
-        if (!enabled || timer == null || taskName == null) return;
+        if (timer == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         state.scheduledTasks.incrementAndGet();
     }
@@ -255,7 +254,7 @@ public class TimerDetector {
      * @param taskName a descriptive name for the task
      */
     public void recordTaskRun(java.util.Timer timer, String name, String taskName) {
-        if (!enabled || timer == null || taskName == null) return;
+        if (timer == null || taskName == null) return;
         RunHistory runs = runsOnThisTimerThread(resolve(timer, name));
         if (runs != null) {
             runs.start(taskName, taskName, System.currentTimeMillis());
@@ -277,7 +276,7 @@ public class TimerDetector {
      */
     public void recordTaskRun(java.util.Timer timer, String name, java.util.TimerTask task,
                               String taskName) {
-        if (!enabled || timer == null || task == null || taskName == null) return;
+        if (timer == null || task == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         RunHistory runs = runsOnThisTimerThread(state);
         if (runs == null) {
@@ -306,7 +305,7 @@ public class TimerDetector {
      */
     public void recordFixedDelayTaskRun(java.util.Timer timer, String name, java.util.TimerTask task,
                                         long periodMs, String taskName) {
-        if (!enabled || timer == null || task == null || taskName == null) return;
+        if (timer == null || task == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         RunHistory runs = runsOnThisTimerThread(state);
         if (runs == null) {
@@ -349,7 +348,7 @@ public class TimerDetector {
      * @param taskName a descriptive name for the task
      */
     public void recordTaskComplete(java.util.Timer timer, String name, String taskName) {
-        if (!enabled || timer == null || taskName == null) return;
+        if (timer == null || taskName == null) return;
         TimerState state = resolve(timer, name);
         state.completedTasks.incrementAndGet();
         endRunOnThisTimerThread(state);
@@ -368,7 +367,7 @@ public class TimerDetector {
      */
     public void recordTaskException(java.util.Timer timer, String name,
                                     String taskName, Throwable exception) {
-        if (!enabled || timer == null) return;
+        if (timer == null) return;
         TimerState state = resolve(timer, name);
         state.failedTasks.incrementAndGet();
         endRunOnThisTimerThread(state);
@@ -387,7 +386,7 @@ public class TimerDetector {
      * @param name  the label (should match registration)
      */
     public void recordTimerCancel(java.util.Timer timer, String name) {
-        if (!enabled || timer == null) return;
+        if (timer == null) return;
         TimerState state = resolve(timer, name);
         state.cancelled = true;
     }

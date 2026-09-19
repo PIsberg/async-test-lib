@@ -44,8 +44,6 @@ public class ThreadFactoryDetector {
     public void recordThreadCreated(ThreadFactory factory, String factoryName, Thread thread) {
         FactoryInfo info = factoryRegistry.get(factory);
         if (info != null) {
-            info.recordThreadCreated(thread);
-            
             // Check for missing exception handler
             Thread.UncaughtExceptionHandler handler = thread.getUncaughtExceptionHandler();
             if (handler == null || handler instanceof ThreadGroup) {
@@ -162,14 +160,9 @@ public class ThreadFactoryDetector {
      */
     static class FactoryInfo {
         final String name;
-        int threadsCreated = 0;
-
         FactoryInfo(String name) {
             this.name = name;
         }
 
-        synchronized void recordThreadCreated(Thread thread) {
-            threadsCreated++;
-        }
     }
 }

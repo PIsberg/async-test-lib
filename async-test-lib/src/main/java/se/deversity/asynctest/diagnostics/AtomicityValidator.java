@@ -611,10 +611,8 @@ public class AtomicityValidator {
                                             boolean isWrite, long threadId, long lockFingerprint,
                                             int ownMonitor, int methodMonitor,
                                             boolean volatileField, int constantTag, int identity) {
-        boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
-                methodMonitor, volatileField, constantTag, identity, threadId);
-        record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
-                ownMonitor, methodMonitor, exclusive, 0, generationOf(identity));
+        recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint,
+                ownMonitor, methodMonitor, volatileField, constantTag, identity, 0);
     }
 
     /**

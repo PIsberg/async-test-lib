@@ -69,7 +69,6 @@ public class CopyOnWriteCollectionDetector {
     }
 
     private final Map<IdentityKey, CoWState> collections = new ConcurrentHashMap<>();
-    private volatile boolean enabled = true;
 
     /**
      * Register a Copy-on-Write collection for monitoring.
@@ -78,7 +77,7 @@ public class CopyOnWriteCollectionDetector {
      * @param name           a descriptive label for reports
      */
     public void registerCollection(Object collection, String name) {
-        if (!enabled || collection == null) return;
+        if (collection == null) return;
         IdentityKey key = new IdentityKey(collection);
         String type = collection.getClass().getSimpleName();
         collections.putIfAbsent(key,
@@ -92,7 +91,7 @@ public class CopyOnWriteCollectionDetector {
      * @param name       the label (should match registration)
      */
     public void recordRead(Object collection, String name) {
-        if (!enabled || collection == null) return;
+        if (collection == null) return;
         resolve(collection, name).readCount.incrementAndGet();
     }
 
@@ -103,7 +102,7 @@ public class CopyOnWriteCollectionDetector {
      * @param name       the label (should match registration)
      */
     public void recordWrite(Object collection, String name) {
-        if (!enabled || collection == null) return;
+        if (collection == null) return;
         resolve(collection, name).writeCount.incrementAndGet();
     }
 

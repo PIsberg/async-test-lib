@@ -69,7 +69,6 @@ public class StableValueMisuseDetector {
 
     private static final class State {
         final AtomicBoolean set = new AtomicBoolean(false);
-        final AtomicInteger setAttempts = new AtomicInteger(0);
         final Set<Long> settingThreadIds = ConcurrentHashMap.newKeySet();
         final AtomicBoolean contentionReported = new AtomicBoolean(false);
     }
@@ -127,7 +126,6 @@ public class StableValueMisuseDetector {
         totalSets.incrementAndGet();
         State s = stateFor(name);
         s.settingThreadIds.add(thread.threadId());
-        s.setAttempts.incrementAndGet();
 
         boolean wasAlreadySet = !s.set.compareAndSet(false, true);
         if (wasAlreadySet) {
@@ -319,24 +317,16 @@ public class StableValueMisuseDetector {
             sb.append("  Reads=").append(totalReads)
               .append(", Sets=").append(totalSets).append("\n");
 
-            appendSection(sb, "Read before set (NoSuchElementException risk)", readBeforeSetIssues);
-            appendSection(sb, "Double set (lost update / IllegalStateException)", doubleSetIssues);
-            appendSection(sb, "Reentrant orElseSet() computation", reentrantIssues);
-            appendSection(sb, "Set contention (wasted supplier work)", contentionWarnings);
+            ReportSections.appendSection(sb, "Read before set (NoSuchElementException risk)", readBeforeSetIssues);
+            ReportSections.appendSection(sb, "Double set (lost update / IllegalStateException)", doubleSetIssues);
+            ReportSections.appendSection(sb, "Reentrant orElseSet() computation", reentrantIssues);
+            ReportSections.appendSection(sb, "Set contention (wasted supplier work)", contentionWarnings);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {

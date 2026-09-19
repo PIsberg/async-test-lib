@@ -79,9 +79,7 @@ public final class HighContentionAtomicDetector {
         final String label;
         final LongAdder totalAttempts  = new LongAdder();
         final LongAdder failedAttempts = new LongAdder();
-        final LongAdder updateCount    = new LongAdder();
         final Set<Long>   threadIds    = ConcurrentHashMap.newKeySet();
-        final Set<String> threadNames  = ConcurrentHashMap.newKeySet();
 
         State(String label) {
             this.label = label;
@@ -133,7 +131,6 @@ public final class HighContentionAtomicDetector {
         if (atomic == null) return;
         State s = stateFor(atomic);
         s.totalAttempts.increment();
-        s.updateCount.increment();
         track(s, Thread.currentThread());
     }
 
@@ -147,7 +144,6 @@ public final class HighContentionAtomicDetector {
 
     private static void track(State s, Thread thread) {
         s.threadIds.add(thread.threadId());
-        s.threadNames.add(thread.getName());
     }
 
     /**

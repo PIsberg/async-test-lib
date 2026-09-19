@@ -71,9 +71,6 @@ public class CompletableFutureCompletionLeakDetector {
          */
         final java.util.concurrent.atomic.AtomicBoolean completed =
                 new java.util.concurrent.atomic.AtomicBoolean(false);
-        volatile @Nullable Long completedTimeNanos = null;
-        volatile @Nullable String completionType = null; // "complete", "completeExceptionally", "cancel"
-        final AtomicInteger completionAttempts = new AtomicInteger(0);
 
         FutureState(CompletableFuture<?> future, String name) {
             this.name = name != null ? name : "future@" + System.identityHashCode(future);
@@ -104,8 +101,6 @@ public class CompletableFutureCompletionLeakDetector {
         future.whenComplete((result, ex) -> {
             if (state.completed.compareAndSet(false, true)) {
                 // Mark as completed via whenComplete (not explicit call)
-                state.completedTimeNanos = System.nanoTime();
-                state.completionType = "whenComplete";
                 leakCount.decrementAndGet();
             }
         });
@@ -138,9 +133,6 @@ public class CompletableFutureCompletionLeakDetector {
         IdentityKey identity = new IdentityKey(future);
         FutureState state = futures.get(identity);
         if (state != null && state.completed.compareAndSet(false, true)) {
-            state.completedTimeNanos = System.nanoTime();
-            state.completionType = completionType;
-            state.completionAttempts.incrementAndGet();
             leakCount.decrementAndGet();
         }
     }

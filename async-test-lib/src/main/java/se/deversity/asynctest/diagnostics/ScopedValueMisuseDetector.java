@@ -237,23 +237,15 @@ public class ScopedValueMisuseDetector {
               .append(", Gets=").append(totalGetCalls)
               .append(", UnboundGets=").append(unboundGetCount).append("\n");
 
-            appendSection(sb, "Unbound get() calls (NoSuchElementException risk)", unboundGetIssues);
-            appendSection(sb, "Re-binding the same ScopedValue in nested scope", rebindIssues);
-            appendSection(sb, "High concurrent binding count (design smell)", highBindingWarnings);
+            ReportSections.appendSection(sb, "Unbound get() calls (NoSuchElementException risk)", unboundGetIssues);
+            ReportSections.appendSection(sb, "Re-binding the same ScopedValue in nested scope", rebindIssues);
+            ReportSections.appendSection(sb, "High concurrent binding count (design smell)", highBindingWarnings);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {

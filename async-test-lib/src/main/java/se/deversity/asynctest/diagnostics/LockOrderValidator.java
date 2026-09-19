@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,6 +33,23 @@ public class LockOrderValidator {
          * consecutive entries are not necessarily nested, and a released lock leaves no trace.
          */
         final Set<LockEdge> nestingEdges = ConcurrentHashMap.newKeySet();
+
+        /**
+         * One-entry memo of the last lock's id. A release nearly always follows the acquisition
+         * of the same lock, and the agent calls both on every woven lock operation, so this keeps
+         * the common pair from building the same string twice. Guarded by this sequence's monitor.
+         */
+        private @Nullable Object lastLock;
+        private String lastLockId = "";
+
+        @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"}) // locks are tracked by identity
+        String idOf(Object lock) {
+            if (lock != lastLock) {
+                lastLockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
+                lastLock = lock;
+            }
+            return lastLockId;
+        }
     }
     
     private final Map<Long, LockSequence> threadLockOrders = new ConcurrentHashMap<>();
@@ -45,11 +64,10 @@ public class LockOrderValidator {
         if (!enabled || lock == null) return;
 
         long threadId = Thread.currentThread().threadId();
-        String lockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
-        
         LockSequence sequence = threadLockOrders.computeIfAbsent(threadId, id -> new LockSequence());
         
         synchronized (sequence) {
+            String lockId = sequence.idOf(lock);
             // Every lock still held by this thread is being nested by the one we are taking
             // now. This is the edge that matters: it says "while holding `held`, this thread
             // wants `lockId`" — the exact relation that deadlocks when another thread does the
@@ -72,12 +90,10 @@ public class LockOrderValidator {
         if (!enabled || lock == null) return;
 
         long threadId = Thread.currentThread().threadId();
-        String lockId = lock.getClass().getSimpleName() + "@" + System.identityHashCode(lock);
-        
         LockSequence sequence = threadLockOrders.get(threadId);
         if (sequence != null) {
             synchronized (sequence) {
-                sequence.acquiredLocks.remove(lockId);
+                sequence.acquiredLocks.remove(sequence.idOf(lock));
                 // Note: We keep the full order for analysis
             }
         }

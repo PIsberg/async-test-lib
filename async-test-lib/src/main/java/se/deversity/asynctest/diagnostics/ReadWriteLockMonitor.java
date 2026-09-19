@@ -21,8 +21,6 @@ public class ReadWriteLockMonitor {
         final String lockName;
         final AtomicLong readLockCount = new AtomicLong(0);
         final AtomicLong writeLockCount = new AtomicLong(0);
-        final AtomicLong readWaitTime = new AtomicLong(0);
-        final AtomicLong writeWaitTime = new AtomicLong(0);
         volatile long maxWriteWaitTime = 0;
         final Set<Long> currentReaders = ConcurrentHashMap.newKeySet();
         volatile long currentWriter = -1;
@@ -63,7 +61,6 @@ public class ReadWriteLockMonitor {
         if (state == null) return;
         
         state.readLockCount.incrementAndGet();
-        state.readWaitTime.addAndGet(waitTimeMs);
         state.currentReaders.add(Thread.currentThread().threadId());
     }
     
@@ -96,7 +93,6 @@ public class ReadWriteLockMonitor {
         if (state == null) return;
         
         state.writeLockCount.incrementAndGet();
-        state.writeWaitTime.addAndGet(waitTimeMs);
         synchronized (state) {
             state.maxWriteWaitTime = Math.max(state.maxWriteWaitTime, waitTimeMs);
         }

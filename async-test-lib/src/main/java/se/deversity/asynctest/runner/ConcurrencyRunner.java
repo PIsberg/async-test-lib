@@ -1368,8 +1368,7 @@ public class ConcurrencyRunner {
         if (target == null || methods.isEmpty()) return;
         for (Method m : methods) {
             try {
-                m.setAccessible(true);
-                m.invoke(target);
+                m.invoke(target);   // made accessible once, by findLifecycleMethods
             } catch (InvocationTargetException e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 throw new RuntimeException("@" + (m.isAnnotationPresent(BeforeEachInvocation.class)

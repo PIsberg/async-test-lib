@@ -139,18 +139,18 @@ public final class JsonReportListener implements AsyncTestListener {
         int count = snapshot.size();
         StringBuilder sb = new StringBuilder(Math.max(1024, count * 300));
         sb.append("{\n");
-        sb.append("  \"asyncTestVersion\": ").append(jsonString(VERSION)).append(",\n");
-        sb.append("  \"generatedAt\": ").append(jsonString(Instant.now().toString())).append(",\n");
+        sb.append("  \"asyncTestVersion\": ").append(JsonFormatter.jsonString(VERSION)).append(",\n");
+        sb.append("  \"generatedAt\": ").append(JsonFormatter.jsonString(Instant.now().toString())).append(",\n");
         sb.append("  \"totalFindings\": ").append(count).append(",\n");
         sb.append("  \"findings\": [\n");
 
         for (int i = 0; i < count; i++) {
             DetectorFinding f = snapshot.get(i);
             sb.append("    {\n");
-            sb.append("      \"detectorName\": ").append(jsonString(f.detectorName)).append(",\n");
-            sb.append("      \"severity\": ").append(jsonString(f.severity.name())).append(",\n");
+            sb.append("      \"detectorName\": ").append(JsonFormatter.jsonString(f.detectorName)).append(",\n");
+            sb.append("      \"severity\": ").append(JsonFormatter.jsonString(f.severity.name())).append(",\n");
             sb.append("      \"timestampMs\": ").append(f.timestampMs).append(",\n");
-            sb.append("      \"report\": ").append(jsonString(f.report)).append("\n");
+            sb.append("      \"report\": ").append(JsonFormatter.jsonString(f.report)).append("\n");
             sb.append("    }");
             if (i < count - 1) sb.append(",");
             sb.append("\n");
@@ -160,30 +160,5 @@ public final class JsonReportListener implements AsyncTestListener {
         sb.append("}\n");
 
         Files.writeString(jsonFile, sb.toString(), StandardCharsets.UTF_8);
-    }
-
-    private static String jsonString(String s) {
-        if (s == null) return "null";
-        StringBuilder sb = new StringBuilder(s.length() + 2);
-        sb.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> sb.append("\\\\");
-                case '"'  -> sb.append("\\\"");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        sb.append('"');
-        return sb.toString();
     }
 }

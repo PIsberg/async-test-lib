@@ -38,7 +38,6 @@ public class LazyInitValidator {
     }
 
     private final Map<String, LazyFieldState> fields = new ConcurrentHashMap<>();
-    private volatile boolean enabled = true;
     /**
      * Records access so it can be analysed at the end of the run.
      *
@@ -50,7 +49,7 @@ public class LazyInitValidator {
      */
     public void recordAccess(String fieldName, boolean observedNull, boolean initializedValue,
                              boolean synchronizedAccess, boolean volatileField) {
-        if (!enabled || fieldName == null || fieldName.isBlank()) {
+        if (fieldName == null || fieldName.isBlank()) {
             return;
         }
 

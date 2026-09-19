@@ -2,6 +2,7 @@ package se.deversity.asynctest.report;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
 
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -79,7 +80,9 @@ public final class JsonFormatter implements Formatter {
         return jsonString(v.toString());
     }
 
-    private static String jsonString(String s) {
+    /** Quotes and escapes {@code s} as a JSON string; shared with {@link JsonReportListener}. */
+    static String jsonString(@Nullable String s) {
+        if (s == null) return "null";
         StringBuilder sb = new StringBuilder(s.length() + 2);
         sb.append('"');
         for (int i = 0; i < s.length(); i++) {

@@ -58,7 +58,6 @@ public class LazyInitRaceDetector {
     private static final class FieldState {
         final String fieldId;
         final AtomicInteger initCount        = new AtomicInteger();
-        final AtomicInteger nullCheckCount   = new AtomicInteger();
         final Set<Long>     initializingThreads = ConcurrentHashMap.newKeySet();
         volatile boolean    isVolatile       = false;
 
@@ -82,7 +81,6 @@ public class LazyInitRaceDetector {
     public void recordNullCheck(String fieldId, boolean wasNull, boolean isVolatile) {
         if (fieldId == null) return;
         FieldState state = resolve(fieldId);
-        state.nullCheckCount.incrementAndGet();
         if (isVolatile) state.isVolatile = true;
         if (wasNull) {
             state.initializingThreads.add(Thread.currentThread().threadId());

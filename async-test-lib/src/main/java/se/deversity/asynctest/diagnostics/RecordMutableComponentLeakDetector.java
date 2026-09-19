@@ -109,14 +109,13 @@ public final class RecordMutableComponentLeakDetector {
 
     private final Map<IdentityKey, State> records = new ConcurrentHashMap<>();
     private final LongAdder dropped   = new LongAdder();
-    private final LongAdder nonRecord = new LongAdder();
 
     /**
      * Record that a record instance was touched by a thread. Call it from every thread that
      * reads or passes the record; the detector reports only instances seen by more than one.
      *
      * <p>The first call for an instance snapshots each component's contents, which is what makes
-     * a later change observable rather than merely possible. Non-record arguments are counted and
+     * a later change observable rather than merely possible. Non-record arguments are
      * ignored.
      *
      * @param recordInstance the record instance (null-safe)
@@ -127,7 +126,6 @@ public final class RecordMutableComponentLeakDetector {
                              @Nullable Thread thread) {
         if (recordInstance == null || thread == null) return;
         if (!recordInstance.getClass().isRecord()) {
-            nonRecord.increment();
             return;
         }
         IdentityKey id = new IdentityKey(recordInstance);

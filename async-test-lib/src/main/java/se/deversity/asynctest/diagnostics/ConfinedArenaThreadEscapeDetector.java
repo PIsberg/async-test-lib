@@ -109,7 +109,6 @@ public final class ConfinedArenaThreadEscapeDetector {
         final LongAdder wrongThreadAccesses = new LongAdder();
         final LongAdder afterCloseAccesses  = new LongAdder();
         final Set<String> offendingThreads  = ConcurrentHashMap.newKeySet();
-        final AtomicBoolean confirmedConfined = new AtomicBoolean();
         final AtomicBoolean jvmAnswered       = new AtomicBoolean();
         SegmentState(String label, @Nullable IdentityKey arenaKey, long byteSize) {
             this.label    = label;
@@ -233,10 +232,8 @@ public final class ConfinedArenaThreadEscapeDetector {
 
     /** Ask the JVM whether this segment rejects a thread that owns nothing. Confined ones do. */
     private static void probeConfinement(Object segment, SegmentState s) {
-        Boolean probeAllowed = isAccessibleBy(segment, PROBE);
-        if (probeAllowed != null) {
+        if (isAccessibleBy(segment, PROBE) != null) {
             s.jvmAnswered.set(true);
-            if (!probeAllowed) s.confirmedConfined.set(true);
         }
     }
 

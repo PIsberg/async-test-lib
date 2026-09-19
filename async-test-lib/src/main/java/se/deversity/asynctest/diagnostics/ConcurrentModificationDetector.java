@@ -53,7 +53,6 @@ public class ConcurrentModificationDetector {
          * worthless while an observation of one is still a fact the caller made.
          */
         final AtomicInteger observedDuringIteration = new AtomicInteger(0);
-        final Set<Long> iteratingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> allIteratingThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> modifyingThreads = ConcurrentHashMap.newKeySet();
         /**
@@ -150,7 +149,6 @@ public class ConcurrentModificationDetector {
         CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
             state.activeIterators.incrementAndGet();
-            state.iteratingThreads.add(Thread.currentThread().threadId());
             state.allIteratingThreads.add(Thread.currentThread().threadId());
         }
     }
@@ -168,7 +166,6 @@ public class ConcurrentModificationDetector {
         CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
             state.activeIterators.decrementAndGet();
-            state.iteratingThreads.remove(Thread.currentThread().threadId());
         }
     }
 

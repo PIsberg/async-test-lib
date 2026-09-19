@@ -285,14 +285,7 @@ public class VirtualThreadPinningDetector {
      * @return true if it's a virtual thread
      */
     public static boolean isVirtualThread(Thread thread) {
-        if (!isVirtualThreadSupported()) {
-            return false;
-        }
-        try {
-            return (boolean) Thread.class.getMethod("isVirtual").invoke(thread);
-        } catch (ReflectiveOperationException e) {
-            return false;
-        }
+        return thread.isVirtual();
     }
 
     /**

@@ -51,10 +51,10 @@ public class SharedDecimalFormatDetector {
      */
     public void recordAccess(Object format, String name, Thread thread) {
         if (format == null || thread == null) return;
-        String label = name != null ? name
-                : format.getClass().getSimpleName() + "@" + System.identityHashCode(format);
+        // The fallback label is built only when the instance is first seen.
         FormatState s = formats.computeIfAbsent(
-                new IdentityKey(format), id -> new FormatState(label));
+                new IdentityKey(format), id -> new FormatState(name != null ? name
+                        : format.getClass().getSimpleName() + "@" + System.identityHashCode(format)));
         s.noteAccess(format);
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());

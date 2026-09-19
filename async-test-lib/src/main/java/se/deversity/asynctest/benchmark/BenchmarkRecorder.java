@@ -16,6 +16,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.LongSummaryStatistics;
 
 /**
  * Records benchmark execution times and manages comparison with baselines.
@@ -160,10 +161,11 @@ public class BenchmarkRecorder {
         // totalExecutionTimeNanos / count — the latter is wall-clock time for the whole
         // run, which also includes barrier waits, lifecycle methods, and other overhead
         // between rounds, so it isn't comparable to the true per-round min/max.
-        long minTime = timesCopy.stream().mapToLong(Long::longValue).min().orElse(0);
-        long maxTime = timesCopy.stream().mapToLong(Long::longValue).max().orElse(0);
-        long sumTime = timesCopy.stream().mapToLong(Long::longValue).sum();
-        long avgTime = sumTime / timesCopy.size();
+        LongSummaryStatistics times =
+                timesCopy.stream().mapToLong(Long::longValue).summaryStatistics();
+        long minTime = times.getMin();
+        long maxTime = times.getMax();
+        long avgTime = times.getSum() / timesCopy.size();
 
         BenchmarkResult currentResult = BenchmarkResult.builder()
             .testClass(testClass)

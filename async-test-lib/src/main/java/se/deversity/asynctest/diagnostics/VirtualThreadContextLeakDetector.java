@@ -181,11 +181,7 @@ public class VirtualThreadContextLeakDetector {
     // ---- Helpers ----
 
     static boolean isVirtualThread(Thread thread) {
-        try {
-            return thread.isVirtual();
-        } catch (NoSuchMethodError e) {
-            return false;
-        }
+        return thread.isVirtual();
     }
 
     /**
@@ -259,23 +255,15 @@ public class VirtualThreadContextLeakDetector {
               .append(", Removes=").append(totalRemoves)
               .append(", Unremoved=").append(totalSets - totalRemoves).append("\n");
 
-            appendSection(sb, "ThreadLocal leaks (set but never removed)", leaks);
-            appendSection(sb, "InheritableThreadLocal misuse in virtual threads", inheritableInVirtualIssues);
-            appendSection(sb, "High ThreadLocal usage per virtual thread", highCountWarnings);
+            ReportSections.appendSection(sb, "ThreadLocal leaks (set but never removed)", leaks);
+            ReportSections.appendSection(sb, "InheritableThreadLocal misuse in virtual threads", inheritableInVirtualIssues);
+            ReportSections.appendSection(sb, "High ThreadLocal usage per virtual thread", highCountWarnings);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {

@@ -107,7 +107,6 @@ public class SharedCollectionDetector {
     }
 
     private final Map<IdentityKey, CollectionState> collections = new ConcurrentHashMap<>();
-    private volatile boolean enabled = true;
 
     /**
      * Register a collection for monitoring.
@@ -117,7 +116,7 @@ public class SharedCollectionDetector {
      * @param collectionType the concrete type, e.g. "ArrayList" or "HashMap"
      */
     public void registerCollection(Object collection, String name, String collectionType) {
-        if (!enabled || collection == null) return;
+        if (collection == null) return;
         IdentityKey key = new IdentityKey(collection);
         String resolvedType = collectionType != null ? collectionType : collection.getClass().getSimpleName();
         String resolvedName = name != null ? name : resolvedType + "@" + key.hashCode();
@@ -132,7 +131,7 @@ public class SharedCollectionDetector {
      * @param operation  a short name for the operation, e.g. {@code "get"}
      */
     public void recordRead(Object collection, String name, String operation) {
-        if (!enabled || collection == null) return;
+        if (collection == null) return;
         CollectionState state = resolveState(collection, name);
         state.noteAccess(collection, false);
         state.readThreads.add(Thread.currentThread().threadId());
@@ -147,7 +146,7 @@ public class SharedCollectionDetector {
      * @param operation  a short name for the operation, e.g. {@code "add"}
      */
     public void recordWrite(Object collection, String name, String operation) {
-        if (!enabled || collection == null) return;
+        if (collection == null) return;
         CollectionState state = resolveState(collection, name);
         state.noteAccess(collection, true);
         state.writeThreads.add(Thread.currentThread().threadId());
