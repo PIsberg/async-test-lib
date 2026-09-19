@@ -107,31 +107,20 @@ final class ListenerRegistryCore {
 
     void fireInvocationStarted(int round, int threads) {
         for (AsyncTestListener listener : listeners) {
-            try {
-                listener.onInvocationStarted(round, threads);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onInvocationStarted threw: {}", e.toString(), e);
-            }
+            guarded("onInvocationStarted", () -> listener.onInvocationStarted(round, threads));
         }
     }
 
     void fireInvocationCompleted(int round, long durationMs) {
         for (AsyncTestListener listener : listeners) {
-            try {
-                listener.onInvocationCompleted(round, durationMs);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onInvocationCompleted threw: {}", e.toString(), e);
-            }
+            guarded("onInvocationCompleted",
+                    () -> listener.onInvocationCompleted(round, durationMs));
         }
     }
 
     void fireTestFailed(Throwable cause) {
         for (AsyncTestListener listener : listeners) {
-            try {
-                listener.onTestFailed(cause);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onTestFailed threw: {}", e.toString(), e);
-            }
+            guarded("onTestFailed", () -> listener.onTestFailed(cause));
         }
     }
 
@@ -147,16 +136,9 @@ final class ListenerRegistryCore {
         IssueSeverity severity = DetectorDefaultSeverity.of(detectorName, report);
         Violation violation = toViolation(detectorName, severity, report);
         for (AsyncTestListener listener : current) {
-            try {
-                listener.onDetectorReport(detectorName, report);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onDetectorReport threw: {}", e.toString(), e);
-            }
-            try {
-                listener.onStructuredReport(detectorName, severity, report);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onStructuredReport threw: {}", e.toString(), e);
-            }
+            guarded("onDetectorReport", () -> listener.onDetectorReport(detectorName, report));
+            guarded("onStructuredReport",
+                    () -> listener.onStructuredReport(detectorName, severity, report));
             if (violation != null) {
                 notifyViolation(listener, violation);
             }
@@ -174,21 +156,25 @@ final class ListenerRegistryCore {
 
     void fireTimeout(long timeoutMs) {
         for (AsyncTestListener listener : listeners) {
-            try {
-                listener.onTimeout(timeoutMs);
-            } catch (RuntimeException e) {
-                log.warn("AsyncTestListener.onTimeout threw: {}", e.toString(), e);
-            }
+            guarded("onTimeout", () -> listener.onTimeout(timeoutMs));
         }
     }
 
-    /** One listener's {@code onViolation}, contained: a thrower must not silence its peers. */
-    private static void notifyViolation(AsyncTestListener listener, Violation violation) {
+    /**
+     * One listener hook, contained: a thrower must not silence its peers, or the run. The hook
+     * name is an argument, so the format string stays one constant and the rendered line is
+     * what it always was ({@code ListenerWarnTextContractTest}).
+     */
+    private static void guarded(String hook, Runnable call) {
         try {
-            listener.onViolation(violation);
+            call.run();
         } catch (RuntimeException e) {
-            log.warn("AsyncTestListener.onViolation threw: {}", e.toString(), e);
+            log.warn("AsyncTestListener.{} threw: {}", hook, e.toString(), e);
         }
+    }
+
+    private static void notifyViolation(AsyncTestListener listener, Violation violation) {
+        guarded("onViolation", () -> listener.onViolation(violation));
     }
 
     /**
