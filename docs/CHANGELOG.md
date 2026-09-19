@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reports name the version of the jar that wrote them (#703).** `JsonReportListener` wrote
+  `"asyncTestVersion": "1.6.0"` from a literal while the library was at 1.12.1, and the SARIF
+  tool version read `unknown` from every released jar, because the jar manifest carried no
+  `Implementation-Version`. The Maven and Gradle builds now both write it, and both reports read
+  it from there. Run from unpackaged classes (the library's own tests) the value is `unknown`.
+
 - **`CyclicBarrierDetector` sees a broken barrier reused across rounds on virtual threads (#693).**
   With `useVirtualThreads = true` every body execution runs on a fresh virtual thread, so "the same
   party came back" could never be true of a thread and a barrier left broken from one round to the
