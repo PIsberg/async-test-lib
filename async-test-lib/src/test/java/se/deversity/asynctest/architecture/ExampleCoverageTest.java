@@ -114,7 +114,7 @@ class ExampleCoverageTest {
      * cannot match. The first catches "the 148 examples" and "99 of the 148 examples"; the
      * second catches "builds all 148 and runs their enabled tests", where the noun arrives
      * too late for the first to reach it; the third catches "All 148 example projects", which is
-     * how the pipeline table in {@code docs/QUALITY_GATES.md} words it.
+     * how the pipeline table in {@code docs/quality-gates/ci-coverage.md} words it.
      */
     private static final Pattern EXAMPLE_COUNT = Pattern.compile(
             "\\b(\\d{2,4}) examples\\b|builds all (\\d{2,4})\\b|\\b(\\d{2,4}) example projects\\b");
@@ -124,13 +124,13 @@ class ExampleCoverageTest {
      *
      * <p>{@code examples/README.md} was the only one read until 2026-09-17, and the other three
      * had all stopped at 127 while 148 directories were on disk: the pipeline table and the
-     * sampling paragraphs in {@code docs/QUALITY_GATES.md}, and the comment above the every-4th
+     * sampling paragraphs in {@code docs/quality-gates/ci-coverage.md}, and the comment above the every-4th
      * sample in both workflows that implement it. A reader deciding whether a library-only pull
      * request covers the examples reads those, not the index.
      */
     private static final List<String> FILES_CLAIMING_AN_EXAMPLE_COUNT = List.of(
             "examples/README.md",
-            "docs/QUALITY_GATES.md",
+            "docs/quality-gates/ci-coverage.md",
             ".github/workflows/e2e-tests.yml",
             ".github/workflows/gradle-tests.yml");
 

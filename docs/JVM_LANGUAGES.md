@@ -112,7 +112,7 @@ Three things that are not obvious, each verified the hard way:
 
 Spock, ScalaTest, MUnit, kotest and `clojure.test` are not Jupiter, and `@AsyncTest` does not
 run inside them. Since 1.9.4 the engine is also a method call:
-[`AsyncTestRunner.run(config, body)`](USAGE.md#running-without-the-annotation-asynctestrunner-194)
+[`AsyncTestRunner.run(config, body)`](usage/other-ways-to-run.md#running-without-the-annotation-asynctestrunner-194)
 runs the body N x M under the detectors the config selects and returns the `AsyncFindings`.
 From `clojure.test`:
 

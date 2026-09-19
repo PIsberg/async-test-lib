@@ -1,6 +1,6 @@
 # Documentation Index
 
-52 documents, one router. Every path below is relative to this file.
+75 documents, one router. Every path below is relative to this file.
 
 **There are no per-directory indexes, deliberately.** `DocsIndexCoverageTest` requires a direct
 link from *this* file to every document under `docs/`, not a transitive one, so a second index in
@@ -30,7 +30,12 @@ Three paths, depending on why you came.
 |----------|---------|
 | [../README.md](../README.md) | Project overview and quick start |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | One-page cheatsheet |
-| [USAGE.md](USAGE.md) | Full `@AsyncTest` parameter reference, detectors, examples |
+| [USAGE.md](USAGE.md) | Full `@AsyncTest` parameter reference, detectors, examples. Hub for the rows below |
+| [usage/getting-started.md](usage/getting-started.md) | Installing with Maven or Gradle, and annotating your first test |
+| [usage/configuration-options.md](usage/configuration-options.md) | Every `@AsyncTest` parameter and the detectors each phase enables, with context accessors and examples |
+| [usage/other-ways-to-run.md](usage/other-ways-to-run.md) | The optional agent, `AsyncTestRunner` without the annotation, and manual legacy diagnostics |
+| [usage/examples.md](usage/examples.md) | Race condition, opting out of expensive detectors, deadlock, and virtual-thread stress tests |
+| [usage/results-and-practices.md](usage/results-and-practices.md) | Reading a finding, adopting into an existing suite, reproducing a failure, and configuration advice |
 | [API reference](https://pisberg.github.io/async-test-lib/api/latest/) | Generated javadoc, one directory per release. Built by `javadoc.yml`, not committed |
 
 ### Writing tests that find things
@@ -62,10 +67,20 @@ Three paths, depending on why you came.
 
 | Document | Purpose |
 |----------|---------|
-| [AGENT.md](AGENT.md) | Optional Byte Buddy agent — auto-record field access without manual hooks, and the notices the runner prints when a detector cannot see |
+| [AGENT.md](AGENT.md) | Optional Byte Buddy agent — auto-record field access without manual hooks, and the notices the runner prints when a detector cannot see. Hub for the rows below |
+| [agent/overview.md](agent/overview.md) | What the agent records, why hand-written hooks fall short, backpressure and overhead |
+| [agent/attaching.md](agent/attaching.md) | The launch flag, with and without arguments, runtime self-attach, and build snippets |
+| [agent/consuming-events.md](agent/consuming-events.md) | `TelemetryBridge`, the raw callback, `TelemetryRegistry.buffer()`, and the event identifier format |
+| [agent/scope-and-filtering.md](agent/scope-and-filtering.md) | The built-in ignores and how `includes` / `excludes` interact with them |
+| [agent/diagnostics.md](agent/diagnostics.md) | What the runner reports when a detector cannot see, and fixes for common attach failures |
+| [agent/limitations.md](agent/limitations.md) | What the agent does not see, stated plainly |
 | [BENCHMARKING.md](BENCHMARKING.md) | Optional throughput-regression tracking |
 | [../load-tests/README.md](../load-tests/README.md) | The JMH/stress suite — what each benchmark can and cannot measure |
-| [LICENSING.md](LICENSING.md) | Issuing a commercial licence to a customer, the flags they run with, expiry and renewal |
+| [LICENSING.md](LICENSING.md) | Issuing a commercial licence to a customer, the flags they run with, expiry and renewal. Hub for the rows below |
+| [licensing/paddle-keygen.md](licensing/paddle-keygen.md) | Operator runbook for a sale through Paddle, with the key minted by Keygen |
+| [licensing/lemon-squeezy.md](licensing/lemon-squeezy.md) | Operator runbook for a sale through Lemon Squeezy, including a purchase made with the wrong address |
+| [licensing/customer-message.md](licensing/customer-message.md) | The copy-paste message for the customer: flags, expiry and renewal |
+| [licensing/offline.md](licensing/offline.md) | What happens during an outage, issuing an offline license file, and what is wired up |
 
 ## Understanding the internals
 
@@ -94,7 +109,14 @@ the order the pieces appear in a run, not alphabetical.
 |----------|---------|
 | [architecture/adding-a-detector.md](architecture/adding-a-detector.md) | The synchronized five-file change, the thread-safety idiom, hot-path constraints |
 | [BUILDING.md](BUILDING.md) | Building from source with Maven and Gradle |
-| [QUALITY_GATES.md](QUALITY_GATES.md) | What must stay green — static analysis, coverage, mutation testing, japicmp, and the build quirks behind them |
+| [QUALITY_GATES.md](QUALITY_GATES.md) | What must stay green — static analysis, coverage, mutation testing, japicmp, and the build quirks behind them. Hub for the rows below |
+| [quality-gates/test-suite.md](quality-gates/test-suite.md) | Test conventions and the license guard |
+| [quality-gates/platforms.md](quality-gates/platforms.md) | Building on JDK 21, 25 or 26, and which operating systems a change is tested on |
+| [quality-gates/static-analysis.md](quality-gates/static-analysis.md) | find-sec-bugs, NullAway, the other promoted checks, and the API gates |
+| [quality-gates/ci-coverage.md](quality-gates/ci-coverage.md) | What the E2E check actually covers, and what a docs-only change runs |
+| [quality-gates/mutation-fuzzing-benchmarks.md](quality-gates/mutation-fuzzing-benchmarks.md) | The PIT mutation gate and JVM-global versus instance state, the Jazzer fuzzing job, and the benchmarking gate |
+| [quality-gates/examples-and-demos.md](quality-gates/examples-and-demos.md) | Running the disabled example demonstrations, and the demo recording |
+| [quality-gates/review-lanes.md](quality-gates/review-lanes.md) | The guardrail jobs and the AI review lanes behind the invariants |
 | [architecture/guardrails.md](architecture/guardrails.md) | How the `@AI*` guardrails are generated, the three vibetags config files, and why Gradle needs `-Avibetags.root` |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Every third-party library, why it is used, and how far it travels toward a consumer's classpath |
 | [WORKFLOW.md](WORKFLOW.md) | Development workflow |

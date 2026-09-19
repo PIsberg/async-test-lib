@@ -31,7 +31,7 @@ link, and every rule below names the gate that enforces it.
 | To understand the internals, or the module layout | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the hub for [docs/architecture/](docs/architecture/) |
 | Guardrails for code you are editing | that module's own `CLAUDE.md` and `.claude/rules/` (see below) |
 | To build, test or release, and the build quirks | [docs/BUILDING.md](docs/BUILDING.md), [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md), [docs/RELEASE.md](docs/RELEASE.md) |
-| The gates and review lanes behind the invariants | [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md#guardrail-and-review-lanes) |
+| The gates and review lanes behind the invariants | [docs/quality-gates/review-lanes.md](docs/quality-gates/review-lanes.md) |
 | Past investigations, evals and roadmap | [docs/analysis/](docs/analysis/) |
 
 ## Build and test
