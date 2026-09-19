@@ -28,7 +28,7 @@ Shows the main containers/components within the async-test library JAR.
   `@AsyncTest(threadCounts={…})` entry for the schedule matrix.
 - **Configuration**: `AsyncTest` annotation, `AsyncTestConfig` (immutable), `Preset` enum
 - **Runner Core**: `ConcurrencyRunner`, `AsyncTestContext`, `VirtualThreadStressConfig`,
-  `LicenseGuard` (extracted in 1.6.0 — see [License Guard](#license-guard-100))
+  `LicenseGuard` (extracted in 1.6.0 — see [License Guard](runtime-guarantees.md#license-guard-160))
 - **Detector Modules** (146 detectors; the phase-by-phase catalog is [DETECTOR_CATALOG.md](../DETECTOR_CATALOG.md)):
   - Phase 1: Core (3 detectors) — grouped via `Phase1DetectorSet`
   - Phases 2–14: managed by `DetectorRegistry`

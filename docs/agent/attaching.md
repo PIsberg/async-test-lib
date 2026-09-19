@@ -231,7 +231,7 @@ the refused class stands alone, and prints one line naming it:
 
 If detectors go quiet after an attach, that line is the first thing to look for. Pinned by
 `RetransformBatchIsolationTest`; measured on a real classpath in
-[the corpus eval](../analysis/corpus-eval.md#what-the-corpus-taught-the-model-in-four-rounds), where
+[the corpus eval](../analysis/corpus-eval.md#what-the-corpus-taught-the-model-in-five-rounds), where
 the defect cost 874 of 1074 instrumented classes and the whole documented-unsafe detection column.
 
 **The attach loads classes of its own, and those used to be lost.** There are three sets, not

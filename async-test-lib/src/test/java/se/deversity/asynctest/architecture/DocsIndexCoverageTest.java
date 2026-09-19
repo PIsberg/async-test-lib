@@ -9,7 +9,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -137,9 +140,112 @@ class DocsIndexCoverageTest {
                         + "absence and the reader acts on it; an agent does so without noticing.");
     }
 
+    /**
+     * The fragment half of a link: {@code file.md#section} must name a heading that exists.
+     *
+     * <p>{@link #everyRelativeLinkResolves} strips the fragment, so a link whose file exists but
+     * whose section was renamed or moved passed it. Three such links sat on main until the docs
+     * split in #683 surfaced them (#682): {@code README.md#licensing} after the heading became
+     * "License", a License Guard anchor that still said 1.0.0 after the section moved, and a
+     * corpus-eval heading that went from "four rounds" to "five". Moving sections between files
+     * is exactly when this breaks, and GitHub renders the page top without saying the anchor
+     * missed, so the reader lands somewhere plausible and wrong.
+     */
+    @Test
+    @DisplayName("every link fragment into a Markdown file names a heading in that file")
+    void everyLinkFragmentNamesAHeading() {
+        Path root = repoRoot();
+        List<Path> files = new ArrayList<>(markdownFiles(root.resolve("docs")));
+        for (String entry : ROOT_DOCUMENTS) {
+            Path p = root.resolve(entry);
+            if (Files.isRegularFile(p)) {
+                files.add(p);
+            }
+        }
+
+        Map<Path, Set<String>> anchorsByFile = new HashMap<>();
+        List<String> broken = new ArrayList<>();
+        for (Path file : files) {
+            Matcher m = LINK.matcher(stripFencedCode(read(file)));
+            while (m.find()) {
+                String raw = m.group(1);
+                int hash = raw.indexOf('#');
+                if (hash < 0 || isExternal(raw)) {
+                    continue;
+                }
+                String path = stripFragment(raw);
+                Path target = path.isEmpty() ? file : file.getParent().resolve(path).normalize();
+                if (!target.getFileName().toString().endsWith(".md") || !Files.isRegularFile(target)) {
+                    continue; // missing files are everyRelativeLinkResolves' finding, not this one's
+                }
+                String fragment = raw.substring(hash + 1);
+                if (!anchorsByFile.computeIfAbsent(target, DocsIndexCoverageTest::anchors)
+                        .contains(fragment)) {
+                    broken.add(root.relativize(file).toString().replace('\\', '/') + " -> " + raw);
+                }
+            }
+        }
+
+        assertTrue(broken.isEmpty(),
+                "These links name a section that does not exist in the target file:\n  "
+                        + String.join("\n  ", broken)
+                        + "\nGitHub opens the page at the top when an anchor misses, so the reader "
+                        + "lands near the answer and reads the wrong section. Point the fragment at "
+                        + "the heading's current slug (lower case, punctuation dropped, spaces to "
+                        + "hyphens), or at the file the section moved to.");
+    }
+
     // ---------------------------------------------------------------------
     // helpers
     // ---------------------------------------------------------------------
+
+    /** A Markdown heading outside fenced code: {@code ## Title}. */
+    private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+(.+?)\\s*#*\\s*$", Pattern.MULTILINE);
+
+    /** An explicit HTML anchor: {@code <a id="x">} or {@code <a name="x">}. */
+    private static final Pattern HTML_ANCHOR = Pattern.compile("<a\\s+(?:id|name)=\"([^\"]+)\"");
+
+    /** The anchors GitHub generates for a file's headings, plus explicit HTML anchors. */
+    private static Set<String> anchors(Path file) {
+        String text = stripFencedCode(read(file));
+        Set<String> anchors = new TreeSet<>();
+        Map<String, Integer> seen = new HashMap<>();
+        Matcher h = HEADING.matcher(text);
+        while (h.find()) {
+            String slug = slug(h.group(1));
+            int n = seen.merge(slug, 1, Integer::sum) - 1;
+            anchors.add(n == 0 ? slug : slug + "-" + n);
+        }
+        Matcher a = HTML_ANCHOR.matcher(text);
+        while (a.find()) {
+            anchors.add(a.group(1));
+        }
+        return anchors;
+    }
+
+    /** GitHub's heading slug: tags dropped, lower case, punctuation removed, spaces to hyphens. */
+    private static String slug(String heading) {
+        return heading.replaceAll("<[^>]+>", "")
+                .trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}\\p{M}_\\- ]", "")
+                .replace(' ', '-');
+    }
+
+    /** Blanks fenced code blocks, where a {@code #} line is a comment, not a heading. */
+    private static String stripFencedCode(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        boolean inFence = false;
+        for (String line : text.split("\n", -1)) {
+            if (line.stripLeading().startsWith("```") || line.stripLeading().startsWith("~~~")) {
+                inFence = !inFence;
+                out.append('\n');
+                continue;
+            }
+            out.append(inFence ? "" : line).append('\n');
+        }
+        return out.toString();
+    }
 
     private static String stripFragment(String target) {
         int hash = target.indexOf('#');
