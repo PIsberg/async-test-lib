@@ -200,15 +200,9 @@ public class MissedSignalDetector {
         }
 
         synchronized void loopEnded(Thread thread) {
-            Integer depth = openLoops.get(thread);
-            if (depth == null) {
-                return; // an end with no start: nothing to close
-            }
-            if (depth <= 1) {
-                openLoops.remove(thread);
-            } else {
-                openLoops.put(thread, depth - 1);
-            }
+            // An end with no start finds no entry and closes nothing; at depth one the null
+            // result removes the thread, so the map only ever holds threads inside a loop.
+            openLoops.computeIfPresent(thread, (t, depth) -> depth <= 1 ? null : depth - 1);
         }
 
         synchronized void waitStarted(Thread thread, Guard declared, long epoch) {
