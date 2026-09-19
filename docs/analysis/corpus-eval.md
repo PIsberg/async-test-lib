@@ -1252,6 +1252,13 @@ and awaits again in the same body, and `CYCLIC_BARRIER` is promoted on that pair
 #666 made every `CONDITION_VARIABLES` finding outside the predicate registration a note, and the
 detector is promoted on the pair #661 completed, with no row changed.
 
+Three `MISSED_SIGNAL` rows joined the same day for #669's loop marks. On a monitor whose real
+loop is marked with `recordLoopStart`/`recordLoopEnd`, `recorded_missedSignal_markedIfThenSatisfiedCheck`
+and `recorded_missedSignal_markedConsecutiveIfs` are the two `if (!ready) wait()` shapes #656 left
+reading as a loop, and both must fire; `recorded_missedSignal_markedWhileLoop` is the marked loop
+and must stay silent. All three make the same calls through shared helpers. The detector stays
+PROMPT: `PairEvidence.HELD_ON_MODEL` says why.
+
 `ABA_PROBLEM`, `STABLE_VALUE_MISUSE` and `VAR_HANDLE_NON_ATOMIC_UPDATE` complete the wave at
 **57 of 146**, in 117 rows.
 

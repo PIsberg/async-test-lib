@@ -162,9 +162,16 @@ final class PairEvidence {
                 + "is silent; still held until re-read, because the counts are the body's own "
                 + "declaration and an Exchanger exposes no waiter count to check a start against");
         HELD_ON_MODEL.put(DetectorType.MISSED_SIGNAL, "since #586 a lost notify is a finding only "
-                + "when a later wait receives no notify; #599 let a caller declare guardedness and "
-                + "#635 observes predicate re-checks via recordPredicateCheck, but the real monitor's "
-                + "waiters remain invisible; still held until an agent-woven loop check or full re-read (#571)");
+                + "when a later wait receives no notify; #599 let a caller declare guardedness, "
+                + "#635 observes predicate re-checks via recordPredicateCheck, and #669's "
+                + "recordLoopStart/recordLoopEnd marks give the loop back-edge, so the if-wait "
+                + "shapes #656 could not separate now fire beside a silent marked loop. Still held: "
+                + "every input is the body's record. Whether a notify found nobody waiting, and "
+                + "whether a wait received one, come from recordNotify/recordWait/recordWakeup, "
+                + "because Object exposes no waiter or notify state to ask, and an unmarked "
+                + "monitor still reads the two if shapes as a loop. Needs the agent to weave "
+                + "Object.wait/notify (the real waiter set and the loop back-edge) before a "
+                + "re-read (#571)");
         HELD_ON_MODEL.put(DetectorType.PHASER, "since #587 termination is context and the finding "
                 + "is an arrival whose returned phase is negative on a phaser with no party left "
                 + "registered, read from the real phaser; the rewritten pair has not been re-read "

@@ -2620,6 +2620,35 @@ final class Corpus {
                             + "the loop exits. The halves call the same detector methods and "
                             + "differ only in whether the check after the wakeup is satisfied"),
 
+            new RecordingSubject("recorded_missedSignal_markedIfThenSatisfiedCheck", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "on a monitor whose loops are marked, a notify is lost, then an if (!ready) "
+                            + "wait times out and a later check finds ready true. Unmarked, that "
+                            + "check read as the loop exiting (#656); with recordLoopStart and "
+                            + "recordLoopEnd around the monitor's real loop, a wait outside every "
+                            + "mark is an if's (#669)",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("recorded_missedSignal_markedConsecutiveIfs", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same marked monitor and lost notify, then two consecutive if (!ready) "
+                            + "waits and a later check that still finds ready false. Unmarked, the "
+                            + "second wait read as a back-edge and the check as a poll giving up "
+                            + "(#656); outside every marked loop neither wait is a loop's (#669)",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("recorded_missedSignal_markedWhileLoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same marked monitor and lost notify, with the wait inside a marked "
+                            + "while (!ready) loop that re-checks after the wakeup and exits. All "
+                            + "three rows make the same calls; the marks carry the back-edge (#669)"),
+
             new RecordingSubject("recorded_optimisticRead_usedWithoutValidating", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.OPTIMISTIC_READ_VALIDATION, Contract.THREAD_SAFE,

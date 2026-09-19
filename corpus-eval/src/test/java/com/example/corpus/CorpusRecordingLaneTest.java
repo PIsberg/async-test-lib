@@ -2832,6 +2832,115 @@ class CorpusRecordingLaneTest {
     }
 
     /**
+     * A loop the class marks on its monitor elsewhere, whose predicate already holds when it runs,
+     * so it never waits. Marking one loop on a monitor is what makes the marks decide every wait on
+     * it (#669); the three rows below share this so they differ only in the wait they record.
+     */
+    private static void aMarkedLoopThatFindsItsPredicate(se.deversity.asynctest.diagnostics.MissedSignalDetector detector,
+                                                         Object monitor) {
+        synchronized (monitor) {
+            detector.recordLoopStart(monitor);
+            try {
+                detector.recordPredicateCheck(monitor, true);
+            } finally {
+                detector.recordLoopEnd(monitor);
+            }
+        }
+    }
+
+    /** A notify with nobody waiting on {@code monitor}: the signal the waits below needed. */
+    private static void loseANotify(se.deversity.asynctest.diagnostics.MissedSignalDetector detector,
+                                    Object monitor) {
+        synchronized (monitor) {
+            detector.recordNotify(monitor);
+            monitor.notify();
+        }
+    }
+
+    /** {@code if (!ready) wait()}: one check, and at most one timed wait. */
+    private static void anIfWait(se.deversity.asynctest.diagnostics.MissedSignalDetector detector,
+                                 Object monitor, boolean ready) throws InterruptedException {
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, ready);
+            if (!ready) {
+                detector.recordWait(monitor);
+                monitor.wait(20);
+                detector.recordWakeup(monitor);
+            }
+        }
+    }
+
+    /**
+     * On a monitor whose loops are marked, a lost notify, then {@code if (!ready) wait()} that times
+     * out, then a later check that finds {@code ready} true. Unmarked, that satisfied check read as
+     * the loop exiting (#656); outside every marked loop the wait is an {@code if}'s (#669). Each
+     * execution uses its own monitor, so no other thread's notify can reach it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_missedSignal_markedIfThenSatisfiedCheck() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        aMarkedLoopThatFindsItsPredicate(detector, monitor);
+        loseANotify(detector, monitor);
+        anIfWait(detector, monitor, false);
+        // Later, unrelated to the wait above: the flag has been set by now.
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, true);
+        }
+    }
+
+    /**
+     * The same monitor and lost notify, then two consecutive {@code if (!ready) wait()} blocks.
+     * then a later check that still finds it false. Unmarked, the second wait read as the loop's
+     * back-edge and the last check as a bounded poll giving up (#656); outside every marked loop
+     * neither wait is a loop's (#669).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_missedSignal_markedConsecutiveIfs() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        aMarkedLoopThatFindsItsPredicate(detector, monitor);
+        loseANotify(detector, monitor);
+        anIfWait(detector, monitor, false);
+        anIfWait(detector, monitor, false);
+        // Later: still not ready, and the body moves on without waiting.
+        synchronized (monitor) {
+            detector.recordPredicateCheck(monitor, false);
+        }
+    }
+
+    /**
+     * The same monitor and lost notify, with the wait inside a marked {@code while (!ready)} loop
+     * that re-checks after the wakeup and exits. The twin of both rows above (#669).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_missedSignal_markedWhileLoop() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.missedSignalDetector();
+        Object monitor = new Object();
+        aMarkedLoopThatFindsItsPredicate(detector, monitor);
+        loseANotify(detector, monitor);
+        boolean ready = false;
+        synchronized (monitor) {
+            detector.recordLoopStart(monitor);
+            try {
+                detector.recordPredicateCheck(monitor, ready);
+                while (!ready) {
+                    detector.recordWait(monitor);
+                    monitor.wait(20);
+                    detector.recordWakeup(monitor);
+                    ready = true;   // standing in for the producer whose flag the loop reads
+                    detector.recordPredicateCheck(monitor, ready);
+                }
+            } finally {
+                detector.recordLoopEnd(monitor);
+            }
+        }
+    }
+
+    /**
      * An optimistic read whose validation comes back false.
      *
      * <p>{@code StampedLock}'s optimistic mode is documented as valid only once {@code validate}
