@@ -377,8 +377,9 @@ public final class AsyncTestAgent {
         }
         boolean weaveFields = options.fields();
         if (weaveFields) {
-            // The library copy beside the agent resolves pre-attach updaters by reading the JDK's
-            // implementation (#659); each woven loader gets the same in the transformer below.
+            // The library copy the agent's own loader resolves reads the JDK's implementation for
+            // pre-attach updaters (#659); the transformer below does the same for the copy each woven
+            // loader resolves, and opens nothing else (#668).
             UpdaterAccess.openTo(inst, AsyncTestAgent.class.getClassLoader());
         }
         // Resolved once, here, rather than per transformation: the hook class lives in the library
@@ -393,8 +394,10 @@ public final class AsyncTestAgent {
                 .transform((b, typeDescription, classLoader, module, protectionDomain) -> {
                     if (weaveFields) {
                         // Before any woven call site of this class can run: it resolves updaters
-                        // in the library copy its own loader reaches, which may not be ours (#659).
-                        UpdaterAccess.openTo(inst, classLoader);
+                        // in the library copy its own loader reaches, which may not be ours (#659),
+                        // and a named module needs a read edge to link to it at all (#668).
+                        UpdaterAccess.openTo(inst, classLoader,
+                                module == null ? null : (Module) module.unwrap());
                     }
                     // The accessor Advice is the default mode's whole story and must stand down
                     // when field instructions are woven: a getter's body contains the GETFIELD,

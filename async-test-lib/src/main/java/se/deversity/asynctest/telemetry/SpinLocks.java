@@ -234,9 +234,19 @@ final class SpinLocks {
         return field.isEmpty() ? null : field;
     }
 
-    /** The JDK's one {@code AtomicIntegerFieldUpdater} implementation, the only shape read. */
-    private static final String UPDATER_IMPL =
+    /**
+     * The JDK's one {@code AtomicIntegerFieldUpdater} implementation, the only shape read.
+     * {@code JdkUpdaterShapeCanaryTest} fails the build on a JDK where it, or the two fields and
+     * the constructor {@code describe} reads, change shape.
+     */
+    static final String UPDATER_IMPL =
             "java.util.concurrent.atomic.AtomicIntegerFieldUpdater$AtomicIntegerFieldUpdaterImpl";
+
+    /** The implementation's {@code long} field holding the swapped field's offset. */
+    static final String UPDATER_OFFSET = "offset";
+
+    /** The implementation's {@code Class} field holding the class that declares the swapped field. */
+    static final String UPDATER_TARGET = "tclass";
 
     /**
      * {@return {@code targetClass.field} for the field {@code updater} really swaps, else ""}
@@ -251,8 +261,8 @@ final class SpinLocks {
             if (!UPDATER_IMPL.equals(impl.getName()) || impl.getClassLoader() != null) {
                 return "";
             }
-            Field offsetField = impl.getDeclaredField("offset");
-            Field targetField = impl.getDeclaredField("tclass");
+            Field offsetField = impl.getDeclaredField(UPDATER_OFFSET);
+            Field targetField = impl.getDeclaredField(UPDATER_TARGET);
             Constructor<?> make = impl.getDeclaredConstructor(Class.class, String.class, Class.class);
             if (!offsetField.trySetAccessible() || !targetField.trySetAccessible()
                     || !make.trySetAccessible()) {
