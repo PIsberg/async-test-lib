@@ -59,7 +59,7 @@ class DetectorCatalogCoverageTest {
      * owning file, so a second unrelated count cannot hide behind a blanket exemption.
      */
     private static final Map<String, Integer> THIRD_PARTY_COUNTS =
-            Map.of("QUALITY_GATES.md", 121);
+            Map.of("static-analysis.md", 121);
 
     /**
      * The agent-facing files, scanned in addition to {@code docs/} and the README.

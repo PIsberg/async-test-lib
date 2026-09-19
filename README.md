@@ -316,7 +316,7 @@ detectors need without a line of instrumentation. The remaining 125 observe what
 records explicitly through `AsyncTestContext`, and the catalog says which of three reasons
 keeps each of them there. When a detector is
 enabled but nothing can feed it, the runner says so once per JVM at INFO rather than letting an
-empty report read as a clean bill of health; [docs/AGENT.md](docs/AGENT.md#when-the-runner-says-a-detector-cannot-see)
+empty report read as a clean bill of health; [docs/agent/diagnostics.md](docs/agent/diagnostics.md#when-the-runner-says-a-detector-cannot-see)
 lists those notices. Which detectors fall in which group is tabulated in
 [docs/DETECTOR_CATALOG.md](docs/DETECTOR_CATALOG.md), and how they behave on code nobody here
 wrote is in [the accuracy eval](docs/analysis/detector-accuracy-eval.md).

@@ -74,7 +74,7 @@
                  target kept there is invisible to it and the repo scores 0 on Fuzzing
                  while genuinely being fuzzed. Keeping them in src/fuzz/java and adding
                  the root here leaves the Jazzer classpath (target/test-classes) unchanged.
-                 See docs/QUALITY_GATES.md#fuzzing. -->
+                 See docs/quality-gates/mutation-fuzzing-benchmarks.md#fuzzing. -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>

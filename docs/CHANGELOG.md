@@ -2799,7 +2799,7 @@ rounds, one barrier per round, the detectors the config selects, the same licenc
 and `failOn` semantics, and it returns the run's `AsyncFindings`. It exists for the test
 frameworks a Jupiter `@TestTemplate` cannot run inside of: Spock, ScalaTest, MUnit, kotest and
 `clojure.test`. It is an adapter over the unchanged `ConcurrencyRunner`, so the Critical engine
-did not move. Two things a caller must know, both in [USAGE.md](USAGE.md#running-without-the-annotation-asynctestrunner-194):
+did not move. Two things a caller must know, both in [USAGE.md](usage/other-ways-to-run.md#running-without-the-annotation-asynctestrunner-194):
 detectors are opt-in on the builder (the annotation defaults to `detectAll = true`, the builder
 to nothing), and every programmatic run shares one identity,
 `AsyncTestRunner$BodyHolder#run`, in the log events and the finding baseline. Pinned by
@@ -3011,7 +3011,7 @@ usual shape: mechanisms that existed and nothing that checked them. Each is now 
   races, and the README's own headline example — produced no events under any configuration.
   `FieldAccessWeaver` now instruments the field instructions themselves. Opt-in, because it
   weaves every field access in every matched class; pair it with `includes=`. See
-  [AGENT.md](AGENT.md#32-launch-flag-with-arguments).
+  [AGENT.md](agent/attaching.md#32-launch-flag-with-arguments).
 - **`-Dasynctest.agent=<agentArgs>`** attaches the agent from inside the run, so field weaving is
   reachable without resolving a `-javaagent` jar path that differs per machine and changes every
   release. Degrades to a single `runner.agent.attach.failed` warning when the artifact is absent
@@ -4299,7 +4299,7 @@ to escape correctly already, attributes through `xmlEscape` and the report body 
 `cdataEscape`, which splits the `]]>` terminator across two CDATA sections. The `OBJECT_DESERIALIZATION`
 finding is a genuine CWE-502 sink and was already hardened with a strict `ObjectInputFilter`
 allow-list. The full triage, pattern by pattern with the reasoning for each, is in
-[QUALITY_GATES.md](QUALITY_GATES.md#find-sec-bugs).
+[QUALITY_GATES.md](quality-gates/static-analysis.md#find-sec-bugs).
 
 Exclusions are scoped on purpose: the deserialization one names a single class *and* method, the XML
 ones name the writer method, the predictable-random one names one class — so a new instance of the
@@ -4396,7 +4396,7 @@ convention alone.
 The first clean run reported 119 findings across 51 files. Most were contracts that were already
 true and merely unwritten. Eleven were `dereferenced expression is @Nullable`, five of which were
 the live NPEs fixed above. Details, including where NullAway is wrong here and what to do instead of
-suppressing it, are in [QUALITY_GATES.md](QUALITY_GATES.md#nullaway).
+suppressing it, are in [QUALITY_GATES.md](quality-gates/static-analysis.md#nullaway).
 
 **`DetectorLifecycleBenchmark`** (in `load-tests`) measures the two per-test-method costs that scale
 with the detector set — building the registry and sweeping it — plus the bare `EngineTestKit`
