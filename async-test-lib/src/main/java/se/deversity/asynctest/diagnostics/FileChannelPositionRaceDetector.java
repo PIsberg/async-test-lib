@@ -60,11 +60,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class FileChannelPositionRaceDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final Set<String> operations = ConcurrentHashMap.newKeySet();
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         State(String label) {
             this.label = label;
@@ -90,8 +88,7 @@ public final class FileChannelPositionRaceDetector {
             s.operations.add(operation);
         }
         Thread thread = Thread.currentThread();
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
 
     /**
@@ -125,7 +122,7 @@ public final class FileChannelPositionRaceDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "Channel '%s' had implicit-position operations (%s) from %d threads (%s) — "
                             + "the shared cursor is advanced by every implicit read/write/position call; "
@@ -133,8 +130,8 @@ public final class FileChannelPositionRaceDetector {
                             + "contents or silently losing writes." + SelfGuard.REPORT_NOTE,
                     s.label,
                     String.join(", ", s.operations),
-                    s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames));
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "FileChannelPositionRace",
@@ -144,7 +141,7 @@ public final class FileChannelPositionRaceDetector {
                     Map.of(
                             "label", s.label,
                             "operations", String.join(",", s.operations),
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

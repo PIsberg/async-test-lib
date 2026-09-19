@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,11 +54,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class WeakHashMapSharedDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String type;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         State(String label, String type) {
             this.label = label;
@@ -95,8 +92,7 @@ public final class WeakHashMapSharedDetector {
         // Probed on the accessing thread, which is the one inside (or outside) the guarded
         // region; the explicit thread parameter is attribution only.
         s.noteAccess(map);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -106,7 +102,7 @@ public final class WeakHashMapSharedDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String specificRisk = "WeakHashMap".equals(s.type)
                     ? "GC-driven entry removal mutates the internal table on every "
                             + "get()/put() without locking — concurrent access can produce "
@@ -118,8 +114,8 @@ public final class WeakHashMapSharedDetector {
                             + SelfGuard.REPORT_NOTE + ".",
                     s.label,
                     s.type,
-                    s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames),
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()),
                     s.type,
                     specificRisk);
             r.violations.add(msg);
@@ -131,7 +127,7 @@ public final class WeakHashMapSharedDetector {
                     Map.of(
                             "label", s.label,
                             "type", s.type,
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

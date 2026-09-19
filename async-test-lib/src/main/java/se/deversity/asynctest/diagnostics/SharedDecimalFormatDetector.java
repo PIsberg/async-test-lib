@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -32,10 +31,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedDecimalFormatDetector {
 
-    private static class FormatState extends SelfGuard.TrackedInstance {
+    private static class FormatState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         FormatState(String name) { this.name = name; }
     }
@@ -56,8 +53,7 @@ public class SharedDecimalFormatDetector {
                 new IdentityKey(format), id -> new FormatState(name != null ? name
                         : format.getClass().getSimpleName() + "@" + System.identityHashCode(format)));
         s.noteAccess(format);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
 
     /**
@@ -66,12 +62,12 @@ public class SharedDecimalFormatDetector {
     public SharedDecimalFormatReport analyze() {
         SharedDecimalFormatReport r = new SharedDecimalFormatReport();
         for (FormatState s : formats.values()) {
-            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
+            if (s.sharedAndUnguarded()) {
                 r.violations.add(String.format(
                         "'%s' accessed from %d threads (%s) — DecimalFormat/NumberFormat is not thread-safe"
                                 + SelfGuard.REPORT_NOTE,
-                        s.name, s.accessingThreadIds.size(),
-                        String.join(", ", s.accessingThreadNames)));
+                        s.name, s.threadCount(),
+                        String.join(", ", s.threadNames())));
             }
         }
         return r;

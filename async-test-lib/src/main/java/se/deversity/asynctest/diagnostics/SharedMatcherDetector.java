@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -32,10 +31,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedMatcherDetector {
 
-    private static class MatcherState extends SelfGuard.TrackedInstance {
+    private static class MatcherState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         MatcherState(String name) { this.name = name; }
     }
@@ -56,8 +53,7 @@ public class SharedMatcherDetector {
                 new IdentityKey(matcher), id -> new MatcherState(name != null ? name
                         : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher)));
         s.noteAccess(matcher);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
 
     /**
@@ -66,13 +62,13 @@ public class SharedMatcherDetector {
     public SharedMatcherReport analyze() {
         SharedMatcherReport r = new SharedMatcherReport();
         for (MatcherState s : matchers.values()) {
-            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
+            if (s.sharedAndUnguarded()) {
                 r.violations.add(String.format(
                         "'%s' accessed from %d threads (%s) — Matcher is not thread-safe; "
                                 + "Pattern is safe but each Matcher holds mutable match state"
                                 + SelfGuard.REPORT_NOTE,
-                        s.name, s.accessingThreadIds.size(),
-                        String.join(", ", s.accessingThreadNames)));
+                        s.name, s.threadCount(),
+                        String.join(", ", s.threadNames())));
             }
         }
         return r;

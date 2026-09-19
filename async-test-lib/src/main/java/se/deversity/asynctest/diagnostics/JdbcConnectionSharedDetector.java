@@ -81,11 +81,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class JdbcConnectionSharedDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String type;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         /**
          * Threads that currently hold the resource, when the caller models handoff.
@@ -135,8 +133,7 @@ public final class JdbcConnectionSharedDetector {
                     finalType));
         }
         s.noteAccess(resource);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
         s.currentHolders.add(thread.threadId());
         if (s.currentHolders.size() >= 2) {
             // Two threads holding at once is the defect itself, so it is recorded when it
@@ -185,7 +182,7 @@ public final class JdbcConnectionSharedDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (s.threadCount() <= 1) continue;
             // Ownership was modelled and no two threads ever held it at once: this is a pooled
             // handle doing its job, handed to one thread at a time. Reporting it would flag the
             // documented fix for the defect this detector exists to find.
@@ -208,9 +205,9 @@ public final class JdbcConnectionSharedDetector {
                             + "thread safety on %s; %s. Use a per-thread Connection (pool checkout)." + SelfGuard.REPORT_NOTE,
                     s.label,
                     s.type,
-                    s.ownershipModelled ? s.overlappingThreadNames.size() : s.accessingThreadIds.size(),
+                    s.ownershipModelled ? s.overlappingThreadNames.size() : s.threadCount(),
                     String.join(", ", s.ownershipModelled
-                            ? s.overlappingThreadNames : s.accessingThreadNames),
+                            ? s.overlappingThreadNames : s.threadNames()),
                     s.type,
                     specificRisk);
             r.violations.add(msg);
@@ -222,7 +219,7 @@ public final class JdbcConnectionSharedDetector {
                     Map.of(
                             "label", s.label,
                             "type", s.type,
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

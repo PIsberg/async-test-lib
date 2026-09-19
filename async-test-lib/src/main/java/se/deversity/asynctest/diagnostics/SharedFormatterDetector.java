@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -31,10 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedFormatterDetector {
 
-    private static class FormatterState extends SelfGuard.TrackedInstance {
+    private static class FormatterState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
-        final Set<Long>   accessingThreadIds = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         FormatterState(String name) { this.name = name; }
     }
@@ -55,8 +52,7 @@ public class SharedFormatterDetector {
             new IdentityKey(formatter), id -> new FormatterState(name != null ? name
                         : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter)));
         s.noteAccess(formatter);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
 
     /**
@@ -65,12 +61,12 @@ public class SharedFormatterDetector {
     public SharedFormatterReport analyze() {
         SharedFormatterReport r = new SharedFormatterReport();
         for (FormatterState s : formatters.values()) {
-            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
+            if (s.sharedAndUnguarded()) {
                 r.violations.add(String.format(
                     "'%s' accessed from %d threads (%s) — not thread-safe; unsynchronized concurrent"
                         + " writes interleave output" + SelfGuard.REPORT_NOTE,
-                    s.name, s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames)));
+                    s.name, s.threadCount(),
+                    String.join(", ", s.threadNames())));
             }
         }
         return r;

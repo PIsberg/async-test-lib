@@ -44,11 +44,9 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
 public class SharedMessageDigestDetector {
 
-    private static class DigestState extends SelfGuard.TrackedInstance {
+    private static class DigestState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
         final String      type;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
         final Set<SiteCapture.Site> accessSites = ConcurrentHashMap.newKeySet();
 
         DigestState(String name, String type) {
@@ -100,8 +98,7 @@ public class SharedMessageDigestDetector {
             });
         }
         s.noteAccess(digest);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
         // Capture the user-code site once per distinct call site. The Set's hashing
         // gives us per-(class, line) dedupe so a tight loop doesn't accumulate frames.
         SiteCapture.capture().ifPresent(s.accessSites::add);
@@ -113,7 +110,7 @@ public class SharedMessageDigestDetector {
     public SharedMessageDigestReport analyze() {
         SharedMessageDigestReport r = new SharedMessageDigestReport();
         for (DigestState s : digests.values()) {
-            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
+            if (s.sharedAndUnguarded()) {
                 r.violatedTypes.add(s.type);
                 String msg;
                 if ("Cipher".equals(s.type)) {
@@ -121,29 +118,29 @@ public class SharedMessageDigestDetector {
                             "'%s' accessed from %d threads (%s) — Cipher is not thread-safe; "
                                     + "unsynchronized concurrent encrypt/decrypt updates corrupt the block cipher states (e.g. IV, chaining blocks)"
                                     + SelfGuard.REPORT_NOTE,
-                            s.name, s.accessingThreadIds.size(),
-                            String.join(", ", s.accessingThreadNames));
+                            s.name, s.threadCount(),
+                            String.join(", ", s.threadNames()));
                 } else if ("Mac".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Mac is not thread-safe; "
                                     + "unsynchronized concurrent update()/doFinal() calls corrupt the running MAC byte calculations"
                                     + SelfGuard.REPORT_NOTE,
-                            s.name, s.accessingThreadIds.size(),
-                            String.join(", ", s.accessingThreadNames));
+                            s.name, s.threadCount(),
+                            String.join(", ", s.threadNames()));
                 } else if ("Signature".equals(s.type)) {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — Signature is not thread-safe; "
                                     + "unsynchronized concurrent update()/sign()/verify() calls corrupt stateful signing or verification operations"
                                     + SelfGuard.REPORT_NOTE,
-                            s.name, s.accessingThreadIds.size(),
-                            String.join(", ", s.accessingThreadNames));
+                            s.name, s.threadCount(),
+                            String.join(", ", s.threadNames()));
                 } else {
                     msg = String.format(
                             "'%s' accessed from %d threads (%s) — MessageDigest is not thread-safe; "
                                     + "unsynchronized concurrent update()/digest() calls corrupt the hash state"
                                     + SelfGuard.REPORT_NOTE,
-                            s.name, s.accessingThreadIds.size(),
-                            String.join(", ", s.accessingThreadNames));
+                            s.name, s.threadCount(),
+                            String.join(", ", s.threadNames()));
                 }
                 // Append source-line attribution if we captured at least one user-code frame.
                 // The set is already deduped by (class, line); a tight loop on one site
@@ -160,8 +157,8 @@ public class SharedMessageDigestDetector {
                 // Mirror as a structured Violation for downstream formatters.
                 Map<String, Object> attrs = Map.of(
                         "type", s.type,
-                        "threads", s.accessingThreadIds.size(),
-                        "threadNames", String.join(",", s.accessingThreadNames),
+                        "threads", s.threadCount(),
+                        "threadNames", String.join(",", s.threadNames()),
                         "name", s.name);
                 r.structuredViolations.add(new Violation(
                         "SharedMessageDigest",

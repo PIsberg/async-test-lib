@@ -59,11 +59,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedCharsetCoderDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
         final Set<String> operations           = ConcurrentHashMap.newKeySet();
 
         State(String label, String kind) {
@@ -107,8 +105,7 @@ public final class SharedCharsetCoderDetector {
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         s.noteAccess(coder);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
         if (operation != null) {
             s.operations.add(operation);
         }
@@ -121,7 +118,7 @@ public final class SharedCharsetCoderDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) via operations %s — %s carries mutable "
                             + "internal coding state and is not thread-safe; unsynchronized concurrent use corrupts "
@@ -129,8 +126,8 @@ public final class SharedCharsetCoderDetector {
                             + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
                     s.label,
-                    s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames),
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()),
                     s.operations,
                     s.kind);
             r.violations.add(msg);
@@ -142,7 +139,7 @@ public final class SharedCharsetCoderDetector {
                     Map.of(
                             "label", s.label,
                             "kind", s.kind,
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;
