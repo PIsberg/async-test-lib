@@ -137,7 +137,8 @@ Three limits worth knowing before switching it on:
   and `weakCompareAndSet` on the updater and the `AtomicInteger`, and `compareAndExchange` and the
   weak swaps on both atomics. A handle bound before the agent attached is resolved from its own
   descriptor (#558), and an updater bound before it from its own target class and field offset,
-  which the agent opens `java.util.concurrent.atomic` to read (#659).
+  which the agent opens `java.util.concurrent.atomic` to read (#659), to the module of the library
+  copy each woven loader resolves and to nothing else (#668).
   A spinlock is never trusted past what its flag says: it counts as held only while the flag
   still reads locked and this thread is its last observed winner, re-checked whenever the lockset
   is read. A release through a call the weaver does not substitute (`updateAndGet`,

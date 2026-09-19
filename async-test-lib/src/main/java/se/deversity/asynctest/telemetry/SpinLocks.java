@@ -215,10 +215,11 @@ final class SpinLocks {
      * woven class's own loader reaches, which weave-time records did not.
      *
      * <p>Reading the implementation needs {@code java.util.concurrent.atomic} open to this class's
-     * module. The agent opens it to the unnamed module of every loader whose classes it weaves, and
-     * that loader's ancestors. Where that has not happened (no agent, a library copy defined by a
-     * loader outside that chain, a named module, or a JDK whose implementation no longer has the
-     * {@code offset} and {@code tclass} fields and three-argument constructor this reads), the
+     * module. The agent opens it, for each loader whose classes it weaves, to the module of the
+     * copy of this class that loader resolves, and to nothing else (#668). Where that has not
+     * happened (no agent, a woven loader that cannot resolve the library, or a JDK whose
+     * implementation no longer has the {@code offset} and {@code tclass} fields and three-argument
+     * constructor this reads, which {@code JdkUpdaterShapeCanaryTest} fails the build on), the
      * updater stays unresolved and a spinlock through it is not declared, which reports rather
      * than hides.
      */
@@ -234,9 +235,19 @@ final class SpinLocks {
         return field.isEmpty() ? null : field;
     }
 
-    /** The JDK's one {@code AtomicIntegerFieldUpdater} implementation, the only shape read. */
-    private static final String UPDATER_IMPL =
+    /**
+     * The JDK's one {@code AtomicIntegerFieldUpdater} implementation, the only shape read.
+     * {@code JdkUpdaterShapeCanaryTest} fails the build on a JDK where it, or the two fields and
+     * the constructor {@code describe} reads, change shape.
+     */
+    static final String UPDATER_IMPL =
             "java.util.concurrent.atomic.AtomicIntegerFieldUpdater$AtomicIntegerFieldUpdaterImpl";
+
+    /** The implementation's {@code long} field holding the swapped field's offset. */
+    static final String UPDATER_OFFSET = "offset";
+
+    /** The implementation's {@code Class} field holding the class that declares the swapped field. */
+    static final String UPDATER_TARGET = "tclass";
 
     /**
      * {@return {@code targetClass.field} for the field {@code updater} really swaps, else ""}
@@ -251,8 +262,8 @@ final class SpinLocks {
             if (!UPDATER_IMPL.equals(impl.getName()) || impl.getClassLoader() != null) {
                 return "";
             }
-            Field offsetField = impl.getDeclaredField("offset");
-            Field targetField = impl.getDeclaredField("tclass");
+            Field offsetField = impl.getDeclaredField(UPDATER_OFFSET);
+            Field targetField = impl.getDeclaredField(UPDATER_TARGET);
             Constructor<?> make = impl.getDeclaredConstructor(Class.class, String.class, Class.class);
             if (!offsetField.trySetAccessible() || !targetField.trySetAccessible()
                     || !make.trySetAccessible()) {
