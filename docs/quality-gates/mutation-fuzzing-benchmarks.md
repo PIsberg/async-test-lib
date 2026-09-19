@@ -12,6 +12,13 @@ local measurement rather than the gate's own; see #479. The margin absorbs run-t
 (Sundays 02:00 UTC) and on demand from the Actions tab, and that job fails below the threshold.
 Until 2026-08-15 nothing in CI ran it at all, while `CONTRIBUTING.md` said it ran on a schedule.
 
+The score covers `async-test-lib` only: `mutation.yml` runs `-pl async-test-lib`. The corpus eval's
+gate logic (`CorpusGates`, `DetectorCoverage`, `PairEvidence`, `SilentRowPremise`,
+`AgentRowPremise`) is not in it, by decision (#672): it lives in `corpus-eval`'s test sources, where
+PIT has nothing to mutate, and is covered instead by the enumerated both-direction cases in
+`CorpusGatesTest`. The reasoning is in
+[corpus-eval-future-improvements.md](../analysis/corpus-eval-future-improvements.md).
+
 ```bash
 mvn org.pitest:pitest-maven:mutationCoverage                 # full run, ~2h
 mvn org.pitest:pitest-maven:mutationCoverage -DtargetClasses=se.deversity.asynctest.diagnostics.Shared*
