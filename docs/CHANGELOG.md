@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`MissedSignalDetector.recordLoopStart(Object)` and `recordLoopEnd(Object)` mark a `while (!ready)` loop around waits on a monitor (#669).** Once a monitor has a marked loop, an undeclared wait inside one is guarded and a wait outside every mark is judged unguarded, so `if (!ready) wait()` followed later by a check that finds `ready` true, and two consecutive `if (!ready) wait()` blocks, are reported where the marked loop stays silent. Monitors nobody marks keep the `recordPredicateCheck` reading.
+
 ### Fixed
 
 - **The agent opens `java.util.concurrent.atomic` only to the library copy that reads it (#668).**

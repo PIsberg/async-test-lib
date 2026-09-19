@@ -59,10 +59,20 @@ import java.util.concurrent.atomic.AtomicLong;
  * finds {@code ready} still false is therefore reported. A wait that can no longer be confirmed is
  * folded into a count, so the detector keeps at most one woken wait per thread per condition.
  *
- * <p>What the recorded sequence still cannot distinguish, because the calls are identical:
+ * <p>What the recorded sequence alone cannot distinguish, because the calls are identical:
  * {@code if (!ready) wait()} followed later in the same body by a check that finds {@code ready}
  * true reads as a loop that exited; and two consecutive {@code if (!ready) wait()} blocks read as a
- * loop that waited again. Declare such a wait with {@code recordWait(monitor, false)}.
+ * loop that waited again.
+ *
+ * <p><strong>Or mark the loops.</strong> {@link #recordLoopStart(Object)} before a
+ * {@code while (!ready)} loop and {@link #recordLoopEnd(Object)} after it (in a {@code finally})
+ * give the detector the back-edge the calls do not carry (#669). Marks are per monitor: once any
+ * thread has marked a loop on a monitor, a wait on it recorded without a {@code guarded} flag is a
+ * loop's when its thread is inside a marked loop on that monitor, and an {@code if}'s otherwise,
+ * judged like {@code recordWait(monitor, false)} whatever predicate checks surround it. Both shapes
+ * above are then reported. A monitor nobody marks keeps the reading of the paragraph above, and a
+ * wait recorded before the monitor's first mark is read that way too, so mark a loop before the
+ * waits it should decide. An explicit {@code guarded} flag still wins over a mark.
  *
  * <p>Usage:
  * <pre>{@code
@@ -175,12 +185,38 @@ public class MissedSignalDetector {
         private long notifies;
         private int notifiesWithNoWaiter;
         private boolean lastNotifyLost;
+        /** Whether any thread has marked a loop on this condition; its marks then decide (#669). */
+        private boolean loopsMarked;
+        /** How many marked loops each thread is inside; a thread leaves the map at depth zero. */
+        private final Map<Thread, Integer> openLoops = new HashMap<>();
 
         ConditionState(String label) {
             this.label = label;
         }
 
-        synchronized void waitStarted(Thread thread, Guard guard, long epoch) {
+        synchronized void loopStarted(Thread thread) {
+            loopsMarked = true;
+            openLoops.merge(thread, 1, Integer::sum);
+        }
+
+        synchronized void loopEnded(Thread thread) {
+            Integer depth = openLoops.get(thread);
+            if (depth == null) {
+                return; // an end with no start: nothing to close
+            }
+            if (depth <= 1) {
+                openLoops.remove(thread);
+            } else {
+                openLoops.put(thread, depth - 1);
+            }
+        }
+
+        synchronized void waitStarted(Thread thread, Guard declared, long epoch) {
+            Guard guard = declared;
+            if (guard == Guard.UNKNOWN && loopsMarked) {
+                // The marks carry the back-edge: inside one the wait is a loop's, outside an if's.
+                guard = openLoops.containsKey(thread) ? Guard.GUARDED : Guard.UNGUARDED;
+            }
             PendingWait previous = pendingWaits.remove(thread);
             boolean backEdge = false;
             if (previous != null) {
@@ -270,7 +306,7 @@ public class MissedSignalDetector {
         }
 
         synchronized int retainedWaits() {
-            return openWaits.size() + pendingWaits.size();
+            return openWaits.size() + pendingWaits.size() + openLoops.size();
         }
 
         synchronized void describeInto(List<String> findings) {
@@ -371,6 +407,62 @@ public class MissedSignalDetector {
         if (monitor == null) return;
         byMonitor(monitor).waitStarted(Thread.currentThread(),
                 guarded ? Guard.GUARDED : Guard.UNGUARDED, invocationEpoch.get());
+    }
+
+    /**
+     * Marks the start of a loop that re-tests a state predicate around waits on {@code monitor},
+     * on the calling thread: call it before {@code while (!ready)}, and
+     * {@link #recordLoopEnd(Object)} after the loop, in a {@code finally} (#669).
+     *
+     * <p>The mark is the loop's back-edge, which the other recorded calls do not carry. Once any
+     * thread has marked a loop on a monitor, every wait on it recorded without a {@code guarded}
+     * flag is decided by the marks: a wait while its thread is inside a marked loop on the monitor
+     * is guarded and never reported, and a wait outside every mark is judged as unguarded, like
+     * {@link #recordWait(Object, boolean) recordWait(monitor, false)}, whatever predicate checks
+     * surround it. So {@code if (!ready) wait()} followed later by a check that finds {@code ready}
+     * true, and two consecutive {@code if (!ready) wait()} blocks, are reported after a lost notify
+     * where the marked loop stays silent. A monitor with no mark keeps the
+     * {@link #recordPredicateCheck(Object, boolean)} reading, and so does a wait recorded before the
+     * monitor's first mark. An explicit {@code guarded} flag is never overridden.
+     *
+     * <pre>{@code
+     * synchronized (monitor) {
+     *     detector.recordLoopStart(monitor);
+     *     try {
+     *         while (!ready) {
+     *             detector.recordWait(monitor);
+     *             monitor.wait(100);
+     *             detector.recordWakeup(monitor);
+     *         }
+     *     } finally {
+     *         detector.recordLoopEnd(monitor);
+     *     }
+     * }
+     * }</pre>
+     *
+     * <p>Loops nest: a thread is inside a marked loop until it records as many ends as starts. A
+     * start left unclosed keeps that thread's later waits on the monitor guarded, which errs towards
+     * silence.
+     *
+     * @param monitor the object whose {@code wait()} the loop calls; {@code null} is ignored
+     * @since 1.12.2
+     */
+    public void recordLoopStart(Object monitor) {
+        if (monitor == null) return;
+        byMonitor(monitor).loopStarted(Thread.currentThread());
+    }
+
+    /**
+     * Marks the end of a loop the calling thread started with {@link #recordLoopStart(Object)} on
+     * {@code monitor} (#669). An end with no matching start changes nothing.
+     *
+     * @param monitor the same monitor passed to {@link #recordLoopStart(Object)}; {@code null} is
+     *                ignored
+     * @since 1.12.2
+     */
+    public void recordLoopEnd(Object monitor) {
+        if (monitor == null) return;
+        byMonitor(monitor).loopEnded(Thread.currentThread());
     }
 
     /**
