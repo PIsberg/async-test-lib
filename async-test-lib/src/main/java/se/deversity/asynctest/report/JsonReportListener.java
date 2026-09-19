@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <h3>Output format</h3>
  * <pre>{@code
  * {
- *   "asyncTestVersion": "1.6.0",
+ *   "asyncTestVersion": "1.12.1",
  *   "generatedAt": "2026-05-16T10:30:00Z",
  *   "totalFindings": 2,
  *   "findings": [
@@ -60,7 +60,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class JsonReportListener implements AsyncTestListener {
 
     private static final String REPORT_FILENAME = "async-test-report.json";
-    private static final String VERSION = "1.6.0";
+    private static final String VERSION = ReportListeners.libraryVersion();
 
     private final List<DetectorFinding> findings = new CopyOnWriteArrayList<>();
     private final String outputDir;

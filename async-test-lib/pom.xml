@@ -104,6 +104,12 @@
                 <version>${maven-jar-plugin.version}</version>
                 <configuration>
                     <archive>
+                        <!-- Writes Implementation-Version, the one place the reports read the library
+                             version from (ReportListeners.libraryVersion). Without it the JSON report
+                             carried a literal that stayed at 1.6.0 and SARIF said "unknown" (#703). -->
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
                         <manifestEntries>
                             <Automatic-Module-Name>se.deversity.asynctest</Automatic-Module-Name>
                         </manifestEntries>
