@@ -4,7 +4,6 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,8 +62,6 @@ public class BlockingQueueDetector {
         final AtomicInteger pollFailureCount = new AtomicInteger(0);
         final AtomicInteger putCount = new AtomicInteger(0);
         final AtomicInteger takeCount = new AtomicInteger(0);
-        final Set<Long> producerThreads = ConcurrentHashMap.newKeySet();
-        final Set<Long> consumerThreads = ConcurrentHashMap.newKeySet();
         // Atomic accumulate, not a volatile read-modify-write. Worker threads record sizes
         // concurrently, and `v = Math.max(v, size)` over a volatile is a lost-update race: two
         // threads read the same high-water mark and the larger write loses to the smaller. That
@@ -203,7 +200,6 @@ public class BlockingQueueDetector {
         lastOffer.set(state);
         if (state != null) {
             state.offerCount.incrementAndGet();
-            state.producerThreads.add(Thread.currentThread().threadId());
             if (success) {
                 state.offerSuccessCount.incrementAndGet();
             } else {
@@ -256,7 +252,6 @@ public class BlockingQueueDetector {
         QueueState state = queues.get(new IdentityKey(queue));
         if (state != null) {
             state.pollCount.incrementAndGet();
-            state.consumerThreads.add(Thread.currentThread().threadId());
             if (success) {
                 state.pollSuccessCount.incrementAndGet();
             } else {
@@ -279,7 +274,6 @@ public class BlockingQueueDetector {
         QueueState state = queues.get(new IdentityKey(queue));
         if (state != null) {
             state.putCount.incrementAndGet();
-            state.producerThreads.add(Thread.currentThread().threadId());
             updateSizeState(state);
         }
     }
@@ -297,7 +291,6 @@ public class BlockingQueueDetector {
         QueueState state = queues.get(new IdentityKey(queue));
         if (state != null) {
             state.takeCount.incrementAndGet();
-            state.consumerThreads.add(Thread.currentThread().threadId());
             updateSizeState(state);
         }
     }

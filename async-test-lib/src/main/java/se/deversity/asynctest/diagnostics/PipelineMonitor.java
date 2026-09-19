@@ -1,7 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -33,7 +32,6 @@ public class PipelineMonitor {
     }
     
     private final Map<String, PipelineStage> stages = new ConcurrentHashMap<>();
-    private final List<String> eventLog = Collections.synchronizedList(new ArrayList<>());
     private volatile boolean enabled = true;
     
     /**
@@ -56,7 +54,6 @@ public class PipelineMonitor {
         
         PipelineStage stage = stages.computeIfAbsent(stageName, PipelineStage::new);
         stage.published.incrementAndGet();
-        eventLog.add(String.format("PUBLISH %s -> %s", eventId, stageName));
     }
     
     /**
@@ -72,7 +69,6 @@ public class PipelineMonitor {
         if (stage == null) return;
         
         stage.processed.incrementAndGet();
-        eventLog.add(String.format("PROCESS %s in %s", eventId, stageName));
     }
     
     /**
@@ -90,7 +86,6 @@ public class PipelineMonitor {
         
         stage.failed.incrementAndGet();
         stage.lostEvents.add(eventId + ": " + reason);
-        eventLog.add(String.format("FAILED %s in %s: %s", eventId, stageName, reason));
     }
     
     /**
@@ -142,7 +137,6 @@ public class PipelineMonitor {
      */
     public void reset() {
         stages.clear();
-        eventLog.clear();
     }
     /**
      * Disable.

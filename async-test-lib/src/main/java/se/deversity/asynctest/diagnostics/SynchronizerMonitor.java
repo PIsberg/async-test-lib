@@ -1,9 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,10 +21,8 @@ public class SynchronizerMonitor {
         final String synchronizerName;
         final int expectedParties;
         final AtomicInteger arrivedCount = new AtomicInteger(0);
-        final Set<Long> arrivedThreads = ConcurrentHashMap.newKeySet();
         final Map<Long, Integer> lastGenerationByThread = new ConcurrentHashMap<>();
         final AtomicInteger duplicateArrivals = new AtomicInteger(0);
-        final List<String> events = Collections.synchronizedList(new ArrayList<>());
         
         BarrierState(String name, int parties) {
             this.synchronizerName = name;
@@ -66,7 +61,6 @@ public class SynchronizerMonitor {
         
         long threadId = Thread.currentThread().threadId();
         int count = state.arrivedCount.incrementAndGet();
-        state.arrivedThreads.add(threadId);
         // The barrier trips every expectedParties arrivals and is reused for the next generation;
         // the runner reuses its pool threads across rounds, so the same thread arriving again is
         // only a defect within one generation.
@@ -75,8 +69,6 @@ public class SynchronizerMonitor {
         if (previous != null && previous == generation) {
             state.duplicateArrivals.incrementAndGet();
         }
-        state.events.add(String.format("T-%d arrived (%d/%d)",
-            threadId, count, state.expectedParties));
     }
     
     /**
@@ -85,13 +77,8 @@ public class SynchronizerMonitor {
      * @param synchronizer the synchronizer being recorded, tracked by identity
      */
     public void recordBarrierAdvance(Object synchronizer) {
-        if (!enabled || synchronizer == null) return;
-        
-        BarrierState state = synchronizers.get(new IdentityKey(synchronizer));
-        if (state == null) return;
-        
-        state.events.add(String.format("T-%d advanced past barrier", 
-            Thread.currentThread().threadId()));
+        // Advancing past the barrier carries no signal the analysis uses: arrivals alone decide
+        // both findings. The method stays because it is public API.
     }
     
     /**
@@ -106,9 +93,7 @@ public class SynchronizerMonitor {
         if (state == null) return;
         
         state.arrivedCount.set(0);
-        state.arrivedThreads.clear();
         state.lastGenerationByThread.clear();
-        state.events.add("Barrier reset");
     }
     
     /**
