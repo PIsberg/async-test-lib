@@ -370,25 +370,17 @@ public class LazyConstantMisuseDetector {
             sb.append("  Gets=").append(totalGets)
               .append(", Computes=").append(totalComputes).append("\n");
 
-            appendSection(sb, "Reentrant computation (IllegalStateException / infinite recursion)", reentrantIssues);
-            appendSection(sb, "Null-producing supplier (NullPointerException on JDK 26)", nullValueIssues);
-            appendSection(sb, "Computation ran more than once (at-most-once contract broken)", multipleComputeIssues);
-            appendSection(sb, "Non-deterministic supplier (stored value depends on timing)", nonDeterministicIssues);
-            appendSection(sb, "Compute convoy (callers blocked behind a slow supplier)", convoyWarnings);
+            ReportSections.appendSection(sb, "Reentrant computation (IllegalStateException / infinite recursion)", reentrantIssues);
+            ReportSections.appendSection(sb, "Null-producing supplier (NullPointerException on JDK 26)", nullValueIssues);
+            ReportSections.appendSection(sb, "Computation ran more than once (at-most-once contract broken)", multipleComputeIssues);
+            ReportSections.appendSection(sb, "Non-deterministic supplier (stored value depends on timing)", nonDeterministicIssues);
+            ReportSections.appendSection(sb, "Compute convoy (callers blocked behind a slow supplier)", convoyWarnings);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {

@@ -229,22 +229,14 @@ public class GathererConcurrencyMisuseDetector {
             sb.append("  Gatherers=").append(totalGatherers)
               .append(", Integrations=").append(totalIntegrations).append("\n");
 
-            appendSection(sb, "Missing combiner on parallel stream (lost results)", missingCombinerIssues);
-            appendSection(sb, "Concurrent integrator — confirm per-thread state confinement", sharedStateIssues);
+            ReportSections.appendSection(sb, "Missing combiner on parallel stream (lost results)", missingCombinerIssues);
+            ReportSections.appendSection(sb, "Concurrent integrator — confirm per-thread state confinement", sharedStateIssues);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {

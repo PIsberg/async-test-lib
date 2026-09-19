@@ -223,23 +223,15 @@ public class FinalFieldMutationDetector {
                   .append(": reflective final-field mutation (deprecated by JEP 500, breaks JMM guarantees)\n");
             }
 
-            appendSection(sb, "Final-field mutations", mutationIssues);
-            appendSection(sb, "Mutation racing readers (stale value forever)", racingReaderIssues);
-            appendSection(sb, "Concurrent mutators (unordered last-write-wins)", concurrentWriteIssues);
+            ReportSections.appendSection(sb, "Final-field mutations", mutationIssues);
+            ReportSections.appendSection(sb, "Mutation racing readers (stale value forever)", racingReaderIssues);
+            ReportSections.appendSection(sb, "Concurrent mutators (unordered last-write-wins)", concurrentWriteIssues);
 
             sb.append("\n\n").append("=".repeat(60));
             sb.append("\n").append(getLearningContent());
             sb.append("=".repeat(60));
 
             return sb.toString();
-        }
-
-        private static void appendSection(StringBuilder sb, String title, List<String> items) {
-            if (items.isEmpty()) return;
-            sb.append("\n  ").append(title).append(":\n");
-            for (String item : items) {
-                sb.append("    - ").append(item).append("\n");
-            }
         }
 
         private static String getLearningContent() {
