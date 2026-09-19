@@ -50,7 +50,6 @@ public class LockContentionDetector {
         final String name;
         final AtomicInteger acquireAttempts = new AtomicInteger();
         final AtomicInteger contentionEvents = new AtomicInteger();
-        final AtomicInteger acquireSuccesses = new AtomicInteger();
         final AtomicInteger currentHolders   = new AtomicInteger();
 
         MonitorState(String name) {
@@ -97,7 +96,6 @@ public class LockContentionDetector {
     public void recordAcquired(Object monitor, String name) {
         if (monitor == null) return;
         MonitorState state = resolve(monitor, name);
-        state.acquireSuccesses.incrementAndGet();
         state.currentHolders.incrementAndGet();
     }
 

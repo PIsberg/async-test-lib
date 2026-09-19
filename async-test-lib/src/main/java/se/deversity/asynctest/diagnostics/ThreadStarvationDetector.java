@@ -51,9 +51,7 @@ public class ThreadStarvationDetector {
     private static class ExecutorState {
         final String name;
         final AtomicInteger submittedTasks = new AtomicInteger(0);
-        final AtomicInteger startedTasks = new AtomicInteger(0);
         final AtomicInteger completedTasks = new AtomicInteger(0);
-        final AtomicLong totalWaitTime = new AtomicLong(0);
         final AtomicLong maxWaitTime = new AtomicLong(0);
         volatile int peakQueueDepth = 0;
         final AtomicInteger currentQueueDepth = new AtomicInteger(0);
@@ -143,9 +141,7 @@ public class ThreadStarvationDetector {
         // Find the executor state by name
         for (ExecutorState state : trackedExecutors.values()) {
             if (state.name.equals(executorName)) {
-                state.startedTasks.incrementAndGet();
                 state.currentQueueDepth.updateAndGet(v -> Math.max(0, v - 1));
-                state.totalWaitTime.addAndGet(waitTimeNs);
                 long maxWait = state.maxWaitTime.get();
                 while (waitTimeNs > maxWait) {
                     if (state.maxWaitTime.compareAndSet(maxWait, waitTimeNs)) {

@@ -63,7 +63,6 @@ public class StructuredConcurrencyMisuseDetector {
         final String scopeType;
         volatile boolean joined = false;
         final AtomicInteger subtaskCount = new AtomicInteger(0);
-        final AtomicInteger resultAccessBeforeJoin = new AtomicInteger(0);
 
         ScopeRecord(String id, String scopeType) {
             this.id = id;
@@ -134,7 +133,6 @@ public class StructuredConcurrencyMisuseDetector {
     public void recordResultAccessed(String scopeId) {
         ScopeRecord rec = openScopes.get(scopeId);
         if (rec != null && !rec.joined) {
-            rec.resultAccessBeforeJoin.incrementAndGet();
             resultAccessedBeforeJoin.add(
                 "Scope " + rec.scopeType + " (id=" + rec.id + "): "
                 + "subtask result accessed before join() — returned value may be incomplete"

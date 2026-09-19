@@ -27,7 +27,6 @@ public class MemoryModelValidator {
      * before the join gives up and drops the observation entirely.
      */
     private static final long WRITER_TIMEOUT_SECONDS = 2;
-    private final AtomicReference<ValidationResult> lastResult = new AtomicReference<>();
 
     /**
      * Runs at the top of every thread whose write another thread waits for. Production is a
@@ -66,7 +65,6 @@ public class MemoryModelValidator {
         // Test 4: AtomicReference visibility
         testAtomicVisibility(result);
         
-        lastResult.set(result);
         return result;
     }
     

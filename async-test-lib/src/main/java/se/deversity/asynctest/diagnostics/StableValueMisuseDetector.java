@@ -69,7 +69,6 @@ public class StableValueMisuseDetector {
 
     private static final class State {
         final AtomicBoolean set = new AtomicBoolean(false);
-        final AtomicInteger setAttempts = new AtomicInteger(0);
         final Set<Long> settingThreadIds = ConcurrentHashMap.newKeySet();
         final AtomicBoolean contentionReported = new AtomicBoolean(false);
     }
@@ -127,7 +126,6 @@ public class StableValueMisuseDetector {
         totalSets.incrementAndGet();
         State s = stateFor(name);
         s.settingThreadIds.add(thread.threadId());
-        s.setAttempts.incrementAndGet();
 
         boolean wasAlreadySet = !s.set.compareAndSet(false, true);
         if (wasAlreadySet) {
