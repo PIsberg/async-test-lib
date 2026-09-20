@@ -40,6 +40,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Still open in #692: a real JCTools corpus row, `VarHandle` takes from a static field or an array
   element, the `BlockingDeque` blocking and timed forms, and removal through an iterator.
 
+- **A reference slot is its own container, not its holder (#692).** An offer through an
+  `AtomicReferenceFieldUpdater`, an instance-field `VarHandle` or an `AtomicReferenceArray` named
+  the receiver or the array as its container, so two reference fields of one object, or two
+  elements of one array, read as one. An object offered into one slot, moved by code the agent
+  does not see, and taken out of the sibling then matched the first offer, and its offerer was
+  named the owner of a hand-off it was not part of. The container is now the holder combined with
+  the updater, the handle or the index, which both ends have in hand. A slot reached through two
+  different handles reads as two containers, which can only lose a match and fall back to the #557
+  excuse.
+
 - **Reports name the version of the jar that wrote them (#703).** `JsonReportListener` wrote
   `"asyncTestVersion": "1.6.0"` from a literal while the library was at 1.12.1, and the SARIF
   tool version read `unknown` from every released jar, because the jar manifest carried no

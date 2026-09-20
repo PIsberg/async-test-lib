@@ -107,7 +107,12 @@ class OwnershipOfferWeavingTest {
         }
     }
 
-    /** A slot shape: how a chunk is offered, how it is taken, and which object is the container. */
+    /**
+     * A slot shape: how a chunk is offered, how it is taken, and which object is the container.
+     * The container is {@code null} for a slot inside an object or an array, which is keyed by its
+     * field or index as well as its holder (#692): there both ends must agree, and
+     * {@link #siblingSlotsAreDifferentContainers()} pins that siblings do not.
+     */
     private record Shape(String name, BiFunction<OfferedChunkBean, Chunk, Object> offer,
                          Function<OfferedChunkBean, Chunk> take,
                          Function<OfferedChunkBean, Object> container) { }
@@ -125,19 +130,19 @@ class OwnershipOfferWeavingTest {
                         OfferedChunkBean::slot),
                 new Shape("AtomicReferenceFieldUpdater.set / getAndSet",
                         (b, c) -> { b.offerThroughUpdater(c); return null; },
-                        OfferedChunkBean::takeThroughUpdater, b -> b),
+                        OfferedChunkBean::takeThroughUpdater, b -> null),
                 new Shape("AtomicReferenceFieldUpdater.compareAndSet / getAndSet",
                         OfferedChunkBean::offerThroughUpdaterCompareAndSet,
-                        OfferedChunkBean::takeThroughUpdater, b -> b),
+                        OfferedChunkBean::takeThroughUpdater, b -> null),
                 new Shape("AtomicReferenceArray.set / getAndSet",
                         (b, c) -> { b.offerToArray(c); return null; }, OfferedChunkBean::takeFromArray,
-                        OfferedChunkBean::slots),
+                        b -> null),
                 new Shape("VarHandle.setRelease / getAndSet",
                         (b, c) -> { b.offerThroughHandle(c); return null; },
-                        OfferedChunkBean::takeThroughHandle, b -> b),
+                        OfferedChunkBean::takeThroughHandle, b -> null),
                 new Shape("VarHandle.compareAndSet / getAndSet",
                         OfferedChunkBean::offerThroughHandleCompareAndSet,
-                        OfferedChunkBean::takeThroughHandle, b -> b),
+                        OfferedChunkBean::takeThroughHandle, b -> null),
                 new Shape("MessagePassingQueue.relaxedOffer / relaxedPoll",
                         OfferedChunkBean::relaxedOfferToQueue, OfferedChunkBean::relaxedPollQueue,
                         OfferedChunkBean::queue),
@@ -185,20 +190,78 @@ class OwnershipOfferWeavingTest {
                 TelemetryRegistry.flush();
             }
             int chunkId = System.identityHashCode(chunk);
-            int containerId = System.identityHashCode(shape.container().apply(bean));
+            Object container = shape.container().apply(bean);
             List<Event> offered = validator.ofKind("offered").stream()
                     .filter(e -> e.identity() == chunkId).toList();
             List<Event> taken = validator.ofKind("taken").stream()
                     .filter(e -> e.identity() == chunkId).toList();
             assertEquals(1, offered.size(), shape.name() + ": the offer must be published once; "
                     + validator.events);
-            assertEquals(containerId, offered.get(0).container(),
-                    shape.name() + ": the offer must name the container the chunk went into");
+            if (container != null) {
+                assertEquals(System.identityHashCode(container), offered.get(0).container(),
+                        shape.name() + ": the offer must name the container the chunk went into");
+            }
+            assertTrue(offered.get(0).container() != 0,
+                    shape.name() + ": the offer must name a container");
             assertEquals(1, taken.size(), shape.name() + ": the take must be published once; "
                     + validator.events);
-            assertEquals(containerId, taken.get(0).container(),
+            assertEquals(offered.get(0).container(), taken.get(0).container(),
                     shape.name() + ": the take must name the container the chunk came out of");
         }));
+    }
+
+    @Test
+    @DisplayName("two fields of one object, and two elements of one array, are different containers (#692)")
+    void siblingSlotsAreDifferentContainers() throws Exception {
+        record Siblings(String name, java.util.function.BiConsumer<OfferedChunkBean, Chunk> offer,
+                        Function<OfferedChunkBean, Chunk> take,
+                        java.util.function.BiConsumer<OfferedChunkBean, Chunk> siblingOffer,
+                        Function<OfferedChunkBean, Chunk> siblingTake) { }
+        List<Siblings> kinds = List.of(
+                new Siblings("AtomicReferenceFieldUpdater", OfferedChunkBean::offerThroughUpdater,
+                        OfferedChunkBean::takeThroughUpdater,
+                        OfferedChunkBean::offerThroughSiblingUpdater,
+                        OfferedChunkBean::takeThroughSiblingUpdater),
+                new Siblings("VarHandle", OfferedChunkBean::offerThroughHandle,
+                        OfferedChunkBean::takeThroughHandle,
+                        OfferedChunkBean::offerThroughSiblingHandle,
+                        OfferedChunkBean::takeThroughSiblingHandle),
+                new Siblings("AtomicReferenceArray", OfferedChunkBean::offerToArray,
+                        OfferedChunkBean::takeFromArray,
+                        OfferedChunkBean::offerToSiblingArrayElement,
+                        OfferedChunkBean::takeFromSiblingArrayElement));
+        for (Siblings kind : kinds) {
+            OfferedChunkBean bean = new OfferedChunkBean();
+            RecordingValidator validator = new RecordingValidator();
+            Chunk here = OfferedChunkBean.newChunk();
+            Chunk there = OfferedChunkBean.newChunk();
+            try (Actors actors = new Actors(); TelemetryBridge bridge =
+                    TelemetryBridge.activateWithFilter(validator, actors.ids::contains)) {
+                actors.run(1, () -> { kind.offer().accept(bean, here); return null; });
+                actors.run(1, () -> { kind.siblingOffer().accept(bean, there); return null; });
+                assertSame(here, actors.run(2, () -> kind.take().apply(bean)));
+                assertSame(there, actors.run(2, () -> kind.siblingTake().apply(bean)));
+                TelemetryRegistry.flush();
+            }
+            List<Integer> hereContainers = containersOf(validator, here);
+            List<Integer> thereContainers = containersOf(validator, there);
+            assertEquals(2, hereContainers.size(), kind.name() + ": " + validator.events);
+            assertEquals(hereContainers.get(0), hereContainers.get(1),
+                    kind.name() + ": an offer and a take through one slot must agree");
+            assertEquals(thereContainers.get(0), thereContainers.get(1),
+                    kind.name() + ": an offer and a take through the sibling slot must agree");
+            assertTrue(!hereContainers.get(0).equals(thereContainers.get(0)),
+                    kind.name() + ": an offer into one slot must not match a take out of its "
+                            + "sibling, or the wrong thread is named the owner; " + validator.events);
+        }
+    }
+
+    private static List<Integer> containersOf(RecordingValidator validator, Chunk chunk) {
+        int identity = System.identityHashCode(chunk);
+        synchronized (validator.events) {
+            return validator.events.stream().filter(e -> e.identity() == identity)
+                    .map(Event::container).toList();
+        }
     }
 
     @Test

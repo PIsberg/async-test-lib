@@ -36,18 +36,24 @@ public final class OfferedChunkBean {
     private static final VarHandle HANDLE_SLOT;
     private static final AtomicReferenceFieldUpdater<OfferedChunkBean, Chunk> UPDATER_SLOT =
             AtomicReferenceFieldUpdater.newUpdater(OfferedChunkBean.class, Chunk.class, "updaterSlot");
+    private static final AtomicReferenceFieldUpdater<OfferedChunkBean, Chunk> SIBLING_UPDATER_SLOT =
+            AtomicReferenceFieldUpdater.newUpdater(OfferedChunkBean.class, Chunk.class,
+                    "siblingUpdaterSlot");
+    private static final VarHandle SIBLING_HANDLE_SLOT;
 
     static {
         try {
             HANDLE_SLOT = MethodHandles.lookup().findVarHandle(OfferedChunkBean.class, "handleSlot",
                     Chunk.class);
+            SIBLING_HANDLE_SLOT = MethodHandles.lookup().findVarHandle(OfferedChunkBean.class,
+                    "siblingHandleSlot", Chunk.class);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
         }
     }
 
     private final AtomicReference<Chunk> slot = new AtomicReference<>();
-    private final AtomicReferenceArray<Chunk> slots = new AtomicReferenceArray<>(1);
+    private final AtomicReferenceArray<Chunk> slots = new AtomicReferenceArray<>(2);
     private final MessagePassingQueue<Chunk> queue = new LockedMessagePassingQueue<>();
     private final BlockingQueue<Chunk> blocking = new LinkedBlockingQueue<>();
     private final Deque<Chunk> deque = new ConcurrentLinkedDeque<>();
@@ -55,6 +61,10 @@ public final class OfferedChunkBean {
     private final Object lock = new Object();
     @SuppressWarnings("unused") // written through HANDLE_SLOT
     private volatile Chunk handleSlot;
+    @SuppressWarnings("unused") // written through SIBLING_HANDLE_SLOT
+    private volatile Chunk siblingHandleSlot;
+    @SuppressWarnings("unused") // written through SIBLING_UPDATER_SLOT
+    private volatile Chunk siblingUpdaterSlot;
     @SuppressWarnings("unused") // written through UPDATER_SLOT
     private volatile Chunk updaterSlot;
 
@@ -246,6 +256,32 @@ public final class OfferedChunkBean {
     /** Empties the plain queue through a predicate, which names no element. */
     public boolean removeEveryChunkFromPlain() {
         return plain.removeIf(chunk -> true);
+    }
+
+    // ---- The sibling slots: a second field of this object, a second element of the array (#692)
+
+    public void offerThroughSiblingUpdater(Chunk chunk) {
+        SIBLING_UPDATER_SLOT.set(this, chunk);
+    }
+
+    public Chunk takeThroughSiblingUpdater() {
+        return SIBLING_UPDATER_SLOT.getAndSet(this, null);
+    }
+
+    public void offerThroughSiblingHandle(Chunk chunk) {
+        SIBLING_HANDLE_SLOT.setRelease(this, chunk);
+    }
+
+    public Chunk takeThroughSiblingHandle() {
+        return (Chunk) SIBLING_HANDLE_SLOT.getAndSet(this, (Chunk) null);
+    }
+
+    public void offerToSiblingArrayElement(Chunk chunk) {
+        slots.set(1, chunk);
+    }
+
+    public Chunk takeFromSiblingArrayElement() {
+        return slots.getAndSet(1, null);
     }
 
     // ---- Uses ----------------------------------------------------------------------------------
