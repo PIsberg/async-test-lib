@@ -6,9 +6,11 @@ import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Deque;
 import java.time.Duration;
 import java.util.Formatter;
 import java.util.Locale;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -266,7 +268,24 @@ final class CollectionAccessWeaver {
             Entry.call(List.class, "set", "listSet", int.class, Object.class),
             Entry.call(Queue.class, "offer", "queueOffer", Object.class),
             Entry.call(Queue.class, "poll", "queuePoll"),
-            Entry.call(Queue.class, "peek", "queuePeek"));
+            Entry.call(Queue.class, "peek", "queuePeek"),
+            // The entry and removal forms #664 left unwoven (#692). An element that went in
+            // through one of these had no recorded offer, so every thread got the #557 excuse,
+            // and one that came out through one of these was never a take, so the remover's own
+            // accesses read as an alias's.
+            Entry.call(Collection.class, "addAll", "collectionAddAll", Collection.class),
+            Entry.call(Collection.class, "removeIf", "collectionRemoveIf", Predicate.class),
+            Entry.call(Queue.class, "remove", "queueRemove"),
+            Entry.call(Deque.class, "offerFirst", "dequeOfferFirst", Object.class),
+            Entry.call(Deque.class, "offerLast", "dequeOfferLast", Object.class),
+            Entry.call(Deque.class, "addFirst", "dequeAddFirst", Object.class),
+            Entry.call(Deque.class, "addLast", "dequeAddLast", Object.class),
+            Entry.call(Deque.class, "push", "dequePush", Object.class),
+            Entry.call(Deque.class, "pollFirst", "dequePollFirst"),
+            Entry.call(Deque.class, "pollLast", "dequePollLast"),
+            Entry.call(Deque.class, "removeFirst", "dequeRemoveFirst"),
+            Entry.call(Deque.class, "removeLast", "dequeRemoveLast"),
+            Entry.call(Deque.class, "pop", "dequePop"));
 
     /**
      * The lock table. {@code java.util.concurrent.locks.Lock} is an interface whose implementations

@@ -143,7 +143,29 @@ class OwnershipOfferWeavingTest {
                         OfferedChunkBean::queue),
                 new Shape("MessagePassingQueue.offer / poll",
                         OfferedChunkBean::offerToQueue, OfferedChunkBean::pollQueue,
-                        OfferedChunkBean::queue));
+                        OfferedChunkBean::queue),
+                // The entry and removal forms #664 left unwoven (#692).
+                new Shape("Deque.offerFirst / pollFirst",
+                        OfferedChunkBean::offerFirstToDeque, OfferedChunkBean::pollFirstFromDeque,
+                        OfferedChunkBean::deque),
+                new Shape("Deque.offerLast / pollLast",
+                        OfferedChunkBean::offerLastToDeque, OfferedChunkBean::pollLastFromDeque,
+                        OfferedChunkBean::deque),
+                new Shape("Deque.addFirst / removeFirst",
+                        (b, c) -> { b.addFirstToDeque(c); return null; },
+                        OfferedChunkBean::removeFirstFromDeque, OfferedChunkBean::deque),
+                new Shape("Deque.addLast / removeLast",
+                        (b, c) -> { b.addLastToDeque(c); return null; },
+                        OfferedChunkBean::removeLastFromDeque, OfferedChunkBean::deque),
+                new Shape("Deque.push / pop",
+                        (b, c) -> { b.pushToDeque(c); return null; },
+                        OfferedChunkBean::popFromDeque, OfferedChunkBean::deque),
+                new Shape("Collection.addAll / Queue.remove()",
+                        OfferedChunkBean::addAllToPlain, OfferedChunkBean::removeHeadOfPlain,
+                        OfferedChunkBean::plain),
+                new Shape("Queue.offer / Collection.remove(Object)",
+                        OfferedChunkBean::offerToPlain, OfferedChunkBean::removeFromPlainByName,
+                        OfferedChunkBean::plain));
     }
 
     // ---- The events -----------------------------------------------------------------------------
@@ -202,6 +224,22 @@ class OwnershipOfferWeavingTest {
                 "take() hands the element to one thread, like poll(); " + validator.events);
         assertEquals(2, validator.ofKind("drained").stream().filter(e -> e.container() == queue).count(),
                 "both drainTo forms must publish the drained queue; " + validator.events);
+    }
+
+    @Test
+    @DisplayName("removeIf on a queue names no element, so it drops the queue's offers like drainTo (#692)")
+    void removeIfOnAQueueIsPublishedAsADrain() throws Exception {
+        OfferedChunkBean bean = new OfferedChunkBean();
+        RecordingValidator validator = new RecordingValidator();
+        try (Actors actors = new Actors(); TelemetryBridge bridge =
+                TelemetryBridge.activateWithFilter(validator, actors.ids::contains)) {
+            actors.run(1, () -> bean.offerToPlain(OfferedChunkBean.newChunk()));
+            assertTrue(actors.run(2, bean::removeEveryChunkFromPlain));
+            TelemetryRegistry.flush();
+        }
+        int queue = System.identityHashCode(bean.plain());
+        assertEquals(1, validator.ofKind("drained").stream().filter(e -> e.container() == queue).count(),
+                "removeIf must publish the queue it emptied; " + validator.events);
     }
 
     // ---- End to end: who owns a take-first generation ------------------------------------------

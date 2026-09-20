@@ -27,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The ownership model sees elements that enter or leave a queue through the `Deque` forms,
+  `addAll`, `remove()`, `remove(Object)` and `removeIf` (#692).** #664 wove `offer`, `add`, `put`,
+  `poll`, `take` and `drainTo`. An element that went in through `Deque.offerFirst`, `offerLast`,
+  `addFirst`, `addLast`, `push` or `Collection.addAll` had no recorded offer, so every thread got
+  the #557 excuse; one that came out through `Queue.remove()`, `remove(Object)` or the `Deque`
+  `pollFirst`/`pollLast`/`removeFirst`/`removeLast`/`pop` was never a take, so the offerer's own
+  late write after such a hand-off was reported as a race. All of these are now table entries in
+  `CollectionAccessWeaver` with hooks that publish the offer before the call and the take after
+  it, and `removeIf` on a queue drops the queue's recorded offers the way `drainTo` does. The same
+  hooks record the call for `SharedCollectionDetector`, which did not see these methods either.
+  Still open in #692: a real JCTools corpus row, `VarHandle` takes from a static field or an array
+  element, the `BlockingDeque` blocking and timed forms, and removal through an iterator.
+
 - **Reports name the version of the jar that wrote them (#703).** `JsonReportListener` wrote
   `"asyncTestVersion": "1.6.0"` from a literal while the library was at 1.12.1, and the SARIF
   tool version read `unknown` from every released jar, because the jar manifest carried no

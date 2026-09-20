@@ -6,8 +6,12 @@ import com.example.agentfixture.jctools.queues.MessagePassingQueue;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -46,6 +50,8 @@ public final class OfferedChunkBean {
     private final AtomicReferenceArray<Chunk> slots = new AtomicReferenceArray<>(1);
     private final MessagePassingQueue<Chunk> queue = new LockedMessagePassingQueue<>();
     private final BlockingQueue<Chunk> blocking = new LinkedBlockingQueue<>();
+    private final Deque<Chunk> deque = new ConcurrentLinkedDeque<>();
+    private final Queue<Chunk> plain = new ConcurrentLinkedQueue<>();
     private final Object lock = new Object();
     @SuppressWarnings("unused") // written through HANDLE_SLOT
     private volatile Chunk handleSlot;
@@ -75,6 +81,16 @@ public final class OfferedChunkBean {
     /** {@return the blocking queue} */
     public BlockingQueue<Chunk> blocking() {
         return blocking;
+    }
+
+    /** {@return the deque the end-specific shapes use (#692)} */
+    public Deque<Chunk> deque() {
+        return deque;
+    }
+
+    /** {@return the plain queue the bulk-offer and removal shapes use (#692)} */
+    public Queue<Chunk> plain() {
+        return plain;
     }
 
     // ---- Offers --------------------------------------------------------------------------------
@@ -123,6 +139,34 @@ public final class OfferedChunkBean {
         return blocking.offer(chunk);
     }
 
+    public boolean offerFirstToDeque(Chunk chunk) {
+        return deque.offerFirst(chunk);
+    }
+
+    public boolean offerLastToDeque(Chunk chunk) {
+        return deque.offerLast(chunk);
+    }
+
+    public void addFirstToDeque(Chunk chunk) {
+        deque.addFirst(chunk);
+    }
+
+    public void addLastToDeque(Chunk chunk) {
+        deque.addLast(chunk);
+    }
+
+    public void pushToDeque(Chunk chunk) {
+        deque.push(chunk);
+    }
+
+    public boolean addAllToPlain(Chunk chunk) {
+        return plain.addAll(List.of(chunk));
+    }
+
+    public boolean offerToPlain(Chunk chunk) {
+        return plain.offer(chunk);
+    }
+
     // ---- Takes ---------------------------------------------------------------------------------
 
     public Chunk takeFromSlot() {
@@ -167,6 +211,41 @@ public final class OfferedChunkBean {
         List<Chunk> drained = new ArrayList<>();
         blocking.drainTo(drained, max);
         return drained;
+    }
+
+    public Chunk pollFirstFromDeque() {
+        return deque.pollFirst();
+    }
+
+    public Chunk pollLastFromDeque() {
+        return deque.pollLast();
+    }
+
+    public Chunk removeFirstFromDeque() {
+        return deque.removeFirst();
+    }
+
+    public Chunk removeLastFromDeque() {
+        return deque.removeLast();
+    }
+
+    public Chunk popFromDeque() {
+        return deque.pop();
+    }
+
+    public Chunk removeHeadOfPlain() {
+        return plain.remove();
+    }
+
+    /** Removes the head by naming it, the way a cancellation path does. */
+    public Chunk removeFromPlainByName() {
+        Chunk head = plain.peek();
+        return plain.remove(head) ? head : null;
+    }
+
+    /** Empties the plain queue through a predicate, which names no element. */
+    public boolean removeEveryChunkFromPlain() {
+        return plain.removeIf(chunk -> true);
     }
 
     // ---- Uses ----------------------------------------------------------------------------------

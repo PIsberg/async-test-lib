@@ -107,6 +107,11 @@ class WovenOverloadCoverageTest {
                         + "java.text.FieldPosition)",
                 "the Format SPI; same reason as the Date form");
 
+        decided("java.util.Queue#remove(java.lang.Object)",
+                "inherited from Collection, where it is woven: a call site typed to Queue is "
+                        + "assignable to the Collection.remove(Object) entry, and collectionRemove "
+                        + "records the take when its receiver is a Queue (#692)");
+
         // KNOWN_GAP is deliberately empty. The three entries it held - Thread.sleep(Duration),
         // Thread.sleep(long, int) and Map.remove(Object, Object) - were closed in #440, and the
         // mechanism is kept rather than deleted with them: the next overload that ought to be

@@ -86,6 +86,60 @@ class CollectionAccessWeaverTest {
         public static Object queuePeek(Queue<Object> receiver) {
             return receiver.peek();
         }
+
+        public static boolean collectionAddAll(java.util.Collection<Object> receiver,
+                                               java.util.Collection<? extends Object> elements) {
+            return receiver.addAll(elements);
+        }
+
+        public static boolean collectionRemoveIf(java.util.Collection<Object> receiver,
+                                                 java.util.function.Predicate<? super Object> filter) {
+            return receiver.removeIf(filter);
+        }
+
+        public static Object queueRemove(Queue<Object> receiver) {
+            return receiver.remove();
+        }
+
+        public static boolean dequeOfferFirst(java.util.Deque<Object> receiver, Object element) {
+            return receiver.offerFirst(element);
+        }
+
+        public static boolean dequeOfferLast(java.util.Deque<Object> receiver, Object element) {
+            return receiver.offerLast(element);
+        }
+
+        public static void dequeAddFirst(java.util.Deque<Object> receiver, Object element) {
+            receiver.addFirst(element);
+        }
+
+        public static void dequeAddLast(java.util.Deque<Object> receiver, Object element) {
+            receiver.addLast(element);
+        }
+
+        public static void dequePush(java.util.Deque<Object> receiver, Object element) {
+            receiver.push(element);
+        }
+
+        public static Object dequePollFirst(java.util.Deque<Object> receiver) {
+            return receiver.pollFirst();
+        }
+
+        public static Object dequePollLast(java.util.Deque<Object> receiver) {
+            return receiver.pollLast();
+        }
+
+        public static Object dequeRemoveFirst(java.util.Deque<Object> receiver) {
+            return receiver.removeFirst();
+        }
+
+        public static Object dequeRemoveLast(java.util.Deque<Object> receiver) {
+            return receiver.removeLast();
+        }
+
+        public static Object dequePop(java.util.Deque<Object> receiver) {
+            return receiver.pop();
+        }
     }
 
     @Test
