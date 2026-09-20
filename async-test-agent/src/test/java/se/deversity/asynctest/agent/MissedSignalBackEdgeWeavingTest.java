@@ -95,6 +95,11 @@ class MissedSignalBackEdgeWeavingTest {
                         + "notify nobody heard strands the first wait of the round. Its back-edge "
                         + "is the predicate test, a conditional jump, not a goto. Marks were "
                         + marksByMethod);
+        assertEquals(0, marksByMethod.get("doWhileAlwaysWaits"),
+                "the same shape with the deadline clamping the wait instead of guarding it, "
+                        + "which is what DoWhileWaitHandOffBean runs so that it reaches wait on "
+                        + "every run. The ternary is a conditional jump in front of the wait, so "
+                        + "only the goto rule refuses this one. Marks were " + marksByMethod);
         assertEquals(0, marksByMethod.get("continueLoop"),
                 "a loop closed by continue does have a goto back-edge, but nothing is read "
                         + "between the loop's head and the wait. Marks were " + marksByMethod);

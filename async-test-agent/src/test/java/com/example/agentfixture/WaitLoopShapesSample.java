@@ -41,6 +41,20 @@ public class WaitLoopShapesSample {
         }
     }
 
+    /**
+     * The do/while {@code DoWhileWaitHandOffBean} runs: the deadline clamps the wait instead of
+     * guarding it, so the wait is always reached. Still no mark.
+     */
+    public void doWhileAlwaysWaits() throws InterruptedException {
+        synchronized (monitor) {
+            long deadline = System.nanoTime() + 20_000_000L;
+            do {
+                long leftMillis = (deadline - System.nanoTime()) / 1_000_000L;
+                monitor.wait(leftMillis > 0L ? leftMillis : 1L);
+            } while (!ready && System.nanoTime() < deadline);
+        }
+    }
+
     /** Closed by continue, so the back-edge is a goto, but nothing is read first. No mark. */
     public void continueLoop() throws InterruptedException {
         synchronized (monitor) {
