@@ -9,10 +9,13 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -57,6 +60,7 @@ public final class OfferedChunkBean {
     private final MessagePassingQueue<Chunk> queue = new LockedMessagePassingQueue<>();
     private final BlockingQueue<Chunk> blocking = new LinkedBlockingQueue<>();
     private final Deque<Chunk> deque = new ConcurrentLinkedDeque<>();
+    private final BlockingDeque<Chunk> blockingDeque = new LinkedBlockingDeque<>();
     private final Queue<Chunk> plain = new ConcurrentLinkedQueue<>();
     private final Object lock = new Object();
     @SuppressWarnings("unused") // written through HANDLE_SLOT
@@ -96,6 +100,11 @@ public final class OfferedChunkBean {
     /** {@return the deque the end-specific shapes use (#692)} */
     public Deque<Chunk> deque() {
         return deque;
+    }
+
+    /** {@return the blocking deque the blocking and timed end-specific shapes use (#692)} */
+    public BlockingDeque<Chunk> blockingDeque() {
+        return blockingDeque;
     }
 
     /** {@return the plain queue the bulk-offer and removal shapes use (#692)} */
@@ -256,6 +265,42 @@ public final class OfferedChunkBean {
     /** Empties the plain queue through a predicate, which names no element. */
     public boolean removeEveryChunkFromPlain() {
         return plain.removeIf(chunk -> true);
+    }
+
+    // ---- BlockingDeque: the blocking and timed forms at each end (#692) ------------------------
+
+    public boolean putFirstToBlockingDeque(Chunk chunk) throws InterruptedException {
+        blockingDeque.putFirst(chunk);
+        return true;
+    }
+
+    public boolean putLastToBlockingDeque(Chunk chunk) throws InterruptedException {
+        blockingDeque.putLast(chunk);
+        return true;
+    }
+
+    public boolean timedOfferFirstToBlockingDeque(Chunk chunk) throws InterruptedException {
+        return blockingDeque.offerFirst(chunk, 1, TimeUnit.SECONDS);
+    }
+
+    public boolean timedOfferLastToBlockingDeque(Chunk chunk) throws InterruptedException {
+        return blockingDeque.offerLast(chunk, 1, TimeUnit.SECONDS);
+    }
+
+    public Chunk takeFirstFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.takeFirst();
+    }
+
+    public Chunk takeLastFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.takeLast();
+    }
+
+    public Chunk timedPollFirstFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.pollFirst(1, TimeUnit.SECONDS);
+    }
+
+    public Chunk timedPollLastFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.pollLast(1, TimeUnit.SECONDS);
     }
 
     // ---- The sibling slots: a second field of this object, a second element of the array (#692)

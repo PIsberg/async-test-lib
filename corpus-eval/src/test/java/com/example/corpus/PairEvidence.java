@@ -146,8 +146,8 @@ final class PairEvidence {
                 + "woven offer and poll alone, but a finding is a lockset disagreement inside a "
                 + "round with the ownership generations as the only other ordering, and a hand-off "
                 + "through a path the agent does not weave still reads as an alias on correct "
-                + "code: removal through an iterator, the BlockingDeque blocking and timed forms, "
-                + "a VarHandle take from a static field or an array element, and any code outside "
+                + "code: removal through an iterator, a VarHandle take from a static field or an "
+                + "array element, and any code outside "
                 + "includes (#692). Held until those are closed or shown not to matter on the "
                 + "lane-one safe subjects");
         HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "has no happens-before edge but the round "

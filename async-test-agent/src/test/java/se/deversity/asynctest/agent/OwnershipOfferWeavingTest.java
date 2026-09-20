@@ -170,7 +170,52 @@ class OwnershipOfferWeavingTest {
                         OfferedChunkBean::plain),
                 new Shape("Queue.offer / Collection.remove(Object)",
                         OfferedChunkBean::offerToPlain, OfferedChunkBean::removeFromPlainByName,
-                        OfferedChunkBean::plain));
+                        OfferedChunkBean::plain),
+                blocking("BlockingDeque.putFirst / takeFirst",
+                        OfferedChunkBean::putFirstToBlockingDeque,
+                        OfferedChunkBean::takeFirstFromBlockingDeque),
+                blocking("BlockingDeque.putLast / takeLast",
+                        OfferedChunkBean::putLastToBlockingDeque,
+                        OfferedChunkBean::takeLastFromBlockingDeque),
+                blocking("BlockingDeque.offerFirst(timed) / pollFirst(timed)",
+                        OfferedChunkBean::timedOfferFirstToBlockingDeque,
+                        OfferedChunkBean::timedPollFirstFromBlockingDeque),
+                blocking("BlockingDeque.offerLast(timed) / pollLast(timed)",
+                        OfferedChunkBean::timedOfferLastToBlockingDeque,
+                        OfferedChunkBean::timedPollLastFromBlockingDeque));
+    }
+
+    /** A blocking step, which may be interrupted; nothing here interrupts an actor. */
+    @FunctionalInterface
+    private interface BlockingOffer {
+        Object apply(OfferedChunkBean bean, Chunk chunk) throws InterruptedException;
+    }
+
+    /** The take half of {@link BlockingOffer}. */
+    @FunctionalInterface
+    private interface BlockingTake {
+        Chunk apply(OfferedChunkBean bean) throws InterruptedException;
+    }
+
+    private static Shape blocking(String name, BlockingOffer offer, BlockingTake take) {
+        return new Shape(name,
+                (bean, chunk) -> {
+                    try {
+                        return offer.apply(bean, chunk);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(name + " was interrupted", e);
+                    }
+                },
+                bean -> {
+                    try {
+                        return take.apply(bean);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(name + " was interrupted", e);
+                    }
+                },
+                OfferedChunkBean::blockingDeque);
     }
 
     // ---- The events -----------------------------------------------------------------------------

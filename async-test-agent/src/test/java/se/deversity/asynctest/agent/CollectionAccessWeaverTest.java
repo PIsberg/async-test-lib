@@ -140,6 +140,50 @@ class CollectionAccessWeaverTest {
         public static Object dequePop(java.util.Deque<Object> receiver) {
             return receiver.pop();
         }
+
+        public static void blockingDequePutFirst(java.util.concurrent.BlockingDeque<Object> receiver,
+                                                 Object element) throws InterruptedException {
+            receiver.putFirst(element);
+        }
+
+        public static void blockingDequePutLast(java.util.concurrent.BlockingDeque<Object> receiver,
+                                                Object element) throws InterruptedException {
+            receiver.putLast(element);
+        }
+
+        public static boolean blockingDequeOfferFirst(
+                java.util.concurrent.BlockingDeque<Object> receiver, Object element, long timeout,
+                java.util.concurrent.TimeUnit unit) throws InterruptedException {
+            return receiver.offerFirst(element, timeout, unit);
+        }
+
+        public static boolean blockingDequeOfferLast(
+                java.util.concurrent.BlockingDeque<Object> receiver, Object element, long timeout,
+                java.util.concurrent.TimeUnit unit) throws InterruptedException {
+            return receiver.offerLast(element, timeout, unit);
+        }
+
+        public static Object blockingDequeTakeFirst(java.util.concurrent.BlockingDeque<Object> receiver)
+                throws InterruptedException {
+            return receiver.takeFirst();
+        }
+
+        public static Object blockingDequeTakeLast(java.util.concurrent.BlockingDeque<Object> receiver)
+                throws InterruptedException {
+            return receiver.takeLast();
+        }
+
+        public static Object blockingDequePollFirst(
+                java.util.concurrent.BlockingDeque<Object> receiver, long timeout,
+                java.util.concurrent.TimeUnit unit) throws InterruptedException {
+            return receiver.pollFirst(timeout, unit);
+        }
+
+        public static Object blockingDequePollLast(
+                java.util.concurrent.BlockingDeque<Object> receiver, long timeout,
+                java.util.concurrent.TimeUnit unit) throws InterruptedException {
+            return receiver.pollLast(timeout, unit);
+        }
     }
 
     @Test

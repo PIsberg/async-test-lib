@@ -7,6 +7,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 import org.apiguardian.api.API;
@@ -102,7 +104,7 @@ public final class AgentCollectionHooks {
         // both narrower and more general than a prefix, and it covers a user's own implementation.
         if (receiver instanceof java.util.concurrent.ConcurrentMap
                 || receiver instanceof java.util.concurrent.BlockingQueue
-                || receiver instanceof java.util.concurrent.BlockingDeque
+                || receiver instanceof BlockingDeque
                 // The legacy synchronized collections: every method takes the instance's own
                 // monitor, inside java.util where no MONITORENTER is woven and before this hook
                 // could probe it.
@@ -372,6 +374,72 @@ public final class AgentCollectionHooks {
     public static @Nullable Object queueRemove(Queue<Object> receiver) {
         record(receiver, "remove", true);
         Object taken = receiver.remove();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.putFirst}, a blocking offer at one end (#692). @param receiver the deque @param element the element @throws InterruptedException if interrupted while waiting */
+    public static void blockingDequePutFirst(BlockingDeque<Object> receiver, Object element)
+            throws InterruptedException {
+        record(receiver, "putFirst", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        receiver.putFirst(element);
+    }
+
+    /** Weaves {@code BlockingDeque.putLast}, a blocking offer at one end (#692). @param receiver the deque @param element the element @throws InterruptedException if interrupted while waiting */
+    public static void blockingDequePutLast(BlockingDeque<Object> receiver, Object element)
+            throws InterruptedException {
+        record(receiver, "putLast", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        receiver.putLast(element);
+    }
+
+    /** Weaves {@code BlockingDeque.offerFirst(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
+    public static boolean blockingDequeOfferFirst(BlockingDeque<Object> receiver, Object element, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "offerFirst", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        return receiver.offerFirst(element, timeout, unit);
+    }
+
+    /** Weaves {@code BlockingDeque.offerLast(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
+    public static boolean blockingDequeOfferLast(BlockingDeque<Object> receiver, Object element, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "offerLast", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        return receiver.offerLast(element, timeout, unit);
+    }
+
+    /** Weaves {@code BlockingDeque.takeFirst}, a blocking take at one end (#692). @param receiver the deque @return the element taken @throws InterruptedException if interrupted while waiting */
+    public static Object blockingDequeTakeFirst(BlockingDeque<Object> receiver) throws InterruptedException {
+        record(receiver, "takeFirst", true);
+        Object taken = receiver.takeFirst();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.takeLast}, a blocking take at one end (#692). @param receiver the deque @return the element taken @throws InterruptedException if interrupted while waiting */
+    public static Object blockingDequeTakeLast(BlockingDeque<Object> receiver) throws InterruptedException {
+        record(receiver, "takeLast", true);
+        Object taken = receiver.takeLast();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.pollFirst(long, TimeUnit)}, a timed take at one end (#692). @param receiver the deque @param timeout how long to wait @param unit the unit of {@code timeout} @return the element taken, or null @throws InterruptedException if interrupted while waiting */
+    public static @Nullable Object blockingDequePollFirst(BlockingDeque<Object> receiver, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "pollFirst", true);
+        Object taken = receiver.pollFirst(timeout, unit);
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.pollLast(long, TimeUnit)}, a timed take at one end (#692). @param receiver the deque @param timeout how long to wait @param unit the unit of {@code timeout} @return the element taken, or null @throws InterruptedException if interrupted while waiting */
+    public static @Nullable Object blockingDequePollLast(BlockingDeque<Object> receiver, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "pollLast", true);
+        Object taken = receiver.pollLast(timeout, unit);
         TelemetryRegistry.ownershipTaken(taken, receiver);
         return taken;
     }

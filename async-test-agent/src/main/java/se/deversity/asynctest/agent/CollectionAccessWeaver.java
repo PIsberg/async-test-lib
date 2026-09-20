@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
@@ -285,7 +286,21 @@ final class CollectionAccessWeaver {
             Entry.call(Deque.class, "pollLast", "dequePollLast"),
             Entry.call(Deque.class, "removeFirst", "dequeRemoveFirst"),
             Entry.call(Deque.class, "removeLast", "dequeRemoveLast"),
-            Entry.call(Deque.class, "pop", "dequePop"));
+            Entry.call(Deque.class, "pop", "dequePop"),
+            // The blocking and timed forms only BlockingDeque declares. Its untimed offerFirst,
+            // offerLast, pollFirst and pollLast are Deque's, woven by the entries above.
+            Entry.call(BlockingDeque.class, "putFirst", "blockingDequePutFirst", Object.class),
+            Entry.call(BlockingDeque.class, "putLast", "blockingDequePutLast", Object.class),
+            Entry.call(BlockingDeque.class, "offerFirst", "blockingDequeOfferFirst",
+                    Object.class, long.class, TimeUnit.class),
+            Entry.call(BlockingDeque.class, "offerLast", "blockingDequeOfferLast",
+                    Object.class, long.class, TimeUnit.class),
+            Entry.call(BlockingDeque.class, "takeFirst", "blockingDequeTakeFirst"),
+            Entry.call(BlockingDeque.class, "takeLast", "blockingDequeTakeLast"),
+            Entry.call(BlockingDeque.class, "pollFirst", "blockingDequePollFirst",
+                    long.class, TimeUnit.class),
+            Entry.call(BlockingDeque.class, "pollLast", "blockingDequePollLast",
+                    long.class, TimeUnit.class));
 
     /**
      * The lock table. {@code java.util.concurrent.locks.Lock} is an interface whose implementations

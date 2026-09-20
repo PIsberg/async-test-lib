@@ -46,10 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pollFirst`/`pollLast`/`removeFirst`/`removeLast`/`pop` was never a take, so the offerer's own
   late write after such a hand-off was reported as a race. All of these are now table entries in
   `CollectionAccessWeaver` with hooks that publish the offer before the call and the take after
-  it, and `removeIf` on a queue drops the queue's recorded offers the way `drainTo` does. The same
+  it, and `removeIf` on a queue drops the queue's recorded offers the way `drainTo` does. So are
+  the forms only `BlockingDeque` declares: `putFirst`, `putLast`, `takeFirst`, `takeLast` and the
+  timed `offerFirst`, `offerLast`, `pollFirst` and `pollLast`. The same
   hooks record the call for `SharedCollectionDetector`, which did not see these methods either.
-  Still open in #692: `VarHandle` takes from a static field or an array element, the
-  `BlockingDeque` blocking and timed forms, and removal through an iterator.
+  Still open in #692: `VarHandle` takes from a static field or an array element, and removal
+  through an iterator.
 
 - **A reference slot is its own container, not its holder (#692).** An offer through an
   `AtomicReferenceFieldUpdater`, an instance-field `VarHandle` or an `AtomicReferenceArray` named

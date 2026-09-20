@@ -6,7 +6,10 @@ import java.util.Deque;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Queue;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +55,26 @@ class AgentCollectionHooksOwnershipFormsTest {
         assertEquals("c", AgentCollectionHooks.dequePop(deque));
         assertNull(AgentCollectionHooks.dequePollFirst(deque));
         assertNull(AgentCollectionHooks.dequePollLast(deque));
+    }
+
+    @Test
+    @DisplayName("the BlockingDeque blocking and timed forms keep their end and their timeout")
+    void blockingDequeFormsDelegate() throws InterruptedException {
+        BlockingDeque<Object> deque = new LinkedBlockingDeque<>(4);
+        AgentCollectionHooks.blockingDequePutLast(deque, "b");
+        AgentCollectionHooks.blockingDequePutFirst(deque, "a");
+        assertTrue(AgentCollectionHooks.blockingDequeOfferLast(deque, "c", 1, TimeUnit.SECONDS));
+        assertTrue(AgentCollectionHooks.blockingDequeOfferFirst(deque, "0", 1, TimeUnit.SECONDS));
+        assertFalse(AgentCollectionHooks.blockingDequeOfferLast(deque, "full", 1, TimeUnit.MILLISECONDS),
+                "a full deque must time the offer out, as the original call does");
+        assertEquals(List.of("0", "a", "b", "c"), new ArrayList<>(deque));
+
+        assertEquals("0", AgentCollectionHooks.blockingDequeTakeFirst(deque));
+        assertEquals("c", AgentCollectionHooks.blockingDequeTakeLast(deque));
+        assertEquals("a", AgentCollectionHooks.blockingDequePollFirst(deque, 1, TimeUnit.SECONDS));
+        assertEquals("b", AgentCollectionHooks.blockingDequePollLast(deque, 1, TimeUnit.SECONDS));
+        assertNull(AgentCollectionHooks.blockingDequePollFirst(deque, 1, TimeUnit.MILLISECONDS));
+        assertNull(AgentCollectionHooks.blockingDequePollLast(deque, 1, TimeUnit.MILLISECONDS));
     }
 
     @Test
