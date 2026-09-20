@@ -109,6 +109,9 @@ final class CollectionAccessWeaver {
      */
     private static final String LIBRARY_ROOT = String.join(".", "se", "deversity", "asynctest") + ".";
 
+    /** The same root in internal form, for owner names read off a call site (#715). */
+    private static final String LIBRARY_ROOT_INTERNAL = LIBRARY_ROOT.replace(".", "/");
+
     /** The library-side class the substituted collection calls land in. */
     private static final String HOOKS = LIBRARY_ROOT + "AgentCollectionHooks";
 
@@ -964,6 +967,26 @@ final class CollectionAccessWeaver {
         return answer;
     }
 
+    /**
+     * {@return whether a call to this owner could still turn out to wait once its class is woven}
+     *
+     * <p>Excludes the caller's own class, which the buffering pass resolves exactly whichever
+     * order the methods are declared in, and the platform, which is never woven and whose one
+     * waiting method is already in the table by name. What is left is user and library code, the
+     * only code whose weaving can add an entry later (#715).
+     *
+     * @param owner the invocation's owner, in internal form
+     * @param callerInternalName the class being woven
+     */
+    private static boolean couldBeWovenLater(String owner, String callerInternalName) {
+        if (owner.isEmpty() || owner.charAt(0) == '[' || owner.equals(callerInternalName)) {
+            return false;
+        }
+        return !owner.startsWith("java/") && !owner.startsWith("javax/")
+                && !owner.startsWith("jdk/") && !owner.startsWith("sun/")
+                && !owner.startsWith("com/sun/") && !owner.startsWith(LIBRARY_ROOT_INTERNAL);
+    }
+
     /** Buffers annotation visitor actions so they can be replayed to another visitor. */
     private static final class BufferedAnnotationVisitor extends AnnotationVisitor {
         private final List<Consumer<AnnotationVisitor>> actions = new ArrayList<>();
@@ -1379,9 +1402,15 @@ final class CollectionAccessWeaver {
                     String ownerPrefix = instrumentedType.getInternalName() + ".";
                     for (String m : waitingMethods) {
                         KNOWN_WAITING_METHODS.add(ownerPrefix + m);
-                        WAITING_OWNERS_BY_SIGNATURE
+                        boolean newToTheIndex = WAITING_OWNERS_BY_SIGNATURE
                                 .computeIfAbsent(m, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
                                 .add(instrumentedType.getInternalName());
+                        if (newToTheIndex) {
+                            // Callers woven before this class could not resolve the signature and
+                            // carry no mark. Hand them over to be woven again (#715).
+                            StaleCallerRetransformer.signatureBecameWaiting(
+                                    m, instrumentedType.getInternalName());
+                        }
                     }
                     for (BufferedMethod bm : bufferedMethods) {
                         MethodVisitor downstream = super.visitMethod(bm.access(), bm.name(),
@@ -1424,6 +1453,19 @@ final class CollectionAccessWeaver {
 
         /** Target supplying the loop back-edge hook when a waiting method is called. */
         private final @org.jspecify.annotations.Nullable Target loopHookTarget;
+
+        /**
+         * Signatures this method called that could not be resolved to a waiting method, kept
+         * until the method ends (#715). Under load-time weaving an unresolved call usually means
+         * the callee's class has not been loaded yet, not that it never waits.
+         */
+        private final List<String> unresolvedCalls = new ArrayList<>();
+
+        /**
+         * Whether any jump in this method went backwards, which is the only thing that can turn
+         * an unresolved call into a missing mark. A method without one is not worth remembering.
+         */
+        private boolean sawBackwardJump;
 
         /** Positions where conditional jump instructions were visited. */
         private final List<Integer> conditionalJumpsAt = new ArrayList<>();
@@ -1558,6 +1600,13 @@ final class CollectionAccessWeaver {
                 loopTracked = loopHookTarget;
                 loopTrackedAt = position;
                 position++;
+            } else if (loopHookTarget != null && couldBeWovenLater(owner, owningClassInternalName)) {
+                // Not resolvable now, which under load-time weaving usually means the callee's
+                // class has not been loaded yet rather than that it does not wait (#715). Kept
+                // until this method ends, and handed over only if the method turned out to have a
+                // loop in it: a call with no backward jump anywhere near it can never produce a
+                // mark, so remembering it would only cost strings.
+                unresolvedCalls.add(name + descriptor);
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
         }
@@ -1832,6 +1881,9 @@ final class CollectionAccessWeaver {
         @Override
         public void visitJumpInsn(int opcode, Label label) {
             justSubstituted = null;
+            if (labelsVisitedAt.containsKey(label)) {
+                sawBackwardJump = true;
+            }
             Target tracked = loopTracked;
             if (tracked != null) {
                 // A jump back to a label visited before the tracked call comes over it, and
@@ -1965,6 +2017,13 @@ final class CollectionAccessWeaver {
         @Override
         public void visitEnd() {
             justSubstituted = null;
+            if (sawBackwardJump) {
+                // Only now is it known that this method has a loop at all, which is what makes an
+                // unresolved call worth remembering (#715).
+                for (String signature : unresolvedCalls) {
+                    StaleCallerRetransformer.recordUnresolvedCall(owningClassInternalName, signature);
+                }
+            }
             super.visitEnd();
         }
 

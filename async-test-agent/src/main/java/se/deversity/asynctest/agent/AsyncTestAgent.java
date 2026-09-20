@@ -313,6 +313,12 @@ public final class AsyncTestAgent {
     private static void installUnguarded(@Nullable String agentArgs, Instrumentation inst,
                                          boolean retransform) {
         TelemetryRegistry.start();
+        // The handle the stale-caller re-weave needs, before any class is woven (#715). Only a
+        // JVM that can retransform is any use to it, and premain's can: the classes it re-weaves
+        // are already defined by the time the trigger fires.
+        if (inst.isRetransformClassesSupported()) {
+            StaleCallerRetransformer.useInstrumentation(inst);
+        }
 
         AgentOptions options = AgentOptions.parse(agentArgs);
 
