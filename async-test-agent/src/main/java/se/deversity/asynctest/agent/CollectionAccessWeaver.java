@@ -852,11 +852,11 @@ final class CollectionAccessWeaver {
      * <p>Within one class the answer is exact: the monitor wrapper buffers every method before
      * emitting any of it, so a helper declared after its caller is still resolved. Across classes
      * it is best-effort in one direction only. An entry is added when the class that declares the
-     * helper is woven, which helps callers woven afterwards and cannot help one woven before, and
-     * the key is the owner written at the call site, so a helper reached through a supertype or an
-     * interface is missed. Both failures are silent and land on the same side: the loop goes
-     * unmarked, the wait reads as an {@code if}, and a correct bounded poll can be reported. That
-     * is why {@code MISSED_SIGNAL} stays {@code PROMPT}.
+     * helper is woven, which helps callers woven afterwards and cannot help one woven before. The
+     * name at the call site no longer decides it: {@link #WAITING_OWNERS_BY_SIGNATURE} resolves a
+     * helper reached through a supertype or an interface (#709). What is left is weave order, and
+     * it is silent: the loop goes unmarked, the wait reads as an {@code if}, and a correct bounded
+     * poll can be reported. That is why {@code MISSED_SIGNAL} stays {@code PROMPT}.
      *
      * <p>It is never cleared, which is what lets it outlive one class's weave. It holds one string
      * per waiting method of every class woven in this JVM, so it grows with classes woven rather
@@ -864,6 +864,105 @@ final class CollectionAccessWeaver {
      */
     private static final Set<String> KNOWN_WAITING_METHODS =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * The same methods indexed by { name + descriptor} alone, to the internal names of the
+     * classes that declare them, so a call site can be matched against a type it is related to
+     * rather than only the one it names (#709).
+     *
+     * <p>A call site carries the declared type, which is not where the wait has to be. A helper
+     * inherited from a supertype is called under the subtype's name, and one reached through an
+     * interface under the interface's, where no body exists at all. Both are resolved by asking
+     * whether either type is assignable to the other, which covers the two directions with one
+     * question. It stays a question about one signature: a sibling method on the same class that
+     * does not wait is not made to wait by this.
+     *
+     * <p>Bounded like its sibling, by the waiting methods of the classes woven in this JVM.
+     */
+    private static final Map<String, Set<String>> WAITING_OWNERS_BY_SIGNATURE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * {@return whether a call site reaches a method already known to wait}
+     *
+     * <p>The exact name first, which is the common case and costs a set lookup. Failing that, the
+     * same signature declared on a type related to the one the call site names (#709): a helper
+     * inherited from a supertype is called under the subtype's name, and one reached through an
+     * interface under a name with no body behind it at all. Asking whether either type is
+     * assignable to the other answers both directions with one question.
+     *
+     * <p>Asked from two places that must agree: the buffering pass, which decides whether a
+     * method waits and so whether its own callers do, and the emitting pass, which decides
+     * whether a call is the one a loop is closing around. A rule applied in only one of them
+     * would register a helper nobody marks, or mark a loop around a helper nobody registered.
+     *
+     * <p>{@code java.lang.Object} is excluded as the call site's type because every class is
+     * assignable to it, so a single woven {@code toString} that happened to wait would make every
+     * {@code Object.toString()} call read as a wait. A mark on a loop with no wait in it is not
+     * harmless: the hook would attribute a back-edge to whatever that thread waited on last, and
+     * spare a report that should have been made.
+     *
+     * @param owner     the internal name written at the call site
+     * @param signature the callee's name and descriptor
+     * @param typePool  the pool the weaving pass resolves types through
+     * @param related   the per-class cache of assignability answers
+     */
+    private static boolean reachesWaitingMethod(String owner, String signature,
+                                                TypePool typePool,
+                                                Map<String, Boolean> related) {
+        if (KNOWN_WAITING_METHODS.contains(owner + "." + signature)) {
+            return true;
+        }
+        if (owner.isEmpty() || "java/lang/Object".equals(owner) || owner.charAt(0) == '[') {
+            return false;
+        }
+        Set<String> declaringOwners = WAITING_OWNERS_BY_SIGNATURE.get(signature);
+        if (declaringOwners == null) {
+            return false;
+        }
+        for (String declaring : declaringOwners) {
+            if (relatedByHierarchy(declaring, owner, typePool, related)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * {@return whether either type is assignable to the other}
+     *
+     * <p>Cached per woven class, like the substitution table's own assignability answers: a call
+     * site's owner repeats heavily inside one class and the pool lookup is the only non-trivial
+     * cost here. A type that will not resolve answers no, because a weaver that throws is worse
+     * than one that marks nothing.
+     *
+     * @param declaring the internal name of the class declaring the waiting method
+     * @param owner     the internal name written at the call site
+     * @param typePool  the pool the weaving pass resolves types through
+     * @param related   the per-class cache of assignability answers
+     */
+    private static boolean relatedByHierarchy(String declaring, String owner,
+                                              TypePool typePool,
+                                              Map<String, Boolean> related) {
+        String key = declaring + "<>" + owner;
+        Boolean cached = related.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        boolean answer = false;
+        try {
+            TypePool.Resolution declared = typePool.describe(declaring.replace('/', '.'));
+            TypePool.Resolution called = typePool.describe(owner.replace('/', '.'));
+            if (declared.isResolved() && called.isResolved()) {
+                answer = declared.resolve().isAssignableTo(called.resolve())
+                        || called.resolve().isAssignableTo(declared.resolve());
+            }
+        } catch (RuntimeException resolutionFailed) {
+            answer = false;
+        }
+        related.put(key, answer);
+        return answer;
+    }
 
     /** Buffers annotation visitor actions so they can be replayed to another visitor. */
     private static final class BufferedAnnotationVisitor extends AnnotationVisitor {
@@ -919,6 +1018,8 @@ final class CollectionAccessWeaver {
         private final @org.jspecify.annotations.Nullable String signature;
         private final String @org.jspecify.annotations.Nullable [] exceptions;
         private final String ownerInternalName;
+        private final TypePool typePool;
+        private final Map<String, Boolean> related;
 
         private boolean directlyWaits;
         private final Set<String> calledLocalMethods = new HashSet<>();
@@ -927,7 +1028,9 @@ final class CollectionAccessWeaver {
         BufferedMethod(int access, String name, String descriptor,
                        @org.jspecify.annotations.Nullable String signature,
                        String @org.jspecify.annotations.Nullable [] exceptions,
-                       String ownerInternalName) {
+                       String ownerInternalName,
+                       TypePool typePool,
+                       Map<String, Boolean> related) {
             super(Opcodes.ASM9);
             this.access = access;
             this.name = name;
@@ -935,6 +1038,8 @@ final class CollectionAccessWeaver {
             this.signature = signature;
             this.exceptions = exceptions == null ? null : exceptions.clone();
             this.ownerInternalName = ownerInternalName;
+            this.typePool = typePool;
+            this.related = related;
         }
 
         boolean directlyWaits() {
@@ -982,7 +1087,7 @@ final class CollectionAccessWeaver {
                 directlyWaits = true;
             } else if (owner.equals(ownerInternalName)) {
                 calledLocalMethods.add(name + descriptor);
-            } else if (KNOWN_WAITING_METHODS.contains(owner + "." + name + descriptor)) {
+            } else if (reachesWaitingMethod(owner, name + descriptor, typePool, related)) {
                 directlyWaits = true;
             }
             actions.add(mv -> mv.visitMethodInsn(opcode, owner, name, descriptor, isInterface));
@@ -1242,7 +1347,7 @@ final class CollectionAccessWeaver {
                 public MethodVisitor visitMethod(int access, String name, String descriptor,
                                                  String signature, String[] exceptions) {
                     BufferedMethod bm = new BufferedMethod(access, name, descriptor, signature,
-                            exceptions, instrumentedType.getInternalName());
+                            exceptions, instrumentedType.getInternalName(), typePool, assignable);
                     bufferedMethods.add(bm);
                     return bm;
                 }
@@ -1274,6 +1379,9 @@ final class CollectionAccessWeaver {
                     String ownerPrefix = instrumentedType.getInternalName() + ".";
                     for (String m : waitingMethods) {
                         KNOWN_WAITING_METHODS.add(ownerPrefix + m);
+                        WAITING_OWNERS_BY_SIGNATURE
+                                .computeIfAbsent(m, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+                                .add(instrumentedType.getInternalName());
                     }
                     for (BufferedMethod bm : bufferedMethods) {
                         MethodVisitor downstream = super.visitMethod(bm.access(), bm.name(),
@@ -1446,7 +1554,7 @@ final class CollectionAccessWeaver {
             }
             if (loopHookTarget != null
                     && ((owner.equals(owningClassInternalName) && waitingMethods.contains(name + descriptor))
-                    || KNOWN_WAITING_METHODS.contains(owner + "." + name + descriptor))) {
+                    || reachesWaitingMethod(owner, name + descriptor, typePool, assignable))) {
                 loopTracked = loopHookTarget;
                 loopTrackedAt = position;
                 position++;
