@@ -1321,6 +1321,14 @@ final class CollectionAccessWeaver {
         private final List<Integer> conditionalJumpsAt = new ArrayList<>();
 
         /**
+         * The target label of each unconditional {@code goto}, keyed by the position it was
+         * visited at, so the instruction in front of a label can be asked whether it was one
+         * (#710). Only a loop-rotating compiler emits the shape it answers
+         * for, so under javac the lookup runs and never leads to a mark.
+         */
+        private final Map<Integer, Label> unconditionalJumpsAt = new HashMap<>();
+
+        /**
          * The target whose substituted call was the instruction just emitted, when that target
          * has a discarded-result hook; {@code null} after anything else.
          *
@@ -1684,6 +1692,35 @@ final class CollectionAccessWeaver {
             return false;
         }
 
+        /**
+         * {@return whether a conditional back-edge closes a rotated predicate loop}
+         *
+         * <p>A compiler that rotates loops emits {@code goto test; body; test: if (...) goto
+         * body}, so a correct {@code while} closes with the test itself and puts it after the
+         * wait - the shape the goto half of the rule was written to refuse (#710). What tells the
+         * two apart is the jump into the loop: a rotated loop reads its predicate before it runs
+         * the body, so an unconditional {@code goto} sits immediately in front of the loop head
+         * and lands on the test. A {@code do}/{@code while} falls straight into its body and has
+         * no such jump, which is why it stays unmarked here as it does under javac.
+         *
+         * <p>The entry jump also has to land inside the loop, after the wait. A {@code break}
+         * compiled in front of a {@code do}/{@code while} leaves a {@code goto} in front of the
+         * loop head too, but one that jumps clear of the loop: its target is still ahead of the
+         * reader and so has no recorded position, which is what tells the two apart. Every label
+         * that does have one was visited before this back-edge, so being after the wait is the
+         * whole of the range.
+         *
+         * @param headAt the position the back-edge target was visited at
+         */
+        private boolean closesRotatedLoop(int headAt) {
+            Label entry = unconditionalJumpsAt.get(headAt - 1);
+            if (entry == null) {
+                return false;
+            }
+            Integer testAt = labelsVisitedAt.get(entry);
+            return testAt != null && testAt > loopTrackedAt;
+        }
+
         @Override
         public void visitJumpInsn(int opcode, Label label) {
             justSubstituted = null;
@@ -1703,18 +1740,31 @@ final class CollectionAccessWeaver {
                 //     goto but not that test. WaitLoopShapesSample.continueLoop, and
                 //     endlessWait, which no fixture can run.
                 //
+                // A compiler that rotates loops closes a correct while with the test itself, so
+                // the goto half would refuse it and report the wait. ECJ does exactly that, and
+                // closesRotatedLoop is the third case: a conditional back-edge whose loop head is
+                // entered by a goto that lands on the test (#710). javac and kotlinc 2.4.10 do
+                // not rotate, so for them that case never fires.
+                //
                 // The hook goes in front of the jump and takes nothing, so a conditional jump
                 // still finds its operands, no branch or frame is added, and it runs whether or
                 // not the jump is taken.
                 Integer visitedAt = labelsVisitedAt.get(label);
-                if (opcode == Opcodes.GOTO && visitedAt != null && visitedAt < loopTrackedAt
-                        && hasConditionalJumpBetween(visitedAt, loopTrackedAt)) {
+                boolean marks = visitedAt != null && visitedAt < loopTrackedAt
+                        && (opcode == Opcodes.GOTO
+                                ? hasConditionalJumpBetween(visitedAt, loopTrackedAt)
+                                : isConditionalJump(opcode)
+                                        && closesRotatedLoop(visitedAt));
+                if (marks) {
                     super.visitMethodInsn(Opcodes.INVOKESTATIC, tracked.hookOwnerInternalName(),
                             tracked.loopBackEdgeHookName(), "()V", false);
                 }
             }
             if (isConditionalJump(opcode)) {
                 conditionalJumpsAt.add(position);
+                position++;
+            } else if (opcode == Opcodes.GOTO) {
+                unconditionalJumpsAt.put(position, label);
                 position++;
             }
             super.visitJumpInsn(opcode, label);
