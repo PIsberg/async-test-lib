@@ -212,7 +212,9 @@ why their detectors were unreachable in practice rather than merely inconvenient
 notify reached one, so the detector could only judge what a body recorded about itself. The
 agent now substitutes `Object.wait`, `notify` and `notifyAll`, which run with the monitor held,
 and marks the backward jump around a wait, which is what separates `while (!ready) wait()` from
-`if (!ready) wait()`. A loop in one method around a bare `wait()` in another reads as an `if`.
+`if (!ready) wait()`. The loop may be in the caller of the method that waits (#707). A shape that
+enters `wait` before it has read the predicate, `do { wait(); } while (!ready)` among them, is not
+a marked loop.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,

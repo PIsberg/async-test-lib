@@ -20,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded itself is not observed a second time, and a recorded notify is not counted twice, so
   existing `recordWait`/`recordPredicateCheck` users see no change. `MISSED_SIGNAL` moves to the
   agent-fed table (19 agent-fed detectors, 124 recording-only) and gains the corpus agent pair
-  `agent_wait_behindAnIf` / `agent_wait_insideAPredicateLoop`. It stays `PROMPT`: the back-edge is
-  per method, so a loop in one method around a bare `wait()` in another reads as an `if`.
+  `agent_wait_behindAnIf` / `agent_wait_insideAPredicateLoop`. It stays `PROMPT`: its inputs on
+  the recording path are still the body's own record.
 
 - **`MissedSignalDetector.recordLoopStart(Object)` and `recordLoopEnd(Object)` mark a `while (!ready)` loop around waits on a monitor (#669).** Once a monitor has a marked loop, an undeclared wait inside one is guarded and a wait outside every mark is judged unguarded, so `if (!ready) wait()` followed later by a check that finds `ready` true, and two consecutive `if (!ready) wait()` blocks, are reported where the marked loop stays silent. Monitors nobody marks keep the `recordPredicateCheck` reading.
 
@@ -38,6 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A loop around a `wait()` is recognised across methods, and a `do`/`while` around one no
+  longer reads as a loop (#707).** The back-edge mark #694 added was decided one method at a
+  time, as a single `MethodVisitor` pass allows, so `while (!done) { awaitOnce(); }` had no
+  backward jump in the method that waits and a correct bounded poll written that way was
+  reported, while `do { wait(); } while (!ready)`, which does enter `wait` before it reads the
+  predicate, had one and stayed silent. The monitor wrapper now buffers a class and resolves
+  which of its methods reach a `wait`, directly or through each other, before it emits any of
+  it, so the loop may be in the caller. A helper in another class is recognised when that class
+  was woven first. A backward jump marks a loop only when it is an unconditional `goto` and
+  something is read between the loop's head and the wait, so `do`/`while` and a loop closed by
+  `continue` are both reported. `MissedSignalBackEdgeWeavingTest` reads the marks off the woven
+  bytecode, one method per shape, including one no fixture can run.
+
 - **The ownership model sees elements that enter or leave a queue through the `Deque` forms,
   `addAll`, `remove()`, `remove(Object)` and `removeIf` (#692).** #664 wove `offer`, `add`, `put`,
   `poll`, `take` and `drainTo`. An element that went in through `Deque.offerFirst`, `offerLast`,
@@ -50,18 +63,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the forms only `BlockingDeque` declares: `putFirst`, `putLast`, `takeFirst`, `takeLast` and the
   timed `offerFirst`, `offerLast`, `pollFirst` and `pollLast`. The same
   hooks record the call for `SharedCollectionDetector`, which did not see these methods either.
-  Still open in #692: `VarHandle` takes from a static field or an array element, and removal
-  through an iterator.
+  Still open in #692: removal through an iterator.
 
 - **A reference slot is its own container, not its holder (#692).** An offer through an
-  `AtomicReferenceFieldUpdater`, an instance-field `VarHandle` or an `AtomicReferenceArray` named
-  the receiver or the array as its container, so two reference fields of one object, or two
-  elements of one array, read as one. An object offered into one slot, moved by code the agent
-  does not see, and taken out of the sibling then matched the first offer, and its offerer was
-  named the owner of a hand-off it was not part of. The container is now the holder combined with
-  the updater, the handle or the index, which both ends have in hand. A slot reached through two
-  different handles reads as two containers, which can only lose a match and fall back to the #557
-  excuse.
+  `AtomicReferenceFieldUpdater`, a `VarHandle` (instance field, static field or array element), or
+  an `AtomicReferenceArray` named the receiver or the array as its container, so two reference
+  fields of one object, or two elements of one array, read as one. An object offered into one slot,
+  moved by code the agent does not see, and taken out of the sibling then matched the first offer,
+  and its offerer was named the owner of a hand-off it was not part of. The container is now the
+  holder combined with the updater, the handle or the index, which both ends have in hand. A slot
+  reached through two different handles reads as two containers, which can only lose a match and
+  fall back to the #557 excuse. Static-field `VarHandle` operations key on the handle, and
+  array-element operations key on the array and element index.
 
 - **Reports name the version of the jar that wrote them (#703).** `JsonReportListener` wrote
   `"asyncTestVersion": "1.6.0"` from a literal while the library was at 1.12.1, and the SARIF

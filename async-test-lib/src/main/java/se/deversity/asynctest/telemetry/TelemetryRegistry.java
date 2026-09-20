@@ -2169,6 +2169,186 @@ public final class TelemetryRegistry {
         return previous;
     }
 
+    // ---- VarHandle on static fields (#692) -----------------------------------------------------
+
+    /**
+     * Weaves {@code VarHandle.set} on a reference static field: an offer of {@code value} (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        slotOffered(value, handle, 0);
+        handle.withInvokeBehavior().set(value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setVolatile} on a reference static field: an offer (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setVolatileStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        slotOffered(value, handle, 0);
+        handle.withInvokeBehavior().setVolatile(value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setRelease} on a reference static field: an offer (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setReleaseStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        slotOffered(value, handle, 0);
+        handle.withInvokeBehavior().setRelease(value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setOpaque} on a reference static field: an offer (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setOpaqueStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        slotOffered(value, handle, 0);
+        handle.withInvokeBehavior().setOpaque(value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.compareAndSet} on a reference static field: an offer of
+     * {@code update} (#692).
+     *
+     * @param handle   the handle the call site invoked
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.12.2
+     */
+    public static boolean compareAndSetStaticReferenceHandle(VarHandle handle,
+                                                             @Nullable Object expected,
+                                                             @Nullable Object update) {
+        slotOffered(update, handle, 0);
+        return handle.withInvokeBehavior().compareAndSet(expected, update);
+    }
+
+    /**
+     * Weaves {@code VarHandle.getAndSet} on a reference static field: the reference returned is
+     * taken (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param value  the reference to store
+     * @return the previous reference
+     * @since 1.12.2
+     */
+    public static @Nullable Object getAndSetStaticReferenceHandle(VarHandle handle,
+                                                                 @Nullable Object value) {
+        Object previous = handle.withInvokeBehavior().getAndSet(value);
+        slotTaken(previous, handle, 0);
+        return previous;
+    }
+
+    // ---- VarHandle on array elements (#692) -----------------------------------------------------
+
+    /**
+     * Weaves {@code VarHandle.set} on a reference array element: an offer (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param array  the array whose element is the slot
+     * @param index  the index of the element
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setArrayReferenceHandle(VarHandle handle, Object array, int index,
+                                               @Nullable Object value) {
+        slotOffered(value, array, index);
+        handle.withInvokeBehavior().set(array, index, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setVolatile} on a reference array element: an offer (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param array  the array whose element is the slot
+     * @param index  the index of the element
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setVolatileArrayReferenceHandle(VarHandle handle, Object array, int index,
+                                                       @Nullable Object value) {
+        slotOffered(value, array, index);
+        handle.withInvokeBehavior().setVolatile(array, index, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setRelease} on a reference array element: an offer (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param array  the array whose element is the slot
+     * @param index  the index of the element
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setReleaseArrayReferenceHandle(VarHandle handle, Object array, int index,
+                                                      @Nullable Object value) {
+        slotOffered(value, array, index);
+        handle.withInvokeBehavior().setRelease(array, index, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.setOpaque} on a reference array element: an offer (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param array  the array whose element is the slot
+     * @param index  the index of the element
+     * @param value  the reference to store
+     * @since 1.12.2
+     */
+    public static void setOpaqueArrayReferenceHandle(VarHandle handle, Object array, int index,
+                                                     @Nullable Object value) {
+        slotOffered(value, array, index);
+        handle.withInvokeBehavior().setOpaque(array, index, value);
+    }
+
+    /**
+     * Weaves {@code VarHandle.compareAndSet} on a reference array element: an offer (#692).
+     *
+     * @param handle   the handle the call site invoked
+     * @param array    the array whose element is the slot
+     * @param index    the index of the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.12.2
+     */
+    public static boolean compareAndSetArrayReferenceHandle(VarHandle handle, Object array,
+                                                            int index, @Nullable Object expected,
+                                                            @Nullable Object update) {
+        slotOffered(update, array, index);
+        return handle.withInvokeBehavior().compareAndSet(array, index, expected, update);
+    }
+
+    /**
+     * Weaves {@code VarHandle.getAndSet} on a reference array element: a take (#692).
+     *
+     * @param handle the handle the call site invoked
+     * @param array  the array whose element is the slot
+     * @param index  the index of the element
+     * @param value  the reference to store
+     * @return the previous reference
+     * @since 1.12.2
+     */
+    public static @Nullable Object getAndSetArrayReferenceHandle(VarHandle handle, Object array,
+                                                                 int index, @Nullable Object value) {
+        Object previous = handle.withInvokeBehavior().getAndSet(array, index, value);
+        slotTaken(previous, array, index);
+        return previous;
+    }
+
     /**
      * The target a container-drained event carries instead of a field identifier (#664); see
      * {@link #OWNERSHIP_TAKEN} for why a reserved name costs nothing on the access path.

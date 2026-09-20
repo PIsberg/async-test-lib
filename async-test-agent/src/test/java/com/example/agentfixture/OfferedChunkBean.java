@@ -43,6 +43,9 @@ public final class OfferedChunkBean {
             AtomicReferenceFieldUpdater.newUpdater(OfferedChunkBean.class, Chunk.class,
                     "siblingUpdaterSlot");
     private static final VarHandle SIBLING_HANDLE_SLOT;
+    private static final VarHandle STATIC_HANDLE_SLOT;
+    private static final VarHandle SIBLING_STATIC_HANDLE_SLOT;
+    private static final VarHandle ARRAY_HANDLE_SLOT = MethodHandles.arrayElementVarHandle(Chunk[].class);
 
     static {
         try {
@@ -50,6 +53,10 @@ public final class OfferedChunkBean {
                     Chunk.class);
             SIBLING_HANDLE_SLOT = MethodHandles.lookup().findVarHandle(OfferedChunkBean.class,
                     "siblingHandleSlot", Chunk.class);
+            STATIC_HANDLE_SLOT = MethodHandles.lookup().findStaticVarHandle(OfferedChunkBean.class,
+                    "staticHandleSlot", Chunk.class);
+            SIBLING_STATIC_HANDLE_SLOT = MethodHandles.lookup().findStaticVarHandle(OfferedChunkBean.class,
+                    "siblingStaticHandleSlot", Chunk.class);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -71,6 +78,11 @@ public final class OfferedChunkBean {
     private volatile Chunk siblingUpdaterSlot;
     @SuppressWarnings("unused") // written through UPDATER_SLOT
     private volatile Chunk updaterSlot;
+    @SuppressWarnings("unused") // written through STATIC_HANDLE_SLOT
+    private static volatile Chunk staticHandleSlot;
+    @SuppressWarnings("unused") // written through SIBLING_STATIC_HANDLE_SLOT
+    private static volatile Chunk siblingStaticHandleSlot;
+    private final Chunk[] arrayChunks = new Chunk[2];
 
     /** {@return a chunk nothing has touched} */
     public static Chunk newChunk() {
@@ -327,6 +339,46 @@ public final class OfferedChunkBean {
 
     public Chunk takeFromSiblingArrayElement() {
         return slots.getAndSet(1, null);
+    }
+
+    public void offerThroughStaticHandle(Chunk chunk) {
+        STATIC_HANDLE_SLOT.setRelease(chunk);
+    }
+
+    public boolean offerThroughStaticHandleCompareAndSet(Chunk chunk) {
+        return STATIC_HANDLE_SLOT.compareAndSet((Chunk) null, chunk);
+    }
+
+    public Chunk takeThroughStaticHandle() {
+        return (Chunk) STATIC_HANDLE_SLOT.getAndSet((Chunk) null);
+    }
+
+    public void offerThroughSiblingStaticHandle(Chunk chunk) {
+        SIBLING_STATIC_HANDLE_SLOT.setRelease(chunk);
+    }
+
+    public Chunk takeThroughSiblingStaticHandle() {
+        return (Chunk) SIBLING_STATIC_HANDLE_SLOT.getAndSet((Chunk) null);
+    }
+
+    public void offerToArrayHandle(Chunk chunk) {
+        ARRAY_HANDLE_SLOT.setRelease(arrayChunks, 0, chunk);
+    }
+
+    public boolean offerToArrayHandleCompareAndSet(Chunk chunk) {
+        return ARRAY_HANDLE_SLOT.compareAndSet(arrayChunks, 0, (Chunk) null, chunk);
+    }
+
+    public Chunk takeFromArrayHandle() {
+        return (Chunk) ARRAY_HANDLE_SLOT.getAndSet(arrayChunks, 0, (Chunk) null);
+    }
+
+    public void offerToSiblingArrayHandle(Chunk chunk) {
+        ARRAY_HANDLE_SLOT.setRelease(arrayChunks, 1, chunk);
+    }
+
+    public Chunk takeFromSiblingArrayHandle() {
+        return (Chunk) ARRAY_HANDLE_SLOT.getAndSet(arrayChunks, 1, (Chunk) null);
     }
 
     // ---- Uses ----------------------------------------------------------------------------------

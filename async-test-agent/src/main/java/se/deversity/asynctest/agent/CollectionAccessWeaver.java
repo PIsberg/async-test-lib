@@ -14,10 +14,15 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
+import java.util.function.Consumer;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -235,8 +240,8 @@ final class CollectionAccessWeaver {
      * implementation detail that carries hook names and dispatch flags a coverage test has no
      * business reading, and a test that matched on it would break on every internal change.
      */
-    static java.util.Set<String> wovenCallSites() {
-        java.util.Set<String> sites = new java.util.LinkedHashSet<>();
+    static Set<String> wovenCallSites() {
+        Set<String> sites = new LinkedHashSet<>();
         for (List<Entry> table : List.of(ENTRIES, SHARED_INSTANCE_ENTRIES, CONCURRENCY_ENTRIES,
                 MONITOR_ENTRIES, STATIC_ENTRIES, GC_ENTRIES)) {
             for (Entry entry : table) {
@@ -839,6 +844,337 @@ final class CollectionAccessWeaver {
         return GC_HOOKS;
     }
 
+    /**
+     * Methods that directly or indirectly invoke {@code Object.wait}, keyed as
+     * {@code "ownerInternalName.nameDescriptor"}, so that a loop around a call into one of them
+     * is recognised as a loop around a wait (#707).
+     *
+     * <p>Within one class the answer is exact: the monitor wrapper buffers every method before
+     * emitting any of it, so a helper declared after its caller is still resolved. Across classes
+     * it is best-effort in one direction only. An entry is added when the class that declares the
+     * helper is woven, which helps callers woven afterwards and cannot help one woven before, and
+     * the key is the owner written at the call site, so a helper reached through a supertype or an
+     * interface is missed. Both failures are silent and land on the same side: the loop goes
+     * unmarked, the wait reads as an {@code if}, and a correct bounded poll can be reported. That
+     * is why {@code MISSED_SIGNAL} stays {@code PROMPT}.
+     *
+     * <p>It is never cleared, which is what lets it outlive one class's weave. It holds one string
+     * per waiting method of every class woven in this JVM, so it grows with classes woven rather
+     * than with anything a test does.
+     */
+    private static final Set<String> KNOWN_WAITING_METHODS =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Buffers annotation visitor actions so they can be replayed to another visitor. */
+    private static final class BufferedAnnotationVisitor extends AnnotationVisitor {
+        private final List<Consumer<AnnotationVisitor>> actions = new ArrayList<>();
+
+        BufferedAnnotationVisitor() {
+            super(Opcodes.ASM9);
+        }
+
+        void replay(AnnotationVisitor target) {
+            if (target != null) {
+                for (Consumer<AnnotationVisitor> action : actions) {
+                    action.accept(target);
+                }
+            }
+        }
+
+        @Override
+        public void visit(String name, Object value) {
+            actions.add(av -> av.visit(name, value));
+        }
+
+        @Override
+        public void visitEnum(String name, String descriptor, String value) {
+            actions.add(av -> av.visitEnum(name, descriptor, value));
+        }
+
+        @Override
+        public AnnotationVisitor visitAnnotation(String name, String descriptor) {
+            BufferedAnnotationVisitor nested = new BufferedAnnotationVisitor();
+            actions.add(av -> nested.replay(av.visitAnnotation(name, descriptor)));
+            return nested;
+        }
+
+        @Override
+        public AnnotationVisitor visitArray(String name) {
+            BufferedAnnotationVisitor nested = new BufferedAnnotationVisitor();
+            actions.add(av -> nested.replay(av.visitArray(name)));
+            return nested;
+        }
+
+        @Override
+        public void visitEnd() {
+            actions.add(AnnotationVisitor::visitEnd);
+        }
+    }
+
+    /** Buffers method visitor actions and records calls to wait and local methods. */
+    private static final class BufferedMethod extends MethodVisitor {
+        private final int access;
+        private final String name;
+        private final String descriptor;
+        private final @org.jspecify.annotations.Nullable String signature;
+        private final String @org.jspecify.annotations.Nullable [] exceptions;
+        private final String ownerInternalName;
+
+        private boolean directlyWaits;
+        private final Set<String> calledLocalMethods = new HashSet<>();
+        private final List<Consumer<MethodVisitor>> actions = new ArrayList<>();
+
+        BufferedMethod(int access, String name, String descriptor,
+                       @org.jspecify.annotations.Nullable String signature,
+                       String @org.jspecify.annotations.Nullable [] exceptions,
+                       String ownerInternalName) {
+            super(Opcodes.ASM9);
+            this.access = access;
+            this.name = name;
+            this.descriptor = descriptor;
+            this.signature = signature;
+            this.exceptions = exceptions == null ? null : exceptions.clone();
+            this.ownerInternalName = ownerInternalName;
+        }
+
+        boolean directlyWaits() {
+            return directlyWaits;
+        }
+
+        Set<String> calledLocalMethods() {
+            return calledLocalMethods;
+        }
+
+        String methodKey() {
+            return name + descriptor;
+        }
+
+        int access() {
+            return access;
+        }
+
+        String name() {
+            return name;
+        }
+
+        String descriptor() {
+            return descriptor;
+        }
+
+        @org.jspecify.annotations.Nullable String signature() {
+            return signature;
+        }
+
+        String @org.jspecify.annotations.Nullable [] exceptions() {
+            return exceptions == null ? null : exceptions.clone();
+        }
+
+        void replay(MethodVisitor target) {
+            for (Consumer<MethodVisitor> action : actions) {
+                action.accept(target);
+            }
+        }
+
+        @Override
+        public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
+                                    boolean isInterface) {
+            if ("java/lang/Object".equals(owner) && "wait".equals(name)) {
+                directlyWaits = true;
+            } else if (owner.equals(ownerInternalName)) {
+                calledLocalMethods.add(name + descriptor);
+            } else if (KNOWN_WAITING_METHODS.contains(owner + "." + name + descriptor)) {
+                directlyWaits = true;
+            }
+            actions.add(mv -> mv.visitMethodInsn(opcode, owner, name, descriptor, isInterface));
+        }
+
+        @Override
+        public void visitInsn(int opcode) {
+            actions.add(mv -> mv.visitInsn(opcode));
+        }
+
+        @Override
+        public void visitIntInsn(int opcode, int operand) {
+            actions.add(mv -> mv.visitIntInsn(opcode, operand));
+        }
+
+        @Override
+        public void visitVarInsn(int opcode, int varIndex) {
+            actions.add(mv -> mv.visitVarInsn(opcode, varIndex));
+        }
+
+        @Override
+        public void visitTypeInsn(int opcode, String type) {
+            actions.add(mv -> mv.visitTypeInsn(opcode, type));
+        }
+
+        @Override
+        public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+            actions.add(mv -> mv.visitFieldInsn(opcode, owner, name, descriptor));
+        }
+
+        @Override
+        public void visitInvokeDynamicInsn(String name, String descriptor,
+                                           Handle bootstrapMethodHandle,
+                                           Object... bootstrapMethodArguments) {
+            Object[] clonedArguments = bootstrapMethodArguments == null
+                    ? null : bootstrapMethodArguments.clone();
+            actions.add(mv -> mv.visitInvokeDynamicInsn(name, descriptor,
+                    bootstrapMethodHandle, clonedArguments));
+        }
+
+        @Override
+        public void visitJumpInsn(int opcode, Label label) {
+            actions.add(mv -> mv.visitJumpInsn(opcode, label));
+        }
+
+        @Override
+        public void visitLabel(Label label) {
+            actions.add(mv -> mv.visitLabel(label));
+        }
+
+        @Override
+        public void visitLdcInsn(Object value) {
+            actions.add(mv -> mv.visitLdcInsn(value));
+        }
+
+        @Override
+        public void visitIincInsn(int varIndex, int increment) {
+            actions.add(mv -> mv.visitIincInsn(varIndex, increment));
+        }
+
+        @Override
+        public void visitTableSwitchInsn(int min, int max, Label dflt, Label... labels) {
+            Label[] clonedLabels = labels == null ? null : labels.clone();
+            actions.add(mv -> mv.visitTableSwitchInsn(min, max, dflt, clonedLabels));
+        }
+
+        @Override
+        public void visitLookupSwitchInsn(Label dflt, int[] keys, Label[] labels) {
+            int[] clonedKeys = keys == null ? null : keys.clone();
+            Label[] clonedLabels = labels == null ? null : labels.clone();
+            actions.add(mv -> mv.visitLookupSwitchInsn(dflt, clonedKeys, clonedLabels));
+        }
+
+        @Override
+        public void visitMultiANewArrayInsn(String descriptor, int numDimensions) {
+            actions.add(mv -> mv.visitMultiANewArrayInsn(descriptor, numDimensions));
+        }
+
+        @Override
+        public void visitTryCatchBlock(Label start, Label end, Label handler, String type) {
+            actions.add(mv -> mv.visitTryCatchBlock(start, end, handler, type));
+        }
+
+        @Override
+        public void visitLocalVariable(String name, String descriptor, String signature,
+                                       Label start, Label end, int index) {
+            actions.add(mv -> mv.visitLocalVariable(name, descriptor, signature, start, end, index));
+        }
+
+        @Override
+        public void visitLineNumber(int line, Label start) {
+            actions.add(mv -> mv.visitLineNumber(line, start));
+        }
+
+        @Override
+        public void visitMaxs(int maxStack, int maxLocals) {
+            actions.add(mv -> mv.visitMaxs(maxStack, maxLocals));
+        }
+
+        @Override
+        public void visitEnd() {
+            actions.add(MethodVisitor::visitEnd);
+        }
+
+        @Override
+        public void visitParameter(String name, int access) {
+            actions.add(mv -> mv.visitParameter(name, access));
+        }
+
+        @Override
+        public void visitAnnotableParameterCount(int parameterCount, boolean visible) {
+            actions.add(mv -> mv.visitAnnotableParameterCount(parameterCount, visible));
+        }
+
+        @Override
+        public void visitAttribute(Attribute attribute) {
+            actions.add(mv -> mv.visitAttribute(attribute));
+        }
+
+        @Override
+        public void visitCode() {
+            actions.add(MethodVisitor::visitCode);
+        }
+
+        @Override
+        public void visitFrame(int type, int numLocal, Object[] local, int numStack, Object[] stack) {
+            Object[] clonedLocal = local == null ? null : local.clone();
+            Object[] clonedStack = stack == null ? null : stack.clone();
+            actions.add(mv -> mv.visitFrame(type, numLocal, clonedLocal, numStack, clonedStack));
+        }
+
+        @Override
+        public AnnotationVisitor visitAnnotationDefault() {
+            BufferedAnnotationVisitor av = new BufferedAnnotationVisitor();
+            actions.add(mv -> av.replay(mv.visitAnnotationDefault()));
+            return av;
+        }
+
+        @Override
+        public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+            BufferedAnnotationVisitor av = new BufferedAnnotationVisitor();
+            actions.add(mv -> av.replay(mv.visitAnnotation(descriptor, visible)));
+            return av;
+        }
+
+        @Override
+        public AnnotationVisitor visitTypeAnnotation(int typeRef, TypePath typePath,
+                                                     String descriptor, boolean visible) {
+            BufferedAnnotationVisitor av = new BufferedAnnotationVisitor();
+            actions.add(mv -> av.replay(mv.visitTypeAnnotation(typeRef, typePath, descriptor, visible)));
+            return av;
+        }
+
+        @Override
+        public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor,
+                                                          boolean visible) {
+            BufferedAnnotationVisitor av = new BufferedAnnotationVisitor();
+            actions.add(mv -> av.replay(mv.visitParameterAnnotation(parameter, descriptor, visible)));
+            return av;
+        }
+
+        @Override
+        public AnnotationVisitor visitInsnAnnotation(int typeRef, TypePath typePath,
+                                                     String descriptor, boolean visible) {
+            BufferedAnnotationVisitor av = new BufferedAnnotationVisitor();
+            actions.add(mv -> av.replay(mv.visitInsnAnnotation(typeRef, typePath, descriptor, visible)));
+            return av;
+        }
+
+        @Override
+        public AnnotationVisitor visitTryCatchAnnotation(int typeRef, TypePath typePath,
+                                                         String descriptor, boolean visible) {
+            BufferedAnnotationVisitor av = new BufferedAnnotationVisitor();
+            actions.add(mv -> av.replay(mv.visitTryCatchAnnotation(typeRef, typePath, descriptor, visible)));
+            return av;
+        }
+
+        @Override
+        public AnnotationVisitor visitLocalVariableAnnotation(int typeRef, TypePath typePath,
+                                                              Label[] start, Label[] end,
+                                                              int[] index, String descriptor,
+                                                              boolean visible) {
+            BufferedAnnotationVisitor av = new BufferedAnnotationVisitor();
+            Label[] clonedStart = start == null ? null : start.clone();
+            Label[] clonedEnd = end == null ? null : end.clone();
+            int[] clonedIndex = index == null ? null : index.clone();
+            actions.add(mv -> av.replay(mv.visitLocalVariableAnnotation(typeRef, typePath,
+                    clonedStart, clonedEnd, clonedIndex, descriptor, visible)));
+            return av;
+        }
+    }
+
     /** Applies one table of {@link Target}s to every method of a woven class. */
     private record SubstitutionWrapper(List<Target> targets) implements AsmVisitorWrapper {
 
@@ -871,14 +1207,83 @@ final class CollectionAccessWeaver {
             // Owner-to-entry assignability answers, per woven class: owners repeat heavily
             // inside one class, and the pool lookup is the only non-trivial cost here.
             Map<String, Boolean> assignable = new HashMap<>();
+            // Only the monitor table carries a back-edge hook, and only it pays for buffering.
+            // Every other table emits each method as it arrives.
+            Target loopHook = null;
+            for (Target target : targets) {
+                if (target.hasLoopBackEdgeHook()) {
+                    loopHook = target;
+                    break;
+                }
+            }
+            if (loopHook == null) {
+                return new ClassVisitor(Opcodes.ASM9, classVisitor) {
+                    @Override
+                    public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                     String signature, String[] exceptions) {
+                        MethodVisitor delegate =
+                                super.visitMethod(access, name, descriptor, signature, exceptions);
+                        return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable,
+                                access, instrumentedType.getInternalName(), Collections.emptySet(), null);
+                    }
+                };
+            }
+            // Past here the whole class is buffered and replayed at visitEnd, because a loop
+            // around a wait can be in a method declared before the one that waits (#707) and a
+            // MethodVisitor learns of the callee only as it passes. The cheaper shapes are both
+            // unavailable: an AsmVisitorWrapper is handed a ClassVisitor and never the class
+            // bytes, so there is nothing to run a second ClassReader over, and Byte Buddy's
+            // shaded ASM ships no tree API to hold a method in. Buffering is bounded by one
+            // class, which the format already bounds; what it costs is paid once per woven class.
+            Target finalLoopHook = loopHook;
+            List<BufferedMethod> bufferedMethods = new ArrayList<>();
             return new ClassVisitor(Opcodes.ASM9, classVisitor) {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor,
                                                  String signature, String[] exceptions) {
-                    MethodVisitor delegate =
-                            super.visitMethod(access, name, descriptor, signature, exceptions);
-                    return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable,
-                            access, instrumentedType.getInternalName());
+                    BufferedMethod bm = new BufferedMethod(access, name, descriptor, signature,
+                            exceptions, instrumentedType.getInternalName());
+                    bufferedMethods.add(bm);
+                    return bm;
+                }
+
+                @Override
+                public void visitEnd() {
+                    Set<String> waitingMethods = new HashSet<>();
+                    for (BufferedMethod bm : bufferedMethods) {
+                        if (bm.directlyWaits()) {
+                            waitingMethods.add(bm.methodKey());
+                        }
+                    }
+                    boolean changed = true;
+                    while (changed) {
+                        changed = false;
+                        for (BufferedMethod bm : bufferedMethods) {
+                            String key = bm.methodKey();
+                            if (!waitingMethods.contains(key)) {
+                                for (String callee : bm.calledLocalMethods()) {
+                                    if (waitingMethods.contains(callee)) {
+                                        waitingMethods.add(key);
+                                        changed = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    String ownerPrefix = instrumentedType.getInternalName() + ".";
+                    for (String m : waitingMethods) {
+                        KNOWN_WAITING_METHODS.add(ownerPrefix + m);
+                    }
+                    for (BufferedMethod bm : bufferedMethods) {
+                        MethodVisitor downstream = super.visitMethod(bm.access(), bm.name(),
+                                bm.descriptor(), bm.signature(), bm.exceptions());
+                        SubstitutingMethodVisitor smv = new SubstitutingMethodVisitor(
+                                downstream, targets, typePool, assignable, bm.access(),
+                                instrumentedType.getInternalName(), waitingMethods, finalLoopHook);
+                        bm.replay(smv);
+                    }
+                    super.visitEnd();
                 }
             };
         }
@@ -905,6 +1310,15 @@ final class CollectionAccessWeaver {
 
         /** The class being woven, for loading its {@code Class} as a static method's monitor. */
         private final String owningClassInternalName;
+
+        /** Set of method keys (name + descriptor) in this class known to invoke Object.wait. */
+        private final Set<String> waitingMethods;
+
+        /** Target supplying the loop back-edge hook when a waiting method is called. */
+        private final @org.jspecify.annotations.Nullable Target loopHookTarget;
+
+        /** Positions where conditional jump instructions were visited. */
+        private final List<Integer> conditionalJumpsAt = new ArrayList<>();
 
         /**
          * The target whose substituted call was the instruction just emitted, when that target
@@ -940,7 +1354,9 @@ final class CollectionAccessWeaver {
 
         SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
                                   TypePool typePool, Map<String, Boolean> assignable,
-                                  int access, String owningClassInternalName) {
+                                  int access, String owningClassInternalName,
+                                  Set<String> waitingMethods,
+                                  @org.jspecify.annotations.Nullable Target loopHookTarget) {
             super(Opcodes.ASM9, delegate);
             this.targets = targets;
             this.typePool = typePool;
@@ -948,6 +1364,8 @@ final class CollectionAccessWeaver {
             this.enclosingIsSynchronized = (access & Opcodes.ACC_SYNCHRONIZED) != 0;
             this.enclosingIsStatic = (access & Opcodes.ACC_STATIC) != 0;
             this.owningClassInternalName = owningClassInternalName;
+            this.waitingMethods = waitingMethods;
+            this.loopHookTarget = loopHookTarget;
         }
 
         @Override
@@ -1017,6 +1435,13 @@ final class CollectionAccessWeaver {
                         return;
                     }
                 }
+            }
+            if (loopHookTarget != null
+                    && ((owner.equals(owningClassInternalName) && waitingMethods.contains(name + descriptor))
+                    || KNOWN_WAITING_METHODS.contains(owner + "." + name + descriptor))) {
+                loopTracked = loopHookTarget;
+                loopTrackedAt = position;
+                position++;
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
         }
@@ -1244,20 +1669,53 @@ final class CollectionAccessWeaver {
             return null;
         }
 
+        private static boolean isConditionalJump(int opcode) {
+            return (opcode >= Opcodes.IFEQ && opcode <= Opcodes.IF_ACMPNE)
+                    || opcode == Opcodes.IFNULL
+                    || opcode == Opcodes.IFNONNULL;
+        }
+
+        private boolean hasConditionalJumpBetween(int from, int to) {
+            for (int pos : conditionalJumpsAt) {
+                if (pos > from && pos < to) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         @Override
         public void visitJumpInsn(int opcode, Label label) {
             justSubstituted = null;
             Target tracked = loopTracked;
             if (tracked != null) {
-                // A jump to a label visited before the tracked call comes back over it: the
-                // back-edge of a loop around a wait (#694). The hook goes in front of the jump and
-                // takes nothing, so a conditional jump still finds its operands, no branch or
-                // frame is added, and it runs whether or not the jump is taken.
+                // A jump back to a label visited before the tracked call comes over it, and
+                // marks a loop around a wait (#694). Two things have to hold for that loop to
+                // be the predicate loop a correct wait belongs in, and each rules out one shape
+                // that waits before it has ever read the predicate (#707):
+                //
+                //   - the back-edge is an unconditional goto. javac puts a while loop's test at
+                //     the top and closes the loop with a goto; in do { wait(); } while (!ready)
+                //     the back-edge is the test itself, a conditional jump. That is
+                //     DoWhileWaitHandOffBean, the twin of LoopWaitHandOffBean.
+                //   - a conditional jump stands between the loop's head and the wait, so the
+                //     thread reads something before it blocks. A loop closed by continue has the
+                //     goto but not that test. WaitLoopShapesSample.continueLoop, and
+                //     endlessWait, which no fixture can run.
+                //
+                // The hook goes in front of the jump and takes nothing, so a conditional jump
+                // still finds its operands, no branch or frame is added, and it runs whether or
+                // not the jump is taken.
                 Integer visitedAt = labelsVisitedAt.get(label);
-                if (visitedAt != null && visitedAt < loopTrackedAt) {
+                if (opcode == Opcodes.GOTO && visitedAt != null && visitedAt < loopTrackedAt
+                        && hasConditionalJumpBetween(visitedAt, loopTrackedAt)) {
                     super.visitMethodInsn(Opcodes.INVOKESTATIC, tracked.hookOwnerInternalName(),
                             tracked.loopBackEdgeHookName(), "()V", false);
                 }
+            }
+            if (isConditionalJump(opcode)) {
+                conditionalJumpsAt.add(position);
+                position++;
             }
             super.visitJumpInsn(opcode, label);
         }
@@ -1285,12 +1743,16 @@ final class CollectionAccessWeaver {
         @Override
         public void visitTableSwitchInsn(int min, int max, Label dflt, Label... labels) {
             justSubstituted = null;
+            conditionalJumpsAt.add(position);
+            position++;
             super.visitTableSwitchInsn(min, max, dflt, labels);
         }
 
         @Override
         public void visitLookupSwitchInsn(Label dflt, int[] keys, Label[] labels) {
             justSubstituted = null;
+            conditionalJumpsAt.add(position);
+            position++;
             super.visitLookupSwitchInsn(dflt, keys, labels);
         }
 

@@ -115,10 +115,17 @@ call to a hook that records and then performs the original operation, so behavio
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
 judged against the threads really inside `wait()`. The weaver also inserts one call in front of
-every backward jump that comes back over a woven wait, and a wait whose thread reaches it after
-waking is a `while (!ready)` loop's and is never reported. A wait with no such jump around it is an
-`if`'s. The jump has to be in the same method as the wait: a loop in one method around a bare
-`wait()` in another reads as an `if`, and `do { wait(); } while (!ready)` reads as a loop.
+the backward jump that closes a loop around a woven wait, and a wait whose thread reaches it
+after waking is a `while (!ready)` loop's and is never reported. A wait with no such jump around it
+is an `if`'s.
+
+The whole class is read before any of it is emitted, so the wait may sit in a helper the loop calls
+(#707); a helper in another class is recognised only when that class was woven first, and one
+reached through a supertype or an interface is not. A jump counts as closing the loop when it is an
+unconditional `goto` and something is read between the loop's head and the wait, which is how javac
+closes a `while`. `do { wait(); } while (!ready)` closes with the predicate test itself, and a loop
+closed by `continue` reads nothing before it blocks; both enter `wait` before they have read the
+predicate, and both are reported.
 
 Three limits worth knowing before switching it on:
 
@@ -172,7 +179,8 @@ Three limits worth knowing before switching it on:
   ([#692](https://github.com/PIsberg/async-test-lib/issues/692))
   and `BlockingQueue.offer`/`put`, and from `fields=true` for a reference slot (`set`, `lazySet`,
   `setRelease` or `compareAndSet` on an `AtomicReference`, an `AtomicReferenceFieldUpdater`, an
-  `AtomicReferenceArray` or an instance-field `VarHandle`) and a JCTools `offer`/`relaxedOffer`.
+  `AtomicReferenceArray` or a `VarHandle` (instance field, static field or array element)) and a
+  JCTools `offer`/`relaxedOffer`.
   `BlockingQueue.take`, `Queue.remove()`, `remove(Object)` on a queue,
   `Deque.pollFirst`/`pollLast`/`removeFirst`/`removeLast`/`pop`, and `BlockingDeque.takeFirst`/
   `takeLast` with its timed `pollFirst`/`pollLast` are takes like `poll`, and `drainTo`
@@ -181,8 +189,7 @@ Three limits worth knowing before switching it on:
   ([#664](https://github.com/PIsberg/async-test-lib/issues/664),
   [#692](https://github.com/PIsberg/async-test-lib/issues/692)); a removal in unwoven code, or
   through an iterator, still can. Only when no such offer was recorded does every thread get that
-  benefit: an element that entered through code outside `includes`, or a
-  `VarHandle` take from a static field or an array element
+  benefit: an element that entered through code outside `includes`
   ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
   so writes under them still report: `Unsafe.compareAndSwapInt`, and an
   `AtomicIntegerFieldUpdater` created before the agent attached whose target cannot be read (a
