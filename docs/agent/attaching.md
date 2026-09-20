@@ -120,10 +120,23 @@ after waking is a `while (!ready)` loop's and is never reported. A wait with no 
 is an `if`'s.
 
 The whole class is read before any of it is emitted, so the wait may sit in a helper the loop calls
-(#707); a helper in another class is recognised when that class was woven first, including one
-inherited from a supertype or reached through an interface, which the call site names instead of
-the class that waits (#709). A caller woven before the class declaring its helper is still missed,
-and no weave order is under a user's control, so that case stays silent and unreported.
+(#707); a helper in another class is recognised whether it is inherited from a supertype or reached
+through an interface, which the call site names instead of the class that waits (#709).
+
+Which of the two classes is woven first used to decide it, and load-time weaving delivers the
+unhelpful order almost every time: a class named only inside a method body is resolved lazily, on
+first execution of the instruction naming it, so when the caller is woven at load its helper has
+not been loaded at all. Measured on one pair of fixtures in one JVM before the fix, caller first
+gave 0 marks where helpers first gave 1. Since #715 a call the weaver cannot resolve is remembered
+against the signature it named, and a later class registering that signature has the callers
+retransformed, which runs the weaver over them again with the helper now in the index.
+
+The window is narrowed, not closed. The retransformation is handed to a daemon thread rather than
+run inside the transform that triggers it, because a transform runs while a class is being defined
+and calling back into `retransformClasses` from there re-enters the transformer chain under the
+defining thread's locks. A loop that executes before the retransformation lands still runs unmarked
+code, and a finding recorded in that window is still a finding. It is one of the readings keeping
+`MISSED_SIGNAL` at `PROMPT`.
 
 A jump counts as closing the loop when it is an unconditional `goto` and something is read
 between the loop's head and the wait, which is how javac and kotlinc close a `while`.
