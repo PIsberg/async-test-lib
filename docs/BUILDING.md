@@ -209,6 +209,21 @@ The Gradle wrapper (`gradlew` / `gradlew.bat`) is included — no local Gradle i
 ./gradlew javadoc
 ```
 
+**The agent jar is shaded in both builds.** `-javaagent:` loads `async-test-agent.jar` on its own,
+so the jar has to carry Byte Buddy: nothing on a consumer classpath provides it, and
+`ArchitectureTest` forbids the library from carrying it. Maven does that with
+`maven-shade-plugin`, relocating `net.bytebuddy` to `se.deversity.asynctest.agent.shaded.bytebuddy`;
+Gradle does the same with the Shadow plugin, and both are held to one gate. `AgentJarPremainIT`
+attaches the packaged jar to a JVM with every Byte Buddy entry filtered off the classpath and
+requires it to reach `main`; Maven runs it under Failsafe, Gradle as
+`./gradlew :async-test-agent:agentJarIntegrationTest`.
+
+Until [#719](https://github.com/PIsberg/async-test-lib/issues/719) only Maven shaded. The jar
+`publishToMavenLocal` published carried `Premain-Class` and none of Byte Buddy, so any JVM
+attaching it aborted at startup, and nothing noticed because no test had ever attached a
+Gradle-built agent.
+
+
 > **Windows:** Use `gradlew.bat` instead of `./gradlew`, or run `./gradlew` from Git Bash.
 
 ### Code coverage

@@ -17,13 +17,6 @@ val asyncTestAgent = configurations.create("asyncTestAgent") {
 
 dependencies {
     asyncTestAgent("se.deversity.async-test-lib:async-test-agent:${rootProject.extra["asyncTestVersion"]}")
-    // The Gradle build has no twin of Maven's shade step, so the agent jar publishToMavenLocal
-    // produces carries Premain-Class and none of byte-buddy, and premain dies with a
-    // NoClassDefFoundError that aborts the JVM before any test runs. -javaagent loads the agent
-    // through the system class loader, so the same coordinate on the test runtime classpath,
-    // transitively this time, is what makes its classes resolve. Inert under Maven, where the jar
-    // is shaded and its dependency-reduced pom brings nothing along.
-    testRuntimeOnly("se.deversity.async-test-lib:async-test-agent:${rootProject.extra["asyncTestVersion"]}")
 }
 
 tasks.withType<Test>().configureEach {
