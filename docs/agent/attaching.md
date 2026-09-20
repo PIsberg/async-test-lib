@@ -136,8 +136,14 @@ closes with a conditional jump and puts the test after the wait. That shape coun
 loop head is entered by a `goto` that lands between the wait and the back-edge, which is what a
 rotated loop has and a `do`/`while` has not (#710). ECJ rotates and javac does not, so without this
 a correct poll compiled by Eclipse would be reported; `MissedSignalRotatedLoopWeavingTest` compiles
-the shapes with the real ECJ and reads the marks back. kotlinc 2.4.10 emits the javac shape for
-both `while` and `do`/`while`, checked by hand against that version and not gated.
+the shapes with the real ECJ and reads the marks back. kotlinc emits the javac shape for both
+`while` and `do`/`while`, first checked by hand at 2.4.10 and gated since #714 by a pair in
+`consumer-fixture-langs/kotlin`: a Kotlin `while` poll that must stay silent and a Kotlin
+`do`/`while` that must be reported, run against the agent with `-javaagent`. The gate lives there
+rather than beside the ECJ one because a mark-level gate would need a Kotlin compiler on
+`async-test-agent`'s test classpath, and the language toolchains are deliberately confined to that
+fixture's own pom. It asserts on the finding instead of on the marks, which is what a user sees;
+the firing half is what stops the silent half passing by nothing being woven at all.
 
 **What the hold costs.** Reading the whole class before emitting any of it means holding every
 method of every class `collections=true` weaves, including the great majority that never call

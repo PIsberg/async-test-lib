@@ -29,6 +29,36 @@ The assertion lives in `@AfterAll` because detectors analyse after the last roun
 cannot be observed from inside the test body. `failOn = FailOn.NONE` keeps the report from
 failing the test itself, so the `@AfterAll` assertion is the only thing that can go red.
 
+## Kotlin only: the wait-loop shape a compiler chooses
+
+Kotlin carries a second pair the other three languages do not, because it is the only toolchain
+here that could disagree with javac about how a loop is compiled.
+
+| Class | Body | Asserted in `@AfterAll` |
+|---|---|---|
+| `KotlinDoWhileWaitIsReportedTest` | `do { wait() } while (!ready)` after a lost notify | a `MissedSignal` finding is present |
+| `KotlinWaitLoopIsNotReportedTest` | the same bounded poll written as `while (!ready)` | no `MissedSignal` finding |
+
+The agent's `MISSED_SIGNAL` rule reads the shape the compiler emitted, not the source: a correct
+predicate loop and `do { wait() } while (...)` differ in their backward jump. A compiler that
+rotates loops puts the test after the body, which under a javac-only rule reads as the bug and
+would report every bounded poll in the codebase. ECJ rotates, javac does not, and kotlinc was
+checked by hand at 2.4.10 and by nothing since ([#710], [#714]). This pair is what re-checks it on
+every Kotlin bump. Verified by breaking it: inverting the javac-shape half of the rule in
+`CollectionAccessWeaver` turns the silent test red and leaves the firing one green, which is what a
+kotlinc that started rotating loops would look like.
+
+Unlike the four-language pair above, these two need the agent, because `collections=true` is what
+substitutes `Object.wait`. Both builds attach `async-test-agent` with `-javaagent` rather than a
+self-attach, so a refused attach fails rather than turning the gates into skips, and both scope
+`includes=` to `com.example.kotlinfixture` so the race-condition pair keeps running unwoven. That
+package sits outside `se.deversity.asynctest` deliberately: the weaver refuses to substitute inside
+the library's own root, so a wait bean under `se.deversity.asynctest.fixture` is never woven at all
+and both tests would measure nothing. The firing half is what caught that.
+
+[#710]: https://github.com/PIsberg/async-test-lib/issues/710
+[#714]: https://github.com/PIsberg/async-test-lib/issues/714
+
 ## Run it
 
 ```bash
