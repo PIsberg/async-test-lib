@@ -115,10 +115,17 @@ call to a hook that records and then performs the original operation, so behavio
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
 judged against the threads really inside `wait()`. The weaver also inserts one call in front of
-every backward jump that comes back over a woven wait, and a wait whose thread reaches it after
-waking is a `while (!ready)` loop's and is never reported. A wait with no such jump around it is an
-`if`'s. The jump has to be in the same method as the wait: a loop in one method around a bare
-`wait()` in another reads as an `if`, and `do { wait(); } while (!ready)` reads as a loop.
+the backward jump that closes a loop around a woven wait, and a wait whose thread reaches it
+after waking is a `while (!ready)` loop's and is never reported. A wait with no such jump around it
+is an `if`'s.
+
+The whole class is read before any of it is emitted, so the wait may sit in a helper the loop calls
+(#707); a helper in another class is recognised only when that class was woven first, and one
+reached through a supertype or an interface is not. A jump counts as closing the loop when it is an
+unconditional `goto` and something is read between the loop's head and the wait, which is how javac
+closes a `while`. `do { wait(); } while (!ready)` closes with the predicate test itself, and a loop
+closed by `continue` reads nothing before it blocks; both enter `wait` before they have read the
+predicate, and both are reported.
 
 Three limits worth knowing before switching it on:
 

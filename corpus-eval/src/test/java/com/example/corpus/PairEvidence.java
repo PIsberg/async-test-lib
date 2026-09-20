@@ -175,11 +175,11 @@ final class PairEvidence {
                 + "recordLoopStart/recordLoopEnd marks give the loop back-edge, so the if-wait "
                 + "shapes #656 could not separate now fire beside a silent marked loop. #694 wove "
                 + "Object.wait/notify/notifyAll and the back-edge around a wait, so the agent "
-                + "pair's inputs are observed under the monitor rather than recorded. Still held "
-                + "on two readings nobody has made: the recording pair's inputs remain the body's "
-                + "own record, and the woven back-edge is per method, so a loop in one method "
-                + "around a bare wait() in another reads as an if and would report a bounded "
-                + "poll (#571)");
+                + "pair's inputs are observed under the monitor rather than recorded, and #707 "
+                + "resolved the wait-helpers of a class before emitting any of it, so a loop in "
+                + "one method around a bare wait() in another is marked and a bounded poll "
+                + "written that way is no longer reported. Held on one reading nobody has made: "
+                + "the recording pair's inputs remain the body's own record (#571)");
         HELD_ON_MODEL.put(DetectorType.PHASER, "since #587 termination is context and the finding "
                 + "is an arrival whose returned phase is negative on a phaser with no party left "
                 + "registered, read from the real phaser; the rewritten pair has not been re-read "
