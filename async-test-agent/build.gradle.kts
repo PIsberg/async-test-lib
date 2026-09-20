@@ -1,6 +1,7 @@
 // Optional Byte Buddy field-access agent. The only module allowed to touch net.bytebuddy.
 val junitVersion = rootProject.extra["junitVersion"] as String
 val byteBuddyVersion = rootProject.extra["byteBuddyVersion"] as String
+val ecjVersion = rootProject.extra["ecjVersion"] as String
 
 dependencies {
     api(project(":async-test-lib"))
@@ -11,6 +12,9 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
+    // ECJ: MissedSignalRotatedLoopWeavingTest compiles the wait-loop shapes with a
+    // loop-rotating compiler, which javac is not (#710).
+    testImplementation("org.eclipse.jdt:ecj:$ecjVersion")
 }
 
 // The agent manifest. It moved here from the library JAR when the modules were split:

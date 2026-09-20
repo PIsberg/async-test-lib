@@ -12,6 +12,7 @@ public class WaitLoopShapesSample {
 
     private final Object monitor = new Object();
     private boolean ready;
+    private boolean bail;
 
     /** A predicate loop: the test is at the top and a goto closes it. One back-edge mark. */
     public void whileLoop() throws InterruptedException {
@@ -83,6 +84,30 @@ public class WaitLoopShapesSample {
         synchronized (monitor) {
             if (!ready) {
                 monitor.wait(20);
+            }
+        }
+    }
+
+    /**
+     * A {@code break} compiled immediately in front of a {@code do}/{@code while}. No mark.
+     *
+     * <p>The one shape that separates the rotated-loop rule from a rule that merely looks for a
+     * {@code goto} in front of the loop head: this has one, left by the {@code break}, but it
+     * jumps clear of the loop instead of into its test. Loosening the rotated rule's range check
+     * marks this {@code do}/{@code while} and stops reporting the bug it holds (#710).
+     */
+    public void breakThenDoWhile() throws InterruptedException {
+        synchronized (monitor) {
+            long deadline = System.nanoTime() + 20_000_000L;
+            while (true) {
+                if (bail) {
+                    break;
+                }
+                do {
+                    long leftMillis = (deadline - System.nanoTime()) / 1_000_000L;
+                    monitor.wait(leftMillis > 0L ? leftMillis : 1L);
+                } while (!ready && System.nanoTime() < deadline);
+                break;
             }
         }
     }

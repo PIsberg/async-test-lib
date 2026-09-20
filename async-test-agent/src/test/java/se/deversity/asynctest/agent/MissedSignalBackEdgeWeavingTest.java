@@ -107,6 +107,11 @@ class MissedSignalBackEdgeWeavingTest {
                 "while (true) { wait(); } has the goto and no predicate at all. Nothing runs this "
                         + "shape, which is why the gate reads the bytecode. Marks were "
                         + marksByMethod);
+        assertEquals(0, marksByMethod.get("breakThenDoWhile"),
+                "a break in front of a do/while leaves a goto immediately before the loop head, "
+                        + "which is the rotated loop's signature minus the part that matters: the "
+                        + "goto jumps clear of the loop rather than into its test. Marks were "
+                        + marksByMethod);
         assertEquals(0, marksByMethod.get("ifGuarded"),
                 "if (!ready) wait() has no backward jump: the case the mark exists to tell apart. "
                         + "Marks were " + marksByMethod);
