@@ -1,11 +1,16 @@
 package com.example.agentfixture;
 
 /**
- * Signals, then waits in a do-while loop before testing the predicate: the missed-signal bug (#707).
+ * The twin of {@link LoopWaitHandOffBean}: the same signal, the same bounded poll and the same
+ * deadline guard, with {@code do}/{@code while} in place of {@code while} (#707).
  *
- * <p>Unlike {@link LoopWaitHandOffBean}, this shape enters {@code wait} before testing {@code !ready}.
- * A notify that found nobody waiting is lost, and the first wait in a round blocks until timeout.
- * The weaver must distinguish this from a true predicate loop and must not emit {@code loopBackEdge}.
+ * <p>Only the order of the wait and the predicate test differs. This shape enters {@code wait}
+ * before it has ever read {@code ready}, so a notify that found nobody waiting strands the first
+ * wait of the round until its timeout, which is the missed-signal bug. Its bytecode still has a
+ * backward jump over the wait, and a deadline {@code if} in front of it, so neither the back-edge
+ * alone nor a conditional jump in front of the wait alone tells the two apart: the back-edge here
+ * is the predicate test itself, a conditional jump, where the loop twin's is an unconditional
+ * {@code goto}.
  */
 public class DoWhileWaitHandOffBean {
 
@@ -13,7 +18,7 @@ public class DoWhileWaitHandOffBean {
     private boolean ready;
 
     /**
-     * Signals whoever is waiting, then waits in a do-while loop.
+     * Signals whoever is waiting, then waits before polling for the predicate until a deadline.
      *
      * @throws InterruptedException if interrupted while waiting
      */
