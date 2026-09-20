@@ -57,13 +57,11 @@ import java.util.random.RandomGenerator;
 )
 public final class SharedSplittableRandomDetector {
 
-    private static final class GeneratorState extends SelfGuard.TrackedInstance {
+    private static final class GeneratorState extends SelfGuard.ThreadTrackedInstance {
         final String name;
         final String type;
         final AtomicInteger accessCount = new AtomicInteger();
         final Set<String> operations = ConcurrentHashMap.newKeySet();
-        final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         GeneratorState(String name, String type) {
             this.name = name;
@@ -115,8 +113,7 @@ public final class SharedSplittableRandomDetector {
         state.accessCount.incrementAndGet();
         state.operations.add(methodName != null ? methodName : "next*");
         Thread current = Thread.currentThread();
-        state.accessingThreadIds.add(current.threadId());
-        state.accessingThreadNames.add(current.getName());
+        state.noteThread(current);
     }
 
     /** Everything except {@code java.util.Random} subclasses (see class Javadoc). */
@@ -131,7 +128,7 @@ public final class SharedSplittableRandomDetector {
     public Report analyze() {
         Report r = new Report();
         for (GeneratorState state : generators.values()) {
-            if (state.accessingThreadIds.size() <= 1 || !state.sawUnguardedAccess()) {
+            if (!state.sharedAndUnguarded()) {
                 continue;
             }
             String msg = String.format(
@@ -139,8 +136,8 @@ public final class SharedSplittableRandomDetector {
                             + " silently corrupts the sequence" + SelfGuard.REPORT_NOTE,
                     state.name,
                     state.type,
-                    state.accessingThreadIds.size(),
-                    String.join(", ", state.accessingThreadNames),
+                    state.threadCount(),
+                    String.join(", ", state.threadNames()),
                     String.join(", ", state.operations));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -151,7 +148,7 @@ public final class SharedSplittableRandomDetector {
                     Map.of(
                             "label", state.name,
                             "generatorType", state.type,
-                            "threadCount", state.accessingThreadIds.size(),
+                            "threadCount", state.threadCount(),
                             "accessCount", state.accessCount.get()),
                     Instant.now()));
         }

@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -85,5 +87,36 @@ class TelemetryBridgeFieldIdentifierTest {
                         + "the mixed read/write condition cannot be met. If this ever starts "
                         + "finding something, AtomicityValidator's keying changed and the mapping "
                         + "should be revisited.");
+    }
+
+    @Test
+    @DisplayName("the bridge maps an accessor pair it has seen before, and one that arrives after the memo is full")
+    void bridgeNormalisesOnTheMemoHitPathAndPastTheCap() {
+        AtomicityValidator validator = new AtomicityValidator();
+        try (TelemetryBridge bridge = TelemetryBridge.activate(validator, Set.of(1L, 2L))) {
+            // Seen repeatedly: every event after the first takes the remembered answer (#704).
+            for (int n = 0; n < 3; n++) {
+                bridge.onEvent(1L, "com.example.Account.getBalance", false);
+                bridge.onEvent(2L, "com.example.Account.setBalance", true);
+            }
+            // Fill the memo, as a manual recordAccess caller with generated names could.
+            for (int n = 0; n <= TelemetryBridge.MAX_MEMOIZED_IDENTIFIERS; n++) {
+                bridge.onEvent(1L, "com.example.Generated.name" + n, false);
+            }
+            // Arrives with no room left: it must be computed, not skipped and not passed raw.
+            bridge.onEvent(1L, "com.example.Late.getTotal", false);
+            bridge.onEvent(2L, "com.example.Late.setTotal", true);
+        }
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+
+        assertTrue(report.unsafeFieldAccesses.stream()
+                        .anyMatch(f -> f.startsWith("com.example.Account.balance")),
+                "memo-hit path lost the mapping. Got: " + report.unsafeFieldAccesses);
+        assertTrue(report.unsafeFieldAccesses.stream()
+                        .anyMatch(f -> f.startsWith("com.example.Late.total")),
+                "a name arriving after the memo is full must still be normalised, or the getter "
+                        + "and setter land in separate buckets and the finding never fires. Got: "
+                        + report.unsafeFieldAccesses);
     }
 }

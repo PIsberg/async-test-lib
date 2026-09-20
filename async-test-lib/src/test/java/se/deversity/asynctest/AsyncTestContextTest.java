@@ -75,6 +75,23 @@ class AsyncTestContextTest {
     }
 
     @Test
+    void workerSlotIsInstalledAndUninstalledWithTheContext() {
+        AsyncTestContext ctx = new AsyncTestContext(AsyncTestConfig.builder().build());
+        assertEquals(WorkerSlot.NONE, WorkerSlot.current(), "no slot outside a body execution");
+
+        AsyncTestContext.install(ctx, 3);
+        try {
+            assertEquals(3, WorkerSlot.current());
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+
+        // The symmetry rule: a slot that outlived its body execution would make the next thing to
+        // run on this thread look like that worker come back (#693).
+        assertEquals(WorkerSlot.NONE, WorkerSlot.current(), "uninstall() must clear the slot");
+    }
+
+    @Test
     void accessingContextOutsideTestThrowsIllegalState() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             AsyncTestContext::falseSharingDetector);

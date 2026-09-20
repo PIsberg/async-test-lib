@@ -74,7 +74,7 @@ public final class SarifFormatter implements Formatter {
 
     /** Creates a formatter that reports the library version from the runtime package metadata. */
     public SarifFormatter() {
-        this(versionFromPackage());
+        this(ReportListeners.libraryVersion());
     }
 
     /**
@@ -85,12 +85,6 @@ public final class SarifFormatter implements Formatter {
      */
     public SarifFormatter(String version) {
         this.version = version == null ? "unknown" : version;
-    }
-
-    private static String versionFromPackage() {
-        Package p = SarifFormatter.class.getPackage();
-        String v = (p == null) ? null : p.getImplementationVersion();
-        return v == null ? "unknown" : v;
     }
 
     @Override

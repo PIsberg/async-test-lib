@@ -75,11 +75,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedIteratorDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
         final Set<String> operations           = ConcurrentHashMap.newKeySet();
 
         State(String label, String kind) {
@@ -110,8 +108,7 @@ public final class SharedIteratorDetector {
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         s.noteAccess(iterator);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
         if (operation != null) s.operations.add(operation);
     }
 
@@ -129,7 +126,7 @@ public final class SharedIteratorDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) via %s — iterators carry mutable cursor "
                             + "state and are confined to a single thread; unsynchronized concurrent hasNext()/next()/remove()/"
@@ -139,8 +136,8 @@ public final class SharedIteratorDetector {
                             + SelfGuard.REPORT_NOTE + ".",
                     s.kind,
                     s.label,
-                    s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames),
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()),
                     String.join("/", s.operations));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -151,7 +148,7 @@ public final class SharedIteratorDetector {
                     Map.of(
                             "label", s.label,
                             "kind", s.kind,
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

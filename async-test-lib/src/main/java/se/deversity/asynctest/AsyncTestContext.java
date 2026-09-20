@@ -124,6 +124,7 @@ import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
 import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
 import se.deversity.asynctest.diagnostics.HeldLocks;
+import se.deversity.asynctest.diagnostics.WorkerSlot;
 import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
 import se.deversity.asynctest.diagnostics.FinalFieldMutationDetector;
@@ -703,6 +704,20 @@ public final class AsyncTestContext {
     }
 
     /**
+     * Installs {@code ctx} and the runner's {@link WorkerSlot} for this body execution. Both are
+     * cleared by {@link #uninstall()}, under the same symmetry rule.
+     *
+     * @param ctx        the context to bind to the calling thread
+     * @param workerSlot the worker's index within its round, not negative
+     * @since 1.12.2
+     */
+    @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
+    public static void install(AsyncTestContext ctx, int workerSlot) {
+        WorkerSlot.set(workerSlot);
+        CURRENT.set(ctx);
+    }
+
+    /**
      * Removes the context from the calling thread's ThreadLocal.
      */
     @AIIdempotent(reason = "ThreadLocal.remove() is documented as a no-op when the thread has no value set; the install/uninstall symmetry rule (CLAUDE.md) tolerates extra uninstalls. ConcurrencyRunner relies on this in its outermost-finally cleanup.")
@@ -711,6 +726,7 @@ public final class AsyncTestContext {
         // intersected into the next round's lockset and could silence a real finding there, so
         // the symmetry rule covers this one exactly as it covers CURRENT.
         HeldLocks.clear();
+        WorkerSlot.clear();
         CURRENT.remove();
     }
 

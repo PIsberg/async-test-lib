@@ -53,9 +53,8 @@ When modifying these elements, audit for:
 - **Reason**: ConcurrentHashMap.computeIfAbsent guarantees the underlying gate.check fires at most once per Fingerprint; repeat calls return immediately. Denied results consistently throw SecurityException for the same fingerprint.
 
 ## Access Restrictions
-
-### se.deversity.asynctest.AsyncTestContext.install(se.deversity.asynctest.AsyncTestContext)
 - **Allowed Callers**: [se.deversity.asynctest.runner.ConcurrencyRunner]
+- **Applies to**: `se.deversity.asynctest.AsyncTestContext.install(se.deversity.asynctest.AsyncTestContext)`, `se.deversity.asynctest.AsyncTestContext.install(se.deversity.asynctest.AsyncTestContext,int)`
 
 ## Load-Bearing Oddity
 - **Rule**: This looks removable but is deliberate. Refactor only while the invariant holds.

@@ -3,7 +3,6 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -40,10 +39,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedXmlParserDetector {
 
-    private static class ParserState extends SelfGuard.TrackedInstance {
+    private static class ParserState extends SelfGuard.ThreadTrackedInstance {
         final String      parserType;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         ParserState(String parserType) { this.parserType = parserType; }
     }
@@ -65,8 +62,7 @@ public class SharedXmlParserDetector {
         ParserState s = parsers.computeIfAbsent(
                 new IdentityKey(parser), id -> new ParserState(label));
         s.noteAccess(parser);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
 
     /**
@@ -75,14 +71,14 @@ public class SharedXmlParserDetector {
     public SharedXmlParserReport analyze() {
         SharedXmlParserReport r = new SharedXmlParserReport();
         for (ParserState s : parsers.values()) {
-            if (s.accessingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
+            if (s.sharedAndUnguarded()) {
                 r.violations.add(String.format(
                         "'%s' instance accessed from %d threads (%s) — "
                                 + "XML parsers are not thread-safe; unsynchronized concurrent use causes "
                                 + "corrupted parse results or ConcurrentModificationExceptions"
                                 + SelfGuard.REPORT_NOTE,
-                        s.parserType, s.accessingThreadIds.size(),
-                        String.join(", ", s.accessingThreadNames)));
+                        s.parserType, s.threadCount(),
+                        String.join(", ", s.threadNames())));
             }
         }
         return r;

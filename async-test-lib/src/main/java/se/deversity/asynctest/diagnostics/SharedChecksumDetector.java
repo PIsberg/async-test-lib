@@ -58,11 +58,9 @@ import java.util.zip.Checksum;
 )
 public final class SharedChecksumDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final Set<String>  operations           = ConcurrentHashMap.newKeySet();
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         State(String label) {
             this.label = label;
@@ -89,8 +87,7 @@ public final class SharedChecksumDetector {
         }
         s.noteAccess(checksum);
         if (operation != null) s.operations.add(operation);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -100,7 +97,7 @@ public final class SharedChecksumDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "Checksum '%s' accessed from %d threads (%s) via %s — java.util.zip "
                             + "Checksum implementations accumulate mutable running state, and the "
@@ -109,8 +106,8 @@ public final class SharedChecksumDetector {
                             + "produce wrong checksum values with no exception"
                             + SelfGuard.REPORT_NOTE + ".",
                     s.label,
-                    s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames),
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()),
                     String.join(", ", s.operations));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -120,7 +117,7 @@ public final class SharedChecksumDetector {
                     List.of(),
                     Map.of(
                             "label", s.label,
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

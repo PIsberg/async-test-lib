@@ -58,12 +58,10 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedKdfDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String algorithm;
         final Set<String> operations           = ConcurrentHashMap.newKeySet();
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         State(String label, String algorithm) {
             this.label = label;
@@ -94,8 +92,7 @@ public final class SharedKdfDetector {
         }
         s.noteAccess(kdf);
         if (operation != null) s.operations.add(operation);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -105,7 +102,7 @@ public final class SharedKdfDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "KDF '%s' (algorithm %s) accessed from %d threads (%s) via %s — "
                             + "javax.crypto.KDF is documented as not thread-safe unless the "
@@ -115,8 +112,8 @@ public final class SharedKdfDetector {
                             + SelfGuard.REPORT_NOTE + ".",
                     s.label,
                     s.algorithm,
-                    s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames),
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()),
                     String.join(", ", s.operations));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -127,7 +124,7 @@ public final class SharedKdfDetector {
                     Map.of(
                             "label", s.label,
                             "algorithm", s.algorithm,
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

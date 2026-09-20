@@ -1,7 +1,10 @@
 package se.deversity.asynctest.agent;
 
+import net.bytebuddy.description.type.TypeDescription;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -43,6 +46,23 @@ class FieldAccessWeaverTest {
     void weavesApplicationOwners() {
         assertTrue(FieldAccessWeaver.shouldWeave("com/example/agentfixture/DirectFieldMutationBean"));
         assertTrue(FieldAccessWeaver.shouldWeave("org/springframework/beans/Bean"));
+    }
+
+    @Test
+    @DisplayName("every type prefix the agent skips is an owner prefix the weaver skips (#699)")
+    void typeAndOwnerViewsOfTheIgnoreListAgree() {
+        assertEquals(6, AsyncTestAgent.IGNORED_PREFIXES.size(),
+                "A new entry needs a line in skipsPlatformOwners or skipsOwnPackage too.");
+        for (String prefix : AsyncTestAgent.IGNORED_PREFIXES) {
+            String typeName = prefix + "Sample";
+            assertTrue(AsyncTestAgent.ignoreMatcher().matches(
+                            new TypeDescription.Latent(
+                                    typeName, 0, null, List.of())),
+                    "the agent must not transform " + typeName);
+            assertFalse(FieldAccessWeaver.shouldWeave(typeName.replace('.', '/')),
+                    "A class the agent skips whose fields are still woven, or the reverse, is the "
+                            + "drift two hand-kept lists allowed: " + typeName);
+        }
     }
 
     @Test

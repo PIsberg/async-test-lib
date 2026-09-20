@@ -38,6 +38,8 @@ tasks.test {
     systemProperty("license.mock.mode", "true")
     // A detector that throws during analysis fails the build, not one stderr line (#612)
     systemProperty("async-test.strict-detectors", "true")
+    // The version the resolved jar must name in the reports it writes (#703)
+    systemProperty("async-test.expected-version", asyncTestVersion)
     // Enable benchmarking for all @AsyncTest tests in this module
     systemProperty("async-test.benchmarking.enabled", "true")
     // Benchmark regression threshold (20% default)

@@ -15,6 +15,7 @@ import net.bytebuddy.jar.asm.Type;
 import net.bytebuddy.pool.TypePool;
 import org.jspecify.annotations.Nullable;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -175,17 +176,20 @@ final class FieldAccessWeaver {
             "getAndSet", "(I" + OBJECT + ")" + OBJECT);
 
     /**
-     * Owner prefixes (in internal, slash-separated form) whose fields are never woven.
-     *
-     * <p>Assembled at runtime rather than written as literals for the same reason
-     * {@link AsyncTestAgent#ignoreMatcher()} does it: the Shade plugin rewrites string literals
-     * that look like relocated package names, which would silently change what is skipped.
+     * Owner prefixes (in internal, slash-separated form) whose fields are never woven: the
+     * slash view of {@link AsyncTestAgent#IGNORED_PREFIXES}, derived so the two cannot drift
+     * (#699). Deriving at class init also keeps the Shade-safe runtime assembly that list uses.
      */
-    private static final String[] IGNORED_OWNERS = {
-            "java/", "jdk/", "sun/", "com/sun/",
-            String.join("/", "net", "bytebuddy") + "/",
-            "se/deversity/asynctest/",
-    };
+    private static final String[] IGNORED_OWNERS = slashForm(AsyncTestAgent.IGNORED_PREFIXES);
+
+    /** A plain loop, not a stream: a lambda here would spin a class during weaver class init. */
+    private static String[] slashForm(List<String> dottedPrefixes) {
+        String[] owners = new String[dottedPrefixes.size()];
+        for (int i = 0; i < owners.length; i++) {
+            owners[i] = dottedPrefixes.get(i).replace('.', '/');
+        }
+        return owners;
+    }
 
     /** Tag meaning "this write did not put a knowable constant in the field". */
     static final int NOT_A_CONSTANT_WRITE = Integer.MIN_VALUE;
@@ -373,7 +377,7 @@ final class FieldAccessWeaver {
         private @Nullable Integer pendingConstant;
 
         /** Non-volatile fields this method has written, in order, awaiting a volatile write. */
-        private final java.util.List<String> plainWritesInThisMethod = new java.util.ArrayList<>();
+        private final List<String> plainWritesInThisMethod = new java.util.ArrayList<>();
 
         /** Whether this method has already read a volatile field of the same owner. */
         private final java.util.Set<String> ownersWithVolatileReadInThisMethod =

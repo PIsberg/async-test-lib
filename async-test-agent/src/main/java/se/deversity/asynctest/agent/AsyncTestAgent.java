@@ -488,6 +488,24 @@ public final class AsyncTestAgent {
     }
 
     /**
+     * Name prefixes (dotted) of the types instrumentation stays off. The single source for both
+     * views of the list: {@link #ignoreMatcher()} skips these types, and
+     * {@code FieldAccessWeaver} derives the slash form to skip fields they own. Two hand-kept
+     * copies could drift into a class that is transformed while its field owners are skipped,
+     * or the reverse (#699).
+     *
+     * <p>The Byte Buddy entry is assembled at runtime so the Shade plugin's relocation cannot
+     * rewrite it: a literal {@code "net.bytebuddy."} would be relocated along with the type
+     * references, and the matcher would stop ignoring a consumer's own (unrelocated) Byte Buddy,
+     * for example Mockito's. The shaded copy needs no entry of its own: it lives under
+     * {@code se.deversity.asynctest.}, which the last prefix already covers.
+     */
+    static final List<String> IGNORED_PREFIXES = List.of(
+            "java.", "jdk.", "sun.", "com.sun.",
+            String.join(".", "net", "bytebuddy") + ".",
+            "se.deversity.asynctest.");
+
+    /**
      * Builds the type-level ignore matcher used by {@link #premain} to keep
      * instrumentation off the JDK, Byte Buddy, this library, and synthetic types.
      *
@@ -505,19 +523,11 @@ public final class AsyncTestAgent {
      * @return an ignore matcher over {@link TypeDescription}
      */
     static ElementMatcher.Junction<TypeDescription> ignoreMatcher() {
-        // Assembled at runtime so the Shade plugin's relocation cannot rewrite it: a
-        // literal "net.bytebuddy." would be relocated along with the type references,
-        // and the matcher would stop ignoring a consumer's own (unrelocated) Byte Buddy
-        // — for example Mockito's. The shaded copy needs no entry of its own: it lives
-        // under se.deversity.asynctest., which the next prefix already covers.
-        String byteBuddyPrefix = String.join(".", "net", "bytebuddy") + ".";
-        return ElementMatchers.<TypeDescription>nameStartsWith("java.")
-                .or(ElementMatchers.nameStartsWith("jdk."))
-                .or(ElementMatchers.nameStartsWith("sun."))
-                .or(ElementMatchers.nameStartsWith("com.sun."))
-                .or(ElementMatchers.nameStartsWith(byteBuddyPrefix))
-                .or(ElementMatchers.nameStartsWith("se.deversity.asynctest."))
-                .or(ElementMatchers.isSynthetic());
+        ElementMatcher.Junction<TypeDescription> matcher = ElementMatchers.isSynthetic();
+        for (String prefix : IGNORED_PREFIXES) {
+            matcher = matcher.or(ElementMatchers.nameStartsWith(prefix));
+        }
+        return matcher;
     }
 
     /**

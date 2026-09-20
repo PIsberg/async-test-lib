@@ -23,6 +23,15 @@ dependencies {
     testImplementation("ch.qos.logback:logback-classic:$logbackVersion")
 }
 
+// Mirrors the pom's addDefaultImplementationEntries: the reports read the library version from
+// the jar manifest (ReportListeners.libraryVersion), and consumer-fixture checks it against the
+// jar this build publishes (#703). Without it a Gradle-built jar reports "unknown".
+tasks.jar {
+    manifest {
+        attributes("Implementation-Version" to project.version.toString())
+    }
+}
+
 mavenPublishing {
     coordinates(
         groupId = project.group.toString(),

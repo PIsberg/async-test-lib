@@ -2,6 +2,9 @@ package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * Lock awareness, shared by the detectors that watch a non-thread-safe instance.
  *
@@ -155,6 +158,41 @@ final class SelfGuard {
         final int commonLockCount() {
             int[] current = candidateLocks.get();
             return current == null ? 0 : current.length;
+        }
+    }
+
+    /**
+     * A tracked instance that also remembers which threads touched it, and owns the family's core
+     * rule: a finding needs more than one thread <em>and</em> an access no lock covered. The rule
+     * was hand-written per detector in three spellings, and the lock-awareness rollout had to
+     * visit every copy (#700).
+     *
+     * <p>Two concurrent key sets, as each detector kept before, so allocation per tracked
+     * instance and the order names are reported in are unchanged.
+     */
+    abstract static class ThreadTrackedInstance extends TrackedInstance {
+
+        private final Set<Long> threadIds = ConcurrentHashMap.newKeySet();
+        private final Set<String> threadNames = ConcurrentHashMap.newKeySet();
+
+        /** Records the calling thread. Call after {@link #noteAccess}, on the same path. */
+        final void noteThread(Thread thread) {
+            threadIds.add(thread.threadId());
+            threadNames.add(thread.getName());
+        }
+
+        final int threadCount() {
+            return threadIds.size();
+        }
+
+        /** {@return the live set of thread names, in the order a report has always listed them} */
+        final Set<String> threadNames() {
+            return threadNames;
+        }
+
+        /** {@return whether this instance is a finding: shared, and not serialised by any lock} */
+        final boolean sharedAndUnguarded() {
+            return threadIds.size() > 1 && sawUnguardedAccess();
         }
     }
 }

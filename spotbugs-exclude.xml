@@ -172,14 +172,11 @@
          (async-test.report.dir and friends) choosing where their build writes its
          report. The path is supplied by the person running the build, resolved in
          their own process, and used to write a file they asked for; there is no
-         privilege boundary to traverse. Scoped to the two report writers. -->
+         privilege boundary to traverse. Scoped to ReportSink, the one class both report
+         writers resolve their output directory through (#701). -->
     <Match>
         <Bug pattern="PATH_TRAVERSAL_IN"/>
-        <Class name="se.deversity.asynctest.report.JUnitXmlReportListener"/>
-    </Match>
-    <Match>
-        <Bug pattern="PATH_TRAVERSAL_IN"/>
-        <Class name="se.deversity.asynctest.report.JsonReportListener"/>
+        <Class name="se.deversity.asynctest.report.ReportSink"/>
     </Match>
 
     <!-- IMPROPER_UNICODE — the mitigation this rule asks for is already present.

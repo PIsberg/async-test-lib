@@ -10,7 +10,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
@@ -67,12 +66,10 @@ import javax.crypto.Mac;
 @AISecure(aspect = "cryptography (confidentiality / integrity / authenticity state)")
 public final class SharedStatefulCryptoDetector {
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
         final String algorithm;
-        final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
 
         State(String label, String kind, String algorithm) {
             this.label = label;
@@ -134,8 +131,7 @@ public final class SharedStatefulCryptoDetector {
             s = instances.computeIfAbsent(key, k -> new State(label, kind, algorithm));
         }
         s.noteAccess(instance);
-        s.accessingThreadIds.add(thread.threadId());
-        s.accessingThreadNames.add(thread.getName());
+        s.noteThread(thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -145,7 +141,7 @@ public final class SharedStatefulCryptoDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "%s '%s' (algorithm=%s) accessed from %d threads (%s) — %s is stateful "
                             + "and not thread-safe; unsynchronized concurrent init/update/doFinal interleaving "
@@ -154,8 +150,8 @@ public final class SharedStatefulCryptoDetector {
                     s.kind,
                     s.label,
                     s.algorithm,
-                    s.accessingThreadIds.size(),
-                    String.join(", ", s.accessingThreadNames),
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()),
                     s.kind);
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -167,7 +163,7 @@ public final class SharedStatefulCryptoDetector {
                             "label", s.label,
                             "kind", s.kind,
                             "algorithm", s.algorithm,
-                            "threadCount", s.accessingThreadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

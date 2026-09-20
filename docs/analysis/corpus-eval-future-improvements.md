@@ -154,8 +154,10 @@ late party that drops a barrier broken to cancel it no longer fires. The new sil
 to cancel and never comes back; the loud row now retries its broken barrier in the same body,
 because a body runs on a fresh virtual thread. Only silent rows record `recordReset` and
 `recordBarrierComplete`, which `PairEvidence.REVIEWED_DESPITE_SHAPE` records. What the pair does not
-reach: a barrier shared across rounds on fresh virtual threads, where no party comes back, and an
-unrecorded reset with no recorded arrival while the barrier was whole.
+reach: an unrecorded reset with no recorded arrival while the barrier was whole. A barrier shared
+across rounds on fresh virtual threads was the other gap until #693: the party there is now the
+runner's worker slot, and `recorded_cyclicBarrier_awaitedAgainNextRound` awaits a shared broken
+barrier once per body and must fire. On fresh platform threads that reuse is still missed.
 
 **`CONDITION_VARIABLES` promoted, 2026-09-19 (#666).** The three paths the re-read above named are
 notes now: a thread parked on a condition registered with its lock but no predicate, a recorded
