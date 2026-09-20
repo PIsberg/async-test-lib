@@ -141,20 +141,29 @@ class SpinLockHookTableTest {
                 new String[] {"setRelease", "(" + receiver + chunk + ")V"},
                 new String[] {"setOpaque", "(" + receiver + chunk + ")V"},
                 new String[] {"compareAndSet", "(" + receiver + chunk + chunk + ")Z"},
-                new String[] {"getAndSet", "(" + receiver + chunk + ")" + chunk})) {
+                new String[] {"getAndSet", "(" + receiver + chunk + ")" + chunk},
+                new String[] {"set", "(" + chunk + ")V"},
+                new String[] {"setVolatile", "(" + chunk + ")V"},
+                new String[] {"setRelease", "(" + chunk + ")V"},
+                new String[] {"setOpaque", "(" + chunk + ")V"},
+                new String[] {"compareAndSet", "(" + chunk + chunk + ")Z"},
+                new String[] {"getAndSet", "(" + chunk + ")" + chunk},
+                new String[] {"set", "([Ljava/lang/Object;I" + chunk + ")V"},
+                new String[] {"setVolatile", "([Ljava/lang/Object;I" + chunk + ")V"},
+                new String[] {"setRelease", "([Ljava/lang/Object;I" + chunk + ")V"},
+                new String[] {"setOpaque", "([Ljava/lang/Object;I" + chunk + ")V"},
+                new String[] {"compareAndSet", "([Ljava/lang/Object;I" + chunk + chunk + ")Z"},
+                new String[] {"getAndSet", "([Ljava/lang/Object;I" + chunk + ")" + chunk})) {
             FieldAccessWeaver.Substitution substitution =
                     FieldAccessWeaver.referenceSlotSubstitution(handle, call[0], call[1]);
             assertTrue(substitution != null, "VarHandle." + call[0] + call[1] + " must be substituted");
             assertHookExists(substitution);
             substituted.add("VarHandle." + call[0]);
         }
-        for (String[] untouched : List.of(
-                new String[] {"getAndSet", "(" + chunk + ")" + chunk},
-                new String[] {"getAndSet", "([Ljava/lang/Object;I" + chunk + ")" + chunk},
+        for (String[] untouched : List.<String[]>of(
                 new String[] {"set", "(" + receiver + "I)V"})) {
             assertTrue(FieldAccessWeaver.referenceSlotSubstitution(handle, untouched[0], untouched[1]) == null,
-                    "a static field, an array element or an int value is not a reference instance "
-                            + "slot: VarHandle." + untouched[0] + untouched[1]);
+                    "an int value is not a reference slot: VarHandle." + untouched[0] + untouched[1]);
         }
         for (String form : List.of("AtomicReference.set", "AtomicReference.lazySet",
                 "AtomicReference.setRelease", "AtomicReference.compareAndSet",

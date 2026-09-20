@@ -790,11 +790,9 @@ final class FieldAccessWeaver {
          * through one (#555): stored with {@code set}, {@code lazySet} or a compare-and-set, and
          * taken with {@code getAndSet}. Substituting both ends puts the slot in the registry's hand
          * at each, so a take-first generation can be matched to the offer that filled the slot
-         * (#664). The atomic calls are matched on their exact erased descriptors. A
-         * {@code VarHandle} call qualifies only with one object coordinate and a reference value,
-         * every operand a reference, which is the instance-field shape; a static field or an array
-         * element has a different operand count, and its {@code getAndSet} keeps the
-         * container-less take below.
+         * (#664, #692). The atomic calls are matched on their exact erased descriptors. A
+         * {@code VarHandle} call qualifies on an instance field, a static field, or an array
+         * element, with each operand a reference except the array element index.
          */
         private static @Nullable String referenceSlotHook(int opcode, String owner, String name,
                                                           String descriptor) {
@@ -813,23 +811,49 @@ final class FieldAccessWeaver {
             };
         }
 
-        /** {@return the {@code VarHandle} hook for a reference instance-field call, or {@code null}} */
+        /** {@return the {@code VarHandle} hook for a reference slot call, or {@code null}} */
         private static @Nullable String referenceHandleHook(String name, String descriptor) {
             Type[] arguments = Type.getArgumentTypes(descriptor);
+            Type result = Type.getReturnType(descriptor);
+            if (arguments.length >= 2 && isReference(arguments[0]) && arguments[1].getSort() == Type.INT) {
+                for (int i = 2; i < arguments.length; i++) {
+                    if (!isReference(arguments[i])) {
+                        return null;
+                    }
+                }
+                boolean matches = switch (name) {
+                    case "set", "setVolatile", "setRelease", "setOpaque" ->
+                            arguments.length == 3 && result.getSort() == Type.VOID;
+                    case "compareAndSet" -> arguments.length == 4 && result.getSort() == Type.BOOLEAN;
+                    case "getAndSet" -> arguments.length == 3 && isReference(result);
+                    default -> false;
+                };
+                return matches ? name + "ArrayReferenceHandle" : null;
+            }
+
             for (Type argument : arguments) {
                 if (!isReference(argument)) {
                     return null;
                 }
             }
-            Type result = Type.getReturnType(descriptor);
-            boolean matches = switch (name) {
+            boolean instanceMatches = switch (name) {
                 case "set", "setVolatile", "setRelease", "setOpaque" ->
                         arguments.length == 2 && result.getSort() == Type.VOID;
                 case "compareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 2 && isReference(result);
                 default -> false;
             };
-            return matches ? name + "ReferenceHandle" : null;
+            if (instanceMatches) {
+                return name + "ReferenceHandle";
+            }
+            boolean staticMatches = switch (name) {
+                case "set", "setVolatile", "setRelease", "setOpaque" ->
+                        arguments.length == 1 && result.getSort() == Type.VOID;
+                case "compareAndSet" -> arguments.length == 2 && result.getSort() == Type.BOOLEAN;
+                case "getAndSet" -> arguments.length == 1 && isReference(result);
+                default -> false;
+            };
+            return staticMatches ? name + "StaticReferenceHandle" : null;
         }
 
         private static boolean isReference(Type type) {
@@ -840,8 +864,9 @@ final class FieldAccessWeaver {
          * {@return the static descriptor of a reference-slot hook}
          *
          * <p>An atomic's hook takes the atomic and then the call's own erased parameters. A
-         * {@code VarHandle} hook takes the handle and one {@code Object} per operand, and returns
-         * {@code Object} for a {@code getAndSet}, which {@link #castToCallSiteResult} narrows back.
+         * {@code VarHandle} hook takes the handle and one {@code Object} per operand (plus the
+         * {@code int} index for an array element), and returns {@code Object} for a
+         * {@code getAndSet}, which {@link #castToCallSiteResult} narrows back.
          */
         private static String referenceSlotHookDescriptor(String owner, String hook,
                                                           String descriptor) {
@@ -850,6 +875,11 @@ final class FieldAccessWeaver {
             }
             String result = hook.startsWith("getAndSet") ? "Ljava/lang/Object;"
                     : hook.startsWith("compareAndSet") ? "Z" : "V";
+            if (hook.endsWith("ArrayReferenceHandle")) {
+                return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I"
+                        + "Ljava/lang/Object;".repeat(Type.getArgumentTypes(descriptor).length - 2)
+                        + ")" + result;
+            }
             return "(Ljava/lang/invoke/VarHandle;"
                     + "Ljava/lang/Object;".repeat(Type.getArgumentTypes(descriptor).length)
                     + ")" + result;
@@ -905,11 +935,11 @@ final class FieldAccessWeaver {
          *
          * <p>{@code getAndSet} returns the value it replaced, and that value is no longer in the
          * slot, so the slot hands it to this thread and to no other (#555). The atomic slots and a
-         * {@code VarHandle} on an instance field are substituted and report the take with their
-         * container; what is left is a {@code VarHandle} on a static field or an array element,
-         * where the take is still reported, without a container. A {@code VarHandle} call is
-         * signature-polymorphic, so its descriptor is whatever the call site declared; the return
-         * type is what decides.
+         * {@code VarHandle} on an instance field, a static field, or an array element are substituted
+         * and report the take with their container (#664, #692); what is left is any {@code getAndSet}
+         * the substitution does not cover, where the take is still reported, without a container. A
+         * {@code VarHandle} call is signature-polymorphic, so its descriptor is whatever the call site
+         * declared; the return type is what decides.
          */
         private static boolean isReferenceTake(int opcode, String owner, String name,
                                                 String descriptor) {

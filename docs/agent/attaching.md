@@ -172,7 +172,8 @@ Three limits worth knowing before switching it on:
   ([#692](https://github.com/PIsberg/async-test-lib/issues/692))
   and `BlockingQueue.offer`/`put`, and from `fields=true` for a reference slot (`set`, `lazySet`,
   `setRelease` or `compareAndSet` on an `AtomicReference`, an `AtomicReferenceFieldUpdater`, an
-  `AtomicReferenceArray` or an instance-field `VarHandle`) and a JCTools `offer`/`relaxedOffer`.
+  `AtomicReferenceArray` or a `VarHandle` (instance field, static field or array element)) and a
+  JCTools `offer`/`relaxedOffer`.
   `BlockingQueue.take`, `Queue.remove()`, `remove(Object)` on a queue,
   `Deque.pollFirst`/`pollLast`/`removeFirst`/`removeLast`/`pop`, and `BlockingDeque.takeFirst`/
   `takeLast` with its timed `pollFirst`/`pollLast` are takes like `poll`, and `drainTo`
@@ -181,8 +182,7 @@ Three limits worth knowing before switching it on:
   ([#664](https://github.com/PIsberg/async-test-lib/issues/664),
   [#692](https://github.com/PIsberg/async-test-lib/issues/692)); a removal in unwoven code, or
   through an iterator, still can. Only when no such offer was recorded does every thread get that
-  benefit: an element that entered through code outside `includes`, or a
-  `VarHandle` take from a static field or an array element
+  benefit: an element that entered through code outside `includes`
   ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
   so writes under them still report: `Unsafe.compareAndSwapInt`, and an
   `AtomicIntegerFieldUpdater` created before the agent attached whose target cannot be read (a

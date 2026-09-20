@@ -50,18 +50,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the forms only `BlockingDeque` declares: `putFirst`, `putLast`, `takeFirst`, `takeLast` and the
   timed `offerFirst`, `offerLast`, `pollFirst` and `pollLast`. The same
   hooks record the call for `SharedCollectionDetector`, which did not see these methods either.
-  Still open in #692: `VarHandle` takes from a static field or an array element, and removal
-  through an iterator.
+  Still open in #692: removal through an iterator.
 
 - **A reference slot is its own container, not its holder (#692).** An offer through an
-  `AtomicReferenceFieldUpdater`, an instance-field `VarHandle` or an `AtomicReferenceArray` named
-  the receiver or the array as its container, so two reference fields of one object, or two
-  elements of one array, read as one. An object offered into one slot, moved by code the agent
-  does not see, and taken out of the sibling then matched the first offer, and its offerer was
-  named the owner of a hand-off it was not part of. The container is now the holder combined with
-  the updater, the handle or the index, which both ends have in hand. A slot reached through two
-  different handles reads as two containers, which can only lose a match and fall back to the #557
-  excuse.
+  `AtomicReferenceFieldUpdater`, a `VarHandle` (instance field, static field or array element), or
+  an `AtomicReferenceArray` named the receiver or the array as its container, so two reference
+  fields of one object, or two elements of one array, read as one. An object offered into one slot,
+  moved by code the agent does not see, and taken out of the sibling then matched the first offer,
+  and its offerer was named the owner of a hand-off it was not part of. The container is now the
+  holder combined with the updater, the handle or the index, which both ends have in hand. A slot
+  reached through two different handles reads as two containers, which can only lose a match and
+  fall back to the #557 excuse. Static-field `VarHandle` operations key on the handle, and
+  array-element operations key on the array and element index.
 
 - **Reports name the version of the jar that wrote them (#703).** `JsonReportListener` wrote
   `"asyncTestVersion": "1.6.0"` from a literal while the library was at 1.12.1, and the SARIF
