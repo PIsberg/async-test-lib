@@ -2101,14 +2101,15 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, 17 of the 18 agent-fed detectors are measured in both directions on call sites inside a
-library. `LibraryReach` records why the eighteenth is not, and
+added below, 17 of the 19 agent-fed detectors are measured in both directions on call sites inside a
+library. `LibraryReach` records why the other two are not, and
 `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
 | Detector | Why no corpus library reaches it |
 |---|---|
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
+| `MISSED_SIGNAL` | agent-fed since #694. A firing library row needs a library method that waits behind an `if`, and no corpus library ships that defect; `agent_wait_behindAnIf` and its looped twin pair it on `jdk:` call sites through the same `MONITOR_ENTRIES` |
 
 **The last two, and a reason that was wrong.** Until #545 the table had two more rows.
 `SHARED_MATCHER` was there because every corpus library builds a `Matcher` per call, which is the

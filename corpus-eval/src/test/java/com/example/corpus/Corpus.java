@@ -1169,6 +1169,25 @@ final class Corpus {
                             + "a detector that reported this one would fire on every backoff loop "
                             + "and every poll interval ever written"),
 
+            new RecordingSubject("agent_wait_behindAnIf", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread signals and then waits behind an if. The first notifyAll of a "
+                            + "round finds nobody waiting and the last wait of the round receives "
+                            + "none, so it needed a signal that was already gone. Both calls are "
+                            + "seen by the woven hooks under the monitor they hold (#694)",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("agent_wait_insideAPredicateLoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same notifyAll and the same timed wait, inside while (!handedOff). The "
+                            + "wait runs out after a lost notify exactly as its twin's does; the "
+                            + "backward jump around it is what the weaver marks, and a loop "
+                            + "re-tests the state a lost notify announced"),
+
             new RecordingSubject("agent_sleepStamped_whileHoldingTheWriteStamp", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,

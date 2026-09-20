@@ -141,10 +141,14 @@ class DetectorEffectivenessAndCorrectnessTest {
         Set<DetectorType> reached = LibraryReach.reached();
         Set<DetectorType> agentFed = LibraryReach.agentFed();
 
-        // 17 of 18 agent-fed detectors are reached through third-party library bytecode
-        assertEquals(agentFed.size() - 1, reached.size(),
-                "all agent-fed detectors except EXPLICIT_GC must be reached through library bytecode");
-        assertTrue(LibraryReach.unreached().containsKey(DetectorType.EXPLICIT_GC));
+        // Every agent-fed detector is reached through third-party library bytecode except the
+        // two LibraryReach gives a reason for: no corpus library calls System.gc, and none waits
+        // behind an if (#694).
+        assertEquals(agentFed.size() - 2, reached.size(),
+                "all agent-fed detectors except EXPLICIT_GC and MISSED_SIGNAL must be reached "
+                        + "through library bytecode");
+        assertEquals(Set.of(DetectorType.EXPLICIT_GC, DetectorType.MISSED_SIGNAL),
+                LibraryReach.unreached().keySet());
     }
 
     @Test

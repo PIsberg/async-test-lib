@@ -525,6 +525,51 @@ class CorpusAgentPairLaneTest {
         counted(CorpusAgentPairLaneTest::sleepHoldingNothing);
     }
 
+    // --- Object.wait and notifyAll -----------------------------------------------------------
+
+    /** The monitor both wait rows signal and wait on. */
+    private static final Object HAND_OFF = new Object();
+
+    /** The predicate both wait rows test. Nothing sets it, so every wait runs out. */
+    private static boolean handedOff;
+
+    /**
+     * Signals, then waits behind an {@code if} (#694).
+     *
+     * <p>The first {@code notifyAll} of a round finds nobody waiting, and the last thread to wait
+     * in the round receives none, so that wait needed a signal that was already gone. The woven
+     * {@code wait} and {@code notifyAll} are the detector's only input.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_wait_behindAnIf() {
+        counted(() -> {
+            synchronized (HAND_OFF) {
+                HAND_OFF.notifyAll();
+            }
+            synchronized (HAND_OFF) {
+                if (!handedOff) {
+                    HAND_OFF.wait(3);
+                }
+            }
+        });
+    }
+
+    /** The same signal and the same timed wait, inside the loop that re-tests the predicate. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_wait_insideAPredicateLoop() {
+        counted(() -> {
+            synchronized (HAND_OFF) {
+                HAND_OFF.notifyAll();
+            }
+            synchronized (HAND_OFF) {
+                int polls = 0;
+                while (!handedOff && polls++ < 2) {
+                    HAND_OFF.wait(3);
+                }
+            }
+        });
+    }
+
     /**
      * Sleeps with a StampedLock write stamp held.
      *

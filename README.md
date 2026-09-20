@@ -34,7 +34,7 @@
 - **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more, all on by default. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
-- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Thread.sleep` and `System.gc` with Byte Buddy, so **21 of them can see code you did not modify** instead of 3. Being able to see is not the same as firing: on 82 third-party subjects two of those 21 produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
+- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep` and `System.gc` with Byte Buddy, so **22 of them can see code you did not modify** instead of 3. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
 - **CI-ready out of the box** — JUnit XML, machine-readable JSON, SARIF, or plain `AssertionError` fail-gates, straight into GitHub Actions, Jenkins and GitLab CI.
 
 <div align="center">
@@ -104,8 +104,9 @@ in the recording lane, because a connection pool is the one subject that cannot 
 without something to pool.
 
 The library agent pairs put the woven JDK call inside Guava, Jackson, HikariCP, Spring, commons-lang3
-or Groovy instead of the test file, so 17 of the 18 agent-fed detectors are measured on a call site
-nobody here compiled; the eighteenth, `EXPLICIT_GC`, is refused a pair in every lane. Their
+or Groovy instead of the test file, so 17 of the 19 agent-fed detectors are measured on a call site
+nobody here compiled; `EXPLICIT_GC` is refused a pair in every lane, and `MISSED_SIGNAL` has a JDK
+pair only, because no corpus library waits behind an `if`. Their
 first run found a detector that dropped every sleep held under a `ReentrantLock`, which the
 test-file pair could not see because it sleeps inside a `synchronized` method.
 
@@ -311,8 +312,8 @@ After the run, the **detector registry** analyses what was observed and reports 
 ```
 
 **What feeds them.** Three read the JVM and the harness directly and need no configuration at
-all. With the agent attached that becomes 20, because the woven streams carry what those
-detectors need without a line of instrumentation. The remaining 125 observe what the test body
+all. With the agent attached that becomes 22, because the woven streams carry what those
+detectors need without a line of instrumentation. The remaining 124 observe what the test body
 records explicitly through `AsyncTestContext`, and the catalog says which of three reasons
 keeps each of them there. When a detector is
 enabled but nothing can feed it, the runner says so once per JVM at INFO rather than letting an

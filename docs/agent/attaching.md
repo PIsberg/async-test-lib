@@ -111,6 +111,14 @@ What is rewritten is an explicit table in `CollectionAccessWeaver`: `Map.put/get
 call to a hook that records and then performs the original operation, so behaviour is unchanged;
 `CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
 
+The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
+`MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
+judged against the threads really inside `wait()`. The weaver also inserts one call in front of
+every backward jump that comes back over a woven wait, and a wait whose thread reaches it after
+waking is a `while (!ready)` loop's and is never reported. A wait with no such jump around it is an
+`if`'s. The jump has to be in the same method as the wait: a loop in one method around a bare
+`wait()` in another reads as an `if`, and `do { wait(); } while (!ready)` reads as a loop.
+
 Three limits worth knowing before switching it on:
 
 - **Guarding works, and has to.** Monitor weaving is installed alongside, so a collection touched

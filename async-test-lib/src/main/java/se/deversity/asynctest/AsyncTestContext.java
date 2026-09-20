@@ -1839,6 +1839,12 @@ public final class AsyncTestContext {
         return context == null ? null : context.latchMisuseDetector;
     }
 
+    /** {@return the {@link MissedSignalDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable MissedSignalDetector currentMissedSignalDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.missedSignalDetector;
+    }
+
     /** {@return the {@link BlockingQueueDetector} for the calling thread's test, or {@code null}} */
     static @Nullable BlockingQueueDetector currentBlockingQueueDetector() {
         AsyncTestContext context = CURRENT.get();

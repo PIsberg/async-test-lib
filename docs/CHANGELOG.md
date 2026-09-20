@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The agent weaves `Object.wait`, `notify` and `notifyAll`, so `MissedSignalDetector` works on
+  code that records nothing (#694).** With `collections=true` the three calls are substituted in
+  the included classes and recorded by `AgentMonitorHooks` while the monitor is held, so the waiter
+  set a notify is judged against is the threads really inside `wait()`. The weaver also inserts a
+  call to `loopBackEdge()` in front of every backward jump that comes back over a woven wait: a
+  wait whose thread reaches it after waking, in the same round, is a `while (!ready)` loop's and is
+  never reported, and a wait with no such jump is judged like `recordWait(monitor, false)`. The
+  inserted call takes and returns nothing, so it adds no branch and no frame. A wait the body
+  recorded itself is not observed a second time, and a recorded notify is not counted twice, so
+  existing `recordWait`/`recordPredicateCheck` users see no change. `MISSED_SIGNAL` moves to the
+  agent-fed table (19 agent-fed detectors, 124 recording-only) and gains the corpus agent pair
+  `agent_wait_behindAnIf` / `agent_wait_insideAPredicateLoop`. It stays `PROMPT`: the back-edge is
+  per method, so a loop in one method around a bare `wait()` in another reads as an `if`.
+
 - **`MissedSignalDetector.recordLoopStart(Object)` and `recordLoopEnd(Object)` mark a `while (!ready)` loop around waits on a monitor (#669).** Once a monitor has a marked loop, an undeclared wait inside one is guarded and a wait outside every mark is judged unguarded, so `if (!ready) wait()` followed later by a check that finds `ready` true, and two consecutive `if (!ready) wait()` blocks, are reported where the marked loop stays silent. Monitors nobody marks keep the `recordPredicateCheck` reading.
 
 ### Fixed

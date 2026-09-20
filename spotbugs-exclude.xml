@@ -209,4 +209,17 @@
         <Class name="se.deversity.asynctest.agent.AsyncTestAgent$RetransformDiagnosticListener"/>
     </Match>
 
+    <!-- AgentMonitorHooks stands in for the Object.wait/notify call the agent substituted (#694),
+         so each hook makes exactly that call: a wait with no loop of its own, because the loop,
+         or its absence, belongs to the woven caller and is what MissedSignalDetector judges, and a
+         notify where the caller wrote notify. Turning either into the better idiom would change
+         the behaviour of the code under test. Scoped to the class. -->
+    <Match>
+        <Or>
+            <Bug pattern="WA_NOT_IN_LOOP"/>
+            <Bug pattern="NO_NOTIFY_NOT_NOTIFYALL"/>
+        </Or>
+        <Class name="se.deversity.asynctest.AgentMonitorHooks"/>
+    </Match>
+
 </FindBugsFilter>

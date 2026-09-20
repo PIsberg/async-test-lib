@@ -90,7 +90,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.9.8
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. The one instruction the visitor inserts rather than substitutes is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
 final class CollectionAccessWeaver {
 
     /**
@@ -116,6 +116,9 @@ final class CollectionAccessWeaver {
     /** The library-side class holding the static-call hooks. */
     private static final String STATIC_HOOKS = LIBRARY_ROOT + "AgentSleepHooks";
 
+    /** The library-side class holding the wait/notify hooks and the loop back-edge hook. */
+    private static final String MONITOR_HOOKS = LIBRARY_ROOT + "AgentMonitorHooks";
+
     /** The library-side class holding the explicit-GC hook. */
     private static final String GC_HOOKS = LIBRARY_ROOT + "AgentGcHooks";
 
@@ -136,12 +139,13 @@ final class CollectionAccessWeaver {
                          boolean isStatic,
                          @org.jspecify.annotations.Nullable String synchronizedHook,
                          @org.jspecify.annotations.Nullable String resultDiscardedHook,
+                         @org.jspecify.annotations.Nullable String loopBackEdgeHook,
                          Class<?>... parameters) {
 
         Entry(Class<?> declaredBy, String method, String hook,
               @org.jspecify.annotations.Nullable Class<?> returning, boolean isStatic,
               Class<?>... parameters) {
-            this(declaredBy, method, hook, returning, isStatic, null, null, parameters);
+            this(declaredBy, method, hook, returning, isStatic, null, null, null, parameters);
         }
 
         /** An entry matched by name and arguments alone, whatever the call returns. */
@@ -175,7 +179,7 @@ final class CollectionAccessWeaver {
          */
         Entry whenSynchronized(String hook) {
             return new Entry(declaredBy, method, this.hook, returning, isStatic, hook,
-                    resultDiscardedHook, parameters);
+                    resultDiscardedHook, loopBackEdgeHook, parameters);
         }
 
         /**
@@ -192,7 +196,25 @@ final class CollectionAccessWeaver {
          */
         Entry whenResultDiscarded(String hook) {
             return new Entry(declaredBy, method, this.hook, returning, isStatic, synchronizedHook,
-                    hook, parameters);
+                    hook, loopBackEdgeHook, parameters);
+        }
+
+        /**
+         * The hook to call at the back-edge of a loop around this call.
+         *
+         * <p>Only meaningful where the loop around a call decides what the call means, which today
+         * is {@code Object.wait}: {@code while (!ready) wait()} is the idiom and
+         * {@code if (!ready) wait()} is the missed-signal bug, and the two call sites are the same
+         * instruction (#694). A single pass cannot know at the call whether a later jump comes back
+         * over it, so the fact is delivered where it becomes known: in front of every jump whose
+         * target label was visited before this call, the weaver inserts a call to this hook. It
+         * takes nothing and returns nothing, so it is stack-neutral whatever operands the jump is
+         * about to consume, adds no branch and no frame, and runs whether or not a conditional
+         * jump is then taken, which is what a loop with its test at the bottom needs.
+         */
+        Entry whenInsideLoop(String hook) {
+            return new Entry(declaredBy, method, this.hook, returning, isStatic, synchronizedHook,
+                    resultDiscardedHook, hook, parameters);
         }
     }
 
@@ -213,7 +235,7 @@ final class CollectionAccessWeaver {
     static java.util.Set<String> wovenCallSites() {
         java.util.Set<String> sites = new java.util.LinkedHashSet<>();
         for (List<Entry> table : List.of(ENTRIES, SHARED_INSTANCE_ENTRIES, CONCURRENCY_ENTRIES,
-                STATIC_ENTRIES, GC_ENTRIES)) {
+                MONITOR_ENTRIES, STATIC_ENTRIES, GC_ENTRIES)) {
             for (Entry entry : table) {
                 StringBuilder site = new StringBuilder(entry.declaredBy().getName())
                         .append('#').append(entry.method()).append('(');
@@ -431,6 +453,25 @@ final class CollectionAccessWeaver {
                     int.class));
 
     /**
+     * The monitor table: {@code Object.wait}, {@code notify} and {@code notifyAll} (#694).
+     *
+     * <p>All five are {@code final} on {@code Object}, so a call site carrying one of these names
+     * and descriptors is that method whatever owner it was compiled against, and every resolvable
+     * owner is assignable to the entry's type. The hooks record on {@code MissedSignalDetector},
+     * which until this table existed could only judge what the body said about itself. Each wait
+     * carries the loop back-edge hook, because the loop around a wait is what separates the idiom
+     * from the bug.
+     */
+    private static final List<Entry> MONITOR_ENTRIES = List.of(
+            Entry.call(Object.class, "wait", "monitorWait").whenInsideLoop("loopBackEdge"),
+            Entry.call(Object.class, "wait", "monitorWait", long.class)
+                    .whenInsideLoop("loopBackEdge"),
+            Entry.call(Object.class, "wait", "monitorWait", long.class, int.class)
+                    .whenInsideLoop("loopBackEdge"),
+            Entry.call(Object.class, "notify", "monitorNotify"),
+            Entry.call(Object.class, "notifyAll", "monitorNotifyAll"));
+
+    /**
      * The static table: calls a detector's input maps onto that are not invoked on a receiver.
      *
      * <p>{@code Thread.sleep} is the reason this path exists. Whether a sleep is a bug depends
@@ -479,7 +520,13 @@ final class CollectionAccessWeaver {
                           @org.jspecify.annotations.Nullable String synchronizedHookName,
                           @org.jspecify.annotations.Nullable String synchronizedHookDescriptor,
                           @org.jspecify.annotations.Nullable String discardHookName,
-                          @org.jspecify.annotations.Nullable String discardHookDescriptor) {
+                          @org.jspecify.annotations.Nullable String discardHookDescriptor,
+                          @org.jspecify.annotations.Nullable String loopBackEdgeHookName) {
+
+        /** {@return whether a loop around this target's call site gets a back-edge hook} */
+        boolean hasLoopBackEdgeHook() {
+            return loopBackEdgeHookName != null;
+        }
 
         /** {@return whether this target has a variant for use inside a synchronized method} */
         boolean hasSynchronizedVariant() {
@@ -519,7 +566,8 @@ final class CollectionAccessWeaver {
                     entry.synchronizedHook(),
                     synchronizedDescriptorFor(hooks, entry),
                     entry.resultDiscardedHook(),
-                    discardDescriptorFor(hooks, entry, hook)));
+                    discardDescriptorFor(hooks, entry, hook),
+                    loopBackEdgeHookFor(hooks, entry)));
         }
         return targets;
     }
@@ -595,6 +643,36 @@ final class CollectionAccessWeaver {
                     "no discarded-result hook " + hooks.getName() + "." + hookName + "("
                             + discarded.getName() + ") for " + entry.declaredBy().getName() + "."
                             + entry.method() + "; agent and library versions disagree", e);
+        }
+    }
+
+    /**
+     * {@return the entry's loop back-edge hook name, or {@code null}}
+     *
+     * <p>Resolved for the reason the other variants are. The weaver emits it with the descriptor
+     * {@code ()V} in front of a jump, so anything else on the hooks class under that name is a
+     * version skew that has to fail here rather than as a {@code VerifyError} in a woven class.
+     */
+    private static @org.jspecify.annotations.Nullable String loopBackEdgeHookFor(
+            Class<?> hooks, Entry entry) {
+        String hookName = entry.loopBackEdgeHook();
+        if (hookName == null) {
+            return null;
+        }
+        try {
+            Method backEdge = hooks.getMethod(hookName);
+            if (backEdge.getReturnType() != void.class
+                    || !java.lang.reflect.Modifier.isStatic(backEdge.getModifiers())) {
+                throw new IllegalStateException(
+                        "loop back-edge hook " + hooks.getName() + "." + hookName
+                                + " must be static and return void: it stands in front of a jump");
+            }
+            return hookName;
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(
+                    "no loop back-edge hook " + hooks.getName() + "." + hookName + "() for "
+                            + entry.declaredBy().getName() + "." + entry.method()
+                            + "; agent and library versions disagree", e);
         }
     }
 
@@ -681,6 +759,20 @@ final class CollectionAccessWeaver {
      */
     static List<AsmVisitorWrapper> gcSubstitutions(Class<?> gcHooks) {
         return List.of(new SubstitutionWrapper(targets(GC_ENTRIES, gcHooks)));
+    }
+
+    /**
+     * {@return the wait/notify substitutions}
+     *
+     * @param monitorHooks the class holding the hooks, resolved in the weaving class loader
+     */
+    static List<AsmVisitorWrapper> monitorSubstitutions(Class<?> monitorHooks) {
+        return List.of(new SubstitutionWrapper(targets(MONITOR_ENTRIES, monitorHooks)));
+    }
+
+    /** {@return the hook class name the substituted wait/notify calls land in} */
+    static String monitorHooksClassName() {
+        return MONITOR_HOOKS;
     }
 
     /** {@return the hook class name the substituted collection calls land in} */
@@ -796,6 +888,22 @@ final class CollectionAccessWeaver {
          */
         private @org.jspecify.annotations.Nullable Target justSubstituted;
 
+        /**
+         * The most recent substituted target that wants a loop back-edge hook; {@code null} until
+         * there is one, which keeps a method without such a call free of the check in
+         * {@link #visitJumpInsn}.
+         */
+        private @org.jspecify.annotations.Nullable Target loopTracked;
+
+        /** A count of labels and tracked calls visited so far: the order, not an offset. */
+        private int position;
+
+        /** {@link #position} of the latest tracked call. */
+        private int loopTrackedAt;
+
+        /** Where each label was visited, so a jump to one already seen reads as backward. */
+        private final Map<Label, Integer> labelsVisitedAt = new HashMap<>();
+
         SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
                                   TypePool typePool, Map<String, Boolean> assignable,
                                   int access, String owningClassInternalName) {
@@ -828,6 +936,11 @@ final class CollectionAccessWeaver {
                                 target.hookOwnerInternalName(), target.hookMethodName(),
                                 target.hookDescriptor(), false);
                         justSubstituted = target.hasDiscardVariant() ? target : null;
+                        if (target.hasLoopBackEdgeHook()) {
+                            loopTracked = target;
+                            loopTrackedAt = position;
+                            position++;
+                        }
                         return;
                     }
                 }
@@ -1100,12 +1213,26 @@ final class CollectionAccessWeaver {
         @Override
         public void visitJumpInsn(int opcode, Label label) {
             justSubstituted = null;
+            Target tracked = loopTracked;
+            if (tracked != null) {
+                // A jump to a label visited before the tracked call comes back over it: the
+                // back-edge of a loop around a wait (#694). The hook goes in front of the jump and
+                // takes nothing, so a conditional jump still finds its operands, no branch or
+                // frame is added, and it runs whether or not the jump is taken.
+                Integer visitedAt = labelsVisitedAt.get(label);
+                if (visitedAt != null && visitedAt < loopTrackedAt) {
+                    super.visitMethodInsn(Opcodes.INVOKESTATIC, tracked.hookOwnerInternalName(),
+                            tracked.loopBackEdgeHookName(), "()V", false);
+                }
+            }
             super.visitJumpInsn(opcode, label);
         }
 
         @Override
         public void visitLabel(Label label) {
             justSubstituted = null;
+            labelsVisitedAt.put(label, position);
+            position++;
             super.visitLabel(label);
         }
 
