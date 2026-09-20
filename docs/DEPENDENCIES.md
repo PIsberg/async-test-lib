@@ -44,6 +44,7 @@ Never published, never transitive.
 |---|---|---|
 | `org.junit.platform:junit-platform-testkit` | `junit.platform.version` | `EngineTestKit` meta-tests (`AsyncTestLibraryMetaTest` and friends) run nested test classes in a controlled engine and assert on the outcome — the only way to test that a failing `@AsyncTest` fails. |
 | `com.tngtech.archunit:archunit-junit5` | `archunit.version` | Turns the module-boundary rules above from prose into failing tests (`ArchitectureTest`). |
+| `org.eclipse.jdt:ecj` | `ecj.version` | A second Java compiler, used as a compiler rather than as a library: `MissedSignalRotatedLoopWeavingTest` compiles the wait-loop shapes with it because ECJ rotates loops and javac does not, and the agent weaves whatever bytecode is on a user's classpath (#710). Test scope, `async-test-agent` only. |
 | `com.code-intelligence:jazzer-api` | `jazzer.version` | Entry points for the scheduled fuzzing workflow (`fuzzing.yml`), which throws generated input at the config and report parsers. |
 | `ch.qos.logback:logback-classic` | `logbackVersion` (in `build.gradle.kts` — no Maven twin, watched by the gradle Dependabot ecosystem) | The one test-only SLF4J backend, bound in the Gradle build so log-contract tests (`ConcurrencyRunnerLogContractTest`) can assert what the library actually logs. |
 

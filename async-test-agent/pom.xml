@@ -50,6 +50,13 @@
             <artifactId>junit-jupiter-engine</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- ECJ: compiles the wait-loop shapes a second time in MissedSignalRotatedLoopWeavingTest,
+             because ECJ rotates loops and javac does not (#710). Test scope only. -->
+        <dependency>
+            <groupId>org.eclipse.jdt</groupId>
+            <artifactId>ecj</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

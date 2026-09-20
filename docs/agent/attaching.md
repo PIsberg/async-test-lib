@@ -123,9 +123,17 @@ The whole class is read before any of it is emitted, so the wait may sit in a he
 (#707); a helper in another class is recognised only when that class was woven first, and one
 reached through a supertype or an interface is not. A jump counts as closing the loop when it is an
 unconditional `goto` and something is read between the loop's head and the wait, which is how javac
-closes a `while`. `do { wait(); } while (!ready)` closes with the predicate test itself, and a loop
-closed by `continue` reads nothing before it blocks; both enter `wait` before they have read the
-predicate, and both are reported.
+and kotlinc close a `while`. `do { wait(); } while (!ready)` closes with the predicate test itself,
+and a loop closed by `continue` reads nothing before it blocks; both enter `wait` before they have
+read the predicate, and both are reported.
+
+A compiler that rotates loops emits `goto test; body; test: if (...) goto body`, so its `while`
+closes with a conditional jump and puts the test after the wait. That shape counts too, when the
+loop head is entered by a `goto` that lands between the wait and the back-edge, which is what a
+rotated loop has and a `do`/`while` has not (#710). ECJ rotates and javac does not, so without this
+a correct poll compiled by Eclipse would be reported; `MissedSignalRotatedLoopWeavingTest` compiles
+the shapes with the real ECJ and reads the marks back. kotlinc 2.4.10 emits the javac shape for
+both `while` and `do`/`while`, checked by hand against that version and not gated.
 
 Three limits worth knowing before switching it on:
 
