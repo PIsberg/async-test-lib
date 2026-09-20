@@ -139,6 +139,23 @@ a correct poll compiled by Eclipse would be reported; `MissedSignalRotatedLoopWe
 the shapes with the real ECJ and reads the marks back. kotlinc 2.4.10 emits the javac shape for
 both `while` and `do`/`while`, checked by hand against that version and not gated.
 
+**What the hold costs.** Reading the whole class before emitting any of it means holding every
+method of every class `collections=true` weaves, including the great majority that never call
+`wait`, as a tape of replayable actions (#711). Measured against the streaming tables, which emit
+each method as it arrives: one monitor-table pass over six ASM and Byte Buddy classes, 119,871
+class-file bytes, allocates 3,218,824 bytes against 1,648,720, a ratio of 1.95x, and takes 13-14 ms
+against 9-11 ms on JDK 26 and 9 ms against 8 ms on JDK 21. That is roughly 13 extra bytes of
+short-lived garbage per class-file byte and roughly 3 ms extra per 100 kB of bytecode, paid once
+per class while the agent attaches and never inside a round.
+`MonitorWeavingAllocationBudgetTest` holds the ratio at 2.2x, so a change in the shape of the hold
+fails a build instead of being absorbed.
+
+Holding the methods in ASM's own encoding instead, a scratch `ClassWriter` written as they arrive
+and read back through a `ClassReader` at the end, was built and measured on the same classes at
+2.14x: the second reader rebuilds the whole constant pool as strings, which costs more than the
+captured lambdas it saves. It is not in the tree, and the measurement is recorded here so the same
+afternoon is not spent twice.
+
 Three limits worth knowing before switching it on:
 
 - **Guarding works, and has to.** Monitor weaving is installed alongside, so a collection touched
