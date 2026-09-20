@@ -328,6 +328,43 @@ class OwnershipOfferWeavingTest {
         }));
     }
 
+    @Test
+    @DisplayName("the offerer's write after the offer, in a generation no later take closed, fires (#692)")
+    void offerersWriteIntoTheOpenGenerationFires() throws Exception {
+        assertTrue(queueHandOff(true).hasIssues(),
+                "actor 1 wrote the chunk, offered it, and wrote it again after actor 2 had polled "
+                        + "and written it. The previous-owner excuse (#557) covers a generation a "
+                        + "later take closed, and nothing took this chunk again");
+    }
+
+    @Test
+    @DisplayName("the same hand-off with the offerer letting go stays silent (#692)")
+    void offererLettingGoStaysSilent() throws Exception {
+        AtomicityValidator.AtomicityReport report = queueHandOff(false);
+        assertFalse(report.hasIssues(), "two threads wrote the field, one before the offer and one "
+                + "after the poll: a hand-off. Findings: " + report.unsafeFieldAccesses
+                + report.totcouRaces);
+    }
+
+    /** Actor 1 writes a chunk and offers it, actor 2 polls and writes it, then actor 1 may write again. */
+    private static AtomicityValidator.AtomicityReport queueHandOff(boolean offererWritesAgain)
+            throws Exception {
+        OfferedChunkBean bean = new OfferedChunkBean();
+        AtomicityValidator validator = new AtomicityValidator();
+        try (Actors actors = new Actors(); TelemetryBridge bridge =
+                TelemetryBridge.activateWithFilter(validator, actors.ids::contains)) {
+            validator.markInvocationStart();
+            Chunk chunk = OfferedChunkBean.newChunk();
+            actors.run(1, () -> { OfferedChunkBean.write(chunk); return bean.offerToQueue(chunk); });
+            actors.run(2, () -> { OfferedChunkBean.write(bean.pollQueue()); return null; });
+            if (offererWritesAgain) {
+                actors.run(1, () -> { OfferedChunkBean.write(chunk); return null; });
+            }
+            TelemetryRegistry.flush();
+        }
+        return validator.analyzeAtomicity();
+    }
+
     /**
      * Actor 1 offers a fresh chunk, actor 2 takes it and writes it unlocked, {@code lateWriter}
      * writes it under a lock, then actors 4 and 5 each take it and write it, 5 in a later round.

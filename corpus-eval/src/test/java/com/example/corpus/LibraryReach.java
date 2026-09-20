@@ -57,7 +57,7 @@ final class LibraryReach {
         reached.addAll(CorpusGates.exercisedAgentDetectors());
         for (RecordingSubject loud : Corpus.subjectsFor(CorpusLane.AGENT_PAIRS)) {
             if (loud.expectation() != RecordingSubject.Expectation.MUST_FIRE
-                    || loud.library().startsWith("jdk:")) {
+                    || !Corpus.wovenCallSiteIsInsideTheLibrary(loud)) {
                 continue;
             }
             if (AgentRowPremise.twinOf(loud) != null) {

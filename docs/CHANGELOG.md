@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`MissedSignalDetector.recordLoopStart(Object)` and `recordLoopEnd(Object)` mark a `while (!ready)` loop around waits on a monitor (#669).** Once a monitor has a marked loop, an undeclared wait inside one is guarded and a wait outside every mark is judged unguarded, so `if (!ready) wait()` followed later by a check that finds `ready` true, and two consecutive `if (!ready) wait()` blocks, are reported where the marked loop stays silent. Monitors nobody marks keep the `recordPredicateCheck` reading.
 
+### Changed
+
+- **The corpus pairs `ATOMICITY_VIOLATIONS` through the real JCTools queue (#692).**
+  `agent_jctoolsHandOff_offererWritesAfterTheOffer` and its silent twin use netty's shaded
+  `MpscArrayQueue`, which `netty-buffer` already brings, so no dependency was added. The woven
+  `offer` and `poll` are in the test body, so the pair is kept out of the library-exclusion lane
+  and out of `LibraryReach` by `Corpus.BODY_CALL_SITE_ROWS`: that lane requires a library row to go
+  silent when its library is not woven, and a hand-off is what makes a row silent. With the
+  weaver's `MessagePassingQueue` match disabled the silent twin fires. The pair is recorded in
+  `PairEvidence.HELD_ON_MODEL`, not promoted.
+
 ### Fixed
 
 - **The ownership model sees elements that enter or leave a queue through the `Deque` forms,
@@ -37,8 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CollectionAccessWeaver` with hooks that publish the offer before the call and the take after
   it, and `removeIf` on a queue drops the queue's recorded offers the way `drainTo` does. The same
   hooks record the call for `SharedCollectionDetector`, which did not see these methods either.
-  Still open in #692: a real JCTools corpus row, `VarHandle` takes from a static field or an array
-  element, the `BlockingDeque` blocking and timed forms, and removal through an iterator.
+  Still open in #692: `VarHandle` takes from a static field or an array element, the
+  `BlockingDeque` blocking and timed forms, and removal through an iterator.
 
 - **A reference slot is its own container, not its holder (#692).** An offer through an
   `AtomicReferenceFieldUpdater`, an instance-field `VarHandle` or an `AtomicReferenceArray` named

@@ -2112,6 +2112,22 @@ arrangement `DetectorCoverage` uses for refusals:
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
 | `MISSED_SIGNAL` | agent-fed since #694. A firing library row needs a library method that waits behind an `if`, and no corpus library ships that defect; `agent_wait_behindAnIf` and its looped twin pair it on `jdk:` call sites through the same `MONITOR_ENTRIES` |
 
+**A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
+and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,
+the copy netty shades into `netty-common`, which `netty-buffer` already brings, so no dependency
+was added. It is the first agent pair for `ATOMICITY_VIOLATIONS`. The woven `offer` and `poll` sit
+in the test body, where the weaver matches `MessagePassingQueue` by the tail of its name, and they
+are what names the two owners: with that match disabled the silent twin fires, which is how the
+pair was checked. That also makes it the opposite of a library row. Lane five assumes a library
+row's finding comes from a call woven inside the library and must vanish when the library is
+excluded, and here excluding `io.netty` changes nothing. So `Corpus.BODY_CALL_SITE_ROWS` keeps the
+pair out of lane five and out of `LibraryReach`, the two places that claim library bytecode, and it
+is an ordinary agent pair everywhere else. The rows line their workers up between the steps: on
+their first run each worker finished before the next began, polled its own object, and both rows
+were silent for a reason unrelated to the detector. The pair is held in `PairEvidence.HELD_ON_MODEL`
+rather than promoted, because a hand-off through a path the agent does not weave still reads as an
+alias on correct code.
+
 **The last two, and a reason that was wrong.** Until #545 the table had two more rows.
 `SHARED_MATCHER` was there because every corpus library builds a `Matcher` per call, which is the
 correct shape and leaves nothing to pair it with. A parameter search over further libraries found

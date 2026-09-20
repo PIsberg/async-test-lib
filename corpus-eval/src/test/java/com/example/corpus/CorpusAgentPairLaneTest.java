@@ -8,6 +8,8 @@ import com.google.common.hash.Hashing;
 import com.google.common.util.concurrent.Monitor;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.zaxxer.hikari.util.UtilityElf;
+import io.netty.util.internal.shaded.org.jctools.queues.MessagePassingQueue;
+import io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueue;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -31,6 +33,9 @@ import java.util.Formatter;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -523,6 +528,81 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void agent_sleep_holdingNothing() {
         counted(CorpusAgentPairLaneTest::sleepHoldingNothing);
+    }
+
+    // --- A JCTools hand-off, through netty's shaded copy (#692) --------------------------------
+
+    /** What changes hands. Its field is woven because this file is. */
+    private static final class HandedOver {
+        int touched;
+    }
+
+    /**
+     * The real JCTools queue, typed to the interface: the weaver matches an
+     * {@code INVOKEINTERFACE} on {@code MessagePassingQueue} by name, shaded or not.
+     */
+    private static final MessagePassingQueue<HandedOver> HAND_OVER_QUEUE = new MpscArrayQueue<>(64);
+
+    /** An MPSC queue has one consumer at a time; this makes it so without guarding any field. */
+    private static final Object SINGLE_CONSUMER = new Object();
+
+    private static HandedOver pollHandedOver() {
+        synchronized (SINGLE_CONSUMER) {
+            return HAND_OVER_QUEUE.poll();
+        }
+    }
+
+    /**
+     * Lines the round's workers up between the steps of a hand-off.
+     *
+     * <p>Without it each worker finishes its few instructions before the next one starts, polls
+     * the object it offered itself, and no object ever changes hands: both rows are then silent
+     * for a reason that has nothing to do with the detector, which is what the first run of this
+     * pair measured.
+     */
+    private static final CyclicBarrier HAND_OVER_STEP = new CyclicBarrier(THREADS);
+
+    private static void everyWorkerIsHere() throws InterruptedException {
+        try {
+            HAND_OVER_STEP.await(10, TimeUnit.SECONDS);
+        } catch (BrokenBarrierException | TimeoutException e) {
+            throw new AssertionError("a hand-off row lost a worker between its steps", e);
+        }
+    }
+
+    /**
+     * One hand-off: offer an object, take whichever one comes out, and write to it.
+     *
+     * <p>Every worker offers before any polls, and every worker has polled and written before the
+     * offerer's second write, so that write lands in the generation the taker opened. The
+     * previous-owner excuse (#557) covers a generation a later take closed, and nothing takes
+     * these objects twice.
+     */
+    private static void handOver(boolean offererWritesAgain) throws InterruptedException {
+        HandedOver mine = new HandedOver();
+        mine.touched++;
+        HAND_OVER_QUEUE.offer(mine);
+        everyWorkerIsHere();
+        HandedOver theirs = pollHandedOver();
+        if (theirs != null) {
+            theirs.touched++;
+        }
+        everyWorkerIsHere();
+        if (offererWritesAgain) {
+            mine.touched++;
+        }
+    }
+
+    /** Offers an object and writes to it again after somebody else has taken it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jctoolsHandOff_offererWritesAfterTheOffer() {
+        counted(() -> handOver(true));
+    }
+
+    /** The same offer and the same poll, and the offerer lets go of what it offered. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_jctoolsHandOff_offererLetsGo() {
+        counted(() -> handOver(false));
     }
 
     // --- Object.wait and notifyAll -----------------------------------------------------------

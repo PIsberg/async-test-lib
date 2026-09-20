@@ -141,6 +141,15 @@ final class PairEvidence {
                 + "observed from both tasks' scheduledExecutionTime, so only this half holds)");
         // LOCK_UPGRADE_DEADLOCK was held here on reading only the body's records; #566 made it
         // ask the lock, and it is promoted in verdict-evidence-corpus.
+        // Read 2026-09-20 with its first agent pair, the JCTools hand-off (#692).
+        HELD_ON_MODEL.put(DetectorType.ATOMICITY_VIOLATIONS, "the hand-off pair separates on the "
+                + "woven offer and poll alone, but a finding is a lockset disagreement inside a "
+                + "round with the ownership generations as the only other ordering, and a hand-off "
+                + "through a path the agent does not weave still reads as an alias on correct "
+                + "code: removal through an iterator, the BlockingDeque blocking and timed forms, "
+                + "a VarHandle take from a static field or an array element, and any code outside "
+                + "includes (#692). Held until those are closed or shown not to matter on the "
+                + "lane-one safe subjects");
         HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "has no happens-before edge but the round "
                 + "epoch and cannot see an undeclared lock, so a field guarded by one (pinned in "
                 + "DetectorAccuracyEvalTest), a volatile read of a field written under a lock, and "
