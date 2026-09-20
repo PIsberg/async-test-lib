@@ -120,10 +120,14 @@ after waking is a `while (!ready)` loop's and is never reported. A wait with no 
 is an `if`'s.
 
 The whole class is read before any of it is emitted, so the wait may sit in a helper the loop calls
-(#707); a helper in another class is recognised only when that class was woven first, and one
-reached through a supertype or an interface is not. A jump counts as closing the loop when it is an
-unconditional `goto` and something is read between the loop's head and the wait, which is how javac
-and kotlinc close a `while`. `do { wait(); } while (!ready)` closes with the predicate test itself,
+(#707); a helper in another class is recognised when that class was woven first, including one
+inherited from a supertype or reached through an interface, which the call site names instead of
+the class that waits (#709). A caller woven before the class declaring its helper is still missed,
+and no weave order is under a user's control, so that case stays silent and unreported.
+
+A jump counts as closing the loop when it is an unconditional `goto` and something is read
+between the loop's head and the wait, which is how javac and kotlinc close a `while`.
+`do { wait(); } while (!ready)` closes with the predicate test itself,
 and a loop closed by `continue` reads nothing before it blocks; both enter `wait` before they have
 read the predicate, and both are reported.
 
