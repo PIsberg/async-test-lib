@@ -107,9 +107,18 @@ classes were silent for exactly this reason ([corpus eval](../analysis/corpus-ev
 ```
 
 What is rewritten is an explicit table in `CollectionAccessWeaver`: `Map.put/get/remove/containsKey`,
-`Collection.add/remove/contains/clear`, `List.get/set`, `Queue.offer/poll/peek`. Each call becomes a
+`Collection.add/addAll/remove/removeIf/contains/clear`, `List.get/set`, `Queue.offer/poll/peek/remove`,
+and the `Deque` end-specific offers and takes. Each call becomes a
 call to a hook that records and then performs the original operation, so behaviour is unchanged;
 `CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
+
+The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
+`MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
+judged against the threads really inside `wait()`. The weaver also inserts one call in front of
+every backward jump that comes back over a woven wait, and a wait whose thread reaches it after
+waking is a `while (!ready)` loop's and is never reported. A wait with no such jump around it is an
+`if`'s. The jump has to be in the same method as the wait: a loop in one method around a bare
+`wait()` in another reads as an `if`, and `do { wait(); } while (!ready)` reads as a loop.
 
 Three limits worth knowing before switching it on:
 
@@ -157,16 +166,22 @@ Three limits worth knowing before switching it on:
   (#559). In a generation a later take closed, an access withdraws it only when its thread neither
   took that generation nor owned the one before it: the previous owner's late access is a hand-off,
   and when no access showed who owned generation 0, the thread that offered the object to the
-  queue it was polled from is that owner, from the `collections=true` hooks for `Queue.offer`/`add`
+  queue it was polled from is that owner, from the `collections=true` hooks for `Queue.offer`/`add`,
+  `Collection.addAll` on a queue, `Deque.offerFirst`/`offerLast`/`addFirst`/`addLast`/`push`,
+  `BlockingDeque.putFirst`/`putLast` and its timed `offerFirst`/`offerLast`
+  ([#692](https://github.com/PIsberg/async-test-lib/issues/692))
   and `BlockingQueue.offer`/`put`, and from `fields=true` for a reference slot (`set`, `lazySet`,
   `setRelease` or `compareAndSet` on an `AtomicReference`, an `AtomicReferenceFieldUpdater`, an
   `AtomicReferenceArray` or an instance-field `VarHandle`) and a JCTools `offer`/`relaxedOffer`.
-  `BlockingQueue.take` is a take like `poll`, and `drainTo` drops every offer recorded into the
-  drained queue, so an element taken or drained and put back through an unwoven call cannot keep
-  naming its first offerer ([#664](https://github.com/PIsberg/async-test-lib/issues/664)); a
-  removal not reported as a take (`remove`, `removeIf`, unwoven code) still can. Only when no
-  such offer was recorded does every thread get that benefit: an element that entered through an
-  unwoven method (`addAll`, `Deque.offerFirst`, `push`, or code outside `includes`), or a
+  `BlockingQueue.take`, `Queue.remove()`, `remove(Object)` on a queue,
+  `Deque.pollFirst`/`pollLast`/`removeFirst`/`removeLast`/`pop`, and `BlockingDeque.takeFirst`/
+  `takeLast` with its timed `pollFirst`/`pollLast` are takes like `poll`, and `drainTo`
+  and `removeIf` on a queue drop every offer recorded into it, so an element taken or drained and
+  put back through an unwoven call cannot keep naming its first offerer
+  ([#664](https://github.com/PIsberg/async-test-lib/issues/664),
+  [#692](https://github.com/PIsberg/async-test-lib/issues/692)); a removal in unwoven code, or
+  through an iterator, still can. Only when no such offer was recorded does every thread get that
+  benefit: an element that entered through code outside `includes`, or a
   `VarHandle` take from a static field or an array element
   ([#630](https://github.com/PIsberg/async-test-lib/issues/630)). Spinlock shapes not modelled,
   so writes under them still report: `Unsafe.compareAndSwapInt`, and an

@@ -474,6 +474,8 @@ public final class AsyncTestAgent {
             all.addAll(CollectionAccessWeaver.sharedInstanceSubstitutions(sharedHooks));
             all.addAll(CollectionAccessWeaver.concurrencySubstitutions(
                     Class.forName(CollectionAccessWeaver.concurrencyHooksClassName(), false, loader)));
+            all.addAll(CollectionAccessWeaver.monitorSubstitutions(
+                    Class.forName(CollectionAccessWeaver.monitorHooksClassName(), false, loader)));
             all.addAll(CollectionAccessWeaver.staticSubstitutions(
                     Class.forName(CollectionAccessWeaver.staticHooksClassName(), false, loader)));
             all.addAll(CollectionAccessWeaver.gcSubstitutions(

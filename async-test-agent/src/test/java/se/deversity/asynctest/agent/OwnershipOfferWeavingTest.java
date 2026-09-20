@@ -107,7 +107,12 @@ class OwnershipOfferWeavingTest {
         }
     }
 
-    /** A slot shape: how a chunk is offered, how it is taken, and which object is the container. */
+    /**
+     * A slot shape: how a chunk is offered, how it is taken, and which object is the container.
+     * The container is {@code null} for a slot inside an object or an array, which is keyed by its
+     * field or index as well as its holder (#692): there both ends must agree, and
+     * {@link #siblingSlotsAreDifferentContainers()} pins that siblings do not.
+     */
     private record Shape(String name, BiFunction<OfferedChunkBean, Chunk, Object> offer,
                          Function<OfferedChunkBean, Chunk> take,
                          Function<OfferedChunkBean, Object> container) { }
@@ -125,25 +130,92 @@ class OwnershipOfferWeavingTest {
                         OfferedChunkBean::slot),
                 new Shape("AtomicReferenceFieldUpdater.set / getAndSet",
                         (b, c) -> { b.offerThroughUpdater(c); return null; },
-                        OfferedChunkBean::takeThroughUpdater, b -> b),
+                        OfferedChunkBean::takeThroughUpdater, b -> null),
                 new Shape("AtomicReferenceFieldUpdater.compareAndSet / getAndSet",
                         OfferedChunkBean::offerThroughUpdaterCompareAndSet,
-                        OfferedChunkBean::takeThroughUpdater, b -> b),
+                        OfferedChunkBean::takeThroughUpdater, b -> null),
                 new Shape("AtomicReferenceArray.set / getAndSet",
                         (b, c) -> { b.offerToArray(c); return null; }, OfferedChunkBean::takeFromArray,
-                        OfferedChunkBean::slots),
+                        b -> null),
                 new Shape("VarHandle.setRelease / getAndSet",
                         (b, c) -> { b.offerThroughHandle(c); return null; },
-                        OfferedChunkBean::takeThroughHandle, b -> b),
+                        OfferedChunkBean::takeThroughHandle, b -> null),
                 new Shape("VarHandle.compareAndSet / getAndSet",
                         OfferedChunkBean::offerThroughHandleCompareAndSet,
-                        OfferedChunkBean::takeThroughHandle, b -> b),
+                        OfferedChunkBean::takeThroughHandle, b -> null),
                 new Shape("MessagePassingQueue.relaxedOffer / relaxedPoll",
                         OfferedChunkBean::relaxedOfferToQueue, OfferedChunkBean::relaxedPollQueue,
                         OfferedChunkBean::queue),
                 new Shape("MessagePassingQueue.offer / poll",
                         OfferedChunkBean::offerToQueue, OfferedChunkBean::pollQueue,
-                        OfferedChunkBean::queue));
+                        OfferedChunkBean::queue),
+                // The entry and removal forms #664 left unwoven (#692).
+                new Shape("Deque.offerFirst / pollFirst",
+                        OfferedChunkBean::offerFirstToDeque, OfferedChunkBean::pollFirstFromDeque,
+                        OfferedChunkBean::deque),
+                new Shape("Deque.offerLast / pollLast",
+                        OfferedChunkBean::offerLastToDeque, OfferedChunkBean::pollLastFromDeque,
+                        OfferedChunkBean::deque),
+                new Shape("Deque.addFirst / removeFirst",
+                        (b, c) -> { b.addFirstToDeque(c); return null; },
+                        OfferedChunkBean::removeFirstFromDeque, OfferedChunkBean::deque),
+                new Shape("Deque.addLast / removeLast",
+                        (b, c) -> { b.addLastToDeque(c); return null; },
+                        OfferedChunkBean::removeLastFromDeque, OfferedChunkBean::deque),
+                new Shape("Deque.push / pop",
+                        (b, c) -> { b.pushToDeque(c); return null; },
+                        OfferedChunkBean::popFromDeque, OfferedChunkBean::deque),
+                new Shape("Collection.addAll / Queue.remove()",
+                        OfferedChunkBean::addAllToPlain, OfferedChunkBean::removeHeadOfPlain,
+                        OfferedChunkBean::plain),
+                new Shape("Queue.offer / Collection.remove(Object)",
+                        OfferedChunkBean::offerToPlain, OfferedChunkBean::removeFromPlainByName,
+                        OfferedChunkBean::plain),
+                blocking("BlockingDeque.putFirst / takeFirst",
+                        OfferedChunkBean::putFirstToBlockingDeque,
+                        OfferedChunkBean::takeFirstFromBlockingDeque),
+                blocking("BlockingDeque.putLast / takeLast",
+                        OfferedChunkBean::putLastToBlockingDeque,
+                        OfferedChunkBean::takeLastFromBlockingDeque),
+                blocking("BlockingDeque.offerFirst(timed) / pollFirst(timed)",
+                        OfferedChunkBean::timedOfferFirstToBlockingDeque,
+                        OfferedChunkBean::timedPollFirstFromBlockingDeque),
+                blocking("BlockingDeque.offerLast(timed) / pollLast(timed)",
+                        OfferedChunkBean::timedOfferLastToBlockingDeque,
+                        OfferedChunkBean::timedPollLastFromBlockingDeque));
+    }
+
+    /** A blocking step, which may be interrupted; nothing here interrupts an actor. */
+    @FunctionalInterface
+    private interface BlockingOffer {
+        Object apply(OfferedChunkBean bean, Chunk chunk) throws InterruptedException;
+    }
+
+    /** The take half of {@link BlockingOffer}. */
+    @FunctionalInterface
+    private interface BlockingTake {
+        Chunk apply(OfferedChunkBean bean) throws InterruptedException;
+    }
+
+    private static Shape blocking(String name, BlockingOffer offer, BlockingTake take) {
+        return new Shape(name,
+                (bean, chunk) -> {
+                    try {
+                        return offer.apply(bean, chunk);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(name + " was interrupted", e);
+                    }
+                },
+                bean -> {
+                    try {
+                        return take.apply(bean);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(name + " was interrupted", e);
+                    }
+                },
+                OfferedChunkBean::blockingDeque);
     }
 
     // ---- The events -----------------------------------------------------------------------------
@@ -163,20 +235,78 @@ class OwnershipOfferWeavingTest {
                 TelemetryRegistry.flush();
             }
             int chunkId = System.identityHashCode(chunk);
-            int containerId = System.identityHashCode(shape.container().apply(bean));
+            Object container = shape.container().apply(bean);
             List<Event> offered = validator.ofKind("offered").stream()
                     .filter(e -> e.identity() == chunkId).toList();
             List<Event> taken = validator.ofKind("taken").stream()
                     .filter(e -> e.identity() == chunkId).toList();
             assertEquals(1, offered.size(), shape.name() + ": the offer must be published once; "
                     + validator.events);
-            assertEquals(containerId, offered.get(0).container(),
-                    shape.name() + ": the offer must name the container the chunk went into");
+            if (container != null) {
+                assertEquals(System.identityHashCode(container), offered.get(0).container(),
+                        shape.name() + ": the offer must name the container the chunk went into");
+            }
+            assertTrue(offered.get(0).container() != 0,
+                    shape.name() + ": the offer must name a container");
             assertEquals(1, taken.size(), shape.name() + ": the take must be published once; "
                     + validator.events);
-            assertEquals(containerId, taken.get(0).container(),
+            assertEquals(offered.get(0).container(), taken.get(0).container(),
                     shape.name() + ": the take must name the container the chunk came out of");
         }));
+    }
+
+    @Test
+    @DisplayName("two fields of one object, and two elements of one array, are different containers (#692)")
+    void siblingSlotsAreDifferentContainers() throws Exception {
+        record Siblings(String name, java.util.function.BiConsumer<OfferedChunkBean, Chunk> offer,
+                        Function<OfferedChunkBean, Chunk> take,
+                        java.util.function.BiConsumer<OfferedChunkBean, Chunk> siblingOffer,
+                        Function<OfferedChunkBean, Chunk> siblingTake) { }
+        List<Siblings> kinds = List.of(
+                new Siblings("AtomicReferenceFieldUpdater", OfferedChunkBean::offerThroughUpdater,
+                        OfferedChunkBean::takeThroughUpdater,
+                        OfferedChunkBean::offerThroughSiblingUpdater,
+                        OfferedChunkBean::takeThroughSiblingUpdater),
+                new Siblings("VarHandle", OfferedChunkBean::offerThroughHandle,
+                        OfferedChunkBean::takeThroughHandle,
+                        OfferedChunkBean::offerThroughSiblingHandle,
+                        OfferedChunkBean::takeThroughSiblingHandle),
+                new Siblings("AtomicReferenceArray", OfferedChunkBean::offerToArray,
+                        OfferedChunkBean::takeFromArray,
+                        OfferedChunkBean::offerToSiblingArrayElement,
+                        OfferedChunkBean::takeFromSiblingArrayElement));
+        for (Siblings kind : kinds) {
+            OfferedChunkBean bean = new OfferedChunkBean();
+            RecordingValidator validator = new RecordingValidator();
+            Chunk here = OfferedChunkBean.newChunk();
+            Chunk there = OfferedChunkBean.newChunk();
+            try (Actors actors = new Actors(); TelemetryBridge bridge =
+                    TelemetryBridge.activateWithFilter(validator, actors.ids::contains)) {
+                actors.run(1, () -> { kind.offer().accept(bean, here); return null; });
+                actors.run(1, () -> { kind.siblingOffer().accept(bean, there); return null; });
+                assertSame(here, actors.run(2, () -> kind.take().apply(bean)));
+                assertSame(there, actors.run(2, () -> kind.siblingTake().apply(bean)));
+                TelemetryRegistry.flush();
+            }
+            List<Integer> hereContainers = containersOf(validator, here);
+            List<Integer> thereContainers = containersOf(validator, there);
+            assertEquals(2, hereContainers.size(), kind.name() + ": " + validator.events);
+            assertEquals(hereContainers.get(0), hereContainers.get(1),
+                    kind.name() + ": an offer and a take through one slot must agree");
+            assertEquals(thereContainers.get(0), thereContainers.get(1),
+                    kind.name() + ": an offer and a take through the sibling slot must agree");
+            assertTrue(!hereContainers.get(0).equals(thereContainers.get(0)),
+                    kind.name() + ": an offer into one slot must not match a take out of its "
+                            + "sibling, or the wrong thread is named the owner; " + validator.events);
+        }
+    }
+
+    private static List<Integer> containersOf(RecordingValidator validator, Chunk chunk) {
+        int identity = System.identityHashCode(chunk);
+        synchronized (validator.events) {
+            return validator.events.stream().filter(e -> e.identity() == identity)
+                    .map(Event::container).toList();
+        }
     }
 
     @Test
@@ -204,6 +334,22 @@ class OwnershipOfferWeavingTest {
                 "both drainTo forms must publish the drained queue; " + validator.events);
     }
 
+    @Test
+    @DisplayName("removeIf on a queue names no element, so it drops the queue's offers like drainTo (#692)")
+    void removeIfOnAQueueIsPublishedAsADrain() throws Exception {
+        OfferedChunkBean bean = new OfferedChunkBean();
+        RecordingValidator validator = new RecordingValidator();
+        try (Actors actors = new Actors(); TelemetryBridge bridge =
+                TelemetryBridge.activateWithFilter(validator, actors.ids::contains)) {
+            actors.run(1, () -> bean.offerToPlain(OfferedChunkBean.newChunk()));
+            assertTrue(actors.run(2, bean::removeEveryChunkFromPlain));
+            TelemetryRegistry.flush();
+        }
+        int queue = System.identityHashCode(bean.plain());
+        assertEquals(1, validator.ofKind("drained").stream().filter(e -> e.container() == queue).count(),
+                "removeIf must publish the queue it emptied; " + validator.events);
+    }
+
     // ---- End to end: who owns a take-first generation ------------------------------------------
 
     @TestFactory
@@ -225,6 +371,43 @@ class OwnershipOfferWeavingTest {
             assertFalse(report.hasIssues(), shape.name() + ": the late write is the offerer's, "
                     + "a hand-off. Findings: " + report.unsafeFieldAccesses + report.totcouRaces);
         }));
+    }
+
+    @Test
+    @DisplayName("the offerer's write after the offer, in a generation no later take closed, fires (#692)")
+    void offerersWriteIntoTheOpenGenerationFires() throws Exception {
+        assertTrue(queueHandOff(true).hasIssues(),
+                "actor 1 wrote the chunk, offered it, and wrote it again after actor 2 had polled "
+                        + "and written it. The previous-owner excuse (#557) covers a generation a "
+                        + "later take closed, and nothing took this chunk again");
+    }
+
+    @Test
+    @DisplayName("the same hand-off with the offerer letting go stays silent (#692)")
+    void offererLettingGoStaysSilent() throws Exception {
+        AtomicityValidator.AtomicityReport report = queueHandOff(false);
+        assertFalse(report.hasIssues(), "two threads wrote the field, one before the offer and one "
+                + "after the poll: a hand-off. Findings: " + report.unsafeFieldAccesses
+                + report.totcouRaces);
+    }
+
+    /** Actor 1 writes a chunk and offers it, actor 2 polls and writes it, then actor 1 may write again. */
+    private static AtomicityValidator.AtomicityReport queueHandOff(boolean offererWritesAgain)
+            throws Exception {
+        OfferedChunkBean bean = new OfferedChunkBean();
+        AtomicityValidator validator = new AtomicityValidator();
+        try (Actors actors = new Actors(); TelemetryBridge bridge =
+                TelemetryBridge.activateWithFilter(validator, actors.ids::contains)) {
+            validator.markInvocationStart();
+            Chunk chunk = OfferedChunkBean.newChunk();
+            actors.run(1, () -> { OfferedChunkBean.write(chunk); return bean.offerToQueue(chunk); });
+            actors.run(2, () -> { OfferedChunkBean.write(bean.pollQueue()); return null; });
+            if (offererWritesAgain) {
+                actors.run(1, () -> { OfferedChunkBean.write(chunk); return null; });
+            }
+            TelemetryRegistry.flush();
+        }
+        return validator.analyzeAtomicity();
     }
 
     /**

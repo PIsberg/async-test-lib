@@ -2,9 +2,11 @@ package se.deversity.asynctest.diagnostics;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -74,6 +76,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * wait recorded before the monitor's first mark is read that way too, so mark a loop before the
  * waits it should decide. An explicit {@code guarded} flag still wins over a mark.
  *
+ * <p><strong>Or attach the agent.</strong> With {@code collections=true} the agent weaves
+ * {@code Object.wait}, {@code notify} and {@code notifyAll} in the included classes, so the waiter
+ * set a notify is judged against is the threads really inside {@code wait()}, read under the
+ * monitor both calls hold, and nothing has to be recorded (#694). The weaver also marks every
+ * backward jump that encloses a woven wait, which is the loop's back-edge: an observed wait whose
+ * thread reaches that jump after waking, in the same round, is a loop's and is never reported. An
+ * observed wait with no back-edge behind it is an {@code if}'s and is judged like
+ * {@code recordWait(monitor, false)}. A wait the body recorded itself is not observed a second
+ * time, so a record always wins over the weave. What the weave cannot see: a loop in one method
+ * around a bare {@code wait()} in another reads as an {@code if}, and {@code do { wait(); }
+ * while (!ready)}, which waits before it tests, reads as a loop.
+ *
  * <p>Usage:
  * <pre>{@code
  * @AsyncTest(threads = 4, detectMissedSignals = true)
@@ -101,7 +115,12 @@ public class MissedSignalDetector {
         /** Inside a loop that re-tests the state predicate: never a missed signal (#599). */
         GUARDED,
         /** No predicate: judged against every notify lost before the wait (#599). */
-        UNGUARDED
+        UNGUARDED,
+        /**
+         * Seen by the agent, not recorded (#694): judged as unguarded unless its thread reaches
+         * the enclosing loop's back-edge after waking.
+         */
+        OBSERVED
     }
 
     /** A recorded wait whose wakeup has not been recorded yet. */
@@ -135,7 +154,7 @@ public class MissedSignalDetector {
                 // did not see cannot strand it; a guarded poll that times out is how it ends.
                 case GUARDED -> false;
                 // A later notify consumed by another waiter does not give back one already lost.
-                case UNGUARDED -> lostNotifiesAtStart > 0 && noNotifySince;
+                case UNGUARDED, OBSERVED -> lostNotifiesAtStart > 0 && noNotifySince;
                 case UNKNOWN -> afterLostNotify && noNotifySince;
             };
         }
@@ -152,13 +171,16 @@ public class MissedSignalDetector {
         final boolean loopObserved;
         /** The invocation round the wakeup was recorded in. */
         final long epoch;
+        /** Whether the agent saw this wait; only such a wait is confirmed by a woven back-edge. */
+        final boolean observed;
         /** Whether a check after the wakeup found the predicate unsatisfied. */
         boolean checkedUnsatisfied;
 
-        PendingWait(boolean missedItsSignal, boolean loopObserved, long epoch) {
+        PendingWait(boolean missedItsSignal, boolean loopObserved, long epoch, boolean observed) {
             this.missedItsSignal = missedItsSignal;
             this.loopObserved = loopObserved;
             this.epoch = epoch;
+            this.observed = observed;
         }
 
         /**
@@ -189,6 +211,11 @@ public class MissedSignalDetector {
         private boolean loopsMarked;
         /** How many marked loops each thread is inside; a thread leaves the map at depth zero. */
         private final Map<Thread, Integer> openLoops = new HashMap<>();
+        /**
+         * Threads whose recorded notify the woven {@code notify()} behind it has not reached yet,
+         * so that call is not counted a second time (#694). Emptied at every round start.
+         */
+        private final Set<Thread> recordedNotifies = new HashSet<>();
 
         ConditionState(String label) {
             this.label = label;
@@ -205,9 +232,19 @@ public class MissedSignalDetector {
             openLoops.computeIfPresent(thread, (t, depth) -> depth <= 1 ? null : depth - 1);
         }
 
-        synchronized void waitStarted(Thread thread, Guard declared, long epoch) {
+        /** {@return whether the wait was taken; an observed wait behind a recorded one is not} */
+        synchronized boolean waitStarted(Thread thread, Guard declared, long epoch) {
             Guard guard = declared;
-            if (guard == Guard.UNKNOWN && loopsMarked) {
+            if (guard == Guard.OBSERVED) {
+                for (OpenWait open : openWaits) {
+                    if (open.thread.equals(thread)) {
+                        return false; // the body recorded this wait, and what it declared stands
+                    }
+                }
+                if (openLoops.containsKey(thread)) {
+                    guard = Guard.GUARDED; // inside a loop the body marked (#669)
+                }
+            } else if (guard == Guard.UNKNOWN && loopsMarked) {
                 // The marks carry the back-edge: inside one the wait is a loop's, outside an if's.
                 guard = openLoops.containsKey(thread) ? Guard.GUARDED : Guard.UNGUARDED;
             }
@@ -220,6 +257,7 @@ public class MissedSignalDetector {
             }
             openWaits.add(new OpenWait(thread, guard, notifies, lastNotifyLost, notifiesWithNoWaiter,
                     backEdge));
+            return true;
         }
 
         synchronized void wokeUp(Thread thread, long epoch) {
@@ -228,14 +266,15 @@ public class MissedSignalDetector {
                 if (wait.thread.equals(thread)) { // Thread keeps Object's identity equals
                     openWaits.remove(i);
                     boolean missed = wait.missedItsSignal(notifies);
-                    if (wait.guard != Guard.UNKNOWN) {
+                    if (wait.guard == Guard.GUARDED || wait.guard == Guard.UNGUARDED) {
                         if (missed) {
                             unsignalledWaits++; // the caller declared it: nothing left to confirm
                         }
                         return;
                     }
                     PendingWait replaced = pendingWaits.put(thread,
-                            new PendingWait(missed, wait.loopObserved, epoch));
+                            new PendingWait(missed, wait.loopObserved, epoch,
+                                    wait.guard == Guard.OBSERVED));
                     if (replaced != null) { // waitStarted settled it already; kept for safety
                         settle(replaced, replaced.confirmedWithoutAnotherWait());
                     }
@@ -268,7 +307,26 @@ public class MissedSignalDetector {
             }
         }
 
-        synchronized void notified(Thread thread) {
+        /**
+         * The thread reached a backward jump enclosing a woven wait (#694). Only a wait the agent
+         * saw, woken in this round, is confirmed: a recorded wait keeps the #656 reading.
+         */
+        synchronized void loopBackEdge(Thread thread, long epoch) {
+            PendingWait pending = pendingWaits.get(thread);
+            if (pending != null && pending.observed && pending.epoch == epoch) {
+                pendingWaits.remove(thread);
+                settle(pending, true);
+            }
+        }
+
+        synchronized void notified(Thread thread, boolean observed) {
+            if (observed) {
+                if (recordedNotifies.remove(thread)) {
+                    return; // the body recorded this notify just before making it
+                }
+            } else {
+                recordedNotifies.add(thread);
+            }
             // A loop does not signal between its wakeup and its re-test: the body has moved on.
             PendingWait pending = pendingWaits.remove(thread);
             if (pending != null) {
@@ -283,6 +341,7 @@ public class MissedSignalDetector {
 
         /** Settles every woken wait from a round before {@code epoch}: nothing can confirm it now. */
         synchronized void closeRoundsBefore(long epoch) {
+            recordedNotifies.clear();
             for (Iterator<PendingWait> it = pendingWaits.values().iterator(); it.hasNext(); ) {
                 PendingWait pending = it.next();
                 if (pending.epoch < epoch) {
@@ -530,7 +589,7 @@ public class MissedSignalDetector {
      */
     public void recordNotify(String conditionName) {
         if (conditionName == null) return;
-        byName(conditionName).notified(Thread.currentThread());
+        byName(conditionName).notified(Thread.currentThread(), false);
     }
 
     /**
@@ -541,7 +600,7 @@ public class MissedSignalDetector {
      */
     public void recordNotify(Object monitor) {
         if (monitor == null) return;
-        byMonitor(monitor).notified(Thread.currentThread());
+        byMonitor(monitor).notified(Thread.currentThread(), false);
     }
 
     /**
@@ -561,6 +620,66 @@ public class MissedSignalDetector {
      */
     public void recordNotifyAll(Object monitor) {
         recordNotify(monitor);
+    }
+
+    /**
+     * Internal: called by the agent's hook before a woven {@code wait} on {@code monitor}, while
+     * the monitor is held (#694). The wait is a loop's when its thread reaches the enclosing
+     * back-edge after waking ({@link #recordObservedLoopBackEdge()}), and is judged like
+     * {@link #recordWait(Object, boolean) recordWait(monitor, false)} otherwise. When the calling
+     * thread already has a wait recorded and open on the monitor, the body recorded this one
+     * itself: nothing is added, and the caller must not record a wakeup either.
+     *
+     * @param monitor the object whose {@code wait} is about to be called; {@code null} is ignored
+     * @return whether the wait was taken, so that {@link #recordObservedWakeup(Object)} is owed
+     * @since 1.12.2
+     */
+    public boolean recordObservedWait(Object monitor) {
+        return monitor != null && byMonitor(monitor).waitStarted(Thread.currentThread(),
+                Guard.OBSERVED, invocationEpoch.get());
+    }
+
+    /**
+     * Internal: called by the agent's hook after a woven {@code wait} returned or threw, for a
+     * wait {@link #recordObservedWait(Object)} took (#694).
+     *
+     * @param monitor the same monitor passed to {@link #recordObservedWait(Object)}
+     * @since 1.12.2
+     */
+    public void recordObservedWakeup(Object monitor) {
+        recordWakeup(monitor);
+    }
+
+    /**
+     * Internal: called by the agent's hook before a woven {@code notify} or {@code notifyAll} on
+     * {@code monitor}, while the monitor is held (#694). A notify the calling thread recorded
+     * itself earlier in the round, with no woven notify since, is this one and is not counted
+     * again.
+     *
+     * @param monitor the object being notified; {@code null} is ignored
+     * @since 1.12.2
+     */
+    public void recordObservedNotify(Object monitor) {
+        if (monitor == null) return;
+        byMonitor(monitor).notified(Thread.currentThread(), true);
+    }
+
+    /**
+     * Internal: called by the agent's hook at a backward jump that encloses a woven wait, which is
+     * the loop's back-edge (#694). It confirms the calling thread's observed waits woken in this
+     * round as a loop's; it changes nothing for a wait the body recorded.
+     *
+     * @since 1.12.2
+     */
+    public void recordObservedLoopBackEdge() {
+        if (conditions.isEmpty()) {
+            return;
+        }
+        Thread thread = Thread.currentThread();
+        long epoch = invocationEpoch.get();
+        for (ConditionState state : conditions.values()) {
+            state.loopBackEdge(thread, epoch);
+        }
     }
 
     // ---- Analysis ----------------------------------------------------------

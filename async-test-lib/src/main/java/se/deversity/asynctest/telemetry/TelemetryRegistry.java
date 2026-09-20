@@ -1831,10 +1831,40 @@ public final class TelemetryRegistry {
     // weaver substitutes these hooks for the call sites, so the slot is in hand at both ends: a
     // store publishes the stored reference as offered to the slot before it lands, and a getAndSet
     // publishes the reference it returns as taken out of the same slot. The container is the atomic
-    // or the array for the first two, and the receiver whose field is the slot for the other two,
-    // so two reference fields of one object read as one container, and so do the elements of one
-    // array; that can only match an offer to a take that took the same object out of a sibling
-    // slot. Each hook performs the original operation with its own exceptions and result.
+    // itself for an AtomicReference. For the other three the holder alone is too coarse (#692): two
+    // reference fields of one object, or two elements of one array, would read as one container,
+    // and an offer into one would name the owner of an object taken out of its sibling. So the
+    // holder is combined with what selects the slot inside it, which both ends have in hand: the
+    // updater or the VarHandle, one instance per field, or the element's index. A slot reached
+    // through two different handles reads as two containers, which can only lose a match and fall
+    // back to the #557 excuse. Each hook performs the original operation with its own exceptions
+    // and result.
+
+    /** {@return the container identity of the slot {@code within} selects inside {@code holder}} */
+    private static int slotIdentity(Object holder, int within) {
+        int identity = 31 * System.identityHashCode(holder) + within;
+        return identity == 0 ? 1 : identity; // 0 means unknown to the validator
+    }
+
+    /** {@link #ownershipOffered} for a slot inside {@code holder}, keyed by field or index. */
+    private static void slotOffered(@Nullable Object offered, @Nullable Object holder, int within) {
+        if (offered == null || holder == null || STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, false, 0L, false,
+                Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
+                slotIdentity(holder, within));
+    }
+
+    /** {@link #ownershipTaken(Object, Object)} for a slot inside {@code holder}. */
+    private static void slotTaken(@Nullable Object taken, @Nullable Object holder, int within) {
+        if (taken == null || STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,
+                Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
+                holder == null ? 0 : slotIdentity(holder, within));
+    }
 
     /**
      * Weaves {@code AtomicReference.set}: an offer of {@code value} to {@code slot} (#664).
@@ -1916,7 +1946,7 @@ public final class TelemetryRegistry {
      */
     public static void setReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                            Object receiver, @Nullable Object value) {
-        ownershipOffered(value, receiver);
+        slotOffered(value, receiver, System.identityHashCode(updater));
         updater.set(receiver, value);
     }
 
@@ -1931,7 +1961,7 @@ public final class TelemetryRegistry {
      */
     public static void lazySetReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                                Object receiver, @Nullable Object value) {
-        ownershipOffered(value, receiver);
+        slotOffered(value, receiver, System.identityHashCode(updater));
         updater.lazySet(receiver, value);
     }
 
@@ -1949,7 +1979,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetReferenceUpdater(
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object expected, @Nullable Object update) {
-        ownershipOffered(update, receiver);
+        slotOffered(update, receiver, System.identityHashCode(updater));
         return updater.compareAndSet(receiver, expected, update);
     }
 
@@ -1967,7 +1997,7 @@ public final class TelemetryRegistry {
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object value) {
         Object previous = updater.getAndSet(receiver, value);
-        ownershipTaken(previous, receiver);
+        slotTaken(previous, receiver, System.identityHashCode(updater));
         return previous;
     }
 
@@ -1981,7 +2011,7 @@ public final class TelemetryRegistry {
      */
     public static void setReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                          @Nullable Object value) {
-        ownershipOffered(value, slots);
+        slotOffered(value, slots, index);
         slots.set(index, value);
     }
 
@@ -1995,7 +2025,7 @@ public final class TelemetryRegistry {
      */
     public static void lazySetReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                              @Nullable Object value) {
-        ownershipOffered(value, slots);
+        slotOffered(value, slots, index);
         slots.lazySet(index, value);
     }
 
@@ -2009,7 +2039,7 @@ public final class TelemetryRegistry {
      */
     public static void setReleaseReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                 @Nullable Object value) {
-        ownershipOffered(value, slots);
+        slotOffered(value, slots, index);
         slots.setRelease(index, value);
     }
 
@@ -2026,7 +2056,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                       @Nullable Object expected,
                                                       @Nullable Object update) {
-        ownershipOffered(update, slots);
+        slotOffered(update, slots, index);
         return slots.compareAndSet(index, expected, update);
     }
 
@@ -2043,7 +2073,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetReferenceArray(AtomicReferenceArray<Object> slots,
                                                            int index, @Nullable Object value) {
         Object previous = slots.getAndSet(index, value);
-        ownershipTaken(previous, slots);
+        slotTaken(previous, slots, index);
         return previous;
     }
 
@@ -2057,7 +2087,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReferenceHandle(VarHandle handle, Object receiver, @Nullable Object value) {
-        ownershipOffered(value, receiver);
+        slotOffered(value, receiver, System.identityHashCode(handle));
         handle.withInvokeBehavior().set(receiver, value);
     }
 
@@ -2071,7 +2101,7 @@ public final class TelemetryRegistry {
      */
     public static void setVolatileReferenceHandle(VarHandle handle, Object receiver,
                                                   @Nullable Object value) {
-        ownershipOffered(value, receiver);
+        slotOffered(value, receiver, System.identityHashCode(handle));
         handle.withInvokeBehavior().setVolatile(receiver, value);
     }
 
@@ -2085,7 +2115,7 @@ public final class TelemetryRegistry {
      */
     public static void setReleaseReferenceHandle(VarHandle handle, Object receiver,
                                                  @Nullable Object value) {
-        ownershipOffered(value, receiver);
+        slotOffered(value, receiver, System.identityHashCode(handle));
         handle.withInvokeBehavior().setRelease(receiver, value);
     }
 
@@ -2099,7 +2129,7 @@ public final class TelemetryRegistry {
      */
     public static void setOpaqueReferenceHandle(VarHandle handle, Object receiver,
                                                 @Nullable Object value) {
-        ownershipOffered(value, receiver);
+        slotOffered(value, receiver, System.identityHashCode(handle));
         handle.withInvokeBehavior().setOpaque(receiver, value);
     }
 
@@ -2117,7 +2147,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetReferenceHandle(VarHandle handle, Object receiver,
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
-        ownershipOffered(update, receiver);
+        slotOffered(update, receiver, System.identityHashCode(handle));
         return handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
     }
 
@@ -2135,7 +2165,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetReferenceHandle(VarHandle handle, Object receiver,
                                                             @Nullable Object value) {
         Object previous = handle.withInvokeBehavior().getAndSet(receiver, value);
-        ownershipTaken(previous, receiver);
+        slotTaken(previous, receiver, System.identityHashCode(handle));
         return previous;
     }
 

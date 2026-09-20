@@ -141,6 +141,15 @@ final class PairEvidence {
                 + "observed from both tasks' scheduledExecutionTime, so only this half holds)");
         // LOCK_UPGRADE_DEADLOCK was held here on reading only the body's records; #566 made it
         // ask the lock, and it is promoted in verdict-evidence-corpus.
+        // Read 2026-09-20 with its first agent pair, the JCTools hand-off (#692).
+        HELD_ON_MODEL.put(DetectorType.ATOMICITY_VIOLATIONS, "the hand-off pair separates on the "
+                + "woven offer and poll alone, but a finding is a lockset disagreement inside a "
+                + "round with the ownership generations as the only other ordering, and a hand-off "
+                + "through a path the agent does not weave still reads as an alias on correct "
+                + "code: removal through an iterator, a VarHandle take from a static field or an "
+                + "array element, and any code outside "
+                + "includes (#692). Held until those are closed or shown not to matter on the "
+                + "lane-one safe subjects");
         HELD_ON_MODEL.put(DetectorType.RACE_CONDITIONS, "has no happens-before edge but the round "
                 + "epoch and cannot see an undeclared lock, so a field guarded by one (pinned in "
                 + "DetectorAccuracyEvalTest), a volatile read of a field written under a lock, and "
@@ -165,13 +174,13 @@ final class PairEvidence {
                 + "when a later wait receives no notify; #599 let a caller declare guardedness, "
                 + "#635 observes predicate re-checks via recordPredicateCheck, and #669's "
                 + "recordLoopStart/recordLoopEnd marks give the loop back-edge, so the if-wait "
-                + "shapes #656 could not separate now fire beside a silent marked loop. Still held: "
-                + "every input is the body's record. Whether a notify found nobody waiting, and "
-                + "whether a wait received one, come from recordNotify/recordWait/recordWakeup, "
-                + "because Object exposes no waiter or notify state to ask, and an unmarked "
-                + "monitor still reads the two if shapes as a loop. Needs the agent to weave "
-                + "Object.wait/notify (the real waiter set and the loop back-edge) before a "
-                + "re-read (#571)");
+                + "shapes #656 could not separate now fire beside a silent marked loop. #694 wove "
+                + "Object.wait/notify/notifyAll and the back-edge around a wait, so the agent "
+                + "pair's inputs are observed under the monitor rather than recorded. Still held "
+                + "on two readings nobody has made: the recording pair's inputs remain the body's "
+                + "own record, and the woven back-edge is per method, so a loop in one method "
+                + "around a bare wait() in another reads as an if and would report a bounded "
+                + "poll (#571)");
         HELD_ON_MODEL.put(DetectorType.PHASER, "since #587 termination is context and the finding "
                 + "is an arrival whose returned phase is negative on a phaser with no party left "
                 + "registered, read from the real phaser; the rewritten pair has not been re-read "

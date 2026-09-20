@@ -188,7 +188,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (18)
+### Agent-fed (19)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -208,12 +208,18 @@ offer whose false return was discarded, a timed await that expired. They are plu
 three layers down in the class under test, which is why nobody instruments them by hand and 
 why their detectors were unreachable in practice rather than merely inconvenient.
 
+`MissedSignalDetector` joined with #694. `Object` exposes neither its waiters nor whether a
+notify reached one, so the detector could only judge what a body recorded about itself. The
+agent now substitutes `Object.wait`, `notify` and `notifyAll`, which run with the monitor held,
+and marks the backward jump around a wait, which is what separates `while (!ready) wait()` from
+`if (!ready) wait()`. A loop in one method around a bare `wait()` in another reads as an `if`.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
-`ExplicitGcDetector`
+`MissedSignalDetector`, `ExplicitGcDetector`
 
 ### Zero-config (3)
 
@@ -248,7 +254,7 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (125)
+### Recording-only (124)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -263,7 +269,7 @@ recording is the feed:
 `ParallelStreamDetector`, `ResourceLeakDetector`,
 `CyclicBarrierDetector`, `ReentrantLockDetector`,
 `VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,
-`LockContentionDetector`, `SynchronizedNonFinalDetector`, `MissedSignalDetector`,
+`LockContentionDetector`, `SynchronizedNonFinalDetector`,
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
 `RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,

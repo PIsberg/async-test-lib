@@ -3,9 +3,13 @@ package se.deversity.asynctest;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
@@ -100,7 +104,7 @@ public final class AgentCollectionHooks {
         // both narrower and more general than a prefix, and it covers a user's own implementation.
         if (receiver instanceof java.util.concurrent.ConcurrentMap
                 || receiver instanceof java.util.concurrent.BlockingQueue
-                || receiver instanceof java.util.concurrent.BlockingDeque
+                || receiver instanceof BlockingDeque
                 // The legacy synchronized collections: every method takes the instance's own
                 // monitor, inside java.util where no MONITORENTER is woven and before this hook
                 // could probe it.
@@ -185,7 +189,60 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Collection.remove}. @param receiver the collection @param element the element @return whether it changed */
     public static boolean collectionRemove(Collection<Object> receiver, Object element) {
         record(receiver, "remove", true);
-        return receiver.remove(element);
+        boolean removed = receiver.remove(element);
+        if (removed && receiver instanceof Queue) {
+            // Out of the queue and in the remover's hands, like a poll that named its element
+            // (#692). The argument stands for the element: a queue matches by equals, and an
+            // equal stand-in is a reference the remover already holds alone.
+            TelemetryRegistry.ownershipTaken(element, receiver);
+        }
+        return removed;
+    }
+
+    /**
+     * Weaves {@code Collection.addAll}: on a queue, an offer of every element (#692).
+     *
+     * <p>The elements are read before the call, for the reason every offer is published first:
+     * the take that removes one has to drain after it. Reading them is the recording path, so
+     * whatever it throws is dropped and the call itself decides what the caller sees.
+     *
+     * @param receiver the collection
+     * @param elements the elements to add
+     * @return whether the collection changed
+     * @since 1.12.2
+     */
+    public static boolean collectionAddAll(Collection<Object> receiver,
+                                           Collection<? extends Object> elements) {
+        record(receiver, "addAll", true);
+        if (receiver instanceof Queue && elements != null) {
+            try {
+                for (Object element : elements) {
+                    TelemetryRegistry.ownershipOffered(element, receiver);
+                }
+            } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
+                // addAll below reads the same source and reports what is wrong with it.
+            }
+        }
+        return receiver.addAll(elements);
+    }
+
+    /**
+     * Weaves {@code Collection.removeIf}: on a queue, a removal that names no element, reported
+     * like {@code drainTo} (#692). Every offer recorded into the queue before it is stale.
+     *
+     * @param receiver the collection
+     * @param filter   the predicate selecting what to remove
+     * @return whether anything was removed
+     * @since 1.12.2
+     */
+    public static boolean collectionRemoveIf(Collection<Object> receiver,
+                                             Predicate<? super Object> filter) {
+        record(receiver, "removeIf", true);
+        boolean removed = receiver.removeIf(filter);
+        if (removed && receiver instanceof Queue) {
+            TelemetryRegistry.ownershipDrained(receiver);
+        }
+        return removed;
     }
 
     /** Weaves {@code Collection.contains}. @param receiver the collection @param element the element @return whether present */
@@ -233,5 +290,157 @@ public final class AgentCollectionHooks {
     public static @Nullable Object queuePeek(Queue<Object> receiver) {
         record(receiver, "peek", false);
         return receiver.peek();
+    }
+
+    // ---- The entry and removal forms #664 left unwoven (#692). Offers publish before the
+    //      structure accepts the element and takes after it let go, like offer and poll above.
+
+    /** Weaves {@code Deque.offerFirst}, an offer at one end (#692). @param receiver the deque @param element the element @return whether it was accepted */
+    public static boolean dequeOfferFirst(Deque<Object> receiver, Object element) {
+        record(receiver, "offerFirst", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        return receiver.offerFirst(element);
+    }
+
+    /** Weaves {@code Deque.offerLast}, an offer at one end (#692). @param receiver the deque @param element the element @return whether it was accepted */
+    public static boolean dequeOfferLast(Deque<Object> receiver, Object element) {
+        record(receiver, "offerLast", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        return receiver.offerLast(element);
+    }
+
+    /** Weaves {@code Deque.addFirst}, an offer at one end (#692). @param receiver the deque @param element the element */
+    public static void dequeAddFirst(Deque<Object> receiver, Object element) {
+        record(receiver, "addFirst", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        receiver.addFirst(element);
+    }
+
+    /** Weaves {@code Deque.addLast}, an offer at one end (#692). @param receiver the deque @param element the element */
+    public static void dequeAddLast(Deque<Object> receiver, Object element) {
+        record(receiver, "addLast", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        receiver.addLast(element);
+    }
+
+    /** Weaves {@code Deque.push}, an offer at one end (#692). @param receiver the deque @param element the element */
+    public static void dequePush(Deque<Object> receiver, Object element) {
+        record(receiver, "push", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        receiver.push(element);
+    }
+
+    /** Weaves {@code Deque.pollFirst}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
+    public static @Nullable Object dequePollFirst(Deque<Object> receiver) {
+        record(receiver, "pollFirst", true);
+        Object taken = receiver.pollFirst();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code Deque.pollLast}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
+    public static @Nullable Object dequePollLast(Deque<Object> receiver) {
+        record(receiver, "pollLast", true);
+        Object taken = receiver.pollLast();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code Deque.removeFirst}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
+    public static @Nullable Object dequeRemoveFirst(Deque<Object> receiver) {
+        record(receiver, "removeFirst", true);
+        Object taken = receiver.removeFirst();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code Deque.removeLast}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
+    public static @Nullable Object dequeRemoveLast(Deque<Object> receiver) {
+        record(receiver, "removeLast", true);
+        Object taken = receiver.removeLast();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code Deque.pop}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
+    public static @Nullable Object dequePop(Deque<Object> receiver) {
+        record(receiver, "pop", true);
+        Object taken = receiver.pop();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code Queue.remove}, a take like {@code poll} (#692). @param receiver the queue @return the element taken */
+    public static @Nullable Object queueRemove(Queue<Object> receiver) {
+        record(receiver, "remove", true);
+        Object taken = receiver.remove();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.putFirst}, a blocking offer at one end (#692). @param receiver the deque @param element the element @throws InterruptedException if interrupted while waiting */
+    public static void blockingDequePutFirst(BlockingDeque<Object> receiver, Object element)
+            throws InterruptedException {
+        record(receiver, "putFirst", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        receiver.putFirst(element);
+    }
+
+    /** Weaves {@code BlockingDeque.putLast}, a blocking offer at one end (#692). @param receiver the deque @param element the element @throws InterruptedException if interrupted while waiting */
+    public static void blockingDequePutLast(BlockingDeque<Object> receiver, Object element)
+            throws InterruptedException {
+        record(receiver, "putLast", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        receiver.putLast(element);
+    }
+
+    /** Weaves {@code BlockingDeque.offerFirst(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
+    public static boolean blockingDequeOfferFirst(BlockingDeque<Object> receiver, Object element, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "offerFirst", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        return receiver.offerFirst(element, timeout, unit);
+    }
+
+    /** Weaves {@code BlockingDeque.offerLast(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
+    public static boolean blockingDequeOfferLast(BlockingDeque<Object> receiver, Object element, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "offerLast", true);
+        TelemetryRegistry.ownershipOffered(element, receiver);
+        return receiver.offerLast(element, timeout, unit);
+    }
+
+    /** Weaves {@code BlockingDeque.takeFirst}, a blocking take at one end (#692). @param receiver the deque @return the element taken @throws InterruptedException if interrupted while waiting */
+    public static Object blockingDequeTakeFirst(BlockingDeque<Object> receiver) throws InterruptedException {
+        record(receiver, "takeFirst", true);
+        Object taken = receiver.takeFirst();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.takeLast}, a blocking take at one end (#692). @param receiver the deque @return the element taken @throws InterruptedException if interrupted while waiting */
+    public static Object blockingDequeTakeLast(BlockingDeque<Object> receiver) throws InterruptedException {
+        record(receiver, "takeLast", true);
+        Object taken = receiver.takeLast();
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.pollFirst(long, TimeUnit)}, a timed take at one end (#692). @param receiver the deque @param timeout how long to wait @param unit the unit of {@code timeout} @return the element taken, or null @throws InterruptedException if interrupted while waiting */
+    public static @Nullable Object blockingDequePollFirst(BlockingDeque<Object> receiver, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "pollFirst", true);
+        Object taken = receiver.pollFirst(timeout, unit);
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
+    }
+
+    /** Weaves {@code BlockingDeque.pollLast(long, TimeUnit)}, a timed take at one end (#692). @param receiver the deque @param timeout how long to wait @param unit the unit of {@code timeout} @return the element taken, or null @throws InterruptedException if interrupted while waiting */
+    public static @Nullable Object blockingDequePollLast(BlockingDeque<Object> receiver, long timeout,
+                                   TimeUnit unit) throws InterruptedException {
+        record(receiver, "pollLast", true);
+        Object taken = receiver.pollLast(timeout, unit);
+        TelemetryRegistry.ownershipTaken(taken, receiver);
+        return taken;
     }
 }

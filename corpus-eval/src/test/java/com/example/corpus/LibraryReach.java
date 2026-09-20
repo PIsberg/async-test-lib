@@ -33,6 +33,10 @@ final class LibraryReach {
     private static final Map<DetectorType, String> UNREACHED = new EnumMap<>(DetectorType.class);
 
     static {
+        unreached(DetectorType.MISSED_SIGNAL,
+                "a firing library row needs a library method that waits behind an if, and no "
+                        + "corpus library ships that defect; Object.wait inside a library is "
+                        + "woven by the same MONITOR_ENTRIES the jdk: pair goes through");
         unreached(DetectorType.EXPLICIT_GC,
                 "no corpus library calls System.gc, and the detector is refused a pair in every "
                         + "lane anyway (DetectorCoverage)");
@@ -53,7 +57,7 @@ final class LibraryReach {
         reached.addAll(CorpusGates.exercisedAgentDetectors());
         for (RecordingSubject loud : Corpus.subjectsFor(CorpusLane.AGENT_PAIRS)) {
             if (loud.expectation() != RecordingSubject.Expectation.MUST_FIRE
-                    || loud.library().startsWith("jdk:")) {
+                    || !Corpus.wovenCallSiteIsInsideTheLibrary(loud)) {
                 continue;
             }
             if (AgentRowPremise.twinOf(loud) != null) {

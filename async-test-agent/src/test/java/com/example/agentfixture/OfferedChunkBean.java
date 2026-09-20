@@ -6,9 +6,16 @@ import com.example.agentfixture.jctools.queues.MessagePassingQueue;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -32,23 +39,36 @@ public final class OfferedChunkBean {
     private static final VarHandle HANDLE_SLOT;
     private static final AtomicReferenceFieldUpdater<OfferedChunkBean, Chunk> UPDATER_SLOT =
             AtomicReferenceFieldUpdater.newUpdater(OfferedChunkBean.class, Chunk.class, "updaterSlot");
+    private static final AtomicReferenceFieldUpdater<OfferedChunkBean, Chunk> SIBLING_UPDATER_SLOT =
+            AtomicReferenceFieldUpdater.newUpdater(OfferedChunkBean.class, Chunk.class,
+                    "siblingUpdaterSlot");
+    private static final VarHandle SIBLING_HANDLE_SLOT;
 
     static {
         try {
             HANDLE_SLOT = MethodHandles.lookup().findVarHandle(OfferedChunkBean.class, "handleSlot",
                     Chunk.class);
+            SIBLING_HANDLE_SLOT = MethodHandles.lookup().findVarHandle(OfferedChunkBean.class,
+                    "siblingHandleSlot", Chunk.class);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
         }
     }
 
     private final AtomicReference<Chunk> slot = new AtomicReference<>();
-    private final AtomicReferenceArray<Chunk> slots = new AtomicReferenceArray<>(1);
+    private final AtomicReferenceArray<Chunk> slots = new AtomicReferenceArray<>(2);
     private final MessagePassingQueue<Chunk> queue = new LockedMessagePassingQueue<>();
     private final BlockingQueue<Chunk> blocking = new LinkedBlockingQueue<>();
+    private final Deque<Chunk> deque = new ConcurrentLinkedDeque<>();
+    private final BlockingDeque<Chunk> blockingDeque = new LinkedBlockingDeque<>();
+    private final Queue<Chunk> plain = new ConcurrentLinkedQueue<>();
     private final Object lock = new Object();
     @SuppressWarnings("unused") // written through HANDLE_SLOT
     private volatile Chunk handleSlot;
+    @SuppressWarnings("unused") // written through SIBLING_HANDLE_SLOT
+    private volatile Chunk siblingHandleSlot;
+    @SuppressWarnings("unused") // written through SIBLING_UPDATER_SLOT
+    private volatile Chunk siblingUpdaterSlot;
     @SuppressWarnings("unused") // written through UPDATER_SLOT
     private volatile Chunk updaterSlot;
 
@@ -75,6 +95,21 @@ public final class OfferedChunkBean {
     /** {@return the blocking queue} */
     public BlockingQueue<Chunk> blocking() {
         return blocking;
+    }
+
+    /** {@return the deque the end-specific shapes use (#692)} */
+    public Deque<Chunk> deque() {
+        return deque;
+    }
+
+    /** {@return the blocking deque the blocking and timed end-specific shapes use (#692)} */
+    public BlockingDeque<Chunk> blockingDeque() {
+        return blockingDeque;
+    }
+
+    /** {@return the plain queue the bulk-offer and removal shapes use (#692)} */
+    public Queue<Chunk> plain() {
+        return plain;
     }
 
     // ---- Offers --------------------------------------------------------------------------------
@@ -123,6 +158,34 @@ public final class OfferedChunkBean {
         return blocking.offer(chunk);
     }
 
+    public boolean offerFirstToDeque(Chunk chunk) {
+        return deque.offerFirst(chunk);
+    }
+
+    public boolean offerLastToDeque(Chunk chunk) {
+        return deque.offerLast(chunk);
+    }
+
+    public void addFirstToDeque(Chunk chunk) {
+        deque.addFirst(chunk);
+    }
+
+    public void addLastToDeque(Chunk chunk) {
+        deque.addLast(chunk);
+    }
+
+    public void pushToDeque(Chunk chunk) {
+        deque.push(chunk);
+    }
+
+    public boolean addAllToPlain(Chunk chunk) {
+        return plain.addAll(List.of(chunk));
+    }
+
+    public boolean offerToPlain(Chunk chunk) {
+        return plain.offer(chunk);
+    }
+
     // ---- Takes ---------------------------------------------------------------------------------
 
     public Chunk takeFromSlot() {
@@ -167,6 +230,103 @@ public final class OfferedChunkBean {
         List<Chunk> drained = new ArrayList<>();
         blocking.drainTo(drained, max);
         return drained;
+    }
+
+    public Chunk pollFirstFromDeque() {
+        return deque.pollFirst();
+    }
+
+    public Chunk pollLastFromDeque() {
+        return deque.pollLast();
+    }
+
+    public Chunk removeFirstFromDeque() {
+        return deque.removeFirst();
+    }
+
+    public Chunk removeLastFromDeque() {
+        return deque.removeLast();
+    }
+
+    public Chunk popFromDeque() {
+        return deque.pop();
+    }
+
+    public Chunk removeHeadOfPlain() {
+        return plain.remove();
+    }
+
+    /** Removes the head by naming it, the way a cancellation path does. */
+    public Chunk removeFromPlainByName() {
+        Chunk head = plain.peek();
+        return plain.remove(head) ? head : null;
+    }
+
+    /** Empties the plain queue through a predicate, which names no element. */
+    public boolean removeEveryChunkFromPlain() {
+        return plain.removeIf(chunk -> true);
+    }
+
+    // ---- BlockingDeque: the blocking and timed forms at each end (#692) ------------------------
+
+    public boolean putFirstToBlockingDeque(Chunk chunk) throws InterruptedException {
+        blockingDeque.putFirst(chunk);
+        return true;
+    }
+
+    public boolean putLastToBlockingDeque(Chunk chunk) throws InterruptedException {
+        blockingDeque.putLast(chunk);
+        return true;
+    }
+
+    public boolean timedOfferFirstToBlockingDeque(Chunk chunk) throws InterruptedException {
+        return blockingDeque.offerFirst(chunk, 1, TimeUnit.SECONDS);
+    }
+
+    public boolean timedOfferLastToBlockingDeque(Chunk chunk) throws InterruptedException {
+        return blockingDeque.offerLast(chunk, 1, TimeUnit.SECONDS);
+    }
+
+    public Chunk takeFirstFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.takeFirst();
+    }
+
+    public Chunk takeLastFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.takeLast();
+    }
+
+    public Chunk timedPollFirstFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.pollFirst(1, TimeUnit.SECONDS);
+    }
+
+    public Chunk timedPollLastFromBlockingDeque() throws InterruptedException {
+        return blockingDeque.pollLast(1, TimeUnit.SECONDS);
+    }
+
+    // ---- The sibling slots: a second field of this object, a second element of the array (#692)
+
+    public void offerThroughSiblingUpdater(Chunk chunk) {
+        SIBLING_UPDATER_SLOT.set(this, chunk);
+    }
+
+    public Chunk takeThroughSiblingUpdater() {
+        return SIBLING_UPDATER_SLOT.getAndSet(this, null);
+    }
+
+    public void offerThroughSiblingHandle(Chunk chunk) {
+        SIBLING_HANDLE_SLOT.setRelease(this, chunk);
+    }
+
+    public Chunk takeThroughSiblingHandle() {
+        return (Chunk) SIBLING_HANDLE_SLOT.getAndSet(this, (Chunk) null);
+    }
+
+    public void offerToSiblingArrayElement(Chunk chunk) {
+        slots.set(1, chunk);
+    }
+
+    public Chunk takeFromSiblingArrayElement() {
+        return slots.getAndSet(1, null);
     }
 
     // ---- Uses ----------------------------------------------------------------------------------

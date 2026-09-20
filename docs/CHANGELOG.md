@@ -9,9 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The agent weaves `Object.wait`, `notify` and `notifyAll`, so `MissedSignalDetector` works on
+  code that records nothing (#694).** With `collections=true` the three calls are substituted in
+  the included classes and recorded by `AgentMonitorHooks` while the monitor is held, so the waiter
+  set a notify is judged against is the threads really inside `wait()`. The weaver also inserts a
+  call to `loopBackEdge()` in front of every backward jump that comes back over a woven wait: a
+  wait whose thread reaches it after waking, in the same round, is a `while (!ready)` loop's and is
+  never reported, and a wait with no such jump is judged like `recordWait(monitor, false)`. The
+  inserted call takes and returns nothing, so it adds no branch and no frame. A wait the body
+  recorded itself is not observed a second time, and a recorded notify is not counted twice, so
+  existing `recordWait`/`recordPredicateCheck` users see no change. `MISSED_SIGNAL` moves to the
+  agent-fed table (19 agent-fed detectors, 124 recording-only) and gains the corpus agent pair
+  `agent_wait_behindAnIf` / `agent_wait_insideAPredicateLoop`. It stays `PROMPT`: the back-edge is
+  per method, so a loop in one method around a bare `wait()` in another reads as an `if`.
+
 - **`MissedSignalDetector.recordLoopStart(Object)` and `recordLoopEnd(Object)` mark a `while (!ready)` loop around waits on a monitor (#669).** Once a monitor has a marked loop, an undeclared wait inside one is guarded and a wait outside every mark is judged unguarded, so `if (!ready) wait()` followed later by a check that finds `ready` true, and two consecutive `if (!ready) wait()` blocks, are reported where the marked loop stays silent. Monitors nobody marks keep the `recordPredicateCheck` reading.
 
+### Changed
+
+- **The corpus pairs `ATOMICITY_VIOLATIONS` through the real JCTools queue (#692).**
+  `agent_jctoolsHandOff_offererWritesAfterTheOffer` and its silent twin use netty's shaded
+  `MpscArrayQueue`, which `netty-buffer` already brings, so no dependency was added. The woven
+  `offer` and `poll` are in the test body, so the pair is kept out of the library-exclusion lane
+  and out of `LibraryReach` by `Corpus.BODY_CALL_SITE_ROWS`: that lane requires a library row to go
+  silent when its library is not woven, and a hand-off is what makes a row silent. With the
+  weaver's `MessagePassingQueue` match disabled the silent twin fires. The pair is recorded in
+  `PairEvidence.HELD_ON_MODEL`, not promoted.
+
 ### Fixed
+
+- **The ownership model sees elements that enter or leave a queue through the `Deque` forms,
+  `addAll`, `remove()`, `remove(Object)` and `removeIf` (#692).** #664 wove `offer`, `add`, `put`,
+  `poll`, `take` and `drainTo`. An element that went in through `Deque.offerFirst`, `offerLast`,
+  `addFirst`, `addLast`, `push` or `Collection.addAll` had no recorded offer, so every thread got
+  the #557 excuse; one that came out through `Queue.remove()`, `remove(Object)` or the `Deque`
+  `pollFirst`/`pollLast`/`removeFirst`/`removeLast`/`pop` was never a take, so the offerer's own
+  late write after such a hand-off was reported as a race. All of these are now table entries in
+  `CollectionAccessWeaver` with hooks that publish the offer before the call and the take after
+  it, and `removeIf` on a queue drops the queue's recorded offers the way `drainTo` does. So are
+  the forms only `BlockingDeque` declares: `putFirst`, `putLast`, `takeFirst`, `takeLast` and the
+  timed `offerFirst`, `offerLast`, `pollFirst` and `pollLast`. The same
+  hooks record the call for `SharedCollectionDetector`, which did not see these methods either.
+  Still open in #692: `VarHandle` takes from a static field or an array element, and removal
+  through an iterator.
+
+- **A reference slot is its own container, not its holder (#692).** An offer through an
+  `AtomicReferenceFieldUpdater`, an instance-field `VarHandle` or an `AtomicReferenceArray` named
+  the receiver or the array as its container, so two reference fields of one object, or two
+  elements of one array, read as one. An object offered into one slot, moved by code the agent
+  does not see, and taken out of the sibling then matched the first offer, and its offerer was
+  named the owner of a hand-off it was not part of. The container is now the holder combined with
+  the updater, the handle or the index, which both ends have in hand. A slot reached through two
+  different handles reads as two containers, which can only lose a match and fall back to the #557
+  excuse.
 
 - **Reports name the version of the jar that wrote them (#703).** `JsonReportListener` wrote
   `"asyncTestVersion": "1.6.0"` from a literal while the library was at 1.12.1, and the SARIF

@@ -1169,6 +1169,45 @@ final class Corpus {
                             + "a detector that reported this one would fire on every backoff loop "
                             + "and every poll interval ever written"),
 
+            new RecordingSubject("agent_jctoolsHandOff_offererWritesAfterTheOffer", NETTY,
+                    "io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueue",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the real JCTools MpscArrayQueue, netty's shaded copy, handing an object from "
+                            + "its offerer to whoever polls it. The offerer writes to it again "
+                            + "after the offer, in the generation the taker now owns, so two "
+                            + "threads write one field with nothing in common. The woven "
+                            + "MessagePassingQueue.offer and poll are what name the two owners "
+                            + "(#664, #692)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_jctoolsHandOff_offererLetsGo", NETTY,
+                    "io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueue",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same offer and the same poll, and the offerer does not touch the object "
+                            + "again. Two threads still write the one field, the offerer before "
+                            + "the offer and the taker after the poll, which is a hand-off"),
+
+            new RecordingSubject("agent_wait_behindAnIf", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread signals and then waits behind an if. The first notifyAll of a "
+                            + "round finds nobody waiting and the last wait of the round receives "
+                            + "none, so it needed a signal that was already gone. Both calls are "
+                            + "seen by the woven hooks under the monitor they hold (#694)",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("agent_wait_insideAPredicateLoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same notifyAll and the same timed wait, inside while (!handedOff). The "
+                            + "wait runs out after a lost notify exactly as its twin's does; the "
+                            + "backward jump around it is what the weaver marks, and a loop "
+                            + "re-tests the state a lost notify announced"),
+
             new RecordingSubject("agent_sleepStamped_whileHoldingTheWriteStamp", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
@@ -4235,10 +4274,32 @@ final class Corpus {
             // The library rows only: a JDK row calls the JDK from the test file, so excluding the
             // libraries from weaving says nothing about where its finding came from.
             return AGENT_SUBJECTS.stream()
-                    .filter(subject -> !subject.library().startsWith("jdk:"))
+                    .filter(Corpus::wovenCallSiteIsInsideTheLibrary)
                     .toList();
         }
         return lane == CorpusLane.AGENT_PAIRS ? AGENT_SUBJECTS : RECORDING_SUBJECTS;
+    }
+
+    /**
+     * Agent rows whose subject type comes from a library but whose woven call site is the test
+     * body (#692).
+     *
+     * <p>Lane five assumes a library row's finding comes from a call woven inside the library, so
+     * with the library excluded the row must go silent. A hand-off is the other way round: the
+     * woven {@code offer} and {@code poll} sit in the body, where the weaver matches the queue's
+     * interface by name, and they are what excuses the second thread, so excluding the library
+     * changes nothing and the firing row keeps firing. Such a row measures the real library type,
+     * not library bytecode. It is kept out of lane five and out of {@link LibraryReach}, the two
+     * places that claim the latter, and is an ordinary agent pair everywhere else.
+     */
+    private static final Set<String> BODY_CALL_SITE_ROWS = Set.of(
+            "agent_jctoolsHandOff_offererWritesAfterTheOffer",
+            "agent_jctoolsHandOff_offererLetsGo");
+
+    /** {@return whether {@code subject}'s finding is claimed to come from a call woven inside its library} */
+    static boolean wovenCallSiteIsInsideTheLibrary(RecordingSubject subject) {
+        return !subject.library().startsWith("jdk:")
+                && !BODY_CALL_SITE_ROWS.contains(subject.testMethod());
     }
 
     /** {@return the detectors {@code lane} pairs, which is its whole denominator} */

@@ -84,6 +84,11 @@ public final class DetectorFeeds {
             // depends entirely on whether a lock was held, which the lockset already knew and no
             // stack trace records, so the two halves only had to be introduced.
             DetectorType.SLEEP_IN_LOCK,
+            // Object.wait, notify and notifyAll (#694). Object exposes neither its waiters nor
+            // whether a notify reached one, so the detector could only judge what a body said
+            // about itself. Woven, both calls are seen under the monitor they hold, and the loop
+            // around a wait is seen as the backward jump that comes back over it.
+            DetectorType.MISSED_SIGNAL,
             // System.gc is the second static substitution, and unlike the sleep it needs no
             // guard: an explicit collection is a full stop-the-world pause that distorts every
             // latency the run measures and reschedules the interleavings it exists to explore,

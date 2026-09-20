@@ -81,18 +81,18 @@ and listed in [DETECTOR_CATALOG.md](../DETECTOR_CATALOG.md#what-feeds-each-detec
 
 | Feed | Detectors | Fed in `agent-on` | Fed in `agent-off` |
 |---|---:|---|---|
-| `AGENT` | 18 | yes, by the woven field and collection streams | no, there are no woven streams |
+| `AGENT` | 19 | yes, by the woven field and collection streams | no, there are no woven streams |
 | `ZERO_CONFIG` | 3 | yes, by `ThreadMXBean`, thread dumps and the runner | yes, the same |
-| `RECORDING` | 125 | no, nothing here calls a `record*` API | no, the same |
+| `RECORDING` | 124 | no, nothing here calls a `record*` API | no, the same |
 
-So the attached lane exposes 21 detectors of 146 and the control lane 3. Seven of the eighteen
+So the attached lane exposes 22 detectors of 146 and the control lane 3. Seven of the nineteen
 agent-fed produce every finding this eval has recorded. Two of them, `AtomicityValidator` and
 `SharedCollectionDetector`, did so alone until the sixth wave added JDK subjects whose documented
 defect is the one a shared-instance detector models: a `StringBuilder`, a `SimpleDateFormat`, a
-`Matcher`, a `DecimalFormat` and a `Formatter`. The other eleven model locks, latches, queues,
-calendars, digests and GC calls, and a corpus whose entire test body is "share one instance and call it" never writes
+`Matcher`, a `DecimalFormat` and a `Formatter`. The other twelve model locks, latches, queues,
+calendars, digests, GC calls and, since #694, a wait behind an `if`, and a corpus whose entire test body is "share one instance and call it" never writes
 those idioms down for them to see. Their silence is correct, which is why the detection gate names
-the two and not the eighteen. That is the denominator for everything below, and it is checked
+the two and not the nineteen. That is the denominator for everything below, and it is checked
 rather than asserted: `CorpusGates` fails the run if a detector the feed table says cannot be fed
 reports anyway, and fails the control lane if any agent-fed detector is heard from at all. The
 control lane's measured result is zero findings from zero exposed agent-fed detectors, which is
@@ -121,11 +121,12 @@ Per exposed detector, over the 100 documented-safe and 39 documented-unsafe subj
 | `ExplicitGcDetector` | AGENT | 100 | 0 | 39 | 0 |
 | `TryLockMisuseDetector` | AGENT | 100 | 0 | 39 | 0 |
 | `LatchMisuseDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `MissedSignalDetector` | AGENT | 100 | 0 | 39 | 0 |
 | `DeadlockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
 | `LivelockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
 | `StaticInitDeadlockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
 
-The eleven agent-fed zeroes are not eleven failures. They model locks, latches, queues, calendars,
+The twelve agent-fed zeroes are not twelve failures. They model locks, latches, queues, calendars,
 digests and GC calls, and no subject here writes those idioms down. The five shared-instance detectors that now
 fire are also the clearest case of a correct zero: `StringBuilderDetector` is exposed on all 139
 subjects, one of which is a `StringBuffer` shared across six threads, and it says nothing there,
@@ -2101,14 +2102,31 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, 17 of the 18 agent-fed detectors are measured in both directions on call sites inside a
-library. `LibraryReach` records why the eighteenth is not, and
+added below, 17 of the 19 agent-fed detectors are measured in both directions on call sites inside a
+library. `LibraryReach` records why the other two are not, and
 `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
 | Detector | Why no corpus library reaches it |
 |---|---|
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
+| `MISSED_SIGNAL` | agent-fed since #694. A firing library row needs a library method that waits behind an `if`, and no corpus library ships that defect; `agent_wait_behindAnIf` and its looped twin pair it on `jdk:` call sites through the same `MONITOR_ENTRIES` |
+
+**A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
+and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,
+the copy netty shades into `netty-common`, which `netty-buffer` already brings, so no dependency
+was added. It is the first agent pair for `ATOMICITY_VIOLATIONS`. The woven `offer` and `poll` sit
+in the test body, where the weaver matches `MessagePassingQueue` by the tail of its name, and they
+are what names the two owners: with that match disabled the silent twin fires, which is how the
+pair was checked. That also makes it the opposite of a library row. Lane five assumes a library
+row's finding comes from a call woven inside the library and must vanish when the library is
+excluded, and here excluding `io.netty` changes nothing. So `Corpus.BODY_CALL_SITE_ROWS` keeps the
+pair out of lane five and out of `LibraryReach`, the two places that claim library bytecode, and it
+is an ordinary agent pair everywhere else. The rows line their workers up between the steps: on
+their first run each worker finished before the next began, polled its own object, and both rows
+were silent for a reason unrelated to the detector. The pair is held in `PairEvidence.HELD_ON_MODEL`
+rather than promoted, because a hand-off through a path the agent does not weave still reads as an
+alias on correct code.
 
 **The last two, and a reason that was wrong.** Until #545 the table had two more rows.
 `SHARED_MATCHER` was there because every corpus library builds a `Matcher` per call, which is the
