@@ -81,18 +81,18 @@ and listed in [DETECTOR_CATALOG.md](../DETECTOR_CATALOG.md#what-feeds-each-detec
 
 | Feed | Detectors | Fed in `agent-on` | Fed in `agent-off` |
 |---|---:|---|---|
-| `AGENT` | 18 | yes, by the woven field and collection streams | no, there are no woven streams |
+| `AGENT` | 19 | yes, by the woven field and collection streams | no, there are no woven streams |
 | `ZERO_CONFIG` | 3 | yes, by `ThreadMXBean`, thread dumps and the runner | yes, the same |
-| `RECORDING` | 125 | no, nothing here calls a `record*` API | no, the same |
+| `RECORDING` | 124 | no, nothing here calls a `record*` API | no, the same |
 
-So the attached lane exposes 21 detectors of 146 and the control lane 3. Seven of the eighteen
+So the attached lane exposes 22 detectors of 146 and the control lane 3. Seven of the nineteen
 agent-fed produce every finding this eval has recorded. Two of them, `AtomicityValidator` and
 `SharedCollectionDetector`, did so alone until the sixth wave added JDK subjects whose documented
 defect is the one a shared-instance detector models: a `StringBuilder`, a `SimpleDateFormat`, a
-`Matcher`, a `DecimalFormat` and a `Formatter`. The other eleven model locks, latches, queues,
-calendars, digests and GC calls, and a corpus whose entire test body is "share one instance and call it" never writes
+`Matcher`, a `DecimalFormat` and a `Formatter`. The other twelve model locks, latches, queues,
+calendars, digests, GC calls and, since #694, a wait behind an `if`, and a corpus whose entire test body is "share one instance and call it" never writes
 those idioms down for them to see. Their silence is correct, which is why the detection gate names
-the two and not the eighteen. That is the denominator for everything below, and it is checked
+the two and not the nineteen. That is the denominator for everything below, and it is checked
 rather than asserted: `CorpusGates` fails the run if a detector the feed table says cannot be fed
 reports anyway, and fails the control lane if any agent-fed detector is heard from at all. The
 control lane's measured result is zero findings from zero exposed agent-fed detectors, which is
@@ -121,11 +121,12 @@ Per exposed detector, over the 100 documented-safe and 39 documented-unsafe subj
 | `ExplicitGcDetector` | AGENT | 100 | 0 | 39 | 0 |
 | `TryLockMisuseDetector` | AGENT | 100 | 0 | 39 | 0 |
 | `LatchMisuseDetector` | AGENT | 100 | 0 | 39 | 0 |
+| `MissedSignalDetector` | AGENT | 100 | 0 | 39 | 0 |
 | `DeadlockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
 | `LivelockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
 | `StaticInitDeadlockDetector` | ZERO_CONFIG | 100 | 0 | 39 | 0 |
 
-The eleven agent-fed zeroes are not eleven failures. They model locks, latches, queues, calendars,
+The twelve agent-fed zeroes are not twelve failures. They model locks, latches, queues, calendars,
 digests and GC calls, and no subject here writes those idioms down. The five shared-instance detectors that now
 fire are also the clearest case of a correct zero: `StringBuilderDetector` is exposed on all 139
 subjects, one of which is a `StringBuffer` shared across six threads, and it says nothing there,
