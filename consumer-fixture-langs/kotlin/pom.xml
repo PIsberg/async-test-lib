@@ -18,6 +18,12 @@
             <version>${kotlin.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-agent</artifactId>
+            <version>${async-test.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -37,9 +43,29 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- The agent jar's own path, so the argLine below can name it (#714). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven-dependency-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>resolve-agent-jar-path</id>
+                        <phase>process-test-classes</phase>
+                        <goals><goal>properties</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- premain rather than self-attach: a self-attach that is refused turns the
+                         wait gates into skips, and a skipped gate is not a passed gate. includes=
+                         is scoped to the bean package so the two race-condition fixtures next door
+                         keep running unwoven (#714). -->
+                    <argLine>-javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=includes=com.example.kotlinfixture,collections=true</argLine>
+                </configuration>
             </plugin>
         </plugins>
     </build>

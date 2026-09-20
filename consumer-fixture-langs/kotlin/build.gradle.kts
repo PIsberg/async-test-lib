@@ -5,3 +5,28 @@ plugins {
 kotlin {
     jvmToolchain(21)
 }
+
+// Gradle twin of the -javaagent argLine in kotlin/pom.xml (#714). The wait gates need the agent
+// weaving Kotlin bytecode, and premain rather than a self-attach: a self-attach that is refused
+// turns them into skips, and a skipped gate is not a passed gate. Its own configuration, not
+// testRuntimeOnly, because what is wanted is the jar's path and not its contents on the
+// classpath; non-transitive because the published agent jar already shades byte-buddy.
+val asyncTestAgent = configurations.create("asyncTestAgent") {
+    isTransitive = false
+}
+
+dependencies {
+    asyncTestAgent("se.deversity.async-test-lib:async-test-agent:${rootProject.extra["asyncTestVersion"]}")
+}
+
+tasks.withType<Test>().configureEach {
+    // doFirst so the configuration is resolved when the task runs rather than while the build is
+    // being configured. includes= is scoped to the bean package so the two race-condition
+    // fixtures next door keep running unwoven.
+    doFirst {
+        jvmArgs(
+            "-javaagent:${asyncTestAgent.singleFile}" +
+                "=includes=com.example.kotlinfixture,collections=true"
+        )
+    }
+}
