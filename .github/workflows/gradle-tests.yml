@@ -113,6 +113,66 @@ jobs:
             consumer-fixture-langs/*/build/reports/tests/
           retention-days: 7
 
+  # intellij-plugin/ is a standalone Gradle build with its own wrapper, so the jobs above never
+  # touch it. Until this job existed nothing built it, and it stopped building without anyone
+  # being told. verifyPlugin is left out on purpose: it downloads every recommended IDE release.
+  intellij-plugin:
+    name: IntelliJ Plugin (test + buildPlugin)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            cache-redirector.jetbrains.com:443
+            download.jetbrains.com:443
+            download-cdn.jetbrains.com:443
+            downloads.gradle-dn.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            plugins.gradle.org:443
+            plugins.jetbrains.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            results-receiver.actions.githubusercontent.com:443
+            services.gradle.org:443
+            www.jetbrains.com:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          gradle-version: wrapper
+
+      - name: Run plugin tests and build the plugin ZIP
+        working-directory: intellij-plugin
+        run: ./gradlew test buildPlugin
+
+      # A green Gradle run does not prove the suite executed. Fail unless a result file exists
+      # and reports at least one test.
+      - name: Check the plugin tests ran and the ZIP exists
+        working-directory: intellij-plugin
+        run: |
+          set -euo pipefail
+          ls -l build/distributions/*.zip
+          grep -h -o '<testsuite [^>]*' build/test-results/test/*.xml
+          if grep -h -o '<testsuite [^>]*' build/test-results/test/*.xml | grep -q 'tests="0"'; then
+            echo "A plugin test suite ran zero tests"; exit 1
+          fi
+
   gradle-examples-pr-detect:
     name: Detect changed Gradle examples (PR)
     runs-on: ubuntu-latest
