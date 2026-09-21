@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The IntelliJ plugin builds again, and stops losing findings.** Three defects, none of which a
+  workflow could have reported because no workflow builds `intellij-plugin/`. Its Gradle 8.13
+  wrapper could not start on JDK 26, where `./gradlew buildPlugin` failed with
+  the whole message being `26`; the wrapper is now 9.7.1 like the root build, with
+  `org.jetbrains.intellij.platform` 2.19.0 and an explicit `junit-platform-launcher`, both of
+  which Gradle 9 requires. `JsonReportParser` split the findings array by counting braces without
+  tracking strings, so a report text holding one unbalanced `{` dropped that finding and every
+  later one, and a `}` truncated it; it also printed the `\u00XX` escapes `JsonReportListener`
+  writes for control characters as literal text. And the Refresh button the README describes did
+  not exist: the action was only in the Tools menu, and is now also in the tool window title bar.
+  The `.intellijPlatform/` cache, which every build rewrote, is no longer tracked.
+
 ## [1.12.2] - 2026-09-21
 
 ### Added
