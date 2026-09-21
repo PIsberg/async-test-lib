@@ -1,6 +1,6 @@
 plugins {
     id("java")
-    id("org.jetbrains.intellij.platform") version "2.6.0"
+    id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
 group = "se.deversity.asynctest"
@@ -25,6 +25,9 @@ dependencies {
     }
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
+    // Gradle 9 no longer puts a launcher on the test runtime classpath itself. JUnit 5.x
+    // numbers the platform 1.x, so Jupiter 5.11.0 pairs with launcher 1.11.0.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.0")
 }
 
 tasks.test {
