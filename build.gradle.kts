@@ -11,6 +11,9 @@ plugins {
     id("net.ltgt.errorprone") version "5.1.1" apply false
     id("com.github.spotbugs") version "6.5.11" apply false
     id("org.cyclonedx.bom") version "3.4.1"
+    // Shades a relocated Byte Buddy into the agent jar, as maven-shade-plugin does. Applied only
+    // by async-test-agent (#719).
+    id("com.gradleup.shadow") version "9.6.1" apply false
 }
 
 // ── Dependency versions ─────────────────────────────────────────────────────
@@ -195,11 +198,12 @@ subprojects {
         // and would run intentionally-buggy "Dummy" fixtures directly, causing failures.
         filter {
             excludeTestsMatching("*\$*")
-            // Failsafe integration tests (*IT) verify the Maven-packaged artifact — for
-            // the agent, the shaded jar that only the Maven build produces. Gradle builds
-            // an unshaded jar for local iteration, so running them here would fail on a
-            // difference that is expected. Maven (`mvn verify`, and CI's `mvn clean
-            // install`) is the build that runs them.
+            // Failsafe integration tests (*IT) verify the packaged artifact, which for the
+            // agent is the shaded jar. They are excluded here because `test` runs against
+            // classes dirs, not the packaged jar; async-test-agent runs them in its own
+            // agentJarIntegrationTest task instead, against what this build packages. That
+            // task exists because the exclusion used to mean the Gradle jar was never
+            // attached by anything, and it shipped unusable as an agent (#719).
             excludeTestsMatching("*IT")
         }
     }
