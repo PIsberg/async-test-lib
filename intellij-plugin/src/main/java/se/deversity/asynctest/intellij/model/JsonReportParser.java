@@ -45,12 +45,19 @@ public final class JsonReportParser {
         if (arrayStart < 0 || arrayEnd < arrayStart) return results;
 
         String findingsArray = json.substring(arrayStart + 1, arrayEnd);
-        // Split on object boundaries — each finding is a { ... } block
+        // Split on object boundaries — each finding is a { ... } block. Braces inside a string
+        // are report text, not structure, so they must not move the depth.
         int depth = 0;
         int objStart = -1;
+        boolean inString = false;
         for (int i = 0; i < findingsArray.length(); i++) {
             char c = findingsArray.charAt(i);
-            if (c == '{') {
+            if (inString) {
+                if (c == '\\') i++;
+                else if (c == '"') inString = false;
+            } else if (c == '"') {
+                inString = true;
+            } else if (c == '{') {
                 if (depth == 0) objStart = i;
                 depth++;
             } else if (c == '}') {
@@ -102,15 +109,26 @@ public final class JsonReportParser {
             char c = json.charAt(i);
             if (c == '\\' && i + 1 < json.length()) {
                 char next = json.charAt(i + 1);
+                int consumed = 2;
                 switch (next) {
                     case '"'  -> sb.append('"');
                     case '\\' -> sb.append('\\');
                     case 'n'  -> sb.append('\n');
                     case 'r'  -> sb.append('\r');
                     case 't'  -> sb.append('\t');
+                    case 'u'  -> {
+                        // The writer emits every control character below 0x20 in this form.
+                        int code = i + 6 <= json.length() ? hex4(json, i + 2) : -1;
+                        if (code >= 0) {
+                            sb.append((char) code);
+                            consumed = 6;
+                        } else {
+                            sb.append(next);
+                        }
+                    }
                     default   -> sb.append(next);
                 }
-                i += 2;
+                i += consumed;
             } else if (c == '"') {
                 break;
             } else {
@@ -119,6 +137,17 @@ public final class JsonReportParser {
             }
         }
         return sb.toString();
+    }
+
+    /** The four hex digits at {@code from} as a code unit, or -1 if any is not a hex digit. */
+    private static int hex4(String json, int from) {
+        int code = 0;
+        for (int i = from; i < from + 4; i++) {
+            int digit = Character.digit(json.charAt(i), 16);
+            if (digit < 0) return -1;
+            code = code * 16 + digit;
+        }
+        return code;
     }
 
     private static long extractLong(String json, String key) {

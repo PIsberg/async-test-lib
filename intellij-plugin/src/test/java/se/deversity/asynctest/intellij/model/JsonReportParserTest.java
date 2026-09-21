@@ -177,6 +177,57 @@ class JsonReportParserTest {
     }
 
     @Test
+    void parse_unbalancedBraceInReport_doesNotSwallowLaterFindings() throws IOException {
+        // A detector report is free text. A brace inside it is string content, not structure.
+        Path file = writeJson("""
+            {
+              "findings": [
+                {"detectorName": "First", "severity": "HIGH", "timestampMs": 0, "report": "state was {count=1"},
+                {"detectorName": "Second", "severity": "LOW", "timestampMs": 0, "report": "ok"}
+              ]
+            }
+            """);
+
+        List<DetectorFinding> findings = JsonReportParser.parse(file);
+        assertEquals(2, findings.size());
+        assertEquals("First", findings.get(0).detectorName);
+        assertEquals("state was {count=1", findings.get(0).report);
+        assertEquals("Second", findings.get(1).detectorName);
+    }
+
+    @Test
+    void parse_closingBraceInReport_doesNotTruncateFinding() throws IOException {
+        Path file = writeJson("""
+            {
+              "findings": [
+                {"detectorName": "First", "severity": "HIGH", "timestampMs": 0, "report": "leaked } here"},
+                {"detectorName": "Second", "severity": "LOW", "timestampMs": 0, "report": "ok"}
+              ]
+            }
+            """);
+
+        List<DetectorFinding> findings = JsonReportParser.parse(file);
+        assertEquals(2, findings.size());
+        assertEquals("leaked } here", findings.get(0).report);
+        assertEquals("Second", findings.get(1).detectorName);
+    }
+
+    @Test
+    void parse_unicodeEscapeInReport_decodedToTheCharacter() throws IOException {
+        // JsonFormatter.jsonString writes every control character below 0x20 as \\u00XX.
+        Path file = writeJson("""
+            {
+              "findings": [
+                {"detectorName": "D", "severity": "HIGH", "timestampMs": 0, "report": "a\\u001bb"}
+              ]
+            }
+            """);
+
+        List<DetectorFinding> findings = JsonReportParser.parse(file);
+        assertEquals("a\u001bb", findings.get(0).report);
+    }
+
+    @Test
     void severityParse_allKnownValues() {
         assertEquals(DetectorFinding.Severity.CRITICAL, DetectorFinding.Severity.parse("CRITICAL"));
         assertEquals(DetectorFinding.Severity.HIGH,     DetectorFinding.Severity.parse("HIGH"));
