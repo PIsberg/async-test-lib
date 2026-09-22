@@ -172,6 +172,15 @@ cd intellij-plugin
 
 The plugin build is independent of the main library build — it does not need to be a subproject of the parent Gradle build.
 
+`verifyPlugin` runs the JetBrains Plugin Verifier against both ends of the declared compatibility
+range: the 2024.1 build target, which is the `since-build` floor, and the newest IntelliJ IDEA,
+resolved when the task runs rather than pinned, which can be an EAP build (on 2026-09-22 it was
+IU-263.5153.40). It downloads those IDEs, which is why the Gradle Tests workflow runs it on its
+schedule (and on demand) instead of on every pull request, and why
+`COMPATIBILITY_PROBLEMS`, `MISSING_DEPENDENCIES`, `INVALID_PLUGIN` and
+`SCHEDULED_FOR_REMOVAL_API_USAGES` are configured to fail the build: left at its default the task
+prints the problems it found and still succeeds.
+
 ---
 
 ## Troubleshooting

@@ -7,6 +7,9 @@ on:
     branches: [ main, develop ]
   schedule:
     - cron: '15 6 * * *'
+  # For the verifyPlugin job below, which is scheduled rather than per-PR: without a manual
+  # trigger a change to it could only be exercised by waiting for the next cron.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -115,7 +118,8 @@ jobs:
 
   # intellij-plugin/ is a standalone Gradle build with its own wrapper, so the jobs above never
   # touch it. Until this job existed nothing built it, and it stopped building without anyone
-  # being told. verifyPlugin is left out on purpose: it downloads every recommended IDE release.
+  # being told. verifyPlugin is not here but in intellij-plugin-verify below, which the schedule
+  # runs: it resolves whole IDE distributions and would put several GB on every PR.
   intellij-plugin:
     name: IntelliJ Plugin (test + buildPlugin)
     runs-on: ubuntu-latest
@@ -172,6 +176,102 @@ jobs:
           if grep -h -o '<testsuite [^>]*' build/test-results/test/*.xml | grep -q 'tests="0"'; then
             echo "A plugin test suite ran zero tests"; exit 1
           fi
+
+  # verifyPlugin (the JetBrains Plugin Verifier), which the job above deliberately leaves out
+  # because it resolves whole IDE distributions. Measured on 2026-09-22: 2.4 GB extracted for the
+  # 2024.1 floor and 4.4 GB for the newest IDEA, out of roughly 2.7 GB of archives. That is why
+  # this runs on the schedule rather than per PR, and why the Gradle cache is read-only here - an
+  # Actions cache holds 10 GB per repository in total, so writing an IDE into it would evict every
+  # other job's cache in exchange for a download that goes stale the next time JetBrains publishes.
+  #
+  # Which IDEs, and which verifier problems fail the build, live in intellij-plugin/build.gradle.kts
+  # next to the since-build floor they follow. See issue #722.
+  intellij-plugin-verify:
+    name: IntelliJ Plugin (verifyPlugin)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          # Three hosts beyond the plugin job's list, all reached only by the verifier:
+          # data.services.jetbrains.com serves the product-releases feed the newest-IDEA entry is
+          # resolved from, download.jetbrains.com the distributions themselves, and
+          # downloads.marketplace.jetbrains.com the plugins a verified plugin declares. A host
+          # missing from this list arrives as ECONNREFUSED, which reads like a network flake.
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            cache-redirector.jetbrains.com:443
+            data.services.jetbrains.com:443
+            download.jetbrains.com:443
+            download-cdn.jetbrains.com:443
+            downloads.gradle-dn.com:443
+            downloads.marketplace.jetbrains.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            plugins.gradle.org:443
+            plugins.jetbrains.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            resources.jetbrains.com:443
+            results-receiver.actions.githubusercontent.com:443
+            services.gradle.org:443
+            www.jetbrains.com:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Two JDKs on purpose. The build runs on 21, but the verifier is launched on the Java
+      # version the oldest verified IDE was built for - 17 for 2024.1 - and with only 21 present
+      # Gradle would have to provision a toolchain from a host this job does not allow.
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: |
+            17
+            21
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          gradle-version: wrapper
+          # Read the shared cache, never write to it: see the IDE sizes above.
+          cache-read-only: true
+
+      - name: Verify the plugin against both ends of its compatibility range
+        working-directory: intellij-plugin
+        run: ./gradlew verifyPlugin
+
+      # A green task is not proof that anything was verified: with no ides block the task
+      # resolves nine IDEs, with a bad filter it can resolve none and still succeed. Fail unless
+      # a verdict was written per IDE.
+      - name: Check the verifier verified both IDEs
+        working-directory: intellij-plugin
+        run: |
+          set -euo pipefail
+          verdicts=$(find build/reports/pluginVerifier -name verification-verdict.txt | sort)
+          count=$(printf '%s\n' "$verdicts" | grep -c . || true)
+          if [ "$count" -lt 2 ]; then
+            echo "verifyPlugin wrote $count verdict file(s); this job verifies two IDEs"
+            exit 1
+          fi
+          for verdict in $verdicts; do
+            echo "$verdict: $(cat "$verdict")"
+          done
+
+      - name: Upload the verifier reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: intellij-plugin-verifier-reports
+          path: intellij-plugin/build/reports/pluginVerifier/
+          retention-days: 14
 
   gradle-examples-pr-detect:
     name: Detect changed Gradle examples (PR)
