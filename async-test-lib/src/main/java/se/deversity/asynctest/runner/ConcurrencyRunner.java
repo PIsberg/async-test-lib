@@ -99,12 +99,19 @@ public class ConcurrencyRunner {
      * Said once per JVM, for the same reason as {@link #AGENT_ABSENCE_LOGGED}: a detector that
      * is enabled but cannot observe anything in this configuration.
      *
-     * <p>A platform thread inherits its daemon flag from the thread that created it, and virtual
-     * threads are always daemon. Under {@code useVirtualThreads = true} - the default - every
-     * {@code new Thread(...)} started from a test body is therefore already daemon before the
-     * body can get it wrong, and {@code DaemonThreadHygieneDetector} skips exactly those. A user
-     * who switches the detector on and gets a clean report has learned nothing, and has no way
-     * to tell that from a report meaning their code is fine. See issue #352.
+     * <p>A platform thread inherits its daemon flag from the thread that created it, and every
+     * worker this runner hands a body to is daemon: virtual threads always are, and the platform
+     * workers were made daemon so that a deadlocked one could not hold the JVM open (#479). So
+     * every {@code new Thread(...)} started from a test body is already daemon before the body
+     * can get it wrong, in either thread mode, and {@code DaemonThreadHygieneDetector} skips
+     * exactly those. A user who switches the detector on and gets a clean report has learned
+     * nothing, and has no way to tell that from a report meaning their code is fine.
+     *
+     * <p>What is left is worth naming in the hint, because it is the difference between a limit
+     * and a dead detector: a {@code ThreadFactory} that sets the flag itself decides it whoever
+     * calls it, and {@code Executors.defaultThreadFactory()}, the factory behind every JDK thread
+     * pool, sets it to false. A leaked pool thread is still reported. See issues #352 and #479,
+     * and {@code DaemonThreadHygieneObservabilityTest}, which pins both directions.
      *
      * <p>Package-visible so the log-contract test can rearm it.
      */
@@ -280,19 +287,24 @@ public class ConcurrencyRunner {
                 invocationContext.getExecutable().getName());
         }
 
-        // The daemon-hygiene detector is enabled and the runner is on virtual threads, which
-        // makes every thread the body creates daemon by inheritance — so the detector's rule
-        // ("skip anything that was already daemon") never has anything left to judge. Said
+        // The daemon-hygiene detector is enabled, and every thread the body creates inherits the
+        // daemon flag of a worker that is daemon in either thread mode — so the detector's rule
+        // ("skip anything that was already daemon") has nothing left to judge for those threads.
+        // Not conditioned on useVirtualThreads any more: that was the documented way to make the
+        // detector work until the platform workers became daemon too (#479), and announcing it
+        // only for virtual threads left the user who followed that advice with silence. Said
         // once per JVM, at INFO, for the same reason as runner.agent.absent above: the user
         // this affects does not have DEBUG on, and silence here reads as a clean bill of health.
-        if (config.detectDaemonThreadHygiene && config.useVirtualThreads
+        if (config.detectDaemonThreadHygiene
                 && DAEMON_HYGIENE_INERT_LOGGED.compareAndSet(false, true)) {
             log.info("runner.detector.inert test={} detector=DaemonThreadHygieneDetector "
-                    + "reason=\"useVirtualThreads=true makes every thread created in the test "
-                    + "body daemon by inheritance, and this detector only reports non-daemon "
-                    + "threads\" hint=\"set @AsyncTest(useVirtualThreads = false) on the test "
-                    + "that instruments threads, or read the report as 'not observed' rather "
-                    + "than 'clean'\"",
+                    + "reason=\"the runner's workers are daemon threads in both thread modes "
+                    + "(#479) and a thread inherits the daemon flag of the thread that created "
+                    + "it, so a thread the body constructs is already daemon, and this detector "
+                    + "only reports non-daemon threads\" hint=\"record a thread whose factory "
+                    + "sets the flag itself, such as Executors.defaultThreadFactory() or any JDK "
+                    + "thread pool, or one created outside the body; otherwise read the report as "
+                    + "'not observed' rather than 'clean'\"",
                 invocationContext.getExecutable().getName());
         }
 

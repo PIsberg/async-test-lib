@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`DaemonThreadHygieneDetector` stopped being able to see a thread a test body creates, and
+  said nothing about it (#730).** A thread inherits the daemon flag of the thread that created
+  it. When the runner's platform workers became daemon threads so that a deadlocked worker could
+  not hold the JVM open (#479), every `new Thread(...)` constructed inside a test body became
+  daemon in both thread modes, and this detector skips exactly those. `useVirtualThreads = false`
+  was the documented way round it, from #352, and stopped working; `examples/46-daemon-thread`
+  passed silently when enabled for a fortnight. The runner's one-shot `runner.detector.inert`
+  announcement was conditioned on `useVirtualThreads`, so the configuration the docs recommended
+  was the one that got no warning. It now fires whenever the detector is enabled, names the
+  workers rather than the thread mode, and points at what can still be judged: a thread whose
+  `ThreadFactory` sets the flag itself, such as anything from `Executors.defaultThreadFactory()`
+  or a JDK thread pool, and a thread created outside the body and recorded from inside it. The
+  javadoc, the `detectDaemonThreadHygiene` attribute, the diagnostics table and the catalog entry
+  say the same, the example demonstrates through a factory, and
+  `DaemonThreadHygieneObservabilityTest` pins both directions through the real runner. What
+  remains, a bare `new Thread` in a body that can never be judged and the same blind spot in one
+  `ThreadFactoryDetector` branch, is #731.
+
 - **The IntelliJ plugin builds again, and stops losing findings.** Three defects, none of which a
   workflow could have reported because no workflow builds `intellij-plugin/`. Its Gradle 8.13
   wrapper could not start on JDK 26, where `./gradlew buildPlugin` failed with

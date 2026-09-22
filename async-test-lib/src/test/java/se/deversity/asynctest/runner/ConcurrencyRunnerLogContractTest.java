@@ -167,13 +167,17 @@ class ConcurrencyRunnerLogContractTest {
             "the event names the detector that cannot observe anything: " + message);
         assertTrue(message.contains("test="),
             "the event names the test that triggered it: " + message);
-        assertTrue(message.contains("useVirtualThreads"),
-            "the reason names the setting that makes it inert: " + message);
+        assertTrue(message.contains("inherit"),
+            "the reason names the mechanism, because that is what tells the reader it applies "
+                + "to their code as well: " + message);
+        assertTrue(message.contains("Executors.defaultThreadFactory"),
+            "the hint names a thread this detector can still judge; an announcement that only "
+                + "says 'cannot see' leaves the user with no next step: " + message);
     }
 
     @Test
-    @DisplayName("the same run on platform threads says nothing: the detector can see")
-    void platformThreadRunsDoNotClaimTheDetectorIsInert() {
+    @DisplayName("the same run on platform threads says it too: the workers are daemon in both modes")
+    void platformThreadRunsAlsoAnnounceTheDetectorIsInert() {
         ConcurrencyRunner.DAEMON_HYGIENE_INERT_LOGGED.set(false);
 
         EngineTestKit.engine("junit-jupiter")
@@ -182,10 +186,22 @@ class ConcurrencyRunnerLogContractTest {
             .testEvents()
             .assertStatistics(stats -> stats.succeeded(1));
 
-        assertTrue(events().stream().noneMatch(m -> m.contains("detector=DaemonThreadHygieneDetector")),
-            "on platform threads a thread created in the body inherits the worker's non-daemon "
-                + "flag, so the detector can report; claiming otherwise would be false. Got: "
-                + events());
+        List<ILoggingEvent> announcements = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.detector.inert"))
+            .filter(e -> e.getFormattedMessage().contains("detector=DaemonThreadHygieneDetector"))
+            .toList();
+        assertEquals(1, announcements.size(),
+            "useVirtualThreads = false used to be the documented way to make this detector work, "
+                + "and stopped being one when the runner's platform workers became daemon threads "
+                + "so that a deadlocked worker could not hold the JVM open (#479). A thread the "
+                + "body creates inherits that flag in either mode, so the announcement belongs in "
+                + "both. Got: " + events());
+        assertSame(Level.INFO, announcements.get(0).getLevel(),
+            "INFO, not DEBUG: the user reading a clean daemon-hygiene report is exactly the "
+                + "user who will not have DEBUG enabled");
+        assertTrue(announcements.get(0).getFormattedMessage().contains("workers are daemon"),
+            "the reason names the runner's own workers, not the thread mode, because switching "
+                + "the mode no longer changes it: " + announcements.get(0).getFormattedMessage());
     }
 
     @Test

@@ -48,12 +48,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * usually is and the only shape in which a missing daemon flag costs anything.
  * @AfterEach stops them.
  *
- * WHY THIS DEMONSTRATION SETS useVirtualThreads = false:
- * A platform thread inherits the daemon flag of the thread that created it, and
- * virtual threads are always daemon. Under the default runner every
- * `new Thread(...)` started from a test body is therefore already a daemon
- * thread, and this detector has nothing to report however wrong the service is.
- * See issue #352.
+ * WHY THE SERVICE BUILDS ITS POLLER WITH A ThreadFactory:
+ * A thread inherits the daemon flag of the thread that created it, and @AsyncTest
+ * runs test bodies on daemon workers in both thread modes - virtual threads always
+ * are, and the platform workers were made daemon so a deadlocked one could not hold
+ * the JVM open (#479). So a poller built with `new Thread(...)` inside the body is
+ * already a daemon thread whatever BackgroundWorker does, and this detector has
+ * nothing to report however wrong the service is. useVirtualThreads = false was the
+ * documented way round that until 2026-09-03 and is not one any more (#730).
+ * Executors.defaultThreadFactory(), which is what every JDK thread pool uses, calls
+ * setDaemon(false) on each thread it hands back whoever calls it, so the flag is the
+ * service's decision again and the demonstration demonstrates.
  *
  * FIX:
  * Call thread.setDaemon(true) before thread.start(), or use a ThreadFactory
@@ -167,17 +172,21 @@ class BackgroundWorkerTest {
      * records every new thread. At analysis time it reports threads that are still
      * alive and not marked as daemon — a JVM-shutdown hygiene violation.
      *
+     * <p>The threads it can report are the ones {@code BackgroundWorker}'s
+     * {@code ThreadFactory} produced; see the class comment above for why a bare
+     * {@code new Thread(...)} in this body could not be one of them.
+     *
      * To see the detection:
      * 1. Remove @Disabled
      * 2. Run this test
      * 3. To fix: add thread.setDaemon(true) in BackgroundWorker.start()
      */
     @Disabled("Remove @Disabled to see the bug detected by DaemonThreadHygieneDetector")
-    // useVirtualThreads = false is not decoration. A platform thread inherits the daemon flag
-    // of the thread that created it, and virtual threads are always daemon, so under the default
-    // runner every `new Thread(...)` started from a test body is already a daemon thread and this
-    // detector has nothing to report. See issue #352.
-    @AsyncTest(threads = 8, invocations = 5, detectAll = false, useVirtualThreads = false,
+    // No useVirtualThreads = false: it used to be what made this detector able to see anything,
+    // and stopped being so when the runner's platform workers became daemon threads too (#730).
+    // The finding comes from the service's ThreadFactory instead, which decides the daemon flag
+    // whoever calls it - so this fires on the runner everybody actually gets, the default one.
+    @AsyncTest(threads = 8, invocations = 5, detectAll = false,
             detectDaemonThreadHygiene = true, failOn = FailOn.LOW)
     void testStart_concurrent_detectsNonDaemonThread() {
         // A poller, not a thousand additions. The detector reports non-daemon threads that are

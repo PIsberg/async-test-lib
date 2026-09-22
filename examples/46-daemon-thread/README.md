@@ -5,7 +5,7 @@ are not marked as daemon threads, preventing orderly JVM shutdown.
 
 ## The Problem
 
-`BackgroundWorker` spawns a new `Thread` for each unit of background work but
+`BackgroundWorker` spawns a thread for each unit of background work but
 never calls `thread.setDaemon(true)`. Because user threads prevent JVM exit,
 the application hangs after the main logic completes when any such thread is
 still alive.
@@ -23,23 +23,37 @@ expected a report about it. The demonstration now starts pollers, which keep run
 `shutdown()` asks them to stop, because a poller is what a background worker usually is and the
 only shape in which a missing daemon flag costs anything.
 
-**The demonstration has to set `useVirtualThreads = false`.** A platform thread inherits the
-daemon flag of the thread that created it, and virtual threads are always daemon. Under the
-default runner every `new Thread(...)` started from a test body is therefore already a daemon
-thread, and this detector has nothing to report however wrong the service is. Same service, same
-detector, same recording: with the default runner the demonstration passes with an empty report,
-and with `useVirtualThreads = false` it fails. That was
-[#352](https://github.com/PIsberg/async-test-lib/issues/352). The runner no longer stays quiet
-about it: the first time a JVM runs a virtual-thread test with this detector enabled it logs
+**The flag has to be the service's decision, not the runner's.** A thread inherits the daemon
+flag of the thread that created it, and every worker `@AsyncTest` hands a body to is a daemon
+thread: virtual threads always are, and the platform workers were made daemon so that a
+deadlocked one could not hold the JVM open
+([#479](https://github.com/PIsberg/async-test-lib/issues/479)). A poller built with
+`new Thread(...)` inside the body is therefore already a daemon thread however wrong the service
+is, and this detector reports nothing.
+
+Setting `useVirtualThreads = false` used to fix that and was what
+[#352](https://github.com/PIsberg/async-test-lib/issues/352) prescribed. It stopped working on
+2026-09-03, when the platform workers became daemon as well, and this demonstration passed
+silently for a fortnight until the weekly job caught it
+([#730](https://github.com/PIsberg/async-test-lib/issues/730)).
+
+`BackgroundWorker` now builds its pollers with `Executors.defaultThreadFactory()`, the factory
+behind every JDK thread pool, which calls `setDaemon(false)` on each thread it hands back
+whoever calls it. The missing daemon flag is the service's again, the demonstration fires on the
+default runner, and the annotation no longer needs a thread mode at all. The runner still says
+once per JVM, at INFO, what it cannot see:
 
 ```
 runner.detector.inert test=... detector=DaemonThreadHygieneDetector
-  reason="useVirtualThreads=true makes every thread created in the test body daemon by
-  inheritance, and this detector only reports non-daemon threads" hint="..."
+  reason="the runner's workers are daemon threads in both thread modes (#479) and a thread
+  inherits the daemon flag of the thread that created it, so a thread the body constructs is
+  already daemon, and this detector only reports non-daemon threads"
+  hint="record a thread whose factory sets the flag itself, such as
+  Executors.defaultThreadFactory() or any JDK thread pool, or one created outside the body;
+  otherwise read the report as 'not observed' rather than 'clean'"
 ```
 
-at INFO, once, so a clean report from that configuration reads as "not observed" rather than
-"clean". The detector's javadoc and the `detectDaemonThreadHygiene` attribute say the same.
+The detector's javadoc and the `detectDaemonThreadHygiene` attribute say the same.
 
 ## How to Reproduce
 
@@ -48,12 +62,14 @@ at INFO, once, so a clean report from that configuration reads as "not observed"
 3. Run the test:
 
 ```
-DAEMON THREAD HYGIENE DETECTED:
-  - 'background-poller' (thread name='background-poller-async-61', id=65) is non-daemon and
+DAEMON THREAD HYGIENE DETECTED (🟡 MEDIUM):
+  - 'background-poller' (thread name='background-poller-async-119', id=128) is non-daemon and
     still alive at analysis time - non-daemon threads block JVM exit. Call
     thread.setDaemon(true) before start(), or ensure the thread terminates before the test ends.
     First recorded at: BackgroundWorkerTest.testStart_concurrent_detectsNonDaemonThread(...)
 ```
+
+One line per body execution: 40 of them for `threads = 8, invocations = 5`.
 
 `failOn = FailOn.LOW` is what turns that report into a failed run. `@AfterEach` then calls
 `shutdown()`, without which the pollers would keep the JVM alive - the bug working as
