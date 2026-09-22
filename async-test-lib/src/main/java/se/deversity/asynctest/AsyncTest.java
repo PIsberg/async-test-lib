@@ -1524,12 +1524,15 @@ public @interface AsyncTest {
      * JVM exit and hang the test process. See
      * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
      *
-     * <p><strong>Needs {@code useVirtualThreads = false} to see anything a test body creates.</strong>
-     * A platform thread inherits its daemon flag from its creator and virtual threads are always
-     * daemon, so under the default virtual-thread runner every {@code new Thread(...)} started
-     * from a body is already daemon and this detector has nothing left to report. The runner
-     * says so once per JVM at INFO ({@code runner.detector.inert}). Set
-     * {@code useVirtualThreads = false} on the test that instruments threads.
+     * <p><strong>It cannot see a thread the test body constructs, in either thread mode.</strong>
+     * A thread inherits its daemon flag from its creator, and the runner's workers are daemon
+     * threads whether they are virtual or platform (issue #479), so every
+     * {@code new Thread(...)} started from a body is already daemon and this detector has
+     * nothing left to report. {@code useVirtualThreads = false} no longer changes that. What it
+     * still reports is a thread whose factory sets the flag itself, such as anything from
+     * {@code Executors.defaultThreadFactory()} or a JDK thread pool, and a thread created
+     * outside the body and recorded from inside it. The runner says so once per JVM at INFO
+     * ({@code runner.detector.inert}).
      *
      * @since 1.6.0
      *

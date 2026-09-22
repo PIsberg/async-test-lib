@@ -48,20 +48,28 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link se.deversity.asynctest.spi.DetectorFactory} SPI if you want it picked
  * up by {@link se.deversity.asynctest.spi.DetectorRegistry}.
  *
- * <h2>It cannot see a thread created under {@code useVirtualThreads = true}</h2>
- * A platform thread inherits its daemon flag from the thread that created it
- * ({@code Thread(Runnable, String)} copies {@code parent.isDaemon()}), and virtual
- * threads are always daemon. {@code ConcurrencyRunner} runs bodies on
- * {@code Executors.newThreadPerTaskExecutor(Thread.ofVirtual()...)} whenever
- * {@code useVirtualThreads} is true, which is the default — so every
- * {@code new Thread(...)} started from a test body is already daemon before the body
- * can get it wrong, and {@link #analyze()} skips anything registered as daemon. The
- * rule is right; under that runner it simply never has anything to skip past.
+ * <h2>It cannot see a thread the test body constructs</h2>
+ * A thread inherits its daemon flag from the thread that created it
+ * ({@code Thread(Runnable, String)} copies {@code parent.isDaemon()}), and every worker
+ * {@code ConcurrencyRunner} hands a body to is a daemon thread: virtual threads always are,
+ * and the platform workers were made daemon so that a deadlocked one could not hold the JVM
+ * open (issue #479). So every {@code new Thread(...)} started from a test body is already
+ * daemon before the body can get it wrong, in either thread mode, and {@link #analyze()}
+ * skips anything registered as daemon. The rule is right; inside a body it has nothing to
+ * skip past. {@code useVirtualThreads = false} was the documented way round this and is not
+ * one any more.
  *
- * <p>To use this detector on threads a test body creates, set
- * {@code @AsyncTest(useVirtualThreads = false)}. The runner announces the inert case
- * once per JVM at INFO as {@code runner.detector.inert}. A clean report from a
- * virtual-thread run means "not observed", not "clean". See issue #352.
+ * <p>What it can still see is a thread whose {@code ThreadFactory} sets the flag itself,
+ * because that decision does not depend on the caller:
+ * {@code Executors.defaultThreadFactory()}, and therefore every JDK thread pool, calls
+ * {@code setDaemon(false)} on each thread it hands back. A body that leaks a pool thread is
+ * reported. So is a thread created outside the body, on JUnit's own non-daemon thread, and
+ * recorded from inside it.
+ *
+ * <p>The runner announces the limitation once per JVM at INFO as
+ * {@code runner.detector.inert}. A clean report from a run that only recorded threads the
+ * body constructed means "not observed", not "clean". See issues #352 and #479;
+ * {@code DaemonThreadHygieneObservabilityTest} pins both directions.
  *
  * @since 1.6.0
  */

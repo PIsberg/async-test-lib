@@ -1,5 +1,7 @@
 package se.deversity.asynctest.example.service;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -20,6 +22,20 @@ public class BackgroundWorker {
      * cannot leave a build hanging on the very bug this class demonstrates.
      */
     private static final long MAX_POLL_MILLIS = 30_000L;
+
+    /**
+     * The factory a service of this shape usually has: {@link Executors#defaultThreadFactory()}
+     * is what every JDK thread pool builds its threads with, and it is deliberate here beyond
+     * realism.
+     *
+     * <p>A thread inherits the daemon flag of the thread that created it, and {@code @AsyncTest}
+     * runs test bodies on daemon workers in both thread modes, so a poller the demonstration
+     * built with {@code new Thread(...)} would be a daemon thread whatever this class does, and
+     * the detector would have nothing to judge. This factory calls {@code setDaemon(false)} on
+     * every thread it hands back, whoever calls it, which puts the missing daemon flag back
+     * where the example says it is: this class's decision. See issue #730.
+     */
+    private final ThreadFactory pollerThreads = Executors.defaultThreadFactory();
 
     private final AtomicInteger taskCount = new AtomicInteger();
 
@@ -57,7 +73,7 @@ public class BackgroundWorker {
      * @return the started thread
      */
     public Thread startPoller(String label) {
-        Thread thread = new Thread(() -> {
+        Thread thread = pollerThreads.newThread(() -> {
             taskCount.incrementAndGet();
             long deadline = System.currentTimeMillis() + MAX_POLL_MILLIS;
             while (running && System.currentTimeMillis() < deadline) {
@@ -68,8 +84,10 @@ public class BackgroundWorker {
                     return;
                 }
             }
-        }, "background-poller-" + label);
-        // BUG: thread.setDaemon(true) is missing here too
+        });
+        thread.setName("background-poller-" + label);
+        // BUG: thread.setDaemon(true) is missing here too, and the JDK's default factory hands
+        // back non-daemon threads, so this poller will hold the JVM open until it stops.
         thread.start();
         return thread;
     }

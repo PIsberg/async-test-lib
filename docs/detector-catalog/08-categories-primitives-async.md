@@ -22,6 +22,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
       worker.start();
   }
   ```
+* **What it can observe**: a thread the test body constructs with `new Thread(...)` is not one of them. A thread inherits the daemon flag of its creator and the runner's workers are daemon in both thread modes (#479), so it is already daemon before the body can get it wrong. What is still reported is a thread whose factory sets the flag itself, such as anything from `Executors.defaultThreadFactory()` or a JDK thread pool, and a thread created outside the body and recorded from inside it. The runner announces the limitation once per JVM at INFO as `runner.detector.inert`.
 
 ### 98. Notify Without Monitor Detector
 * **Severity**: `HIGH`
