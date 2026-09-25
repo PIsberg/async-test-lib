@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,6 +11,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Detects blocking waits on sibling futures inside bounded executors.
+ *
+ * <p>The finding is that every worker of the pool was blocked on a future <em>at the same
+ * moment</em> while tasks were still queued. Blocking waits that took turns never add up to that,
+ * so a wait is counted only while it lasts: it ends at {@link #recordBlockingWaitEnded(Object)},
+ * or when the thread that recorded it records its task completed.
  *
  * <p>Reachable from a test via {@code AsyncTestContext.futureBlockingDetector()} when
  * {@link se.deversity.asynctest.DetectorType#FUTURE_BLOCKING} is enabled.
@@ -22,11 +28,44 @@ public class FutureBlockingDetector {
         final AtomicInteger submittedTasks = new AtomicInteger();
         final AtomicInteger runningTasks = new AtomicInteger();
         final AtomicInteger completedTasks = new AtomicInteger();
-        final AtomicInteger blockingTasks = new AtomicInteger();
+        /** Workers blocked on a future right now, not blocking waits ever recorded. */
+        final AtomicInteger blockedNow = new AtomicInteger();
+        /** Open waits per thread; only the thread a key names ever changes its entry. */
+        final Map<Thread, Integer> openWaits = new ConcurrentHashMap<>();
+        /** The most workers seen blocked at once while tasks were queued; 0 until then. */
+        final AtomicInteger saturatedBlocked = new AtomicInteger();
+        /** The queue depth at that moment, for the report. */
+        volatile int queuedWhenSaturated;
 
         ExecutorState(String name, int maxThreads) {
             this.name = name;
             this.maxThreads = maxThreads;
+        }
+
+        int queued() {
+            // Completed tasks are not queued; see ExecutorDeadlockDetector for the same defect.
+            return Math.max(0, submittedTasks.get() - runningTasks.get() - completedTasks.get());
+        }
+
+        /** Keeps the moment every worker was blocked with tasks queued, if this is one. */
+        void noteIfSaturated() {
+            int blocked = blockedNow.get();
+            int queued = queued();
+            if (blocked >= maxThreads && queued > 0
+                    && saturatedBlocked.getAndAccumulate(blocked, Math::max) < blocked) {
+                queuedWhenSaturated = queued;
+            }
+        }
+
+        void endWaitOf(Thread thread) {
+            boolean[] ended = {false};
+            openWaits.computeIfPresent(thread, (waiter, open) -> {
+                ended[0] = true;
+                return open == 1 ? null : open - 1;
+            });
+            if (ended[0]) {
+                blockedNow.decrementAndGet();
+            }
         }
     }
 
@@ -63,6 +102,7 @@ public class FutureBlockingDetector {
         ExecutorState state = stateFor(executor);
         if (state != null) {
             state.submittedTasks.incrementAndGet();
+            state.noteIfSaturated();
         }
     }
     /**
@@ -77,24 +117,45 @@ public class FutureBlockingDetector {
         }
     }
     /**
-     * Records blocking wait so it can be analysed at the end of the run.
+     * Records that the calling thread, a worker of {@code executor}, now blocks on a future whose
+     * task runs on the same executor. The wait counts until the same thread calls
+     * {@link #recordBlockingWaitEnded(Object)} or {@link #recordTaskCompleted(Object)}.
      *
      * @param executor the executor being recorded, tracked by identity
      */
     public void recordBlockingWait(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
-            state.blockingTasks.incrementAndGet();
+            state.openWaits.merge(Thread.currentThread(), 1, Integer::sum);
+            state.blockedNow.incrementAndGet();
+            state.noteIfSaturated();
         }
     }
     /**
-     * Records task completed so it can be analysed at the end of the run.
+     * Records that the blocking wait the calling thread recorded with
+     * {@link #recordBlockingWait(Object)} is over: the future completed, or the wait timed out.
+     * Without it the wait lasts until this thread records its task completed. Does nothing when the
+     * calling thread has no open wait on {@code executor}.
+     *
+     * @param executor the executor being recorded, tracked by identity
+     * @since 1.12.3
+     */
+    public void recordBlockingWaitEnded(Object executor) {
+        ExecutorState state = stateFor(executor);
+        if (state != null) {
+            state.endWaitOf(Thread.currentThread());
+        }
+    }
+    /**
+     * Records task completed so it can be analysed at the end of the run. A task that completes is
+     * no longer blocked, so this also ends a blocking wait the calling thread left open.
      *
      * @param executor the executor being recorded, tracked by identity
      */
     public void recordTaskCompleted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
+            state.endWaitOf(Thread.currentThread());
             state.runningTasks.updateAndGet(current -> Math.max(0, current - 1));
             state.completedTasks.incrementAndGet();
         }
@@ -115,16 +176,17 @@ public class FutureBlockingDetector {
         FutureBlockingReport report = new FutureBlockingReport();
 
         for (ExecutorState state : executors.values()) {
-            // Completed tasks are not queued; see ExecutorDeadlockDetector for the same defect.
-            int queued = Math.max(0, state.submittedTasks.get() - state.runningTasks.get()
-                    - state.completedTasks.get());
-            if (state.blockingTasks.get() >= state.maxThreads && queued > 0) {
-                report.starvationRisks.add(String.format(
+            // The state at analysis counts too: waits still open now are waits that never ended.
+            state.noteIfSaturated();
+            // Waits recorded off the pool's own threads can outnumber it; the pool has maxThreads.
+            int blocked = Math.min(state.saturatedBlocked.get(), state.maxThreads);
+            if (blocked > 0) {
+                report.starvationRisks.add(String.format(Locale.ROOT,
                     "%s: %d/%d workers blocked waiting on futures while %d task(s) remain queued",
                     state.name,
-                    state.blockingTasks.get(),
+                    blocked,
                     state.maxThreads,
-                    queued
+                    state.queuedWhenSaturated
                 ));
             }
         }

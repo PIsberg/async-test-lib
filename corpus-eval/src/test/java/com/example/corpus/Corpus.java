@@ -4141,10 +4141,9 @@ final class Corpus {
                     "java.util.concurrent.ExecutorService",
                     DetectorType.EXECUTOR_DEADLOCK, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the identical wait on a pool with more threads than this run can ever "
-                            + "occupy. The waiting counter only grows, so the silent row's pool "
-                            + "is sized above the whole run rather than above one body - a "
-                            + "sibling can always be scheduled, so no wait can close the cycle"),
+                    "the same wait on a pool of two that each call creates. The second thread "
+                            + "runs the sibling and the wait ends, so at no moment is every "
+                            + "worker waiting with work queued, and no wait can close the cycle"),
 
             new RecordingSubject("recorded_future_blockedOnAFullPool", JDK,
                     "java.util.concurrent.ExecutorService",
@@ -4160,9 +4159,8 @@ final class Corpus {
                     "java.util.concurrent.ExecutorService",
                     DetectorType.FUTURE_BLOCKING, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same blocking wait on a pool sized above the whole run, for the same "
-                            + "monotonic-counter reason as the pair above. Workers remain to run "
-                            + "the work being waited for"),
+                    "the same blocking wait on a pool of two that each call creates. A worker "
+                            + "remains to run the work being waited for, and the wait ends"),
 
             new RecordingSubject("recorded_flowSubscriber_signalledAfterCompletion", JDK,
                     "java.util.concurrent.Flow",

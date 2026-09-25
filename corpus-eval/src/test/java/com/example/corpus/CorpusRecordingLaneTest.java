@@ -873,26 +873,11 @@ class CorpusRecordingLaneTest {
     /** A pool of one, whose task waits on a sibling it can never let run. */
     private static final Object DEADLOCKING_POOL = new Object();
 
-    /**
-     * The twin, sized above the whole run rather than above one body.
-     *
-     * <p>{@code ExecutorDeadlockDetector.waitingOnSibling} and its counterpart in
-     * {@code FutureBlockingDetector} only ever grow - nothing decrements them when the wait ends
-     * - so the silent row has to declare a pool larger than {@code THREADS * INVOCATIONS}, or it
-     * would eventually out-count its own capacity and report for a reason unrelated to the model.
-     */
-    private static final Object ROOMY_POOL = new Object();
-
     /** The same shape for the future-blocking pair. */
     private static final Object BLOCKED_POOL = new Object();
 
-    private static final Object ROOMY_BLOCKED_POOL = new Object();
-
     /** The subscriber the loud Flow row signals after completing it. */
     private static final Object COMPLETED_SUBSCRIBER = new Object();
-
-    /** What the silent executor rows declare: above the whole run, not above one body. */
-    private static final int MORE_THREADS_THAN_THE_RUN = THREADS * INVOCATIONS * 10;
 
     /** The twin whose every stamp comes back; the leaking row takes a fresh lock per body. */
     private static final java.util.concurrent.locks.StampedLock RELEASED_STAMPED_LOCK =
@@ -4869,24 +4854,32 @@ class CorpusRecordingLaneTest {
         // Two submissions to one start, so submitted minus running leaves work queued. The rule
         // is "every worker is waiting on a sibling AND something is still queued": a body that
         // submits and starts exactly one task leaves nothing queued and reports nothing, however
-        // many waits it records. Both halves of the pair keep this shape, so only the pool size
-        // separates them.
+        // many waits it records. The wait is never ended: the sibling cannot run, which is the
+        // deadlock.
         detector.recordTaskSubmitted(DEADLOCKING_POOL);
         detector.recordTaskSubmitted(DEADLOCKING_POOL);
         detector.recordTaskStarted(DEADLOCKING_POOL);
         detector.recordWaitingOnSibling(DEADLOCKING_POOL);
     }
 
-    /** The identical wait on a pool sized above the whole run. */
+    /**
+     * The same wait on a pool of two that each call creates, the way a test writes
+     * {@code Executors.newFixedThreadPool(2)}: the second thread runs the sibling, so the wait ends.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_executor_taskWaitedWithThreadsToSpare() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.executorDeadlockDetector();
-        detector.registerExecutor(ROOMY_POOL, "roomy-pool", MORE_THREADS_THAN_THE_RUN);
-        detector.recordTaskSubmitted(ROOMY_POOL);
-        detector.recordTaskSubmitted(ROOMY_POOL);
-        detector.recordTaskStarted(ROOMY_POOL);
-        detector.recordWaitingOnSibling(ROOMY_POOL);
+        Object pool = new Object();
+        detector.registerExecutor(pool, "per-call-pool", 2);
+        detector.recordTaskSubmitted(pool);           // the parent
+        detector.recordTaskStarted(pool);
+        detector.recordTaskSubmitted(pool);           // its sibling
+        detector.recordTaskStarted(pool);             // on the pool's second thread
+        detector.recordWaitingOnSibling(pool);
+        detector.recordSiblingWaitEnded(pool);        // get() returned
+        detector.recordTaskCompleted(pool);           // the sibling
+        detector.recordTaskCompleted(pool);           // the parent
     }
 
     /** Every thread of a pool of one recorded blocked waiting on a future. */
@@ -4901,17 +4894,21 @@ class CorpusRecordingLaneTest {
         detector.recordBlockingWait(BLOCKED_POOL);
     }
 
-    /** The same blocking wait on a pool sized above the whole run. */
+    /** The same blocking wait on a per-call pool of two, whose second thread runs the future. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_future_blockedWithThreadsToSpare() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.futureBlockingDetector();
-        detector.registerExecutor(ROOMY_BLOCKED_POOL, "roomy-blocked-pool",
-                MORE_THREADS_THAN_THE_RUN);
-        detector.recordTaskSubmitted(ROOMY_BLOCKED_POOL);
-        detector.recordTaskSubmitted(ROOMY_BLOCKED_POOL);
-        detector.recordTaskStarted(ROOMY_BLOCKED_POOL);
-        detector.recordBlockingWait(ROOMY_BLOCKED_POOL);
+        Object pool = new Object();
+        detector.registerExecutor(pool, "per-call-pool", 2);
+        detector.recordTaskSubmitted(pool);           // the task that blocks
+        detector.recordTaskStarted(pool);
+        detector.recordTaskSubmitted(pool);           // the future it blocks on
+        detector.recordTaskStarted(pool);             // on the pool's second thread
+        detector.recordBlockingWait(pool);
+        detector.recordBlockingWaitEnded(pool);       // get() returned
+        detector.recordTaskCompleted(pool);           // the future's task
+        detector.recordTaskCompleted(pool);           // the task that blocked
     }
 
     /** An onNext delivered after the subscriber was completed: onComplete is terminal. */

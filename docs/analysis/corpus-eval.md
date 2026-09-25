@@ -1423,7 +1423,9 @@ a threshold or a precondition the detector documents:
   silent twin that fell short of the threshold would have been silent for want of traffic.
 - `EXECUTOR_DEADLOCK` and `FUTURE_BLOCKING` both require *queued work* as well as blocked
   workers. A body that submits and starts exactly one task leaves nothing queued and reports
-  nothing however many waits it records.
+  nothing however many waits it records. Both used to compare a lifetime count of waits with the
+  pool size, so their silent twins had to declare a pool ten times larger than the whole run; they
+  now count the workers waiting at the same moment, and the twins use a pool of two per call.
 - `SCHEDULED_EXECUTOR` also reports a scheduler that was registered and never shut down, so the
   silent twin was firing for a reason unrelated to task duration. Both halves now record the
   shutdown and the pair separates on the duration alone.
