@@ -95,19 +95,30 @@ public final class LambdaLostUpdateDetector {
         final String  threadName;
         final String  before;
         final String  written;
-        final int     guardId;      // 0 when no guard was named
+        /**
+         * The named monitor, compared by reference. An identity hash here let two different
+         * monitors that shared one read as the single lock every update held.
+         */
+        final @Nullable Object guard;
         final boolean heldGuard;
 
         Rmw(long threadId, String threadName, String before, String written,
-            int guardId, boolean heldGuard) {
+            @Nullable Object guard, boolean heldGuard) {
             this.threadId   = threadId;
             this.threadName = threadName;
             this.before     = before;
             this.written    = written;
-            this.guardId    = guardId;
+            this.guard      = guard;
             this.heldGuard  = heldGuard;
         }
     }
+
+    /**
+     * One captured variable of one lambda instance. The lambda is an identity: keyed by its bare
+     * identity hash, two lambdas that shared one pooled their updates, and each one's single
+     * update from the same starting value read as two threads computing from one stale read.
+     */
+    private record CaptureKey(IdentityKey lambda, String capturedName) { }
 
     private static final class CaptureState {
         final String     lambdaName;
@@ -120,7 +131,7 @@ public final class LambdaLostUpdateDetector {
         }
     }
 
-    private final Map<String, CaptureState> captures = new ConcurrentHashMap<>();
+    private final Map<CaptureKey, CaptureState> captures = new ConcurrentHashMap<>();
     private volatile boolean                enabled  = true;
 
     /**
@@ -158,17 +169,16 @@ public final class LambdaLostUpdateDetector {
     public void recordReadModifyWrite(Object lambda, String capturedName, Object observedBefore,
                                       Object written, @Nullable Object guard, Thread thread) {
         if (!enabled || lambda == null || thread == null) return;
-        String key = System.identityHashCode(lambda) + "#"
-                   + (capturedName != null ? capturedName : "capturedState");
-        CaptureState s = captures.computeIfAbsent(key, k -> new CaptureState(
-                lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda),
-                capturedName != null ? capturedName : "capturedState"));
+        String name = capturedName != null ? capturedName : "capturedState";
+        CaptureState s = captures.computeIfAbsent(new CaptureKey(new IdentityKey(lambda), name),
+                k -> new CaptureState(
+                        lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda), name));
         s.events.add(new Rmw(
                 thread.threadId(),
                 thread.getName(),
                 render(observedBefore),
                 render(written),
-                guard == null ? 0 : System.identityHashCode(guard),
+                guard,
                 SelfGuard.heldOn(guard)));
     }
 
@@ -242,11 +252,11 @@ public final class LambdaLostUpdateDetector {
             int lostWrites = unaccounted - 1;
 
             int guardedEvents = 0;
-            Set<Integer> monitorsHeld = new LinkedHashSet<>();
+            Set<IdentityKey> monitorsHeld = new LinkedHashSet<>();
             for (Rmw e : events) {
-                if (e.heldGuard) {
+                if (e.heldGuard && e.guard != null) {
                     guardedEvents++;
-                    monitorsHeld.add(e.guardId);
+                    monitorsHeld.add(new IdentityKey(e.guard));
                 }
             }
             boolean partiallyGuarded = guardedEvents > 0;
@@ -296,11 +306,12 @@ public final class LambdaLostUpdateDetector {
      * Under a consistently held monitor the read-modify-write sequence is serialised, so a
      * repeated pre-value is a legitimately recurring value rather than a lost write.
      */
+    @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"}) // one monitor is one instance
     private static boolean consistentlyGuarded(List<Rmw> events) {
-        int guardId = events.get(0).guardId;
-        if (guardId == 0) return false;
+        Object guard = events.get(0).guard;
+        if (guard == null) return false;
         for (Rmw e : events) {
-            if (!e.heldGuard || e.guardId != guardId) return false;
+            if (!e.heldGuard || e.guard != guard) return false;
         }
         return true;
     }
