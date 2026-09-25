@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -51,6 +52,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link Scope} the running context binds to its workers. A detector used with no context
  * installed sees one round, the whole run, which is what it saw before.
  *
+ * <p>Within a round the verdict is also per owner. A pool that hands an instance out through a
+ * queue gives it to one thread at a time, and a take is the edge between one owner's accesses
+ * and the next's; {@link Scope#ownershipTaken(Object)} records it, from the agent's woven queue
+ * takes and slot swaps or from {@code AsyncTestContext.ownershipTaken} by hand.
+ *
  * <p>Public only so that {@code AsyncTestContext} can own and bind the {@link Scope}; everything
  * else here is package-private and belongs to the detectors.
  *
@@ -67,7 +73,8 @@ public final class SelfGuard {
             " (accesses under the instance's own monitor count as guarded, as do accesses under a"
             + " lock declared with AsyncTestContext.holdingLock(...); a lock that was never"
             + " declared is not observed - verify external synchronization or use a per-thread"
-            + " instance)";
+            + " instance; a pool checkout the agent did not weave can be declared with"
+            + " AsyncTestContext.ownershipTaken(...))";
 
     private SelfGuard() {
     }
@@ -100,6 +107,13 @@ public final class SelfGuard {
 
         /** Advanced by the runner thread between rounds, read by every recording worker. */
         private final AtomicInteger round = new AtomicInteger();
+
+        /**
+         * How many times each tracked instance has been taken, by identity. An entry exists only
+         * for an instance some detector tracks, created on its first access, so a queue full of
+         * untracked elements adds nothing here.
+         */
+        private final Map<IdentityKey, AtomicInteger> handOffs = new ConcurrentHashMap<>();
 
         /** Creates a scope in its first round; the context creates one per run. */
         public Scope() {
@@ -134,6 +148,54 @@ public final class SelfGuard {
         int round() {
             return round.get();
         }
+
+        /**
+         * Records that the calling thread has just taken sole ownership of {@code instance}.
+         *
+         * <p>A take out of a queue or a swap out of an atomic slot hands the object to one thread:
+         * the structure held the only shared reference, so the previous owner put it back before
+         * this one could take it. Accesses by different threads separated by a take are
+         * therefore a hand-off, and the verdict counts threads per owner, within a round, rather
+         * than across owners. An access still in flight from the previous owner after the take
+         * joins the new owner's window and is reported, which is the use-after-return defect.
+         *
+         * <p>Called by the agent's woven takes and by {@code AsyncTestContext.ownershipTaken}.
+         * A no-op on a thread with no scope bound, and for an instance nothing tracks yet: before
+         * its first recorded access there is nothing to separate it from. Allocates one
+         * short-lived key per call only while this run tracks some instance.
+         *
+         * @param instance the instance the calling thread now owns; {@code null} is ignored
+         */
+        public static void ownershipTaken(@Nullable Object instance) {
+            if (instance == null) {
+                return;
+            }
+            Scope scope = BOUND.get();
+            if (scope == null || scope.handOffs.isEmpty()) {
+                return;
+            }
+            AtomicInteger taken = scope.handOffs.get(new IdentityKey(instance));
+            if (taken != null) {
+                taken.incrementAndGet();
+            }
+        }
+
+        /** {@return the take counter for {@code instance}, registering it on first use} */
+        AtomicInteger handOffsOf(Object instance) {
+            return handOffs.computeIfAbsent(new IdentityKey(instance), ignored -> new AtomicInteger());
+        }
+    }
+
+    /** One tracked instance's take counter, in the scope it was first accessed in. */
+    private static final class Binding {
+
+        final Scope scope;
+        final AtomicInteger handOffs;
+
+        Binding(Scope scope, AtomicInteger handOffs) {
+            this.scope = scope;
+            this.handOffs = handOffs;
+        }
     }
 
     /**
@@ -145,7 +207,7 @@ public final class SelfGuard {
      */
     private static final class Window {
 
-        /** The round these accesses belong to. */
+        /** The round and the ownership these accesses belong to; see {@code windowKey}. */
         final long key;
 
         /** The first thread seen in this window. */
@@ -196,6 +258,9 @@ public final class SelfGuard {
 
         /** Latched once one round saw two threads and no lock common to all their accesses. */
         private volatile boolean unguardedSharing;
+
+        /** This instance's take counter, bound on its first access inside a run. */
+        private volatile @Nullable Binding binding;
 
         /**
          * Records one access to {@code instance}, intersecting the candidate set with the locks
@@ -272,8 +337,7 @@ public final class SelfGuard {
             if (unguardedSharing) {
                 return;
             }
-            Scope scope = Scope.current();
-            long key = scope == null ? 0L : scope.round();
+            long key = windowKey(instance);
             Window current = window.get();
             while (true) {
                 Window next = advance(current, key, instance, forWrite, threadId);
@@ -288,6 +352,31 @@ public final class SelfGuard {
             }
         }
 
+        /**
+         * {@return the window the calling thread's access belongs to: the round in the high half,
+         * how many times the instance has been taken in the low half, so a later round or a later
+         * owner always compares greater}
+         */
+        private long windowKey(@Nullable Object instance) {
+            Scope scope = Scope.current();
+            if (scope == null) {
+                return 0L;
+            }
+            long round = (long) scope.round() << 32;
+            if (instance == null) {
+                return round;
+            }
+            Binding bound = binding;
+            if (bound == null
+                    || bound.scope != scope) { // NOPMD CompareObjectsWithEquals - one scope per run, by identity
+                // Two threads may both get here on a first access; computeIfAbsent hands both the
+                // same counter, so either binding is the right one.
+                bound = new Binding(scope, scope.handOffsOf(instance));
+                binding = bound;
+            }
+            return round | (bound.handOffs.get() & 0xFFFF_FFFFL);
+        }
+
         @SuppressWarnings("ReferenceEquality") // intersect returns its input array when nothing dropped
         private static Window advance(@Nullable Window current, long key, @Nullable Object instance,
                                       boolean forWrite, long threadId) {
@@ -295,9 +384,9 @@ public final class SelfGuard {
                 // The first access of a round: nothing recorded earlier in the run overlapped it.
                 return new Window(key, threadId, false, probe(null, instance, forWrite));
             }
-            // The same round, or an access still in flight from an older one while a newer one
-            // has started. The latter joins the newer round, the direction that can only add a
-            // finding.
+            // The same window, or an access still in flight from an older round or owner while a
+            // newer one has started. The latter joins the newer window, the direction that can
+            // only add a finding: it is an old owner still using what it handed on.
             boolean shared = current.shared || threadId != current.firstThread;
             int[] locks = current.locks.length == 0
                     ? current.locks
@@ -320,7 +409,9 @@ public final class SelfGuard {
          *
          * <p>This is the family's verdict. Two threads in different rounds never overlapped,
          * because the runner finishes one round before it starts the next, so neither the thread
-         * count nor the lockset is carried across a round boundary. Once true it stays true.
+         * count nor the lockset is carried across a round boundary. The same goes for a take of
+         * the instance ({@link Scope#ownershipTaken(Object)}): the owner before it and the owner
+         * after it are judged apart. Once true it stays true.
          */
         final boolean sawUnguardedSharing() {
             return unguardedSharing;

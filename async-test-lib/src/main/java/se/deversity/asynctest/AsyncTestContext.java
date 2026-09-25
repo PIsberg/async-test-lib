@@ -785,6 +785,39 @@ public final class AsyncTestContext {
     }
 
     /**
+     * Declares that the calling thread has just taken sole ownership of {@code instance}, so that
+     * detectors judge the accesses before and after as a hand-off rather than as sharing.
+     *
+     * <p>A pool of non-thread-safe instances is correct when each checkout gives one thread the
+     * instance alone, and a {@code Shared*} detector otherwise sees only that several threads
+     * touched it. With the agent attached ({@code collections = true}) a take out of a woven
+     * {@code BlockingQueue} or {@code Queue}, or a swap out of an atomic slot, is recognised on
+     * its own. A checkout the weaver never sees (a pool library's own code, a hand-written
+     * semaphore) is declared here, right after the checkout returns:
+     *
+     * <pre>{@code
+     * MessageDigest md = pool.checkout();
+     * AsyncTestContext.ownershipTaken(md);
+     * try {
+     *     md.update(data);
+     * } finally {
+     *     pool.release(md);
+     * }
+     * }</pre>
+     *
+     * <p>Only the declaring thread's later accesses start a new owner. An access by the previous
+     * owner after the declaration is still reported, because the instance then has two owners at
+     * once. Safe outside a run, where it does nothing.
+     *
+     * @param instance the instance the calling thread now owns; {@code null} is ignored
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.3")
+    public static void ownershipTaken(@Nullable Object instance) {
+        SelfGuard.Scope.ownershipTaken(instance);
+    }
+
+    /**
      * Returns the context active on the current thread, or {@code null} if called
      * outside an {@code @AsyncTest} method.
      *

@@ -173,8 +173,8 @@ lockset now and both directions are pinned like the rest.
 | Unguarded sharing (true positive) | 19 of 19 fire | 20 of 20 fire |
 | `synchronized(instance)` twin (true negative) | 2 of 19 stay silent | 18 of 20 stay silent |
 | Declared `ReentrantLock` twin (true negative) | not measured | 18 of 20 stay silent |
-| Two threads, two different declared locks | not measured | 18 of 18 fire, correctly |
 | One thread per round, a fresh thread each round (true negative) | not measured | 18 of 18 stay silent |
+| Two threads, two different declared locks | not measured | 18 of 18 fire, correctly |
 
 The 18 all reach those answers through one shared model rather than 18 copies of it.
 `SelfGuard.TrackedInstance` keeps the Eraser candidate set - the locks held at every access to
@@ -193,8 +193,22 @@ sharing; with virtual threads, the default, every body execution runs on a fresh
 instance used in two rounds at all was "accessed from 2 threads". A lock that guarded all of one
 round and a different lock that guarded all of the next also emptied the intersection. The round
 comes from a clock `AsyncTestContext` binds to each worker (`SelfGuard.Scope`); a detector
-driven with no context installed sees one round, the whole run, as before. The last row of the
-table pins it for the whole roster.
+driven with no context installed sees one round, the whole run, as before. The "one thread per
+round" row pins it for the whole roster.
+
+Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
+`BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched
+it in one round and no lock covered the use, so it read as sharing. A take is the hand-off edge:
+the queue held the only shared reference, so the previous owner put it back before the next could
+take it. `SelfGuard.Scope.ownershipTaken` counts takes per tracked instance, and the window key is
+(round, takes so far), so one owner's accesses and the next's are judged apart. The agent's woven
+queue takes and atomic-slot swaps (`collections=true`) reach it synchronously from
+`TelemetryRegistry.ownershipTaken`, on the taking thread; a checkout the weaver never sees is
+declared with `AsyncTestContext.ownershipTaken(instance)`. An old owner that keeps using the
+instance after handing it back joins the new owner's window and is still reported. Pinned in
+`SharedMessageDigestDetectorTest`, through the woven hook methods called directly rather than a
+real agent attach. What it does not see: a pool of wrapper objects, where the take names the
+wrapper and the access names the digest inside it.
 
 The last row is why the model is an intersection and not a per-thread "was anything held" flag.
 Two threads that each take their own lock have serialised nothing, and a flag would call that

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
 import se.deversity.asynctest.diagnostics.HeldLocks;
+import se.deversity.asynctest.diagnostics.SelfGuard;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.invoke.VarHandle;
@@ -1786,7 +1787,15 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static void ownershipTaken(@Nullable Object taken, @Nullable Object container) {
-        if (taken == null || STOPPED.get()) {
+        if (taken == null) {
+            return;
+        }
+        // Synchronous, on the taking thread, ahead of the buffer: the lock-aware detectors record
+        // on the accessing thread as it runs, so the take must be visible to them before this
+        // thread's next access rather than whenever the ring drains. Allocation-free unless the
+        // run tracks some instance; see SelfGuard.Scope.ownershipTaken.
+        SelfGuard.Scope.ownershipTaken(taken);
+        if (STOPPED.get()) {
             return;
         }
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,

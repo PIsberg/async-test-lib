@@ -415,4 +415,128 @@ public class SharedMessageDigestDetectorTest {
         var report = detectorOf(ctx).analyze();
         assertFalse(report.hasIssues(), "each round was consistently locked; got " + report.violations);
     }
+
+    // ---- A hand-off through a queue is not sharing ---------------------------------------------
+    //
+    // A digest pool checked out through a BlockingQueue gives each thread the digest alone: the
+    // queue holds one reference, so the next taker can only get it after the last one put it
+    // back. The agent (collections=true) weaves take and put into the AgentConcurrencyUtilHooks
+    // calls these make directly, so this is the event stream a woven run produces.
+
+    /** Checks the digest out of {@code pool} through the woven hooks, uses it, and puts it back. */
+    private static void checkOut(java.util.concurrent.BlockingQueue<Object> pool, int times) {
+        try {
+            for (int i = 0; i < times; i++) {
+                MessageDigest md = (MessageDigest) se.deversity.asynctest.AgentConcurrencyUtilHooks.take(pool);
+                use(md);
+                se.deversity.asynctest.AgentConcurrencyUtilHooks.put(pool, md);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    void aPoolHandOffThroughAWovenQueueIsNotSharing() throws Exception {
+        AsyncTestContext ctx = digestContext();
+        var pool = new java.util.concurrent.LinkedBlockingQueue<Object>();
+        pool.put(sha256());
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        runWorkers(ctx, together(barrier, () -> checkOut(pool, 50)), together(barrier, () -> checkOut(pool, 50)));
+
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(),
+                "each thread held the pooled digest alone between its take and its put; got "
+                        + report.violations);
+    }
+
+    @Test
+    void aHandOffDoesNotExcuseUseAfterReturn() throws Exception {
+        // The first worker puts the digest back and keeps using the reference it still holds,
+        // while the second has taken it: two owners at once, which is the defect.
+        AsyncTestContext ctx = digestContext();
+        var pool = new java.util.concurrent.LinkedBlockingQueue<Object>();
+        MessageDigest md = sha256();
+        pool.put(md);
+        var returned = new java.util.concurrent.CountDownLatch(1);
+        var retaken = new java.util.concurrent.CountDownLatch(1);
+        Runnable careless = () -> {
+            checkOut(pool, 1);
+            returned.countDown();
+            await(retaken);
+            use(md);
+        };
+        Runnable next = () -> {
+            await(returned);
+            try {
+                MessageDigest mine = (MessageDigest) se.deversity.asynctest.AgentConcurrencyUtilHooks.take(pool);
+                use(mine);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            retaken.countDown();
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, careless, next);
+
+        var report = detectorOf(ctx).analyze();
+        assertTrue(report.hasIssues(), "the digest was used by its old owner after the new one took it");
+    }
+
+    @Test
+    void aDeclaredHandOffIsNotSharing() throws Exception {
+        // The non-agent route: a checkout the weaver never sees, declared by the taker.
+        AsyncTestContext ctx = digestContext();
+        var pool = new java.util.concurrent.Semaphore(1);
+        MessageDigest md = sha256();
+        Runnable body = () -> {
+            for (int i = 0; i < 50; i++) {
+                pool.acquireUninterruptibly();
+                try {
+                    AsyncTestContext.ownershipTaken(md);
+                    use(md);
+                } finally {
+                    pool.release();
+                }
+            }
+        };
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        runWorkers(ctx, together(barrier, body), together(barrier, body));
+
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(), "each checkout was declared; got " + report.violations);
+    }
+
+    @Test
+    void concurrentUseWithoutAHandOffStillFiresNextToAPool() throws Exception {
+        // One digest goes through the pool, a second is simply shared: only the second fires.
+        AsyncTestContext ctx = digestContext();
+        var pool = new java.util.concurrent.LinkedBlockingQueue<Object>();
+        pool.put(sha256());
+        MessageDigest shared = sha256();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        Runnable body = together(barrier, () -> {
+            checkOut(pool, 20);
+            AsyncTestContext.sharedMessageDigestDetector().recordAccess(shared, "shared", Thread.currentThread());
+        });
+        ctx.markInvocationStart();
+        runWorkers(ctx, body, body);
+
+        var report = detectorOf(ctx).analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        assertTrue(report.violations.get(0).contains("'shared'"), report.violations.get(0));
+    }
+
+    private static void await(java.util.concurrent.CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
 }
