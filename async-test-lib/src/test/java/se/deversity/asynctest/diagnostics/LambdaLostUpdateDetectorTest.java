@@ -436,4 +436,32 @@ class LambdaLostUpdateDetectorTest {
         assertTrue(report.hasIssues(), "two different monitors serialise nothing between them");
         assertTrue(report.toString().contains("2 different monitors"), report.toString());
     }
+
+    /**
+     * A body that resets the captured value and updates it once reads the same pre-value in every
+     * round, on a different thread each time. The runner joins one round before the next, so
+     * those updates are a serial history, not a lost write.
+     */
+    @Test
+    void theSamePreValueReadInDifferentRoundsIsNotALostUpdate() {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "round-1"));
+        d.markInvocationStart();
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "round-2"));
+
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
+
+    /** The same two updates inside one round lost a write. */
+    @Test
+    void theSamePreValueReadByTwoThreadsInOneRoundIsALostUpdate() {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+        d.markInvocationStart();
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "worker-1"));
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "worker-2"));
+
+        assertTrue(d.analyze().hasIssues());
+    }
 }

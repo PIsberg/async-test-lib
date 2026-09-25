@@ -890,6 +890,9 @@ public final class AsyncTestContext {
         if (finalFieldMutationDetector != null) {
             finalFieldMutationDetector.markInvocationStart();
         }
+        if (lambdaLostUpdateDetector != null) {
+            lambdaLostUpdateDetector.markInvocationStart();
+        }
     }
 
     /**

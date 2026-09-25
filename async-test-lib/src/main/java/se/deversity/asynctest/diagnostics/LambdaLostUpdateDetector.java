@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.jspecify.annotations.Nullable;
 
@@ -101,15 +102,18 @@ public final class LambdaLostUpdateDetector {
          */
         final @Nullable Object guard;
         final boolean heldGuard;
+        /** The invocation round the update was recorded in. */
+        final long    round;
 
         Rmw(long threadId, String threadName, String before, String written,
-            @Nullable Object guard, boolean heldGuard) {
+            @Nullable Object guard, boolean heldGuard, long round) {
             this.threadId   = threadId;
             this.threadName = threadName;
             this.before     = before;
             this.written    = written;
             this.guard      = guard;
             this.heldGuard  = heldGuard;
+            this.round      = round;
         }
     }
 
@@ -133,6 +137,18 @@ public final class LambdaLostUpdateDetector {
 
     private final Map<CaptureKey, CaptureState> captures = new ConcurrentHashMap<>();
     private volatile boolean                enabled  = true;
+    /** Current invocation round, bumped by {@link #markInvocationStart()}. */
+    private final AtomicLong                invocationEpoch = new AtomicLong();
+
+    /**
+     * Internal: called at the start of each invocation round. Updates are judged one round at a
+     * time: the runner orders rounds, so an update in one cannot have raced an update in another.
+     *
+     * @since 1.12.3
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
+    }
 
     /**
      * Record one read-modify-write of a captured variable, with no guard object.
@@ -179,7 +195,8 @@ public final class LambdaLostUpdateDetector {
                 render(observedBefore),
                 render(written),
                 guard,
-                SelfGuard.heldOn(guard)));
+                SelfGuard.heldOn(guard),
+                invocationEpoch.get()));
     }
 
     private static String render(Object value) {
@@ -201,11 +218,12 @@ public final class LambdaLostUpdateDetector {
     /**
      * Analyses the recorded updates and reports the ones proven to have lost a write.
      *
-     * <p>A capture is reported when both pieces of evidence are present: some pre-value was read
-     * by two different threads, and the recorded updates admit no serial order at all (see
-     * {@link #unaccountedReads(List)}). Either alone is consistent with a correct program. The
-     * reported count is the minimum number of lost writes consistent with the recorded values,
-     * never the sum over collision groups, which would assume an order the detector never saw.
+     * <p>A capture is reported when both pieces of evidence are present inside one invocation
+     * round: some pre-value was read by two different threads, and the round's recorded updates
+     * admit no serial order at all (see {@link #unaccountedReads(List)}). Either alone is
+     * consistent with a correct program. The reported count is the minimum number of lost writes
+     * consistent with the recorded values, summed over the rounds, which the runner orders; never
+     * the sum over collision groups, which would assume an order the detector never saw.
      *
      * @return the findings this detector collected during the run
      */
@@ -217,39 +235,38 @@ public final class LambdaLostUpdateDetector {
 
             if (consistentlyGuarded(events)) continue;
 
-            // Group by the value each thread observed before its update. Two different threads
-            // in the same group both computed from that value - the first piece of evidence.
-            Map<String, List<Rmw>> byBefore = new LinkedHashMap<>();
-            for (Rmw e : events) byBefore.computeIfAbsent(e.before, k -> new ArrayList<>()).add(e);
+            // Judged one invocation round at a time. The runner joins every worker before the
+            // next round, so an update in one round happens-before every update in the next and
+            // cannot have raced it; a body that resets the captured value each round reads the
+            // same pre-value in every round, on a fresh virtual thread each time, and pooled
+            // across rounds those reads looked like threads computing from one stale value.
+            // Standalone use records everything in round 0, the whole-run behaviour.
+            Map<Long, List<Rmw>> byRound = new LinkedHashMap<>();
+            for (Rmw e : events) byRound.computeIfAbsent(e.round, k -> new ArrayList<>()).add(e);
 
             List<String> collisions = new ArrayList<>();
             Set<String> threads = new LinkedHashSet<>();
-            for (Map.Entry<String, List<Rmw>> entry : byBefore.entrySet()) {
-                List<Rmw> group = entry.getValue();
-                Set<Long> distinctThreads = new LinkedHashSet<>();
-                for (Rmw e : group) distinctThreads.add(e.threadId);
-                if (distinctThreads.size() < 2) continue;
+            int lostWrites = 0;
+            for (List<Rmw> round : byRound.values()) {
+                List<String> roundCollisions = new ArrayList<>();
+                Set<String> roundThreads = new LinkedHashSet<>();
+                collide(round, roundCollisions, roundThreads);
+                if (roundCollisions.isEmpty()) continue;
 
-                StringBuilder wrote = new StringBuilder();
-                for (Rmw e : group) {
-                    if (wrote.length() > 0) wrote.append(", ");
-                    wrote.append('\'').append(e.threadName).append("' wrote ").append(e.written);
-                    threads.add(e.threadName);
-                }
-                collisions.add("all read " + entry.getKey() + " then " + wrote);
+                // The second piece. A value two threads read can also be a value that legitimately
+                // came round twice, serialised by something the detector cannot see - a
+                // ReentrantLock, an updateAndGet, one worker thread. Report only when no serial
+                // order of the recorded updates exists at all; a chain proves nothing, and that is
+                // the safe direction. The same count is the finding's number: every unaccounted
+                // read beyond the one the starting value explains is a write that was overwritten
+                // unread, whichever way the events are ordered - and the values prove no more.
+                int unaccounted = unaccountedReads(round);
+                if (unaccounted < 2) continue;
+                lostWrites += unaccounted - 1;
+                collisions.addAll(roundCollisions);
+                threads.addAll(roundThreads);
             }
-            if (collisions.isEmpty()) continue;
-
-            // The second piece. A value two threads read can also be a value that legitimately
-            // came round twice, serialised by something the detector cannot see - a ReentrantLock,
-            // an updateAndGet, one worker thread. Report only when no serial order of the recorded
-            // updates exists at all; a chain proves nothing, and that is the safe direction. The
-            // same count is the finding's number: every unaccounted read beyond the one the
-            // starting value explains is a write that was overwritten unread, whichever way the
-            // events are ordered - and the values prove no more than that.
-            int unaccounted = unaccountedReads(events);
-            if (unaccounted < 2) continue;
-            int lostWrites = unaccounted - 1;
+            if (lostWrites == 0) continue;
 
             int guardedEvents = 0;
             Set<IdentityKey> monitorsHeld = new LinkedHashSet<>();
@@ -299,6 +316,31 @@ public final class LambdaLostUpdateDetector {
                     Instant.now()));
         }
         return r;
+    }
+
+    /**
+     * Groups {@code events} by the value each thread observed before its update and adds one line
+     * per group two different threads read: both computed from that value, which is the first
+     * piece of evidence of a lost write.
+     */
+    private static void collide(List<Rmw> events, List<String> collisions, Set<String> threads) {
+        Map<String, List<Rmw>> byBefore = new LinkedHashMap<>();
+        for (Rmw e : events) byBefore.computeIfAbsent(e.before, k -> new ArrayList<>()).add(e);
+
+        for (Map.Entry<String, List<Rmw>> entry : byBefore.entrySet()) {
+            List<Rmw> group = entry.getValue();
+            Set<Long> distinctThreads = new LinkedHashSet<>();
+            for (Rmw e : group) distinctThreads.add(e.threadId);
+            if (distinctThreads.size() < 2) continue;
+
+            StringBuilder wrote = new StringBuilder();
+            for (Rmw e : group) {
+                if (wrote.length() > 0) wrote.append(", ");
+                wrote.append('\'').append(e.threadName).append("' wrote ").append(e.written);
+                threads.add(e.threadName);
+            }
+            collisions.add("all read " + entry.getKey() + " then " + wrote);
+        }
     }
 
     /**

@@ -802,4 +802,46 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         String report = REPORTS.get("FinalFieldMutationDetector");
         assertTrue(report != null && report.contains("Concurrent mutators"), "Report: " + report);
     }
+
+    /** A counter the body resets and bumps once per round, one thread per round. */
+    public static class LambdaCrossRound {
+        static final int[] COUNTER = {0};
+        static final Runnable TASK = () -> { };
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectLambdaLostUpdate = true)
+        void body() {
+            COUNTER[0] = 0;
+            int before = COUNTER[0];
+            COUNTER[0] = before + 1;
+            AsyncTestContext.lambdaLostUpdateDetector()
+                    .recordReadModifyWrite(TASK, "counter", before, before + 1, Thread.currentThread());
+        }
+    }
+
+    /** Two threads that both read 0 and both wrote 1, inside one round: a lost update. */
+    public static class LambdaSameRound {
+        static final Runnable TASK = () -> { };
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectLambdaLostUpdate = true)
+        void body() {
+            AsyncTestContext.lambdaLostUpdateDetector()
+                    .recordReadModifyWrite(TASK, "counter", 0, 1, Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("the same pre-value read in two rounds is not a lost update")
+    void lambdaCrossRoundIsNotALostUpdate() {
+        run(LambdaCrossRound.class);
+        assertFalse(REPORTS.containsKey("LambdaLostUpdateDetector"),
+                "each round reset the counter and made one update from it; no write was "
+                        + "overwritten unread: " + REPORTS.get("LambdaLostUpdateDetector"));
+    }
+
+    @Test
+    @DisplayName("two threads reading the same pre-value in one round lost an update, so the silence above is not vacuous")
+    void lambdaSameRoundIsALostUpdate() {
+        run(LambdaSameRound.class);
+        assertTrue(REPORTS.containsKey("LambdaLostUpdateDetector"), "Reports: " + REPORTS.keySet());
+    }
 }
