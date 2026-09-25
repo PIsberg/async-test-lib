@@ -103,7 +103,11 @@ public final class ScopeConfigurationMisuseDetector {
         final String           scopeId;
         final @Nullable String requestedName;
         final long             requestedTimeoutMillis;
-        final int              threadFactoryId;      // 0 = none configured
+        /**
+         * The configured factory by identity, or {@code null} for none. Its bare identity hash
+         * made two factories that shared one a single factory on two overlapping scopes.
+         */
+        final @Nullable IdentityKey threadFactory;
         final long             openSeq;
 
         volatile @Nullable String effectiveName;
@@ -116,11 +120,11 @@ public final class ScopeConfigurationMisuseDetector {
         final AtomicInteger    joinTimeouts = new AtomicInteger();
 
         ScopeState(String scopeId, @Nullable String requestedName, long requestedTimeoutMillis,
-                   int threadFactoryId, long openSeq) {
+                   @Nullable IdentityKey threadFactory, long openSeq) {
             this.scopeId                = scopeId;
             this.requestedName          = requestedName;
             this.requestedTimeoutMillis = requestedTimeoutMillis;
-            this.threadFactoryId        = threadFactoryId;
+            this.threadFactory          = threadFactory;
             this.openSeq                = openSeq;
         }
 
@@ -171,7 +175,7 @@ public final class ScopeConfigurationMisuseDetector {
                                   long requestedTimeoutMillis, @Nullable Object threadFactory,
                                   Thread owner) {
         if (!enabled || scopeId == null || owner == null) return;
-        int factoryId = threadFactory != null ? System.identityHashCode(threadFactory) : 0;
+        IdentityKey factoryId = threadFactory != null ? new IdentityKey(threadFactory) : null;
         // A closed scope reopened under the same id is a new scope: its forks and joins are its
         // own, not a continuation of the previous round's. The closed state keeps its findings.
         scopes.compute(scopeId, (k, old) -> {
@@ -344,13 +348,13 @@ public final class ScopeConfigurationMisuseDetector {
     }
 
     private static void sharedThreadFactory(Report r, List<ScopeState> all) {
-        Map<Integer, List<ScopeState>> byFactory = new LinkedHashMap<>();
+        Map<IdentityKey, List<ScopeState>> byFactory = new LinkedHashMap<>();
         for (ScopeState s : all) {
-            if (s.threadFactoryId != 0) {
-                byFactory.computeIfAbsent(s.threadFactoryId, k -> new ArrayList<>()).add(s);
+            if (s.threadFactory != null) {
+                byFactory.computeIfAbsent(s.threadFactory, k -> new ArrayList<>()).add(s);
             }
         }
-        for (Map.Entry<Integer, List<ScopeState>> e : byFactory.entrySet()) {
+        for (Map.Entry<IdentityKey, List<ScopeState>> e : byFactory.entrySet()) {
             List<ScopeState> sharing = e.getValue();
             if (sharing.size() < 2) continue;
             SortedSet<String> overlapping = new TreeSet<>();
