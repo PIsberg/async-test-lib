@@ -708,7 +708,7 @@ public class ConcurrencyRunner {
                 continue;
             }
             List<GradedFindings.Grade> grades = graded.getOrDefault(e.getKey(), List.of());
-            System.err.println(trustBanner(e.getKey(), bannerTier(e.getKey(), grades)));
+            System.err.println(trustBanner(e.getKey(), grades));
             System.err.println(e.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
             if (trips(config, e.getKey(), e.getValue(), grades)) {
@@ -1253,20 +1253,44 @@ public class ConcurrencyRunner {
     }
 
     /**
-     * The tier shown above a report: the best any of its findings carries, so a reader is not told
-     * a block is only a prompt when it contains a verdict.
+     * The banner for a detector whose report may grade its findings one by one.
+     *
+     * <p>The head line claims no more than the weakest finding under it supports: it names the
+     * lowest tier, and the span when the grades differ ({@code trust=PROMPT..VERDICT}). It used to
+     * name the best tier, so a block holding one observed mutation and one structural note was
+     * headed "a finding means the code is wrong", and the note inherited that sentence. Each
+     * graded finding then gets a line of its own with its tier and severity, so the reader can
+     * tell which line is the verdict. The {@code failOn} gate is unaffected: {@link #trips} still
+     * judges every finding on its own grade.
+     *
+     * <p>An ungraded detector gets the one-line banner of its detector-wide tier.
      */
-    private static TrustTier bannerTier(String detectorName, List<GradedFindings.Grade> grades) {
-        return grades.stream()
-                .map(GradedFindings.Grade::tier)
-                .max(java.util.Comparator.naturalOrder())
-                .orElseGet(() -> DetectorTrust.tierOfDetector(detectorName));
+    static String trustBanner(String detectorName, List<GradedFindings.Grade> grades) {
+        if (grades.isEmpty()) {
+            return trustBanner(detectorName, DetectorTrust.tierOfDetector(detectorName));
+        }
+        TrustTier lowest = grades.get(0).tier();
+        TrustTier highest = lowest;
+        for (GradedFindings.Grade grade : grades) {
+            lowest = grade.tier().compareTo(lowest) < 0 ? grade.tier() : lowest;
+            highest = grade.tier().compareTo(highest) > 0 ? grade.tier() : highest;
+        }
+        String span = lowest == highest ? lowest.toString() : lowest + ".." + highest;
+        StringBuilder banner = new StringBuilder("[AsyncTest] ").append(detectorName)
+                .append(" trust=").append(span).append(' ').append(trustHint(lowest));
+        for (GradedFindings.Grade grade : grades) {
+            banner.append(System.lineSeparator()).append("[AsyncTest]   finding trust=")
+                    .append(grade.tier()).append(" severity=").append(grade.severity())
+                    .append(": ").append(grade.summary());
+        }
+        return banner.toString();
     }
 
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
+        Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
         for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
             System.err.println("\n" + trustBanner(finding.getKey(),
-                    DetectorTrust.tierOfDetector(finding.getKey())));
+                    graded.getOrDefault(finding.getKey(), List.of())));
             System.err.println(finding.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue());
         }
