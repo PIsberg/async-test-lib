@@ -38,6 +38,9 @@ class VarHandleNonAtomicUpdateDetectorTest {
         }
     }
 
+    /** A second thread identity, never started: the record methods take threads for attribution. */
+    private static final Thread OTHER = new Thread(() -> { }, "vh-other");
+
     private VarHandleNonAtomicUpdateDetector detector;
 
     @BeforeEach
@@ -54,6 +57,8 @@ class VarHandleNonAtomicUpdateDetectorTest {
         detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
         COUNT.setVolatile(h, v + 1);
         detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+        // Another thread writes the same location, so there is a write the pair can lose.
+        detector.recordAtomicUpdate(COUNT, h, "count", OTHER);
 
         var report = detector.analyze();
         assertTrue(report.hasIssues(), "get-then-set through a VarHandle must be flagged");
@@ -70,6 +75,7 @@ class VarHandleNonAtomicUpdateDetectorTest {
         // The whole point: VOLATILE buys ordering, never atomicity across two operations.
         detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
         detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+        detector.recordAtomicUpdate(COUNT, h, "count", OTHER);
 
         assertTrue(detector.analyze().hasIssues(),
                 "A volatile get followed by a volatile set is still a non-atomic read-modify-write");
@@ -163,6 +169,8 @@ class VarHandleNonAtomicUpdateDetectorTest {
         Thread t = Thread.currentThread();
         detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.PLAIN, t);
         detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.PLAIN, t);
+        detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.PLAIN, OTHER);
+        assertTrue(detector.analyze().hasIssues(), "idempotence is only worth testing on a finding");
 
         assertEquals(detector.analyze().toString(), detector.analyze().toString(),
                 "Repeated analyze() on quiescent state must produce identical reports");
@@ -207,5 +215,86 @@ class VarHandleNonAtomicUpdateDetectorTest {
         assertTrue(report.hasIssues(), "Two threads doing get-then-set must be flagged");
         assertTrue(report.toString().contains("2 non-atomic get-then-set"),
                 "Both threads' sequences must be counted: " + report);
+    }
+
+    @Test
+    void getThenSetInsideSynchronizedOnTheReceiverIsNotALostUpdate() throws Exception {
+        Holder h = new Holder();
+        Runnable lockedUpdate = () -> {
+            Thread me = Thread.currentThread();
+            synchronized (h) {
+                int v = (int) COUNT.getVolatile(h);
+                detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, me);
+                COUNT.setVolatile(h, v + 1);
+                detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, me);
+            }
+        };
+        onTwoThreads(lockedUpdate);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "Every get and set held the receiver's monitor, so no write could land between "
+                        + "them. The VarHandle buys nothing here, but pointless is not wrong, and "
+                        + "the lost-update finding is graded VERDICT: " + detector.analyze());
+        assertEquals(2, h.count, "The locked updates must both have landed");
+    }
+
+    @Test
+    void plainModeSharingUnderADeclaredLockIsNotFlagged() throws Exception {
+        Holder h = new Holder();
+        Object lock = new Object();
+        Runnable lockedPlainUpdate = () -> {
+            Thread me = Thread.currentThread();
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+                synchronized (lock) {
+                    detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.PLAIN, me);
+                    detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.PLAIN, me);
+                }
+            }
+        };
+        onTwoThreads(lockedPlainUpdate);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a monitor both threads take orders the plain accesses and makes the pair atomic");
+    }
+
+    @Test
+    void getThenSetConfinedToOneThreadIsNotALostUpdate() {
+        Holder h = new Holder();
+        Thread t = Thread.currentThread();
+        detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+        detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "no other thread ever touched the location, so there was no write to lose");
+    }
+
+    @Test
+    void getThenSetUnderALockAnotherWriterSkipsIsStillFlagged() throws Exception {
+        Holder h = new Holder();
+        Thread locked = new Thread(() -> {
+            Thread me = Thread.currentThread();
+            synchronized (h) {
+                detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, me);
+                detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, me);
+            }
+        }, "vh-locked");
+        Thread unlocked = new Thread(() -> detector.recordAtomicUpdate(COUNT, h, "count",
+                Thread.currentThread()), "vh-unlocked");
+        locked.start();
+        locked.join();
+        unlocked.start();
+        unlocked.join();
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the other writer took no lock, so it can land between the locked get and set");
+    }
+
+    private static void onTwoThreads(Runnable body) throws InterruptedException {
+        Thread a = new Thread(body, "vh-a");
+        Thread b = new Thread(body, "vh-b");
+        a.start();
+        b.start();
+        a.join();
+        b.join();
     }
 }

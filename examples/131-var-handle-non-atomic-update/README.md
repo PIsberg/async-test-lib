@@ -53,14 +53,17 @@ atomic operation, it is volatile mode.
 ```java
 var d = new VarHandleNonAtomicUpdateDetector();
 d.recordGet(COUNT, holder, "count", Mode.VOLATILE, t);
-d.recordSet(COUNT, holder, "count", Mode.VOLATILE, t);   // get-then-set → flagged
+d.recordSet(COUNT, holder, "count", Mode.VOLATILE, t);   // get-then-set
+d.recordAtomicUpdate(COUNT, holder, "count", other);     // another thread writes → flagged
 assertTrue(d.analyze().hasIssues());
 ```
 
 | Recorded sequence | Verdict |
 |---|---|
 | `recordAtomicUpdate` (`getAndAdd`, `compareAndSet`) | silent — indivisible |
-| `recordGet` then `recordSet` on one field | flagged — lost update |
+| `recordGet` then `recordSet` on a field another thread also touches | flagged — lost update |
+| the same, every access inside `synchronized (holder)` or one declared lock | silent — the lock makes it atomic |
+| `recordGet` then `recordSet` on a field only one thread touches | silent — no write to lose |
 | `Mode.PLAIN` set and get from two threads | flagged — visibility, reported separately |
 
 `Mode` is `VarHandleNonAtomicUpdateDetector.Mode`: `PLAIN`, `OPAQUE`, `ACQUIRE_RELEASE`,

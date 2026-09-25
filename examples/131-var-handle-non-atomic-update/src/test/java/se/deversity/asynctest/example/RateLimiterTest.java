@@ -83,6 +83,10 @@ class RateLimiterTest {
         detector.recordGet(RateLimiter.countHandle(), limiter, "count", Mode.VOLATILE, t);
         limiter.recordRequestNonAtomically();
         detector.recordSet(RateLimiter.countHandle(), limiter, "count", Mode.VOLATILE, t);
+        // Another request thread counts on the same limiter. A get-then-set no other thread
+        // touches has no write to lose, and is not reported.
+        detector.recordAtomicUpdate(RateLimiter.countHandle(), limiter, "count",
+                new Thread(() -> { }, "limiter-other"));
 
         var report = detector.analyze();
         assertTrue(report.hasIssues(),

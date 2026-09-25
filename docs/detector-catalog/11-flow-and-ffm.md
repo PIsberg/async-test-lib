@@ -103,7 +103,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 ### 130. VarHandle Non-Atomic Update
 * **Severity**: `HIGH` (lost update) / `MEDIUM` (plain-mode sharing)
 * **Trust tier**: **verdict** for the lost update, **prompt** for plain-mode sharing
-* **Description**: The `VarHandle` counterpart of `ATOMIC_NON_ATOMIC_UPDATE`. Detects a `get` followed by a `set` where `compareAndExchange` was needed, and separately, plain-mode access to a location several threads share. The access mode never rescues the compound operation: `getVolatile` then `setVolatile` loses updates exactly as readily as the plain pair, because volatile buys ordering, not atomicity across two calls. The plain-mode rule catches the mistake unique to `VarHandle` — `vh.get(o)` has no ordering even when the field is declared `volatile`.
+* **Description**: The `VarHandle` counterpart of `ATOMIC_NON_ATOMIC_UPDATE`. Detects a `get` followed by a `set` where `compareAndExchange` was needed, and separately, plain-mode access to a location several threads share. The access mode never rescues the compound operation: `getVolatile` then `setVolatile` loses updates exactly as readily as the plain pair, because volatile buys ordering, not atomicity across two calls. The plain-mode rule catches the mistake unique to `VarHandle` — `vh.get(o)` has no ordering even when the field is declared `volatile`. Both findings need the location touched by more than one thread and no lock common to every access: a get-then-set one thread keeps to itself, or one done inside `synchronized (holder)` (or under a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove) by every thread, is not reported.
 * **Buggy Code**:
   ```java
   int v = (int) COUNT.getVolatile(holder);
