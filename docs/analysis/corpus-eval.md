@@ -799,7 +799,9 @@ definition of `PROMPT` rather than a gap to close.
 
 **`CONCURRENT_MAP_CHECK_THEN_ACT` is classified by its caller.** `recordCheckThenAct` is itself the
 assertion that a check-then-act happened; the detector's only decision is whether more than one
-thread reached the same `(map, key)` site. Its silent row was worse than cross-class - it called no
+thread reached the same `(map, key)` site with no one lock covering every call (the lockset since
+2026-09-25; before it, a check-then-act inside `synchronized` was reported too). Its silent row
+was worse than cross-class - it called no
 detector API at all, so a detector that fired on every single record call would have passed it - and
 a same-class row was written to fix that: the same map class, the same recorded check-then-act, on a
 key private to each thread. The silence is now a decision rather than an absence of calls. It still

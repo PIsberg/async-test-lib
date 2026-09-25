@@ -108,14 +108,16 @@ else. Agent-lane bodies make no such calls, the woven call sites being the input
 names each pair and both modules check it, which is what keeps the tier from outliving the
 measurement.
 
-Three detectors the corpus measures in both directions stay `PROMPT`, and the reason in each case
+Two detectors the corpus measures in both directions stay `PROMPT`, and the reason in each case
 is the detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
 synchronizes itself, so given one class both halves of a pair get the same answer by construction,
 and it consults no lock at all: a `HashMap` correctly guarded by the caller's own lock draws the
-same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` is classified by its caller, because
-`recordCheckThenAct` is itself the assertion that a check-then-act happened; the detector's own
-decision is only whether more than one thread reached the same `(map, key)` site.
-`FILE_CHANNEL_POSITION_RACE` has the better pair of the three - one shared channel, differing only
+same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the third. It is
+classified by its caller, because `recordCheckThenAct` is itself the assertion that a
+check-then-act happened, and its own decision is whether more than one thread reached the same
+`(map, key)` site with no lock common to every call; the `synchronized` twin of the firing body
+is silent since 2026-09-25, when that lockset was added.
+`FILE_CHANNEL_POSITION_RACE` has the better pair of the two - one shared channel, differing only
 in the read overload - but `analyze()` reports on `accessingThreadIds.size() > 1` and the detector
 holds no representation of a lock, so a caller who wraps `position(n)` and `read(buffer)` in
 `synchronized (channel)`, which genuinely fixes the race, draws the identical finding. The remedy
