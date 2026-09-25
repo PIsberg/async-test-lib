@@ -1507,7 +1507,7 @@ shape to add back:
 | `VIRTUAL_THREAD_PINNING` | every recorded pinning event is a finding; the platform-thread variant records nothing |
 | `THREAD_POOL_DEADLOCK` | any `nestedSubmissionCount > 0` fires, whatever the pool size |
 | `THIS_ESCAPE` | reports every instance with a non-empty escape set; the correct twin's calls are no-ops |
-| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, so no per-thread instance exists to confine |
+| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, and the detector keyed on the instance, so every thread's correct `current()` fired. It now asks which threads recorded an obtain, so a pair is possible; it is not written yet |
 | `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` | `recordObtrude` is the only method and every entry is a violation |
 | `DEPRECATED_THREAD_API` | `recordApiUse` is the only method and every entry is a violation |
 

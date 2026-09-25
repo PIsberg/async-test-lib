@@ -21,7 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * IdGenerator caches the result of ThreadLocalRandom.current() in a final field at
  * construction time. ThreadLocalRandom.current() returns the generator owned by the
  * calling thread; caching that reference and using it from other threads defeats the
- * per-thread isolation the class depends on and corrupts/biases its output.
+ * per-thread isolation the class depends on: current() is what seeds the calling thread,
+ * so a worker that skips it draws a sequence set by its thread id rather than seeded.
  *
  * WHY @Test PASSES:
  * A single-threaded test constructs and uses the generator on one and the same thread,
@@ -40,12 +41,16 @@ class IdGeneratorTest {
 
     private IdGenerator generator;
 
+    /** The thread that constructed the generator, and so the one whose current() it cached. */
+    private Thread constructingThread;
+
     @BeforeEach
     void setUp() {
         // AsyncTestContext is NOT available here (no active test context), so the
         // detector is not called in @BeforeEach. The cached RNG reference is captured
-        // by ThreadLocalRandom.current() at construction time.
+        // by ThreadLocalRandom.current() at construction time, on this thread.
         generator = new IdGenerator();
+        constructingThread = Thread.currentThread();
     }
 
     // -------------------------------------------------------------------------
@@ -76,8 +81,8 @@ class IdGeneratorTest {
 
     /**
      * Eight threads concurrently use the same cached ThreadLocalRandom reference.
-     * The first worker thread registers as the obtaining (owner) thread; the other
-     * seven threads' uses of the same reference are flagged as cross-thread misuse
+     * The setup thread that constructed the generator is recorded as the obtaining
+     * thread; the worker threads' uses of the same reference are flagged as cross-thread misuse
      * by ThreadLocalRandomMisuseDetector.
      *
      * To see the detection:
@@ -91,10 +96,12 @@ class IdGeneratorTest {
         Thread thread = Thread.currentThread();
 
         // The generator captured current() at construction time on the test-runner's
-        // setup thread. recordObtain uses computeIfAbsent, so the first worker thread
-        // wins as the owner; here every worker thread uses that same cached reference:
+        // setup thread, so that is the thread recorded as obtaining it. current() returns
+        // one JVM-wide object, so the detector cannot tell the threads apart by the
+        // reference; it asks whether the using thread ever called current() itself. Here
+        // every worker thread uses the cached reference without doing so:
         AsyncTestContext.threadLocalRandomMisuseDetector()
-                .recordObtain(generator.getRng(), "cached-rng", thread);
+                .recordObtain(generator.getRng(), "cached-rng", constructingThread);
         AsyncTestContext.threadLocalRandomMisuseDetector()
                 .recordUse(generator.getRng(), thread);
 

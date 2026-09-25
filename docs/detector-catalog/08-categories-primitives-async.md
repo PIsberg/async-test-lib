@@ -189,7 +189,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 105. ThreadLocalRandom Misuse Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects a cached `ThreadLocalRandom.current()` reference used from a thread other than the one that obtained it. The whole point of the class is per-thread isolation with no shared state; caching and reusing the reference across threads reintroduces contention and (since it lacks `Random`'s synchronization) state corruption and biased output.
+* **Description**: Detects a cached `ThreadLocalRandom.current()` reference used on a thread that never called `current()` itself. `current()` returns one JVM-wide object whose methods act on the calling thread's own seed, and it is `current()` that seeds the calling thread, so a thread that skips it draws a sequence set by its thread id instead of a seeded one. Because every thread gets the same object, the detector tracks which threads recorded an obtain, not which instance: `current()` called on every thread is silent.
 * **Buggy Code**:
   ```java
   private final Random rng = ThreadLocalRandom.current(); // captured once, cached

@@ -47,6 +47,59 @@ class ThreadLocalRandomMisuseDetectorTest {
     }
 
     @Test
+    void currentCalledOnEveryThreadIsNotFlagged() throws Exception {
+        var d = new ThreadLocalRandomMisuseDetector();
+        ThreadLocalRandom[] seenByWorker = new ThreadLocalRandom[1];
+        Runnable correctUse = () -> {
+            ThreadLocalRandom rng = ThreadLocalRandom.current();
+            d.recordObtain(rng, "per-thread-rng", Thread.currentThread());
+            rng.nextInt();
+            d.recordUse(rng, Thread.currentThread());
+            seenByWorker[0] = rng;
+        };
+        correctUse.run();
+        ThreadLocalRandom onThisThread = seenByWorker[0];
+        for (int i = 0; i < 3; i++) {
+            Thread t = new Thread(correctUse);
+            t.start();
+            t.join();
+        }
+
+        // The premise the old identity model missed: current() hands every thread the same object.
+        assertSame(onThisThread, seenByWorker[0],
+                "ThreadLocalRandom.current() returns one JVM-wide instance on this JDK");
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                "every thread called current() itself, which is the documented idiom: " + report);
+    }
+
+    @Test
+    void onlyTheThreadThatNeverCalledCurrentIsNamed() throws Exception {
+        var d = new ThreadLocalRandomMisuseDetector();
+        ThreadLocalRandom captured = ThreadLocalRandom.current();
+        d.recordObtain(captured, "cached-rng", Thread.currentThread());
+        Thread correct = new Thread(() -> {
+            ThreadLocalRandom own = ThreadLocalRandom.current();
+            d.recordObtain(own, "cached-rng", Thread.currentThread());
+            d.recordUse(own, Thread.currentThread());
+        }, "calls-current");
+        Thread misuser = new Thread(() -> d.recordUse(captured, Thread.currentThread()),
+                "uses-the-captured-reference");
+        correct.start();
+        correct.join();
+        misuser.start();
+        misuser.join();
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "a reference obtained on one thread and used on another");
+        String text = report.toString();
+        assertTrue(text.contains("uses-the-captured-reference"), text);
+        assertFalse(text.contains("calls-current"), text);
+        assertEquals(java.util.Optional.of(IssueSeverity.MEDIUM), IssueSeverity.markedIn(text),
+                "the failOn gate reads severity from the text, which must match the Violation");
+    }
+
+    @Test
     void useWithoutObtainIsIgnored() throws Exception {
         var d = new ThreadLocalRandomMisuseDetector();
         ThreadLocalRandom rng = ThreadLocalRandom.current();

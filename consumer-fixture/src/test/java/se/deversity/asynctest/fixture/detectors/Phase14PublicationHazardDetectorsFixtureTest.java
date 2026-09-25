@@ -143,7 +143,9 @@ class Phase14PublicationHazardDetectorsFixtureTest {
         // The misuse is holding on to the instance: ThreadLocalRandom.current() must be called
         // on the thread that uses it, and a cached reference is shared across workers.
         var tlrDetector = AsyncTestContext.threadLocalRandomMisuseDetector();
-        tlrDetector.recordObtain(SHARED_TLR, "cached-tlr", Thread.currentThread());
+        // current() hands every thread the same object, so the obtain is recorded against the
+        // thread that really called it; this worker only uses the cached reference.
+        tlrDetector.recordObtain(SHARED_TLR, "cached-tlr", TLR_OWNER);
         tlrDetector.recordUse(SHARED_TLR, Thread.currentThread());
         spin(SHARED_TLR.nextInt(100));
     }
@@ -156,6 +158,9 @@ class Phase14PublicationHazardDetectorsFixtureTest {
 
     /** Obtained once and cached - the misuse ThreadLocalRandom's javadoc warns against. */
     private static final ThreadLocalRandom SHARED_TLR = ThreadLocalRandom.current();
+
+    /** The thread that ran the class initializer, and so the one that called current() above. */
+    private static final Thread TLR_OWNER = Thread.currentThread();
 
     /** Deliberately published from its own constructor. */
     static final AtomicReference<Escaper> ESCAPED = new AtomicReference<>();
