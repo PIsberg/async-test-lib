@@ -71,7 +71,7 @@ allow threads to overwrite each other's changes, producing lost updates, stale r
 and silently wrong results
 
 Concurrent write hotspots:
-  - ConcurrentHashMap@1bf5609d.WIDGET-42: 8 writes observed across 8 threads
+  - ConcurrentHashMap@1bf5609d.WIDGET-42: written by 8 threads, 8 writes in all, first at InventoryService.reserveItem(InventoryService.java:79)
 
 Unsynchronized access sequences:
   - ConcurrentHashMap@1bf5609d.WIDGET-42: thread 81 write followed by thread 74 read

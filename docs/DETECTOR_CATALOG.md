@@ -151,8 +151,11 @@ so a field one thread holds `{A, B}` for and another holds `{A}` for is guarded 
 reported. `ATOMICITY_VIOLATIONS` is coarser on its agent-fed path, where it compares whole lock sets
 rather than intersecting them. Neither report grades its findings, so both detectors are rated
 PROMPT as a whole. For `RACE_CONDITIONS` that is a decision rather than a gap: no finding it makes
-can tell an unguarded access from one under an undeclared lock, and its recording API carries no
-volatile or hand-off ordering, so no finding of it could honestly be graded VERDICT. Its same-class
+can tell an unguarded access from one under an undeclared lock, or a hand-off through a call that
+neither the agent nor the test described to the shared happens-before model, so no finding of it
+could honestly be graded VERDICT. Since 1.12.3 a round whose every conflicting pair that model
+orders is not reported: a queue hand-off, a volatile publication, `Thread.start` and `join`, with
+the edges coming from the agent or from `HappensBefore` declarations in the test. Its same-class
 corpus pair was read for promotion on 2026-09-14 and stays PROMPT on that model, with the reason
 recorded in corpus-eval's `PairEvidence`.
 

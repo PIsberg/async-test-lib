@@ -65,6 +65,45 @@ Three things to know, each different from the annotation:
 Inside the body, `AsyncTestContext.get()` and the `recordXxx` hooks work as they do in an
 annotated method, and the licence gate applies as it does there.
 
+## Declaring ordering when you record by hand (1.12.3, experimental)
+
+`RaceConditionDetector` judges a pair of accesses from two threads by the locks held at each.
+Correct code whose ordering comes from somewhere else, an object handed through a queue, a
+`Thread.start` and `join`, read as racing. It also consults one shared happens-before model,
+`se.deversity.asynctest.diagnostics.HappensBefore`, and a round whose every conflicting pair that
+model orders is not reported. A test that records accesses by hand declares the edges itself, at
+the point the program makes them:
+
+```java
+// producer thread
+box.value = 42;
+detector.recordFieldWrite(box, "value");
+HappensBefore.release(box);          // before the element is published
+queue.put(box);
+
+// consumer thread
+Box taken = queue.take();
+HappensBefore.acquire(taken);        // after the element was received
+detector.recordFieldRead(taken, "value");
+```
+
+| Call | Where to make it | What it orders |
+|------|------------------|----------------|
+| `HappensBefore.release(obj)` | before the hand-off: a put, a `countDown`, a volatile write | this thread's accesses recorded so far |
+| `HappensBefore.acquire(obj)` | after the matching receipt: a take, a returned `await`, a volatile read that saw the value | everything released through `obj` before it |
+| `HappensBefore.fork(child)` | before `child.start()` | the parent's accesses so far, before all of the child's |
+| `HappensBefore.join(child)` | after `child.join()` returned | all of the child's accesses, before the parent's later ones |
+
+`obj` is compared by identity. An edge only ever removes a finding: declaring one the program does
+not have hides a real race, so declare an acquire only once the value it depends on was actually
+observed. `join` of a thread that is still alive is ignored.
+
+`RaceConditionDetector` needs no declaration for a field the tracked object's class declares
+`volatile`: it treats a recorded write of it as a release and a recorded read as an acquire, and
+never pairs two reads or a read and a write of it, though two writers still race. Record the
+volatile write before making it and the read after it, so a reader that sees the value always
+finds the release.
+
 ## Manual Legacy Diagnostics
 
 For older Java async patterns that need explicit instrumentation, instantiate the diagnostics directly:

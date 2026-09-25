@@ -10,7 +10,7 @@ Each topic lives in its own file under [`usage/`](usage/). Read the one you need
 |----------|----------------|
 | [getting-started.md](usage/getting-started.md) | Installing with Maven or Gradle, and annotating your first test |
 | [configuration-options.md](usage/configuration-options.md) | Every `@AsyncTest` parameter and the detectors each phase enables, with context accessors and examples |
-| [other-ways-to-run.md](usage/other-ways-to-run.md) | The optional agent, `AsyncTestRunner` without the annotation, and manual legacy diagnostics |
+| [other-ways-to-run.md](usage/other-ways-to-run.md) | The optional agent, `AsyncTestRunner` without the annotation, declaring happens-before edges when recording by hand, and manual legacy diagnostics |
 | [examples.md](usage/examples.md) | Race condition, opting out of expensive detectors, deadlock, and virtual-thread stress tests |
 | [results-and-practices.md](usage/results-and-practices.md) | Reading a finding, adopting into an existing suite, reproducing a failure, and configuration advice |
 
