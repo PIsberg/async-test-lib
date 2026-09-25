@@ -144,4 +144,69 @@ class LockOrderValidatorTest {
         validator.reset();
         assertFalse(validator.validateLockOrder().hasIssues());
     }
+
+    /**
+     * Two locks whose identity hashes collide are still two locks. Keyed by class name plus
+     * identity hash, one thread nesting {@code first} inside {@code a} and another nesting
+     * {@code a} inside {@code second} read as one pair taken both ways round: a lock-order
+     * inversion and a deadlock cycle that no two threads could ever form.
+     */
+    @Test
+    void locksSharingAnIdentityHashAreNotMergedIntoAnInversion() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        java.util.List<Object> colliding = IdentityCollisions.pair(Object::new);
+        Object first = colliding.get(0);
+        Object second = colliding.get(1);
+        Object a = new Object();
+
+        Thread t1 = new Thread(() -> {
+            validator.recordLockAcquisition(a);
+            validator.recordLockAcquisition(first);
+            validator.recordLockRelease(first);
+            validator.recordLockRelease(a);
+        });
+        Thread t2 = new Thread(() -> {
+            validator.recordLockAcquisition(second);
+            validator.recordLockAcquisition(a);
+            validator.recordLockRelease(a);
+            validator.recordLockRelease(second);
+        });
+        t1.start();
+        t1.join();
+        t2.start();
+        t2.join();
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(),
+                "a -> first and second -> a involve three distinct locks and cannot deadlock: " + report);
+    }
+
+    /** The same shape on one lock is the real inversion, and still fires. */
+    @Test
+    void theSameLockTakenBothWaysRoundStillFires() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object shared = new Object();
+        Object a = new Object();
+
+        Thread t1 = new Thread(() -> {
+            validator.recordLockAcquisition(a);
+            validator.recordLockAcquisition(shared);
+            validator.recordLockRelease(shared);
+            validator.recordLockRelease(a);
+        });
+        Thread t2 = new Thread(() -> {
+            validator.recordLockAcquisition(shared);
+            validator.recordLockAcquisition(a);
+            validator.recordLockRelease(a);
+            validator.recordLockRelease(shared);
+        });
+        t1.start();
+        t1.join();
+        t2.start();
+        t2.join();
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(), report.toString());
+        assertFalse(report.potentialDeadlockCycles.isEmpty(), report.toString());
+    }
 }
