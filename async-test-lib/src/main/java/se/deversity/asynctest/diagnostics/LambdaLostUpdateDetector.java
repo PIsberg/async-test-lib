@@ -23,8 +23,9 @@ import org.jspecify.annotations.Nullable;
  * rather than inferring a race from the fact that a lambda ran on more than one thread.
  *
  * <p>{@link StatefulLambdaDetector} reports the <em>shape</em> of the hazard: a lambda that ran on
- * several threads and mutated something it captured. That is a co-occurrence, so it fires the same
- * way on a captured counter guarded by a lock as on a racy one. This detector answers the narrower
+ * several threads and mutated something it captured. That is a co-occurrence: it withholds a
+ * mutation of thread-safe captured state and one under a lock it can see, but a counter guarded by
+ * a lock it never saw fires the same way as a racy one. This detector answers the narrower
  * question with evidence, and it takes two pieces of it:
  * <ol>
  *   <li>Two threads read the <em>same</em> pre-value and both wrote back. Both computed from that

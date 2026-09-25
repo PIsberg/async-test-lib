@@ -72,7 +72,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 85. Stateful Lambda Detector
 * **Severity**: `HIGH`
-* **Description**: Detects lambdas/`Runnable`/`Callable` instances that capture a mutable container (an array, an outer field, or an Atomic used via get+set) and are subsequently executed concurrently. The JVM's effectively-final rule only covers the captured *reference*, not a mutable container's contents, so shared execution introduces a data race.
+* **Description**: Detects lambdas/`Runnable`/`Callable` instances that capture a mutable container (an array, an outer field, or an Atomic used via get+set) and are subsequently executed concurrently. The JVM's effectively-final rule only covers the captured *reference*, not a mutable container's contents, so shared execution introduces a data race. Mutation of a captured object that is thread-safe by type (named through `recordCapturedMutation(lambda, name, state, thread)`: `java.util.concurrent` and its `atomic` package, or a `Collections.synchronizedXxx` wrapper) is not reported, nor is mutation that one lock covered every time: the captured object's own monitor, a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove.
 * **Buggy Code**:
   ```java
   int[] counter = {0}; // mutable captured container

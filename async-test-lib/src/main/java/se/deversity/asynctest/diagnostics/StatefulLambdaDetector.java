@@ -7,6 +7,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
+
 /**
  * Detects lambda / {@link Runnable} / {@link java.util.concurrent.Callable} instances
  * whose captured mutable state is mutated concurrently from multiple threads.
@@ -16,6 +20,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * shared across multiple threads introduce a shared-mutable-state race. The JVM enforces
  * <em>effectively-final</em> for captured variables, but captured <em>containers</em>
  * (arrays, wrapper objects) are mutable — a common source of data races.
+ *
+ * <p>Two kinds of mutation are not the race and are not reported. Mutation of state that is
+ * thread-safe by type, when the caller names the captured object through
+ * {@link #recordCapturedMutation(Object, String, Object, Thread)}, and mutation that one lock
+ * covered every time. The lock the detector can see is the captured object's own monitor (or
+ * the lambda's, when no object is named), a lock declared with
+ * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
+ * the finding standing.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -32,7 +44,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class StatefulLambdaDetector {
 
-    private static class LambdaState {
+    /**
+     * Per-lambda bookkeeping. The inherited lockset covers every mutation of state that is not
+     * thread-safe by type, across all of the lambda's captures together.
+     */
+    private static class LambdaState extends SelfGuard.TrackedInstance {
         final String      name;
         final Set<Long>   executingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> executingThreadNames = ConcurrentHashMap.newKeySet();
@@ -65,18 +81,54 @@ public class StatefulLambdaDetector {
      * Record that the lambda is mutating a captured variable.
      * Call this whenever the lambda writes to a captured mutable container.
      *
+     * <p>Without the captured object the detector cannot tell thread-safe state from a plain
+     * container; prefer {@link #recordCapturedMutation(Object, String, Object, Thread)}.
+     *
      * @param lambda        the lambda, Runnable, or Callable instance
      * @param capturedName  name of the captured variable being mutated
      * @param thread        the mutating thread
      */
     public void recordCapturedMutation(Object lambda, String capturedName, Thread thread) {
+        recordCapturedMutation(lambda, capturedName, null, thread);
+    }
+
+    /**
+     * Record that the lambda is mutating a captured variable, naming the captured object.
+     *
+     * <p>The object is what lets the detector tell correct sharing from the race. State that is
+     * thread-safe by type - anything in {@code java.util.concurrent} or its {@code atomic}
+     * package, such as {@code LongAdder}, {@code AtomicLong} or {@code ConcurrentHashMap}, and the
+     * {@code Collections.synchronizedXxx} wrappers - is not reported: its mutation is taken to be
+     * one of the type's own atomic operations. A get-then-set on an {@code Atomic*} is still a
+     * lost update, and is {@code AtomicNonAtomicUpdateDetector}'s finding, not this one's. Other
+     * state is reported only when no one lock covered every such mutation; the captured object's
+     * own monitor counts without a declaration, so {@code synchronized (counter)} is recognised.
+     *
+     * @param lambda        the lambda, Runnable, or Callable instance
+     * @param capturedName  name of the captured variable being mutated
+     * @param capturedState the captured object being mutated, or {@code null} when not known
+     * @param thread        the mutating thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordCapturedMutation(Object lambda, String capturedName,
+                                       @Nullable Object capturedState, Thread thread) {
         if (lambda == null || thread == null) return;
+        if (capturedState != null && isThreadSafeByType(capturedState)) return;
         String label = capturedName != null ? capturedName : "capturedState";
         LambdaState s = lambdas.computeIfAbsent(
                 new IdentityKey(lambda),
                 id -> new LambdaState(lambda.getClass().getSimpleName()
                         + "@" + System.identityHashCode(lambda)));
+        // Probed on the mutating thread while it is still inside whatever region guards it.
+        s.noteAccess(capturedState != null ? capturedState : lambda);
         s.mutationEvents.add(thread.getName() + " → " + label);
+    }
+
+    private static boolean isThreadSafeByType(Object state) {
+        String type = state.getClass().getName();
+        return type.startsWith("java.util.concurrent.")
+                || type.startsWith("java.util.Collections$Synchronized");
     }
 
     /**
@@ -85,9 +137,11 @@ public class StatefulLambdaDetector {
     public StatefulLambdaReport analyze() {
         StatefulLambdaReport r = new StatefulLambdaReport();
         for (LambdaState s : lambdas.values()) {
-            if (s.executingThreadIds.size() > 1 && !s.mutationEvents.isEmpty()) {
+            if (s.executingThreadIds.size() > 1 && !s.mutationEvents.isEmpty()
+                    && s.sawUnguardedAccess()) {
                 r.violations.add(String.format(
-                        "'%s' executed on %d threads (%s) with concurrent captured-state mutations: [%s]",
+                        "'%s' executed on %d threads (%s) with concurrent captured-state mutations: [%s]"
+                                + SelfGuard.REPORT_NOTE,
                         s.name, s.executingThreadIds.size(),
                         String.join(", ", s.executingThreadNames),
                         String.join("; ", s.mutationEvents)));
