@@ -65,7 +65,8 @@ class MemoryOrderingNoFalsePositiveTest {
         MemoryOrderingMonitor.MemoryOrderingReport report = monitor.analyzeOrdering();
 
         assertFalse(report.staleCoreads.isEmpty(),
-            "a thread that misses another thread's write is a real visibility violation");
+            "a read that disagrees with another thread's write recorded before it is the "
+                + "pair the monitor exists to point at");
         assertTrue(report.hasIssues(), "the report must claim issues");
     }
 }

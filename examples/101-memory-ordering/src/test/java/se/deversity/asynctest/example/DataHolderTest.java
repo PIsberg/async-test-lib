@@ -31,8 +31,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * WHY @AsyncTest DETECTS:
  * With mixed producer/consumer threads, MemoryOrderingMonitor records writes (WRITE)
- * and reads (READ) per location. When a read sees a different value than the most
- * recent write from another thread, the monitor reports a stale read.
+ * and reads (READ) per location. When a read returns a different value than the
+ * write another thread recorded just before it, the monitor reports it. Record order
+ * is not memory order, so the report is a prompt to check the happens-before edge
+ * from the producer's write to the consumer's read: a consumer that simply ran first
+ * produces the same pair of records.
  *
  * FIX:
  * Declare both value and ready as volatile, or use synchronized on all accesses.
@@ -74,8 +77,8 @@ class DataHolderTest {
     /**
      * Producer threads write to the shared DataHolder; consumer threads read.
      * MemoryOrderingMonitor records each write and read per location. When a
-     * consumer reads a value that does not match the last write from another
-     * thread, the monitor flags a stale read.
+     * consumer reads a value that does not match the write another thread recorded
+     * just before it, the monitor flags the pair as a possible stale read.
      *
      * To see the detection:
      * 1. Remove @Disabled

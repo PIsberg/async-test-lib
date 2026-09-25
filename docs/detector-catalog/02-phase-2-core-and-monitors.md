@@ -142,7 +142,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 16. Memory Ordering Detector
 * **Severity**: `HIGH`
-* **Description**: Logs reads and writes per memory location and thread to detect visibility violations — reads that observe stale values after a write from another thread, or writes that appear reordered due to missing happens-before edges.
+* **Description**: Logs reads and writes per memory location and thread to prompt a check for visibility violations: a read that returned a different value than the write another thread recorded just before it. The log is in record order, not memory order, so the finding says only that the two records disagree (the read may have run before the write, or not seen it) and asks for a happens-before edge; it is PROMPT-tier, not a verdict. A read whose value a later-recorded write produced is not reported, since that is the log lagging behind a write the read did see.
 * **Buggy Code**:
   ```java
   class Holder {

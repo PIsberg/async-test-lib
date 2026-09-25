@@ -19,8 +19,11 @@ observe `ready == false` even after the producer wrote `true`, or see a stale `v
    mvn test
    gradle test
    ```
-3. **MemoryOrderingMonitor** will report stale reads — writes observed at a different
-   value than reads from another thread.
+3. **MemoryOrderingMonitor** will report reads that returned a different value than the
+   write another thread recorded just before them. The log is in record order, not memory
+   order, so each entry is a prompt to check the happens-before edge from the write to the
+   read, not proof that the read was stale: a consumer that ran before the producer records
+   the same pair.
 
 ## The Fix
 

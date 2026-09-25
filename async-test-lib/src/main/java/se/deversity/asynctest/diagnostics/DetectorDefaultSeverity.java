@@ -65,7 +65,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.LOCK_ORDER, IssueSeverity.CRITICAL),
             entry(DetectorType.SYNCHRONIZERS, IssueSeverity.CRITICAL),
             entry(DetectorType.THREAD_POOL, IssueSeverity.MEDIUM),
-            entry(DetectorType.MEMORY_ORDERING, IssueSeverity.HIGH),
             entry(DetectorType.ASYNC_PIPELINE, IssueSeverity.HIGH),
             entry(DetectorType.READ_WRITE_LOCK_FAIRNESS, IssueSeverity.MEDIUM),
             entry(DetectorType.SEMAPHORE, IssueSeverity.HIGH),
