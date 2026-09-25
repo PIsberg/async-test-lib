@@ -98,8 +98,11 @@ public class LazyConstantMisuseDetector {
         Object firstResult = NO_RESULT;
     }
 
-    // Per-constant state, keyed by the caller-supplied descriptive name.
+    // Per-constant state, keyed by the caller-supplied descriptive name, for the current round.
     private final Map<String, State> states = new ConcurrentHashMap<>();
+
+    /** Names already warned about for a convoy, so the warning is made once per name. */
+    private final Set<String> convoyWarned = ConcurrentHashMap.newKeySet();
 
     // Per-thread set of constant names whose computation is currently running (reentrancy).
     private final Map<Long, Set<String>> activeComputations = new ConcurrentHashMap<>();
@@ -114,7 +117,8 @@ public class LazyConstantMisuseDetector {
     private final AtomicInteger totalComputes = new AtomicInteger(0);
 
     /**
-     * Clears the per-thread in-flight state left over from the previous invocation round.
+     * Closes the previous invocation round: clears the per-thread in-flight state it left
+     * over, and the per-holder state a name reused in the next round would otherwise carry.
      *
      * <p>Called by {@code ConcurrencyRunner} before each round, after the previous round's
      * workers have all finished, so nothing is legitimately in flight when it runs.
@@ -130,6 +134,12 @@ public class LazyConstantMisuseDetector {
      */
     public void markInvocationStart() {
         activeComputations.clear();
+        // The constant's state is per object, and a name is all the detector has. A test that
+        // builds its LazyConstant per round reuses the name for a new, uncomputed constant, and
+        // carrying the old state over counted each round's one computation as a repeat and each
+        // round's value as a disagreement. Every finding is already in its report list, so the
+        // state can go; a repeat computation is judged within a round.
+        states.clear();
     }
 
     private State stateFor(String name) {
@@ -156,7 +166,8 @@ public class LazyConstantMisuseDetector {
                 && !s.computingThreadIds.contains(thread.threadId())) {
             s.convoyThreadIds.add(thread.threadId());
             if (s.convoyThreadIds.size() >= CONVOY_THRESHOLD
-                    && s.convoyReported.compareAndSet(false, true)) {
+                    && s.convoyReported.compareAndSet(false, true)
+                    && convoyWarned.add(name)) {
                 convoyWarnings.add(
                     "LazyConstant '" + name + "': " + s.convoyThreadIds.size()
                     + " distinct threads blocked in get() behind one in-flight computation. "
