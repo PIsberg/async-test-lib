@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -77,11 +78,26 @@ public class FinalFieldMutationDetector {
         final Set<String> mutatingThreadNames = ConcurrentHashMap.newKeySet();
         final Set<Long>   readingThreadIds    = ConcurrentHashMap.newKeySet();
         final Set<String> readingThreadNames  = ConcurrentHashMap.newKeySet();
+        /** Two mutators in one round: the only evidence of unordered writes. */
+        final RoundSharing concurrentMutators = new RoundSharing();
     }
 
     // Per-field state, keyed by the caller-supplied descriptive name
     // (e.g. "Config.MAX_RETRIES").
     private final Map<String, State> fields = new ConcurrentHashMap<>();
+    /** Current invocation round, bumped by {@link #markInvocationStart()}. */
+    private final AtomicLong invocationEpoch = new AtomicLong();
+
+    /**
+     * Internal: called at the start of each invocation round. Two mutators count as concurrent
+     * only inside one round: the runner orders rounds, so a write in one round happens-before
+     * every write in the next, and with virtual threads each of those writes has a fresh thread id.
+     *
+     * @since 1.12.3
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
+    }
 
     private State stateFor(String field) {
         State s = fields.get(field);
@@ -104,6 +120,7 @@ public class FinalFieldMutationDetector {
         s.mutations.incrementAndGet();
         s.mutatingThreadIds.add(thread.threadId());
         s.mutatingThreadNames.add(thread.getName());
+        s.concurrentMutators.record(invocationEpoch.get(), thread.threadId());
     }
 
     /**
@@ -144,6 +161,8 @@ public class FinalFieldMutationDetector {
                 + "publication guarantee for every reader."
             );
 
+            // Deliberately not bounded by the round: a final field the JIT has constant-folded stays
+            // stale for a reader in a later round too, so the round boundary does not excuse it.
             boolean foreignReader = s.readingThreadIds.stream()
                     .anyMatch(id -> !s.mutatingThreadIds.contains(id));
             if (foreignReader) {
@@ -158,7 +177,7 @@ public class FinalFieldMutationDetector {
                 );
             }
 
-            if (s.mutatingThreadIds.size() > 1) {
+            if (s.concurrentMutators.sharedWithinARound()) {
                 concurrentWriteIssues.add(
                     "Final field '" + field + "' reflectively mutated by "
                     + s.mutatingThreadIds.size() + " distinct threads ("

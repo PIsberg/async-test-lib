@@ -887,6 +887,9 @@ public final class AsyncTestContext {
         if (recordMutableComponentLeakDetector != null) {
             recordMutableComponentLeakDetector.markInvocationStart();
         }
+        if (finalFieldMutationDetector != null) {
+            finalFieldMutationDetector.markInvocationStart();
+        }
     }
 
     /**

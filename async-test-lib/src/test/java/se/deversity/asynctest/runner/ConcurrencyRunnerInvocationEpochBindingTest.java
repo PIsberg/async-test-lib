@@ -767,4 +767,39 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         run(RecordSameRound.class);
         assertTrue(REPORTS.containsKey("RecordMutableComponentLeakDetector"), "Reports: " + REPORTS.keySet());
     }
+
+    /** A reflective final-field write, once per round, one thread per round. */
+    public static class FinalFieldCrossRound {
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectFinalFieldMutation = true)
+        void body() {
+            AsyncTestContext.finalFieldMutationDetector().recordMutation("Config.MAX", Thread.currentThread());
+        }
+    }
+
+    /** The same write from two threads inside one round. */
+    public static class FinalFieldSameRound {
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectFinalFieldMutation = true)
+        void body() {
+            AsyncTestContext.finalFieldMutationDetector().recordMutation("Config.MAX", Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("final-field writes in successive rounds are ordered, so they are not concurrent mutators")
+    void finalFieldWritesCrossRoundAreNotConcurrent() {
+        run(FinalFieldCrossRound.class);
+        String report = REPORTS.get("FinalFieldMutationDetector");
+        assertTrue(report != null && report.contains("reflectively mutated"),
+                "the mutation itself is still the finding: " + REPORTS.keySet());
+        assertFalse(report.contains("Concurrent mutators"),
+                "the runner joins round one before round two writes, so the writes are ordered: " + report);
+    }
+
+    @Test
+    @DisplayName("final-field writes by two threads in one round are concurrent mutators, so the absence above is not vacuous")
+    void finalFieldWritesSameRoundAreConcurrent() {
+        run(FinalFieldSameRound.class);
+        String report = REPORTS.get("FinalFieldMutationDetector");
+        assertTrue(report != null && report.contains("Concurrent mutators"), "Report: " + report);
+    }
 }

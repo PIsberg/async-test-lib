@@ -172,4 +172,30 @@ class FinalFieldMutationDetectorTest {
 
         assertTrue(detector.analyze().toString().contains("CRITICAL"));
     }
+
+    /**
+     * Reflective writes by two threads in different invocation rounds are ordered by the runner,
+     * which joins one round before the next, so they are not concurrent mutators. The mutation is
+     * still the finding.
+     */
+    @Test
+    void mutatorsInDifferentRoundsAreNotConcurrent() {
+        detector.recordMutation("Config.MAX", new Thread(() -> { }, "round-1"));
+        detector.markInvocationStart();
+        detector.recordMutation("Config.MAX", new Thread(() -> { }, "round-2"));
+
+        FinalFieldMutationDetector.FinalFieldMutationReport report = detector.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.getConcurrentWriteIssues().isEmpty(), report.getConcurrentWriteIssues().toString());
+    }
+
+    /** The same two writes inside one round are concurrent mutators. */
+    @Test
+    void mutatorsInOneRoundAreConcurrent() {
+        detector.markInvocationStart();
+        detector.recordMutation("Config.MAX", new Thread(() -> { }, "worker-1"));
+        detector.recordMutation("Config.MAX", new Thread(() -> { }, "worker-2"));
+
+        assertEquals(1, detector.analyze().getConcurrentWriteIssues().size());
+    }
 }
