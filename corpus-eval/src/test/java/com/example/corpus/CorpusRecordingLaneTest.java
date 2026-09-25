@@ -2929,10 +2929,12 @@ class CorpusRecordingLaneTest {
     }
 
     /**
-     * An optimistic read whose validation comes back false.
+     * An optimistic read whose values are used with no validation at all.
      *
      * <p>{@code StampedLock}'s optimistic mode is documented as valid only once {@code validate}
-     * confirms the stamp, so a read used after a failed validation saw a value mid-write.
+     * confirms the stamp, so a read that is never validated may have seen a value mid-write. The
+     * missing call is the defect. A validation that comes back false is not: it is the idiom's cue
+     * to re-read under the lock, and the detector no longer reports it.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_optimisticRead_usedWithoutValidating() {
@@ -2942,7 +2944,6 @@ class CorpusRecordingLaneTest {
         long stamp = UNVALIDATED_STAMPED_LOCK.tryOptimisticRead();
         detector.recordOptimisticReadStarted(UNVALIDATED_STAMPED_LOCK, stamp, self);
         detector.recordDataAccessed(UNVALIDATED_STAMPED_LOCK, stamp, self, "balance");
-        detector.recordValidateCalled(UNVALIDATED_STAMPED_LOCK, stamp, false, self);
     }
 
     /** The identical three calls with a validation that succeeds: the documented protocol. */

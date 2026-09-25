@@ -24,18 +24,79 @@ public class OptimisticReadValidationDetectorTest {
         assertFalse(d.analyze().hasIssues());
     }
 
+    /**
+     * The class javadoc's own idiom, with a writer landing between the read and the validate: the
+     * validation fails, the optimistic values are thrown away, and the value used is re-read under
+     * the read lock. Correct code, so no finding.
+     */
     @Test
-    void testDetectsDataUsedAfterFailedValidation() {
+    void theValidateAndRetryIdiomIsSilentWhenValidationFails() {
         var d = new OptimisticReadValidationDetector();
         StampedLock lock = new StampedLock();
-        long stamp = lock.tryOptimisticRead();
+        int[] shared = {1};
         Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
         d.recordOptimisticReadStarted(lock, stamp, t);
+        int x = shared[0];
         d.recordDataAccessed(lock, stamp, t, "sharedX");
-        d.recordValidateCalled(lock, stamp, false, t); // validation failed — data is torn
-        assertTrue(d.analyze().hasIssues());
-        assertTrue(d.analyze().violations.get(0).contains("sharedX"));
-        assertTrue(d.analyze().violations.get(0).contains("FAILED"));
+
+        long write = lock.writeLock();                 // the concurrent writer
+        shared[0] = 2;
+        lock.unlockWrite(write);
+
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertFalse(valid, "premise: the write invalidated the optimistic stamp");
+        if (!valid) {
+            long read = lock.readLock();
+            try {
+                x = shared[0];
+            } finally {
+                lock.unlockRead(read);
+            }
+        }
+
+        assertEquals(2, x, "the value used is the one re-read under the lock");
+        assertFalse(d.analyze().hasIssues(),
+                "a failed validate() is the idiom telling the caller to retry, not a torn read "
+                        + "that was used: " + d.analyze().violations);
+    }
+
+    /** Two locks read optimistically in turn, each validated: correct, even if their hashes collide. */
+    @Test
+    void twoLocksWhoseIdentityHashesCollideAreNotMerged() {
+        StampedLock[] pair = collidingLocks();
+        org.junit.jupiter.api.Assumptions.assumeTrue(pair != null,
+                "no identity-hash collision found among the locks allocated");
+        var d = new OptimisticReadValidationDetector();
+        Thread t = Thread.currentThread();
+
+        long first = pair[0].tryOptimisticRead();
+        d.recordOptimisticReadStarted(pair[0], first, t);
+        d.recordDataAccessed(pair[0], first, t, "a");
+        long second = pair[1].tryOptimisticRead();
+        d.recordOptimisticReadStarted(pair[1], second, t);
+        d.recordDataAccessed(pair[1], second, t, "b");
+        d.recordValidateCalled(pair[1], second, true, t);
+        d.recordValidateCalled(pair[0], first, true, t);
+
+        assertFalse(d.analyze().hasIssues(),
+                "keyed by identity hash, the second lock's read replaced the first's and reported "
+                        + "it never validated: " + d.analyze().violations);
+    }
+
+    /** {@return two distinct locks with the same identity hash, or null if none turned up} */
+    private static StampedLock[] collidingLocks() {
+        java.util.Map<Integer, StampedLock> seen = new java.util.HashMap<>();
+        for (int i = 0; i < 2_000_000; i++) {
+            StampedLock lock = new StampedLock();
+            StampedLock earlier = seen.putIfAbsent(System.identityHashCode(lock), lock);
+            if (earlier != null) {
+                return new StampedLock[] {earlier, lock};
+            }
+        }
+        return null;
     }
 
     @Test

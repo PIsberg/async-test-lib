@@ -2692,19 +2692,20 @@ final class Corpus {
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.OPTIMISTIC_READ_VALIDATION, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "data is read under an optimistic stamp and the validation that follows "
-                            + "returns false, so the read saw a value a writer was changing. "
-                            + "StampedLock's optimistic mode is documented as valid only when "
-                            + "validate() confirms it, which is exactly what did not happen",
+                    "data is read under an optimistic stamp and used with no validate() at "
+                            + "all. StampedLock's optimistic mode is documented as valid only "
+                            + "when validate() confirms it, so the value may be one a writer was "
+                            + "changing, and nothing checked",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_optimisticRead_validatedBeforeUse", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.OPTIMISTIC_READ_VALIDATION, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the identical sequence with a validation that succeeds, which is the "
-                            + "protocol the class documents. The pair hands the detector the "
-                            + "same three calls and differs in the boolean the third carries"),
+                    "the same read validated before use, which is the protocol the class "
+                            + "documents. The pair differs by the validate() call, which is the "
+                            + "defect itself; a validation that fails and falls back to the read "
+                            + "lock is the same protocol and is silent too"),
 
             // --- LockUpgradeDeadlock: a read lock is not upgradable, and the pair differs by
             //     whether the read is released before the write is attempted.
