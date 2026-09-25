@@ -92,7 +92,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 32. Volatile Array Detector
 * **Severity**: `HIGH`
-* **Description**: Flags the misconception that `volatile` on an array reference makes its elements volatile too — only reassignment of the reference is visible across threads, not writes to individual elements, so element updates can be invisible to other threads.
+* **Description**: Flags the misconception that `volatile` on an array reference makes its elements volatile too — only reassignment of the reference is visible across threads, not writes to individual elements, so element updates can be invisible to other threads. An array whose every recorded element write and read held one lock the detector can see (`synchronized (array)`, a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove) is not reported: the lock supplies the ordering.
 * **Buggy Code**:
   ```java
   private volatile int[] counters = new int[10];
