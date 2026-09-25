@@ -107,7 +107,7 @@ public final class DetectorTrust {
             row(DetectorType.THREAD_POOL_DEADLOCK, "ThreadPoolDeadlockDetector", "ThreadPoolDeadlock", TrustTier.PROMPT),
             row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.VERDICT),
             row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.VERDICT),
-            row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.VERDICT),
+            row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.ADVISORY),
             row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.VERDICT),
             row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.VERDICT),
             row(DetectorType.SIMPLE_DATE_FORMAT, "SimpleDateFormatDetector", "SimpleDateFormat", TrustTier.VERDICT),

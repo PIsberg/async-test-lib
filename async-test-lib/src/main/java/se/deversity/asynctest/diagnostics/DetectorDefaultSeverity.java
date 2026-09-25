@@ -68,7 +68,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, IssueSeverity.HIGH),
             entry(DetectorType.CONCURRENT_MODIFICATIONS, IssueSeverity.HIGH),
             entry(DetectorType.LOCK_LEAKS, IssueSeverity.CRITICAL),
-            entry(DetectorType.SHARED_RANDOM, IssueSeverity.MEDIUM),
             entry(DetectorType.BLOCKING_QUEUE, IssueSeverity.MEDIUM),
             entry(DetectorType.CONDITION_VARIABLES, IssueSeverity.HIGH),
             entry(DetectorType.SIMPLE_DATE_FORMAT, IssueSeverity.HIGH),

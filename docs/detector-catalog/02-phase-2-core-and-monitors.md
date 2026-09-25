@@ -279,14 +279,14 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
   ```
 
 ### 23. Shared Random Detector
-* **Severity**: `MEDIUM`
-* **Description**: Tracks concurrent access to a single `Random` instance across threads, flagging contention on its internal atomic seed that degrades throughput even though `java.util.Random` itself remains thread-safe.
-* **Buggy Code**:
+* **Severity**: `LOW` (tier `ADVISORY`)
+* **Description**: Notes a single `Random` instance used from more than one thread. `java.util.Random` is thread-safe, so this is a performance note and never a bug: the threads contend on its one atomic seed, and `ThreadLocalRandom` is faster.
+* **Contended Code** (correct, but slower):
   ```java
   static final Random random = new Random();
   int roll() { return random.nextInt(6); } // all threads contend on one seed's CAS loop
   ```
-* **Fixed Code**:
+* **Faster Code**:
   ```java
   int roll() { return ThreadLocalRandom.current().nextInt(6); } // per-thread generator, no contention
   ```

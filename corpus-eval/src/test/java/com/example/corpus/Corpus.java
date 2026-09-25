@@ -4026,8 +4026,9 @@ final class Corpus {
                             + "is a contention finding rather than a corruption one: its seed is "
                             + "a single CAS every caller retries on, which is why "
                             + "ThreadLocalRandom exists. The row is here because the pair below "
-                            + "shows the detector still distinguishes confinement",
-                    IssueSeverity.MEDIUM),
+                            + "shows the detector still distinguishes confinement. It is a "
+                            + "LOW advisory about correct code, never a verdict",
+                    IssueSeverity.LOW),
 
             new RecordingSubject("recorded_random_confinedToOneThreadEach", JDK,
                     "java.util.Random",

@@ -135,10 +135,12 @@ its claim is something recorded rather than inferred, such as an access after an
 a probe reporting the thread kind a task actually ran on. Everything else stays PROMPT, which is
 where it already was.
 
-**Prompt tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
+**Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,
 and it stands whether or not you hold a lock - which is why no amount of lock awareness moves
-them up a tier.
+them up a tier. `SHARED_RANDOM` used to sit at VERDICT on a corpus pair that measured only that
+it separates shared from confined use; a finding about correct code cannot be a verdict, so it is
+a `LOW` advisory.
 
 `RACE_CONDITIONS` and `ATOMICITY_VIOLATIONS` moved to the split tier below: both now carry a lock
 model. `RACE_CONDITIONS` intersects the lock sets held at each access to a field in a round (#570),
@@ -164,7 +166,7 @@ still produces a finding, and so does inconsistent locking - two threads holding
 have excluded nothing, which is a race however many locks were involved.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 71 VERDICT, 59 PROMPT, 11 FACT and 5
+tier is one a reader has to rank alone. The split is 70 VERDICT, 59 PROMPT, 11 FACT and 6
 ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
 detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
 statements about the kind of claim a finding makes rather than about missing evidence - a FACT
