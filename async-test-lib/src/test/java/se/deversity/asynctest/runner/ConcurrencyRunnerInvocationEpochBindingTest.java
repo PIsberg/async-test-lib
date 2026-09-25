@@ -683,4 +683,48 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         run(SecureRandomSameRound.class);
         assertTrue(REPORTS.containsKey("SharedSecureRandomDetector"), "Reports: " + REPORTS.keySet());
     }
+
+    /** A once-flag CAS, failing on every attempt after the first, one thread per round. */
+    public static class CasFlagCrossRound {
+        static final java.util.concurrent.atomic.AtomicBoolean FLAG =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectHighContentionAtomic = true)
+        void body() {
+            var d = AsyncTestContext.highContentionAtomicDetector();
+            for (int i = 0; i < 600; i++) {
+                d.recordCasAttempt(FLAG, FLAG.compareAndSet(false, true));
+            }
+        }
+    }
+
+    /** The same failing CAS from two threads inside one round. */
+    public static class CasFlagSameRound {
+        static final java.util.concurrent.atomic.AtomicBoolean FLAG =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectHighContentionAtomic = true)
+        void body() {
+            var d = AsyncTestContext.highContentionAtomicDetector();
+            for (int i = 0; i < 600; i++) {
+                d.recordCasAttempt(FLAG, FLAG.compareAndSet(false, true));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("CAS failures by one thread per round are not contention")
+    void casFailuresCrossRoundAreNotContention() {
+        run(CasFlagCrossRound.class);
+        assertFalse(REPORTS.containsKey("HighContentionAtomicDetector"),
+                "one thread at a time cannot contend with itself: "
+                        + REPORTS.get("HighContentionAtomicDetector"));
+    }
+
+    @Test
+    @DisplayName("the same CAS failures from two threads in one round are reported, so the silence above is not vacuous")
+    void casFailuresSameRoundAreContention() {
+        run(CasFlagSameRound.class);
+        assertTrue(REPORTS.containsKey("HighContentionAtomicDetector"), "Reports: " + REPORTS.keySet());
+    }
 }

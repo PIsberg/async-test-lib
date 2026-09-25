@@ -881,6 +881,9 @@ public final class AsyncTestContext {
         if (sharedSecureRandomDetector != null) {
             sharedSecureRandomDetector.markInvocationStart();
         }
+        if (highContentionAtomicDetector != null) {
+            highContentionAtomicDetector.markInvocationStart();
+        }
     }
 
     /**
