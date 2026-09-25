@@ -229,7 +229,9 @@ cannot fully model, so a finding is a reason to look rather than proof of a bug.
 
 Findings below the floor are still printed and still reach every listener, the JSON and the SARIF
 output. They just cannot fail the build, which is the difference between a report a team reads and
-one it learns to ignore.
+one it learns to ignore. On a passing run a PROMPT or ADVISORY report prints as one line (detector,
+tier, finding count, first finding) unless you pass `-Dasync-test.report.full=true`; listeners and
+the report files always get the full text.
 
 Severity is now worth gating on, which it was not before 1.9.7. Until then 86 of the 142
 detectors set no severity at all and `IssueSeverity.fromReport` returned `HIGH` for every one of

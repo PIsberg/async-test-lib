@@ -415,6 +415,10 @@ hand-editable; delete lines as you fix the findings. A finding the file does not
 even when the same detector has other findings in the file. Two-field lines written by releases
 before 1.12.3 keep accepting the whole detector for that test.
 
+On a passing run, PROMPT and ADVISORY reports print as one line each; add
+`-Dasync-test.report.full=true` to print them in full. Listeners and report files always get the
+full text.
+
 ---
 
 ## Examples

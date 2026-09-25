@@ -168,6 +168,12 @@ public class ConcurrencyRunner {
     /** See {@link #resolveQuiesceGraceMillis()}. */
     private static final String QUIESCE_GRACE_PROPERTY = "async-test.quiesce.grace.ms";
 
+    /**
+     * {@code -Dasync-test.report.full=true} prints PROMPT and ADVISORY reports in full on a
+     * passing run; by default each is one line (see {@link #analyzeAndGate}).
+     */
+    static final String FULL_REPORT_PROPERTY = "async-test.report.full";
+
     /** Default for {@link #resolveQuiesceGraceMillis()}. */
     private static final long DEFAULT_QUIESCE_GRACE_MS = 2_000L;
 
@@ -682,6 +688,11 @@ public class ConcurrencyRunner {
      * baseline file ({@code -Dasync-test.baseline=<path>}) or recorded to it in
      * update mode ({@code -Dasync-test.baseline.update=true}).
      *
+     * <p>On the console, a block none of whose findings is FACT or VERDICT grade prints as one
+     * line ({@link #foldedLine}) unless {@value #FULL_REPORT_PROPERTY} is {@code true} or the
+     * block fails the run. A default run enables every detector, and printed in full those
+     * blocks buried the findings the library stands behind. Listeners get the full text always.
+     *
      * <p>Only called on the success path (see {@link #execute}); failure/timeout paths
      * call {@link #printPhase2Reports} directly and never reach the failOn gate below.
      */
@@ -703,6 +714,8 @@ public class ConcurrencyRunner {
         Baseline baseline = Baseline.fromSystemProperties();
 
         boolean fingerprinting = baseline.size() > 0 || Baseline.updateMode();
+        boolean fullReports = Boolean.getBoolean(FULL_REPORT_PROPERTY);
+        int folded = 0;
         int suppressed = 0;
         List<String> failing = new ArrayList<>();
         Map<String, List<String>> failingFingerprints = new LinkedHashMap<>();
@@ -734,14 +747,25 @@ public class ConcurrencyRunner {
             // fail the run because a new prompt beside it made the block print.
             List<GradedFindings.Grade> gated = grades.isEmpty() || !fingerprinting ? grades
                     : grades.stream().filter(g -> uncovered.contains(Baseline.fingerprint(g.summary()))).toList();
-            System.err.println(trustBanner(e.getKey(), grades));
-            System.err.println(e.getValue());
             IssueSeverity structuredSeverity = structured.get(e.getKey());
+            boolean trips = trips(config, e.getKey(), e.getValue(), structuredSeverity, gated);
+            // A block that fails the run always prints in full: the assertion says "full reports above".
+            if (!fullReports && !trips && foldsOnConsole(e.getKey(), grades)) {
+                System.err.println(foldedLine(e.getKey(), e.getValue(), grades));
+                folded++;
+            } else {
+                System.err.println(trustBanner(e.getKey(), grades));
+                System.err.println(e.getValue());
+            }
             AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue(), structuredSeverity);
-            if (trips(config, e.getKey(), e.getValue(), structuredSeverity, gated)) {
+            if (trips) {
                 failing.add(e.getKey());
                 failingFingerprints.put(e.getKey(), fingerprints);
             }
+        }
+        if (folded > 0) {
+            System.err.println("[AsyncTest] " + folded + " PROMPT/ADVISORY report(s) shown as one line each;"
+                    + " rerun with -D" + FULL_REPORT_PROPERTY + "=true to print them in full");
         }
         if (suppressed > 0) {
             log.info("[AsyncTest] {} baselined finding(s) suppressed for {}", suppressed, testId);
@@ -1315,6 +1339,58 @@ public class ConcurrencyRunner {
         return banner.toString();
     }
 
+    /**
+     * Whether a passing run prints this block as one line: when none of its findings is FACT or
+     * VERDICT grade. A block holding a verdict among prompts prints in full, so folding never
+     * hides a finding the library stands behind.
+     */
+    static boolean foldsOnConsole(String detectorName, List<GradedFindings.Grade> grades) {
+        TrustTier best = grades.stream()
+                .map(GradedFindings.Grade::tier)
+                .max(java.util.Comparator.naturalOrder())
+                .orElseGet(() -> DetectorTrust.tierOfDetector(detectorName));
+        return !best.atLeast(TrustTier.FACT);
+    }
+
+    /**
+     * One line for a folded block: detector, tier, finding count and the first finding's headline.
+     *
+     * <p>A graded report names its findings in its grades. Any other report is read by the
+     * convention nearly every built-in detector follows, one {@code "  - "} bullet per finding;
+     * a report without one counts as a single finding headed by its first line.
+     */
+    static String foldedLine(String detectorName, String report, List<GradedFindings.Grade> grades) {
+        int count;
+        String headline;
+        TrustTier tier;
+        if (grades.isEmpty()) {
+            List<String> bullets = report.lines().filter(l -> l.startsWith("  - ")).toList();
+            count = Math.max(1, bullets.size());
+            headline = bullets.isEmpty()
+                    ? report.lines().map(String::strip).filter(l -> !l.isEmpty()).findFirst().orElse("")
+                    : bullets.get(0).substring(4).strip();
+            tier = DetectorTrust.tierOfDetector(detectorName);
+        } else {
+            count = grades.size();
+            headline = grades.get(0).summary();
+            tier = grades.stream().map(GradedFindings.Grade::tier)
+                    .min(java.util.Comparator.naturalOrder()).orElseThrow();
+        }
+        if (headline.length() > FOLDED_HEADLINE_LIMIT) {
+            headline = headline.substring(0, FOLDED_HEADLINE_LIMIT) + "...";
+        }
+        return "[AsyncTest] " + detectorName + " trust=" + tier + " findings=" + count + ": " + headline;
+    }
+
+    private static final int FOLDED_HEADLINE_LIMIT = 160;
+
+    /**
+     * Prints every finding in full on the failure and timeout paths.
+     *
+     * <p>Deliberately not folded the way {@link #analyzeAndGate} folds PROMPT and ADVISORY blocks:
+     * here the test has already failed on its own evidence, so a prompt-grade finding is no longer
+     * noise but a candidate cause, and only failing tests reach this path, which bounds the output.
+     */
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
         Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
         Map<String, IssueSeverity> structured = phase2Analysis.severities();
