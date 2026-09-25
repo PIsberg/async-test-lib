@@ -844,4 +844,38 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         run(LambdaSameRound.class);
         assertTrue(REPORTS.containsKey("LambdaLostUpdateDetector"), "Reports: " + REPORTS.keySet());
     }
+
+    /** A holder the body builds afresh every round, initialised once per round by one thread. */
+    public static class LazyInitCrossRound {
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectLazyInitRace = true)
+        void body() {
+            AsyncTestContext.lazyInitRaceDetector().recordNullCheck("holder.value", true, false);
+            AsyncTestContext.lazyInitRaceDetector().recordInitialization("holder.value");
+        }
+    }
+
+    /** Two threads that both saw null and both initialised, inside one round. */
+    public static class LazyInitSameRound {
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectLazyInitRace = true)
+        void body() {
+            AsyncTestContext.lazyInitRaceDetector().recordNullCheck("holder.value", true, false);
+            AsyncTestContext.lazyInitRaceDetector().recordInitialization("holder.value");
+        }
+    }
+
+    @Test
+    @DisplayName("one initialisation per round of a holder built each round is not a duplicate initialisation")
+    void lazyInitCrossRoundIsNotADuplicate() {
+        run(LazyInitCrossRound.class);
+        assertFalse(REPORTS.containsKey("LazyInitRaceDetector"),
+                "each round built its own holder and initialised it once: "
+                        + REPORTS.get("LazyInitRaceDetector"));
+    }
+
+    @Test
+    @DisplayName("two threads initialising in one round is a race, so the silence above is not vacuous")
+    void lazyInitSameRoundIsARace() {
+        run(LazyInitSameRound.class);
+        assertTrue(REPORTS.containsKey("LazyInitRaceDetector"), "Reports: " + REPORTS.keySet());
+    }
 }

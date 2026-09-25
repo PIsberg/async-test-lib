@@ -943,6 +943,9 @@ public final class AsyncTestContext {
         if (lambdaLostUpdateDetector != null) {
             lambdaLostUpdateDetector.markInvocationStart();
         }
+        if (lazyInitRaceDetector != null) {
+            lazyInitRaceDetector.markInvocationStart();
+        }
     }
 
     /**
