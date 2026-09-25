@@ -92,6 +92,17 @@ class DetectorCatalogCoverageTest {
     private static final Pattern CLAIM =
             Pattern.compile("(?<!Phase )(?<!JDK )(?<![0-9]/)\\b(\\d{2,4}) detector");
 
+    /**
+     * The same claim made about the enum instead of the word "detector".
+     *
+     * <p>{@code configuration-resolution.md} said "{@code DetectorType} is the enum of all detector
+     * identities (127 constants)" while the enum had 146, and {@link #CLAIM} could not see it: the
+     * number sat next to "constants", not "detector". This catches a count of constants or values
+     * stated in the same sentence as {@code DetectorType}, within a short window after the name.
+     */
+    private static final Pattern ENUM_CLAIM =
+            Pattern.compile("DetectorType[^.\\n]{0,80}?\\b(\\d{2,4}) (?:constants|values)");
+
     @Test
     @DisplayName("the catalog documents every detector, numbered contiguously")
     void catalogCoversEveryDetectorType() {
@@ -178,14 +189,16 @@ class DetectorCatalogCoverageTest {
     private static void collectWrongClaims(String body, int expected, String fileName,
                                            String label, Map<String, List<String>> into) {
         Integer thirdParty = THIRD_PARTY_COUNTS.get(fileName);
-        Matcher m = CLAIM.matcher(body);
-        while (m.find()) {
-            int claimed = Integer.parseInt(m.group(1));
-            if (claimed == expected || (thirdParty != null && claimed == thirdParty)) {
-                continue;
+        for (Pattern claim : List.of(CLAIM, ENUM_CLAIM)) {
+            Matcher m = claim.matcher(body);
+            while (m.find()) {
+                int claimed = Integer.parseInt(m.group(1));
+                if (claimed == expected || (thirdParty != null && claimed == thirdParty)) {
+                    continue;
+                }
+                into.computeIfAbsent(label, k -> new ArrayList<>())
+                        .add(m.group(0).trim() + " (should be " + expected + ")");
             }
-            into.computeIfAbsent(label, k -> new ArrayList<>())
-                    .add(m.group(0).trim() + " (should be " + expected + ")");
         }
     }
 
