@@ -86,10 +86,17 @@ can outlive the release that wrote it, so a format change follows expand-contrac
    Every reader ignores what it does not know: `#` lines in a baseline, unknown keys in a report.
 2. **Contract later.** The writer emits the new shape no earlier than release N+1, so a file
    written by N+1 was already readable by N.
-3. **Mark the version.** A written baseline carries `# format-version: 1`
+3. **Mark the version.** A written baseline carries `# format-version: 2`
    (`Baseline.FORMAT_VERSION`); a reader that meets a higher version than it knows treats the
    file as unreadable and says so, rather than misreading it. SARIF carries its schema URL. The
    license cache is a single timestamp and has no version to mark.
+
+Version 2 (1.12.3) added a third field, the fingerprint of one accepted finding, and update mode
+writes only that shape. It went out without a release that could read it first, which step 2
+asks for. A reader from 1.9.4 on refuses a version-2 file by its marker rather than misreading it;
+an older one reads a three-field line as a key that matches nothing, so it suppresses less, never
+more. Version-1 files still load and mean what they meant. A detector-wide entry accepted findings
+nobody had reviewed, and that was judged worse than a downgrade that has to regenerate its file.
 
 `BaselineTest.writtenFilesCarryTheFormatVersionAndOlderFilesStillLoad` pins the marker and the
 old-file path. There is no database and no schema migration; this section is the whole

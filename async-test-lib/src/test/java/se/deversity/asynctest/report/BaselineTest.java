@@ -1,6 +1,10 @@
 package se.deversity.asynctest.report;
 import se.deversity.asynctest.E2E;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -11,6 +15,8 @@ import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.FailOn;
+import se.deversity.asynctest.runner.ConcurrencyRunner;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -58,6 +64,35 @@ class BaselineTest {
         assertTrue(baseline.contains("com.example.FooTest#baz", "SharedCollectionDetector"),
                 "whitespace around separators must be tolerated");
         assertFalse(baseline.contains("com.example.FooTest#bar", "SharedCollectionDetector"));
+    }
+
+    @Test
+    void aPerFindingEntryCoversThatFindingAndNoOther() throws Exception {
+        Path file = tempDir.resolve("baseline.txt");
+        String known = Baseline.fingerprint("  - 'order-checksum' accessed from 2 threads (worker-0, worker-1)");
+        Files.write(file, List.of(
+                "com.example.FooTest#bar | SharedMessageDigestDetector | " + known,
+                "com.example.FooTest#bar|SharedMessageDigestDetector|- a | b"), StandardCharsets.UTF_8);
+
+        Baseline baseline = Baseline.load(file);
+
+        assertTrue(baseline.covers("com.example.FooTest#bar", "SharedMessageDigestDetector", known));
+        assertTrue(baseline.covers("com.example.FooTest#bar", "SharedMessageDigestDetector", "- a | b"),
+                "spacing around the first two separators is tolerated, and the finding keeps its own");
+        assertFalse(baseline.covers("com.example.FooTest#bar", "SharedMessageDigestDetector",
+                Baseline.fingerprint("  - 'session-token-hash' accessed from 2 threads (worker-0, worker-1)")));
+        assertFalse(baseline.contains("com.example.FooTest#bar", "SharedMessageDigestDetector"),
+                "a per-finding entry is not a detector-wide one");
+    }
+
+    @Test
+    void fingerprintsIgnoreWhatChangesBetweenRuns() {
+        String esc = String.valueOf((char) 27);
+        assertEquals(
+                Baseline.fingerprint(esc + "[33mHIGH" + esc + "[0m 'a' seen by 2 threads (w-0, w-1) in 12ms, lock@1b6d3586"),
+                Baseline.fingerprint("HIGH  'a' seen by 7 threads (w-3, w-5) in 250ms, lock@7a81197d"));
+        assertFalse(Baseline.fingerprint("'a' seen").equals(Baseline.fingerprint("'b' seen")),
+                "the finding's identity survives normalisation");
     }
 
     @Test
@@ -140,6 +175,75 @@ class BaselineTest {
         suppressed.assertStatistics(s -> s.succeeded(1).failed(0));
     }
 
+    /**
+     * Accepting one known finding must not accept every finding its detector reports later.
+     *
+     * <p>The baseline used to be keyed on test id plus detector name alone, so recording one shared
+     * digest silenced a second, unrelated shared digest the same test started leaking afterwards:
+     * the new finding never printed and never failed. That is the failure a baseline exists to
+     * prevent, turned around.
+     */
+    @Test
+    void aBaselinedFindingDoesNotSuppressANewFindingFromTheSameDetector() throws Exception {
+        Path file = tempDir.resolve("baseline.txt");
+        System.setProperty(Baseline.PATH_PROPERTY, file.toString());
+        TwoFindingFixture.secondFinding = false;
+        try {
+            System.setProperty(Baseline.UPDATE_PROPERTY, "true");
+            runFixture(TwoFindingFixture.class).assertStatistics(s -> s.succeeded(1).failed(0));
+            System.clearProperty(Baseline.UPDATE_PROPERTY);
+
+            runFixture(TwoFindingFixture.class).assertStatistics(s -> s.succeeded(1).failed(0));
+
+            TwoFindingFixture.secondFinding = true;
+            runFixture(TwoFindingFixture.class).assertStatistics(s -> s.failed(1));
+        } finally {
+            TwoFindingFixture.secondFinding = false;
+        }
+    }
+
+    /**
+     * A baseline written by an earlier release names the detector only. It must keep suppressing
+     * everything that detector reports in that test, new findings included: changing what an
+     * existing file accepts would turn a green build red on upgrade.
+     */
+    @Test
+    void aDetectorWideEntryFromAnOlderFileStillSuppressesEveryFindingOfThatDetector() throws Exception {
+        Path file = tempDir.resolve("legacy-baseline.txt");
+        Files.writeString(file, TwoFindingFixture.class.getName() + "#sharedDigestsAcrossThreads"
+                + " | SharedMessageDigestDetector" + System.lineSeparator(), StandardCharsets.UTF_8);
+        System.setProperty(Baseline.PATH_PROPERTY, file.toString());
+        TwoFindingFixture.secondFinding = true;
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        ch.qos.logback.classic.Logger runnerLog = context.getLogger(ConcurrencyRunner.class);
+        Level previousLevel = runnerLog.getLevel();
+        runnerLog.setLevel(Level.INFO);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.setContext(context);
+        appender.start();
+        runnerLog.addAppender(appender);
+        try {
+            runFixture(TwoFindingFixture.class).assertStatistics(s -> s.succeeded(1).failed(0));
+        } finally {
+            TwoFindingFixture.secondFinding = false;
+            runnerLog.detachAppender(appender);
+            appender.stop();
+            runnerLog.setLevel(previousLevel);
+        }
+        assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.INFO
+                        && event.getFormattedMessage().startsWith("baseline.detector-wide.suppressed ")
+                        && event.getFormattedMessage().contains("detector=SharedMessageDigestDetector")),
+                "a detector-wide entry hiding findings must say so at INFO; logged: "
+                        + appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList());
+    }
+
+    private static Events runFixture(Class<?> fixture) {
+        return EngineTestKit.engine("junit-jupiter")
+                .selectors(DiscoverySelectors.selectClass(fixture))
+                .execute()
+                .testEvents();
+    }
+
     private static Events runFixture() {
         return EngineTestKit.engine("junit-jupiter")
                 .selectors(DiscoverySelectors.selectClass(BaselinedFixture.class))
@@ -152,6 +256,25 @@ class BaselineTest {
             return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    /** Shares one digest always, and a second, unrelated one when {@link #secondFinding} is set. */
+    static class TwoFindingFixture {
+        static volatile boolean secondFinding;
+        private final MessageDigest first = sharedDigest();
+        private final MessageDigest second = sharedDigest();
+
+        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 10_000,
+                includes = {DetectorType.SHARED_MESSAGE_DIGEST},
+                failOn = FailOn.HIGH, licenseMockMode = true)
+        void sharedDigestsAcrossThreads() {
+            AsyncTestContext.sharedMessageDigestDetector()
+                    .recordAccess(first, "order-checksum", Thread.currentThread());
+            if (secondFinding) {
+                AsyncTestContext.sharedMessageDigestDetector()
+                        .recordAccess(second, "session-token-hash", Thread.currentThread());
+            }
         }
     }
 

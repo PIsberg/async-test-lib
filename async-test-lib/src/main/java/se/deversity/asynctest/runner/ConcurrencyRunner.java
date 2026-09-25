@@ -700,19 +700,44 @@ public class ConcurrencyRunner {
         String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
         Baseline baseline = Baseline.fromSystemProperties();
 
+        boolean fingerprinting = baseline.size() > 0 || Baseline.updateMode();
         int suppressed = 0;
         List<String> failing = new ArrayList<>();
+        Map<String, List<String>> failingFingerprints = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : reports.entrySet()) {
-            if (baseline.contains(testId, e.getKey())) {
+            List<GradedFindings.Grade> grades = graded.getOrDefault(e.getKey(), List.of());
+            List<String> fingerprints = fingerprinting
+                    ? Baseline.fingerprints(e.getValue(), grades) : List.of();
+            List<String> uncovered = new ArrayList<>();
+            for (String fingerprint : fingerprints) {
+                if (!baseline.covers(testId, e.getKey(), fingerprint)) {
+                    uncovered.add(fingerprint);
+                }
+            }
+            if (fingerprinting && uncovered.isEmpty()) {
                 suppressed++;
                 continue;
             }
-            List<GradedFindings.Grade> grades = graded.getOrDefault(e.getKey(), List.of());
+            if (baseline.contains(testId, e.getKey())) {
+                // An entry from before findings had fingerprints: it still accepts the whole
+                // detector, but the user is told it is now hiding something it was not recorded for.
+                suppressed++;
+                log.info("baseline.detector-wide.suppressed test={} detector={} uncovered={} "
+                        + "hint=\"a detector-wide baseline entry hides findings it was not recorded for; "
+                        + "delete that line and rerun with -D{}=true to accept only the current ones\"",
+                    testId, e.getKey(), uncovered.size(), Baseline.UPDATE_PROPERTY);
+                continue;
+            }
+            // Gate only on what the baseline does not already accept: a covered verdict must not
+            // fail the run because a new prompt beside it made the block print.
+            List<GradedFindings.Grade> gated = grades.isEmpty() || !fingerprinting ? grades
+                    : grades.stream().filter(g -> uncovered.contains(Baseline.fingerprint(g.summary()))).toList();
             System.err.println(trustBanner(e.getKey(), grades));
             System.err.println(e.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
-            if (trips(config, e.getKey(), e.getValue(), grades)) {
+            if (trips(config, e.getKey(), e.getValue(), gated)) {
                 failing.add(e.getKey());
+                failingFingerprints.put(e.getKey(), fingerprints);
             }
         }
         if (suppressed > 0) {
@@ -723,7 +748,7 @@ public class ConcurrencyRunner {
         }
 
         if (Baseline.updateMode()) {
-            int added = Baseline.record(testId, failing);
+            int added = Baseline.record(testId, failingFingerprints);
             log.warn("[AsyncTest] Baseline update mode: recorded {} finding(s) for {} instead of failing",
                     added, testId);
             return;

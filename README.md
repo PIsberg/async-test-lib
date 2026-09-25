@@ -410,8 +410,10 @@ mvn test -Dasync-test.baseline=async-test-baseline.txt -Dasync-test.baseline.upd
 mvn test -Dasync-test.baseline=async-test-baseline.txt                                    # enforce
 ```
 
-Each baseline line is `com.example.MyTest#method | DetectorName` — diff-friendly and
-hand-editable; delete lines as you fix the findings.
+Each baseline line is `com.example.MyTest#method | DetectorName | finding` — diff-friendly and
+hand-editable; delete lines as you fix the findings. A finding the file does not name still fails,
+even when the same detector has other findings in the file. Two-field lines written by releases
+before 1.12.3 keep accepting the whole detector for that test.
 
 ---
 
