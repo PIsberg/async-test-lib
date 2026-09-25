@@ -44,7 +44,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 99. Shared SecureRandom Detector
 * **Severity**: `HIGH`
-* **Description**: Flags a `SecureRandom` instance accessed from more than one thread. Thread safety is provider-dependent — some providers serialize internally at a large contention cost, others (Bouncy Castle, custom SPIs) may not synchronize at all, producing biased, predictable, or duplicate output under concurrent access, which is a security bug.
+* **Description**: Flags a `SecureRandom` instance accessed from more than one thread within one invocation round (rounds are ordered by the runner, and with virtual threads each body execution has a fresh thread id, so ids gathered across rounds are not sharing). Thread safety is provider-dependent — some providers serialize internally at a large contention cost, others (Bouncy Castle, custom SPIs) may not synchronize at all, producing biased, predictable, or duplicate output under concurrent access, which is a security bug.
 * **Buggy Code**:
   ```java
   private final SecureRandom secureRandom = new SecureRandom();

@@ -875,6 +875,12 @@ public final class AsyncTestContext {
         if (wakeupDetector != null) {
             wakeupDetector.markInvocationStart();
         }
+        // Two threads count as sharing a subject only inside one round: with virtual threads each
+        // body execution has a fresh thread id, so ids gathered across rounds that never overlap
+        // would read as sharing, and the same body on one pooled platform thread would not.
+        if (sharedSecureRandomDetector != null) {
+            sharedSecureRandomDetector.markInvocationStart();
+        }
     }
 
     /**

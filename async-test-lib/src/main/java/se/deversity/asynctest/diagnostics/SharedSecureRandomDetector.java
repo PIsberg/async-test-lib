@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Detects {@link SecureRandom} instances accessed from multiple threads.
@@ -33,8 +34,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *       cryptographic-grade randomness.</li>
  * </ul>
  *
- * <p>This detector reports any {@code SecureRandom} accessed by more than one thread,
- * regardless of provider, as a medium-severity observation: on JDK providers it is a
+ * <p>This detector reports any {@code SecureRandom} accessed by more than one thread within one
+ * invocation round, regardless of provider, as a medium-severity observation: on JDK providers it is a
  * contention note rather than a bug, and a defect signal only when the provider is a
  * custom SPI that does not synchronize. Distinct from
  * {@link SharedRandomDetector} which covers {@code java.util.Random}.
@@ -62,6 +63,8 @@ public final class SharedSecureRandomDetector {
         final String provider;
         final Set<Long>   accessingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> accessingThreadNames = ConcurrentHashMap.newKeySet();
+        /** Two threads in one round; the run-wide id set only counts them for the report. */
+        final RoundSharing sharing = new RoundSharing();
 
         State(String label, String algorithm, String provider) {
             this.label = label;
@@ -71,6 +74,19 @@ public final class SharedSecureRandomDetector {
     }
 
     private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    /** Current invocation round, bumped by {@link #markInvocationStart()}. */
+    private final AtomicLong invocationEpoch = new AtomicLong();
+
+    /**
+     * Internal: called at the start of each invocation round. Two threads count as sharing an
+     * instance only inside one round: the runner orders rounds, and with virtual threads every
+     * body execution has a fresh thread id, so ids gathered over the run mean nothing.
+     *
+     * @since 1.12.3
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
+    }
 
     /**
      * Record an access (nextBytes/nextInt/nextLong/setSeed/etc.) to a
@@ -98,6 +114,7 @@ public final class SharedSecureRandomDetector {
         }
         s.accessingThreadIds.add(thread.threadId());
         s.accessingThreadNames.add(thread.getName());
+        s.sharing.record(invocationEpoch.get(), thread.threadId());
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -107,7 +124,7 @@ public final class SharedSecureRandomDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.accessingThreadIds.size() <= 1) continue;
+            if (!s.sharing.sharedWithinARound()) continue;
             String msg = String.format(
                     "'%s' (algorithm=%s, provider=%s) accessed from %d threads (%s) — "
                             + "SecureRandom thread safety is provider-dependent: JDK providers "

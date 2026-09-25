@@ -116,4 +116,30 @@ class SharedSecureRandomDetectorTest {
                         + "HIGH. Without an explicit marker in toString(), the structured "
                         + "MEDIUM above never reaches the gate.");
     }
+
+    /**
+     * Two threads that touched the instance in different invocation rounds never used it at the
+     * same time: the runner joins one round before the next. With virtual threads every round's
+     * body has a fresh thread id, so ids gathered over the run used to read as sharing.
+     */
+    @Test
+    void threadsInDifferentRoundsAreNotSharing() {
+        var d = new SharedSecureRandomDetector();
+        var rng = new SecureRandom();
+        d.recordAccess(rng, "rng", new Thread(() -> { }, "round-1"));
+        d.markInvocationStart();
+        d.recordAccess(rng, "rng", new Thread(() -> { }, "round-2"));
+        assertFalse(d.analyze().hasIssues(), d.analyze().violations.toString());
+    }
+
+    /** The same two threads inside one round are sharing. */
+    @Test
+    void threadsInOneRoundAreSharing() {
+        var d = new SharedSecureRandomDetector();
+        var rng = new SecureRandom();
+        d.markInvocationStart();
+        d.recordAccess(rng, "rng", new Thread(() -> { }, "worker-1"));
+        d.recordAccess(rng, "rng", new Thread(() -> { }, "worker-2"));
+        assertTrue(d.analyze().hasIssues());
+    }
 }

@@ -639,4 +639,48 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
             EngineTestKit.engine("junit-jupiter").selectors(selectClass(fixture)).execute();
         }
     }
+
+    // ---- a thread set that spans rounds is not two threads at once ----
+    //
+    // Virtual threads are the default, and each body execution gets a fresh one, so with
+    // threads = 1 a subject touched in two rounds is touched by two thread ids that never ran at
+    // the same time: the runner joins round one before round two starts. Each detector below
+    // used to count those ids over the whole run and report sharing; each pair is the cross-round
+    // run that must stay silent and the same-round run that must still fire.
+
+    /** One SecureRandom, one thread per round, two rounds. */
+    public static class SecureRandomCrossRound {
+        static final java.security.SecureRandom RNG = new java.security.SecureRandom();
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectSharedSecureRandom = true)
+        void body() {
+            AsyncTestContext.sharedSecureRandomDetector().recordAccess(RNG, "rng", Thread.currentThread());
+        }
+    }
+
+    /** The same SecureRandom touched by two threads inside one round. */
+    public static class SecureRandomSameRound {
+        static final java.security.SecureRandom RNG = new java.security.SecureRandom();
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectSharedSecureRandom = true)
+        void body() {
+            AsyncTestContext.sharedSecureRandomDetector().recordAccess(RNG, "rng", Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("a SecureRandom used by one thread per round is not shared across threads")
+    void secureRandomCrossRoundIsNotShared() {
+        run(SecureRandomCrossRound.class);
+        assertFalse(REPORTS.containsKey("SharedSecureRandomDetector"),
+                "no two threads used the instance at once, so there is no contention and no "
+                        + "concurrent access: " + REPORTS.get("SharedSecureRandomDetector"));
+    }
+
+    @Test
+    @DisplayName("a SecureRandom used by two threads in one round is shared, so the silence above is not vacuous")
+    void secureRandomSameRoundIsShared() {
+        run(SecureRandomSameRound.class);
+        assertTrue(REPORTS.containsKey("SharedSecureRandomDetector"), "Reports: " + REPORTS.keySet());
+    }
 }
