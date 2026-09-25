@@ -124,6 +124,12 @@ public final class LazyCollectionMisuseDetector {
             synchronized (valuesLock) { values.add(value); }
         }
 
+        /** Whether analyze() would report anything about this element. */
+        boolean carriesAFinding(int convoyThreshold) {
+            return selfReentries.get() > 0 || computeEnds.get() > 1 || nullValues.get() > 0
+                    || waiters.size() >= convoyThreshold || valuesDisagree();
+        }
+
         boolean valuesDisagree() {
             synchronized (valuesLock) {
                 if (values.size() < 2) return false;
@@ -152,7 +158,8 @@ public final class LazyCollectionMisuseDetector {
     }
 
     /**
-     * Clears the per-thread in-flight state left over from the previous invocation round.
+     * Closes the previous invocation round: clears the per-thread in-flight state it left
+     * over, and the per-holder state a name reused in the next round would otherwise carry.
      *
      * <p>Called by {@code ConcurrencyRunner} before each round, after the previous round's
      * workers have all finished, so nothing is legitimately in flight when it runs.
@@ -167,10 +174,25 @@ public final class LazyCollectionMisuseDetector {
      */
     public void markInvocationStart() {
         inFlight.clear();
+        // Element state is per collection object, and a name and key are all the detector has.
+        // A test that builds its lazy collection per round reuses the name for new, uncomputed
+        // elements, and carrying the counts over read each round's one computation as a repeat
+        // and each round's value as a disagreement. So the round's elements are closed here:
+        // those that already carry a finding are kept for analyze(), the rest are dropped, and
+        // the next round starts from nothing.
         for (ElementState s : elements.values()) {
             s.computing.clear();
+            if (s.carriesAFinding(convoyThreshold)) {
+                synchronized (closedRounds) {
+                    closedRounds.add(s);
+                }
+            }
         }
+        elements.clear();
     }
+
+    /** Elements of earlier rounds that carry a finding; guarded by its own monitor. */
+    private final List<ElementState> closedRounds = new ArrayList<>();
 
     private final int        convoyThreshold;
     private volatile boolean enabled = true;
@@ -277,6 +299,9 @@ public final class LazyCollectionMisuseDetector {
         Report r = new Report();
 
         List<ElementState> all = new ArrayList<>(elements.values());
+        synchronized (closedRounds) {
+            all.addAll(closedRounds);
+        }
         all.sort((a, b) -> a.element.toString().compareTo(b.element.toString()));
 
         for (ElementState s : all) {

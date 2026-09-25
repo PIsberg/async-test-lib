@@ -33,6 +33,36 @@ class LazyCollectionMisuseDetectorTest {
     }
 
     @Test
+    void aFreshCollectionPerRoundUnderTheSameLabelComputesEachElementOnce() {
+        // Each round builds its own List.ofLazy under "BOARDS"; element 0 computes once in each,
+        // to a value that differs by round. Not one element computed three times.
+        var d = new LazyCollectionMisuseDetector();
+        for (int round = 0; round < 3; round++) {
+            d.markInvocationStart();
+            Thread t = new Thread("round-" + round);
+            d.recordGet("BOARDS", 0, t);
+            d.recordComputeStart("BOARDS", 0, t);
+            d.recordComputeEnd("BOARDS", 0, t, "board-" + round);
+        }
+        assertFalse(d.analyze().hasIssues(), "one computation per fresh element: " + d.analyze());
+    }
+
+    @Test
+    void anElementComputedTwiceInOneRoundStillFiresAfterTheRoundCloses() {
+        var d = new LazyCollectionMisuseDetector();
+        d.markInvocationStart();
+        Thread a = new Thread("a");
+        Thread b = new Thread("b");
+        d.recordComputeStart("BOARDS", 0, a);
+        d.recordComputeStart("BOARDS", 0, b);
+        d.recordComputeEnd("BOARDS", 0, a, "x");
+        d.recordComputeEnd("BOARDS", 0, b, "x");
+        d.markInvocationStart();   // the next round starts; the finding belongs to the last one
+        assertTrue(d.analyze().hasIssues(), d.analyze().toString());
+        assertTrue(d.analyze().toString().contains("computed 2 times"), d.analyze().toString());
+    }
+
+    @Test
     void cleanWhenNothingRecorded() {
         var d = new LazyCollectionMisuseDetector();
         assertFalse(d.analyze().hasIssues());
