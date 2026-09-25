@@ -23,8 +23,9 @@ The numbered detector entries live in [`detector-catalog/`](detector-catalog/), 
 
 ## Severity
 
-Every detector states a severity, and the code is where it is stated. A detector that marks one in
-its own report wins; the rest declare one in `DetectorDefaultSeverity`. Nothing is inferred any
+Every detector states a severity, and the code is where it is stated. The severities a detector
+puts in its structured findings (`Violation`) win; then a marker in its report text; the rest
+declare one in `DetectorDefaultSeverity`. Nothing is inferred any
 more: until #291 a detector that wrote no marker had its severity guessed by
 `IssueSeverity.fromReport`, which returned `HIGH`, and 86 of the 142 wrote none, so `failOn = HIGH`
 failed on a resource left open exactly as it failed on a lost update.
@@ -177,10 +178,9 @@ weaker VERDICT and a pair does not promote them.
 
 **Practical consequence.** Gate on the tier, not on severity alone: `failOn = HIGH` with
 `minTrust = TrustTier.VERDICT` fails only on measured findings, while everything else still prints
-and still reaches the JSON and SARIF output. Severity is a poor proxy for trust because most
-detectors never set one: `IssueSeverity.fromReport` recovers it by matching upper-case keywords in
-the report text and defaults to `HIGH`, so `failOn = HIGH` on its own is close to "fail on
-anything". Without a trust floor, plan to baseline first — see [CI_INTEGRATION.md](CI_INTEGRATION.md#adopting-into-a-codebase-that-already-has-findings).
+and still reaches the JSON and SARIF output. Severity is a poor proxy for trust: it says how bad a
+finding would be if it is real, not whether it is, so `failOn = HIGH` on its own fails on every
+prompt-grade finding that would be bad if true. Without a trust floor, plan to baseline first — see [CI_INTEGRATION.md](CI_INTEGRATION.md#adopting-into-a-codebase-that-already-has-findings).
 
 ## What feeds each detector
 

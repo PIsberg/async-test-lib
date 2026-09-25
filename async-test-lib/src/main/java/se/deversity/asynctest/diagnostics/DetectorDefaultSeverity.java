@@ -7,6 +7,11 @@ import se.deversity.asynctest.DetectorType;
 import se.deversity.vibetags.annotations.AIKeepInSync;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
+import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.report.Violation;
+
+import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -31,7 +36,8 @@ import static java.util.Map.entry;
  * over-ranking a benign one.
  *
  * <p><strong>A detector's own report always wins.</strong> This table is consulted only when the
- * report marks no severity, so a detector that learns to state one per finding overrides it
+ * report carries no structured severity (see {@link #structuredIn}) and its text marks none, so a
+ * detector that learns to state one per finding overrides it
  * without touching this file, and its entry then has to be removed:
  * {@code DetectorSeverityMarkerTest} fails on an entry for a detector that marks its own reports,
  * so the table can only shrink as the detectors improve.
@@ -152,12 +158,13 @@ public final class DetectorDefaultSeverity {
     }
 
     /**
-     * {@return the severity a finding should be gated on}
+     * {@return the severity a finding should be gated on, from its text alone}
      *
-     * <p>The one place that answer is computed, so the {@code failOn} gate, the JSON report and
-     * the SARIF output cannot disagree about what a finding was worth. Precedence: what the report
-     * marks, then what the detector declares here, then {@link IssueSeverity#HIGH} for anything
-     * this library does not know, which is every third-party detector.
+     * <p>Precedence: what the report text marks, then what the detector declares here, then
+     * {@link IssueSeverity#HIGH} for anything this library does not know, which is every
+     * third-party detector. Callers that hold the report object use
+     * {@link #of(String, String, IssueSeverity)} with {@link #structuredIn}, which the text cannot
+     * override.
      *
      * @param detectorName the reporting detector's name, as it appears in the report map
      * @param report       the report text
@@ -167,4 +174,71 @@ public final class DetectorDefaultSeverity {
                 .or(() -> DetectorTrust.typeOfDetector(detectorName).flatMap(DetectorDefaultSeverity::of))
                 .orElse(IssueSeverity.HIGH);
     }
+
+    /**
+     * {@return the severity a finding should be gated on}
+     *
+     * <p>The one place that answer is computed, so the {@code failOn} gate, the JSON report and
+     * the SARIF output cannot disagree about what a finding was worth. Precedence: the severity
+     * the detector put in its structured findings, then {@link #of(String, String)}.
+     *
+     * <p>The structured severity comes first because it is the one the detector chose per finding.
+     * Text matching only guesses: {@code ThreadLocalCacheDegradationDetector} rates every finding
+     * {@code MEDIUM} in its {@link Violation}, writes no marker, and has no entry here, so the text
+     * route alone reached the {@code HIGH} fallback and failed a {@code failOn = HIGH} build.
+     *
+     * @param detectorName the reporting detector's name, as it appears in the report map
+     * @param report       the report text
+     * @param structured   the most severe structured severity of this report, or {@code null}
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public static IssueSeverity of(String detectorName, String report, @Nullable IssueSeverity structured) {
+        return structured != null ? structured : of(detectorName, report);
+    }
+
+    /**
+     * {@return the most severe severity among a report's structured findings, when it keeps any}
+     *
+     * <p>Built-in reports that hold their findings as {@link Violation}s beside the text expose
+     * them in a public {@code List<Violation> structuredViolations} field. There is no shared
+     * interface for it, so the field is read by name, the way {@code LegacyDetectorAdapter} reads
+     * {@code analyze()}. A report without the field, or with an empty list, yields empty and the
+     * caller falls back to the text. {@code DetectorSeverityMarkerTest} relies on the same field
+     * name to decide which detectors state their own severity.
+     *
+     * @param report a detector's report object; {@code null} yields empty
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public static Optional<IssueSeverity> structuredIn(@Nullable Object report) {
+        if (report == null) {
+            return Optional.empty();
+        }
+        try {
+            Field field = report.getClass().getField(STRUCTURED_FIELD);
+            if (!List.class.isAssignableFrom(field.getType())
+                    || !(field.canAccess(report) || field.trySetAccessible())) {
+                return Optional.empty();
+            }
+            IssueSeverity worst = null;
+            if (field.get(report) instanceof List<?> findings) {
+                for (Object finding : findings) {
+                    if (finding instanceof Violation v && (worst == null || v.severity().compareTo(worst) < 0)) {
+                        worst = v.severity();
+                    }
+                }
+            }
+            return Optional.ofNullable(worst);
+        } catch (NoSuchFieldException | IllegalAccessException | RuntimeException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The public field built-in reports keep their {@link Violation}s in.
+     *
+     * @since 1.12.3
+     */
+    public static final String STRUCTURED_FIELD = "structuredViolations";
 }

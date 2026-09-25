@@ -3522,7 +3522,7 @@ final class Corpus {
                             + "javadoc says has no effect on it. The caller believes the work "
                             + "stopped, the future completes exceptionally, and the task carries "
                             + "on holding whatever it holds",
-                    IssueSeverity.HIGH),
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_completableFuture_cancelAfterTheWorkFinished", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -3593,7 +3593,7 @@ final class Corpus {
                     "one joiner is bound to two different scopes. A joiner accumulates the "
                             + "results of the scope it belongs to, so reusing one merges two "
                             + "scopes' outcomes into state neither scope's owner expects",
-                    IssueSeverity.HIGH),
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_scopeJoiner_boundToOneScope", JDK,
                     "java.util.concurrent.StructuredTaskScope",
@@ -3628,7 +3628,7 @@ final class Corpus {
                     "a subtask's result handle is read after its scope has closed. The handle is "
                             + "only defined for the scope's lifetime, so a read past the close "
                             + "is the structured-concurrency form of using a closed resource",
-                    IssueSeverity.HIGH),
+                    IssueSeverity.CRITICAL),
 
             new RecordingSubject("recorded_scopeResult_readBeforeTheScopeClosed", JDK,
                     "java.util.concurrent.StructuredTaskScope",
@@ -3893,7 +3893,7 @@ final class Corpus {
                             + "ThreadLocal cache is an optimisation that assumes few, long-lived "
                             + "threads; with virtual threads it becomes an allocation per task, "
                             + "which is the opposite of what it was added for",
-                    IssueSeverity.HIGH),
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_threadLocalCache_sharedAcrossVirtualThreads", JDK,
                     "java.lang.ThreadLocal",

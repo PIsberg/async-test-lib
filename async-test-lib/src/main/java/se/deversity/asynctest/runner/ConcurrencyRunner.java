@@ -19,6 +19,7 @@ import se.deversity.asynctest.diagnostics.DeadlockDetector;
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.GradedFindings;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.TrustTier;
@@ -696,6 +697,7 @@ public class ConcurrencyRunner {
         }
 
         Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
+        Map<String, IssueSeverity> structured = phase2Analysis.severities();
 
         String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
         Baseline baseline = Baseline.fromSystemProperties();
@@ -734,8 +736,9 @@ public class ConcurrencyRunner {
                     : grades.stream().filter(g -> uncovered.contains(Baseline.fingerprint(g.summary()))).toList();
             System.err.println(trustBanner(e.getKey(), grades));
             System.err.println(e.getValue());
-            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
-            if (trips(config, e.getKey(), e.getValue(), gated)) {
+            IssueSeverity structuredSeverity = structured.get(e.getKey());
+            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue(), structuredSeverity);
+            if (trips(config, e.getKey(), e.getValue(), structuredSeverity, gated)) {
                 failing.add(e.getKey());
                 failingFingerprints.put(e.getKey(), fingerprints);
             }
@@ -1268,9 +1271,10 @@ public class ConcurrencyRunner {
      * for a detector whose findings are all the same kind.
      */
     private static boolean trips(AsyncTestConfig config, String detectorName, String report,
+                                 @Nullable IssueSeverity structuredSeverity,
                                  List<GradedFindings.Grade> grades) {
         if (grades.isEmpty()) {
-            return config.failOn.triggeredBy(DetectorDefaultSeverity.of(detectorName, report))
+            return config.failOn.triggeredBy(DetectorDefaultSeverity.of(detectorName, report, structuredSeverity))
                     && DetectorTrust.tierOfDetector(detectorName).atLeast(config.minTrust);
         }
         return grades.stream().anyMatch(grade ->
@@ -1313,11 +1317,13 @@ public class ConcurrencyRunner {
 
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
         Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
+        Map<String, IssueSeverity> structured = phase2Analysis.severities();
         for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
             System.err.println("\n" + trustBanner(finding.getKey(),
                     graded.getOrDefault(finding.getKey(), List.of())));
             System.err.println(finding.getValue());
-            AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue());
+            AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue(),
+                    structured.get(finding.getKey()));
         }
     }
 
@@ -1359,6 +1365,12 @@ public class ConcurrencyRunner {
         Map<String, List<GradedFindings.Grade>> grades() {
             get();
             return ctx.findingGrades();
+        }
+
+        /** {@return the structured severities of this run, keyed by detector; runs {@link #get()} first} */
+        Map<String, IssueSeverity> severities() {
+            get();
+            return ctx.findingSeverities();
         }
 
         /** {@return the findings of this run, keyed by the detector that produced each} */

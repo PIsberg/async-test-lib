@@ -1142,7 +1142,23 @@ final class DetectorRegistry {
                 LazyCollectionMisuseDetector.Report::hasIssues, out);
 
         lastGrades = out.grades();
+        lastSeverities = out.severities();
         return out.reports();
+    }
+
+    /** Structured severities from the last analysis pass; see {@link #lastSeverities()}. */
+    private Map<String, se.deversity.asynctest.diagnostics.IssueSeverity> lastSeverities = Map.of();
+
+    /**
+     * {@return the most severe structured severity per detector from the most recent
+     * {@link #analyzeAllNamed()} pass}
+     *
+     * <p>Present only for detectors whose report keeps its findings as
+     * {@link se.deversity.asynctest.report.Violation}s as well as text; see
+     * {@link se.deversity.asynctest.diagnostics.DetectorDefaultSeverity#structuredIn}.
+     */
+    Map<String, se.deversity.asynctest.diagnostics.IssueSeverity> lastSeverities() {
+        return lastSeverities;
     }
 
     /**
@@ -1178,7 +1194,9 @@ final class DetectorRegistry {
             if (Boolean.TRUE.equals(hasIssues.apply(report))) {
                 out.add(name, report.toString(),
                         report instanceof se.deversity.asynctest.diagnostics.GradedFindings graded
-                                ? graded.grades() : null);
+                                ? graded.grades() : null,
+                        se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
+                                .orElse(null));
             }
         } catch (RuntimeException | StackOverflowError e) {
             // Contain the failure: analyzeAllNamed() chains ~100 of these, so letting one

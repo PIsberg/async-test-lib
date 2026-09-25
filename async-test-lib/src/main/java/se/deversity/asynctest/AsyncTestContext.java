@@ -979,6 +979,22 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the most severe structured severity per detector from the most recent
+     * {@link #analyzeAllNamed()} pass}
+     *
+     * <p>Present only for detectors whose report keeps its findings as {@link Violation}s beside
+     * the text. The {@code failOn} gate prefers this over the severity it can read from the text
+     * ({@link se.deversity.asynctest.diagnostics.DetectorDefaultSeverity#of(String, String,
+     * se.deversity.asynctest.diagnostics.IssueSeverity)}). Call after {@link #analyzeAllNamed()}.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public Map<String, se.deversity.asynctest.diagnostics.IssueSeverity> findingSeverities() {
+        return registry.lastSeverities();
+    }
+
+    /**
      * Merges third-party SPI violations into {@code reports}, keyed by
      * {@link Violation#detector()}, then fires {@code onTestEnd()} once.
      *
