@@ -184,8 +184,10 @@ public @interface AsyncTest {
     /**
      * Enable ALL detectors in one shot.
      * When {@code true}, every individual {@code detect*} / {@code validate*} / {@code monitor*}
-     * flag is treated as enabled, regardless of its own default value.
-     * Individual flags can still be set to {@code false} to opt out of specific detectors.
+     * flag is treated as enabled, regardless of its own value: resolution is
+     * {@code (detectAll || flag) && !excludes.contains(type)}, so setting an individual flag to
+     * {@code false} does <em>not</em> opt that detector out. Use {@link #excludes()} for that, or
+     * {@code detectAll = false} with the detectors you want.
      * <p><strong>Default is {@code true}</strong> — {@code @AsyncTest} alone enables all detectors.
      * <p>Example: {@code @AsyncTest} — all detectors enabled automatically.
      * <p>Example: {@code @AsyncTest(detectAll = false, detectDeadlocks = true)} — only deadlock detection.

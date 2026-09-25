@@ -13,7 +13,8 @@ invariants the runner must not break.
 
 1. **`AsyncTest` annotation** — declares `threads`, `invocations`, `timeoutMs`, the per-detector
    flags, and (since 1.6.0) `threadCounts`, `preset` and `replaySeed`. `detectAll = true` (the
-   default) enables every detector; individual flags set to `false` opt out. `preset = Preset.X`
+   default) enables every detector, and an individual flag set to `false` does not change that;
+   `excludes` is what opts a detector out. `preset = Preset.X`
    replaces the detector set with a curated bundle (`ESSENTIALS` / `CI_FAST` / `STRICT` / `NONE` /
    `ALL`).
 

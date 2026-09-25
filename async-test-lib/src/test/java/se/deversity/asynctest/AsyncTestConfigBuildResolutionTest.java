@@ -225,4 +225,31 @@ class AsyncTestConfigBuildResolutionTest {
                     e.getValue() + " enabled explicitly with no excludes must stay enabled");
         }
     }
+
+    /**
+     * The {@code detectAll} javadoc once said a flag set to {@code false} opts its detector out.
+     * Under the default {@code detectAll = true} it cannot: resolution is
+     * {@code (detectAll || flag) && !excludes.contains(type)}. This pins the documented behaviour
+     * through the annotation, where a user meets it.
+     */
+    @Test
+    @SuppressWarnings("deprecation")
+    void aFlagSetToFalseDoesNotOptOutUnderDetectAll_onlyExcludesDoes() throws NoSuchMethodException {
+        AsyncTest flagOff = FlagOptOutFixture.class.getDeclaredMethod("flagOff").getAnnotation(AsyncTest.class);
+        AsyncTest excluded = FlagOptOutFixture.class.getDeclaredMethod("excluded").getAnnotation(AsyncTest.class);
+
+        assertTrue(AsyncTestConfig.from(flagOff).detectDeadlocks,
+                "detectDeadlocks = false under the default detectAll = true still runs the detector");
+        assertFalse(AsyncTestConfig.from(excluded).detectDeadlocks,
+                "excludes = DEADLOCKS is what opts it out");
+    }
+
+    @SuppressWarnings("deprecation")
+    static class FlagOptOutFixture {
+        @AsyncTest(detectDeadlocks = false)
+        void flagOff() { }
+
+        @AsyncTest(excludes = {DetectorType.DEADLOCKS})
+        void excluded() { }
+    }
 }
