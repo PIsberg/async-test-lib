@@ -213,7 +213,9 @@ public final class TelemetryRegistry {
      * every such field read as unguarded. {@link Thread#holdsLock(Object)} answers for the
      * receiver, and the weaver passes the monitor of an enclosing {@code synchronized} method
      * outright, since holding it is what being inside that method means. Both travel with the
-     * event as identity hashes; the receiver itself is never retained.
+     * event as identity hashes. The receiver travels too, so that two objects sharing an identity
+     * hash stay apart, but only as far as the drain: the ring clears the slot once the event has
+     * been delivered, and nothing here retains it.
      *
      * <p>For a write the fingerprint leaves out locks held in shared mode, because a read lock
      * guards no write. The question is asked here, on the accessing thread, for the same reason
@@ -244,7 +246,8 @@ public final class TelemetryRegistry {
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
-                volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method);
+                volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
+                identity == 0 ? null : receiver);
     }
     /**
      * Records a field access, with the reference the write stored in hand.
@@ -256,7 +259,7 @@ public final class TelemetryRegistry {
      * Given the stored reference's identity, the analysis can ask whether the published object
      * then went quiet, which is what an idempotent value does and a live job does not.
      *
-     * <p>Only its identity hash travels; like the receiver, the value itself is never retained.
+     * <p>Only its identity hash travels; the value itself is never retained.
      * {@code stored} is {@code null} for a read, for a primitive write, and wherever the weaver
      * could not reach the value without disturbing the operand stack, and a 0 identity means "not
      * known" rather than "not immutable" - the analysis keeps its previous answer there, because
@@ -294,9 +297,11 @@ public final class TelemetryRegistry {
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
         int storedIdentity = stored == null ? 0 : System.identityHashCode(stored);
+        // The receiver rides along so the drain side can tell apart two objects whose identity
+        // hashes collide; the ring lends it for one callback and then clears the slot.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
-                storedIdentity);
+                storedIdentity, identity == 0 ? null : receiver);
     }
 
     /**

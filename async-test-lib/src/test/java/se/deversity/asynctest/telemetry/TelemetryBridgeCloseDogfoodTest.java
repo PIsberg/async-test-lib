@@ -47,7 +47,7 @@ class TelemetryBridgeCloseDogfoodTest {
                                                 boolean isWrite, long threadId, long lockFingerprint,
                                                 int ownMonitor, int methodMonitor,
                                                 boolean volatileField, int constantTag, int identity,
-                                                int storedIdentity) {
+                                                int storedIdentity, @Nullable Object receiver) {
             delivered.incrementAndGet();
         }
     }

@@ -205,6 +205,37 @@ public final class TelemetryEventBuffer {
             onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
                     identity, afterVolatileRead, ownMonitor, methodMonitor);
         }
+
+        /**
+         * Invoked for a drained event, also carrying the object the field belongs to.
+         *
+         * <p>{@code identity} is an identity hash, and two live objects share one often enough to
+         * matter once many are tracked. The receiver itself is what tells them apart. It is only
+         * lent for the duration of this call: the buffer clears its slot once the callback returns,
+         * so an implementation that keeps it decides for itself how long the object stays alive.
+         *
+         * @param threadId          producer thread
+         * @param targetField       field or method identifier
+         * @param isWrite           true for a write
+         * @param lockFingerprint   locks held at the access
+         * @param volatileField     whether the field is declared {@code volatile}
+         * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+         * @param identity          identity hash of the owner, 0 for statics
+         * @param afterVolatileRead whether a volatile field of the owner was read first
+         * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
+         * @param methodMonitor     identity hash of the synchronized method's monitor, else 0
+         * @param storedIdentity    identity hash of the reference this write stored, 0 when unknown
+         * @param receiver          the object the field belongs to, {@code null} for a static
+         *                          field or when the producer did not have it
+         * @since 1.12.3
+         */
+        default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                             long lockFingerprint, boolean volatileField, int constantTag,
+                             int identity, boolean afterVolatileRead, int ownMonitor,
+                             int methodMonitor, int storedIdentity, @Nullable Object receiver) {
+            onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
+                    identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity);
+        }
     }
 
     /**
@@ -224,6 +255,8 @@ public final class TelemetryEventBuffer {
         int ownMonitor;
         int methodMonitor;
         int storedIdentity;
+        /** Lent to the consumer for one callback, then cleared so the ring keeps nothing alive. */
+        @Nullable Object receiver;
     }
 
     private static final VarHandle SEQ_VH;
@@ -440,6 +473,35 @@ public final class TelemetryEventBuffer {
                         boolean volatileField, int constantTag, int identity,
                         boolean afterVolatileRead, int ownMonitor, int methodMonitor,
                         int storedIdentity) {
+        publish(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null);
+    }
+
+    /**
+     * Publishes an event that also carries the object the field belongs to.
+     *
+     * <p>Storing the reference in the pre-allocated slot allocates nothing. The slot holds it only
+     * until {@link #drain} has handed it to the consumer, so the ring never keeps an object alive
+     * past the drain that reported it.
+     *
+     * @param threadId          producer thread
+     * @param targetField       field or method identifier
+     * @param isWrite           {@code true} for a write access
+     * @param lockFingerprint   locks held at the access, 0 for none
+     * @param volatileField     whether the accessed field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity          identity hash of the owner, 0 for statics
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor     identity hash of the enclosing synchronized method's monitor, else 0
+     * @param storedIdentity    identity hash of the reference this write stored, 0 when unknown
+     * @param receiver          the object the field belongs to, {@code null} for a static field
+     * @since 1.12.3
+     */
+    public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
+                        boolean volatileField, int constantTag, int identity,
+                        boolean afterVolatileRead, int ownMonitor, int methodMonitor,
+                        int storedIdentity, @Nullable Object receiver) {
         long fullSinceNanos = 0L;
         int spins = 0;
         for (;;) {
@@ -484,6 +546,7 @@ public final class TelemetryEventBuffer {
                 event.ownMonitor = ownMonitor;
                 event.methodMonitor = methodMonitor;
                 event.storedIdentity = storedIdentity;
+                event.receiver = receiver;
                 // Release fence: consumer will not observe the event until this store completes.
                 SEQ_VH.setRelease(event, seq);
                 return;
@@ -523,10 +586,15 @@ public final class TelemetryEventBuffer {
             if (publishedSeq < next) {
                 break; // slot not yet published by any producer
             }
-            callback.onEvent(event.threadId, event.targetField, event.isWrite,
-                    event.lockFingerprint, event.volatileField, event.constantTag, event.identity,
-                    event.afterVolatileRead, event.ownMonitor, event.methodMonitor,
-                    event.storedIdentity);
+            try {
+                callback.onEvent(event.threadId, event.targetField, event.isWrite,
+                        event.lockFingerprint, event.volatileField, event.constantTag,
+                        event.identity, event.afterVolatileRead, event.ownMonitor,
+                        event.methodMonitor, event.storedIdentity, event.receiver);
+            } finally {
+                // Before the cursor moves past the slot, so no producer can be writing it yet.
+                event.receiver = null;
+            }
             localCursor = next;
             next++;
             count++;

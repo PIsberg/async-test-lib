@@ -61,8 +61,11 @@ two instructions with nothing to undo. A static reference store needs one instru
 `DUP; LDC class; SWAP`, because the value sits alone with the class constant pushed above it
 ([#337](https://github.com/PIsberg/async-test-lib/issues/337)); without that, class-scope
 lazy-init was the one double-submit shape the value evidence could not reach. Every other shape
-passes `null`, which the analysis reads as "not known" rather than as evidence. Only
-identity hashes leave the call — neither the receiver nor the stored value is retained.
+passes `null`, which the analysis reads as "not known" rather than as evidence. The stored value
+leaves the call as an identity hash only. The receiver also travels as itself, because two live
+objects can share an identity hash and the atomicity model groups accesses per object: the ring
+buffer lends it to the drain for one callback and then clears the slot, and the model keeps it
+only weakly, so neither is retained by the telemetry path.
 
 It is off by default because the cost scales with the instrumented surface, not with the number of
 accessors: every field read and write in every matched class emits an event. Pair it with

@@ -402,6 +402,35 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                         long lockFingerprint, boolean volatileField, int constantTag,
                         int identity, boolean afterVolatileRead, int ownMonitor,
                         int methodMonitor, int storedIdentity) {
+        onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null);
+    }
+
+    /**
+     * Forwards an agent-captured access together with the object its field belongs to.
+     *
+     * <p>The receiver is what keeps two objects apart whose identity hashes collide; the detector
+     * resolves it to an identity of its own and does not keep the object alive.
+     *
+     * @param threadId          producer thread
+     * @param qualifiedName     field identifier as the weaver emitted it
+     * @param isWrite           true for a write
+     * @param lockFingerprint   locks held at the access, 0 for none
+     * @param volatileField     whether the field is declared {@code volatile}
+     * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
+     * @param identity          identity hash of the owner, 0 for statics
+     * @param afterVolatileRead whether a volatile field of the owner was read first
+     * @param ownMonitor        identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor     identity hash of the enclosing synchronized method's monitor, else 0
+     * @param storedIdentity    identity hash of the reference this write stored, 0 when unknown
+     * @param receiver          the object the field belongs to, {@code null} when not known
+     * @since 1.12.3
+     */
+    @Override
+    public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
+                        long lockFingerprint, boolean volatileField, int constantTag,
+                        int identity, boolean afterVolatileRead, int ownMonitor,
+                        int methodMonitor, int storedIdentity, @Nullable Object receiver) {
         if (!active) {
             return;
         }
@@ -453,7 +482,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                 && TelemetryRegistry.isPublishedByVolatile(qualifiedName);
         atomicityValidator.recordFieldAccessUnderLocks(field, null, isWrite, threadId,
                 lockFingerprint, ownMonitor, methodMonitor, volatileField || safelyPublished,
-                constantTag, identity, storedIdentity);
+                constantTag, identity, storedIdentity, receiver);
     }
 
     /**

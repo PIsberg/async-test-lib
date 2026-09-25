@@ -37,6 +37,42 @@ class TelemetryEventBufferTest {
     }
 
     @Test
+    void theReceiverReachesTheConsumerAndTheRingDoesNotKeepIt() throws InterruptedException {
+        TelemetryEventBuffer buffer = new TelemetryEventBuffer(4);
+        Object receiver = new Object();
+        java.lang.ref.WeakReference<Object> watch = new java.lang.ref.WeakReference<>(receiver);
+        buffer.publish(10L, "ClassA.field", true, 0L, false, Integer.MIN_VALUE,
+                System.identityHashCode(receiver), false, 0, 0, 0, receiver);
+
+        List<Object> seen = new ArrayList<>();
+        buffer.drain(new TelemetryEventBuffer.DrainCallback() {
+            @Override
+            public void onEvent(long threadId, String targetField, boolean isWrite) {
+                fail("the receiver-carrying overload must be the one the drain calls");
+            }
+
+            @Override
+            public void onEvent(long threadId, String targetField, boolean isWrite,
+                                long lockFingerprint, boolean volatileField, int constantTag,
+                                int identity, boolean afterVolatileRead, int ownMonitor,
+                                int methodMonitor, int storedIdentity, Object delivered) {
+                seen.add(delivered);
+            }
+        });
+        assertEquals(1, seen.size());
+        assertSame(receiver, seen.get(0), "the object the field belongs to reaches the consumer");
+
+        seen.clear();
+        receiver = null;
+        for (int attempt = 0; attempt < 50 && watch.get() != null; attempt++) {
+            System.gc();
+            Thread.sleep(20);
+        }
+        assertNull(watch.get(), "the drained slot still referenced the receiver, so the ring "
+                + "kept an object alive that the code under test had already dropped");
+    }
+
+    @Test
     void testBasicPublishAndDrain() {
         TelemetryEventBuffer buffer = new TelemetryEventBuffer(4);
         buffer.publish(10L, "ClassA#field1", true);
