@@ -178,6 +178,19 @@ and read back through a `ClassReader` at the end, was built and measured on the 
 captured lambdas it saves. It is not in the tree, and the measurement is recorded here so the same
 afternoon is not spent twice.
 
+**Ordering the lockset cannot see (1.12.3).** The same hooks feed the shared happens-before model,
+`HappensBefore`, which `RaceConditionDetector` consults before it reports a round: a round whose
+every conflicting pair the model orders is not reported. The edges are the ones the Java memory
+model names for the woven calls: an element offered to and taken from a `java.util.concurrent`
+queue (or any `BlockingQueue` or `ConcurrentMap`, and the synchronized wrappers), a value put into
+and read back from such a map, `CountDownLatch.countDown` and an `await` that reached zero,
+`Semaphore.release` and an acquire that took a permit, and `Thread.start` and a `Thread.join` that
+returned with the thread finished (every `join` overload is substituted for this). With
+`fields=true`, a volatile write releases its object and a later access the weaver marks as
+following a volatile read of the same object acquires it. An `ArrayDeque` or a `HashMap` promises
+nothing and gives no edge. A lock hand-off is deliberately not an edge: the lockset judges locking,
+and ordering it by the one schedule a run took would hide what another schedule exposes.
+
 Three limits worth knowing before switching it on:
 
 - **Guarding works, and has to.** Monitor weaving is installed alongside, so a collection touched

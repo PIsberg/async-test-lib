@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -9,11 +10,12 @@ import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
- * Hooks for {@link Thread#start()} and {@link Thread#setDaemon(boolean)}, making thread starts
- * and explicit daemon decisions visible to detectors.
+ * Hooks for {@link Thread#start()}, {@link Thread#join()} and {@link Thread#setDaemon(boolean)},
+ * making thread starts, joins and explicit daemon decisions visible to detectors.
  *
  * <h2>Why these need the agent</h2>
  *
@@ -33,10 +35,17 @@ import se.deversity.vibetags.annotations.AIContract;
  * code reads as undecided. {@link #isThreadWeavingInstalled()} gates every use of the absence of
  * a decision, so without the agent nothing changes.
  *
+ * <h2>Ordering</h2>
+ *
+ * <p>A start and a returned join are the two happens-before edges the Java memory model gives a
+ * thread's lifecycle, and both are reported to {@link HappensBefore}: the start as a fork before
+ * the thread runs, the join as a join once the thread has finished. A timed join that returned
+ * with the thread still alive orders nothing and reports nothing.
+ *
  * @since 1.12.3
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of threadStart and threadSetDaemon are matched by CollectionAccessWeaver.THREAD_ENTRIES, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every hook must perform the original call on the receiver and propagate what it throws unchanged. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of threadStart, threadJoin and threadSetDaemon are matched by CollectionAccessWeaver.THREAD_ENTRIES, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every hook must perform the original call on the receiver and propagate what it throws unchanged. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
 public final class AgentThreadHooks {
 
     /** Explicit {@code setDaemon} decisions seen by a woven call site, by thread identity. */
@@ -79,7 +88,67 @@ public final class AgentThreadHooks {
         if (detector != null) {
             detector.recordObservedStart(receiver);
         }
+        // Only a thread that has not started yet: a second start throws, and a fork recorded for
+        // a thread already running would be taken up by it as an edge that never existed.
+        if (receiver.getState() == Thread.State.NEW) {
+            HappensBefore.fork(receiver);
+        }
         receiver.start();
+    }
+
+    /**
+     * Weaves {@link Thread#join()}.
+     *
+     * @param receiver the thread to join
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static void threadJoin(Thread receiver) throws InterruptedException {
+        receiver.join();
+        HappensBefore.join(receiver);
+    }
+
+    /**
+     * Weaves {@link Thread#join(long)}, which may return with the thread still running; the
+     * model then ignores the join.
+     *
+     * @param receiver the thread to join
+     * @param millis   how long to wait
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static void threadJoin(Thread receiver, long millis) throws InterruptedException {
+        receiver.join(millis);
+        HappensBefore.join(receiver);
+    }
+
+    /**
+     * Weaves {@link Thread#join(long, int)}.
+     *
+     * @param receiver the thread to join
+     * @param millis   how long to wait
+     * @param nanos    additional nanoseconds to wait
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static void threadJoin(Thread receiver, long millis, int nanos)
+            throws InterruptedException {
+        receiver.join(millis, nanos);
+        HappensBefore.join(receiver);
+    }
+
+    /**
+     * Weaves {@link Thread#join(Duration)}.
+     *
+     * @param receiver the thread to join
+     * @param duration how long to wait
+     * @return whether the thread terminated
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static boolean threadJoin(Thread receiver, Duration duration)
+            throws InterruptedException {
+        boolean terminated = receiver.join(duration);
+        if (terminated) {
+            HappensBefore.join(receiver);
+        }
+        return terminated;
     }
 
     /**

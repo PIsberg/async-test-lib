@@ -1,5 +1,6 @@
 package se.deversity.asynctest.telemetry;
 
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.SelfGuard;
 import org.jspecify.annotations.Nullable;
@@ -245,9 +246,37 @@ public final class TelemetryRegistry {
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
+        acquireIfAfterVolatileRead(receiver, afterVolatileRead);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
                 identity == 0 ? null : receiver);
+        releaseIfVolatileWrite(receiver, isWrite, volatileField);
+    }
+
+    /**
+     * Orders this access after the volatile read the weaver saw before it in the same method.
+     *
+     * <p>The acquire half of volatile publication, for {@code HappensBefore}. Taken here rather
+     * than at the volatile read itself, because that hook runs before the read instruction and an
+     * acquire made before the value is seen could order what the program does not. Per object,
+     * not per field: see {@code HappensBefore}'s limits.
+     */
+    private static void acquireIfAfterVolatileRead(@Nullable Object receiver,
+                                                   boolean afterVolatileRead) {
+        if (afterVolatileRead && receiver != null) {
+            HappensBefore.acquire(receiver);
+        }
+    }
+
+    /**
+     * The release half: a volatile write publishes what this thread did before it. The hook runs
+     * before the write instruction, so the release precedes every read that can see the value.
+     */
+    private static void releaseIfVolatileWrite(@Nullable Object receiver, boolean isWrite,
+                                               boolean volatileField) {
+        if (volatileField && isWrite && receiver != null) {
+            HappensBefore.release(receiver);
+        }
     }
     /**
      * Records a field access, with the reference the write stored in hand.
@@ -297,11 +326,13 @@ public final class TelemetryRegistry {
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
         int storedIdentity = stored == null ? 0 : System.identityHashCode(stored);
+        acquireIfAfterVolatileRead(receiver, afterVolatileRead);
         // The receiver rides along so the drain side can tell apart two objects whose identity
         // hashes collide; the ring lends it for one callback and then clears the slot.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
                 storedIdentity, identity == 0 ? null : receiver);
+        releaseIfVolatileWrite(receiver, isWrite, volatileField);
     }
 
     /**
@@ -1803,6 +1834,10 @@ public final class TelemetryRegistry {
         if (STOPPED.get()) {
             return;
         }
+        // The acquire half of a hand-off, where the container's contract makes one (HappensBefore).
+        if (HappensBefore.publishesElements(container)) {
+            HappensBefore.acquire(taken);
+        }
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
                 container == null ? 0 : System.identityHashCode(container));
@@ -1832,6 +1867,11 @@ public final class TelemetryRegistry {
     public static void ownershipOffered(@Nullable Object offered, @Nullable Object container) {
         if (offered == null || container == null || STOPPED.get()) {
             return;
+        }
+        // The release half: published before the container accepts the element, so every take
+        // that can return it finds the release.
+        if (HappensBefore.publishesElements(container)) {
+            HappensBefore.release(offered);
         }
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, false, 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
