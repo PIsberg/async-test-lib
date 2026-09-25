@@ -22,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.util.ConcurrentReferenceHashMap;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,6 +62,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
 import java.util.Collection;
@@ -3784,24 +3786,50 @@ class CorpusRecordingLaneTest {
 
     // --- The value-lifecycle family -------------------------------------------------------------
 
-    /** A value that goes A to B and back to A, which a value-only compare-and-set cannot see. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_aba_valueReturnedToItsOriginal() {
-        CorpusRecorder.countBodyExecution();
-        var detector = AsyncTestContext.abaProblemDetector();
-        String slot = perInvocation("aba-restored");
-        detector.recordValueChange(slot, "A", "B");
-        detector.recordValueChange(slot, "B", "A");
+    /**
+     * Swings {@code ref} A to B and back to A on another thread, recording both changes there,
+     * and waits for it: the "other thread" of an ABA.
+     */
+    private static void toggleOnAnotherThread(ABAProblemDetector detector, String slot,
+                                              AtomicReference<String> ref) throws InterruptedException {
+        Thread other = new Thread(() -> {
+            if (ref.compareAndSet("A", "B")) {
+                detector.recordValueChange(slot, "A", "B");
+            }
+            if (ref.compareAndSet("B", "A")) {
+                detector.recordValueChange(slot, "B", "A");
+            }
+        }, "aba-toggler");
+        other.start();
+        other.join();
     }
 
-    /** The same two transitions going onwards to C, so nothing is ever restored. */
+    /** A read of A held across another thread's A to B to A, then a compareAndSet that succeeds. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_aba_valueMovedOnwards() {
+    void recorded_aba_premiseReadBeforeAnotherThreadsToggle() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.abaProblemDetector();
-        String slot = perInvocation("aba-onwards");
-        detector.recordValueChange(slot, "A", "B");
-        detector.recordValueChange(slot, "B", "C");
+        String slot = perInvocation("aba-stale");
+        AtomicReference<String> ref = new AtomicReference<>("A");
+        String seen = ref.get();
+        detector.recordRead(slot, seen);
+        toggleOnAnotherThread(detector, slot, ref);
+        boolean swapped = ref.compareAndSet(seen, "C");
+        detector.recordCASAttempt(slot, seen, "C", swapped, ref.get());
+    }
+
+    /** The same toggle and compareAndSet, with the read taken after the toggle finished. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_aba_premiseReadAfterAnotherThreadsToggle() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.abaProblemDetector();
+        String slot = perInvocation("aba-fresh");
+        AtomicReference<String> ref = new AtomicReference<>("A");
+        toggleOnAnotherThread(detector, slot, ref);
+        String seen = ref.get();
+        detector.recordRead(slot, seen);
+        boolean swapped = ref.compareAndSet(seen, "C");
+        detector.recordCASAttempt(slot, seen, "C", swapped, ref.get());
     }
 
     /** A read of a write-once holder nothing has set. */

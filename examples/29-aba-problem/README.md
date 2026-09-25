@@ -54,9 +54,9 @@ back.
 `ABAProblemDetector` will report:
 
 ```
-ABA PROBLEM DETECTED:
+HIGH: ABA PROBLEM DETECTED:
 
-Variables with A->B->A cycles:
+Variables with A->B->A cycles (context; a cycle alone is not a finding):
   - head: 71 cycles detected
 
 CAS operations that succeeded despite ABA:
@@ -72,9 +72,16 @@ Fix: Use AtomicStampedReference<V> ...
 ## How the Detector Is Fed
 
 `ABAProblemDetector` is **recording-fed**: it reasons about a history of values, so it has to be
-told what the head was and what it became at each successful CAS. `LockFreeStack.observeHead`
-reports that from inside `push()` and `pop()`; the hooks default to no-ops, so the production
-path never touches the test library.
+told which head each pop read before its CAS (`LockFreeStack.observePopReads`), and what the head
+was and what it became at each successful CAS (`LockFreeStack.observeHead`). The hooks report
+from inside `push()` and `pop()` and default to no-ops, so the production path never touches the
+test library.
+
+A finding is one interleaving: a pop reads the head, **other** threads move the head away and
+back, and the pop's CAS then succeeds. A head that goes A to B to A on its own, one thread pushing
+and then popping, is counted as a cycle but is not a finding, because no thread held a stale head
+across it. The demonstration pauses each pop for up to two milliseconds after its read, which is
+what a preempted thread does, so four threads sharing the stack reliably produce the interleaving.
 
 The detector also has to be **the one the run owns**, from `AsyncTestContext.abaProblemDetector()`.
 Before issue #346 this demonstration wrote out three `recordValueChange` calls and one
@@ -122,5 +129,5 @@ public T pop() {
 - Always use `AtomicStampedReference` (integer version) or
   `AtomicMarkableReference` (boolean mark) when recycling objects in
   lock-free data structures.
-- `ABAProblemDetector` identifies A → B → A cycles in recorded value-change
-  history and flags CAS operations that succeeded despite such a cycle.
+- `ABAProblemDetector` flags a CAS that succeeded although, after the read it
+  expected, other threads moved the value away and back.

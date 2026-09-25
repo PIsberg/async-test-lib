@@ -69,7 +69,7 @@ WEAK_HASH_MAP_SHARED = recorded_weakHashMap_sharedAcrossThreads, recorded_weakHa
 # is the state the calls carry. Agent-lane bodies make no such calls; AgentRowPremise holds
 # them to the same property instead.
 VISIBILITY = recorded_field_readInconsistentlyAcrossThreads, recorded_field_readConsistentlyAcrossThreads
-ABA_PROBLEM = recorded_aba_valueReturnedToItsOriginal, recorded_aba_valueMovedOnwards
+ABA_PROBLEM = recorded_aba_premiseReadBeforeAnotherThreadsToggle, recorded_aba_premiseReadAfterAnotherThreadsToggle
 SEMAPHORE = agent_semaphore_permitNeverReturned, agent_semaphore_permitReturnedInFinally
 BLOCKING_QUEUE = agent_blockingQueue_filledToCapacity, agent_blockingQueue_drainedAsItFilled
 SIMPLE_DATE_FORMAT = agent_simpleDateFormat_oneInstanceForEveryThread, agent_simpleDateFormat_oneInstancePerThread

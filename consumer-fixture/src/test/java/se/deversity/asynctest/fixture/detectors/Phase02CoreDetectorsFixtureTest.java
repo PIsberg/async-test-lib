@@ -140,27 +140,32 @@ class Phase02CoreDetectorsFixtureTest {
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
                includes = {DetectorType.ABA_PROBLEM})
-    void abaProblem() {
+    void abaProblem() throws InterruptedException {
         reachable("abaProblemDetector()", AsyncTestContext::abaProblemDetector);
 
-        // A -> B -> A on a plain atomic: the value looks unchanged to a naive CAS.
-        // A to B and back to A: a CAS that only compares values cannot tell that the world
-        // changed underneath it, because the value it compares is the one it expected.
+        // The ABA interleaving itself: this worker reads 1, another thread swings the atomic
+        // 1 -> 2 -> 1, and this worker's compareAndSet(1, 3) then succeeds on a stale premise.
+        // A toggle on its own is not a finding; the detector needs the read held across it.
         //
-        // One history per worker, not one shared history: the detector scans a variable's
-        // change list for the shape A, B, A before the CAS, and two workers appending the same
-        // pair into one list can interleave as 1->2, 1->2, 2->1, 2->1, which contains no such
-        // shape. That interleaving is what made this fixture report nothing on one JUnit leg
-        // in seven (2026-08-15) while passing on the rest. A per-worker slot keeps each
-        // history the sequence the fixture means to show, on every schedule.
+        // One history per worker, not one shared history, so the two workers' toggles cannot
+        // interleave into each other's window and each slot shows exactly the sequence meant.
         var aba = AsyncTestContext.abaProblemDetector();
         String slotName = "aba-slot-" + Thread.currentThread().getName();
         AtomicLong slot = new AtomicLong(1);
-        aba.recordValueChange(slotName, 1L, 2L);
-        slot.compareAndSet(1, 2);
-        aba.recordValueChange(slotName, 2L, 1L);
-        slot.compareAndSet(2, 1);
-        aba.recordCASAttempt(slotName, 1L, 3L, true, 1L);
+        long seen = slot.get();
+        aba.recordRead(slotName, seen);
+        Thread toggler = new Thread(() -> {
+            if (slot.compareAndSet(1, 2)) {
+                aba.recordValueChange(slotName, 1L, 2L);
+            }
+            if (slot.compareAndSet(2, 1)) {
+                aba.recordValueChange(slotName, 2L, 1L);
+            }
+        });
+        toggler.start();
+        toggler.join();
+        boolean swapped = slot.compareAndSet(seen, 3);
+        aba.recordCASAttempt(slotName, seen, 3L, swapped, slot.get());
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,

@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -30,8 +31,10 @@ class AbaMinimalCycleTest {
         ABAProblemDetector.ABAReport report = detector.analyzeABA();
 
         assertTrue(report.variablesWithCycles.containsKey("head"),
-            "A -> B -> A is the ABA problem and must be counted: " + report.variablesWithCycles);
-        assertTrue(report.hasIssues(), "the report must claim issues");
+            "A -> B -> A is the cycle ABA is made of and must be counted: " + report.variablesWithCycles);
+        // Counted, not reported: with no compare-and-set holding a premise read before the
+        // cycle, nothing relied on the value staying put (see ABAProblemDetectorTest).
+        assertFalse(report.hasIssues(), "a cycle alone is context, not a finding");
     }
 
     /** A value that keeps moving forward never returns to a prior value — no ABA. */

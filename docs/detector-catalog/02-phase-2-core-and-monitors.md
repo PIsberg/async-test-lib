@@ -69,8 +69,8 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
   ```
 
 ### 12. ABA Problem Detector
-* **Severity**: `CRITICAL`
-* **Description**: Detects the ABA problem in lock-free CAS-based code, where a value changes from A to B and back to A between a thread's read and its `compareAndSet`, causing the CAS to spuriously succeed and corrupt the data structure.
+* **Severity**: `HIGH`
+* **Description**: Detects the ABA problem in lock-free CAS-based code, where a value changes from A to B and back to A between a thread's read and its `compareAndSet`, causing the CAS to spuriously succeed and corrupt the data structure. The finding is that interleaving, in record order: the thread records the read its CAS expects (`recordRead(name, value)`), other threads record a change away from the value and a change back to it, and the first thread then records a successful `recordCASAttempt` expecting the value it read. A value that goes A to B to A with no such CAS, or one toggled by the CAS thread itself, is counted as a cycle in the report's context and is not a finding; a CAS with no recorded read draws no verdict.
 * **Buggy Code**:
   ```java
   Node head = stack.get();

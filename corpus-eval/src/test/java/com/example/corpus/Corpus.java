@@ -3229,23 +3229,26 @@ final class Corpus {
             //     invocation, because the detectors accumulate across the whole run and a
             //     shared key would let one body's calls answer for another's.
 
-            new RecordingSubject("recorded_aba_valueReturnedToItsOriginal", JDK,
+            new RecordingSubject("recorded_aba_premiseReadBeforeAnotherThreadsToggle", JDK,
                     "java.util.concurrent.atomic.AtomicReference",
                     DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "a value goes A to B and back to A. A compare-and-set that only checks the "
-                            + "value cannot tell that state from one that never moved, so it "
-                            + "succeeds on a stale premise - the hazard that stamped and marked "
-                            + "references exist to close",
+                    "a thread reads A from an AtomicReference, another thread swings it A to B "
+                            + "and back to A, and the first thread's compareAndSet(A, C) then "
+                            + "succeeds. A compare-and-set that only checks the value cannot "
+                            + "tell that state from one that never moved, so it succeeds on a "
+                            + "stale premise - the hazard that stamped and marked references "
+                            + "exist to close",
                     IssueSeverity.HIGH),
 
-            new RecordingSubject("recorded_aba_valueMovedOnwards", JDK,
+            new RecordingSubject("recorded_aba_premiseReadAfterAnotherThreadsToggle", JDK,
                     "java.util.concurrent.atomic.AtomicReference",
                     DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same two recorded transitions going A to B to C, so no value is ever "
-                            + "restored and a value check is a sound premise. The pair "
-                            + "separates on whether the sequence returned to where it started"),
+                    "the same toggle and the same compareAndSet(A, C), but the read it expects "
+                            + "is taken after the toggle finished, so the premise is fresh. The "
+                            + "value still went A to B to A; the pair separates on whether a "
+                            + "compare-and-set held a read from before it"),
 
             new RecordingSubject("recorded_stableValue_readBeforeItWasSet", JDK,
                     "java.lang.Object",

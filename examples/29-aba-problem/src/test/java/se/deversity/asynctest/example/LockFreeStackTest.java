@@ -9,6 +9,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicStampedReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,10 +48,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * is holding a stale head across a cycle. Functional correctness is unaffected.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * ABAProblemDetector is recording-fed: it tracks the value history it is handed
- * and looks for A → B → A cycles, plus CAS operations that succeeded despite
- * one. LockFreeStack.observeHead reports each successful head CAS from inside
- * push() and pop(), so the history is the stack's own, not a script.
+ * ABAProblemDetector is recording-fed: it is told which head each pop read,
+ * every successful head change, and each pop's CAS, and it reports a CAS whose
+ * premise was read before OTHER threads moved the head away and back. A cycle
+ * on its own (one thread pushing then popping) is not a finding.
+ * LockFreeStack.observePopReads and observeHead report from inside push() and
+ * pop(), so the history is the stack's own, not a script.
  *
  * DETECTOR ENABLED HERE:
  * ABAProblemDetector — a head that returned to a reference it just left. It is
@@ -69,24 +74,72 @@ class LockFreeStackTest {
         stack = new LockFreeStack<>();
     }
 
-    /**
-     * The detector's positive direction, driven by the real stack: a push followed by a pop
-     * takes the head from A to B and back to A, which is the cycle it looks for.
-     */
-    @Test
-    void testPushThenPop_headReturnsToItsPreviousNode_reports() {
-        ABAProblemDetector detector = new ABAProblemDetector();
-        stack.push("bottom");
+    /** Feeds every hook of the stack into {@code detector}. */
+    private void observe(ABAProblemDetector detector) {
+        stack.observePopReads(observed -> detector.recordRead("head", observed));
         stack.observeHead(
                 (from, to) -> detector.recordValueChange("head", from, to),
                 (expected, updated) ->
                         detector.recordCASAttempt("head", expected, updated, true, expected));
+    }
+
+    /**
+     * The detector's positive direction, driven by the real stack and a forced interleaving:
+     * one pop reads the head and is held in the ABA window while another thread pops twice and
+     * pushes, which hands the first node back off the free list. The held pop's CAS then
+     * succeeds against a head that left and came back.
+     */
+    @Test
+    void testPopHeldAcrossAnotherThreadsPopPopPush_reports() throws Exception {
+        ABAProblemDetector detector = new ABAProblemDetector();
+        stack.push("bottom");
+        stack.push("top");
+        observe(detector);
+
+        CountDownLatch inWindow = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread held = new Thread(() -> stack.pop(), "held-pop");
+        stack.observePopReads(observed -> {
+            detector.recordRead("head", observed);
+            if (Thread.currentThread() == held) {  // only the held pop waits in its window
+                inWindow.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        held.start();
+        inWindow.await();
+        stack.pop();            // top -> bottom
+        stack.pop();            // bottom -> empty
+        stack.push("again");    // the recycled top node is head again
+        release.countDown();
+        held.join();
+
+        assertTrue(detector.analyzeABA().hasIssues(),
+                "the held pop's CAS expected a head that another thread moved away and back: "
+                        + detector.analyzeABA());
+    }
+
+    /**
+     * And the other direction on the same stack: one thread pushing and popping takes the head
+     * A to B and back to A, but no thread held a stale head across it, so it is not an ABA.
+     */
+    @Test
+    void testPushThenPopOnOneThread_isACycleButNotAFinding() {
+        ABAProblemDetector detector = new ABAProblemDetector();
+        stack.push("bottom");
+        observe(detector);
 
         stack.push("top");
         stack.pop();
 
         assertFalse(detector.analyzeABA().variablesWithCycles.isEmpty(),
                 "head went A to B and back to A, which is the cycle");
+        assertFalse(detector.analyzeABA().hasIssues(),
+                "one thread's own push and pop cannot surprise that thread's CAS");
     }
 
     /**
@@ -95,10 +148,7 @@ class LockFreeStackTest {
     @Test
     void testPushesOnly_headNeverReturns_isSilent() {
         ABAProblemDetector detector = new ABAProblemDetector();
-        stack.observeHead(
-                (from, to) -> detector.recordValueChange("head", from, to),
-                (expected, updated) ->
-                        detector.recordCASAttempt("head", expected, updated, true, expected));
+        observe(detector);
 
         stack.push("a");
         stack.push("b");
@@ -174,8 +224,9 @@ class LockFreeStackTest {
      * succeeds — but NodeX.next now points to null instead of NodeY.
      * The stack has silently lost NodeY.
      *
-     * ABAProblemDetector records the A→B→A cycle and flags the CAS that
-     * succeeded despite the cycle.
+     * ABAProblemDetector records each pop's read of the head and flags the CAS
+     * that succeeded although other threads moved the head away and back after
+     * that read.
      *
      * To see the detection:
      * 1. Remove @Disabled
@@ -191,15 +242,25 @@ class LockFreeStackTest {
         // result. LockFreeStack was never touched, and the detector detectABAProblem creates
         // received nothing, so failOn had no finding to gate on. See issue #346.
         ABAProblemDetector detector = AsyncTestContext.abaProblemDetector();
-        stack.observeHead(
-                (from, to) -> detector.recordValueChange("head", from, to),
-                (expected, updated) ->
-                        detector.recordCASAttempt("head", expected, updated, true, expected));
+        observe(detector);
+        // Widen the ABA window the way a preempted thread would: a pop that has read the head
+        // pauses for a moment before its CAS. The pause is the only thing added; the reads,
+        // changes and CASes are the stack's own.
+        stack.observePopReads(observed -> {
+            detector.recordRead("head", observed);
+            try {
+                TimeUnit.MICROSECONDS.sleep(ThreadLocalRandom.current().nextInt(50, 2_000));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
 
-        // Four threads pushing and popping the same shared stack. Nodes come back off the free
-        // list, so the head really does return to a reference it held a moment ago.
+        // Four threads sharing one stack, each pushing, popping and pushing again. A pop that
+        // wakes first moves the head on, and its next push takes that same node back off the
+        // free list, so a pop still paused on it resumes to a CAS that succeeds.
         stack.push("task-" + Thread.currentThread().threadId());
         stack.pop();
+        stack.push("again-" + Thread.currentThread().threadId());
     }
 
     /**
