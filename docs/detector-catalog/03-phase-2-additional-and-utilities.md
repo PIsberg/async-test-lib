@@ -245,7 +245,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 38. Lazy Initialization Race Detector
 * **Severity**: `HIGH`
-* **Description**: Detects lazy-init races where multiple threads observe a non-volatile field as `null` simultaneously and each proceeds to construct it, causing duplicate initialization and possible visibility inconsistency.
+* **Description**: Detects lazy-init races where multiple threads observe a non-volatile field as `null` simultaneously and each proceeds to construct it, causing duplicate initialization and possible visibility inconsistency. Pass the instance that declares the field (`recordNullCheck(owner, fieldId, ...)`, `recordInitialization(owner, fieldId)`) so a holder created per invocation or per thread is judged on its own initialisations; keyed by the label alone, every such holder reads as one field initialised many times.
 * **Buggy Code**:
   ```java
   private ExpensiveObject instance; // not volatile, no synchronization

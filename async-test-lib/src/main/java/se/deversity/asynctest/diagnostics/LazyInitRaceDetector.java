@@ -7,6 +7,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 /**
  * Detects lazy-initialization races — situations where multiple threads
  * simultaneously observe a field as {@code null} and each proceeds to
@@ -37,6 +40,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * check before performing initialization.  If more than one thread calls
  * {@link #recordInitialization} for the same field, a race is recorded.
  *
+ * <p>A field is one field of one instance. Pass the instance that declares it through
+ * {@link #recordNullCheck(Object, String, boolean, boolean)} and
+ * {@link #recordInitialization(Object, String)}: a holder created per invocation or per thread
+ * then initialises its own field once and is not reported, where the label alone would merge
+ * every such holder into one field initialised many times. Within one invocation round the
+ * label-only methods are exact, and {@link #markInvocationStart()} closes a round.
+ *
  * <p>Usage:
  * <pre>{@code
  * @AsyncTest(threads = 8, detectLazyInitRace = true)
@@ -57,16 +67,59 @@ public class LazyInitRaceDetector {
 
     private static final class FieldState {
         final String fieldId;
+        /** The open round's initializations. */
         final AtomicInteger initCount        = new AtomicInteger();
+        /** The open round's threads that observed the field as null. */
         final Set<Long>     initializingThreads = ConcurrentHashMap.newKeySet();
         volatile boolean    isVolatile       = false;
+
+        /** The closed round with the most initializations, and its null observers. */
+        private int closedInits;
+        private int closedInitObservers;
+        /** The most null observers in a closed round that initialized at most once. */
+        private int closedNullObservers;
 
         FieldState(String fieldId) {
             this.fieldId = fieldId;
         }
+
+        /** Folds the open round into the closed summary and opens a new one. Runs quiescent. */
+        synchronized void closeRound() {
+            int[] closed = fold(initCount.getAndSet(0), initializingThreads.size());
+            initializingThreads.clear();
+            closedInits = closed[0];
+            closedInitObservers = closed[1];
+            closedNullObservers = closed[2];
+        }
+
+        /**
+         * {@return the worst round so far, the open one included: its initializations, its null
+         * observers, and the most null observers of any round that initialized at most once}
+         */
+        synchronized int[] worst() {
+            return fold(initCount.get(), initializingThreads.size());
+        }
+
+        private int[] fold(int inits, int observers) {
+            boolean worse = inits > closedInits;
+            return new int[] {
+                worse ? inits : closedInits,
+                worse ? observers : closedInitObservers,
+                inits <= 1 ? Math.max(observers, closedNullObservers) : closedNullObservers
+            };
+        }
     }
 
-    private final Map<String, FieldState> fields = new ConcurrentHashMap<>();
+    /**
+     * One field on one owner. The label alone names a field of a class, not of an instance: a
+     * holder created afresh for every invocation, or one per thread, initialises its own field
+     * once, and keyed by the label those initialisations read as one field initialised many
+     * times.
+     */
+    private record OwnedField(IdentityKey owner, String fieldId) { }
+
+    /** Keyed by the label alone, or by {@link OwnedField} when the caller names the owner. */
+    private final Map<Object, FieldState> fields = new ConcurrentHashMap<>();
 
     // ---- Public API --------------------------------------------------------
 
@@ -80,7 +133,29 @@ public class LazyInitRaceDetector {
      */
     public void recordNullCheck(String fieldId, boolean wasNull, boolean isVolatile) {
         if (fieldId == null) return;
-        FieldState state = resolve(fieldId);
+        noteNullCheck(resolve(fieldId), wasNull, isVolatile);
+    }
+
+    /**
+     * Records a null-guard check on a lazily-initialized field of {@code owner}.
+     *
+     * <p>Prefer this to the label-only overload whenever the field belongs to an instance. The
+     * label names a field of a class; the owner names the one being initialised, so a holder
+     * created per invocation or per thread is judged on its own initialisations.
+     *
+     * @param owner      the instance that declares the field (null-safe; ignored if {@code null})
+     * @param fieldId    a stable identifier, e.g. {@code "MyService.instance"}
+     * @param wasNull    {@code true} if the field was observed as {@code null}
+     * @param isVolatile {@code true} if the field is declared {@code volatile}
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordNullCheck(Object owner, String fieldId, boolean wasNull, boolean isVolatile) {
+        if (owner == null || fieldId == null) return;
+        noteNullCheck(resolve(owner, fieldId), wasNull, isVolatile);
+    }
+
+    private static void noteNullCheck(FieldState state, boolean wasNull, boolean isVolatile) {
         if (isVolatile) state.isVolatile = true;
         if (wasNull) {
             state.initializingThreads.add(Thread.currentThread().threadId());
@@ -101,6 +176,38 @@ public class LazyInitRaceDetector {
         resolve(fieldId).initCount.incrementAndGet();
     }
 
+    /**
+     * Records that the calling thread initialized the field of {@code owner}.
+     *
+     * @param owner   the same instance passed to {@link #recordNullCheck(Object, String, boolean, boolean)}
+     * @param fieldId the same identifier passed there
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordInitialization(Object owner, String fieldId) {
+        if (owner == null || fieldId == null) return;
+        resolve(owner, fieldId).initCount.incrementAndGet();
+    }
+
+    /**
+     * Closes the invocation round in progress, so each round is judged on its own.
+     *
+     * <p>A field the body builds afresh every round is initialised once per round, and counted
+     * across the whole run those initialisations read as one field initialised many times. A
+     * duplicate initialisation, or several threads seeing {@code null}, is a finding when it
+     * happens within one round; the worst round is what the report describes. Call this after
+     * the previous round's workers have all finished, as {@code ConcurrencyRunner} does for the
+     * detectors wired into {@code AsyncTestContext.markInvocationStart()}.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void markInvocationStart() {
+        for (FieldState state : fields.values()) {
+            state.closeRound();
+        }
+    }
+
     // ---- Analysis ----------------------------------------------------------
 
     /**
@@ -113,8 +220,9 @@ public class LazyInitRaceDetector {
         LazyInitRaceReport report = new LazyInitRaceReport();
 
         for (FieldState state : fields.values()) {
-            int inits = state.initCount.get();
-            int concurrent = state.initializingThreads.size();
+            int[] worst = state.worst();
+            int inits = worst[0];
+            int concurrent = inits > 1 ? worst[1] : worst[2];
 
             if (inits > 1) {
                 String volatileNote = state.isVolatile
@@ -140,7 +248,16 @@ public class LazyInitRaceDetector {
     // ---- Internal ----------------------------------------------------------
 
     private FieldState resolve(String fieldId) {
-        return fields.computeIfAbsent(fieldId, FieldState::new);
+        return fields.computeIfAbsent(fieldId, id -> new FieldState(fieldId));
+    }
+
+    private FieldState resolve(Object owner, String fieldId) {
+        OwnedField key = new OwnedField(new IdentityKey(owner), fieldId);
+        FieldState state = fields.get(key);
+        if (state == null) {
+            state = fields.computeIfAbsent(key, k -> new FieldState(fieldId + " on " + key.owner()));
+        }
+        return state;
     }
 
     // ---- Report ------------------------------------------------------------
