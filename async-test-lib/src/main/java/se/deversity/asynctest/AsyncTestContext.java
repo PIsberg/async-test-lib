@@ -884,6 +884,9 @@ public final class AsyncTestContext {
         if (highContentionAtomicDetector != null) {
             highContentionAtomicDetector.markInvocationStart();
         }
+        if (recordMutableComponentLeakDetector != null) {
+            recordMutableComponentLeakDetector.markInvocationStart();
+        }
     }
 
     /**

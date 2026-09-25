@@ -727,4 +727,44 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         run(CasFlagSameRound.class);
         assertTrue(REPORTS.containsKey("HighContentionAtomicDetector"), "Reports: " + REPORTS.keySet());
     }
+
+    /** A record exposing a mutable list, mutated by one thread per round. */
+    record Order(java.util.List<String> items) { }
+
+    public static class RecordCrossRound {
+        static final Order ORDER = new Order(new java.util.ArrayList<>());
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectRecordMutableComponentLeak = true)
+        void body() {
+            AsyncTestContext.recordMutableComponentLeakDetector().recordShared(ORDER, "order", Thread.currentThread());
+            ORDER.items().add("item");
+        }
+    }
+
+    /** The same record touched and mutated by two threads inside one round. */
+    public static class RecordSameRound {
+        static final Order ORDER = new Order(java.util.Collections.synchronizedList(new java.util.ArrayList<>()));
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectRecordMutableComponentLeak = true)
+        void body() {
+            AsyncTestContext.recordMutableComponentLeakDetector().recordShared(ORDER, "order", Thread.currentThread());
+            ORDER.items().add("item");
+        }
+    }
+
+    @Test
+    @DisplayName("a record handed from round to round is not shared between threads")
+    void recordCrossRoundIsNotShared() {
+        run(RecordCrossRound.class);
+        assertFalse(REPORTS.containsKey("RecordMutableComponentLeakDetector"),
+                "one thread touched the record in each round, and the runner orders the rounds: "
+                        + REPORTS.get("RecordMutableComponentLeakDetector"));
+    }
+
+    @Test
+    @DisplayName("a record touched by two threads in one round is shared, so the silence above is not vacuous")
+    void recordSameRoundIsShared() {
+        run(RecordSameRound.class);
+        assertTrue(REPORTS.containsKey("RecordMutableComponentLeakDetector"), "Reports: " + REPORTS.keySet());
+    }
 }

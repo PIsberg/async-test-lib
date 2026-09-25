@@ -127,7 +127,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 ### 131. Record Mutable Component Leak
 * **Severity**: `HIGH` (observed mutation) / `MEDIUM` (structural risk)
 * **Trust tier**: **verdict** for the observed mutation, **prompt** for the structural risk
-* **Description**: Detects records shared across threads whose components hold mutable state. A record is only shallowly immutable: the language freezes the reference, not the `ArrayList` behind it. The detector fingerprints every component on first sight and re-reads it at analysis time, so a component whose contents changed during the run is reported as a fact rather than an inference. Components holding `java.util.concurrent` types are deliberately not reported.
+* **Description**: Detects records shared across threads (two threads touching one record inside one invocation round) whose components hold mutable state. A record is only shallowly immutable: the language freezes the reference, not the `ArrayList` behind it. The detector fingerprints every component on first sight and re-reads it at analysis time, so a component whose contents changed during the run is reported as a fact rather than an inference. Components holding `java.util.concurrent` types are deliberately not reported.
 * **Buggy Code**:
   ```java
   record Order(String id, List<Item> items) { }
