@@ -190,7 +190,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 36. Synchronized on Non-Final Field Detector
 * **Severity**: `HIGH`
-* **Description**: Flags synchronizing on a lock field that is not `final`, since a reassignment mid-flight lets different threads synchronize on different object instances, providing no real mutual exclusion.
+* **Description**: Flags synchronizing on a lock field that is not `final`, since a reassignment mid-flight lets different threads synchronize on different object instances, providing no real mutual exclusion. The finding needs the owning instance (`recordLockObject(lock, fieldId, ownerClass, owner)`): one instance synchronizing on more than one object is a reassigned lock. Recorded without the owner, a changing monitor is also what several instances each holding their own final lock look like, so it is listed in the report text as undecided and not reported.
 * **Buggy Code**:
   ```java
   private Object lock = new Object(); // not final - can be reassigned

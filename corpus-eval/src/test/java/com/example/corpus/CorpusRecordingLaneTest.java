@@ -3285,12 +3285,20 @@ class CorpusRecordingLaneTest {
 
     // --- SynchronizedNonFinal -------------------------------------------------------------------
 
-    /** A fresh monitor each time, which is what locking on a reassignable field looks like. */
+    /** The one instance whose lock field the reassigning row keeps replacing. */
+    private static final Object REASSIGNING_OWNER = new Object();
+
+    /**
+     * A fresh monitor each time on one shared owner, which is what locking on a reassignable
+     * field looks like. The owner is named: without it a changing monitor is also what every
+     * instance with its own final lock looks like, and the detector no longer reports that.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_synchronized_onAReassignableLock() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.synchronizedNonFinalDetector()
-                .recordLockObject(new Object(), "reassignableLock", CorpusRecordingLaneTest.class);
+                .recordLockObject(new Object(), "reassignableLock", CorpusRecordingLaneTest.class,
+                        REASSIGNING_OWNER);
     }
 
     /** One final lock object for the run: the idiom every guide prints. */

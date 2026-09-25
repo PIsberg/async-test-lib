@@ -74,12 +74,15 @@ class LockableCacheTest {
     void test_concurrent_detectsNonFinalLock() {
         var detector = AsyncTestContext.get().synchronizedNonFinalDetector();
 
-        // Record the current lock object. Interleaved reassignLock() calls cause
-        // the identity to differ across invocations, which the detector flags.
+        // Record the current lock object and the cache that owns it. Interleaved
+        // reassignLock() calls make one cache synchronize on different objects,
+        // which the detector flags. Without the owner it cannot tell that from
+        // several caches each with their own final lock, and does not report it.
         detector.recordLockObject(
             cache.getLockObject(),
             "LockableCache.lockObject",
-            LockableCache.class
+            LockableCache.class,
+            cache
         );
 
         // Half the threads write; every other thread triggers a lock reassignment.

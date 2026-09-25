@@ -2992,10 +2992,10 @@ final class Corpus {
                     "java.lang.Object",
                     DetectorType.SYNCHRONIZED_NON_FINAL, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "the monitor is a fresh object each time, which is what locking on a "
-                            + "non-final field looks like once somebody reassigns it. Two "
-                            + "threads then synchronize on different objects and exclude "
-                            + "nobody, while the code reads as guarded",
+                    "the monitor is a fresh object each time on one shared owner, which is "
+                            + "what locking on a non-final field looks like once somebody "
+                            + "reassigns it. Two threads then synchronize on different objects "
+                            + "and exclude nobody, while the code reads as guarded",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_synchronized_onAFinalLock", JDK,

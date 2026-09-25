@@ -13,20 +13,21 @@ public class SynchronizedNonFinalDetectorTest {
     void withoutAnOwnerTheReportDoesNotClaimTheLockIsNonFinal() {
         SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
 
-        // The three-argument form, which is what every existing caller uses. Four workers each
-        // with their own final lock are indistinguishable from one reassigned field here, so the
-        // finding stands - but it must not assert which, and it used to assert NOT FINAL (#501).
+        // The three-argument form. Four workers each with their own final lock are
+        // indistinguishable from one reassigned field here. It used to assert NOT FINAL (#501),
+        // then reported the ambiguity as a finding; one of the two readings is correct code, so
+        // it is a note in the report text and not a finding at all.
         for (int i = 0; i < 4; i++) {
             detector.recordLockObject(new Object(), "lock", Object.class);
         }
 
-        java.util.List<String> violations = detector.analyze().violations;
-        assertEquals(1, violations.size(), "the ambiguity is still worth reporting");
-        assertFalse(violations.get(0).contains("NOT FINAL"),
+        SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
+        assertTrue(report.violations.isEmpty(), "undecidable is not a finding: " + report);
+        assertFalse(report.toString().contains("NOT FINAL"),
             "this recording cannot tell a reassigned field from four instances each with their "
-                + "own final lock, so it must not claim the first: " + violations.get(0));
-        assertTrue(violations.get(0).contains("recordLockObject"),
-            "and it should say how to have that decided: " + violations.get(0));
+                + "own final lock, so it must not claim the first: " + report);
+        assertTrue(report.toString().contains("recordLockObject"),
+            "and it should say how to have that decided: " + report);
     }
 
     @Test
@@ -45,6 +46,42 @@ public class SynchronizedNonFinalDetectorTest {
 
         assertTrue(detector.analyze().violations.isEmpty(),
             "each instance has its own final lock: " + detector.analyze().violations);
+    }
+
+    /** A service guarding itself with its own final lock: correct code. */
+    private static final class GuardedService {
+        private final Object lock = new Object();
+        private int count;
+
+        void increment(SynchronizedNonFinalDetector detector) {
+            detector.recordLockObject(lock, "lock", GuardedService.class);
+            synchronized (lock) {
+                count++;
+            }
+        }
+    }
+
+    @Test
+    void perInstanceFinalLocksRecordedWithoutAnOwnerAreNotReported() throws InterruptedException {
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        Runnable ownService = () -> {
+            GuardedService service = new GuardedService();
+            service.increment(detector);
+            service.increment(detector);
+        };
+        Thread a = new Thread(ownService);
+        Thread b = new Thread(ownService);
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+
+        assertFalse(detector.analyze().hasIssues(),
+            "Each thread built its own service, and each service has a private final lock. That "
+                + "is correct code, and without the owner it is indistinguishable from one "
+                + "reassigned field, so it cannot be a VERDICT finding: " + detector.analyze());
+        assertTrue(detector.analyze().toString().contains("recordLockObject"),
+            "the report should still say how to have it decided: " + detector.analyze());
     }
 
     @Test
@@ -83,10 +120,11 @@ public class SynchronizedNonFinalDetectorTest {
     void testDifferentObjectInstancesDetectsReassignment() {
         SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
 
+        MyService service = new MyService();
         // First invocation uses one object
-        detector.recordLockObject(new Object(), "lock", MyService.class);
-        // Second invocation uses a different object — field was reassigned!
-        detector.recordLockObject(new Object(), "lock", MyService.class);
+        detector.recordLockObject(new Object(), "lock", MyService.class, service);
+        // Second invocation uses a different object on the same instance — field was reassigned!
+        detector.recordLockObject(new Object(), "lock", MyService.class, service);
 
         SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
 
@@ -104,11 +142,12 @@ public class SynchronizedNonFinalDetectorTest {
         Object lock1 = new Object();
         Object lock2 = new Object();
 
-        detector.recordLockObject(finalLock, "finalLock", MyService.class);
-        detector.recordLockObject(finalLock, "finalLock", MyService.class);
+        MyService service = new MyService();
+        detector.recordLockObject(finalLock, "finalLock", MyService.class, service);
+        detector.recordLockObject(finalLock, "finalLock", MyService.class, service);
 
-        detector.recordLockObject(lock1, "nonFinalLock", MyService.class);
-        detector.recordLockObject(lock2, "nonFinalLock", MyService.class);
+        detector.recordLockObject(lock1, "nonFinalLock", MyService.class, service);
+        detector.recordLockObject(lock2, "nonFinalLock", MyService.class, service);
 
         SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
 
@@ -142,8 +181,9 @@ public class SynchronizedNonFinalDetectorTest {
     void testNullOwnerClassUsesFieldIdOnly() {
         SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
 
-        detector.recordLockObject(new Object(), "myLock", null);
-        detector.recordLockObject(new Object(), "myLock", null);
+        Object owner = new Object();
+        detector.recordLockObject(new Object(), "myLock", null, owner);
+        detector.recordLockObject(new Object(), "myLock", null, owner);
 
         SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
 
@@ -155,8 +195,9 @@ public class SynchronizedNonFinalDetectorTest {
     void testReportToStringContainsKeywords() {
         SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
 
-        detector.recordLockObject(new Object(), "badLock", MyService.class);
-        detector.recordLockObject(new Object(), "badLock", MyService.class);
+        MyService service = new MyService();
+        detector.recordLockObject(new Object(), "badLock", MyService.class, service);
+        detector.recordLockObject(new Object(), "badLock", MyService.class, service);
 
         String text = detector.analyze().toString();
 
@@ -164,6 +205,25 @@ public class SynchronizedNonFinalDetectorTest {
         assertTrue(text.contains("SYNCHRONIZED-ON-NON-FINAL"), "Should contain header");
         assertTrue(text.contains("Fix:"), "Should suggest a fix");
         assertTrue(text.contains("final"), "Should mention 'final'");
+    }
+
+    @Test
+    void twoClassesSharingASimpleNameAreTwoSlots() {
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        detector.recordLockObject(new Object(), "lock", First.Service.class);
+        detector.recordLockObject(new Object(), "lock", Second.Service.class);
+
+        assertFalse(detector.analyze().toString().contains("different objects"),
+            "each class used one monitor; keyed by simple name the two read as one slot that "
+                + "changed its lock: " + detector.analyze());
+    }
+
+    private static final class First {
+        private static final class Service { }
+    }
+
+    private static final class Second {
+        private static final class Service { }
     }
 
     private static class MyService {}

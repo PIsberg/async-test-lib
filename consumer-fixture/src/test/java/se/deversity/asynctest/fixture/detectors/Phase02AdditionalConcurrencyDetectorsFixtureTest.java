@@ -239,11 +239,13 @@ class Phase02AdditionalConcurrencyDetectorsFixtureTest {
         // non-final monitor field while workers are synchronizing on it, which is how two
         // threads end up inside the same guarded section at once.
         var nonFinalDetector = AsyncTestContext.synchronizedNonFinalDetector();
+        // The holder is passed as the owner: one instance changing its monitor is the finding,
+        // and without the owner that is indistinguishable from instances with their own locks.
         MutableMonitor holder = SHARED_MUTABLE_MONITOR;
-        nonFinalDetector.recordLockObject(holder.monitor(), "monitor", MutableMonitor.class);
+        nonFinalDetector.recordLockObject(holder.monitor(), "monitor", MutableMonitor.class, holder);
         holder.guardedWork();
         holder.replaceMonitor();
-        nonFinalDetector.recordLockObject(holder.monitor(), "monitor", MutableMonitor.class);
+        nonFinalDetector.recordLockObject(holder.monitor(), "monitor", MutableMonitor.class, holder);
         holder.guardedWork();
     }
 
