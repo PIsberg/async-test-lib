@@ -159,7 +159,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 89. System Property Mutation Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects concurrent `System.setProperty()`/`clearProperty()` calls during an async test run. System properties are global mutable state backed by a single `Properties` instance, so concurrent writers race and pollute configuration read by unrelated threads or later tests.
+* **Description**: Detects concurrent `System.setProperty()`/`clearProperty()` calls during an async test run. System properties are global mutable state backed by a single `Properties` instance, so concurrent writers race and pollute configuration read by unrelated threads or later tests. Writers that all held one lock the detector can see (`synchronized (System.getProperties())`, a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove) took turns and are only a restore-hygiene warning, not a finding.
 * **Buggy Code**:
   ```java
   @Test
