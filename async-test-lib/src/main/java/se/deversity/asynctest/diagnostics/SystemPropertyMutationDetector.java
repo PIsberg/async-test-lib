@@ -71,7 +71,7 @@ public class SystemPropertyMutationDetector {
      */
     public void recordSet(String key, String value, Thread thread) {
         if (key == null || thread == null) return;
-        noteWrite(key);
+        noteWrite(key, thread);
         events.add(new MutationEvent(key, value, thread.threadId(), thread.getName(), "set"));
     }
 
@@ -83,7 +83,7 @@ public class SystemPropertyMutationDetector {
      */
     public void recordClear(String key, Thread thread) {
         if (key == null || thread == null) return;
-        noteWrite(key);
+        noteWrite(key, thread);
         events.add(new MutationEvent(key, null, thread.threadId(), thread.getName(), "clear"));
     }
 
@@ -93,12 +93,12 @@ public class SystemPropertyMutationDetector {
      * counts with no declaration; the explicit thread parameter of the record methods is
      * attribution only, and the probe is always the caller.
      */
-    private void noteWrite(String key) {
+    private void noteWrite(String key, Thread thread) {
         KeyGuard guard = guards.get(key);
         if (guard == null) {
             guard = guards.computeIfAbsent(key, k -> new KeyGuard());
         }
-        guard.noteAccess(System.getProperties());
+        guard.noteAccess(System.getProperties(), true, thread.threadId());
     }
 
     /**
@@ -126,7 +126,7 @@ public class SystemPropertyMutationDetector {
             }
 
             KeyGuard guard = guards.get(key);
-            boolean unguarded = guard == null || guard.sawUnguardedAccess();
+            boolean unguarded = guard == null || guard.sawUnguardedSharing();
             if (threadIds.size() > 1 && unguarded) {
                 r.violations.add(String.format(
                         "Property '%s' mutated from %d threads (%s) — "

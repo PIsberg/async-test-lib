@@ -185,7 +185,7 @@ public class VolatileArrayDetector {
         // orders them as surely as a volatile element would.
         Set<ArrayInfo> unguarded = new HashSet<>();
         for (ArrayInfo info : problematicArrays) {
-            if (info.sawUnguardedAccess()) {
+            if (info.sawUnguardedSharing()) {
                 unguarded.add(info);
             }
         }

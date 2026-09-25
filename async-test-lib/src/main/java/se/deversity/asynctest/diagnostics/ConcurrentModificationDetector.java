@@ -273,7 +273,7 @@ public class ConcurrentModificationDetector {
             // That was reported at VERDICT until the lockset below covered iterations too.
             boolean wasMutated = state.modificationCount.get() > 0 || !state.modifyingThreads.isEmpty();
             if (!iterationIsSafe && state.allIteratingThreads.size() > 1 && wasMutated
-                    && state.sawUnguardedAccess()) {
+                    && state.sawUnguardedSharing()) {
                 report.concurrentIterations.add(String.format(
                     "%s: %d threads performed iteration while the collection was modified "
                         + "%d time(s) (potential race condition)" + SelfGuard.REPORT_NOTE,

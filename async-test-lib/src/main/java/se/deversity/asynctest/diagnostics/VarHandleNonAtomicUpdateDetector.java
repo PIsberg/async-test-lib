@@ -190,8 +190,7 @@ public final class VarHandleNonAtomicUpdateDetector {
     private static void note(State s, @Nullable Object guard, @Nullable Mode mode, Thread thread,
                              boolean write) {
         // Probed on the calling thread; the explicit thread parameter is attribution only.
-        s.noteAccess(guard, write);
-        s.noteThread(thread);
+        s.noteAccess(guard, write, thread);
         if (mode == null || mode == Mode.PLAIN) {
             s.sawPlainAccess.set(true);
             if (write) s.sawPlainWrite.set(true);

@@ -469,7 +469,19 @@ public final class SelfGuard {
          * @param thread   the thread the access is attributed to
          */
         final void noteAccess(@Nullable Object instance, Thread thread) {
-            noteAccess(instance, true, thread.threadId());
+            noteAccess(instance, true, thread);
+        }
+
+        /**
+         * {@link #noteAccess(Object, Thread)}, saying whether the access is a write, for the
+         * detectors whose reads a shared-mode lock can guard.
+         *
+         * @param instance the shared instance being accessed
+         * @param forWrite whether the access mutates the instance
+         * @param thread   the thread the access is attributed to
+         */
+        final void noteAccess(@Nullable Object instance, boolean forWrite, Thread thread) {
+            noteAccess(instance, forWrite, thread.threadId());
             threadIds.add(thread.threadId());
             threadNames.add(thread.getName());
         }

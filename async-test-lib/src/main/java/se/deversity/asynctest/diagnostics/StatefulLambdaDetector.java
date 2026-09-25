@@ -121,7 +121,7 @@ public class StatefulLambdaDetector {
                 id -> new LambdaState(lambda.getClass().getSimpleName()
                         + "@" + System.identityHashCode(lambda)));
         // Probed on the mutating thread while it is still inside whatever region guards it.
-        s.noteAccess(capturedState != null ? capturedState : lambda);
+        s.noteAccess(capturedState != null ? capturedState : lambda, true, thread.threadId());
         s.mutationEvents.add(thread.getName() + " → " + label);
     }
 
@@ -138,7 +138,7 @@ public class StatefulLambdaDetector {
         StatefulLambdaReport r = new StatefulLambdaReport();
         for (LambdaState s : lambdas.values()) {
             if (s.executingThreadIds.size() > 1 && !s.mutationEvents.isEmpty()
-                    && s.sawUnguardedAccess()) {
+                    && s.sawUnguardedSharing()) {
                 r.violations.add(String.format(
                         "'%s' executed on %d threads (%s) with concurrent captured-state mutations: [%s]"
                                 + SelfGuard.REPORT_NOTE,

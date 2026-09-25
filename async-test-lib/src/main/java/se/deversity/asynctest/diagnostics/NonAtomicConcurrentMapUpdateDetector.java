@@ -112,8 +112,7 @@ public final class NonAtomicConcurrentMapUpdateDetector {
         }
         // Probed on the calling thread while it is still inside the compound operation; the
         // explicit thread parameter is attribution only.
-        s.noteAccess(map);
-        s.noteThread(thread);
+        s.noteAccess(map, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
