@@ -168,7 +168,7 @@ public class SimpleDateFormatDetector {
 
         for (FormatterState state : formatters.values()) {
             // Check for shared access (multiple threads using same formatter)
-            if (state.accessingThreads.size() > 1 && state.sawUnguardedAccess()) {
+            if (state.accessingThreads.size() > 1 && state.sawUnguardedSharing()) {
                 report.sharedFormatters.add(String.format(
                     "%s: accessed by %d threads (format: %d, parse: %d) - NOT THREAD SAFE!"
                         + SelfGuard.REPORT_NOTE,

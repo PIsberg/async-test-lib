@@ -1,9 +1,13 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Lock awareness, shared by the detectors that watch a non-thread-safe instance.
@@ -14,14 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * reported the fix as loudly as the bug. {@code SharedTypeAccuracyEvalTest} measured that
  * directly: 19 of 19 fired on unguarded sharing, and 17 of 19 also fired on the guarded twin.
  *
- * <p>What closes that gap is the Eraser lockset, in {@link TrackedInstance}: per instance, the
+ * <p>What closes that gap is the Eraser lockset, in {@code TrackedInstance}: per instance, the
  * intersection of the locks held at every recorded access. Non-empty means some lock protects
  * the instance consistently; empty means none does. The instance's own monitor is one member of
  * that set rather than a special case, so {@code synchronized (theInstance)} needs no
  * declaration, and {@link Thread#holdsLock(Object)} stays the cheap intrinsic that answers for
  * it - it takes no monitor, so asking cannot serialize the threads being observed.
  *
- * <h4>What it does not see</h4>
+ * <h2>What it does not see</h2>
  *
  * <p>A lock the test never declared and the agent never saw. Without the agent, {@code
  * synchronized} on any object other than the tracked instance emits no callback the library can
@@ -34,8 +38,26 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>The probe reflects the thread that calls the record method. Detectors whose recording API
  * takes an explicit {@code Thread} parameter for attribution still probe the caller, which is
  * the thread actually inside (or outside) the guarded region.
+ *
+ * <h2>Sharing is judged within one round</h2>
+ *
+ * <p>The runner orders invocation rounds: every worker of one round has finished before the
+ * next round's are submitted. Two threads that touched an instance in different rounds never
+ * overlapped, and a lock that guarded every access of one round says nothing about the next. So
+ * the verdict is taken per round: more than one thread, and no lock common to all of their
+ * accesses, inside one round. Counting threads across the run reported an instance that one
+ * thread per round used in turn; with virtual threads, where every body execution runs on a fresh
+ * thread, that was any instance used in two rounds at all. The round comes from the
+ * {@link Scope} the running context binds to its workers. A detector used with no context
+ * installed sees one round, the whole run, which is what it saw before.
+ *
+ * <p>Public only so that {@code AsyncTestContext} can own and bind the {@link Scope}; everything
+ * else here is package-private and belongs to the detectors.
+ *
+ * @since 1.12.3
  */
-final class SelfGuard {
+@API(status = Status.INTERNAL, since = "1.12.3")
+public final class SelfGuard {
 
     /**
      * The wording every lock-aware detector appends to a finding, so the report says exactly
@@ -57,6 +79,90 @@ final class SelfGuard {
      */
     static boolean heldOn(@Nullable Object instance) {
         return instance != null && Thread.holdsLock(instance);
+    }
+
+    /**
+     * The round clock one run's sharing verdicts are taken against.
+     *
+     * <p>{@code AsyncTestContext} owns one per run. It binds it to each worker in {@code install}
+     * and unbinds it in {@code uninstall}, so the binding falls under the same ThreadLocal symmetry
+     * rule as the context itself, and advances it in {@code markInvocationStart}, which the runner
+     * calls after the previous round's workers have all finished. Kept here rather than on the
+     * context for the reason {@link WorkerSlot} is: a detector reads it, and diagnostics do not
+     * reach up into the context.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.INTERNAL, since = "1.12.3")
+    public static final class Scope {
+
+        private static final ThreadLocal<Scope> BOUND = new ThreadLocal<>();
+
+        /** Advanced by the runner thread between rounds, read by every recording worker. */
+        private final AtomicInteger round = new AtomicInteger();
+
+        /** Creates a scope in its first round; the context creates one per run. */
+        public Scope() {
+            // Nothing to set up: the round starts at 0 and advances from markInvocationStart.
+        }
+
+        /**
+         * Binds {@code scope} to the calling thread. Called from {@code AsyncTestContext.install}.
+         *
+         * @param scope the running context's scope
+         */
+        public static void bind(Scope scope) {
+            BOUND.set(scope);
+        }
+
+        /** Unbinds the calling thread's scope. Called from {@code AsyncTestContext.uninstall()}. */
+        public static void unbind() {
+            BOUND.remove();
+        }
+
+        /** {@return the calling thread's scope, or {@code null} outside a run} */
+        static @Nullable Scope current() {
+            return BOUND.get();
+        }
+
+        /** Starts the next round. Called from {@code AsyncTestContext.markInvocationStart()}. */
+        public void markInvocationStart() {
+            round.incrementAndGet();
+        }
+
+        /** {@return the round in progress} */
+        int round() {
+            return round.get();
+        }
+    }
+
+    /**
+     * What one round's accesses to an instance amount to.
+     *
+     * <p>Immutable and replaced by compare-and-set, so the record path takes no lock. An access
+     * that changes nothing (the same thread again, under the same locks) replaces nothing and
+     * allocates nothing; a new window costs one object per instance per round.
+     */
+    private static final class Window {
+
+        /** The round these accesses belong to. */
+        final long key;
+
+        /** The first thread seen in this window. */
+        final long firstThread;
+
+        /** Whether a thread other than the first has been seen in this window. */
+        final boolean shared;
+
+        /** The locks held at every access in this window; empty once one held none of them. */
+        final int[] locks;
+
+        Window(long key, long firstThread, boolean shared, int[] locks) {
+            this.key = key;
+            this.firstThread = firstThread;
+            this.shared = shared;
+            this.locks = locks;
+        }
     }
 
     /**
@@ -83,8 +189,13 @@ final class SelfGuard {
          * taking a lock here could serialize the very threads being watched and hide the race.
          * The update is a CAS loop over a value that only shrinks, so it terminates.
          */
-        private final java.util.concurrent.atomic.AtomicReference<int[]> candidateLocks =
-                new java.util.concurrent.atomic.AtomicReference<>();
+        private final AtomicReference<int[]> candidateLocks = new AtomicReference<>();
+
+        /** The round in progress for this instance; {@code null} before its first access. */
+        private final AtomicReference<@Nullable Window> window = new AtomicReference<>();
+
+        /** Latched once one round saw two threads and no lock common to all their accesses. */
+        private volatile boolean unguardedSharing;
 
         /**
          * Records one access to {@code instance}, intersecting the candidate set with the locks
@@ -113,6 +224,25 @@ final class SelfGuard {
          * @param forWrite whether the access mutates the instance
          */
         final void noteAccess(@Nullable Object instance, boolean forWrite) {
+            noteAccess(instance, forWrite, Thread.currentThread().threadId());
+        }
+
+        /**
+         * Records one access to {@code instance}, attributed to the thread {@code threadId}.
+         *
+         * <p>For the detectors whose recording API names the accessing thread: the round verdict
+         * counts that thread, while the lock probe still asks the caller, as everywhere here.
+         *
+         * @param instance the shared instance being accessed
+         * @param forWrite whether the access mutates the instance
+         * @param threadId the thread the access is attributed to
+         */
+        final void noteAccess(@Nullable Object instance, boolean forWrite, long threadId) {
+            noteRunLockset(instance, forWrite);
+            noteRound(instance, forWrite, threadId);
+        }
+
+        private void noteRunLockset(@Nullable Object instance, boolean forWrite) {
             if (instance == null) {
                 candidateLocks.set(HeldLocks.NONE);
                 return;
@@ -137,6 +267,65 @@ final class SelfGuard {
             }
         }
 
+        private void noteRound(@Nullable Object instance, boolean forWrite, long threadId) {
+            // Once one round has raced, the verdict cannot change back, so nothing to compute.
+            if (unguardedSharing) {
+                return;
+            }
+            Scope scope = Scope.current();
+            long key = scope == null ? 0L : scope.round();
+            Window current = window.get();
+            while (true) {
+                Window next = advance(current, key, instance, forWrite, threadId);
+                if (next == current // NOPMD CompareObjectsWithEquals - unchanged window, nothing to publish
+                        || window.compareAndSet(current, next)) {
+                    if (next.shared && next.locks.length == 0) {
+                        unguardedSharing = true;
+                    }
+                    return;
+                }
+                current = window.get();
+            }
+        }
+
+        @SuppressWarnings("ReferenceEquality") // intersect returns its input array when nothing dropped
+        private static Window advance(@Nullable Window current, long key, @Nullable Object instance,
+                                      boolean forWrite, long threadId) {
+            if (current == null || key > current.key) {
+                // The first access of a round: nothing recorded earlier in the run overlapped it.
+                return new Window(key, threadId, false, probe(null, instance, forWrite));
+            }
+            // The same round, or an access still in flight from an older one while a newer one
+            // has started. The latter joins the newer round, the direction that can only add a
+            // finding.
+            boolean shared = current.shared || threadId != current.firstThread;
+            int[] locks = current.locks.length == 0
+                    ? current.locks
+                    : probe(current.locks, instance, forWrite);
+            if (shared == current.shared
+                    && locks == current.locks) { // NOPMD CompareObjectsWithEquals - intersect returns its input when nothing dropped
+                return current;
+            }
+            return new Window(current.key, current.firstThread, shared, locks);
+        }
+
+        private static int[] probe(int @Nullable [] candidate, @Nullable Object instance,
+                                   boolean forWrite) {
+            return instance == null ? HeldLocks.NONE : HeldLocks.intersect(candidate, instance, forWrite);
+        }
+
+        /**
+         * {@return whether one round saw this instance accessed by more than one thread, with no
+         * lock held at every one of that round's accesses}
+         *
+         * <p>This is the family's verdict. Two threads in different rounds never overlapped,
+         * because the runner finishes one round before it starts the next, so neither the thread
+         * count nor the lockset is carried across a round boundary. Once true it stays true.
+         */
+        final boolean sawUnguardedSharing() {
+            return unguardedSharing;
+        }
+
         /**
          * {@return whether no single lock was held across every recorded access}
          *
@@ -144,6 +333,10 @@ final class SelfGuard {
          * no access there is no hazard to report. The name is unchanged from when this was a
          * guard-on-self boolean, because that is still exactly what it answers for callers - the
          * question just got a better model behind it.
+         *
+         * <p>This intersection spans the whole run and says nothing about how many threads took
+         * part. A detector that reports sharing asks {@link #sawUnguardedSharing()} instead; this
+         * one is for callers whose finding does not need a second thread.
          */
         final boolean sawUnguardedAccess() {
             int[] current = candidateLocks.get();
@@ -163,7 +356,8 @@ final class SelfGuard {
 
     /**
      * A tracked instance that also remembers which threads touched it, and owns the family's core
-     * rule: a finding needs more than one thread <em>and</em> an access no lock covered. The rule
+     * rule: a finding needs more than one thread <em>and</em> an access no lock covered, both
+     * within one round (see {@link TrackedInstance#sawUnguardedSharing()}). The rule
      * was hand-written per detector in three spellings, and the lock-awareness rollout had to
      * visit every copy (#700).
      *
@@ -175,8 +369,16 @@ final class SelfGuard {
         private final Set<Long> threadIds = ConcurrentHashMap.newKeySet();
         private final Set<String> threadNames = ConcurrentHashMap.newKeySet();
 
-        /** Records the calling thread. Call after {@link #noteAccess}, on the same path. */
-        final void noteThread(Thread thread) {
+        /**
+         * Records one access to {@code instance} by {@code thread}: the lock probe and the round
+         * verdict, as {@link #noteAccess(Object, boolean, long)} does, and the thread for the
+         * report. Call it on the accessing thread; the probe asks the caller.
+         *
+         * @param instance the shared instance being accessed
+         * @param thread   the thread the access is attributed to
+         */
+        final void noteAccess(@Nullable Object instance, Thread thread) {
+            noteAccess(instance, true, thread.threadId());
             threadIds.add(thread.threadId());
             threadNames.add(thread.getName());
         }
@@ -190,9 +392,12 @@ final class SelfGuard {
             return threadNames;
         }
 
-        /** {@return whether this instance is a finding: shared, and not serialised by any lock} */
+        /**
+         * {@return whether this instance is a finding: shared within one round, and not
+         * serialised by any lock there}
+         */
         final boolean sharedAndUnguarded() {
-            return threadIds.size() > 1 && sawUnguardedAccess();
+            return sawUnguardedSharing();
         }
     }
 }

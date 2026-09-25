@@ -102,8 +102,7 @@ public final class SharedDeflaterDetector {
             final String label = (name != null) ? name : kind + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
-        s.noteAccess(instance);
-        s.noteThread(thread);
+        s.noteAccess(instance, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.

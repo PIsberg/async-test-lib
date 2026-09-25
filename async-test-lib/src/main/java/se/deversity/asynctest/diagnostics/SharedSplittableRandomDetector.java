@@ -109,11 +109,10 @@ public final class SharedSplittableRandomDetector {
             final String label = name != null ? name : type + "@" + key.hashCode();
             state = generators.computeIfAbsent(key, k -> new GeneratorState(label, type));
         }
-        state.noteAccess(generator);
         state.accessCount.incrementAndGet();
         state.operations.add(methodName != null ? methodName : "next*");
         Thread current = Thread.currentThread();
-        state.noteThread(current);
+        state.noteAccess(generator, current);
     }
 
     /** Everything except {@code java.util.Random} subclasses (see class Javadoc). */

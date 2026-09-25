@@ -92,7 +92,9 @@ authority on which row is which - each outcome above is one assertion in it.
   these patterns means the specific bug shape is absent.
 - For RaceConditionDetector, SharedMessageDigestDetector and SharedStatefulCryptoDetector
   a finding now means "touched by more than one thread, and no single lock covered every
-  access". Code guarded by the instance's own monitor does not fire, and neither does code
+  access". For the two Shared* detectors both halves are judged within one invocation round,
+  because the runner finishes one round before it starts the next; see the Shared* section
+  below. Code guarded by the instance's own monitor does not fire, and neither does code
   guarded by any other lock the test declares with `AsyncTestContext.holdingLock(...)`. A lock
   that was never declared is invisible and the finding stands, so it remains a prompt to verify
   synchronization rather than a verdict; the report wording says exactly that.
@@ -172,14 +174,27 @@ lockset now and both directions are pinned like the rest.
 | `synchronized(instance)` twin (true negative) | 2 of 19 stay silent | 18 of 20 stay silent |
 | Declared `ReentrantLock` twin (true negative) | not measured | 18 of 20 stay silent |
 | Two threads, two different declared locks | not measured | 18 of 18 fire, correctly |
+| One thread per round, a fresh thread each round (true negative) | not measured | 18 of 18 stay silent |
 
 The 18 all reach those answers through one shared model rather than 18 copies of it.
 `SelfGuard.TrackedInstance` keeps the Eraser candidate set - the locks held at every access to
 that instance, intersected - and a detector's state class extends it, its record path calls
-`noteAccess(instance)`, and its `analyze()` reports only when `sawUnguardedAccess()`, which is
-now "the intersection is empty". The instance's own monitor is one member of that set rather
-than a special case. The finding's wording comes from the same place (`SelfGuard.REPORT_NOTE`),
-so the report cannot claim awareness the code does not have.
+`noteAccess(instance)`, and its `analyze()` reports only when `sawUnguardedSharing()`: within
+one invocation round, more than one thread touched the instance and the intersection of that
+round's locksets is empty. The instance's own monitor is one member of that set rather than a
+special case. The finding's wording comes from the same place (`SelfGuard.REPORT_NOTE`), so the
+report cannot claim awareness the code does not have.
+
+The round matters because the runner orders rounds: every worker of one round has finished
+before the next round's are submitted, so two threads that used an instance in different rounds
+never overlapped. Until 2026-09-25 both the thread count and the lockset spanned the whole run.
+With pooled platform workers, sequential use by different workers in different rounds read as
+sharing; with virtual threads, the default, every body execution runs on a fresh thread, so any
+instance used in two rounds at all was "accessed from 2 threads". A lock that guarded all of one
+round and a different lock that guarded all of the next also emptied the intersection. The round
+comes from a clock `AsyncTestContext` binds to each worker (`SelfGuard.Scope`); a detector
+driven with no context installed sees one round, the whole run, as before. The last row of the
+table pins it for the whole roster.
 
 The last row is why the model is an intersection and not a per-thread "was anything held" flag.
 Two threads that each take their own lock have serialised nothing, and a flag would call that

@@ -107,8 +107,7 @@ public final class SharedIteratorDetector {
             final String label = kind + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
-        s.noteAccess(iterator);
-        s.noteThread(thread);
+        s.noteAccess(iterator, thread);
         if (operation != null) s.operations.add(operation);
     }
 

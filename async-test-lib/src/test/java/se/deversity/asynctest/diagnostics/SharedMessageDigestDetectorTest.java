@@ -288,4 +288,131 @@ public class SharedMessageDigestDetectorTest {
         // First-access fallback label has form "MessageDigest$Delegate@<hash>" or similar
         assertFalse(msg.contains("renamed"), "Label captured on first access must be sticky");
     }
+
+    // ---- Sharing is judged within one invocation round ----------------------------------------
+    //
+    // The runner orders rounds: the previous round's workers have all finished before the next
+    // round's are submitted. Two threads that each used an instance in a different round never
+    // overlapped, and with virtual threads (the default) every body execution is a fresh thread,
+    // so counting threads across the whole run reported a digest no two threads ever held at
+    // once. These drive the detector through an installed context, the way a run does.
+
+    private static AsyncTestContext digestContext() {
+        return new AsyncTestContext(AsyncTestConfig.builder().detectSharedMessageDigest(true).build());
+    }
+
+    private static SharedMessageDigestDetector detectorOf(AsyncTestContext ctx) {
+        AsyncTestContext.install(ctx);
+        try {
+            return AsyncTestContext.sharedMessageDigestDetector();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /** Starts one worker per body, each with {@code ctx} installed, and waits for all of them. */
+    private static void runWorkers(AsyncTestContext ctx, Runnable... bodies) throws InterruptedException {
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                AsyncTestContext.install(ctx);
+                try {
+                    body.run();
+                } finally {
+                    AsyncTestContext.uninstall();
+                }
+            }, "worker-" + i);
+        }
+        for (Thread worker : workers) {
+            worker.start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
+
+    private static void use(MessageDigest md) {
+        AsyncTestContext.sharedMessageDigestDetector().recordAccess(md, "sha256", Thread.currentThread());
+        md.update((byte) 1);
+    }
+
+    private static Runnable together(java.util.concurrent.CyclicBarrier barrier, Runnable body) {
+        return () -> {
+            try {
+                barrier.await();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            body.run();
+        };
+    }
+
+    @Test
+    void uninstallUnbindsTheSharingScope() {
+        // The symmetry rule: a scope left bound would file this thread's next records under the
+        // round clock of a run that has finished.
+        AsyncTestContext ctx = digestContext();
+        assertNull(SelfGuard.Scope.current(), "no scope outside a body execution");
+        AsyncTestContext.install(ctx, 0);
+        try {
+            assertNotNull(SelfGuard.Scope.current());
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+        assertNull(SelfGuard.Scope.current(), "uninstall() must unbind the scope");
+    }
+
+    @Test
+    void oneThreadPerRoundOnAFreshThreadEachRoundIsNotSharing() throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        for (int round = 0; round < 3; round++) {
+            ctx.markInvocationStart();
+            runWorkers(ctx, () -> use(md));
+        }
+
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(),
+                "three rounds, one thread each, ordered by the runner: nothing overlapped; got "
+                        + report.violations);
+    }
+
+    @Test
+    void twoThreadsInOneRoundWithoutALockStillFire() throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        runWorkers(ctx, () -> use(md));
+        ctx.markInvocationStart();
+        runWorkers(ctx, together(barrier, () -> use(md)), together(barrier, () -> use(md)));
+
+        var report = detectorOf(ctx).analyze();
+        assertTrue(report.hasIssues(), "two threads used one digest in the same round, unguarded");
+        assertTrue(report.violations.get(0).contains("MessageDigest is not thread-safe"),
+                report.violations.get(0));
+    }
+
+    @Test
+    void aDifferentLockInEachRoundIsNotInconsistentLocking() throws Exception {
+        // Round one guards every access with one lock, round two with another. Within each round
+        // the guarding is consistent, and nothing crosses the round boundary.
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        for (Object lock : new Object[] {new Object(), new Object()}) {
+            ctx.markInvocationStart();
+            Runnable guarded = () -> {
+                synchronized (lock) {
+                    try (var held = AsyncTestContext.holdingLock(lock)) {
+                        use(md);
+                    }
+                }
+            };
+            runWorkers(ctx, guarded, guarded);
+        }
+
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(), "each round was consistently locked; got " + report.violations);
+    }
 }

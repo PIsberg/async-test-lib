@@ -124,6 +124,7 @@ import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
 import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
 import se.deversity.asynctest.diagnostics.HeldLocks;
+import se.deversity.asynctest.diagnostics.SelfGuard;
 import se.deversity.asynctest.diagnostics.WorkerSlot;
 import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
@@ -202,6 +203,14 @@ public final class AsyncTestContext {
 
     /** Holds detector instances; extracted to keep this class small. */
     private final DetectorRegistry registry;
+
+    /**
+     * The round clock the lock-aware detectors judge sharing within. Bound to each worker in
+     * {@link #install}, unbound in {@link #uninstall()}, advanced by {@link #markInvocationStart()}.
+     * Thread-safe on its own (an atomic counter), so sharing it across the workers needs nothing
+     * here.
+     */
+    private final SelfGuard.Scope sharingScope = new SelfGuard.Scope();
 
     /**
      * Third-party detectors contributed through the public {@link se.deversity.asynctest.spi.Detector}
@@ -700,12 +709,14 @@ public final class AsyncTestContext {
      */
     @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx) {
+        SelfGuard.Scope.bind(ctx.sharingScope);
         CURRENT.set(ctx);
     }
 
     /**
      * Installs {@code ctx} and the runner's {@link WorkerSlot} for this body execution. Both are
-     * cleared by {@link #uninstall()}, under the same symmetry rule.
+     * cleared by {@link #uninstall()}, under the same symmetry rule, as is the context's sharing
+     * scope, which either {@code install} binds.
      *
      * @param ctx        the context to bind to the calling thread
      * @param workerSlot the worker's index within its round, not negative
@@ -714,6 +725,7 @@ public final class AsyncTestContext {
     @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx, int workerSlot) {
         WorkerSlot.set(workerSlot);
+        SelfGuard.Scope.bind(ctx.sharingScope);
         CURRENT.set(ctx);
     }
 
@@ -724,9 +736,11 @@ public final class AsyncTestContext {
     public static void uninstall() {
         // Both ThreadLocals go together. A declared lock that outlived its invocation would be
         // intersected into the next round's lockset and could silence a real finding there, so
-        // the symmetry rule covers this one exactly as it covers CURRENT.
+        // the symmetry rule covers this one exactly as it covers CURRENT. The same holds for the
+        // sharing scope: one left bound would file this thread's next records under a finished run.
         HeldLocks.clear();
         WorkerSlot.clear();
+        SelfGuard.Scope.unbind();
         CURRENT.remove();
     }
 
@@ -819,6 +833,9 @@ public final class AsyncTestContext {
      * @since 1.9.8
      */
     public void markInvocationStart() {
+        // Every lock-aware detector (the Shared* family and the others built on SelfGuard) judges
+        // sharing within one round; this is the round boundary they read.
+        sharingScope.markInvocationStart();
         if (sharedCollectionDetector != null) {
             sharedCollectionDetector.markInvocationStart();
         }

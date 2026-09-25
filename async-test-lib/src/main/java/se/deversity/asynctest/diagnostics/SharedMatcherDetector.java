@@ -52,8 +52,7 @@ public class SharedMatcherDetector {
         MatcherState s = matchers.computeIfAbsent(
                 new IdentityKey(matcher), id -> new MatcherState(name != null ? name
                         : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher)));
-        s.noteAccess(matcher);
-        s.noteThread(thread);
+        s.noteAccess(matcher, thread);
     }
 
     /**

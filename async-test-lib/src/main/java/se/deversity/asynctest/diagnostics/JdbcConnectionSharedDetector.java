@@ -132,8 +132,7 @@ public final class JdbcConnectionSharedDetector {
                     (name != null) ? name : finalType + "@" + k.hashCode(),
                     finalType));
         }
-        s.noteAccess(resource);
-        s.noteThread(thread);
+        s.noteAccess(resource, thread);
         s.currentHolders.add(thread.threadId());
         if (s.currentHolders.size() >= 2) {
             // Two threads holding at once is the defect itself, so it is recorded when it
@@ -188,7 +187,7 @@ public final class JdbcConnectionSharedDetector {
             // documented fix for the defect this detector exists to find.
             if (s.ownershipModelled && s.overlappingThreadNames.isEmpty()) continue;
             // Every use held the resource's own monitor or a declared lock: serialised by hand.
-            if (!s.sawUnguardedAccess()) continue;
+            if (!s.sawUnguardedSharing()) continue;
             String specificRisk = switch (s.type) {
                 case "Connection" -> "concurrent statement execution on one Connection corrupts the "
                         + "driver's protocol state and leaks transaction boundaries between threads";

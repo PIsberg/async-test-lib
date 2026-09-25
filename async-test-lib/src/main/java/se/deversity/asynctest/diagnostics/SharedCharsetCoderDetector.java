@@ -104,8 +104,7 @@ public final class SharedCharsetCoderDetector {
             final String label = kind + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
-        s.noteAccess(coder);
-        s.noteThread(thread);
+        s.noteAccess(coder, thread);
         if (operation != null) {
             s.operations.add(operation);
         }

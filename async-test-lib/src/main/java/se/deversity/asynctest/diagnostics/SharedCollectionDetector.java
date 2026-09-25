@@ -193,14 +193,14 @@ public class SharedCollectionDetector {
             int writers = state.maxRoundWriters;
             int readers = state.maxRoundReaders;
 
-            if (writers > 1 && state.sawUnguardedAccess()) {
+            if (writers > 1 && state.sawUnguardedSharing()) {
                 report.concurrentWriteViolations.add(String.format(
                         "%s (%s): write operations from %d threads (writes: %d) — DATA CORRUPTION RISK"
                                 + SelfGuard.REPORT_NOTE + "!",
                         state.name, state.collectionType,
                         writers, state.writeCount.get()));
             } else if (writers == 1 && state.sawSingleWriterManyReaders
-                    && state.sawUnguardedAccess()) {
+                    && state.sawUnguardedSharing()) {
                 // One writer, multiple readers in the same round: still risky without synchronisation
                 report.mixedAccessViolations.add(String.format(
                         "%s (%s): written by 1 thread, read by %d threads without visible synchronisation — VISIBILITY RISK"

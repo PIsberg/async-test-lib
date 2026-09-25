@@ -85,9 +85,8 @@ public final class SharedChecksumDetector {
             final String label = checksum.getClass().getSimpleName() + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label));
         }
-        s.noteAccess(checksum);
         if (operation != null) s.operations.add(operation);
-        s.noteThread(thread);
+        s.noteAccess(checksum, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
