@@ -116,4 +116,118 @@ class DaemonThreadHygieneDetectorTest {
             t.join();
         }
     }
+
+    @Test
+    void aWovenStartOfAThreadThatOnlyInheritedDaemonIsFlagged() throws Exception {
+        DaemonThreadHygieneDetector d = new DaemonThreadHygieneDetector();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Thread> created = new java.util.concurrent.atomic.AtomicReference<>();
+        // The runner's workers are daemon (#479), so a thread built on one inherits the flag
+        // without anybody deciding it. recordObservedStart is what the woven start() calls.
+        Thread daemonParent = new Thread(() -> {
+            Thread t = new Thread(() -> {
+                try { release.await(); } catch (InterruptedException ignored) { }
+            }, "inherited-daemon");
+            created.set(t);
+            d.recordObservedStart(t);
+            t.start();
+        }, "daemon-parent");
+        daemonParent.setDaemon(true);
+        daemonParent.start();
+        daemonParent.join();
+        try {
+            assertTrue(created.get().isDaemon(), "precondition: the flag was inherited");
+            var report = d.analyze();
+            assertTrue(report.hasIssues(),
+                "a started thread with no setDaemon decision must be flagged while alive, "
+                        + "whatever flag it inherited");
+            assertTrue(report.violations.get(0).contains("inherited the flag"),
+                "the message must not call an inherited-daemon thread non-daemon: "
+                        + report.violations.get(0));
+        } finally {
+            release.countDown();
+            created.get().join();
+        }
+    }
+
+    @Test
+    void aWovenStartAfterAWovenSetDaemonTrueIsNotFlagged() throws Exception {
+        DaemonThreadHygieneDetector d = new DaemonThreadHygieneDetector();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Thread> created = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread daemonParent = new Thread(() -> {
+            Thread t = new Thread(() -> {
+                try { release.await(); } catch (InterruptedException ignored) { }
+            }, "explicit-daemon");
+            se.deversity.asynctest.AgentThreadHooks.threadSetDaemon(t, true); // the woven setDaemon(true)
+            created.set(t);
+            d.recordObservedStart(t);
+            t.start();
+        }, "daemon-parent");
+        daemonParent.setDaemon(true);
+        daemonParent.start();
+        daemonParent.join();
+        try {
+            assertFalse(d.analyze().hasIssues(),
+                "an explicit setDaemon(true) is the decision the rule asks for");
+        } finally {
+            release.countDown();
+            created.get().join();
+        }
+    }
+
+    @Test
+    void aManualRecordingOfAnInheritedDaemonThreadKeepsTheOldReading() throws Exception {
+        DaemonThreadHygieneDetector d = new DaemonThreadHygieneDetector();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Thread> created = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread daemonParent = new Thread(() -> {
+            Thread t = new Thread(() -> {
+                try { release.await(); } catch (InterruptedException ignored) { }
+            }, "recorded-daemon");
+            created.set(t);
+            d.recordThread(t, "recorded-daemon");
+            t.start();
+        }, "daemon-parent");
+        daemonParent.setDaemon(true);
+        daemonParent.start();
+        daemonParent.join();
+        try {
+            assertFalse(d.analyze().hasIssues(),
+                "without a woven start the flag cannot say whether anybody decided it, so "
+                        + "recordThread must not start reporting every daemon thread");
+        } finally {
+            release.countDown();
+            created.get().join();
+        }
+    }
+
+    @Test
+    void aWovenStartOfAThreadRecordedByHandIsJudgedByTheDecision() throws Exception {
+        DaemonThreadHygieneDetector d = new DaemonThreadHygieneDetector();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Thread> created = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread daemonParent = new Thread(() -> {
+            Thread t = new Thread(() -> {
+                try { release.await(); } catch (InterruptedException ignored) { }
+            }, "recorded-then-started");
+            created.set(t);
+            d.recordThread(t, "by-hand");
+            d.recordObservedStart(t);
+            t.start();
+        }, "daemon-parent");
+        daemonParent.setDaemon(true);
+        daemonParent.start();
+        daemonParent.join();
+        try {
+            var report = d.analyze();
+            assertTrue(report.hasIssues(),
+                "recording by hand first must not let the inherited flag excuse a woven start");
+            assertTrue(report.violations.get(0).contains("by-hand"),
+                "the first registration's label is kept: " + report.violations.get(0));
+        } finally {
+            release.countDown();
+            created.get().join();
+        }
+    }
 }

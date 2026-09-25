@@ -437,6 +437,13 @@ public final class AsyncTestAgent {
                 })
                 .installOn(inst);
 
+        // Only now: the library reads a missing setDaemon decision as a finding once the thread
+        // table is woven (#731), and saying so before the transformer exists would turn every
+        // thread that inherited a daemon flag into one.
+        if (!collectionSubstitutions.isEmpty()) {
+            announceThreadWeaving();
+        }
+
         // Say which already-loaded classes the transformer was never handed. Nothing above can
         // report them: Byte Buddy calls a listener for a type it wove, ignored or failed on, and
         // calls nothing at all for one it never saw, which is why #321 stayed invisible through
@@ -447,6 +454,28 @@ public final class AsyncTestAgent {
                     AttachCoverageReport.unconsulted(inst, discovery.consulted(),
                             typeIgnore, typeMatcher(options.includes())),
                     options.debug());
+        }
+    }
+
+    /**
+     * Tells the library that {@code Thread.setDaemon} is woven in this JVM, so that the absence
+     * of a recorded decision means something (#731).
+     *
+     * <p>A failure is swallowed: the library then keeps reading the daemon flag as it does
+     * without the agent, which misses the inherited case but reports nothing wrong, and the
+     * transformer is already installed, so failing the install here would leave it woven with
+     * the at-most-once gate released.
+     */
+    private static void announceThreadWeaving() {
+        try {
+            Class.forName(CollectionAccessWeaver.threadHooksClassName(), true,
+                            AsyncTestAgent.class.getClassLoader())
+                    .getMethod("threadWeavingInstalled")
+                    .invoke(null);
+        } catch (ReflectiveOperationException e) {
+            System.err.println("[ASYNC-TEST-AGENT] Thread weaving is installed but the library "
+                    + "could not be told; daemon-hygiene detectors keep reading the inherited "
+                    + "daemon flag. Cause: " + e);
         }
     }
 
@@ -486,6 +515,8 @@ public final class AsyncTestAgent {
                     Class.forName(CollectionAccessWeaver.staticHooksClassName(), false, loader)));
             all.addAll(CollectionAccessWeaver.gcSubstitutions(
                     Class.forName(CollectionAccessWeaver.gcHooksClassName(), false, loader)));
+            all.addAll(CollectionAccessWeaver.threadSubstitutions(
+                    Class.forName(CollectionAccessWeaver.threadHooksClassName(), false, loader)));
             return all;
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(

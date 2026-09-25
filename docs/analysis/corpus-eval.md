@@ -2102,8 +2102,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, 17 of the 19 agent-fed detectors are measured in both directions on call sites inside a
-library. `LibraryReach` records why the other two are not, and
+added below, 17 of the 20 agent-fed detectors are measured in both directions on call sites inside a
+library. `LibraryReach` records why the other three are not, and
 `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
@@ -2111,6 +2111,7 @@ arrangement `DetectorCoverage` uses for refusals:
 |---|---|
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
 | `MISSED_SIGNAL` | agent-fed since #694. A firing library row needs a library method that waits behind an `if`, and no corpus library ships that defect; `agent_wait_behindAnIf` and its looped twin pair it on `jdk:` call sites through the same `MONITOR_ENTRIES` |
+| `DAEMON_THREAD_HYGIENE` | agent-fed since #731, through the woven `Thread.start` and `Thread.setDaemon`; it has no agent pair in any lane yet (#736) |
 
 **A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
 and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,

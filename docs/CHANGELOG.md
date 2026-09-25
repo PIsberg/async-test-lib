@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
+  `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read
+  `Thread.isDaemon()`, which on the runner's daemon workers (#479) is true for every thread a body
+  creates, whether or not anybody called `setDaemon(true)`. Attached with `collections=true`, the
+  agent now weaves `Thread.start()` and `Thread.setDaemon(boolean)` into `AgentThreadHooks`: a
+  thread a woven call site starts is reported while alive unless a woven `setDaemon(true)` was seen
+  on it, and a factory's daemon thread is reported as "daemon only by inheritance" when none was.
+  The runner stops announcing `runner.detector.inert` for the daemon detector once the weave is
+  installed. Without the agent nothing changes. A decision made where the agent does not weave,
+  `Thread.Builder.OfPlatform.daemon()` or a class outside `includes=`, reads as undecided
+  (#737); a JDK factory is exempt for that reason. `DaemonThreadHygieneDetector` moves from
+  recording-only to agent-fed; it has no corpus agent pair yet (#736).
+
 - **`DaemonThreadHygieneDetector` stopped being able to see a thread a test body creates, and
   said nothing about it (#730).** A thread inherits the daemon flag of the thread that created
   it. When the runner's platform workers became daemon threads so that a deadlocked worker could

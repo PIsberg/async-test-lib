@@ -48,12 +48,16 @@ runner.detector.inert test=... detector=DaemonThreadHygieneDetector
   reason="the runner's workers are daemon threads in both thread modes (#479) and a thread
   inherits the daemon flag of the thread that created it, so a thread the body constructs is
   already daemon, and this detector only reports non-daemon threads"
-  hint="record a thread whose factory sets the flag itself, such as
+  hint="attach the agent with collections=true, which sees Thread.start and setDaemon, or
+  record a thread whose factory sets the flag itself, such as
   Executors.defaultThreadFactory() or any JDK thread pool, or one created outside the body;
   otherwise read the report as 'not observed' rather than 'clean'"
 ```
 
-The detector's javadoc and the `detectDaemonThreadHygiene` attribute say the same.
+The detector's javadoc and the `detectDaemonThreadHygiene` attribute say the same. With the agent
+attached (`collections=true`) the bare `new Thread(...).start()` is judged too: the agent weaves
+`Thread.start()` and `Thread.setDaemon(boolean)`, so the detector asks whether `setDaemon(true)`
+was called rather than reading the inherited flag (#731), and the announcement is not made.
 
 ## How to Reproduce
 

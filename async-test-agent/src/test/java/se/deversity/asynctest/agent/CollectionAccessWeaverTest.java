@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.AgentCollectionHooks;
 import se.deversity.asynctest.AgentLockHooks;
+import se.deversity.asynctest.AgentThreadHooks;
 
 import java.util.List;
 import java.util.Map;
@@ -193,6 +194,8 @@ class CollectionAccessWeaverTest {
                 CollectionAccessWeaver.substitutions(AgentCollectionHooks.class);
         List<AsmVisitorWrapper> lockSubstitutions =
                 CollectionAccessWeaver.lockSubstitutions(AgentLockHooks.class);
+        List<AsmVisitorWrapper> threadSubstitutions =
+                CollectionAccessWeaver.threadSubstitutions(AgentThreadHooks.class);
 
         assertEquals(AgentCollectionHooks.class.getName(), CollectionAccessWeaver.hooksClassName(),
                 "the weaver names the hook class by string, because the agent module must not "
@@ -200,11 +203,14 @@ class CollectionAccessWeaverTest {
                         + "with a ClassNotFoundException instead of here.");
         assertEquals(AgentLockHooks.class.getName(), CollectionAccessWeaver.lockHooksClassName(),
                 "same contract for the lock hooks");
+        assertEquals(AgentThreadHooks.class.getName(), CollectionAccessWeaver.threadHooksClassName(),
+                "same contract for the thread hooks");
         // targets() throws IllegalStateException for an entry with no matching hook, so reaching
         // these lines is the assertion: every entry of both tables found its method. The whole
         // table travels in one visitor since the MemberSubstitution replacement.
         assertEquals(1, substitutions.size(), "one visitor carries the whole collection table");
         assertEquals(1, lockSubstitutions.size(), "one visitor carries the whole lock table");
+        assertEquals(1, threadSubstitutions.size(), "one visitor carries the whole thread table");
     }
 
     @Test

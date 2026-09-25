@@ -8,6 +8,7 @@ import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AILoadBearing;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.AfterEachInvocation;
+import se.deversity.asynctest.AgentThreadHooks;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
@@ -295,13 +296,18 @@ public class ConcurrencyRunner {
         // only for virtual threads left the user who followed that advice with silence. Said
         // once per JVM, at INFO, for the same reason as runner.agent.absent above: the user
         // this affects does not have DEBUG on, and silence here reads as a clean bill of health.
+        // With Thread.setDaemon woven the detector judges the decision rather than the flag
+        // (#731), so the limitation this announces does not hold and saying it would be wrong.
         if (config.detectDaemonThreadHygiene
+                && !AgentThreadHooks.isThreadWeavingInstalled()
                 && DAEMON_HYGIENE_INERT_LOGGED.compareAndSet(false, true)) {
             log.info("runner.detector.inert test={} detector=DaemonThreadHygieneDetector "
                     + "reason=\"the runner's workers are daemon threads in both thread modes "
                     + "(#479) and a thread inherits the daemon flag of the thread that created "
                     + "it, so a thread the body constructs is already daemon, and this detector "
-                    + "only reports non-daemon threads\" hint=\"record a thread whose factory "
+                    + "only reports non-daemon threads\" hint=\"attach the agent with "
+                    + "collections=true, which sees Thread.start and setDaemon, or record a "
+                    + "thread whose factory "
                     + "sets the flag itself, such as Executors.defaultThreadFactory() or any JDK "
                     + "thread pool, or one created outside the body; otherwise read the report as "
                     + "'not observed' rather than 'clean'\"",
