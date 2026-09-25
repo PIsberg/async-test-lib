@@ -14,6 +14,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Missing ConcurrentModificationException in expected scenarios
  * - Unsafe iteration over non-thread-safe collections
  * - Structural modifications during iteration without using Iterator.remove()
+ *
+ * <p>Lock awareness. The concurrent-iteration and concurrent-mutation findings are withheld when
+ * one lock covered every recorded access they are about: every iteration start and every
+ * mutation for the first, every mutation for the second. The collection's own monitor counts
+ * with no declaration, so {@code synchronized (list)} around both the walk and the writes is
+ * recognised. Any other lock is seen only when declared through
+ * {@code AsyncTestContext.holdingLock(...)} or woven by the agent; a lock the library never
+ * saw leaves the finding standing, and the report says so.
  * 
  * Usage:
  * <pre>{@code
@@ -40,7 +48,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ConcurrentModificationDetector {
 
-    private static class CollectionState {
+    /**
+     * Per-collection bookkeeping. The inherited lockset covers every recorded iteration start and
+     * every recorded mutation together, which is what the concurrent-iteration finding asks about:
+     * an iterator is safe from a writer only if one lock excluded both.
+     */
+    private static class CollectionState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger modificationCount = new AtomicInteger(0);
         final AtomicInteger activeIterators = new AtomicInteger(0);
@@ -148,6 +161,8 @@ public class ConcurrentModificationDetector {
         }
         CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
+            // Probed before any bookkeeping, while the caller is still inside the region.
+            state.noteAccess(collection, false);
             state.activeIterators.incrementAndGet();
             state.allIteratingThreads.add(Thread.currentThread().threadId());
         }
@@ -182,6 +197,7 @@ public class ConcurrentModificationDetector {
         }
         CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
+            state.noteAccess(collection, true);
             state.modificationCount.incrementAndGet();
             state.modifyingThreads.add(Thread.currentThread().threadId());
             state.lastModificationType = modificationType;
@@ -209,6 +225,7 @@ public class ConcurrentModificationDetector {
         }
         CollectionState state = collections.get(new IdentityKey(collection));
         if (state != null) {
+            state.noteAccess(collection, true);
             state.concurrentModifications.incrementAndGet();
             state.observedDuringIteration.incrementAndGet();
             state.modifyingThreads.add(Thread.currentThread().threadId());
@@ -251,11 +268,15 @@ public class ConcurrentModificationDetector {
             // and this detector is VERDICT tier, whose contract is that a finding means the code
             // is wrong. Both counters are consulted: recordModification bumps modificationCount,
             // recordModificationDuringIteration bumps only modifyingThreads (#494).
+            // And a lock is consulted: iterating and mutating under one lock, the idiom
+            // Collections.synchronizedList documents, means no iterator ever overlaps a writer.
+            // That was reported at VERDICT until the lockset below covered iterations too.
             boolean wasMutated = state.modificationCount.get() > 0 || !state.modifyingThreads.isEmpty();
-            if (!iterationIsSafe && state.allIteratingThreads.size() > 1 && wasMutated) {
+            if (!iterationIsSafe && state.allIteratingThreads.size() > 1 && wasMutated
+                    && state.sawUnguardedAccess()) {
                 report.concurrentIterations.add(String.format(
                     "%s: %d threads performed iteration while the collection was modified "
-                        + "%d time(s) (potential race condition)",
+                        + "%d time(s) (potential race condition)" + SelfGuard.REPORT_NOTE,
                     state.name, state.allIteratingThreads.size(), state.modificationCount.get()));
             }
 
