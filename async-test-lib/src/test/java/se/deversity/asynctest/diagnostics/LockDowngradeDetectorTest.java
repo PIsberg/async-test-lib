@@ -358,4 +358,36 @@ public class LockDowngradeDetectorTest {
         assertTrue(str.contains("Fix"));
         assertTrue(str.contains("downgrade"));
     }
+
+    /**
+     * Two read-write locks whose identity hashes collide are two locks. Keyed by the bare hash, a
+     * read hold on one and a write acquire on the other were one lock's read and write: an
+     * upgrade, reported as a permanent deadlock, that never happened.
+     */
+    @Test
+    void readOnOneLockAndWriteOnAnotherSharingItsIdentityHashIsNotAnUpgrade() {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        java.util.List<ReentrantReadWriteLock> colliding =
+                IdentityCollisions.pair(ReentrantReadWriteLock::new);
+
+        detector.recordReadLockAcquired(colliding.get(0), "first");
+        detector.recordWriteLockAcquired(colliding.get(1), "second");
+        detector.recordWriteLockReleased(colliding.get(1), "second");
+        detector.recordReadLockReleased(colliding.get(0), "first");
+
+        LockDowngradeDetector.LockDowngradeReport report = detector.analyze();
+        assertFalse(report.hasIssues(), "the read and the write were on different locks: " + report);
+    }
+
+    /** The same sequence on one lock is the upgrade, and still fires. */
+    @Test
+    void readThenWriteOnTheSameLockIsStillAnUpgrade() {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+        detector.recordReadLockAcquired(lock, "only");
+        detector.recordWriteLockAcquired(lock, "only");
+
+        assertTrue(detector.analyze().hasIssues());
+    }
 }

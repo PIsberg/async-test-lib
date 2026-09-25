@@ -134,7 +134,12 @@ public class LockDowngradeDetector {
         LockState(String name) { this.name = name; }
     }
 
-    private final Map<Integer, LockState> locks = new ConcurrentHashMap<>();
+    /**
+     * Per lock, by identity. Keyed by the bare identity hash, two locks that shared one were one
+     * lock: a read hold on one and a write acquire on the other read as an upgrade, and a write
+     * on one inside the other's downgrade gap as the evidence that makes the gap a finding.
+     */
+    private final Map<IdentityKey, LockState> locks = new ConcurrentHashMap<>();
     /**
      * Current invocation round, bumped by {@link #markInvocationStart()}. Standalone use without
      * round marks leaves every gap in epoch 0, which preserves the single-run behaviour.
@@ -196,8 +201,8 @@ public class LockDowngradeDetector {
 
 
     private LockState stateFor(ReadWriteLock lock, String name) {
-        return locks.computeIfAbsent(System.identityHashCode(lock), k -> {
-            String resolved = name != null ? name : "rwlock@" + k;
+        return locks.computeIfAbsent(new IdentityKey(lock), k -> {
+            String resolved = name != null ? name : "rwlock@" + k.hashCode();
             return new LockState(resolved);
         });
     }
