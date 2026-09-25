@@ -7,6 +7,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
 
+import se.deversity.asynctest.AgentThreadHooks;
+
 /**
  * Detects ThreadFactory misuse patterns:
  * - Missing uncaught exception handler
@@ -53,6 +55,9 @@ public class ThreadFactoryDetector {
             // Check for non-daemon thread
             if (!thread.isDaemon()) {
                 nonDaemonThreads.add(factoryName + ":" + thread.getName());
+            } else if (onlyInheritedDaemon(factory, thread)) {
+                nonDaemonThreads.add(factoryName + ":" + thread.getName()
+                        + " (daemon only by inheritance, no setDaemon observed)");
             }
             
             // Check for unnamed thread (Thread.getName() never returns null)
@@ -60,6 +65,30 @@ public class ThreadFactoryDetector {
                 unnamedThreads.add(factoryName + ":" + thread.getName());
             }
         }
+    }
+
+    /**
+     * {@return whether a daemon {@code thread} got the flag from its creator rather than from
+     * its factory}
+     *
+     * <p>A factory called from a body runs on one of the runner's workers, which are daemon
+     * (#479), so {@code r -> new Thread(r)} hands back a daemon thread without deciding
+     * anything (#731). Only the agent can tell the two apart, by weaving {@code setDaemon}; until
+     * it has, the flag is taken at its word. A JDK factory decides inside the JDK, where nothing
+     * is woven, so its flag is taken at its word too.
+     *
+     * @param factory the factory that created the thread
+     * @param thread  a daemon thread it created
+     */
+    private static boolean onlyInheritedDaemon(ThreadFactory factory, Thread thread) {
+        if (thread.isVirtual() || !AgentThreadHooks.isThreadWeavingInstalled()) {
+            return false;
+        }
+        String factoryClass = factory.getClass().getName();
+        if (factoryClass.startsWith("java.") || factoryClass.startsWith("jdk.")) {
+            return false;
+        }
+        return AgentThreadHooks.explicitDaemonSetting(thread) == null;
     }
 
     /**

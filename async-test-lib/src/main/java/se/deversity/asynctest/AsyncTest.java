@@ -1524,7 +1524,8 @@ public @interface AsyncTest {
      * JVM exit and hang the test process. See
      * {@link se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector}.
      *
-     * <p><strong>It cannot see a thread the test body constructs, in either thread mode.</strong>
+     * <p><strong>Without the agent it cannot see a thread the test body constructs, in either
+     * thread mode.</strong>
      * A thread inherits its daemon flag from its creator, and the runner's workers are daemon
      * threads whether they are virtual or platform (issue #479), so every
      * {@code new Thread(...)} started from a body is already daemon and this detector has
@@ -1533,6 +1534,11 @@ public @interface AsyncTest {
      * {@code Executors.defaultThreadFactory()} or a JDK thread pool, and a thread created
      * outside the body and recorded from inside it. The runner says so once per JVM at INFO
      * ({@code runner.detector.inert}).
+     *
+     * <p>With the agent attached with {@code collections=true}, {@code Thread.start()} and
+     * {@code Thread.setDaemon(boolean)} are woven (#731): a thread a woven call site starts is
+     * reported while alive unless a woven {@code setDaemon(true)} was seen on it, whatever flag
+     * it inherited, and the runner does not announce the limitation.
      *
      * @since 1.6.0
      *

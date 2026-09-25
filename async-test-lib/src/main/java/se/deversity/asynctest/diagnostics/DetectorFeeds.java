@@ -93,7 +93,11 @@ public final class DetectorFeeds {
             // guard: an explicit collection is a full stop-the-world pause that distorts every
             // latency the run measures and reschedules the interleavings it exists to explore,
             // whether or not a lock was held.
-            DetectorType.EXPLICIT_GC);
+            DetectorType.EXPLICIT_GC,
+            // Thread.start() and Thread.setDaemon(boolean) (#731). Woven, these track explicit
+            // setDaemon decisions and observe thread starts directly, resolving the blind spot
+            // where threads created on daemon test runner workers inherited daemon status.
+            DetectorType.DAEMON_THREAD_HYGIENE);
 
     /**
      * Fed by the JVM and the harness with no recording call.

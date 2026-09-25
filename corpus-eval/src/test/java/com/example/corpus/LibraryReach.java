@@ -40,6 +40,9 @@ final class LibraryReach {
         unreached(DetectorType.EXPLICIT_GC,
                 "no corpus library calls System.gc, and the detector is refused a pair in every "
                         + "lane anyway (DetectorCoverage)");
+        unreached(DetectorType.DAEMON_THREAD_HYGIENE,
+                "agent-fed since #731 through the woven Thread.start and Thread.setDaemon, and "
+                        + "no agent pair has been written for it yet (#736)");
     }
 
     private static void unreached(DetectorType type, String reason) {

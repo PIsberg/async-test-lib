@@ -133,6 +133,9 @@ final class CollectionAccessWeaver {
     /** The library-side class holding the explicit-GC hook. */
     private static final String GC_HOOKS = LIBRARY_ROOT + "AgentGcHooks";
 
+    /** The library-side class holding the thread start and daemon hooks. */
+    private static final String THREAD_HOOKS = LIBRARY_ROOT + "AgentThreadHooks";
+
     private CollectionAccessWeaver() {
     }
 
@@ -246,7 +249,7 @@ final class CollectionAccessWeaver {
     static Set<String> wovenCallSites() {
         Set<String> sites = new LinkedHashSet<>();
         for (List<Entry> table : List.of(ENTRIES, SHARED_INSTANCE_ENTRIES, CONCURRENCY_ENTRIES,
-                MONITOR_ENTRIES, STATIC_ENTRIES, GC_ENTRIES)) {
+                MONITOR_ENTRIES, STATIC_ENTRIES, GC_ENTRIES, THREAD_ENTRIES)) {
             for (Entry entry : table) {
                 StringBuilder site = new StringBuilder(entry.declaredBy().getName())
                         .append('#').append(entry.method()).append('(');
@@ -549,6 +552,13 @@ final class CollectionAccessWeaver {
             Entry.staticCall(System.class, "gc", "gc"));
 
     /**
+     * The thread table: {@link Thread#start()} and {@link Thread#setDaemon(boolean)}.
+     */
+    private static final List<Entry> THREAD_ENTRIES = List.of(
+            Entry.call(Thread.class, "start", "threadStart"),
+            Entry.call(Thread.class, "setDaemon", "threadSetDaemon", boolean.class));
+
+    /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
      *
      * <p>{@code callSiteDescriptor} is the hook's descriptor with the receiver parameter removed,
@@ -810,6 +820,20 @@ final class CollectionAccessWeaver {
      */
     static List<AsmVisitorWrapper> monitorSubstitutions(Class<?> monitorHooks) {
         return List.of(new SubstitutionWrapper(targets(MONITOR_ENTRIES, monitorHooks)));
+    }
+
+    /**
+     * {@return the thread start/daemon substitutions}
+     *
+     * @param threadHooks the class holding the hooks, resolved in the weaving class loader
+     */
+    static List<AsmVisitorWrapper> threadSubstitutions(Class<?> threadHooks) {
+        return List.of(new SubstitutionWrapper(targets(THREAD_ENTRIES, threadHooks)));
+    }
+
+    /** {@return the hook class name the substituted thread calls land in} */
+    static String threadHooksClassName() {
+        return THREAD_HOOKS;
     }
 
     /** {@return the hook class name the substituted wait/notify calls land in} */

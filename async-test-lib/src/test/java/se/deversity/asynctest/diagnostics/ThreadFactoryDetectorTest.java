@@ -188,4 +188,28 @@ public class ThreadFactoryDetectorTest {
                 + "getUncaughtExceptionHandler(), never null, so the null check could not fire; "
                 + "the daemon flag and the name are set so nothing else can carry this test");
     }
+
+    @Test
+    void aFactoryOmittingSetDaemonOnADaemonWorkerIsNotJudgedWithoutTheAgent() throws Exception {
+        ThreadFactoryDetector detector = new ThreadFactoryDetector();
+        ThreadFactory factory = r -> {
+            Thread t = new Thread(r, "omitted-daemon-worker");
+            t.setUncaughtExceptionHandler((th, ex) -> { });
+            return t; // no setDaemon: the flag is whatever the calling thread had
+        };
+        detector.registerFactory(factory, "omittedDaemonFactory");
+
+        Thread daemonWorker = new Thread(() -> {
+            Thread thread = factory.newThread(() -> { });
+            detector.recordThreadCreated(factory, "omittedDaemonFactory", thread);
+        }, "daemon-runner-worker");
+        daemonWorker.setDaemon(true);
+        daemonWorker.start();
+        daemonWorker.join();
+
+        assertFalse(detector.analyze().hasIssues(),
+                "without the agent nothing records setDaemon, so an inherited daemon flag is "
+                        + "indistinguishable from a decided one and must not be reported (#731); "
+                        + "DaemonThreadFactoryWeavingTest pins the woven direction");
+    }
 }
