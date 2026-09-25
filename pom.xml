@@ -112,7 +112,7 @@
         <asm.version>9.10.1</asm.version>
         <bytebuddy.version>1.18.14</bytebuddy.version>
         <ecj.version>3.46.100</ecj.version>
-        <slf4j.version>2.0.19</slf4j.version>
+        <slf4j.version>2.0.20</slf4j.version>
         <!-- Shared with build.gradle.kts via the sync block there; BuildMetadataSyncTest pins the pair. -->
         <common-license-lib.version>0.5.0</common-license-lib.version>
         <!-- The PMD engine itself, pinned independently of the plugin: maven-pmd-plugin 3.28.0
