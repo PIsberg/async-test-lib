@@ -40,6 +40,49 @@ public class NestedMonitorLockoutDetectorTest {
         assertTrue(report.incidents.get(0).contains("1 monitor"));
     }
 
+    /**
+     * The canonical guarded wait. wait() releases the monitor it is called on, and that is the
+     * only monitor held, so no thread is locked out of anything: the notifier can get in.
+     */
+    @Test
+    void theCanonicalWaitLoopOnItsOwnMonitorIsSilent() throws Exception {
+        NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
+        Object monitor = new Object();
+        boolean[] ready = {false};
+        Thread notifier = new Thread(() -> {
+            synchronized (monitor) {
+                ready[0] = true;
+                monitor.notifyAll();
+            }
+        });
+        synchronized (monitor) {
+            detector.recordMonitorAcquired(monitor);
+            notifier.start();
+            while (!ready[0]) {
+                detector.recordBlockingOperationAttempted("wait()");
+                monitor.wait(1_000);
+            }
+            detector.recordMonitorReleased(monitor);
+        }
+        notifier.join();
+
+        assertFalse(detector.analyze().hasIssues(),
+                "synchronized (m) { while (!ready) m.wait(); } releases m while it waits, so the "
+                        + "notifier got in and the loop ended: " + detector.analyze());
+    }
+
+    @Test
+    void conditionAwaitIsNotObjectWaitAndReleasesNoMonitor() {
+        NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
+        Object monitor = new Object();
+        detector.recordMonitorAcquired(monitor);
+        detector.recordBlockingOperationAttempted("condition.await()");
+        detector.recordMonitorReleased(monitor);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "Condition.await() releases its Lock, never a monitor, so the monitor stays held");
+    }
+
     @Test
     void testDetectsWaitWhileHoldingMultipleMonitors() {
         NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
@@ -53,7 +96,33 @@ public class NestedMonitorLockoutDetectorTest {
 
         NestedMonitorLockoutDetector.NestedMonitorLockoutReport report = detector.analyze();
         assertTrue(report.hasIssues());
-        assertTrue(report.incidents.get(0).contains("2 monitor"));
+        assertTrue(report.incidents.get(0).contains("1 monitor(s) besides the one it waits on"),
+                report.incidents.get(0));
+    }
+
+    @Test
+    void recordWaitAttemptedOnTheOnlyHeldMonitorIsSilent() {
+        NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
+        Object monitor = new Object();
+        detector.recordMonitorAcquired(monitor);
+        detector.recordWaitAttempted(monitor);
+        detector.recordMonitorReleased(monitor);
+
+        assertFalse(detector.analyze().hasIssues());
+    }
+
+    @Test
+    void recordWaitAttemptedOnTheInnerMonitorWhileHoldingTheOuterFires() {
+        NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
+        Object outer = new Object();
+        Object inner = new Object();
+        detector.recordMonitorAcquired(outer);
+        detector.recordMonitorAcquired(inner);
+        detector.recordWaitAttempted(inner);
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(), "outer stays held while the thread waits on inner");
+        assertTrue(report.incidents.get(0).contains("1 monitor(s) besides"), report.incidents.get(0));
     }
 
     @Test
