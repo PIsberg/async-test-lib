@@ -1,6 +1,6 @@
 # 144 — Virtual thread monitor serialization
 
-**Detector**: `VirtualThreadMonitorSerializationDetector` (`DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION`) · **Severity**: 🔴 High
+**Detector**: `VirtualThreadMonitorSerializationDetector` (`DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION`) · **Severity**: 🟡 Medium (advisory: a throughput note, not a correctness finding)
 
 ## The bug
 

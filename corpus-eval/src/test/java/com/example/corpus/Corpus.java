@@ -3873,8 +3873,8 @@ final class Corpus {
                             + "it. A monitor serialises whatever asks for it, so a construct "
                             + "whose whole point is unbounded concurrency ends up single-file - "
                             + "and on older runtimes each blocked virtual thread also pinned its "
-                            + "carrier",
-                    IssueSeverity.HIGH),
+                            + "carrier. A throughput note, so MEDIUM and ADVISORY",
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_virtualThreads_acquiredTheMonitor", JDK,
                     "java.lang.Object",

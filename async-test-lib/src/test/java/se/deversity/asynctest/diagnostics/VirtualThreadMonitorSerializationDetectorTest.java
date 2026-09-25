@@ -70,10 +70,57 @@ class VirtualThreadMonitorSerializationDetectorTest {
         assertTrue(report.hasIssues(), () -> "6 virtual threads queued on one monitor:\n" + report);
         var v = report.structuredViolations.get(0);
         assertEquals("VirtualThreadMonitorSerialization", v.detector());
-        assertEquals(IssueSeverity.HIGH, v.severity());
+        assertEquals(IssueSeverity.MEDIUM, v.severity());
         assertEquals(6, v.attributes().get("peakWaiting"));
         assertEquals(6, v.attributes().get("virtualWaiters"));
         assertTrue(report.toString().contains("sessionCache"), report.toString());
+    }
+
+    /**
+     * Correct code: a counter guarded by its own monitor, reached by six virtual threads at once.
+     * The queue is real and the report may say so, but it is a throughput note about code that is
+     * right, so it cannot carry a correctness severity or a tier a build is meant to fail on.
+     */
+    @Test
+    void aQueueOnCorrectSynchronizedCodeIsAThroughputAdvisory() throws Exception {
+        var d = new VirtualThreadMonitorSerializationDetector();
+        Object lock = new Object();
+        int[] counter = {0};
+        CountDownLatch othersQueued = new CountDownLatch(5);
+        List<Thread> threads = new ArrayList<>();
+        threads.add(Thread.ofVirtual().start(() -> {
+            d.recordMonitorEnter(lock, "counter", Thread.currentThread());
+            synchronized (lock) {
+                d.recordMonitorAcquired(lock, Thread.currentThread());
+                awaitQuietly(othersQueued);       // the others arrive while this one holds it
+                counter[0]++;
+            }
+        }));
+        for (int i = 0; i < 5; i++) {
+            threads.add(Thread.ofVirtual().start(() -> {
+                d.recordMonitorEnter(lock, "counter", Thread.currentThread());
+                othersQueued.countDown();
+                synchronized (lock) {
+                    d.recordMonitorAcquired(lock, Thread.currentThread());
+                    counter[0]++;
+                }
+            }));
+        }
+        for (Thread t : threads) t.join();
+        synchronized (lock) {
+            assertEquals(6, counter[0], "the code under test is correct");
+        }
+
+        var report = d.analyze();
+        String text = report.toString();
+        assertTrue(report.hasIssues(), () -> "the queue was observed:\n" + text);
+        assertEquals(java.util.Optional.of(IssueSeverity.MEDIUM), IssueSeverity.markedIn(text),
+                "a queue on correct code is performance degradation, and the failOn gate reads "
+                        + "the severity from the text:\n" + text);
+        assertEquals(IssueSeverity.MEDIUM, report.structuredViolations.get(0).severity());
+        assertTrue(text.contains("not a correctness finding"), text);
+        assertEquals(TrustTier.ADVISORY, DetectorTrust.tierOf(
+                se.deversity.asynctest.DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION));
     }
 
     @Test

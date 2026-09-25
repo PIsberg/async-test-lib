@@ -130,8 +130,8 @@ detectors cannot see because they were written when the thread count was the poo
   ```
 
 ### 141. Virtual Thread Monitor Serialization
-* **Severity**: `HIGH`
-* **Trust tier**: **fact** — peak number of *virtual* threads queued at once and the number of distinct virtual waiters, both counts; a critical section nobody queues on is silent, and so is a queue that platform threads made.
+* **Severity**: `MEDIUM`
+* **Trust tier**: **advisory** — peak number of *virtual* threads queued at once and the number of distinct virtual waiters, both counts; a critical section nobody queues on is silent, and so is a queue that platform threads made. Correct `synchronized` code under contention, which `@AsyncTest` creates on purpose, queues the same way, so the finding is a throughput note and the report says it is not a correctness finding.
 * **Description**: Detects a monitor serialising a large virtual-thread fan-out — the hazard JEP 491 left behind. Before JDK 24 a blocking `synchronized` pinned its virtual thread to a carrier and `VIRTUAL_THREAD_PINNING` reported it; that detector now correctly marks monitor events obsolete from JDK 24 on. The throughput limit did not go with the pinning: `synchronized` still admits one thread at a time, and with the pool gone nothing bounds how many arrive. It is easy to miss precisely because the fix landed, since a JDK 24 upgrade reads as "the pinning warnings went away". The report states which side of JDK 24 it is on and points at the pinning detector below it. The count compared against the threshold is the peak number of virtual threads queued at once, so a queue that platform threads made, with a virtual thread or two passing through at other moments, is `LOCK_CONTENTION`'s finding and not this one. `LOCK_CONTENTION` cannot make this call the other way — it has no notion of a virtual thread.
 * **Buggy Code**:
   ```java

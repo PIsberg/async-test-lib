@@ -44,9 +44,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *     allows; or, where a lock is genuinely needed, a critical section
  *     short enough that nobody piles up behind it
  *
- * WHY THE FINDING IS A FACT:
+ * WHY THE FINDING IS AN ADVISORY:
  *   the peak number of virtual threads queued at once and the number of
- *   distinct virtual threads in the queue are both counts; a queue that
+ *   distinct virtual threads in the queue are both counts, but correct
+ *   synchronized code under contention queues the same way, so the count is
+ *   a throughput note (MEDIUM) and not a correctness verdict; a queue that
  *   platform threads made is LOCK_CONTENTION's finding, not this one.
  *   LOCK_CONTENTION cannot make this call the other way: it has no notion
  *   of a virtual thread, so it scores four platform workers and four
@@ -95,7 +97,7 @@ class SessionCacheTest {
         var report = detector.analyze();
         assertTrue(report.hasIssues(), () -> "6 virtual threads on one monitor:\n" + report);
         var v = report.structuredViolations.get(0);
-        assertEquals(IssueSeverity.HIGH, v.severity());
+        assertEquals(IssueSeverity.MEDIUM, v.severity());
         assertEquals(FAN_OUT, v.attributes().get("peakWaiting"));
         assertEquals(FAN_OUT, v.attributes().get("virtualWaiters"));
     }
