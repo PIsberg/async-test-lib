@@ -3972,13 +3972,15 @@ final class Corpus {
                             + "rather than combined",
                     IssueSeverity.HIGH),
 
-            new RecordingSubject("recorded_gatherer_sequentialWithACombiner", JDK,
+            new RecordingSubject("recorded_gatherer_parallelWithACombiner", JDK,
                     "java.util.stream.Gatherer",
                     DetectorType.GATHERER_CONCURRENCY_MISUSE, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same integrations against a gatherer that has a combiner and is not "
-                            + "parallel. The pair separates on the two flags the model reads and "
-                            + "on nothing the threads did"),
+                    "the same six threads integrating a parallel gatherer that has a combiner, "
+                            + "each against its own state from the initializer. That is "
+                            + "Gatherer.of(initializer, integrator, combiner, finisher) running "
+                            + "as designed: every segment is confined to its own state and the "
+                            + "combiner merges them"),
 
             new RecordingSubject("recorded_lazyConstant_computedToNothing", JDK,
                     "java.lang.Object",

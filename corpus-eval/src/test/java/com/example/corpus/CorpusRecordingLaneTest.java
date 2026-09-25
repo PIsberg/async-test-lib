@@ -4654,13 +4654,14 @@ class CorpusRecordingLaneTest {
         detector.recordIntegrate("parallel-gatherer", Thread.currentThread());
     }
 
-    /** The same integrations against a sequential gatherer that has a combiner. */
+    /** A parallel gatherer with a combiner, each segment integrating its own state. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_gatherer_sequentialWithACombiner() {
+    void recorded_gatherer_parallelWithACombiner() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.gathererConcurrencyMisuseDetector();
-        detector.registerGatherer("sequential-gatherer", true, false);
-        detector.recordIntegrate("sequential-gatherer", Thread.currentThread());
+        detector.registerGatherer("parallel-safe-gatherer", true, true);
+        List<String> segmentState = new ArrayList<>();
+        detector.recordIntegrate("parallel-safe-gatherer", segmentState, Thread.currentThread());
     }
 
     /** A lazy constant whose computation finishes with no value. */
