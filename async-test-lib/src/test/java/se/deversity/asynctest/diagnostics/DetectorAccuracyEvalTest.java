@@ -2654,29 +2654,31 @@ class DetectorAccuracyEvalTest {
     @DisplayName("constructor safety: an object another thread reaches mid-construction fires (true positive)")
     void constructorSafetyFiresOnPublicationDuringConstruction() throws InterruptedException {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object escaping = new Object();
-        CountDownLatch published = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Object> published =
+                new java.util.concurrent.atomic.AtomicReference<>();
         CountDownLatch seen = new CountDownLatch(1);
 
         Thread reader = new Thread(() -> {
-            try {
-                published.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
+            Object escaped;
+            while ((escaped = published.get()) == null) {
+                Thread.onSpinWait();
             }
-            validator.recordFieldAccess(escaping, "name", System.nanoTime());
+            validator.recordFieldAccess(escaped, "name", System.nanoTime());
             seen.countDown();
         }, "constructor-safety-reader");
         reader.setDaemon(true);
         reader.start();
 
-        // Inside the "constructor": the reference escapes before construction ends.
-        validator.recordConstructionStart(escaping);
-        published.countDown();
-        assertTrue(seen.await(5, java.util.concurrent.TimeUnit.SECONDS),
-                "the reader thread must have run before this assertion means anything");
-        validator.recordConstructionEnd(escaping);
+        // Inside a real constructor: the reference escapes before construction ends.
+        new ConstructorSafetySubject(validator, self -> {
+            published.set(self);
+            try {
+                assertTrue(seen.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                        "the reader thread must have run before this assertion means anything");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, true);
         reader.join(2_000);
 
         assertTrue(validator.validateConstructorSafety().hasIssues(),
@@ -2688,13 +2690,11 @@ class DetectorAccuracyEvalTest {
     @DisplayName("constructor safety: an ordinary fast constructor stays silent (true negative, #357)")
     void constructorSafetyStaysSilentOnAnOrdinaryConstructor() throws InterruptedException {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object settled = new Object();
 
         // A constructor that assigns a few fields, instrumented start and end, and read only
         // after it returned. This completes well inside a microsecond, which used to be
         // reported as "possibly incomplete construction" on every ordinary object.
-        validator.recordConstructionStart(settled);
-        validator.recordConstructionEnd(settled);
+        ConstructorSafetySubject settled = new ConstructorSafetySubject(validator, self -> { }, true);
 
         Thread reader = new Thread(
                 () -> validator.recordFieldAccess(settled, "name", System.nanoTime()),

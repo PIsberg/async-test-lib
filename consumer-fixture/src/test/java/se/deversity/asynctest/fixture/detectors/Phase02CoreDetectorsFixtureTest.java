@@ -113,29 +113,26 @@ class Phase02CoreDetectorsFixtureTest {
 
         // A field read while the constructor is still running can see the default value
         // rather than the assigned one - the object is published before it is finished.
-        // The finding is a field read by a DIFFERENT thread while construction is still in
-        // progress - one thread doing start, access and end to itself is the safe case and
-        // reports nothing however it is written.
+        // The finding is a field read by a DIFFERENT thread while the constructor is still on
+        // the constructing thread's stack - one thread doing start, access and end to itself
+        // is the safe case and reports nothing however it is written.
         //
-        // The workers therefore split: one starts building the shared object, the other reads
-        // a field before the build is recorded as finished. A latch orders the two rather than
-        // a sleep, so the overlap is guaranteed instead of likely.
+        // So the constructor itself leaks `this`: it hands itself to a listener that reads it
+        // on another thread, and waits for that read, before it assigns its field. The records
+        // are made from inside the constructor, which the validator checks.
         var constructorSafety = AsyncTestContext.constructorSafetyValidator();
-        if (CONSTRUCTION_ROLE.getAndIncrement() % 2 == 0) {
-            constructorSafety.recordConstructionStart(SHARED_CONFIG);
-            CONSTRUCTION_STARTED.countDown();
-            spin(64);
-            // No recordConstructionEnd until the reader has been: the object is visible to
-            // another thread before it is finished, which is the whole hazard.
-        } else {
+        new Config(7, constructorSafety, self -> {
+            Thread listener = new Thread(() -> {
+                constructorSafety.recordFieldAccess(self, "limit", System.nanoTime());
+                self.limit();
+            });
+            listener.start();
             try {
-                CONSTRUCTION_STARTED.await(2, TimeUnit.SECONDS);
+                listener.join(TimeUnit.SECONDS.toMillis(2));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            constructorSafety.recordFieldAccess(SHARED_CONFIG, "limit", System.nanoTime());
-            SHARED_CONFIG.limit();
-        }
+        });
     }
 
     @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, licenseMockMode = true,
@@ -302,12 +299,16 @@ class Phase02CoreDetectorsFixtureTest {
         rwMonitor.recordWriteLockAcquired(rw, 5_000L);   // the writer that waited behind them
     }
 
-    /** A value published from a constructor without a safe-publication barrier. */
+    /** A value whose constructor publishes {@code this} to a listener before it is finished. */
     private static final class Config {
         private int limit;
 
-        Config(int limit) {
+        Config(int limit, se.deversity.asynctest.diagnostics.ConstructorSafetyValidator validator,
+               java.util.function.Consumer<Config> onRegister) {
+            validator.recordConstructionStart(this);
+            onRegister.accept(this);
             this.limit = limit;
+            validator.recordConstructionEnd(this);
         }
 
         int limit() {
@@ -342,15 +343,5 @@ class Phase02CoreDetectorsFixtureTest {
 
     /** Orders the reader behind the writer, so the write-then-read pair always exists. */
     private static final java.util.concurrent.CountDownLatch WRITE_RECORDED =
-        new java.util.concurrent.CountDownLatch(1);
-
-    private static final Config SHARED_CONFIG = new Config(7);
-
-    /** Splits the builder and reader roles for the constructor-safety fixture. */
-    private static final java.util.concurrent.atomic.AtomicInteger CONSTRUCTION_ROLE =
-        new java.util.concurrent.atomic.AtomicInteger();
-
-    /** Orders the reader after the builder, so the overlap is guaranteed. */
-    private static final java.util.concurrent.CountDownLatch CONSTRUCTION_STARTED =
         new java.util.concurrent.CountDownLatch(1);
 }

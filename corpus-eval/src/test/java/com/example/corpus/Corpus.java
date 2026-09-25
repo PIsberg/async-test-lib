@@ -3686,20 +3686,21 @@ final class Corpus {
                     "java.lang.Object",
                     DetectorType.CONSTRUCTOR_SAFETY, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "fields of an object are read by other threads while its construction is "
-                            + "still open. A reference that escapes its constructor can be seen "
-                            + "with its final fields unset, which is the one hazard no amount of "
-                            + "later synchronization can repair",
+                    "a constructor registers this with a listener before assigning its field, "
+                            + "and the listener reads the object from another thread while the "
+                            + "constructor is still running. A reference that escapes its "
+                            + "constructor can be seen with its fields unset, which is the one "
+                            + "hazard no amount of later synchronization can repair",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_object_accessedAfterConstruction", JDK,
                     "java.lang.Object",
                     DetectorType.CONSTRUCTOR_SAFETY, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the identical reads of an object whose construction was recorded as "
-                            + "finished first. Publishing a fully built object is the rule, and "
-                            + "the pair separates on which side of the construction the reads "
-                            + "fall"),
+                    "the same class and the same listener read, registered after the "
+                            + "constructor returned. Publishing a fully built object is the rule, "
+                            + "and the pair separates on which side of the constructor's return "
+                            + "the read falls"),
 
             new RecordingSubject("recorded_barrier_partiesNeverArrived", JDK,
                     "java.util.concurrent.CyclicBarrier",

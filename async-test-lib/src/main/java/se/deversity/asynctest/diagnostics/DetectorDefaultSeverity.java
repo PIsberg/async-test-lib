@@ -62,7 +62,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.VISIBILITY, IssueSeverity.HIGH),
             entry(DetectorType.LIVELOCKS, IssueSeverity.CRITICAL),
             entry(DetectorType.WAKEUP_ISSUES, IssueSeverity.HIGH),
-            entry(DetectorType.CONSTRUCTOR_SAFETY, IssueSeverity.HIGH),
             entry(DetectorType.LOCK_ORDER, IssueSeverity.CRITICAL),
             entry(DetectorType.SYNCHRONIZERS, IssueSeverity.CRITICAL),
             entry(DetectorType.THREAD_POOL, IssueSeverity.MEDIUM),

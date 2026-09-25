@@ -46,7 +46,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 11. Constructor Safety Detector
 * **Severity**: `HIGH`
-* **Description**: Tracks object construction start/end and cross-thread field access to catch unsafe publication — objects shared with other threads before their constructor completes can expose partially initialized fields due to compiler/CPU reordering.
+* **Description**: Tracks object construction start/end and cross-thread field access to catch unsafe publication — objects shared with other threads before their constructor completes can expose partially initialized fields due to compiler/CPU reordering. Record `recordConstructionStart(this)` and `recordConstructionEnd(this)` from inside the constructor: the validator checks the stack, so a start recorded outside any constructor of the object's class is ignored (the object is already built), and a read by another thread before the end is recorded counts only while the constructor is still on the constructing thread's stack. An end recorded late, after the finished object was published through a volatile, a concurrent collection or a lock, or never recorded at all, therefore reports nothing.
 * **Buggy Code**:
   ```java
   class Publisher {

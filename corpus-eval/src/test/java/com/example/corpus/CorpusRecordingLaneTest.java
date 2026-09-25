@@ -23,6 +23,7 @@ import org.springframework.util.ConcurrentReferenceHashMap;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
+import se.deversity.asynctest.diagnostics.ConstructorSafetyValidator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -63,6 +64,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
 import java.util.Collection;
@@ -736,16 +738,34 @@ class CorpusRecordingLaneTest {
     private static final ThreadLocal<java.util.SplittableRandom> CONFINED_SPLITTABLE =
             ThreadLocal.withInitial(SHARED_SPLITTABLE::split);
 
-    /** The object whose construction the loud safety row leaves open for the run. */
-    private static final Object UNDER_CONSTRUCTION = new Object();
+    /**
+     * A settings holder that records its own construction, start first and end last, and hands
+     * itself to {@code onRegister} in between: a constructor that registers {@code this} with a
+     * listener before it has assigned its field. The constructor safety pair builds one per body.
+     */
+    static final class ListenedSettings {
+        String name;
 
-    /** The twin whose construction is recorded as finished before anybody reads it. */
-    private static final Object FULLY_CONSTRUCTED = new Object();
+        ListenedSettings(ConstructorSafetyValidator validator, Consumer<ListenedSettings> onRegister) {
+            validator.recordConstructionStart(this);
+            onRegister.accept(this);
+            this.name = "settings";
+            validator.recordConstructionEnd(this);
+        }
+    }
 
-    /** One declaration each, because recordConstructionStart is a lifecycle, not a per-body event. */
-    private final AtomicBoolean constructionOpened = new AtomicBoolean();
-
-    private final AtomicBoolean constructionClosed = new AtomicBoolean();
+    /** A registration listener that reads the settings from another thread and waits for it. */
+    private static void readOnAnotherThread(ConstructorSafetyValidator validator, ListenedSettings settings) {
+        Thread listener = new Thread(() -> {
+            validator.recordFieldAccess(settings, "name", System.nanoTime());
+        }, "settings-listener");
+        listener.start();
+        try {
+            listener.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
     /**
      * Broken by a timed-out await at the top of every body, then awaited, caught and reset (#662).
@@ -4346,27 +4366,21 @@ class CorpusRecordingLaneTest {
         detector.recordWaitExit(SIGNALLED_CONDITION, true);
     }
 
-    /** Fields read by other threads while the object's construction is still open. */
+    /** A constructor that registers itself, and the listener reads it from another thread. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_object_accessedDuringConstruction() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.constructorSafetyValidator();
-        if (constructionOpened.compareAndSet(false, true)) {
-            detector.recordConstructionStart(UNDER_CONSTRUCTION);
-        }
-        detector.recordFieldAccess(UNDER_CONSTRUCTION, "name", System.nanoTime());
+        new ListenedSettings(detector, self -> readOnAnotherThread(detector, self));
     }
 
-    /** The identical reads of an object whose construction was recorded as finished first. */
+    /** The same listener, registered after the constructor has returned. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_object_accessedAfterConstruction() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.constructorSafetyValidator();
-        if (constructionClosed.compareAndSet(false, true)) {
-            detector.recordConstructionStart(FULLY_CONSTRUCTED);
-            detector.recordConstructionEnd(FULLY_CONSTRUCTED);
-        }
-        detector.recordFieldAccess(FULLY_CONSTRUCTED, "name", System.nanoTime());
+        ListenedSettings settings = new ListenedSettings(detector, self -> { });
+        readOnAnotherThread(detector, settings);
     }
 
     /** A synchronizer expecting a thousand parties and receiving six. */
