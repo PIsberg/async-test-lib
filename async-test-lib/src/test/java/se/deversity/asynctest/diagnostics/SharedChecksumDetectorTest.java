@@ -2,6 +2,8 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Set;
 import java.util.zip.Adler32;
 import java.util.zip.CRC32;
 
@@ -59,6 +61,36 @@ class SharedChecksumDetectorTest {
         var report = d.analyze();
         assertTrue(report.hasIssues());
         assertTrue(report.violations.get(0).contains("Adler32"));
+    }
+
+    @Test
+    void unnamedThreadsAreListedApartById() {
+        // #798: a default virtual thread has no name, so the round's name set held one blank
+        // entry for every such thread and the report printed "2 threads ()".
+        var d = new SharedChecksumDetector();
+        var crc = new CRC32();
+        Thread first = Thread.ofVirtual().unstarted(() -> { });
+        Thread second = Thread.ofVirtual().unstarted(() -> { });
+        d.recordAccess(crc, "update", first);
+        d.recordAccess(crc, "update", second);
+        d.recordAccess(crc, "getValue", first);
+        assertEquals(Set.of("#" + first.threadId(), "#" + second.threadId()),
+                reportedThreads(d.analyze().violations.get(0)));
+    }
+
+    @Test
+    void namedThreadsAreListedByName() {
+        var d = new SharedChecksumDetector();
+        var crc = new CRC32();
+        d.recordAccess(crc, "update", Thread.ofPlatform().name("alpha").unstarted(() -> { }));
+        d.recordAccess(crc, "update", Thread.ofPlatform().name("beta").unstarted(() -> { }));
+        assertEquals(Set.of("alpha", "beta"), reportedThreads(d.analyze().violations.get(0)));
+    }
+
+    /** The thread list a report prints as {@code accessed from N threads (a, b)}. */
+    private static Set<String> reportedThreads(String msg) {
+        int open = msg.indexOf("threads (") + "threads (".length();
+        return Set.copyOf(Arrays.asList(msg.substring(open, msg.indexOf(')', open)).split(", ", -1)));
     }
 
     @Test

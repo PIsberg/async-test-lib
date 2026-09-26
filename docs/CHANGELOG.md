@@ -124,6 +124,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   threads read as `used by 1 thread(s)`. They now print a thread the way #766 does, `name (id=N)`
   or `#N`, which changes their report text for named threads too. DaemonThreadHygiene is
   unchanged: it never reports a virtual thread, and its report already prints the thread id.
+- **The Shared* family lists unnamed threads apart (#798).** The detectors built on
+  `SelfGuard.ThreadTrackedInstance` (the Shared* family, FileChannelPositionRace,
+  NonAtomicConcurrentMapUpdate, WeakHashMapShared, JdbcConnectionShared and others) kept the
+  threads of a round by `Thread.getName()`, so every default virtual thread was the same blank
+  entry and a finding on two of them printed `2 threads ()`. An unnamed thread now prints as
+  `#N`, as #790 does; a named thread still prints by its bare name. The name is taken once, on the
+  thread's first access in the round, so the record path allocates nothing new per access.
 - **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
   failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
   was judged by it. A blocking acquire through the agent now clears it
