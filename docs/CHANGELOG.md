@@ -314,8 +314,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write, and gets alone in one round on one known to be insertion-ordered as reads. The order is a
   private field of `java.util`, read only when the test JVM already opens that package to the
   library (`--add-opens java.base/java.util=ALL-UNNAMED`); the library never opens it, and an
-  unknown order keeps the verdict it had. `recordSet` cannot tell `set()` from `setTime()`, which
-  leaves nothing to recompute, so a `get` after a recorded `setTime()` also counts as a write.
+  unknown order keeps the verdict it had.
 - **A `WeakHashMap` read counts as a read (#807).** #787 counted every read of one as a write for
   the round rule, because a read expunges cleared entries, so gets alone in one round beside a put
   in another were reported. The JDK makes expunging safe among readers: `expungeStaleEntries`
@@ -330,6 +329,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starts the next and the two computations never overlapped. The writers of a key are now kept per
   round, and the report counts the round that saw the most: two threads recomputing one key in the
   same round still report.
+- **`CalendarDetector` can tell a `setTime()` from a `set()` (#820).** `recordSet` was the only way
+  to record either, and `recordAdd` did not say which field it added to, so the first `get` after a
+  `setTime()`, or after an `add()` to an hour or a day, counted as a write and needed an exclusive
+  lock, though both compute every field at once and leave the `get` nothing to write. A `setTime`
+  under the write lock and gets under the read lock were reported. The new `recordSetTime` and
+  `recordAdd(calendar, name, field)` record them: after either, the next `get` only reads, except
+  after an `add` to the era, the year or the month, which sets that field and leaves the rest to
+  recompute, as a `set()` does.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`
