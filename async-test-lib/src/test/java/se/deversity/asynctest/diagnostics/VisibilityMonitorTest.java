@@ -178,9 +178,10 @@ public class VisibilityMonitorTest {
         assertFalse(text.contains("VISIBILITY ISSUES"),
                 "a value divergence is not a stale read; naming it a visibility issue is the claim "
                         + "this detector's inputs cannot support: " + text);
-        assertEquals(TrustTier.FACT, DetectorTrust.tierOf(se.deversity.asynctest.DetectorType.VISIBILITY),
-                "the finding states what was observed, which is the FACT tier, not a verdict "
-                        + "that fails a minTrust=VERDICT build on a correct counter");
+        assertEquals(TrustTier.PROMPT, DetectorTrust.tierOf(se.deversity.asynctest.DetectorType.VISIBILITY),
+                "two threads recording different values in one round is a thread count with no "
+                        + "lock or ordering behind it (CONTEXT_FREE evidence, capped at PROMPT), not "
+                        + "a verdict that fails a minTrust=VERDICT build on a correct counter");
     }
 
     @Test

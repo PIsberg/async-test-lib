@@ -27,6 +27,15 @@ in both directions and were promoted, `ConcurrentModificationDetector` fires on 
 thread-safe code and stays at PROMPT. `@AsyncTest(minTrust = ...)` restricts the failOn gate to
 the tiers you name._
 
+_Updated 2026-09-26 (evidence caps): a both-directions case is necessary for VERDICT and no longer
+sufficient. The detector must also decide from the JVM's own state or from synchronization it can
+see, because a detector whose finding is the recorded call itself passes both directions by
+construction: record the defect and it fires, leave it out and it is silent. Six of the in-repo
+VERDICT pairs belong to detectors that decide that way or on a threshold, among them the
+`LockLeakDetector` and `CompletableFutureExceptionDetector` promotions above, and those detectors
+are now FACT or PROMPT. Their cases still run and still pass, and they show what a FACT or PROMPT
+needs: that the detector separates the recorded bug from the recorded fix._
+
 ## What was measured
 
 For each detector: does it fire on genuinely buggy concurrent code (true positive), and

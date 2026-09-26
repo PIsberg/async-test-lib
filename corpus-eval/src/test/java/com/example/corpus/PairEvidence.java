@@ -386,7 +386,13 @@ final class PairEvidence {
                         // is - FACT reports something observed and leaves the judgement to the
                         // reader - so a pair does not make either of them a verdict, and VERDICT
                         // is already gated.
-                        || DetectorTrust.tierOf(detector) != TrustTier.PROMPT) {
+                        || DetectorTrust.tierOf(detector) != TrustTier.PROMPT
+                        // A pair cannot lift a detector past what it decides from. One whose
+                        // finding is its body's own record call, a thread count or a threshold is
+                        // capped below VERDICT by its evidence class, so no reading of its pair is
+                        // a promotion and demanding one would ask for a registration the library's
+                        // gate refuses.
+                        || !cappedAtVerdict(detector)) {
                     continue;
                 }
                 // Only the lane that actually holds the pair can answer. Asking a lane where
@@ -437,6 +443,19 @@ final class PairEvidence {
         return false;
     }
 
+    /**
+     * {@return whether {@code detector}'s evidence class lets it reach VERDICT at all}
+     *
+     * <p>{@code DetectorTrust.Evidence} caps the tier by what the detector decides from, and the
+     * library's own gate refuses a row above its cap. A pair for a detector capped lower is still
+     * measured and still gated here; it is just not a promotion candidate.
+     *
+     * @param detector the detector to look up
+     */
+    static boolean cappedAtVerdict(DetectorType detector) {
+        return DetectorTrust.evidenceOf(detector).cap() == TrustTier.VERDICT;
+    }
+
     /** {@return whether {@code lane} holds both directions for {@code detector}} */
     private static boolean hasPairIn(CorpusLane lane, DetectorType detector) {
         Set<RecordingSubject.Expectation> directions =
@@ -479,6 +498,7 @@ final class PairEvidence {
         for (DetectorType detector : Corpus.pairedDetectors(CorpusLane.RECORDING)) {
             if (!already.contains(detector)
                     && DetectorTrust.tierOf(detector) == TrustTier.PROMPT
+                    && cappedAtVerdict(detector)
                     && hasPairIn(CorpusLane.RECORDING, detector)
                     && heldBack(CorpusLane.RECORDING, detector) == HeldBack.CALL_SHAPE) {
                 unreviewed.add(detector);

@@ -1278,8 +1278,9 @@ public class ConcurrencyRunner {
 
     private static String trustHint(TrustTier tier) {
         return switch (tier) {
-            case VERDICT -> "(a finding means the code is wrong; measured on the bug and on its correct twin)";
-            case FACT -> "(the report states what was observed; whether it is a bug is your call)";
+            case VERDICT -> "(a finding means the code is wrong; decided from observed state or visible"
+                    + " synchronization, and measured on the bug and on its correct twin)";
+            case FACT -> "(the report states what was observed or recorded; whether it is a bug is your call)";
             case PROMPT -> "(a prompt to verify; synchronization the library cannot see may make this correct)";
             case ADVISORY -> "(a performance or hygiene note, not a correctness claim)";
         };

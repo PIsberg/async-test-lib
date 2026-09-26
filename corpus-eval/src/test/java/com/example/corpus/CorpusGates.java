@@ -320,8 +320,8 @@ final class CorpusGates {
      * grants it against a case that fires on a bug and a case that stays silent on the correct
      * twin. Its own gate resolves that evidence by reflection over its own test methods, which
      * cannot reach this module: this module depends on the library, so the library cannot depend
-     * back. 61 detectors are classified VERDICT on the strength of pairs that live here, named
-     * in {@code META-INF/async-test/verdict-evidence-corpus}.
+     * back. The detectors classified VERDICT on the strength of pairs that live here are named in
+     * {@code META-INF/async-test/verdict-evidence-corpus}.
      *
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
      * fails if one is missing, points at a different detector, or has drifted to the wrong

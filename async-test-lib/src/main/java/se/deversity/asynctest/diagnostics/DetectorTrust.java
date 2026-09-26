@@ -7,6 +7,8 @@ import se.deversity.asynctest.DetectorType;
 import se.deversity.vibetags.annotations.AIKeepInSync;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +30,12 @@ import java.util.Optional;
  * promotion without one. Everything else starts at {@link TrustTier#PROMPT}, which is the honest
  * description of a detector whose silent-on-correct-code direction nobody has measured yet.
  * Lowering a tier needs no evidence; raising one does.
+ *
+ * <p><strong>A pair is necessary and not sufficient.</strong> Each row also names the
+ * {@link Evidence} its detector decides from, and that caps the tier: VERDICT needs a detector
+ * that observes the JVM or consults the synchronization it can see, a finding that is the test's
+ * own record call is at most FACT, and one decided by a thread count or a threshold is at most
+ * PROMPT. The same gate refuses a row above its cap, whatever pairs it has.
  *
  * <p><strong>Weakest wins, and a detector can say better.</strong> Where a detector emits findings
  * of different grades, the row carries the weakest of them, so that gating on VERDICT can never
@@ -73,8 +81,90 @@ public final class DetectorTrust {
      */
     public record Row(DetectorType type, String detectorClass, String spiName, TrustTier tier) { }
 
-    private static Row row(DetectorType type, String detectorClass, String spiName, TrustTier tier) {
-        return new Row(type, detectorClass, spiName, tier);
+    /**
+     * What a detector decides a finding from, which bounds the tier that finding can carry.
+     *
+     * <p><strong>Why this exists.</strong> {@link TrustTier#VERDICT} used to need only a
+     * both-directions case: fire on the bug, stay silent on the correct twin. A detector whose
+     * finding is the test author's own {@code record*} call meets that rule by construction, since
+     * the buggy body makes the call and the correct one does not; so does a detector that counts
+     * threads or compares a number with a threshold, given a pair chosen on the right side of it.
+     * {@code ExecutorDeadlockDetector} reached VERDICT at CRITICAL severity that way while its
+     * finding was a lifetime counter of recorded sibling waits. A pair shows that a detector
+     * separates two bodies; this class says whether what separates them is the code or the
+     * recording, and {@link #cap()} is the most a finding decided that way can claim.
+     *
+     * <p>{@code DetectorTrustCoverageTest} fails the build on a row whose tier exceeds its class's
+     * cap. For a report that grades its findings the cap is also applied at run time: the report
+     * path lowers any {@link GradedFindings.Grade} above its detector's cap to the cap before the
+     * gate, the banner or a listener sees it.
+     *
+     * <p>A detector that decides differently on different paths is classified by its weakest
+     * path, because the row's tier applies to every finding it makes. A report that implements
+     * {@link GradedFindings} is the exception: each of its findings carries its own tier, so its
+     * class is the one behind its strongest grade, and the clamp keeps every grade at or below it.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.3")
+    public enum Evidence {
+
+        /**
+         * Decided from the real JVM object or thread: the detector asks the lock, barrier, queue or
+         * thread for its state, or reads events the agent wove into the bytecode. The finding does
+         * not rest on the test describing its own code correctly.
+         */
+        OBSERVED(TrustTier.VERDICT),
+
+        /**
+         * Decided from recorded accesses, and only after consulting synchronization context the
+         * detector can see: the per-round lockset {@code SelfGuard} keeps, locks declared through
+         * {@link HeldLocks}, or a happens-before or ownership edge. The same accesses recorded
+         * under a visible lock stay silent. Splitting the run into invocation rounds is not such
+         * context on its own: two threads that touched something in one round are still just two
+         * threads, which is {@link #CONTEXT_FREE}.
+         */
+        CONTEXTUAL(TrustTier.VERDICT),
+
+        /**
+         * The finding is essentially the recorded call itself: a call named after the defect, a
+         * flag argument, or arithmetic over declared events with nothing else consulted. The
+         * report is true about what was recorded; that the recording matches the code is the
+         * test author's claim, so the most it can be is a {@link TrustTier#FACT}.
+         */
+        ASSERTED(TrustTier.FACT),
+
+        /**
+         * Recorded accesses judged by "more than one thread touched it", with no lock or ordering
+         * context. Correct code sharing the object under a lock draws the same finding, so it is a
+         * {@link TrustTier#PROMPT} at most.
+         */
+        CONTEXT_FREE(TrustTier.PROMPT),
+
+        /**
+         * A timing threshold, a ratio or a count. A number crossing a line says something may be
+         * wrong, never that it is, so it is a {@link TrustTier#PROMPT} at most.
+         */
+        HEURISTIC(TrustTier.PROMPT);
+
+        private final TrustTier cap;
+
+        Evidence(TrustTier cap) {
+            this.cap = cap;
+        }
+
+        /** {@return the highest tier a finding decided from this kind of evidence may carry} */
+        public TrustTier cap() {
+            return cap;
+        }
+    }
+
+    /** A row and the evidence class its tier is capped by. */
+    private record Classified(Row row, Evidence evidence) { }
+
+    private static Classified row(DetectorType type, String detectorClass, String spiName, TrustTier tier,
+                                  Evidence evidence) {
+        return new Classified(new Row(type, detectorClass, spiName, tier), evidence);
     }
 
     /**
@@ -82,163 +172,181 @@ public final class DetectorTrust {
      *
      * <p>Split-tier detectors, carrying the weakest of the grades they emit: confined-arena thread
      * escape, shared memory segment race, VarHandle non-atomic update, record mutable component
-     * leak, static-init deadlock, virtual-thread pooling and shared SplittableRandom all produce a
-     * verdict-grade finding on one path and a prompt-grade one on another. Platform thread-per-task
-     * pairs a verdict-grade executor finding with an advisory churn threshold.
+     * leak, static-init deadlock and virtual-thread pooling produce a higher-grade finding on one
+     * path and a prompt-grade one on another. Platform thread-per-task pairs a verdict-grade
+     * executor finding with an advisory churn threshold.
+     *
+     * <p>The last column is the {@link Evidence} class, read from each detector's record path and
+     * {@code analyze()} on 2026-09-26. Four of the graded detectors are {@link Evidence#ASSERTED}
+     * although one of their paths observes the JVM: confined-arena escape and memory-segment race
+     * grade a use after a recorded {@code recordClose} as VERDICT, static-init deadlock grades a
+     * cycle of recorded init requests as VERDICT, and virtual-thread pooling grades two recorded
+     * executions on one thread as VERDICT. The class names that weakest VERDICT-grade path, so the
+     * report path clamps all four to FACT until each grades by path.
      */
-    private static final List<Row> ROWS = List.of(
-            row(DetectorType.DEADLOCKS, "DeadlockDetector", "Deadlocks", TrustTier.VERDICT),
-            row(DetectorType.VISIBILITY, "VisibilityMonitor", "Visibility", TrustTier.FACT),
-            row(DetectorType.LIVELOCKS, "LivelockDetector", "Livelocks", TrustTier.PROMPT),
-            row(DetectorType.FALSE_SHARING, "FalseSharingDetector", "FalseSharing", TrustTier.ADVISORY),
-            row(DetectorType.WAKEUP_ISSUES, "WakeupDetector", "WakeupIssues", TrustTier.PROMPT),
-            row(DetectorType.CONSTRUCTOR_SAFETY, "ConstructorSafetyValidator", "ConstructorSafety", TrustTier.PROMPT),
-            row(DetectorType.ABA_PROBLEM, "ABAProblemDetector", "ABAProblem", TrustTier.VERDICT),
-            row(DetectorType.LOCK_ORDER, "LockOrderValidator", "LockOrder", TrustTier.VERDICT),
-            row(DetectorType.SYNCHRONIZERS, "SynchronizerMonitor", "Synchronizers", TrustTier.PROMPT),
-            row(DetectorType.THREAD_POOL, "ThreadPoolMonitor", "ThreadPool", TrustTier.PROMPT),
-            row(DetectorType.MEMORY_ORDERING, "MemoryOrderingMonitor", "MemoryOrdering", TrustTier.PROMPT),
-            row(DetectorType.ASYNC_PIPELINE, "PipelineMonitor", "AsyncPipeline", TrustTier.PROMPT),
-            row(DetectorType.READ_WRITE_LOCK_FAIRNESS, "ReadWriteLockMonitor", "ReadWriteLockFairness", TrustTier.ADVISORY),
-            row(DetectorType.SEMAPHORE, "SemaphoreMisuseDetector", "Semaphore", TrustTier.VERDICT),
-            row(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, "CompletableFutureExceptionDetector", "CompletableFutureExceptions", TrustTier.VERDICT),
-            row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, "CompletableFutureCompletionLeakDetector", "CompletableFutureCompletionLeaks", TrustTier.VERDICT),
-            row(DetectorType.VIRTUAL_THREAD_PINNING, "VirtualThreadPinningDetector", "VirtualThreadPinning", TrustTier.PROMPT),
-            row(DetectorType.THREAD_POOL_DEADLOCK, "ThreadPoolDeadlockDetector", "ThreadPoolDeadlock", TrustTier.PROMPT),
-            row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.VERDICT),
-            row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.VERDICT),
-            row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.ADVISORY),
-            row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.VERDICT),
-            row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.VERDICT),
-            row(DetectorType.SIMPLE_DATE_FORMAT, "SimpleDateFormatDetector", "SimpleDateFormat", TrustTier.VERDICT),
-            row(DetectorType.PARALLEL_STREAMS, "ParallelStreamDetector", "ParallelStreams", TrustTier.PROMPT),
-            row(DetectorType.RESOURCE_LEAKS, "ResourceLeakDetector", "ResourceLeaks", TrustTier.VERDICT),
-            row(DetectorType.COUNTDOWN_LATCH, "CountDownLatchDetector", "CountDownLatch", TrustTier.VERDICT),
-            row(DetectorType.CYCLIC_BARRIER, "CyclicBarrierDetector", "CyclicBarrier", TrustTier.VERDICT),
-            row(DetectorType.REENTRANT_LOCK, "ReentrantLockDetector", "ReentrantLock", TrustTier.VERDICT),
-            row(DetectorType.VOLATILE_ARRAY, "VolatileArrayDetector", "VolatileArray", TrustTier.VERDICT),
-            row(DetectorType.DOUBLE_CHECKED_LOCKING, "DoubleCheckedLockingDetector", "DoubleCheckedLocking", TrustTier.VERDICT),
-            row(DetectorType.WAIT_TIMEOUT, "WaitTimeoutDetector", "WaitTimeout", TrustTier.PROMPT),
-            row(DetectorType.LOCK_CONTENTION, "LockContentionDetector", "LockContention", TrustTier.PROMPT),
-            row(DetectorType.SYNCHRONIZED_NON_FINAL, "SynchronizedNonFinalDetector", "SynchronizedNonFinal", TrustTier.VERDICT),
-            row(DetectorType.MISSED_SIGNAL, "MissedSignalDetector", "MissedSignal", TrustTier.PROMPT),
-            row(DetectorType.LAZY_INIT_RACE, "LazyInitRaceDetector", "LazyInitRace", TrustTier.VERDICT),
-            row(DetectorType.PHASER, "PhaserDetector", "Phaser", TrustTier.PROMPT),
-            row(DetectorType.STAMPED_LOCK, "StampedLockDetector", "StampedLock", TrustTier.PROMPT),
-            row(DetectorType.EXCHANGER, "ExchangerDetector", "Exchanger", TrustTier.PROMPT),
-            row(DetectorType.SCHEDULED_EXECUTOR, "ScheduledExecutorDetector", "ScheduledExecutor", TrustTier.PROMPT),
-            row(DetectorType.FORK_JOIN_POOL, "ForkJoinPoolDetector", "ForkJoinPool", TrustTier.PROMPT),
-            row(DetectorType.THREAD_FACTORY, "ThreadFactoryDetector", "ThreadFactory", TrustTier.VERDICT),
-            row(DetectorType.RACE_CONDITIONS, "RaceConditionDetector", "RaceConditions", TrustTier.PROMPT),
-            row(DetectorType.THREAD_LOCAL_LEAKS, "ThreadLocalMonitor", "ThreadLocalLeaks", TrustTier.PROMPT),
-            row(DetectorType.BUSY_WAITING, "BusyWaitDetector", "BusyWaiting", TrustTier.VERDICT),
-            row(DetectorType.ATOMICITY_VIOLATIONS, "AtomicityValidator", "AtomicityViolations", TrustTier.PROMPT),
-            row(DetectorType.INTERRUPT_MISHANDLING, "InterruptMonitor", "InterruptMishandling", TrustTier.VERDICT),
-            row(DetectorType.THREAD_LEAKS, "ThreadLeakDetector", "ThreadLeaks", TrustTier.VERDICT),
-            row(DetectorType.SLEEP_IN_LOCK, "SleepInLockDetector", "SleepInLock", TrustTier.VERDICT),
-            row(DetectorType.UNBOUNDED_QUEUE, "UnboundedQueueDetector", "UnboundedQueue", TrustTier.PROMPT),
-            row(DetectorType.THREAD_STARVATION, "ThreadStarvationDetector", "ThreadStarvation", TrustTier.PROMPT),
-            row(DetectorType.CALENDAR, "CalendarDetector", "Calendar", TrustTier.VERDICT),
-            row(DetectorType.SHARED_COLLECTIONS, "SharedCollectionDetector", "SharedCollections", TrustTier.PROMPT),
-            row(DetectorType.TIMER, "TimerDetector", "Timer", TrustTier.PROMPT),
-            row(DetectorType.COPY_ON_WRITE_COLLECTIONS, "CopyOnWriteCollectionDetector", "CopyOnWriteCollections", TrustTier.PROMPT),
-            row(DetectorType.STRING_BUILDER, "StringBuilderDetector", "StringBuilder", TrustTier.VERDICT),
-            row(DetectorType.STRUCTURED_CONCURRENCY, "StructuredConcurrencyMisuseDetector", "StructuredConcurrency", TrustTier.PROMPT),
-            row(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, "VirtualThreadContextLeakDetector", "VirtualThreadContextLeaks", TrustTier.PROMPT),
-            row(DetectorType.SCOPED_VALUE, "ScopedValueMisuseDetector", "ScopedValue", TrustTier.PROMPT),
-            row(DetectorType.VIRTUAL_THREAD_CPU_BOUND, "VirtualThreadCpuBoundTaskDetector", "VirtualThreadCpuBound", TrustTier.PROMPT),
-            row(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION, "VirtualThreadCarrierExhaustionDetector", "VirtualThreadCarrierExhaustion", TrustTier.PROMPT),
-            row(DetectorType.HTTP_CLIENT, "HttpClientConcurrencyDetector", "HttpClient", TrustTier.PROMPT),
-            row(DetectorType.STREAM_CLOSING, "StreamClosingDetector", "StreamClosing", TrustTier.PROMPT),
-            row(DetectorType.CACHE_CONCURRENCY, "CacheConcurrencyDetector", "CacheConcurrency", TrustTier.PROMPT),
-            row(DetectorType.COMPLETABLEFUTURE_CHAIN, "CompletableFutureChainDetector", "CompletableFutureChain", TrustTier.PROMPT),
-            row(DetectorType.EXECUTOR_SHUTDOWN, "ExecutorShutdownDetector", "ExecutorShutdown", TrustTier.PROMPT),
-            row(DetectorType.MUTABLE_MAP_KEY, "MutableMapKeyDetector", "MutableMapKey", TrustTier.VERDICT),
-            row(DetectorType.NESTED_MONITOR_LOCKOUT, "NestedMonitorLockoutDetector", "NestedMonitorLockout", TrustTier.VERDICT),
-            row(DetectorType.LOCK_DOWNGRADE, "LockDowngradeDetector", "LockDowngrade", TrustTier.PROMPT),
-            row(DetectorType.INHERITABLE_THREAD_LOCAL, "InheritableThreadLocalMisuseDetector", "InheritableThreadLocal", TrustTier.PROMPT),
-            row(DetectorType.THREAD_LOCAL_CONTAMINATION, "ThreadLocalContaminationDetector", "ThreadLocalContamination", TrustTier.VERDICT),
-            row(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, "AtomicNonAtomicUpdateDetector", "AtomicNonAtomicUpdate", TrustTier.VERDICT),
-            row(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "SynchronizedCollectionIterationDetector", "SynchronizedCollectionIteration", TrustTier.VERDICT),
-            row(DetectorType.SHARED_FORMATTER, "SharedFormatterDetector", "SharedFormatter", TrustTier.VERDICT),
-            row(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, "ConcurrentMapComputeRecursionDetector", "ConcurrentMapComputeRecursion", TrustTier.VERDICT),
-            row(DetectorType.SYNCHRONIZED_ON_LITERAL, "SynchronizedOnLiteralDetector", "SynchronizedOnLiteral", TrustTier.PROMPT),
-            row(DetectorType.PUBLIC_LOCK_EXPOSURE, "PublicLockExposureDetector", "PublicLockExposure", TrustTier.VERDICT),
-            row(DetectorType.FORK_JOIN_TASK_BLOCKING, "ForkJoinTaskBlockingDetector", "ForkJoinTaskBlocking", TrustTier.VERDICT),
-            row(DetectorType.OPTIMISTIC_READ_VALIDATION, "OptimisticReadValidationDetector", "OptimisticReadValidation", TrustTier.VERDICT),
-            row(DetectorType.CF_COMMON_POOL_BLOCKING, "CompletableFutureCommonPoolBlockingDetector", "CfCommonPoolBlocking", TrustTier.VERDICT),
-            row(DetectorType.SHARED_MATCHER, "SharedMatcherDetector", "SharedMatcher", TrustTier.VERDICT),
-            row(DetectorType.SHARED_DECIMAL_FORMAT, "SharedDecimalFormatDetector", "SharedDecimalFormat", TrustTier.VERDICT),
-            row(DetectorType.WEAK_REFERENCE_RACE, "WeakReferenceRaceDetector", "WeakReferenceRace", TrustTier.PROMPT),
-            row(DetectorType.STATEFUL_LAMBDA, "StatefulLambdaDetector", "StatefulLambda", TrustTier.VERDICT),
-            row(DetectorType.SHARED_MESSAGE_DIGEST, "SharedMessageDigestDetector", "SharedMessageDigest", TrustTier.VERDICT),
-            row(DetectorType.INTERRUPT_SWALLOWING, "InterruptSwallowingDetector", "InterruptSwallowing", TrustTier.VERDICT),
-            row(DetectorType.MDC_CONTEXT_LEAK, "MdcContextLeakDetector", "MdcContextLeak", TrustTier.VERDICT),
-            row(DetectorType.SYSTEM_PROPERTY_MUTATION, "SystemPropertyMutationDetector", "SystemPropertyMutation", TrustTier.VERDICT),
-            row(DetectorType.FUTURE_IGNORED, "FutureIgnoredDetector", "FutureIgnored", TrustTier.PROMPT),
-            row(DetectorType.EXPLICIT_GC, "ExplicitGcDetector", "ExplicitGc", TrustTier.PROMPT),
-            row(DetectorType.DEPRECATED_THREAD_API, "DeprecatedThreadApiDetector", "DeprecatedThreadApi", TrustTier.PROMPT),
-            row(DetectorType.SHARED_XML_PARSER, "SharedXmlParserDetector", "SharedXmlParser", TrustTier.VERDICT),
-            row(DetectorType.BOXED_PRIMITIVE_LOCK, "BoxedPrimitiveLockDetector", "BoxedPrimitiveLock", TrustTier.PROMPT),
-            row(DetectorType.SHARED_TIMEZONE, "SharedTimeZoneDetector", "SharedTimeZone", TrustTier.VERDICT),
-            row(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, "UncaughtExceptionHandlerDetector", "UncaughtExceptionHandler", TrustTier.VERDICT),
-            row(DetectorType.DAEMON_THREAD_HYGIENE, "DaemonThreadHygieneDetector", "DaemonThreadHygiene", TrustTier.VERDICT),
-            row(DetectorType.NOTIFY_WITHOUT_MONITOR, "NotifyWithoutMonitorDetector", "NotifyWithoutMonitor", TrustTier.VERDICT),
-            row(DetectorType.SHARED_SECURE_RANDOM, "SharedSecureRandomDetector", "SharedSecureRandom", TrustTier.ADVISORY),
-            row(DetectorType.WEAK_HASH_MAP_SHARED, "WeakHashMapSharedDetector", "WeakHashMapShared", TrustTier.VERDICT),
-            row(DetectorType.JDBC_CONNECTION_SHARED, "JdbcConnectionSharedDetector", "JdbcConnectionShared", TrustTier.VERDICT),
-            row(DetectorType.SHARED_STATEFUL_CRYPTO, "SharedStatefulCryptoDetector", "SharedStatefulCrypto", TrustTier.VERDICT),
-            row(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, "NonAtomicConcurrentMapUpdateDetector", "NonAtomicConcurrentMapUpdate", TrustTier.VERDICT),
-            row(DetectorType.SHARED_DEFLATER, "SharedDeflaterDetector", "SharedDeflater", TrustTier.VERDICT),
-            row(DetectorType.THIS_ESCAPE, "ThisEscapeDetector", "ThisEscape", TrustTier.PROMPT),
-            row(DetectorType.THREAD_LOCAL_RANDOM_MISUSE, "ThreadLocalRandomMisuseDetector", "ThreadLocalRandomMisuse", TrustTier.PROMPT),
-            row(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, "CompletableFutureObtrudeDetector", "CompletableFutureObtrude", TrustTier.PROMPT),
-            row(DetectorType.SPURIOUS_WAKEUP_HAZARD, "SpuriousWakeupDetector", "SpuriousWakeup", TrustTier.VERDICT),
-            row(DetectorType.LOCK_UPGRADE_DEADLOCK, "LockUpgradeDeadlockDetector", "LockUpgradeDeadlock", TrustTier.VERDICT),
-            row(DetectorType.TRY_LOCK_MISUSE, "TryLockMisuseDetector", "TryLockMisuse", TrustTier.VERDICT),
-            row(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, "CompletableFutureBlockingCallbackDetector", "CompletableFutureBlockingCallback", TrustTier.VERDICT),
-            row(DetectorType.STABLE_VALUE_MISUSE, "StableValueMisuseDetector", "StableValueMisuse", TrustTier.PROMPT),
-            row(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, "StructuredTaskScopeMisuseDetector", "StructuredTaskScopeMisuse", TrustTier.PROMPT),
-            row(DetectorType.GATHERER_CONCURRENCY_MISUSE, "GathererConcurrencyMisuseDetector", "GathererConcurrencyMisuse", TrustTier.VERDICT),
-            row(DetectorType.SHARED_BYTE_BUFFER, "SharedByteBufferDetector", "SharedByteBuffer", TrustTier.VERDICT),
-            row(DetectorType.SHARED_CHARSET_CODER, "SharedCharsetCoderDetector", "SharedCharsetCoder", TrustTier.VERDICT),
-            row(DetectorType.SHARED_CHECKSUM, "SharedChecksumDetector", "SharedChecksum", TrustTier.VERDICT),
-            row(DetectorType.FILE_CHANNEL_POSITION_RACE, "FileChannelPositionRaceDetector", "FileChannelPositionRace", TrustTier.PROMPT),
-            row(DetectorType.SHARED_ITERATOR, "SharedIteratorDetector", "SharedIterator", TrustTier.VERDICT),
-            row(DetectorType.HIGH_CONTENTION_ATOMIC, "HighContentionAtomicDetector", "HighContentionAtomic", TrustTier.ADVISORY),
-            row(DetectorType.SHARED_JSON_MAPPER_RECONFIG, "SharedJsonMapperReconfigDetector", "SharedJsonMapperReconfig", TrustTier.VERDICT),
-            row(DetectorType.LAZY_CONSTANT_MISUSE, "LazyConstantMisuseDetector", "LazyConstantMisuse", TrustTier.PROMPT),
-            row(DetectorType.FINAL_FIELD_MUTATION, "FinalFieldMutationDetector", "FinalFieldMutation", TrustTier.PROMPT),
-            row(DetectorType.SHARED_KDF, "SharedKdfDetector", "SharedKdf", TrustTier.VERDICT),
-            row(DetectorType.LATCH_MISUSE, "LatchMisuseDetector", "LatchMisuse", TrustTier.VERDICT),
-            row(DetectorType.EXECUTOR_DEADLOCK, "ExecutorDeadlockDetector", "ExecutorDeadlock", TrustTier.VERDICT),
-            row(DetectorType.FUTURE_BLOCKING, "FutureBlockingDetector", "FutureBlocking", TrustTier.VERDICT),
-            row(DetectorType.FLOW_PUBLISHER_CONCURRENCY, "FlowPublisherConcurrencyDetector", "FlowPublisherConcurrency", TrustTier.PROMPT),
-            row(DetectorType.CONFINED_ARENA_THREAD_ESCAPE, "ConfinedArenaThreadEscapeDetector", "ConfinedArenaThreadEscape", TrustTier.PROMPT),
-            row(DetectorType.SHARED_MEMORY_SEGMENT_RACE, "SharedMemorySegmentRaceDetector", "SharedMemorySegmentRace", TrustTier.PROMPT),
-            row(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, "VarHandleNonAtomicUpdateDetector", "VarHandleNonAtomicUpdate", TrustTier.PROMPT),
-            row(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, "RecordMutableComponentLeakDetector", "RecordMutableComponentLeak", TrustTier.PROMPT),
-            row(DetectorType.STATIC_INIT_DEADLOCK, "StaticInitDeadlockDetector", "StaticInitDeadlock", TrustTier.PROMPT),
-            row(DetectorType.VIRTUAL_THREAD_POOLING, "VirtualThreadPoolingDetector", "VirtualThreadPooling", TrustTier.PROMPT),
-            row(DetectorType.PLATFORM_THREAD_PER_TASK, "PlatformThreadPerTaskDetector", "PlatformThreadPerTask", TrustTier.ADVISORY),
-            row(DetectorType.SHARED_SPLITTABLE_RANDOM, "SharedSplittableRandomDetector", "SharedSplittableRandom", TrustTier.VERDICT),
-            row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, "CompletableFutureCompletionRaceDetector", "CompletableFutureCompletionRace", TrustTier.FACT),
-            row(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION, "CompletableFutureCancellationPropagationDetector", "CompletableFutureCancellationPropagation", TrustTier.FACT),
-            row(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE, "CompletableFutureCombinatorMisuseDetector", "CompletableFutureCombinatorMisuse", TrustTier.FACT),
-            row(DetectorType.LAMBDA_LOST_UPDATE, "LambdaLostUpdateDetector", "LambdaLostUpdate", TrustTier.FACT),
-            row(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, "VirtualThreadResourceSaturationDetector", "VirtualThreadResourceSaturation", TrustTier.FACT),
-            row(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, "VirtualThreadMonitorSerializationDetector", "VirtualThreadMonitorSerialization", TrustTier.ADVISORY),
-            row(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, "ThreadLocalCacheDegradationDetector", "ThreadLocalCacheDegradation", TrustTier.FACT),
-            row(DetectorType.SCOPE_JOINER_MISUSE, "ScopeJoinerMisuseDetector", "ScopeJoinerMisuse", TrustTier.FACT),
-            row(DetectorType.SCOPE_CONFIGURATION_MISUSE, "ScopeConfigurationMisuseDetector", "ScopeConfigurationMisuse", TrustTier.FACT),
-            row(DetectorType.SCOPE_RESULT_ESCAPE, "ScopeResultEscapeDetector", "ScopeResultEscape", TrustTier.FACT),
-            row(DetectorType.LAZY_COLLECTION_MISUSE, "LazyCollectionMisuseDetector", "LazyCollectionMisuse", TrustTier.FACT)
+    private static final List<Classified> TABLE = List.of(
+            row(DetectorType.DEADLOCKS, "DeadlockDetector", "Deadlocks", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.VISIBILITY, "VisibilityMonitor", "Visibility", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.LIVELOCKS, "LivelockDetector", "Livelocks", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.FALSE_SHARING, "FalseSharingDetector", "FalseSharing", TrustTier.ADVISORY, Evidence.HEURISTIC),
+            row(DetectorType.WAKEUP_ISSUES, "WakeupDetector", "WakeupIssues", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.CONSTRUCTOR_SAFETY, "ConstructorSafetyValidator", "ConstructorSafety", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.ABA_PROBLEM, "ABAProblemDetector", "ABAProblem", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.LOCK_ORDER, "LockOrderValidator", "LockOrder", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.SYNCHRONIZERS, "SynchronizerMonitor", "Synchronizers", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.THREAD_POOL, "ThreadPoolMonitor", "ThreadPool", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.MEMORY_ORDERING, "MemoryOrderingMonitor", "MemoryOrdering", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.ASYNC_PIPELINE, "PipelineMonitor", "AsyncPipeline", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.READ_WRITE_LOCK_FAIRNESS, "ReadWriteLockMonitor", "ReadWriteLockFairness", TrustTier.ADVISORY, Evidence.HEURISTIC),
+            row(DetectorType.SEMAPHORE, "SemaphoreMisuseDetector", "Semaphore", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, "CompletableFutureExceptionDetector", "CompletableFutureExceptions", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, "CompletableFutureCompletionLeakDetector", "CompletableFutureCompletionLeaks", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.VIRTUAL_THREAD_PINNING, "VirtualThreadPinningDetector", "VirtualThreadPinning", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.THREAD_POOL_DEADLOCK, "ThreadPoolDeadlockDetector", "ThreadPoolDeadlock", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.ADVISORY, Evidence.HEURISTIC),
+            row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.SIMPLE_DATE_FORMAT, "SimpleDateFormatDetector", "SimpleDateFormat", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.PARALLEL_STREAMS, "ParallelStreamDetector", "ParallelStreams", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.RESOURCE_LEAKS, "ResourceLeakDetector", "ResourceLeaks", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.COUNTDOWN_LATCH, "CountDownLatchDetector", "CountDownLatch", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.CYCLIC_BARRIER, "CyclicBarrierDetector", "CyclicBarrier", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.REENTRANT_LOCK, "ReentrantLockDetector", "ReentrantLock", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.VOLATILE_ARRAY, "VolatileArrayDetector", "VolatileArray", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.DOUBLE_CHECKED_LOCKING, "DoubleCheckedLockingDetector", "DoubleCheckedLocking", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.WAIT_TIMEOUT, "WaitTimeoutDetector", "WaitTimeout", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.LOCK_CONTENTION, "LockContentionDetector", "LockContention", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.SYNCHRONIZED_NON_FINAL, "SynchronizedNonFinalDetector", "SynchronizedNonFinal", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.MISSED_SIGNAL, "MissedSignalDetector", "MissedSignal", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.LAZY_INIT_RACE, "LazyInitRaceDetector", "LazyInitRace", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.PHASER, "PhaserDetector", "Phaser", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.STAMPED_LOCK, "StampedLockDetector", "StampedLock", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.EXCHANGER, "ExchangerDetector", "Exchanger", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.SCHEDULED_EXECUTOR, "ScheduledExecutorDetector", "ScheduledExecutor", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.FORK_JOIN_POOL, "ForkJoinPoolDetector", "ForkJoinPool", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.THREAD_FACTORY, "ThreadFactoryDetector", "ThreadFactory", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.RACE_CONDITIONS, "RaceConditionDetector", "RaceConditions", TrustTier.PROMPT, Evidence.CONTEXTUAL),
+            row(DetectorType.THREAD_LOCAL_LEAKS, "ThreadLocalMonitor", "ThreadLocalLeaks", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.BUSY_WAITING, "BusyWaitDetector", "BusyWaiting", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.ATOMICITY_VIOLATIONS, "AtomicityValidator", "AtomicityViolations", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.INTERRUPT_MISHANDLING, "InterruptMonitor", "InterruptMishandling", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.THREAD_LEAKS, "ThreadLeakDetector", "ThreadLeaks", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.SLEEP_IN_LOCK, "SleepInLockDetector", "SleepInLock", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.UNBOUNDED_QUEUE, "UnboundedQueueDetector", "UnboundedQueue", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.THREAD_STARVATION, "ThreadStarvationDetector", "ThreadStarvation", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.CALENDAR, "CalendarDetector", "Calendar", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.SHARED_COLLECTIONS, "SharedCollectionDetector", "SharedCollections", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.TIMER, "TimerDetector", "Timer", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.COPY_ON_WRITE_COLLECTIONS, "CopyOnWriteCollectionDetector", "CopyOnWriteCollections", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.STRING_BUILDER, "StringBuilderDetector", "StringBuilder", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.STRUCTURED_CONCURRENCY, "StructuredConcurrencyMisuseDetector", "StructuredConcurrency", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, "VirtualThreadContextLeakDetector", "VirtualThreadContextLeaks", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.SCOPED_VALUE, "ScopedValueMisuseDetector", "ScopedValue", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.VIRTUAL_THREAD_CPU_BOUND, "VirtualThreadCpuBoundTaskDetector", "VirtualThreadCpuBound", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION, "VirtualThreadCarrierExhaustionDetector", "VirtualThreadCarrierExhaustion", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.HTTP_CLIENT, "HttpClientConcurrencyDetector", "HttpClient", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.STREAM_CLOSING, "StreamClosingDetector", "StreamClosing", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.CACHE_CONCURRENCY, "CacheConcurrencyDetector", "CacheConcurrency", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.COMPLETABLEFUTURE_CHAIN, "CompletableFutureChainDetector", "CompletableFutureChain", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.EXECUTOR_SHUTDOWN, "ExecutorShutdownDetector", "ExecutorShutdown", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.MUTABLE_MAP_KEY, "MutableMapKeyDetector", "MutableMapKey", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.NESTED_MONITOR_LOCKOUT, "NestedMonitorLockoutDetector", "NestedMonitorLockout", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.LOCK_DOWNGRADE, "LockDowngradeDetector", "LockDowngrade", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.INHERITABLE_THREAD_LOCAL, "InheritableThreadLocalMisuseDetector", "InheritableThreadLocal", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.THREAD_LOCAL_CONTAMINATION, "ThreadLocalContaminationDetector", "ThreadLocalContamination", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, "AtomicNonAtomicUpdateDetector", "AtomicNonAtomicUpdate", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "SynchronizedCollectionIterationDetector", "SynchronizedCollectionIteration", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.SHARED_FORMATTER, "SharedFormatterDetector", "SharedFormatter", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, "ConcurrentMapComputeRecursionDetector", "ConcurrentMapComputeRecursion", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.SYNCHRONIZED_ON_LITERAL, "SynchronizedOnLiteralDetector", "SynchronizedOnLiteral", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.PUBLIC_LOCK_EXPOSURE, "PublicLockExposureDetector", "PublicLockExposure", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.FORK_JOIN_TASK_BLOCKING, "ForkJoinTaskBlockingDetector", "ForkJoinTaskBlocking", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.OPTIMISTIC_READ_VALIDATION, "OptimisticReadValidationDetector", "OptimisticReadValidation", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.CF_COMMON_POOL_BLOCKING, "CompletableFutureCommonPoolBlockingDetector", "CfCommonPoolBlocking", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.SHARED_MATCHER, "SharedMatcherDetector", "SharedMatcher", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.SHARED_DECIMAL_FORMAT, "SharedDecimalFormatDetector", "SharedDecimalFormat", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.WEAK_REFERENCE_RACE, "WeakReferenceRaceDetector", "WeakReferenceRace", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.STATEFUL_LAMBDA, "StatefulLambdaDetector", "StatefulLambda", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.SHARED_MESSAGE_DIGEST, "SharedMessageDigestDetector", "SharedMessageDigest", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.INTERRUPT_SWALLOWING, "InterruptSwallowingDetector", "InterruptSwallowing", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.MDC_CONTEXT_LEAK, "MdcContextLeakDetector", "MdcContextLeak", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.SYSTEM_PROPERTY_MUTATION, "SystemPropertyMutationDetector", "SystemPropertyMutation", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.FUTURE_IGNORED, "FutureIgnoredDetector", "FutureIgnored", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.EXPLICIT_GC, "ExplicitGcDetector", "ExplicitGc", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.DEPRECATED_THREAD_API, "DeprecatedThreadApiDetector", "DeprecatedThreadApi", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.SHARED_XML_PARSER, "SharedXmlParserDetector", "SharedXmlParser", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.BOXED_PRIMITIVE_LOCK, "BoxedPrimitiveLockDetector", "BoxedPrimitiveLock", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.SHARED_TIMEZONE, "SharedTimeZoneDetector", "SharedTimeZone", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, "UncaughtExceptionHandlerDetector", "UncaughtExceptionHandler", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.DAEMON_THREAD_HYGIENE, "DaemonThreadHygieneDetector", "DaemonThreadHygiene", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.NOTIFY_WITHOUT_MONITOR, "NotifyWithoutMonitorDetector", "NotifyWithoutMonitor", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.SHARED_SECURE_RANDOM, "SharedSecureRandomDetector", "SharedSecureRandom", TrustTier.ADVISORY, Evidence.CONTEXT_FREE),
+            row(DetectorType.WEAK_HASH_MAP_SHARED, "WeakHashMapSharedDetector", "WeakHashMapShared", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.JDBC_CONNECTION_SHARED, "JdbcConnectionSharedDetector", "JdbcConnectionShared", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.SHARED_STATEFUL_CRYPTO, "SharedStatefulCryptoDetector", "SharedStatefulCrypto", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, "NonAtomicConcurrentMapUpdateDetector", "NonAtomicConcurrentMapUpdate", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.SHARED_DEFLATER, "SharedDeflaterDetector", "SharedDeflater", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.THIS_ESCAPE, "ThisEscapeDetector", "ThisEscape", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.THREAD_LOCAL_RANDOM_MISUSE, "ThreadLocalRandomMisuseDetector", "ThreadLocalRandomMisuse", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, "CompletableFutureObtrudeDetector", "CompletableFutureObtrude", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.SPURIOUS_WAKEUP_HAZARD, "SpuriousWakeupDetector", "SpuriousWakeup", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.LOCK_UPGRADE_DEADLOCK, "LockUpgradeDeadlockDetector", "LockUpgradeDeadlock", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.TRY_LOCK_MISUSE, "TryLockMisuseDetector", "TryLockMisuse", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, "CompletableFutureBlockingCallbackDetector", "CompletableFutureBlockingCallback", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.STABLE_VALUE_MISUSE, "StableValueMisuseDetector", "StableValueMisuse", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, "StructuredTaskScopeMisuseDetector", "StructuredTaskScopeMisuse", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.GATHERER_CONCURRENCY_MISUSE, "GathererConcurrencyMisuseDetector", "GathererConcurrencyMisuse", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.SHARED_BYTE_BUFFER, "SharedByteBufferDetector", "SharedByteBuffer", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.SHARED_CHARSET_CODER, "SharedCharsetCoderDetector", "SharedCharsetCoder", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.SHARED_CHECKSUM, "SharedChecksumDetector", "SharedChecksum", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.FILE_CHANNEL_POSITION_RACE, "FileChannelPositionRaceDetector", "FileChannelPositionRace", TrustTier.PROMPT, Evidence.CONTEXTUAL),
+            row(DetectorType.SHARED_ITERATOR, "SharedIteratorDetector", "SharedIterator", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.HIGH_CONTENTION_ATOMIC, "HighContentionAtomicDetector", "HighContentionAtomic", TrustTier.ADVISORY, Evidence.HEURISTIC),
+            row(DetectorType.SHARED_JSON_MAPPER_RECONFIG, "SharedJsonMapperReconfigDetector", "SharedJsonMapperReconfig", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.LAZY_CONSTANT_MISUSE, "LazyConstantMisuseDetector", "LazyConstantMisuse", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.FINAL_FIELD_MUTATION, "FinalFieldMutationDetector", "FinalFieldMutation", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.SHARED_KDF, "SharedKdfDetector", "SharedKdf", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.LATCH_MISUSE, "LatchMisuseDetector", "LatchMisuse", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.EXECUTOR_DEADLOCK, "ExecutorDeadlockDetector", "ExecutorDeadlock", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.FUTURE_BLOCKING, "FutureBlockingDetector", "FutureBlocking", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.FLOW_PUBLISHER_CONCURRENCY, "FlowPublisherConcurrencyDetector", "FlowPublisherConcurrency", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.CONFINED_ARENA_THREAD_ESCAPE, "ConfinedArenaThreadEscapeDetector", "ConfinedArenaThreadEscape", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.SHARED_MEMORY_SEGMENT_RACE, "SharedMemorySegmentRaceDetector", "SharedMemorySegmentRace", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, "VarHandleNonAtomicUpdateDetector", "VarHandleNonAtomicUpdate", TrustTier.PROMPT, Evidence.CONTEXTUAL),
+            row(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, "RecordMutableComponentLeakDetector", "RecordMutableComponentLeak", TrustTier.PROMPT, Evidence.OBSERVED),
+            row(DetectorType.STATIC_INIT_DEADLOCK, "StaticInitDeadlockDetector", "StaticInitDeadlock", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.VIRTUAL_THREAD_POOLING, "VirtualThreadPoolingDetector", "VirtualThreadPooling", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.PLATFORM_THREAD_PER_TASK, "PlatformThreadPerTaskDetector", "PlatformThreadPerTask", TrustTier.ADVISORY, Evidence.OBSERVED),
+            row(DetectorType.SHARED_SPLITTABLE_RANDOM, "SharedSplittableRandomDetector", "SharedSplittableRandom", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, "CompletableFutureCompletionRaceDetector", "CompletableFutureCompletionRace", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION, "CompletableFutureCancellationPropagationDetector", "CompletableFutureCancellationPropagation", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE, "CompletableFutureCombinatorMisuseDetector", "CompletableFutureCombinatorMisuse", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.LAMBDA_LOST_UPDATE, "LambdaLostUpdateDetector", "LambdaLostUpdate", TrustTier.FACT, Evidence.CONTEXTUAL),
+            row(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, "VirtualThreadResourceSaturationDetector", "VirtualThreadResourceSaturation", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, "VirtualThreadMonitorSerializationDetector", "VirtualThreadMonitorSerialization", TrustTier.ADVISORY, Evidence.HEURISTIC),
+            row(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, "ThreadLocalCacheDegradationDetector", "ThreadLocalCacheDegradation", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.SCOPE_JOINER_MISUSE, "ScopeJoinerMisuseDetector", "ScopeJoinerMisuse", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.SCOPE_CONFIGURATION_MISUSE, "ScopeConfigurationMisuseDetector", "ScopeConfigurationMisuse", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.SCOPE_RESULT_ESCAPE, "ScopeResultEscapeDetector", "ScopeResultEscape", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.LAZY_COLLECTION_MISUSE, "LazyCollectionMisuseDetector", "LazyCollectionMisuse", TrustTier.PROMPT, Evidence.HEURISTIC)
     );
 
+    private static final List<Row> ROWS = List.copyOf(TABLE.stream().map(Classified::row).toList());
     private static final Map<DetectorType, Row> BY_TYPE = indexByType();
     private static final Map<String, Row> BY_NAME = indexByName();
+    private static final Map<DetectorType, Evidence> EVIDENCE = indexEvidence();
 
     private DetectorTrust() { }
+
+    private static Map<DetectorType, Evidence> indexEvidence() {
+        Map<DetectorType, Evidence> out = new EnumMap<>(DetectorType.class);
+        for (Classified candidate : TABLE) {
+            out.put(candidate.row().type(), candidate.evidence());
+        }
+        return Map.copyOf(out);
+    }
 
     private static Map<DetectorType, Row> indexByType() {
         Map<DetectorType, Row> out = new LinkedHashMap<>();
@@ -295,5 +403,66 @@ public final class DetectorTrust {
     public static Optional<DetectorType> typeOfDetector(String detectorName) {
         Row found = detectorName == null ? null : BY_NAME.get(detectorName);
         return found == null ? Optional.empty() : Optional.of(found.type());
+    }
+
+    /**
+     * {@return what a built-in detector decides its findings from}
+     *
+     * @param type the detector to look up; {@code null} yields {@link Evidence#HEURISTIC}, whose
+     *             cap is the {@link TrustTier#PROMPT} that {@link #tierOf} gives it
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.3")
+    public static Evidence evidenceOf(DetectorType type) {
+        Evidence found = type == null ? null : EVIDENCE.get(type);
+        return found == null ? Evidence.HEURISTIC : found;
+    }
+
+    /**
+     * {@return the highest tier a finding from the named detector may carry}
+     *
+     * <p>The cap of the detector's {@link Evidence}. A name this table does not know, which is what
+     * every third-party detector is, is capped at {@link TrustTier#PROMPT} for the reason
+     * {@link #tierOfDetector} resolves it there.
+     *
+     * @param detectorName the reporting detector's name as it appears in the report map
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.3")
+    public static TrustTier capOfDetector(String detectorName) {
+        Row found = detectorName == null ? null : BY_NAME.get(detectorName);
+        return found == null ? TrustTier.PROMPT : evidenceOf(found.type()).cap();
+    }
+
+    /**
+     * {@return {@code grades} with every tier above the detector's cap lowered to the cap}
+     *
+     * <p>A graded report names its own tiers, and nothing in the report type stops it from naming
+     * one its evidence cannot carry. This is where that stops: the report path applies it before
+     * the {@code failOn} gate, the console banner or a listener reads a grade. Returns
+     * {@code grades} itself when nothing needed lowering, which is the case for every built-in
+     * report the table classifies correctly.
+     *
+     * @param detectorName the reporting detector's name as it appears in the report map
+     * @param grades       the report's grades, in report order
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.3")
+    public static List<GradedFindings.Grade> clampToCap(String detectorName, List<GradedFindings.Grade> grades) {
+        TrustTier cap = capOfDetector(detectorName);
+        boolean exceeds = false;
+        for (GradedFindings.Grade grade : grades) {
+            exceeds |= grade.tier().compareTo(cap) > 0;
+        }
+        if (!exceeds) {
+            return grades;
+        }
+        List<GradedFindings.Grade> clamped = new ArrayList<>(grades.size());
+        for (GradedFindings.Grade grade : grades) {
+            clamped.add(grade.tier().compareTo(cap) > 0
+                    ? new GradedFindings.Grade(grade.severity(), cap, grade.summary())
+                    : grade);
+        }
+        return List.copyOf(clamped);
     }
 }

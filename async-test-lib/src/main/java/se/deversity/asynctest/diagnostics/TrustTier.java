@@ -22,7 +22,8 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
  *
  * <p>Tiers are assigned in {@link DetectorTrust} and are not free text: promotion to
  * {@link #VERDICT} requires a both-directions case in the detector-accuracy eval, and a gate
- * refuses the promotion without one. See {@code docs/analysis/detector-accuracy-eval.md}.
+ * refuses the promotion without one, or above the cap of the detector's
+ * {@link DetectorTrust.Evidence}. See {@code docs/analysis/detector-accuracy-eval.md}.
  *
  * @since 1.9.7
  */
@@ -51,13 +52,20 @@ public enum TrustTier {
      * this executor really did run on platform threads, this collection really was touched by
      * three threads. Whether that is a bug in your design is the reader's call, so a finding is
      * evidence rather than a verdict.
+     *
+     * <p>This is also the most a finding can be when it is decided from the test's own record
+     * calls ({@link DetectorTrust.Evidence#ASSERTED}): the report is true about what was recorded,
+     * and that the recording matches the code is the test's claim, not the library's.
      */
     FACT,
 
     /**
      * A finding means the code is wrong. Backed by a measured both-directions case: the detector
      * fires on the buggy subject and stays silent on its correctly synchronized twin, asserted in
-     * {@code DetectorAccuracyEvalTest}.
+     * {@code DetectorAccuracyEvalTest}, and decided from evidence that can carry it: the detector
+     * observes the JVM or consults the synchronization it can see ({@link DetectorTrust.Evidence}).
+     * A pair alone is not enough, because a detector whose finding is the test's own record call
+     * separates a recorded bug from an unrecorded one by construction.
      *
      * <p>This is the only tier safe to fail a merge on without a human reading the report first.
      */

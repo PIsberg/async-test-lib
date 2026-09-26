@@ -57,6 +57,36 @@ class EveryEligiblePairIsPromotedOrExplainedTest {
                         + "it: " + names(eligible));
     }
 
+    /**
+     * The other side of the evidence cap. A detector whose finding is its body's own record call,
+     * a thread count or a threshold has pairs that meet the shape rule and still cannot be
+     * promoted, because the library's gate refuses a VERDICT above the cap. Demanding them would
+     * make the gate above unsatisfiable, and listing them would be a second copy of the table.
+     */
+    @Test
+    @DisplayName("a pair whose detector is capped below VERDICT is measured, but not demanded")
+    void aPairCappedBelowVerdictIsNotAPromotionCandidate() {
+        Set<DetectorType> capped = new TreeSet<>();
+        for (CorpusLane lane : List.of(CorpusLane.RECORDING, CorpusLane.AGENT_PAIRS)) {
+            for (DetectorType detector : Corpus.pairedDetectors(lane)) {
+                if (DetectorTrust.tierOf(detector) == TrustTier.PROMPT
+                        && !PairEvidence.cappedAtVerdict(detector)
+                        && PairEvidence.heldBack(lane, detector) == null) {
+                    capped.add(detector);
+                }
+            }
+        }
+
+        assertTrue(!capped.isEmpty(),
+                "no PROMPT detector with a shape-clean pair is capped below VERDICT, so this test "
+                        + "no longer exercises the cap; pick another property to pin");
+        Set<DetectorType> demanded = new TreeSet<>(capped);
+        demanded.retainAll(PairEvidence.eligible());
+        assertTrue(demanded.isEmpty(),
+                "these pairs are shape-clean but their detector's evidence class caps it below "
+                        + "VERDICT, so no registration can promote them: " + names(demanded));
+    }
+
     @Test
     @DisplayName("every promoted pair is classified VERDICT in the library's trust table")
     void everyPromotedPairCarriesTheTier() {

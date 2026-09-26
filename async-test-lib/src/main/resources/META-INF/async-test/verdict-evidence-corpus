@@ -45,12 +45,8 @@
 SHARED_JSON_MAPPER_RECONFIG = recorded_objectMapper_reconfigureWhileWriting, recorded_objectMapper_configuredThenShared
 SHARED_MESSAGE_DIGEST = recorded_messageDigest_sharedAcrossThreads, recorded_messageDigest_guardedByItsOwnMonitor
 SHARED_STATEFUL_CRYPTO = recorded_mac_sharedAcrossThreads, recorded_mac_confinedToOneThreadEach
-CONCURRENT_MAP_COMPUTE_RECURSION = recorded_caffeineAsMap_recursiveMerge, recorded_caffeineAsMap_selfContainedMerge
-SYNCHRONIZED_COLLECTION_ITERATION = recorded_synchronizedCollection_iteratedWithoutLock, recorded_synchronizedCollection_iteratedHoldingLock
 SHARED_ITERATOR = recorded_concurrentHashMultiset_sharedIterator, recorded_concurrentHashMultiset_iteratorPerThread
-MUTABLE_MAP_KEY = recorded_mutableIntKey_mutatedAfterInsertion, recorded_mutableIntKey_neverMutated
 JDBC_CONNECTION_SHARED = recorded_hoistedConnection_sharedAcrossThreads, recorded_hikariPool_checkoutPerThread
-CONCURRENT_MODIFICATIONS = recorded_cursorableLinkedList_concurrentAdd, recorded_cursorableLinkedList_mutatedUnderItsOwnMonitor
 SHARED_BYTE_BUFFER = recorded_byteBuffer_relativeGetsShared, recorded_byteBuffer_absoluteGetsShared
 WEAK_HASH_MAP_SHARED = recorded_weakHashMap_sharedAcrossThreads, recorded_weakHashMap_guardedByItsOwnMonitor
 
@@ -68,52 +64,32 @@ WEAK_HASH_MAP_SHARED = recorded_weakHashMap_sharedAcrossThreads, recorded_weakHa
 # both reach the detector through the same record*/register* methods, so what separates them
 # is the state the calls carry. Agent-lane bodies make no such calls; AgentRowPremise holds
 # them to the same property instead.
-# VISIBILITY was registered here until 1.12.3 and is FACT now. Its pair varies whether threads
+# VISIBILITY was registered here until 1.12.3 and is PROMPT now. Its pair varies whether threads
 # recorded different values for one field, and a correct AtomicInteger counter does exactly that:
 # the detector records a name and a value, no write, lock or ordering, so no pair of its can tell a
-# stale read from a value that is meant to change. The pair still runs; it measures the
-# observation, which is what the FACT tier claims.
-ABA_PROBLEM = recorded_aba_premiseReadBeforeAnotherThreadsToggle, recorded_aba_premiseReadAfterAnotherThreadsToggle
+# stale read from a value that is meant to change. It went to FACT first; the evidence caps below
+# then took it to PROMPT, because "two threads saw different values in one round" is a thread
+# count with no lock or ordering behind it (CONTEXT_FREE). The pair still runs.
 SEMAPHORE = agent_semaphore_permitNeverReturned, agent_semaphore_permitReturnedInFinally
-BLOCKING_QUEUE = agent_blockingQueue_filledToCapacity, agent_blockingQueue_drainedAsItFilled
-SIMPLE_DATE_FORMAT = agent_simpleDateFormat_oneInstanceForEveryThread, agent_simpleDateFormat_oneInstancePerThread
 COUNTDOWN_LATCH = agent_countDownLatch_awaitTimedOut, agent_countDownLatch_awaitSawItsCount
 VOLATILE_ARRAY = recorded_volatileArray_elementsWrittenByEveryThread, recorded_volatileArray_confinedToOneThread
-DOUBLE_CHECKED_LOCKING = recorded_doubleCheckedLocking_withoutVolatile, recorded_doubleCheckedLocking_withVolatile
 SYNCHRONIZED_NON_FINAL = recorded_synchronized_onAReassignableLock, recorded_synchronized_onAFinalLock
-LAZY_INIT_RACE = recorded_lazyInit_initialisedMoreThanOnce, recorded_lazyInit_initialisedOnce
 THREAD_FACTORY = recorded_threadFactory_producedARawThread, recorded_threadFactory_producedAConfiguredThread
-BUSY_WAITING = recorded_spinLoop_ranWithoutYielding, recorded_spinLoop_yieldedOften
 SLEEP_IN_LOCK = agent_sleep_whileHoldingTheMonitor, agent_sleep_holdingNothing
-CALENDAR = agent_calendar_oneInstanceForEveryThread, agent_calendar_oneInstancePerThread
-STRING_BUILDER = agent_stringBuilder_oneInstanceForEveryThread, agent_stringBuilder_oneInstancePerThread
-NESTED_MONITOR_LOCKOUT = recorded_blockingCall_insideAMonitor, recorded_blockingCall_afterReleasingTheMonitor
-THREAD_LOCAL_CONTAMINATION = recorded_threadLocal_readAcrossATaskBoundary, recorded_threadLocal_clearedAtTheTaskBoundary
 SHARED_FORMATTER = agent_formatter_oneInstanceForEveryThread, agent_formatter_oneInstancePerThread
-PUBLIC_LOCK_EXPOSURE = recorded_lock_publishedThroughTheApi, recorded_lock_keptPrivate
-FORK_JOIN_TASK_BLOCKING = recorded_blockingCall_insideAForkJoinTask, recorded_blockingCall_afterLeavingTheForkJoinTask
-OPTIMISTIC_READ_VALIDATION = recorded_optimisticRead_usedWithoutValidating, recorded_optimisticRead_validatedBeforeUse
-CF_COMMON_POOL_BLOCKING = recorded_completableFuture_blockedOnItsOwnPool, recorded_completableFuture_blockedOnADedicatedPool
 SHARED_MATCHER = agent_matcher_oneInstanceForEveryThread, agent_matcher_oneInstancePerThread
 SHARED_DECIMAL_FORMAT = agent_decimalFormat_oneInstanceForEveryThread, agent_decimalFormat_oneInstancePerThread
 STATEFUL_LAMBDA = recorded_lambda_sharedAndMutatingItsCapture, recorded_lambda_confinedToItsOwnThread
-INTERRUPT_SWALLOWING = recorded_interruptedException_swallowed, recorded_interruptedException_flagRestored
-MDC_CONTEXT_LEAK = recorded_mdc_keyLeftBehindAtTaskEnd, recorded_mdc_contextClearedBeforeTaskEnd
 SYSTEM_PROPERTY_MUTATION = recorded_systemProperty_mutatedByEveryThread, recorded_systemProperty_mutatedOnAPrivateKey
 SHARED_XML_PARSER = recorded_xmlParser_sharedAcrossThreads, recorded_xmlParser_oneInstancePerThread
 SHARED_TIMEZONE = recorded_timeZone_mutatedByEveryThread, recorded_timeZone_oneInstancePerThread
 DAEMON_THREAD_HYGIENE = recorded_thread_leftNonDaemonAndAlive, recorded_thread_leftAsADaemon
 CONCURRENT_MAP_CHECK_THEN_ACT = recorded_concurrentReferenceHashMap_checkThenAct, recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys
 SHARED_DEFLATER = recorded_deflater_sharedAcrossThreads, recorded_deflater_oneInstancePerThread
-SPURIOUS_WAKEUP_HAZARD = recorded_wait_withoutALoop, recorded_wait_insideAConditionLoop
 TRY_LOCK_MISUSE = agent_tryLock_unlockedAfterFailing, agent_tryLock_unlockedOnlyWhenAcquired
-COMPLETABLE_FUTURE_BLOCKING_CALLBACK = recorded_blockingCall_insideACompletableFutureCallback, recorded_blockingCall_afterTheCallbackReturned
-GATHERER_CONCURRENCY_MISUSE = recorded_gatherer_parallelWithoutACombiner, recorded_gatherer_parallelWithACombiner
 SHARED_CHECKSUM = recorded_checksum_sharedAcrossThreads, recorded_checksum_oneInstancePerThread
 SHARED_KDF = recorded_kdf_sharedAcrossThreads, recorded_kdf_guardedByItsOwnMonitor
 LATCH_MISUSE = recorded_latch_countedDownPastItsCount, recorded_latch_countedDownExactly
-EXECUTOR_DEADLOCK = recorded_executor_taskWaitedOnItsSibling, recorded_executor_taskWaitedWithThreadsToSpare
-FUTURE_BLOCKING = recorded_future_blockedOnAFullPool, recorded_future_blockedWithThreadsToSpare
 SHARED_SPLITTABLE_RANDOM = recorded_splittableRandom_sharedAcrossThreads, recorded_splittableRandom_splitPerThread
 
 # --- Third wave, 2026-09-14: the first pairs promoted by reading rather than by the rule.
@@ -148,7 +124,6 @@ SHARED_CHARSET_CODER = recorded_charsetEncoder_sharedAcrossThreads, recorded_cha
 # getReadHoldCount, both exact current-thread queries), and counts recorded read holds otherwise.
 # Both corpus bodies take the real lock, and the silent half's write acquire really returns, so
 # the pair is decided by the JDK's own rule. LockUpgradeDeadlockAccuracyTest pins both directions.
-LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_readLock_releasedBeforeWriting
 
 # --- 2026-09-17: held on its model in the second reading (#571), promoted once the pair was re-read.
 #
@@ -203,3 +178,41 @@ CYCLIC_BARRIER = recorded_cyclicBarrier_awaitedWhileBroken, recorded_cyclicBarri
 # which is noted rather than reported (#657), and a predicate that is wrong about what the waiter
 # waits for, which the detector evaluates but cannot check.
 CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition_consumerIdleOnAnEmptyQueue
+
+# --- 2026-09-26: a pair is necessary, not sufficient.
+#
+# The detectors below left this file when DetectorTrust gained an evidence class per row, each
+# class with a cap on the tier. Every one of them had a pair that met the bar above, and every
+# pair still runs and still gates the corpus. What a pair cannot show is what separates its
+# halves. For most of these the finding is the body's own record call or a flag it passes, so
+# the firing half fires because it recorded the defect and the silent half is silent because it
+# did not: ASSERTED, capped at FACT. For the rest it is a thread count or a threshold on one of the
+# paths that make a finding: CONTEXT_FREE or HEURISTIC, capped at PROMPT. Each line is kept here
+# with the class that capped it, so a detector whose model changes can be re-registered from it.
+#
+#   CONCURRENT_MAP_COMPUTE_RECURSION = recorded_caffeineAsMap_recursiveMerge, recorded_caffeineAsMap_selfContainedMerge    [ASSERTED]
+#   SYNCHRONIZED_COLLECTION_ITERATION = recorded_synchronizedCollection_iteratedWithoutLock, recorded_synchronizedCollection_iteratedHoldingLock    [ASSERTED]
+#   MUTABLE_MAP_KEY = recorded_mutableIntKey_mutatedAfterInsertion, recorded_mutableIntKey_neverMutated    [ASSERTED]
+#   CONCURRENT_MODIFICATIONS = recorded_cursorableLinkedList_concurrentAdd, recorded_cursorableLinkedList_mutatedUnderItsOwnMonitor    [ASSERTED]
+#   ABA_PROBLEM = recorded_aba_premiseReadBeforeAnotherThreadsToggle, recorded_aba_premiseReadAfterAnotherThreadsToggle    [ASSERTED]
+#   BLOCKING_QUEUE = agent_blockingQueue_filledToCapacity, agent_blockingQueue_drainedAsItFilled    [HEURISTIC]
+#   SIMPLE_DATE_FORMAT = agent_simpleDateFormat_oneInstanceForEveryThread, agent_simpleDateFormat_oneInstancePerThread    [CONTEXT_FREE]
+#   DOUBLE_CHECKED_LOCKING = recorded_doubleCheckedLocking_withoutVolatile, recorded_doubleCheckedLocking_withVolatile    [ASSERTED]
+#   LAZY_INIT_RACE = recorded_lazyInit_initialisedMoreThanOnce, recorded_lazyInit_initialisedOnce    [CONTEXT_FREE]
+#   BUSY_WAITING = recorded_spinLoop_ranWithoutYielding, recorded_spinLoop_yieldedOften    [HEURISTIC]
+#   CALENDAR = agent_calendar_oneInstanceForEveryThread, agent_calendar_oneInstancePerThread    [ASSERTED]
+#   STRING_BUILDER = agent_stringBuilder_oneInstanceForEveryThread, agent_stringBuilder_oneInstancePerThread    [CONTEXT_FREE]
+#   NESTED_MONITOR_LOCKOUT = recorded_blockingCall_insideAMonitor, recorded_blockingCall_afterReleasingTheMonitor    [ASSERTED]
+#   THREAD_LOCAL_CONTAMINATION = recorded_threadLocal_readAcrossATaskBoundary, recorded_threadLocal_clearedAtTheTaskBoundary    [ASSERTED]
+#   PUBLIC_LOCK_EXPOSURE = recorded_lock_publishedThroughTheApi, recorded_lock_keptPrivate    [ASSERTED]
+#   FORK_JOIN_TASK_BLOCKING = recorded_blockingCall_insideAForkJoinTask, recorded_blockingCall_afterLeavingTheForkJoinTask    [ASSERTED]
+#   OPTIMISTIC_READ_VALIDATION = recorded_optimisticRead_usedWithoutValidating, recorded_optimisticRead_validatedBeforeUse    [ASSERTED]
+#   CF_COMMON_POOL_BLOCKING = recorded_completableFuture_blockedOnItsOwnPool, recorded_completableFuture_blockedOnADedicatedPool    [ASSERTED]
+#   INTERRUPT_SWALLOWING = recorded_interruptedException_swallowed, recorded_interruptedException_flagRestored    [ASSERTED]
+#   MDC_CONTEXT_LEAK = recorded_mdc_keyLeftBehindAtTaskEnd, recorded_mdc_contextClearedBeforeTaskEnd    [ASSERTED]
+#   SPURIOUS_WAKEUP_HAZARD = recorded_wait_withoutALoop, recorded_wait_insideAConditionLoop    [ASSERTED]
+#   COMPLETABLE_FUTURE_BLOCKING_CALLBACK = recorded_blockingCall_insideACompletableFutureCallback, recorded_blockingCall_afterTheCallbackReturned    [ASSERTED]
+#   GATHERER_CONCURRENCY_MISUSE = recorded_gatherer_parallelWithoutACombiner, recorded_gatherer_parallelWithACombiner    [CONTEXT_FREE]
+#   EXECUTOR_DEADLOCK = recorded_executor_taskWaitedOnItsSibling, recorded_executor_taskWaitedWithThreadsToSpare    [ASSERTED]
+#   FUTURE_BLOCKING = recorded_future_blockedOnAFullPool, recorded_future_blockedWithThreadsToSpare    [ASSERTED]
+#   LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_readLock_releasedBeforeWriting    [ASSERTED]

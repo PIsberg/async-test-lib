@@ -18,6 +18,15 @@ of it. The subject counts, the exposure table and the gate description below are
 run that produced them, and the four-platform comparison is refilled from the `Corpus Eval` jobs on
 JDK 21, 25 and 26 that ran against the change._
 
+_Revised 2026-09-26 for the evidence caps. A pair still has to separate the bug from its twin, and
+the detector now also has to decide from something the test did not tell it: the JVM's own state,
+events the agent wove, or synchronization it can see. A detector whose finding is the body's own
+record call caps at FACT, one decided by a thread count or a threshold at PROMPT, and the
+corpus-backed VERDICT lines went from 59 to 33. The other 26 pairs still run and still gate the
+corpus, and `verdict-evidence-corpus` keeps each with the class that capped it. The per-subject
+tables below are copies of the runs that produced them, so the tiers they print are the tiers of
+that day._
+
 The [detector-accuracy eval](detector-accuracy-eval.md) measures 20 of the 146 detectors against
 twins written for the test. It answers "does the analyzer's model hold", and it cannot answer the
 question an evaluating team asks first: on code neither the library nor the test author wrote, does

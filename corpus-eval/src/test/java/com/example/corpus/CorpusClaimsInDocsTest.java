@@ -89,6 +89,11 @@ class CorpusClaimsInDocsTest {
                 "DetectorCoverage pairs " + paired + " detectors");
         check(stale, README, "the other " + refused + " carry a written reason",
                 "DetectorCoverage refuses " + refused + " detectors");
+        // The one corpus number in the README that nothing read: the evidence caps took the file
+        // from 59 lines to 33 in one change, and this sentence would have kept saying 59.
+        long verdicts = corpusBackedVerdicts();
+        check(stale, README, verdicts + " of those pairs are what let their detectors",
+                "verdict-evidence-corpus names " + verdicts + " corpus-backed VERDICT detectors");
         for (Path document : List.of(README, EVAL)) {
             check(stale, document, reached + " of the " + agentFed + " agent-fed detectors",
                     "LibraryReach measures " + reached + " of " + agentFed

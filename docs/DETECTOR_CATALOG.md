@@ -58,8 +58,8 @@ check something".
 
 | Tier | What a finding means | Use it to |
 |---|---|---|
-| **VERDICT** | The detector distinguishes broken code from the correctly synchronized version of that same code. Silence is informative too. | Fail a build |
-| **FACT** | The report states something observed, not inferred. The claim is true; whether it is a bug in your design is your call. | Fail a build once you agree the pattern is wrong for you |
+| **VERDICT** | The detector distinguishes broken code from the correctly synchronized version of that same code, deciding from the JVM's own state or from synchronization it can see. Silence is informative too. | Fail a build |
+| **FACT** | The report states something observed or recorded, not inferred. The claim is true of what was seen; whether it is a bug in your design is your call. | Fail a build once you agree the pattern is wrong for you |
 | **PROMPT** | The detector saw a pattern it cannot fully model, most often a shared object whose lock it has no way to see. Correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
 | **ADVISORY** | A performance or hygiene note, not a correctness claim. | Read it, gate on nothing |
 
@@ -67,8 +67,9 @@ check something".
 prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute, and
 `@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
 `DetectorTrustCoverageTest` fails the build if a detector is unclassified, if a row names a
-detector class the factories do not construct, or if anything reaches VERDICT without naming
-both-directions evidence that resolves. This section is the narrative; the table in the code is the
+detector class the factories do not construct, if anything reaches VERDICT without naming
+both-directions evidence that resolves, or if a tier is above the cap of the detector's evidence
+class. This section is the narrative; the table in the code is the
 authority, and the two cannot drift silently.
 
 This is measured rather than asserted. Two evals run each covered detector against a buggy variant
@@ -83,13 +84,14 @@ still fire when the two threads take *different* locks, which is a race no matte
 are held. The twins that do fire on correct code share one cause - the guard is a lock nothing
 told the library about.
 
-**VERDICT in the code, each with both directions measured, from two sources.** Ten are backed by
+**VERDICT in the code, each with both directions measured, from two sources.** Four are backed by
 tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `LOCK_ORDER`,
-`ATOMIC_NON_ATOMIC_UPDATE`, `LOCK_LEAKS`, `COMPLETABLE_FUTURE_EXCEPTIONS`, `RESOURCE_LEAKS`,
-`INTERRUPT_MISHANDLING`, `UNCAUGHT_EXCEPTION_HANDLER`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` and
-`THREAD_LEAKS`. Nine of those ten are in the `ESSENTIALS` preset, which is the one to gate on.
+`ATOMIC_NON_ATOMIC_UPDATE` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS`. Six more had such tests and
+are no longer VERDICT, for the reason under "A pair is necessary, not sufficient" below. Only `DEADLOCKS` and
+`COMPLETABLE_FUTURE_COMPLETION_LEAKS` of the four are in the `ESSENTIALS` preset, so a
+`minTrust = VERDICT` gate on that preset now fails on those two alone.
 
-Fifty-five more are backed by the corpus eval's pair lanes, where the pair is two uses of an
+The rest are backed by the corpus eval's pair lanes, where the pair is two uses of an
 unmodified third-party class rather than a twin written here. Eleven were registered in the first
 wave; forty-four followed on 2026-09-07, when it turned out they had been measured all along. The
 promotion channel and its bar were built when the recording lane held twelve pairs; the lane grew
@@ -100,14 +102,60 @@ green every night, and a build gated on `minTrust = VERDICT` ignored every one o
 
 `EveryEligiblePairIsPromotedOrExplainedTest` in the corpus module now derives eligibility from the
 rows rather than from a list, and fails until a qualifying pair is either registered or explained,
-so the backlog cannot rebuild. A pair qualifies when the detector is at PROMPT, both halves name
-the same class, and - in the recording lane - both reach the detector through the same
+so the backlog cannot rebuild. A pair qualifies when the detector is at PROMPT, its evidence class
+can carry VERDICT, both halves name the same class, and - in the recording lane - both reach the
+detector through the same
 `record*`/`register*` methods, so what separates them is the state those calls carry and nothing
 else. Agent-lane bodies make no such calls, the woven call sites being the input, and
 `AgentRowPremise` holds them to the same property instead.
 [`META-INF/async-test/verdict-evidence-corpus`](../async-test-lib/src/main/resources/META-INF/async-test/verdict-evidence-corpus)
 names each pair and both modules check it, which is what keeps the tier from outliving the
 measurement.
+
+**A pair is necessary, not sufficient.** A detector whose finding is the test's own `record*`
+call fires on the body that makes the call and stays silent on the one that does not, so it meets
+the both-directions rule by construction; so does one that counts threads or compares a number
+with a threshold, given a pair on the right side of it. `ExecutorDeadlockDetector` was a CRITICAL
+VERDICT that way while its finding was a lifetime counter of recorded waits. Since 2026-09-26
+every row in `DetectorTrust` also names what its detector decides from, read from its record path
+and `analyze()`, and the class caps the tier. `DetectorTrustCoverageTest` refuses a row above its
+cap, and the report path lowers a graded finding above its detector's cap before the gate reads it.
+
+| Evidence | The detector decides from | Highest tier |
+|---|---|---|
+| `OBSERVED` | the real JVM object or thread (it asks the lock, barrier, queue or thread its state), or events the agent wove into the bytecode | VERDICT |
+| `CONTEXTUAL` | recorded accesses, after consulting synchronization it can see: the per-round lockset, declared locks, the invocation round, a happens-before or hand-off edge | VERDICT |
+| `ASSERTED` | the recorded call itself: a call named after the defect, a flag argument, or arithmetic over declared events | FACT |
+| `CONTEXT_FREE` | recorded accesses judged by "more than one thread touched it" | PROMPT |
+| `HEURISTIC` | a timing threshold, a ratio or a count | PROMPT |
+
+A detector that decides differently on different paths takes the class of its weakest path,
+because its tier applies to every finding it makes. An agent-fed detector is classified by its
+woven feed, which delivers the same events its record methods take. The caps moved these rows:
+
+- **VERDICT to FACT, `ASSERTED`:** `ABA_PROBLEM`, `CONCURRENT_MODIFICATIONS`, `RESOURCE_LEAKS`,
+  `DOUBLE_CHECKED_LOCKING`, `INTERRUPT_MISHANDLING`, `CALENDAR` (its recorded-error path),
+  `MUTABLE_MAP_KEY`, `NESTED_MONITOR_LOCKOUT`, `THREAD_LOCAL_CONTAMINATION`,
+  `SYNCHRONIZED_COLLECTION_ITERATION`, `CONCURRENT_MAP_COMPUTE_RECURSION`, `PUBLIC_LOCK_EXPOSURE`,
+  `FORK_JOIN_TASK_BLOCKING`, `OPTIMISTIC_READ_VALIDATION`, `CF_COMMON_POOL_BLOCKING`,
+  `INTERRUPT_SWALLOWING`, `MDC_CONTEXT_LEAK`, `UNCAUGHT_EXCEPTION_HANDLER`,
+  `SPURIOUS_WAKEUP_HAZARD`, `LOCK_UPGRADE_DEADLOCK` (its recorded-hold fallback),
+  `COMPLETABLE_FUTURE_BLOCKING_CALLBACK`, `EXECUTOR_DEADLOCK` and `FUTURE_BLOCKING`.
+- **VERDICT to PROMPT, `HEURISTIC` or `CONTEXT_FREE`:** `COMPLETABLE_FUTURE_EXCEPTIONS` (a future
+  older than 100 ms with no handler), `LOCK_LEAKS` (a hold over 5 s), `BLOCKING_QUEUE` (90% of
+  capacity), `THREAD_LEAKS` (the opt-in auto mode's thread count), `BUSY_WAITING` (10,000
+  iterations), `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` (a recorded error while more than one
+  thread touched the instance), `LAZY_INIT_RACE` (two threads saw null) and
+  `GATHERER_CONCURRENCY_MISUSE` (two integrating threads).
+- **FACT to PROMPT:** `VISIBILITY` (two threads recorded different values in one round),
+  `THREAD_LOCAL_CACHE_DEGRADATION`, `SCOPE_JOINER_MISUSE`, `SCOPE_CONFIGURATION_MISUSE` and
+  `LAZY_COLLECTION_MISUSE`, each on a count threshold or a thread count.
+
+Several of those lost VERDICT to one secondary path beside a primary one that could carry it:
+`LOCK_LEAKS`, `BLOCKING_QUEUE`, `THREAD_LEAKS`, `CALENDAR`, `SIMPLE_DATE_FORMAT` and
+`STRING_BUILDER`. Grading those reports per finding, as the split-tier
+detectors below do, is how their primary finding gets VERDICT back. Their pairs still run and
+still gate the corpus; the evidence file keeps each removed line with the class that capped it.
 
 Two detectors the corpus measures in both directions stay `PROMPT`, and the reason in each case
 is the detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
@@ -133,10 +181,16 @@ their reports implement `GradedFindings` and carry a tier on each finding, so `m
 acts on the recorded cycle, the lost update or the observed mutation without being held back by
 the note beside it. Before that, a verdict-only gate stayed green on every one of them.
 
-The grades are deliberately conservative: a finding becomes VERDICT only where
-its claim is something recorded rather than inferred, such as an access after an arena closed, or
-a probe reporting the thread kind a task actually ran on. Everything else stays PROMPT, which is
-where it already was.
+The grades were meant to be conservative: a finding becomes VERDICT only where its claim is
+something observed rather than inferred, such as the JVM refusing a thread access to a segment, or
+a probe reporting the thread kind a task actually ran on. Four reports grade by severity rather
+than by path, and so grade a finding decided from the test's own record calls as VERDICT too: an
+access after a recorded close (`CONFINED_ARENA_THREAD_ESCAPE`, `SHARED_MEMORY_SEGMENT_RACE`), a
+cycle of recorded init requests (`STATIC_INIT_DEADLOCK`) and two recorded executions on one
+virtual thread (`VIRTUAL_THREAD_POOLING`). Their evidence class is therefore `ASSERTED`, and the
+report path clamps each of their grades to FACT before the gate or the banner reads it, the
+JVM-answered ones included, until the grade follows the path. `VAR_HANDLE_NON_ATOMIC_UPDATE`,
+`RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK` keep their VERDICT grades.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,
@@ -177,12 +231,13 @@ queue or a swap out of an atomic slot, woven by the agent with `collections=true
 pool that checks an instance out to one thread at a time is not reported.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 69 VERDICT, 59 PROMPT, 11 FACT and 7
-ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
-detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
-statements about the kind of claim a finding makes rather than about missing evidence - a FACT
-report says something was observed and leaves the judgement to the reader - so neither is a
-weaker VERDICT and a pair does not promote them.
+tier is one a reader has to rank alone. The split is 37 VERDICT, 73 PROMPT, 29 FACT and 7
+ADVISORY. PROMPT is the honest default: it says nobody has measured that detector's
+silent-on-correct-code direction, or that what it decides from is a thread count or a threshold,
+not that the detector is wrong. FACT and ADVISORY are statements about the kind of claim a finding
+makes rather than about missing evidence - a FACT report says something was observed or recorded
+and leaves the judgement to the reader - so neither is a weaker VERDICT and a pair does not promote
+them.
 
 **Practical consequence.** Gate on the tier, not on severity alone: `failOn = HIGH` with
 `minTrust = TrustTier.VERDICT` fails only on measured findings, while everything else still prints

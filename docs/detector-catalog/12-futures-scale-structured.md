@@ -150,7 +150,7 @@ detectors cannot see because they were written when the thread count was the poo
 
 ### 142. ThreadLocal Cache Degradation
 * **Severity**: `MEDIUM`
-* **Trust tier**: **fact** — distinct instances counted by identity; a shared value, a pooled helper and platform-only usage are all silent.
+* **Trust tier**: **prompt** — distinct instances are counted by identity, and a shared value, a pooled helper and platform-only usage are all silent, but the finding is a threshold of four instances, so its evidence class is `HEURISTIC`.
 * **Description**: Detects a `ThreadLocal` that was a cache under a pool and became an allocator under virtual threads. `ThreadLocal<SimpleDateFormat>` is the standard answer to a helper that is not thread-safe, and on a pool it is a good one: eight workers means eight formatters for the life of the process, bounded by the pool, which is why nobody counts them. A thread per task means an instance per task, retained for that thread's life. Nothing fails — the object is still confined to one thread — so the code reads exactly as it did when it was a cache. Distinct from `VIRTUAL_THREAD_CONTEXT_LEAKS`, which counts distinct ThreadLocal *keys* per thread; here there is one key and the question is how many *instances* it produced.
 * **Buggy Code**:
   ```java
@@ -181,7 +181,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 
 ### 143. Scope Joiner Misuse
 * **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` by finding
-* **Trust tier**: **fact** — every finding is a recorded count: scopes bound, threads overlapping in `onComplete`, calls seen off the owner thread.
+* **Trust tier**: **prompt** — every finding is a recorded count: scopes bound, threads overlapping in `onComplete`, calls seen off the owner thread. The overlapping `onComplete` finding counts writer threads with no lock context, so a joiner guarded by its own lock draws it too: `CONTEXT_FREE`.
 * **Description**: Detects misuse of the `StructuredTaskScope.Joiner` contract. A joiner is called from two directions at once: `onComplete` runs on whichever subtask thread finished, concurrently with its peers, while `result()` and the JDK 26 `onTimeout()` run on the owner. A joiner accumulating into a plain `ArrayList` is a data race no amount of correct scope usage removes. JEP 525's `onTimeout()` makes it worse by design — returning a partial result is now the recommended pattern, so an accumulator that used to be discarded on timeout is now read while cancelled subtasks are still writing to it. Also flags a joiner reused across scopes (it carries the previous run's state), and forking after `onComplete` asked for the short-circuit.
 * **Buggy Code**:
   ```java
@@ -210,7 +210,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 
 ### 144. Scope Configuration Misuse
 * **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` by finding
-* **Trust tier**: **fact** — requested settings are compared against effective ones, and scope lifetimes are ordered by a sequence counter rather than the clock.
+* **Trust tier**: **prompt** — requested settings are compared against effective ones, and scope lifetimes are ordered by a sequence counter rather than the clock, but the unbounded fan-out finding is a threshold of 16 forks, so its evidence class is `HEURISTIC`.
 * **Description**: Detects misuse of the `UnaryOperator<Configuration>` lambda JEP 525 introduced in place of the scope constructors. `Configuration` is immutable and every `withX` returns a new instance, so a lambda that does not hand back the value it derived from its own parameter applies nothing — the scope silently has no deadline, and one hung subtask hangs the test forever. Also flags a non-positive timeout (the timeout path becomes the only path), a wide fan-out with no deadline at all, a scope whose every `join()` expired, one `ThreadFactory` configured on scopes that are alive at the same time, and duplicate `withName` values among live scopes.
 * **Buggy Code**:
   ```java
@@ -264,7 +264,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 
 ### 146. Lazy Collection Misuse
 * **Severity**: `CRITICAL` / `HIGH` / `LOW` by finding
-* **Trust tier**: **fact** — computations, values and dependency edges are all recorded; the cycle finding is a walk over edges that were actually observed.
+* **Trust tier**: **prompt** — computations, values and dependency edges are all recorded, and the cycle finding is a walk over edges that were actually observed, but the convoy finding is a threshold of four waiters, so its evidence class is `HEURISTIC`.
 * **Description**: Detects misuse of `List.ofLazy(size, fn)` and `Map.ofLazy(keys, fn)`, the lazy collections JEP 526 added beside `LazyConstant`. Where `LAZY_CONSTANT_MISUSE` covers one holder with one supplier, a lazy collection is *n* independent at-most-once computations sharing one mapping function, each running on whichever thread asked for that element first. That makes possible a failure a single constant cannot have: a mapping function that reaches back into its own collection couples two elements, and if the dependency runs both ways, two threads each hold one element and wait for the other — a deadlock the JDK breaks with `IllegalStateException` when the cycle is on one thread, and does not break when it is spread across two. Also flags a mapping function that ran twice, disagreed with itself, or returned `null` (which JDK 26 rejects), plus warnings for nested computation and for many readers queueing on one slow element.
 * **Buggy Code**:
   ```java

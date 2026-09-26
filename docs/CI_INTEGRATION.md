@@ -223,9 +223,14 @@ Two independent questions, two settings. `failOn` asks how bad a finding would b
 
 A finding's trust tier is a property of the detector that raised it, published in `DetectorTrust`
 and measured rather than asserted: `VERDICT` requires a case that fires on the bug and a case that
-stays silent on its correctly synchronized twin, and a gate refuses the tier without both. Ten
-detectors carry it today, nine of them in the `ESSENTIALS` preset. Most of the rest are `PROMPT`, meaning the detector saw a pattern it
-cannot fully model, so a finding is a reason to look rather than proof of a bug.
+stays silent on its correctly synchronized twin, and a detector that decides from the JVM's own
+state or from synchronization it can see; a gate refuses the tier without both. A detector whose
+finding is the test's own record call is at most `FACT`, and one decided by a thread count or a
+threshold at most `PROMPT` ([DETECTOR_CATALOG.md](DETECTOR_CATALOG.md#trust-tiers) lists which).
+Only `DEADLOCKS` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` of the `ESSENTIALS` preset carry
+`VERDICT`, so on that preset the second stage below is where most of the gate's coverage comes
+from. `PROMPT` means the detector saw a pattern it cannot fully model, so a finding is a reason to
+look rather than proof of a bug.
 
 Findings below the floor are still printed and still reach every listener, the JSON and the SARIF
 output. They just cannot fail the build, which is the difference between a report a team reads and
