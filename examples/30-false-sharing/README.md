@@ -30,22 +30,20 @@ between cores instead of being held locally.
 
 ## How to Reproduce
 
-1. Open `PerformanceCountersTest`.
-2. Remove `@Disabled` from `testRecordRequest_concurrent_detectsFalseSharing`.
-3. Run the test.
+This example has no `@AsyncTest` demonstration to enable. `FalseSharingDetector` reports
+nothing unless `-Dasync-test.experimental.false-sharing=true` is set, because it estimates field
+offsets from declaration order and nominal sizes, and the JVM's real layout differs (field
+reordering, compressed references, `@Contended` padding). Its report is a prompt to measure, not
+evidence of false sharing.
 
-`FalseSharingDetector` will report something like:
+`PerformanceCountersTest` pins that gate in both directions instead:
 
-```
-POTENTIAL FALSE SHARING DETECTED:
+- `testFalseSharingDetector_silentByDefault`: two threads on each hot field, no finding.
+- `testFalseSharingDetector_reportsThePairOnceTheGateIsOpen`: the same recording with the property
+  set reports the adjacent-field pair.
 
-Fields in same cache line accessed by different threads:
-  - requestCount (accesses: 54) <-> errorCount (accesses: 51) [distance: 8 bytes]
-  - requestCount (accesses: 54) <-> latencySum (accesses: 49) [distance: 16 bytes]
-
-High-contention fields accessed by multiple threads:
-  - se.deversity.asynctest.example.service.PerformanceCounters.requestCount
-```
+Run it with `mvn test -Dtest=PerformanceCountersTest`. The class javadoc explains why the earlier
+demonstration was removed (#362).
 
 ## The Solution
 
