@@ -81,6 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand-recorded thread by the flag it had at `recordThread`, but `setDaemon` may run between the
   recording and `start()`, the order the detector's own usage example shows. A thread made daemon
   after recording was reported as non-daemon, and one made non-daemon after recording was missed.
+- **`ConstructorSafetyValidator` no longer mistakes a pooled thread's next construction for the
+  previous one (#778).** With no end recorded, it judged "still constructing" by any constructor of
+  the class on the constructing thread's stack, so a pooled thread building a second instance made
+  every read of the first, already published one an escape. A start recorded on that thread at
+  the same stack depth or shallower now closes the earlier construction; a construction nested
+  inside a running constructor starts deeper and closes nothing, so an escape after it still
+  reports. A read made before the later constructor records its start is still undecidable from
+  the stack and counts against the earlier instance.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through

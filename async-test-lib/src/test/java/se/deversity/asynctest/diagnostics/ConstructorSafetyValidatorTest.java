@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static se.deversity.asynctest.diagnostics.ConstructorSafetySubject.onAnotherThread;
@@ -115,6 +118,70 @@ class ConstructorSafetyValidatorTest {
         assertFalse(report.hasIssues(), "both reads came after the constructor returned: " + report);
         assertTrue(report.fieldsAccessedDuringConstruction.isEmpty(),
             report.fieldsAccessedDuringConstruction.toString());
+    }
+
+    @Test
+    void aPooledThreadInsideAnotherInstancesConstructorIsNotStillConstructingTheFirst()
+            throws Exception {
+        // #778. One pooled thread builds the first subject (no end recorded) and hands it out
+        // through a Future. The same thread then builds a second subject, and while it is inside
+        // that constructor another thread reads the first one. A constructor of the class is on
+        // the pooled thread's stack, but it is the second instance's, not the first one's.
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            ConstructorSafetySubject first = pool.submit(
+                    () -> new ConstructorSafetySubject(validator, self -> { }, false))
+                    .get(5, TimeUnit.SECONDS);
+            pool.submit(() -> new ConstructorSafetySubject(validator,
+                    self -> onAnotherThread(
+                            () -> validator.recordFieldAccess(first, "name", System.nanoTime())),
+                    false)).get(5, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report =
+                validator.validateConstructorSafety();
+        assertFalse(report.hasIssues(),
+            "the first constructor had returned before its object was published: " + report);
+    }
+
+    @Test
+    void aPooledThreadsSecondInstanceEscapingItsConstructorIsStillReported() throws Exception {
+        // The firing twin of the test above: the second instance leaks itself mid-construction.
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            pool.submit(() -> new ConstructorSafetySubject(validator, self -> { }, false))
+                    .get(5, TimeUnit.SECONDS);
+            pool.submit(() -> new ConstructorSafetySubject(validator,
+                    self -> onAnotherThread(
+                            () -> validator.recordFieldAccess(self, "name", System.nanoTime())),
+                    false)).get(5, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report =
+                validator.validateConstructorSafety();
+        assertTrue(report.hasIssues(), "the second instance escaped its constructor: " + report);
+        assertTrue(report.fieldsAccessedDuringConstruction.contains("ConstructorSafetySubject.name"),
+            report.fieldsAccessedDuringConstruction.toString());
+    }
+
+    @Test
+    void anEscapeAfterANestedConstructionOfTheSameClassIsStillReported() {
+        // A constructor that builds another instance of its own class before leaking `this`: the
+        // nested construction starts deeper on the same thread, so the outer one is still running.
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        new ConstructorSafetySubject(validator, self -> {
+            new ConstructorSafetySubject(validator, inner -> { }, false);
+            onAnotherThread(() -> validator.recordFieldAccess(self, "name", System.nanoTime()));
+        }, false);
+
+        assertTrue(validator.validateConstructorSafety().hasIssues(),
+            "the outer constructor was still on the stack when its object was read");
     }
 
     @Test
