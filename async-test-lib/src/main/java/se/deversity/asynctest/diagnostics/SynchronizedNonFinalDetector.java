@@ -2,6 +2,8 @@ package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +34,12 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>The instance matters. Recorded without it, a slot is only a class and a field name, and a
  * reassigned field looks exactly like several instances each holding their own final lock, which
- * is correct code: a holder per thread or per invocation does it every time. Those recordings
- * are listed in the report text as undecided and are not findings; pass the owner to
+ * is correct code: a holder per thread or per invocation does it every time. The field's own
+ * declaration settles two cases without the owner: a {@code final} field never changes, so
+ * several monitors are several instances and nothing is reported, and a {@code static} field has
+ * one value per class, so several monitors are a reassignment and are reported. The rest, a
+ * non-final instance field or a {@code fieldId} that names no declared field, are listed in the
+ * report text as undecided and are not findings; pass the owner to
  * {@link #recordLockObject(Object, String, Class, Object)} to have them decided.
  *
  * <p>Usage:
@@ -89,12 +95,18 @@ public class SynchronizedNonFinalDetector {
      *
      * <p>Call this immediately before each {@code synchronized (lockObject)} block.
      *
-     * <p>Without the owner a monitor that changes is undecidable, so it is listed as a note and
-     * never reported; prefer {@link #recordLockObject(Object, String, Class, Object)}.
+     * <p>Without the owner, a monitor that changes is decided from the field {@code fieldId}
+     * names on {@code ownerClass}: a {@code static} non-final field is reported, a {@code final}
+     * one is not. A non-final instance field is undecidable, since a reassigned field and several
+     * instances each with their own lock record the same thing, so it is listed as a note naming
+     * the call that decides it and is never reported. For an instance field, use
+     * {@link #recordLockObject(Object, String, Class, Object)}.
      *
      * @param lockObject the object used as the monitor
-     * @param fieldId    a stable identifier for the field, e.g. {@code "MyService.lock"}
-     * @param ownerClass the class that declares the field (used in reports)
+     * @param fieldId    the field's name, optionally qualified, e.g. {@code "lock"} or
+     *                   {@code "MyService.lock"}
+     * @param ownerClass the class that declares the field (used in reports, and to read the
+     *                   field's declaration)
      */
     public void recordLockObject(Object lockObject, String fieldId, Class<?> ownerClass) {
         recordLockObject(lockObject, fieldId, ownerClass, null);
@@ -139,29 +151,77 @@ public class SynchronizedNonFinalDetector {
     public SynchronizedNonFinalReport analyze() {
         SynchronizedNonFinalReport report = new SynchronizedNonFinalReport();
 
-        for (LockSlot slot : slots.values()) {
-            if (slot.identityHashes.size() <= 1) {
+        for (Map.Entry<Object, LockSlot> entry : slots.entrySet()) {
+            LockSlot slot = entry.getValue();
+            int monitors = slot.identityHashes.size();
+            if (monitors <= 1) {
                 continue;
             }
             if (slot.ownerKnown) {
                 report.violations.add(String.format(
                         "%s: one instance synchronized on %d different objects — lock reference is "
                             + "NOT FINAL, mutual exclusion is broken!",
-                        slot.fieldId, slot.identityHashes.size()));
-            } else {
-                // Not a finding. Without the owner a reassigned field and N instances each with
-                // their own final lock record the same thing, and one of those is correct code.
-                report.unattributed.add(String.format(
-                        "%s: synchronized on %d different objects. Either the field was reassigned, "
-                            + "in which case mutual exclusion is broken, or each of %d instances "
-                            + "has its own final lock, which is correct. This recording did not say "
-                            + "which instance each monitor belonged to; pass the owner to "
-                            + "recordLockObject to have that decided here.",
-                        slot.fieldId, slot.identityHashes.size(), slot.identityHashes.size()));
+                        slot.fieldId, monitors));
+                continue;
             }
+            // No owner. The field's declaration can still decide it (#768): a final field never
+            // changes, so several monitors are several instances, and a static field has one
+            // value per class, so several monitors are a reassignment.
+            ClassSlot classSlot = (ClassSlot) entry.getKey();
+            Field field = declaredField(classSlot.ownerClass(), classSlot.fieldId());
+            if (field != null && Modifier.isFinal(field.getModifiers())) {
+                continue;
+            }
+            if (field != null && Modifier.isStatic(field.getModifiers())) {
+                report.violations.add(String.format(
+                        "%s: a static field, one value per class, synchronized on %d different "
+                            + "objects — lock reference is NOT FINAL, mutual exclusion is broken!",
+                        slot.fieldId, monitors));
+                continue;
+            }
+            // Not a finding. Without the owner a reassigned instance field and N instances each
+            // with their own lock record the same thing, and one of those is correct code.
+            report.unattributed.add(undecided(slot.fieldId, classSlot, field != null, monitors));
         }
 
         return report;
+    }
+
+    /**
+     * The field {@code fieldId} names on {@code type} or a superclass, or {@code null} when none
+     * is declared or it cannot be looked up. A qualified id such as {@code "MyService.lock"} names
+     * its last segment, since a field name cannot contain a dot.
+     */
+    private static @Nullable Field declaredField(@Nullable Class<?> type, String fieldId) {
+        String name = fieldId.substring(fieldId.lastIndexOf('.') + 1);
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            try {
+                for (Field field : c.getDeclaredFields()) {
+                    if (field.getName().equals(name)) {
+                        return field;
+                    }
+                }
+            } catch (SecurityException | LinkageError unreadable) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static String undecided(String slotId, ClassSlot slot, boolean nonFinalInstanceField,
+                                    int monitors) {
+        String what = nonFinalInstanceField
+                ? slotId + " is a non-final instance field, so either one instance reassigned it"
+                : "Either the field was reassigned";
+        Class<?> ownerClass = slot.ownerClass();
+        String call = String.format("recordLockObject(lock, \"%s\", %s, this)", slot.fieldId(),
+                ownerClass != null ? ownerClass.getSimpleName() + ".class" : "ownerClass");
+        return String.format(
+                "%s: synchronized on %d different objects. %s, in which case mutual exclusion is "
+                    + "broken, or each of %d instances has its own lock, which is correct. This "
+                    + "recording did not say which instance each monitor belonged to; pass the "
+                    + "instance that declares the field to have that decided here: %s.",
+                slotId, monitors, what, monitors, call);
     }
 
     // ---- Report ------------------------------------------------------------

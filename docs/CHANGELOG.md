@@ -97,6 +97,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   may overlap the unlocked ones and brings them back. Pinned both ways in
   `SharedMessageDigestDetectorTest`: a guarded use reached through an unseen edge, and an unguarded
   use after the hand-off, still fire.
+- **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
+  (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
+  only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`
+  names on `ownerClass` now decides it: a static non-final field is reported, since a class has
+  one value for it, and a final field is not, since its monitors can only be several instances. A
+  non-final instance field stays a note, which now names the four-argument call that decides it.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
@@ -131,7 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common
   to every recorded access. The map detector keys sites by map identity and key equality instead of
   strings, LazyInitRace keys a field by its owner, and SynchronizedNonFinal reports a changing
-  monitor only when the owner is recorded.
+  monitor only when the owner is recorded or the field's declaration decides it (#768).
 - **`StatefulLambdaDetector` judges the lock per captured object** (#769). The lockset was kept per
   lambda, so a lambda mutating two captures, each under its own lock, intersected the two locks to
   nothing and was reported. A capture mutated with no lock, or under a different lock on each
