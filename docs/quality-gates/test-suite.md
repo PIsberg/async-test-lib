@@ -41,6 +41,12 @@ containment. Verified by breaking a detector on purpose: the same `IllegalStateE
 it on. `DetectorSweepResilienceTest` pins both halves — the containment (with the flag cleared for
 the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFailurePolicy`.
 
+The flag also fails a built-in report that has issues and an empty `structuredViolations` list,
+checked once per report in `DetectorRegistry.ifIssue` (#802). Without it the `failOn` gate reads
+that finding's severity from its text, and only a hand-written driver in
+`StructuredViolationCoverageTest` could notice. With the flag off the check returns before looking
+at the report and writes nothing. `StructuredFindingsStrictModeTest` pins both halves.
+
 The same switch is on wherever the detectors are measured from outside this module: every
 corpus-eval lane, `consumer-fixture` and `consumer-fixture-langs` (Maven and Gradle), the examples
 Gradle build, and the `mvn -f examples/pom.xml` commands in `e2e-tests.yml` (the example poms do

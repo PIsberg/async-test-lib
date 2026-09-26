@@ -139,6 +139,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an atomicity violation. No `failOn` outcome changes, and the test pins that agreement.
   `AtomicityValidator`'s `DetectorDefaultSeverity` entry is removed as redundant; it declared the
   same `HIGH` the fallback gives.
+- **A structured report with issues and an empty list fails this build wherever it fires (#802).**
+  `StructuredViolationCoverageTest` needs one hand-written driver per finding site, so a text-only
+  site added later to an already-structured detector passed it. `DetectorRegistry.ifIssue` now
+  checks each report with issues once: under `async-test.strict-detectors`, which this repository's
+  builds set, a report type that keeps a `structuredViolations` list and returns it empty throws an
+  `AssertionError` naming the detector. Every test, corpus lane and example that makes a detector
+  fire is a driver. Report types without the field are skipped. Consumers see no change: with the
+  flag off the check returns before looking at the report and writes nothing. In this module's
+  suite 86 built-in reports with issues pass through the check, 49 of them structured, and none
+  came back with an empty list.
 - **`ABAProblemDetector` keeps every compare-and-set it records (#763).** Attempts were keyed by
   their identity hash, so a later attempt sharing one replaced an earlier one, and a stale
   compare-and-set already judged an ABA dropped out of the report: of 300,000, two runs reported

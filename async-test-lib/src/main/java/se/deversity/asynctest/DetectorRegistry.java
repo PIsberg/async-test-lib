@@ -1223,6 +1223,9 @@ final class DetectorRegistry {
         try {
             R report = analyze.apply(detector);
             if (Boolean.TRUE.equals(hasIssues.apply(report))) {
+                se.deversity.asynctest.diagnostics.IssueSeverity structured =
+                        se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
+                                .orElse(null);
                 // A grade above the detector's evidence cap is lowered here, the one place grades
                 // enter the sink, so the failOn gate, the banner and findingGrades() all read the
                 // tier the evidence can carry rather than the one the report named.
@@ -1230,8 +1233,12 @@ final class DetectorRegistry {
                         report instanceof se.deversity.asynctest.diagnostics.GradedFindings graded
                                 ? se.deversity.asynctest.diagnostics.DetectorTrust.clampToCap(name, graded.grades())
                                 : null,
-                        se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
-                                .orElse(null));
+                        structured);
+                if (structured == null) {
+                    // One check per report, never per access: a structured report whose list
+                    // stayed empty on this path fails this build's tests, and nothing else (#802).
+                    DetectorFailurePolicy.structuredFindingsMissing(name, report);
+                }
             } else if (notes != null) {
                 out.note(name, notes.apply(report));
             }

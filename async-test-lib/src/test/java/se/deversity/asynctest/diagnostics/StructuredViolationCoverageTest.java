@@ -64,6 +64,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       fire fails the test rather than passing vacuously.</li>
  * </ul>
  *
+ * <p>The paths half needs a driver per finding site, and a site added later with none would pass it.
+ * {@code DetectorRegistry.ifIssue} backs it at run time: under strict mode it fails any report with
+ * issues and an empty list, so every test that fires a detector through the registry is a driver
+ * too ({@code StructuredFindingsStrictModeTest}, #802).
+ *
  * <p>The three detectors that gained structured findings in #774 are also held to the severity
  * their text alone resolved to ({@link #TEXT_AGREES}), so the change could not move what an
  * existing {@code failOn} gate fails on.
