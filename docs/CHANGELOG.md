@@ -123,6 +123,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`IssueDeduplicator` no longer prints line `-1` (#744).** `IssueGroup.formatDetailed` printed
   `(line -1)` and `formatBrief` printed `location:-1` for any event whose site was not captured;
   both now omit the line when it is unknown, as `RaceConditionDetector` already did.
+- **`Phase1DetectorSet.printReports` hands listeners the structured severity (#775).** It was the
+  last caller that let the listener registry read severity from the report text, so a report whose
+  structured findings said one severity and whose text marked another reached the JSON and SARIF
+  output with the text's, where the `failOn` gate and the runner's own listener calls use the
+  structured one. It now passes the same severity the runner does. None of the seven detectors in the set keeps structured findings yet,
+  so their output is unchanged today.
 
 - **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
   `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read

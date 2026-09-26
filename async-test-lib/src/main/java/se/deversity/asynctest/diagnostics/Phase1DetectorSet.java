@@ -149,10 +149,19 @@ public final class Phase1DetectorSet {
      * {@link se.deversity.asynctest.runner.ConcurrencyRunner}.
      */
     public void printReports() {
-        for (Map.Entry<String, String> e : collectReports().entrySet()) {
-            System.err.println(e.getValue());
-            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
-        }
+        analyzeReports().forEach(Phase1DetectorSet::printReport);
+    }
+
+    /**
+     * Prints one detector's report and hands it to the listeners with the severity its structured
+     * findings carry, the same one the runner passes for every other report, so the JSON and SARIF
+     * output cannot disagree with the {@code failOn} gate about what a finding was worth.
+     */
+    static void printReport(String detectorName, Object report) {
+        String text = "\n" + report;
+        System.err.println(text);
+        AsyncTestListenerRegistry.fireDetectorReport(detectorName, text,
+                DetectorDefaultSeverity.structuredIn(report).orElse(null));
     }
 
     /**
@@ -174,36 +183,47 @@ public final class Phase1DetectorSet {
      */
     public Map<String, String> collectReports() {
         Map<String, String> out = new LinkedHashMap<>();
+        analyzeReports().forEach((name, report) -> out.put(name, "\n" + report));
+        return out;
+    }
+
+    /**
+     * The report object of every enabled detector with issues, keyed and ordered as
+     * {@link #collectReports()}. Kept as objects so {@link #printReports()} can read the
+     * structured severity a report carries, which its text does not.
+     */
+    private Map<String, Object> analyzeReports() {
+        Map<String, Object> out = new LinkedHashMap<>();
         if (reportedByRegistry) {
             return out;
         }
         if (visibility != null) {
             VisibilityMonitor.VisibilityReport r = visibility.analyzeVisibility();
-            if (r.hasIssues()) out.put("VisibilityMonitor", "\n" + r);
+            if (r.hasIssues()) out.put("VisibilityMonitor", r);
         }
         if (livelock != null) {
             LivelockDetector.LivelockReport r = livelock.analyzeLivelocks();
-            if (r.hasIssues()) out.put("LivelockDetector", "\n" + r);
+            if (r.hasIssues()) out.put("LivelockDetector", r);
         }
         if (race != null) {
             RaceConditionDetector.RaceConditionReport r = race.analyzeRaceConditions();
-            if (r.hasIssues()) out.put("RaceConditionDetector", "\n" + r);
+            if (r.hasIssues()) out.put("RaceConditionDetector", r);
         }
         if (threadLocal != null) {
             ThreadLocalMonitor.ThreadLocalReport r = threadLocal.analyzeThreadLocalLeaks();
-            if (r.hasIssues()) out.put("ThreadLocalMonitor", "\n" + r);
+            if (r.hasIssues()) out.put("ThreadLocalMonitor", r);
         }
         if (busyWait != null) {
             BusyWaitDetector.BusyWaitReport r = busyWait.analyzeBusyWaiting();
-            if (r.hasIssues()) out.put("BusyWaitDetector", "\n" + r);
+            if (r.hasIssues()) out.put("BusyWaitDetector", r);
         }
         if (atomicity != null) {
             AtomicityValidator.AtomicityReport r = atomicity.analyzeAtomicity();
-            if (r.hasIssues()) out.put("AtomicityValidator", "\n" + r);
+            if (r.hasIssues()) out.put("AtomicityValidator", r);
         }
         if (interrupt != null) {
             InterruptMonitor.InterruptReport r = interrupt.analyzeInterruptHandling();
-            if (r.hasIssues()) out.put("InterruptMonitor", "\n" + r);
+            if (r.hasIssues()) out.put("InterruptMonitor", r);
         }
         return out;
     }
