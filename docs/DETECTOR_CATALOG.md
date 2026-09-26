@@ -122,6 +122,13 @@ VERDICT that way while its finding was a lifetime counter of recorded waits. Sin
 every row in `DetectorTrust` also names what its detector decides from, read from its record path
 and `analyze()`, and the class caps the tier. `DetectorTrustCoverageTest` refuses a row above its
 cap, and the report path lowers a graded finding above its detector's cap before the gate reads it.
+The class is declared by hand, so `DetectorEvidenceMatchesCodeTest` checks it against the
+detector's source: a `CONTEXTUAL` row whose detector reads no lockset, monitor probe or
+happens-before edge fails, and so does a row other than `CONTEXTUAL` or `OBSERVED` whose detector
+reads one, unless the test names the finding path that decides without it. It names these rows
+that way today, each with that path: `CALENDAR`, `CONCURRENT_MODIFICATIONS`,
+`ATOMICITY_VIOLATIONS`, `CACHE_CONCURRENCY`, `SIMPLE_DATE_FORMAT` and `STRING_BUILDER`. The check
+does not tell `OBSERVED`, `ASSERTED` and `HEURISTIC` apart.
 
 | Evidence | The detector decides from | Highest tier |
 |---|---|---|
@@ -161,9 +168,10 @@ still gate the corpus; the evidence file keeps each removed line with the class 
 
 One detector the corpus measures in both directions stays `PROMPT`, and the reason is the
 detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
-synchronizes itself, so given one class both halves of a pair get the same answer by construction,
-and it consults no lock at all: a `HashMap` correctly guarded by the caller's own lock draws the
-same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the second, held because
+synchronizes itself, so given one class both halves of a pair get the same answer by construction.
+Only its read/write finding consults a lock: its stampede finding counts the threads that wrote one
+key in a round, so a `HashMap` correctly guarded by the caller's own lock draws that finding as a
+raced one does. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the second, held because
 `recordCheckThenAct` is the body saying a check-then-act happened and the detector only counted
 threads on the `(map, key)` site. Since 2026-09-25 it also asks whether one lock covered every
 call and whether the happens-before model orders them, so the `synchronized` twin of the firing

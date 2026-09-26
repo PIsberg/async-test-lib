@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model does not see yet is a pinned row that flips visibly when fixed, as the `CompletableFuture`,
   executor submit/get, `Exchanger` and `AtomicReference` rows did (#741). The false positives fixed here were all found this
   way, by a throwaway probe; the lane keeps them from coming back.
+- **A detector's evidence class is checked against its code (#756).** `DetectorTrust.Evidence` is
+  declared by hand and caps the tier, so a detector that gained or lost a lockset kept a class it no
+  longer earned. `DetectorEvidenceMatchesCodeTest` reads each detector's source: a `CONTEXTUAL` row
+  whose detector reads no lockset, monitor probe or happens-before edge fails the build, and so does
+  a row other than `CONTEXTUAL` or `OBSERVED` whose detector reads one, unless the test names the
+  finding path that decides without it. On the current tree every row agrees; the six rows that read
+  a lockset on one path and are classified by a weaker one are named with that path. No tier moved.
 
 ### Changed
 

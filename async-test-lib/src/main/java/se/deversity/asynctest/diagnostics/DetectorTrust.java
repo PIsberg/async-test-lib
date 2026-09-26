@@ -183,6 +183,12 @@ public final class DetectorTrust {
      * cycle of recorded init requests as VERDICT, and virtual-thread pooling grades two recorded
      * executions on one thread as VERDICT. The class names that weakest VERDICT-grade path, so the
      * report path clamps all four to FACT until each grades by path.
+     *
+     * <p>The column is written by hand, and {@code DetectorEvidenceMatchesCodeTest} checks the part
+     * of it the code shows: a {@link Evidence#CONTEXTUAL} row whose detector reads no lockset,
+     * monitor probe or happens-before edge fails, and so does a row other than CONTEXTUAL or
+     * {@link Evidence#OBSERVED} whose detector reads one, unless that test names the finding path
+     * that decides without it (#756).
      */
     private static final List<Classified> TABLE = List.of(
             row(DetectorType.DEADLOCKS, "DeadlockDetector", "Deadlocks", TrustTier.VERDICT, Evidence.OBSERVED),
