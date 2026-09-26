@@ -227,7 +227,8 @@ or the agent is attached with `fields=true`, which weaves `MONITORENTER`/`MONITO
 up `synchronized` blocks in woven code. An undeclared lock in unwoven code stays invisible and
 still produces a finding, and so does inconsistent locking - two threads holding different locks
 have excluded nothing, which is a race however many locks were involved. Both the thread count and
-the lockset are taken within one invocation round and, inside it, per owner: a take out of a
+the lockset are taken within one invocation round, the count a finding prints is that round's
+rather than the run's, and inside the round the verdict is per owner: a take out of a
 queue or a swap out of an atomic slot, woven by the agent with `collections=true` or declared with
 `AsyncTestContext.ownershipTaken(instance)`, separates one owner's accesses from the next's, so a
 pool that checks an instance out to one thread at a time is not reported. Since 1.12.3 the round

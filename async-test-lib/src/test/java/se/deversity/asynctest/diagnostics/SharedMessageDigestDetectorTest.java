@@ -395,6 +395,26 @@ public class SharedMessageDigestDetectorTest {
     }
 
     @Test
+    void theReportCountsTheThreadsOfTheRoundThatRacedNotTheRun() throws Exception {
+        // #748: the verdict was per round, but "accessed from N threads" counted every thread of
+        // the run, and with a fresh thread per body execution that count grows with the rounds.
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        runWorkers(ctx, together(barrier, () -> use(md)), together(barrier, () -> use(md)));
+        for (int round = 0; round < 2; round++) {
+            ctx.markInvocationStart();
+            runWorkers(ctx, () -> use(md));
+        }
+
+        var report = detectorOf(ctx).analyze();
+        assertTrue(report.hasIssues(), "two threads used one digest in round one, unguarded");
+        assertTrue(report.violations.get(0).contains("accessed from 2 threads"),
+                "the count is round one's, not the four threads of the run: " + report.violations.get(0));
+    }
+
+    @Test
     void aDifferentLockInEachRoundIsNotInconsistentLocking() throws Exception {
         // Round one guards every access with one lock, round two with another. Within each round
         // the guarding is consistent, and nothing crosses the round boundary.

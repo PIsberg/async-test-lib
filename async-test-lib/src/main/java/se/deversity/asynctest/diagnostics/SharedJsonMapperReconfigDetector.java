@@ -8,7 +8,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -35,6 +34,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * happens after the instance has already been used, and only when that mutation either
  * comes from a thread that never used the instance, or the instance has already been used
  * from two or more distinct threads — the exact preconditions for a configuration race.
+ * "Already" means earlier in the same invocation round: the runner finishes one round's workers
+ * before it starts the next, so a use in an earlier round cannot be in flight during the
+ * mutation, and with virtual threads every round runs on fresh threads.
  *
  * <p>Synchronization awareness is partial. A use or a mutation recorded while the accessing
  * thread holds the mapper's own monitor - the {@code synchronized (mapper)} idiom - counts as
@@ -69,17 +71,24 @@ public final class SharedJsonMapperReconfigDetector {
     private static final class MutationRecord {
         final String description;
         final String threadName;
+        /** The users of the round the mutation was made in. */
+        final SelfGuard.RoundThreads.Round users;
 
-        MutationRecord(String description, String threadName) {
+        MutationRecord(String description, String threadName, SelfGuard.RoundThreads.Round users) {
             this.description = description;
             this.threadName = threadName;
+            this.users = users;
         }
     }
 
     private static final class State extends SelfGuard.TrackedInstance {
         final String className;
-        final Set<Long>   usingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> usingThreadNames = ConcurrentHashMap.newKeySet();
+        /**
+         * The using threads, per round. A use in an earlier round finished before this round
+         * began, so neither "used by two threads" nor "a thread that never used it" may count
+         * across a round boundary (#748).
+         */
+        final SelfGuard.RoundThreads users = new SelfGuard.RoundThreads();
         final List<MutationRecord> violatingMutations = new CopyOnWriteArrayList<>();
 
         State(String className) {
@@ -99,9 +108,7 @@ public final class SharedJsonMapperReconfigDetector {
         if (mapper == null) return;
         State s = stateFor(mapper);
         s.noteAccess(mapper);
-        Thread thread = Thread.currentThread();
-        s.usingThreadIds.add(thread.threadId());
-        s.usingThreadNames.add(thread.getName());
+        s.users.add(Thread.currentThread());
     }
 
     /**
@@ -113,7 +120,7 @@ public final class SharedJsonMapperReconfigDetector {
      * the correct "config-then-use" pattern and is never flagged. A mutation observed
      * after use has begun is only flagged when it either originates from a thread that
      * never used the instance, or the instance has already been used from two or more
-     * distinct threads.
+     * distinct threads. Both are judged within the calling thread's invocation round.
      *
      * @param mapper              the mapper/serializer instance under observation (null-safe)
      * @param mutationDescription descriptive label for reports (may be {@code null})
@@ -122,15 +129,18 @@ public final class SharedJsonMapperReconfigDetector {
         if (mapper == null) return;
         State s = stateFor(mapper);
         s.noteAccess(mapper);
-        if (s.usingThreadIds.isEmpty()) {
+        // Use "so far" means so far in this round: the runner finished every earlier round's
+        // workers before this one started, so nothing they did can be in flight now.
+        SelfGuard.RoundThreads.Round users = s.users.inCurrentRound();
+        if (users == null || users.size() == 0) {
             return;
         }
         Thread thread = Thread.currentThread();
-        boolean usedByMultipleThreads = s.usingThreadIds.size() >= 2;
-        boolean fromNonUsingThread = !s.usingThreadIds.contains(thread.threadId());
+        boolean usedByMultipleThreads = users.size() >= 2;
+        boolean fromNonUsingThread = !users.contains(thread.threadId());
         if (usedByMultipleThreads || fromNonUsingThread) {
             String desc = (mutationDescription != null) ? mutationDescription : "configuration change";
-            s.violatingMutations.add(new MutationRecord(desc, thread.getName()));
+            s.violatingMutations.add(new MutationRecord(desc, thread.getName(), users));
         }
     }
 
@@ -153,10 +163,15 @@ public final class SharedJsonMapperReconfigDetector {
             if (s.violatingMutations.isEmpty() || !s.sawUnguardedSharing()) continue;
             List<String> descriptions = new ArrayList<>();
             List<String> mutatingThreads = new ArrayList<>();
+            // The users printed are one round's: the busiest round a flagged mutation was made in.
+            SelfGuard.RoundThreads.Round users = s.violatingMutations.get(0).users;
             for (MutationRecord m : s.violatingMutations) {
                 descriptions.add(m.description);
                 if (!mutatingThreads.contains(m.threadName)) {
                     mutatingThreads.add(m.threadName);
+                }
+                if (m.users.size() > users.size()) {
+                    users = m.users;
                 }
             }
             String msg = String.format(
@@ -169,8 +184,8 @@ public final class SharedJsonMapperReconfigDetector {
                     s.className,
                     String.join(", ", descriptions),
                     String.join(", ", mutatingThreads),
-                    s.usingThreadIds.size(),
-                    String.join(", ", s.usingThreadNames));
+                    users.size(),
+                    String.join(", ", users.names()));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "SharedJsonMapperReconfig",
@@ -181,7 +196,7 @@ public final class SharedJsonMapperReconfigDetector {
                             "className", s.className,
                             "mutationCount", s.violatingMutations.size(),
                             "mutationDescriptions", List.copyOf(descriptions),
-                            "usingThreadCount", s.usingThreadIds.size()),
+                            "usingThreadCount", users.size()),
                     Instant.now()));
         }
         return r;

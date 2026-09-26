@@ -209,6 +209,17 @@ comes from a clock `AsyncTestContext` binds to each worker (`SelfGuard.Scope`); 
 driven with no context installed sees one round, the whole run, as before. The "one thread per
 round" row pins it for the whole roster.
 
+The verdict moved first; the thread sets a detector keeps beside it followed (#748). Reports kept
+printing "accessed from N threads" over every thread of the run, and three detectors kept a
+condition of their own over the run as well: `StringBuilderDetector`'s writers,
+`SharedTimeZoneDetector`'s mutators and `SharedJsonMapperReconfigDetector`'s users. A round that
+raced plus one writer in each of two other rounds read as two writers, and a mapper used by two
+threads in one round made a lone reconfiguration in a later round a race. Those sets are now kept
+per round (`SelfGuard.RoundThreads`): the extra condition must hold within one round, and a
+report counts and names the threads of the round the finding came from, or of the busiest round
+where no round is marked. Pinned in each detector's own test and in
+`SharedMessageDigestDetectorTest` for the family's printed count.
+
 Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
 `BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched
 it in one round and no lock covered the use, so it read as sharing. A take is the hand-off edge:

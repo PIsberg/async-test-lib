@@ -75,6 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now starts a new owner, so a `MessageDigest` pool is not reported, and a latch, `start` or `join`
   that orders two threads excuses them. `AtomicityValidator` and `AtomicNonAtomicUpdateDetector`
   judge their lockset per round too. Concurrent unguarded use still reports.
+- **Thread counts beside the round verdict are per round too (#748).** A report printed "accessed
+  from N threads" over every thread of the run, which with virtual threads grows with the number of
+  rounds; it now counts and names the round the finding came from. `StringBuilderDetector` needs
+  two writers in one round, not one writer in each of two rounds; `SharedTimeZoneDetector` names
+  the mutators of the round that raced; and `SharedJsonMapperReconfigDetector` judges "used by two
+  threads" and "a thread that never used it" within the round of the reconfiguration, so a mapper
+  reconfigured in a round where nothing else used it is not reported.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common

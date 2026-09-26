@@ -517,19 +517,142 @@ public final class SelfGuard {
     }
 
     /**
+     * The distinct threads a detector counts for its own condition or its report, kept one round
+     * at a time.
+     *
+     * <p>The family verdict is per round, and a thread count a detector keeps beside it has to be
+     * taken in the same frame. Kept across the run, two threads that each did their part in a
+     * different round, which never overlapped, satisfy "more than one thread" together, and the
+     * report prints a count that grows with the number of rounds: with virtual threads every body
+     * execution is a fresh thread (#748). Rounds come from the same {@link Scope} the verdict
+     * reads, so with none bound the whole run is one round, as before.
+     *
+     * <p>Lock-free, like the rest of the record path. The first thread of a later round replaces
+     * the current round by compare-and-set, which costs one {@link Round} per instance per round;
+     * a thread still recording from an older round joins the newer one, the direction that can
+     * only add to a count. Only the round in progress, the busiest round and the round a finding
+     * came from are kept, so memory does not grow with the rounds.
+     */
+    static final class RoundThreads {
+
+        /** One round's threads. Its sets stop growing once the round is over. */
+        static final class Round {
+
+            final int number;
+            private final Set<Long> ids = ConcurrentHashMap.newKeySet();
+            private final Set<String> names = ConcurrentHashMap.newKeySet();
+
+            Round(int number) {
+                this.number = number;
+            }
+
+            /** {@return how many distinct threads this round recorded} */
+            int size() {
+                return ids.size();
+            }
+
+            boolean contains(long threadId) {
+                return ids.contains(threadId);
+            }
+
+            /** {@return the live set of thread names, in the order a report has always listed them} */
+            Set<String> names() {
+                return names;
+            }
+        }
+
+        private final AtomicReference<@Nullable Round> current = new AtomicReference<>();
+        private final AtomicReference<@Nullable Round> busiest = new AtomicReference<>();
+        private final AtomicReference<@Nullable Round> finding = new AtomicReference<>();
+
+        /**
+         * Records {@code thread} in the calling thread's round.
+         *
+         * @param thread the thread the access is attributed to
+         * @return the round it was recorded in
+         */
+        Round add(Thread thread) {
+            Round round = roundFor(roundNow());
+            round.ids.add(thread.threadId());
+            round.names.add(thread.getName());
+            Round top = busiest.get();
+            while (top != round // NOPMD CompareObjectsWithEquals - one Round per round, by identity
+                    && (top == null || round.size() > top.size())) {
+                if (busiest.compareAndSet(top, round)) {
+                    break;
+                }
+                top = busiest.get();
+            }
+            return round;
+        }
+
+        /**
+         * {@return the calling thread's round, or {@code null} when no thread has been recorded in
+         * it yet}
+         */
+        @Nullable Round inCurrentRound() {
+            Round round = current.get();
+            return round != null && round.number >= roundNow() ? round : null;
+        }
+
+        /**
+         * Marks {@code round} as the one a finding came from; the first mark wins, so the report
+         * names the round that first raced.
+         *
+         * @param round the round to report
+         */
+        void markFinding(Round round) {
+            if (finding.get() == null) {
+                finding.compareAndSet(null, round);
+            }
+        }
+
+        /**
+         * {@return the round a report should count: the one marked by {@link #markFinding}, else
+         * the round that saw the most threads; {@code null} before any thread was recorded}
+         */
+        @Nullable Round reported() {
+            Round marked = finding.get();
+            return marked != null ? marked : busiest.get();
+        }
+
+        /** {@return how many threads {@link #reported()} saw, 0 before any was recorded} */
+        int reportedSize() {
+            Round round = reported();
+            return round == null ? 0 : round.size();
+        }
+
+        private Round roundFor(int number) {
+            Round round = current.get();
+            while (round == null || round.number < number) {
+                Round next = new Round(number);
+                if (current.compareAndSet(round, next)) {
+                    return next;
+                }
+                round = current.get();
+            }
+            return round;
+        }
+
+        private static int roundNow() {
+            Scope scope = Scope.current();
+            return scope == null ? 0 : scope.round();
+        }
+    }
+
+    /**
      * A tracked instance that also remembers which threads touched it, and owns the family's core
      * rule: a finding needs more than one thread <em>and</em> an access no lock covered, both
      * within one round (see {@link TrackedInstance#sawUnguardedSharing()}). The rule
      * was hand-written per detector in three spellings, and the lock-awareness rollout had to
      * visit every copy (#700).
      *
-     * <p>Two concurrent key sets, as each detector kept before, so allocation per tracked
-     * instance and the order names are reported in are unchanged.
+     * <p>The threads are kept per round ({@link RoundThreads}), and a report counts and names the
+     * threads of the round the finding came from, not every thread of the run (#748).
      */
     abstract static class ThreadTrackedInstance extends TrackedInstance {
 
-        private final Set<Long> threadIds = ConcurrentHashMap.newKeySet();
-        private final Set<String> threadNames = ConcurrentHashMap.newKeySet();
+        private final RoundThreads threads = new RoundThreads();
 
         /**
          * Records one access to {@code instance} by {@code thread}: the lock probe and the round
@@ -553,17 +676,29 @@ public final class SelfGuard {
          */
         final void noteAccess(@Nullable Object instance, boolean forWrite, Thread thread) {
             noteAccess(instance, forWrite, thread.threadId());
-            threadIds.add(thread.threadId());
-            threadNames.add(thread.getName());
+            RoundThreads.Round round = threads.add(thread);
+            // The access that latches the verdict is recorded in the round that raced, so the
+            // first mark names it; later rounds cannot move it.
+            if (sawUnguardedSharing()) {
+                threads.markFinding(round);
+            }
         }
 
+        /**
+         * {@return how many threads the round that produced the finding saw, or, with no finding,
+         * the busiest round}
+         */
         final int threadCount() {
-            return threadIds.size();
+            return threads.reportedSize();
         }
 
-        /** {@return the live set of thread names, in the order a report has always listed them} */
+        /**
+         * {@return the live set of names of the threads {@link #threadCount()} counts, in the order
+         * a report has always listed them}
+         */
         final Set<String> threadNames() {
-            return threadNames;
+            RoundThreads.Round round = threads.reported();
+            return round == null ? Set.of() : round.names();
         }
 
         /**
