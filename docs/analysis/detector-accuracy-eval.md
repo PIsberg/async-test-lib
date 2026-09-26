@@ -218,7 +218,9 @@ threads in one round made a lone reconfiguration in a later round a race. Those 
 per round (`SelfGuard.RoundThreads`): the extra condition must hold within one round, and a
 report counts and names the threads of the round the finding came from, or of the busiest round
 where no round is marked. Pinned in each detector's own test and in
-`SharedMessageDigestDetectorTest` for the family's printed count.
+`SharedMessageDigestDetectorTest` for the family's printed count. `StringBuilderDetector`'s
+exception finding followed (#783): it counts the users of the busiest round an exception came
+from, so one thread per round, each failing alone, is not concurrent access.
 
 Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
 `BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched

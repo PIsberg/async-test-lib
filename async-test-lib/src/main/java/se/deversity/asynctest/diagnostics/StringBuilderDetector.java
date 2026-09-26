@@ -4,6 +4,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects {@link StringBuilder} instances shared across multiple threads without
@@ -52,12 +55,19 @@ public class StringBuilderDetector {
         final AtomicInteger readCount    = new AtomicInteger(0);
         final AtomicInteger errorCount   = new AtomicInteger(0);
         final Set<Long> mutatingThreads  = ConcurrentHashMap.newKeySet();
-        final Set<Long> readingThreads   = ConcurrentHashMap.newKeySet();
         /**
          * The writers per round, for the finding. {@link #mutatingThreads} spans the run and only
          * feeds the activity line: two writers in different rounds never overlapped (#748).
          */
         final SelfGuard.RoundThreads roundWriters = new SelfGuard.RoundThreads();
+        /** Every thread that wrote, read or failed on the builder, per round, for the error finding. */
+        final SelfGuard.RoundThreads roundUsers = new SelfGuard.RoundThreads();
+        /**
+         * The round with the most users among those an exception was recorded in. Two threads
+         * that each failed alone in a different round never overlapped, so the error finding
+         * counts one round's users, not the run's (#783).
+         */
+        final AtomicReference<SelfGuard.RoundThreads.@Nullable Round> errorRound = new AtomicReference<>();
 
         BuilderState(String name) {
             this.name = name;
@@ -128,7 +138,7 @@ public class StringBuilderDetector {
         if (builder == null) return;
         BuilderState state = resolve(builder, name);
         state.noteAccess(builder, false);
-        state.readingThreads.add(Thread.currentThread().threadId());
+        state.roundUsers.add(Thread.currentThread());
         state.readCount.incrementAndGet();
     }
 
@@ -143,9 +153,20 @@ public class StringBuilderDetector {
         if (builder == null) return;
         BuilderState state = resolve(builder, name);
         // The thread that hit the error was using the builder, so it counts toward the sharing
-        // the error finding now requires (#501). Recorded as a read: an exception says the call
-        // did not complete, so claiming a mutation would be claiming more than was observed.
-        state.readingThreads.add(Thread.currentThread().threadId());
+        // the error finding requires (#501), within its round (#783). Not as a writer: an
+        // exception says the call did not complete, so claiming a mutation would be claiming
+        // more than was observed.
+        SelfGuard.RoundThreads.Round round = state.roundUsers.add(Thread.currentThread());
+        // Keep the busiest round an exception came from. Rounds run one after another, so an
+        // earlier round's count is final; a tie goes to this round, which may still be growing.
+        SelfGuard.RoundThreads.Round kept = state.errorRound.get();
+        while (kept != round // NOPMD CompareObjectsWithEquals - one Round per round, by identity
+                && (kept == null || round.size() >= kept.size())) {
+            if (state.errorRound.compareAndSet(kept, round)) {
+                break;
+            }
+            kept = state.errorRound.get();
+        }
         state.errorCount.incrementAndGet();
     }
 
@@ -155,6 +176,7 @@ public class StringBuilderDetector {
         state.noteAccess(builder, true);
         state.mutatingThreads.add(Thread.currentThread().threadId());
         state.roundWriters.add(Thread.currentThread());
+        state.roundUsers.add(Thread.currentThread());
         switch (type) {
             case "append"  -> state.appendCount.incrementAndGet();
             case "insert"  -> state.insertCount.incrementAndGet();
@@ -206,7 +228,10 @@ public class StringBuilderDetector {
             // One thread appending to its own StringBuilder and catching an exception has hit a
             // bug in its own indexing; calling that "from concurrent access" attributes it to a
             // race that did not happen. The count still shows up under activity below (#501).
-            int touchingThreads = distinctThreads(state);
+            // The users are counted in the busiest round an exception came from: one thread per
+            // round, each failing alone, is the same single-thread shape repeated (#783).
+            SelfGuard.RoundThreads.Round errorRound = state.errorRound.get();
+            int touchingThreads = errorRound == null ? 0 : errorRound.size();
             if (errors > 0 && touchingThreads > 1) {
                 report.builderErrors.add(String.format(
                         "%s: %d exception(s) while %d threads used it (possible "
@@ -220,13 +245,6 @@ public class StringBuilderDetector {
         }
 
         return report;
-    }
-
-    /** {@return how many distinct threads read or mutated this builder} */
-    private static int distinctThreads(BuilderState state) {
-        Set<Long> all = new java.util.HashSet<>(state.mutatingThreads);
-        all.addAll(state.readingThreads);
-        return all.size();
     }
 
     // ---- Report ----------------------------------------------------------------

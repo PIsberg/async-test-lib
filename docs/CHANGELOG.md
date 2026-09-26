@@ -101,6 +101,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the mutators of the round that raced; and `SharedJsonMapperReconfigDetector` judges "used by two
   threads" and "a thread that never used it" within the round of the reconfiguration, so a mapper
   reconfigured in a round where nothing else used it is not reported.
+- **`StringBuilderDetector`'s exception finding counts one round's threads (#783).** "N
+  exception(s) while N threads used it" counted every thread of the run, so one thread per round,
+  each failing alone, read as concurrent access. It now counts the users of the busiest round an
+  exception was recorded in, and needs two of them; two threads sharing the builder in one round
+  still report, with that round's count.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common

@@ -309,4 +309,47 @@ public class StringBuilderDetectorTest {
             "the finding is round one's two writers, not the four threads of the whole run: "
                 + violations.get(0));
     }
+
+    // ---- The exception finding counts one round's threads too (#783) ---------------------------
+
+    @Test
+    void oneThreadPerRoundHittingAnExceptionIsNotBlamedOnConcurrentAccess() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable appendThenFail = () -> {
+            detector.recordAppend(sb, "log");
+            detector.recordError(sb, "log", "StringIndexOutOfBoundsException");
+        };
+
+        // Three rounds, one fresh thread each: no two of them ever ran at the same time.
+        round(scope, appendThenFail);
+        round(scope, appendThenFail);
+        round(scope, appendThenFail);
+
+        assertTrue(detector.analyze().builderErrors.isEmpty(),
+            "each exception came from a thread alone in its round, so none is evidence of "
+                + "concurrent access: " + detector.analyze().builderErrors);
+    }
+
+    @Test
+    void exceptionsInARoundTwoThreadsSharedCountThatRoundsThreads() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable appendThenFail = () -> {
+            detector.recordAppend(sb, "log");
+            detector.recordError(sb, "log", "StringIndexOutOfBoundsException");
+        };
+
+        round(scope, appendThenFail, appendThenFail);
+        round(scope, () -> detector.recordAppend(sb, "log"));
+        round(scope, appendThenFail);
+
+        var errors = detector.analyze().builderErrors;
+        assertEquals(1, errors.size(), "two threads shared the builder in round one: " + errors);
+        assertTrue(errors.get(0).contains("3 exception(s) while 2 threads used it"),
+            "the thread count is round one's two users, not the four threads of the whole run: "
+                + errors.get(0));
+    }
 }
