@@ -5,6 +5,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -210,8 +211,11 @@ public class IssueDeduplicator<T extends DeduplicatableEvent> {
 
             T firstEvent = getFirstEvent();
             if (firstEvent != null) {
-                sb.append("  Location: ").append(firstEvent.getLocation())
-                  .append(" (line ").append(firstEvent.getLineNumber()).append(")\n");
+                sb.append("  Location: ").append(firstEvent.getLocation());
+                if (hasKnownLine(firstEvent)) {
+                    sb.append(" (line ").append(firstEvent.getLineNumber()).append(')');
+                }
+                sb.append('\n');
             }
 
             sb.append("  Occurrences: ").append(getCount());
@@ -264,12 +268,19 @@ public class IssueDeduplicator<T extends DeduplicatableEvent> {
                 return "";
             }
 
-            return String.format("%s at %s:%d (%d occurrences, %d threads)",
+            String at = hasKnownLine(firstEvent)
+                    ? firstEvent.getLocation() + ":" + firstEvent.getLineNumber()
+                    : firstEvent.getLocation();
+            return String.format(Locale.ROOT, "%s at %s (%d occurrences, %d threads)",
                     firstEvent.getType(),
-                    firstEvent.getLocation(),
-                    firstEvent.getLineNumber(),
+                    at,
                     getCount(),
                     getAffectedThreadCount());
+        }
+
+        // DeduplicatableEvent reports -1 when no site was captured; no real source line is below 1.
+        private static boolean hasKnownLine(DeduplicatableEvent event) {
+            return event.getLineNumber() > 0;
         }
     }
 }

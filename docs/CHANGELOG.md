@@ -120,6 +120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were grouped by field name alone, so two objects that each stayed on one thread merged into one
   history and read as a field shared by two threads. They are now grouped by the owner they name;
   two threads on one object with no lock still report.
+- **`IssueDeduplicator` no longer prints line `-1` (#744).** `IssueGroup.formatDetailed` printed
+  `(line -1)` and `formatBrief` printed `location:-1` for any event whose site was not captured;
+  both now omit the line when it is unknown, as `RaceConditionDetector` already did.
 
 - **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
   `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read
