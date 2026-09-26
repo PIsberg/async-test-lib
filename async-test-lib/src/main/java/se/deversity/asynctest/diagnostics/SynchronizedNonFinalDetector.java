@@ -38,8 +38,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * declaration settles two cases without the owner: a {@code final} field never changes, so
  * several monitors are several instances and nothing is reported, and a {@code static} field has
  * one value per class, so several monitors are a reassignment and are reported. The rest, a
- * non-final instance field or a {@code fieldId} that names no declared field, are listed in the
- * report text as undecided and are not findings; pass the owner to
+ * non-final instance field or a {@code fieldId} that names no declared field, are undecided notes
+ * and not findings: in the report text beside a finding, and otherwise logged by the runner at
+ * INFO as {@code runner.detector.note} (#816), since a report with no finding is not printed.
+ * Pass the owner to
  * {@link #recordLockObject(Object, String, Class, Object)} to have them decided. For a non-final
  * instance field the three-argument form is deprecated in favour of that one (#793): nothing
  * recorded without the instance can tell its two readings apart, so it never reports.
@@ -101,7 +103,7 @@ public class SynchronizedNonFinalDetector {
      * names on {@code ownerClass}: a {@code static} non-final field is reported, a {@code final}
      * one is not. A non-final instance field is undecidable, since a reassigned field and several
      * instances each with their own lock record the same thing, so it is listed as a note naming
-     * the call that decides it and is never reported.
+     * the call that decides it ({@link SynchronizedNonFinalReport#notes()}) and is never reported.
      *
      * <p><b>Deprecated for a non-final instance field</b> (#793). This form is exact for
      * {@code static} and {@code final} fields, so the method itself is not deprecated, but on a
@@ -254,6 +256,20 @@ public class SynchronizedNonFinalDetector {
          */
         public boolean hasIssues() {
             return !violations.isEmpty();
+        }
+
+        /**
+         * {@return the notes this report carries that are not findings: one per slot whose
+         * monitor changed but that was recorded without its owner, each naming the call that
+         * decides it}
+         *
+         * <p>The runner logs these when {@link #hasIssues()} is {@code false}, since the report
+         * itself is printed only when it has a finding (#816).
+         *
+         * @since 1.12.3
+         */
+        public List<String> notes() {
+            return List.copyOf(unattributed);
         }
 
         @Override

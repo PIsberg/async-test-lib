@@ -238,7 +238,8 @@ public class ConcurrencyRunner {
         // Memoizes phase2Context.analyzeAll() so it runs at most once per execute(),
         // regardless of how many report/gate call sites need the result — see the
         // Phase2Analysis Javadoc.
-        Phase2Analysis phase2Analysis = new Phase2Analysis(phase2Context);
+        Phase2Analysis phase2Analysis = new Phase2Analysis(phase2Context,
+                invocationContext.getExecutable().getName());
 
         // Phase 1 + Phase 3 detectors — grouped in a value-holder to avoid
         // long parameter lists in helper methods. Passing phase2Context lets these
@@ -1427,10 +1428,12 @@ public class ConcurrencyRunner {
      */
     private static final class Phase2Analysis {
         private final AsyncTestContext ctx;
+        private final String testName;
         private @Nullable Map<String, String> reports;
 
-        Phase2Analysis(AsyncTestContext ctx) {
+        Phase2Analysis(AsyncTestContext ctx, String testName) {
             this.ctx = ctx;
+            this.testName = testName;
         }
 
         /**
@@ -1461,8 +1464,32 @@ public class ConcurrencyRunner {
                 TelemetryRegistry.flush();
                 memo = ctx.analyzeAllNamed();
                 reports = memo;
+                logNotes(testName, ctx.detectorNotes());
             }
             return memo;
+        }
+    }
+
+    /** At most this many {@code runner.detector.note} events per detector per run. */
+    static final int NOTE_EVENTS_PER_DETECTOR = 3;
+
+    /**
+     * Logs the notes of detectors whose report had no finding, one INFO event per distinct note.
+     *
+     * <p>Such a report is never printed, so a note in it (a hint that asks the caller to change a
+     * recording, such as an undecided {@code SynchronizedNonFinalDetector} slot) reached nobody
+     * (#816). A note is not a finding, so it goes to the diagnostic channel at INFO rather than
+     * into the report or at WARN. Here, in the memoized analysis, it is said once per run on
+     * every path, and at most {@value #NOTE_EVENTS_PER_DETECTOR} times per detector; the
+     * {@code notes=} field keeps the total so a reader knows when lines were left out.
+     */
+    private static void logNotes(String testName, Map<String, List<String>> notes) {
+        for (Map.Entry<String, List<String>> e : notes.entrySet()) {
+            List<String> lines = e.getValue();
+            for (int i = 0; i < Math.min(lines.size(), NOTE_EVENTS_PER_DETECTOR); i++) {
+                log.info("runner.detector.note test={} detector={} notes={} note=\"{}\"",
+                        testName, e.getKey(), lines.size(), lines.get(i).replace("\"", "\\\""));
+            }
         }
     }
 

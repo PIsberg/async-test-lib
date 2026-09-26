@@ -521,9 +521,9 @@ class ConcurrencyRunnerTest {
         }
         assertNotNull(phase2AnalysisClass, "ConcurrencyRunner must declare a Phase2Analysis nested type");
 
-        Constructor<?> ctor = phase2AnalysisClass.getDeclaredConstructor(AsyncTestContext.class);
+        Constructor<?> ctor = phase2AnalysisClass.getDeclaredConstructor(AsyncTestContext.class, String.class);
         ctor.setAccessible(true);
-        Object phase2Analysis = ctor.newInstance(ctx);
+        Object phase2Analysis = ctor.newInstance(ctx, "memoized");
 
         Method get = phase2AnalysisClass.getDeclaredMethod("get");
         get.setAccessible(true);

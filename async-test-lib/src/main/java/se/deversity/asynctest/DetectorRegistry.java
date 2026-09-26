@@ -751,7 +751,8 @@ final class DetectorRegistry {
                 LockContentionDetector.LockContentionReport::hasIssues, out);
         ifIssue(synchronizedNonFinalDetector,
                 SynchronizedNonFinalDetector::analyze,
-                SynchronizedNonFinalDetector.SynchronizedNonFinalReport::hasIssues, out);
+                SynchronizedNonFinalDetector.SynchronizedNonFinalReport::hasIssues,
+                SynchronizedNonFinalDetector.SynchronizedNonFinalReport::notes, out);
         ifIssue(missedSignalDetector,
                 MissedSignalDetector::analyze,
                 MissedSignalDetector.MissedSignalReport::hasIssues, out);
@@ -1143,7 +1144,23 @@ final class DetectorRegistry {
 
         lastGrades = out.grades();
         lastSeverities = out.severities();
+        lastNotes = out.notes();
         return out.reports();
+    }
+
+    /** Notes of reports with no finding from the last analysis pass; see {@link #lastNotes()}. */
+    private Map<String, List<String>> lastNotes = Map.of();
+
+    /**
+     * {@return the notes of every report that had no finding in the most recent
+     * {@link #analyzeAllNamed()} pass, keyed by detector}
+     *
+     * <p>A report is printed only when it has a finding, so a note in one that has none never
+     * reached the user (#816). A note in a report that has a finding is printed with it and is
+     * not repeated here.
+     */
+    Map<String, List<String>> lastNotes() {
+        return lastNotes;
     }
 
     /** Structured severities from the last analysis pass; see {@link #lastSeverities()}. */
@@ -1187,6 +1204,20 @@ final class DetectorRegistry {
                                Function<D, R> analyze,
                                Function<R, Boolean> hasIssues,
                                FindingSink out) {
+        ifIssue(detector, analyze, hasIssues, null, out);
+    }
+
+    /**
+     * As {@link #ifIssue(Object, Function, Function, FindingSink)}, and when the report has no
+     * issues, records the notes {@code notes} reads from it: things the detector wants the
+     * caller to know that are not findings, which would otherwise never be seen, because only a
+     * report with a finding is printed (#816).
+     */
+    static <D, R> void ifIssue(@Nullable D detector,
+                               Function<D, R> analyze,
+                               Function<R, Boolean> hasIssues,
+                               @Nullable Function<R, List<String>> notes,
+                               FindingSink out) {
         if (detector == null) return;
         String name = detector.getClass().getSimpleName();
         try {
@@ -1201,6 +1232,8 @@ final class DetectorRegistry {
                                 : null,
                         se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
                                 .orElse(null));
+            } else if (notes != null) {
+                out.note(name, notes.apply(report));
             }
         } catch (RuntimeException | StackOverflowError e) {
             // Contain the failure: analyzeAllNamed() chains ~100 of these, so letting one

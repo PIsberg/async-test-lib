@@ -27,6 +27,7 @@ final class FindingSink {
     private final Map<String, String> reports = new LinkedHashMap<>();
     private final Map<String, List<GradedFindings.Grade>> grades = new LinkedHashMap<>();
     private final Map<String, IssueSeverity> severities = new LinkedHashMap<>();
+    private final Map<String, List<String>> notes = new LinkedHashMap<>();
 
     /**
      * Records one detector's report, and its per-finding grades when it has any.
@@ -55,6 +56,22 @@ final class FindingSink {
         }
     }
 
+    /**
+     * Records the notes of a detector whose report has no finding, so is not printed (#816).
+     * A note already recorded for the detector is not recorded again.
+     */
+    void note(String detectorName, List<String> detectorNotes) {
+        if (detectorNotes.isEmpty()) {
+            return;
+        }
+        List<String> kept = notes.computeIfAbsent(detectorName, name -> new ArrayList<>());
+        for (String note : detectorNotes) {
+            if (!kept.contains(note)) {
+                kept.add(note);
+            }
+        }
+    }
+
     /** {@return the reports, keyed by detector name} */
     Map<String, String> reports() {
         return reports;
@@ -68,5 +85,10 @@ final class FindingSink {
     /** {@return the structured severities, keyed by detector name; absent where a report has none} */
     Map<String, IssueSeverity> severities() {
         return severities;
+    }
+
+    /** {@return the notes of reports with no finding, keyed by detector name} */
+    Map<String, List<String>> notes() {
+        return notes;
     }
 }

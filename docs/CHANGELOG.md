@@ -103,6 +103,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A detector note that is not a finding now reaches the user (#816).** A report is printed only
+  when `hasIssues()` is true, so a note in a report with no finding, such as
+  `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call
+  that decides it, was shown only when the same report also had a finding. The runner now logs
+  such notes at INFO as `runner.detector.note test=… detector=… notes=… note="…"`, once per run,
+  at most three per detector, and `ConcurrencyRunnerLogContractTest` pins the event. A note is
+  not a finding: it fails nothing, and a note beside a finding stays in the report text as before.
+  Only `SynchronizedNonFinalDetector` hands its notes out so far
+  (`SynchronizedNonFinalReport.notes()`).
 - **A report with issues carries a structured finding, and a gate checks it (#774).** The `failOn`
   gate reads a finding's severity from the report's `structuredViolations` list first and guesses
   from the text only when the list is empty, but nothing checked that a report that fired had

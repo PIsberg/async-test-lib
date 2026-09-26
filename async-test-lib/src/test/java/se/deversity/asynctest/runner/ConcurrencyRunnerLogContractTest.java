@@ -11,6 +11,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
 
 import java.util.List;
@@ -316,6 +318,84 @@ class ConcurrencyRunnerLogContractTest {
                 + "claiming otherwise would be false. Got: " + events());
     }
 
+    @Test
+    @DisplayName("a detector note that is not a finding reaches a passing run's log once, at INFO")
+    void aNoteThatIsNotAFindingIsLoggedOnceAtInfo() {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(UndecidedLockDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> notes = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.detector.note"))
+            .toList();
+        assertEquals(1, notes.size(),
+            "the undecided slot is one note, and the run analyses once, so one event however many "
+                + "workers and rounds recorded it (#816). Got: " + events());
+        ILoggingEvent note = notes.get(0);
+        assertSame(Level.INFO, note.getLevel(),
+            "INFO, not WARN: a note is not a finding, and not DEBUG: the user whose recording the "
+                + "note asks to change is not running with DEBUG on");
+        String message = note.getFormattedMessage();
+        assertTrue(message.contains("test=undecided"), "the event names the test: " + message);
+        assertTrue(message.contains("detector=SynchronizedNonFinalDetector"),
+            "the event names the detector that wrote the note: " + message);
+        assertTrue(message.contains("notes=1"), "and how many notes it wrote: " + message);
+        assertTrue(message.contains("recordLockObject(lock, \\\"lock\\\", Holder.class, this)"),
+            "the note itself, quotes escaped, with the call that decides the slot: " + message);
+    }
+
+    @Test
+    @DisplayName("a detector with more notes than the cap logs the cap, and the total")
+    void notesAreCappedPerDetector() {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(ManyUndecidedLocksDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<String> notes = events().stream().filter(m -> m.startsWith("runner.detector.note")).toList();
+        assertEquals(ConcurrencyRunner.NOTE_EVENTS_PER_DETECTOR, notes.size(),
+            "five undecided slots, but this is somebody else's build log: the cap, not five. Got: "
+                + events());
+        assertTrue(notes.stream().allMatch(m -> m.contains("notes=5")),
+            "each line says how many there were, so the reader knows some were left out: " + notes);
+    }
+
+    @Test
+    @DisplayName("a run whose detectors wrote no note logs no note event")
+    void aRunWithoutNotesLogsNoNoteEvent() {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        assertTrue(events().stream().noneMatch(m -> m.startsWith("runner.detector.note")),
+            "every detector enabled and nothing noted, so nothing new in somebody else's build "
+                + "log. Got: " + events());
+    }
+
+    @Test
+    @DisplayName("a note in a report that has a finding stays in the report and is not logged again")
+    void aNoteBesideAFindingStaysInTheReport() {
+        Throwable failure = EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(ReassignedStaticLockDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.failed(1))
+            .failed().list().get(0)
+            .getPayload(org.junit.platform.engine.TestExecutionResult.class).orElseThrow()
+            .getThrowable().orElseThrow();
+
+        assertTrue(failure.getMessage().contains("SynchronizedNonFinalDetector"),
+            "the reassigned static lock is a finding and fails the gate as before: " + failure);
+        assertTrue(events().stream().noneMatch(m -> m.startsWith("runner.detector.note")),
+            "the report that carries the finding prints the note with it, so a log event would "
+                + "say it twice. Got: " + events());
+    }
+
     /** Runs under the extension so the narrative is produced by the real code path. */
     static class NarratedDummy {
         private final AtomicInteger counter = new AtomicInteger();
@@ -333,6 +413,52 @@ class ConcurrencyRunnerLogContractTest {
         @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false)
         void onPlatformThreads() {
             counter.incrementAndGet();
+        }
+    }
+
+    /** A lock of one's own per worker, in a non-final instance field, recorded without the instance. */
+    static final class Holder {
+        private Object lock = new Object();
+        private int count;
+    }
+
+    /** Several monitors on one slot recorded without an owner: undecided, a note and no finding. */
+    static class UndecidedLockDummy {
+        @AsyncTest(threads = 3, invocations = 2, detectAll = false, detectSynchronizedNonFinal = true)
+        void undecided() {
+            Holder holder = new Holder();
+            AsyncTestContext.synchronizedNonFinalDetector().recordLockObject(holder.lock, "lock", Holder.class);
+            synchronized (holder.lock) {
+                holder.count++;
+            }
+        }
+    }
+
+    /** Five undecided slots in one run, more than the per-detector cap. */
+    static class ManyUndecidedLocksDummy {
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectSynchronizedNonFinal = true)
+        void many() {
+            Holder holder = new Holder();
+            for (int slot = 0; slot < 5; slot++) {
+                AsyncTestContext.synchronizedNonFinalDetector()
+                    .recordLockObject(holder.lock, "lock" + slot, Holder.class);
+            }
+        }
+    }
+
+    /** The same undecided slot beside a reassigned static lock, which is a finding. */
+    static class ReassignedStaticLockDummy {
+        private static Object lock = new Object();
+
+        @AsyncTest(threads = 3, invocations = 2, detectAll = false, detectSynchronizedNonFinal = true,
+                failOn = FailOn.LOW)
+        void reassigned() {
+            Object mine = new Object();
+            lock = mine;
+            AsyncTestContext.synchronizedNonFinalDetector()
+                .recordLockObject(mine, "lock", ReassignedStaticLockDummy.class);
+            Holder holder = new Holder();
+            AsyncTestContext.synchronizedNonFinalDetector().recordLockObject(holder.lock, "lock", Holder.class);
         }
     }
 }

@@ -149,6 +149,9 @@ public class SynchronizedNonFinalDetectorTest {
             "the note should say which of the two it could not tell apart: " + report);
         assertTrue(report.toString().contains("recordLockObject(lock, \"lock\", NonFinalInstanceLock.class, this)"),
             "and give the call that decides it, with this slot's own names: " + report);
+        assertEquals(1, report.notes().size(),
+            "and hand the note out on its own, for the runner to log when nothing is printed (#816): "
+                + report.notes());
     }
 
     @Test
