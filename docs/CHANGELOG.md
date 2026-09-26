@@ -15,7 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   put/get, latches, semaphores, `Thread.start` and, newly woven, `Thread.join`, and the volatile
   write/read bits), and by `HappensBefore.release/acquire/fork/join` for recording-fed tests. An
   edge can only remove a finding, never add one.
-- `AsyncTestContext.ownershipTaken(instance)` declares a pool checkout the agent cannot see.
+- `AsyncTestContext.ownershipTaken(instance)` declares a pool checkout the agent cannot see. It is
+  also the way through for a pool that hands out a wrapper around the tracked instance (#747): the
+  woven take names the wrapper, so behind a plain deque and a lock, which order nothing in the
+  happens-before model, the taker declares the wrapped instance. The javadoc shows the shape, and
+  the corpus idiom lane pins it both ways: the undeclared holder pool as a known gap that still
+  reports, the declared one silent, and a declaration over a holder every thread peeks still
+  reported.
 - Record methods that let detectors see what they could not: `recordSiblingWaitEnded`,
   `recordBlockingWaitEnded`, `recordWaitAttempted(Object)`, `recordCapturedMutation(lambda, name,
   state, thread)`, `recordCapturedRead(lambda, state, thread)`, owner-keyed `LazyInitRace` overloads,

@@ -245,8 +245,12 @@ queue takes and atomic-slot swaps (`collections=true`) reach it synchronously fr
 declared with `AsyncTestContext.ownershipTaken(instance)`. An old owner that keeps using the
 instance after handing it back joins the new owner's window and is still reported. Pinned in
 `SharedMessageDigestDetectorTest`, through the woven hook methods called directly rather than a
-real agent attach. What it does not see: a pool of wrapper objects, where the take names the
-wrapper and the access names the digest inside it.
+real agent attach. A pool of wrapper objects, where the take names the wrapper and the access
+names the digest inside it, moves no take counter. It is still handed over when the take is also a
+happens-before edge (a woven `BlockingQueue`), but not behind a plain deque and the pool's monitor,
+which the model takes no edge from (#747). There the taker declares the wrapped instance,
+`AsyncTestContext.ownershipTaken(holder.digest)`; the corpus idiom lane pins both the undeclared
+row, as a known gap, and the declared one.
 
 Within an owner's window the verdict also follows the shared `HappensBefore` model (1.12.3). Two
 threads in one round that the program ordered, one using a `MessageDigest` and counting a latch

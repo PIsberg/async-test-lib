@@ -1980,6 +1980,15 @@ Run L (JDK 26, Windows 11, 16 cores), threads=6, invocations=40:
 | `idiom_atomicReference_publishesAFreshlyBuiltObject` | correct: known gap | `AtomicityValidator` | PROMPT/HIGH | - |
 | `idiom_atomicReference_plainFieldPublishesNothing` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
 
+**The holder pool (#747).** Four rows were added after run L. A pool that hands out a wrapper
+around one `MessageDigest`, from an `ArrayDeque` behind the pool's monitor, is correct and still
+reported: the woven take names the wrapper, the detector tracks the digest inside it, and a monitor
+is no edge, so `idiom_digestHolderPool_checkedOutUnderALock` is a known gap. Its declared twin,
+`idiom_digestHolderPool_checkoutDeclared`, calls `AsyncTestContext.ownershipTaken(holder.digest)`
+after the take and must stay silent. Both have broken twins over `peek()`, one undeclared and one
+declared, which must still fire: a declaration cannot turn every thread using one digest at once
+into a hand-off.
+
 The "FACT or above" column is empty on every correct row. The only findings at that tier are on
 twins, from the `VERDICT` detectors whose twin they are. Below `FACT`, no detector other than a
 row's named one spoke on any row in this run, correct or twin. In other runs `AtomicityValidator`

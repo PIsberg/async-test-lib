@@ -233,7 +233,10 @@ the lockset are taken within one invocation round, the count a finding prints is
 rather than the run's, and inside the round the verdict is per owner: a take out of a
 queue or a swap out of an atomic slot, woven by the agent with `collections=true` or declared with
 `AsyncTestContext.ownershipTaken(instance)`, separates one owner's accesses from the next's, so a
-pool that checks an instance out to one thread at a time is not reported. Since 1.12.3 the round
+pool that checks an instance out to one thread at a time is not reported. A pool that hands out a
+wrapper around the instance is the exception: the take names the wrapper, so behind a plain
+collection and a lock nothing hands the instance over, and the taker declares the wrapped instance
+itself, `AsyncTestContext.ownershipTaken(holder.digest)` (#747). Since 1.12.3 the round
 verdict also follows the shared `HappensBefore` model: a thread whose use of the instance that
 model orders after the previous thread's, through a latch, a queue or map hand-off, a
 `Thread.start` or a `join` that the agent wove or the test declared, takes the instance over
