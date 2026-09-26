@@ -325,7 +325,7 @@ class CollectionAccessWeaverTest {
     }
 
     @Test
-    @DisplayName("a queue offer or take inside a synchronized method hands its hook the method's monitor")
+    @DisplayName("a queue offer or take hands its hook the enclosing method's own monitor")
     void passesTheSynchronizedMethodsMonitorToTheQueueHooks() throws Exception {
         MONITORS.clear();
         Class<?> woven = new ByteBuddy()
@@ -355,7 +355,21 @@ class CollectionAccessWeaverTest {
         assertSame(element, woven.getMethod("offerAndPollHoldingNothing", Object.class)
                         .invoke(sample, element),
                 "the original offer and poll must still happen");
+        assertEquals(List.of(sample, sample), List.copyOf(MONITORS),
+                "an instance method that is not synchronized still passes this, for the hook to ask "
+                        + "whether a synchronized caller holds it (#751)");
+
+        MONITORS.clear();
+        assertSame(element, woven.getMethod("pushAndPopInAStaticMethod", Object.class)
+                        .invoke(null, element),
+                "the original push and pop must still happen");
         assertTrue(MONITORS.isEmpty(),
-                "outside a synchronized method the ordinary hooks run, with no monitor to pass");
+                "a static method that is not synchronized has no monitor of its own to pass");
+
+        MONITORS.clear();
+        woven.getDeclaredConstructor(Object.class).newInstance(element);
+        assertTrue(MONITORS.isEmpty(),
+                "a constructor must not hand this anywhere: before its super call it is not yet an "
+                        + "object, and loading it for a hook would not verify");
     }
 }

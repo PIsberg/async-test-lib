@@ -4285,14 +4285,14 @@ final class Corpus {
 
             new RecordingSubject("idiom_blockingQueue_handsOffThroughAPlainDeque", JDK,
                     "java.util.ArrayDeque",
-                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same hand-off through an ArrayDeque, offered to and polled from by six "
-                            + "threads with no lock. The deque is the synchronization that was "
-                            + "removed, so the collection detector is the one it must wake. "
-                            + "AtomicityValidator also reports the orders in some runs and not in "
-                            + "others, depending on whether a poll ever caught an offer, so it is "
-                            + "not what this row pins",
+                            + "threads with no lock. An ArrayDeque orders nothing and a poll out "
+                            + "of it is a hand-off only under a lock the offer shared, so the "
+                            + "orders' writes on two threads are unordered. The pair names the "
+                            + "same detector on both halves; the deque itself also wakes "
+                            + "SharedCollectionDetector (#751, #796)",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("idiom_volatileFlag_publishesPlainData", JDK,

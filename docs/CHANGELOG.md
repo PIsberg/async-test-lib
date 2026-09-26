@@ -441,18 +441,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run, so the idiom with a different lock in each round was reported. Once that set is empty, each
   round's reads are judged against that round's write locks; two write locks in one round still
   report.
-- **A poll out of a plain `ArrayDeque` under a different lock than the offer no longer opens an
-  ownership generation (#751, in part).** With the agent, every `Queue` take was a hand-off, so an
-  object passed through a plain deque was excused as exclusive to its taker. A take out of an
-  unsynchronized `java.util` collection (`ArrayDeque`, `LinkedList`, `PriorityQueue`) now opens no
-  generation when the matching offer and the take both held locks the agent records and those
-  locks share no member. A lock on one side only, or none on either side, keeps the edge: a
-  `synchronized` method's monitor is never recorded, so the invisible side may hold the very lock
-  the other shows, and pools written with `synchronized` methods, or with a method on one side and
-  a `synchronized (this)` block on the other, stay silent. Not closed: the fully unguarded deque
-  and one guarded on one side only are still not reported by `AtomicityValidator`;
-  `SharedCollectionDetector` reports the deque itself in both. Concurrent queues, synchronized
-  wrappers, JCTools queues and reference slots are unchanged.
+- **A poll out of a plain `ArrayDeque` is a hand-off only under a lock the offer shared (#751).**
+  With the agent, every `Queue` take was a hand-off, so an object passed through a plain deque was
+  excused as exclusive to its taker, and the idiom lane's unguarded twin reported
+  `AtomicityValidator` in some runs only. A take out of an unsynchronized `java.util` collection
+  (`ArrayDeque`, `LinkedList`, `PriorityQueue`) now opens no generation when the matching offer and
+  the take held no lock in common, a side with no lock sharing none: the unguarded deque, one
+  guarded on one side only, and one guarded by two different locks are reported. That reads an
+  empty lockset as unguarded, which needs every monitor the pool holds to be visible, so the
+  `synchronized`-method monitor now reaches the queue hooks (below, #796), and in any other
+  instance method but a constructor the weaver passes `this`, which counts when held: a
+  `synchronized` method that polls or offers through a private helper stays silent. A pool whose
+  lock is a `synchronized` method of another object up the stack is reported. Concurrent queues,
+  synchronized wrappers, JCTools queues and reference slots are unchanged. The idiom lane's
+  `idiom_blockingQueue_handsOffThroughAPlainDeque` twin now pins `AtomicityValidator`.
 - **A queue offer or take inside a `synchronized` method now carries the method's monitor (#796).**
   The monitor comes from the access flag, with no instruction to weave, so the collection hooks
   never saw it and a plain-deque hand-off inside a `synchronized` method read as holding no lock.

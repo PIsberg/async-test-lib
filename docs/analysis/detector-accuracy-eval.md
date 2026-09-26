@@ -119,8 +119,8 @@ authority on which row is which - each outcome above is one assertion in it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
   than one thread touched this field and at least one wrote". On the agent-fed path an object
   that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`; out of an
-  `ArrayDeque` or another unsynchronized `java.util` queue, not a poll whose recorded locks and the
-  offer's are both non-empty and share none, #751) is judged per ownership generation, so each owner may bring its own lock, or none while the object is exclusive
+  `ArrayDeque` or another unsynchronized `java.util` queue, only a poll whose locks share one with
+  the offer's, #751) is judged per ownership generation, so each owner may bring its own lock, or none while the object is exclusive
   to it (#555); a lock that changes inside one round with no take, a thread that uses an object
   it did not take, and two locks inside one generation still fire, and each direction is a case in
   `DetectorAccuracyEvalTest`. The report only mentions locks when

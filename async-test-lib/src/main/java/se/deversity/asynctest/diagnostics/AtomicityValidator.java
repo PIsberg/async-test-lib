@@ -1151,7 +1151,7 @@ public class AtomicityValidator {
      *
      * <p>The offer half of {@link #recordOwnershipTakenUnderLocks}. An {@code ArrayDeque} hands an
      * element to one thread only while its callers serialise it, so its take loses the ownership
-     * edge when the offer and the take held visible locks with none in common (#751). Beyond that
+     * edge when the offer and the take held no lock in common (#751). Beyond that
      * the offer is an ordinary one: it can name generation 0's owner exactly as
      * {@link #recordOwnershipOffered} does. Identity or container 0 records nothing.
      *
@@ -1183,12 +1183,11 @@ public class AtomicityValidator {
      *
      * <p>The locks are the ones the agent records, a {@code synchronized} method's monitor among
      * them: it comes from the access flag, with no instruction to weave, so the weaver passes it to
-     * the queue hooks (#796). An empty side is still read as unknown rather than unguarded, so the
-     * take opens no generation only when the element's latest offer went into this same container and both the
-     * offer and the take held visible locks with no member in common. A lock on one side only, none
-     * on either side, or no matching recorded offer keeps the edge, as every take did before. That
-     * leaves an unguarded deque, and one guarded on one side only, unreported here;
-     * {@code SharedCollectionDetector} reports the deque itself in both. Identity 0 is ignored.
+     * the queue hooks (#796). The take opens no generation when the element's latest offer went
+     * into this same container and the offer and the take held no lock in common, a side with no
+     * lock sharing none: an unguarded deque, one guarded on one side only, and one guarded by two
+     * different locks all hand nothing over. No matching recorded offer keeps the edge, as every
+     * take did before. Identity 0 is ignored.
      *
      * @param identity        {@code System.identityHashCode} of the object taken
      * @param container       {@code System.identityHashCode} of the container it left
@@ -1214,14 +1213,15 @@ public class AtomicityValidator {
     }
 
     /**
-     * {@return whether the visible locks at an offer and a take prove they were not serialised}
+     * {@return whether the locks at an offer and a take prove they were not serialised}
      *
-     * <p>Only two non-empty sets with no member in common prove it. An empty side is read as
-     * proving nothing.
+     * <p>Two sets with no member in common prove it, and an empty side has none (#751). That reads
+     * an empty set as unguarded rather than unknown, which is sound only because a
+     * {@code synchronized} method's monitor reaches the queue hooks (#796).
      */
     private static boolean visiblyUnserialised(long offerLocks, long takeLocks) {
         if (offerLocks == 0L || takeLocks == 0L) {
-            return false;
+            return true;
         }
         return Lockset.intersect(membersOf(offerLocks), membersOf(takeLocks)).length == 0;
     }

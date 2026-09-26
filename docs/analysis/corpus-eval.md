@@ -1935,16 +1935,19 @@ reason every row now writes non-constant values and builds its shared object per
 `Exchanger` row whose parcels all held the constant `7` was silent through the one-constant-store
 excuse rather than through any ordering. A queue hand-off twin over one `ArrayDeque` shared by the
 whole run was silent on `AtomicityValidator`, because orders left in the deque were read in later
-rounds and excused as corroborated constructions. With a deque per round it still reports the
-orders in some runs and not others, depending on whether a poll caught an offer, so that twin pins
-`SharedCollectionDetector`, which reports the unguarded deque in every run.
+rounds and excused as corroborated constructions. With a deque per round it still reported the
+orders in some runs and not others, depending on whether a poll caught an offer, so that twin first
+pinned `SharedCollectionDetector`, which reports the unguarded deque in every run. Every woven take
+was then an ownership hand-off, the unguarded one included. Since #751 and #796 a take out of a plain
+`java.util` queue is a hand-off only under a lock the offer shared, a `synchronized` method's
+monitor among the locks, so the twin pins `AtomicityValidator`.
 
 Run L (JDK 26, Windows 11, 16 cores), threads=6, invocations=40:
 
 | Row | Expected | Named detector | Named detector said | FACT or above, any detector |
 |---|---|---|---|---|
 | `idiom_blockingQueue_handsOffAMutableObject` | correct: silent | `AtomicityValidator` | silent | - |
-| `idiom_blockingQueue_handsOffThroughAPlainDeque` | twin: fires | `SharedCollectionDetector` | PROMPT/HIGH | - |
+| `idiom_blockingQueue_handsOffThroughAPlainDeque` | twin: fires | `AtomicityValidator` (was `SharedCollectionDetector`, #751) | PROMPT/HIGH | - |
 | `idiom_volatileFlag_publishesPlainData` | correct: silent | `AtomicityValidator` | silent | - |
 | `idiom_volatileFlag_plainFlagPublishesNothing` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
 | `idiom_threadStartJoin_ordersTheChildsWrite` | correct: silent | `RaceConditionDetector` | silent | - |
@@ -1992,8 +1995,9 @@ into a hand-off.
 The "FACT or above" column is empty on every correct row. The only findings at that tier are on
 twins, from the `VERDICT` detectors whose twin they are. Below `FACT`, no detector other than a
 row's named one spoke on any row in this run, correct or twin. In other runs `AtomicityValidator`
-also reports on two twins, the deque hand-off and the captured `ThreadLocalRandom`, both of which
-share an object with no ordering; neither is a correct row, so neither moves a gate.
+also reported on two twins, the deque hand-off and the captured `ThreadLocalRandom`, both of which
+share an object with no ordering; neither is a correct row, so neither moved a gate. The deque
+hand-off now names `AtomicityValidator`, and `SharedCollectionDetector` reports it below `FACT`.
 
 **What it does not measure.** A correct row that other detectors question below `FACT` passes, and
 only the report says so. The idioms are the ones the probe and the model's documented limits named,

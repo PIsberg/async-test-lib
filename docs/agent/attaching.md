@@ -244,10 +244,13 @@ Three limits worth knowing before switching it on:
   object a reference `getAndSet` returns, or a `Queue.poll` or JCTools `MessagePassingQueue`
   `poll`/`relaxedPoll` hands back, is reported as taken. A queue that orders nothing itself, an
   unsynchronized `java.util` collection such as an `ArrayDeque`, does not count when the offer and the
-  poll both held locks the agent records and those share none; with a recorded lock on one side
-  only, or on neither, it still counts (#751). Inside a `synchronized` method, whose monitor no
-  instruction takes, the weaver hands that monitor to the offer and take hooks, so it is a recorded
-  lock like a `synchronized` block's (#796). A
+  poll held no lock in common, a side with no lock sharing none: an unguarded deque, one guarded on
+  one side only, and one guarded by two different locks hand nothing over (#751). A `synchronized`
+  method's monitor counts, though no instruction takes it: the weaver hands it to the offer and take
+  hooks (#796), and in any other instance method but a constructor it hands over `this`, which
+  counts when held, so a `synchronized` method that polls through a private helper is seen too. A
+  monitor held only by a `synchronized` method of another object up the stack is not seen, and
+  such a pool is reported. A
   take starts a new ownership generation, exclusive to the taker until another thread touches it, and
   locks only have to agree within a generation. That is netty's chunk moving between magazines
   (#555). Another thread's access inside the generation the receiver is still in withdraws the

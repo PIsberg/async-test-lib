@@ -33,8 +33,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * <p>The deque orders nothing itself, so a poll out of it hands the item to one thread only while
  * the pool's lock serialises it. The agent sees a {@code synchronized} block's monitor through the
  * woven instruction, and a {@code synchronized} method's, which comes from the access flag, because
- * the weaver hands it to the queue hooks (#796). These cases pin what each shape amounts to end to
- * end, with the item used unlocked
+ * the weaver hands it to the queue hooks (#796), also where the method delegates the queue call to
+ * a helper. A side that holds no lock therefore holds none, and shares none with the other side
+ * (#751). These cases pin what each shape amounts to end to end, with the item used unlocked
  * between a give-back and the next borrow on two threads, in the order the drain sees it.
  *
  * <p>Separate class because {@code selfAttach} is at-most-once per JVM and this class needs
@@ -113,10 +114,18 @@ class PlainDequePoolWeavingTest {
     }
 
     @Test
-    void aGuardedGiveBackWithAnUnguardedBorrowIsLeftToSharedCollectionDetector() throws Exception {
-        assertFalse(reports(PlainDequePoolBean::giveBackInBlock, PlainDequePoolBean::borrowUnguarded),
-                "one visible side proves nothing to AtomicityValidator: an unguarded borrow cannot "
-                        + "be told from one inside a synchronized method (#751)");
+    void aFullyUnguardedPoolFires() throws Exception {
+        assertTrue(reports(PlainDequePoolBean::giveBackUnguarded, PlainDequePoolBean::borrowUnguarded),
+                "neither side holds a lock, and the weaver now shows a synchronized method's "
+                        + "monitor, so an empty lockset is an unguarded deque: two pollers can take "
+                        + "one item, and the take is no hand-off (#751, #796)");
+    }
+
+    @Test
+    void aGuardedGiveBackWithAnUnguardedBorrowFires() throws Exception {
+        assertTrue(reports(PlainDequePoolBean::giveBackInBlock, PlainDequePoolBean::borrowUnguarded),
+                "the borrow holds no lock at all, so nothing serialises it against the give-back "
+                        + "(#751, #796)");
         PlainDequePoolBean pool = new PlainDequePoolBean();
         AsyncTestContext context = new AsyncTestContext(
                 AsyncTestConfig.builder().detectSharedCollections(true).build());
@@ -131,8 +140,18 @@ class PlainDequePoolWeavingTest {
         }
         assertTrue(detector[0].analyze().hasIssues(),
                 "the deque itself was written by two threads, one of them holding no lock, which "
-                        + "is what SharedCollectionDetector reports; that is where this shape is "
-                        + "caught while the ownership edge stays");
+                        + "SharedCollectionDetector reports as well");
+    }
+
+    @Test
+    void aPoolWhoseSynchronizedMethodsDelegateToHelpersStaysSilent() throws Exception {
+        assertFalse(reports(PlainDequePoolBean::giveBackThroughAHelper,
+                        PlainDequePoolBean::borrowThroughAHelper),
+                "the offer and the poll run in private helpers that are not synchronized, called "
+                        + "from synchronized methods, so the pool's monitor is held on both sides "
+                        + "though neither call site sits in a synchronized method (#751)");
+        assertFalse(reports(PlainDequePoolBean::giveBackThroughAHelper, PlainDequePoolBean::borrow),
+                "a helper on the give-back side and the monitor straight on the borrow (#751)");
     }
 
     /** Runs {@code body} with {@code context} installed on the calling thread. */

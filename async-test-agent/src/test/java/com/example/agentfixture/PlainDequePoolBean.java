@@ -75,6 +75,26 @@ public final class PlainDequePoolBean {
         return free.poll();
     }
 
+    /** Returns an item through a {@code synchronized} method that hands the offer to a helper. */
+    public synchronized void giveBackThroughAHelper(Item item) {
+        putBack(item);
+    }
+
+    /** {@return an item, borrowed through a {@code synchronized} method that polls in a helper} */
+    public synchronized Item borrowThroughAHelper() {
+        return takeOne();
+    }
+
+    /** The offer, in a method that is not itself {@code synchronized}: its callers are. */
+    private void putBack(Item item) {
+        free.offer(item);
+    }
+
+    /** The poll, in a method that is not itself {@code synchronized}: its callers are. */
+    private Item takeOne() {
+        return free.poll();
+    }
+
     /** One pool for the whole class, guarded by {@code static synchronized} methods. */
     private static final Queue<Item> SHARED_FREE = new ArrayDeque<>();
 

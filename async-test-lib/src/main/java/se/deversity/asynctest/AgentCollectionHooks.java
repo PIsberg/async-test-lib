@@ -45,7 +45,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @since 1.9.8
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites, not from source: the method names and erased signatures are matched by CollectionAccessWeaver and cannot change independently of it. Every hook must end by performing the original operation and must never throw on the recording path - it runs inside the user's code, so an exception here surfaces as a failure in their test. Recording is best-effort by design: no context, a disabled detector, or a type the library knows is thread-safe all mean record nothing and delegate. A queue offer or take hook with a trailing Object parameter is the variant the weaver calls inside a synchronized method: that parameter is the method's monitor, held by construction because no instruction takes it, so the hook counts it among the held locks without probing it, and the two-argument form delegates with null (#796).")
+@AIContract(reason = "Called from bytecode the agent rewrites, not from source: the method names and erased signatures are matched by CollectionAccessWeaver and cannot change independently of it. Every hook must end by performing the original operation and must never throw on the recording path - it runs inside the user's code, so an exception here surfaces as a failure in their test. Recording is best-effort by design: no context, a disabled detector, or a type the library knows is thread-safe all mean record nothing and delegate. A queue offer or take hook with a trailing Object parameter is the variant the weaver calls with the enclosing method's own monitor: this in an instance method, the class in a static synchronized one. A synchronized method holds it with no instruction to say so (#796), and a helper that method calls holds it too (#751), so the hook counts it among the held locks exactly when Thread.holdsLock says so, and the two-argument form delegates with null.")
 public final class AgentCollectionHooks {
 
     /**
@@ -195,7 +195,7 @@ public final class AgentCollectionHooks {
         return collectionAdd(receiver, element, null);
     }
 
-    /** Weaves {@code Collection.add}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the collection @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it changed */
+    /** Weaves {@code Collection.add}, with the enclosing method's own monitor (#796). @param receiver the collection @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it changed */
     public static boolean collectionAdd(Collection<Object> receiver, Object element,
                                         @Nullable Object monitor) {
         record(receiver, "add", true);
@@ -220,7 +220,7 @@ public final class AgentCollectionHooks {
         return collectionRemove(receiver, element, null);
     }
 
-    /** Weaves {@code Collection.remove}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the collection @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it changed */
+    /** Weaves {@code Collection.remove}, with the enclosing method's own monitor (#796). @param receiver the collection @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it changed */
     public static boolean collectionRemove(Collection<Object> receiver, Object element,
                                            @Nullable Object monitor) {
         record(receiver, "remove", true);
@@ -252,13 +252,14 @@ public final class AgentCollectionHooks {
     }
 
     /**
-     * {@link #collectionAddAll(Collection, Collection)} inside a {@code synchronized} method, whose
-     * monitor the weaver passes because no instruction takes it (#796).
+     * {@link #collectionAddAll(Collection, Collection)} with the enclosing method's own monitor,
+     * which the weaver passes because a {@code synchronized} method takes it with no instruction
+     * (#796).
      *
      * @param receiver the collection
      * @param elements the elements to add
-     * @param monitor  the monitor of the enclosing {@code synchronized} method, held by this
-     *                 thread; {@code null} outside one
+     * @param monitor  the enclosing method's own monitor, {@code this} or a static synchronized
+     *                 method's class, counted when this thread holds it; {@code null} for none
      * @return whether the collection changed
      * @since 1.12.3
      */
@@ -326,7 +327,7 @@ public final class AgentCollectionHooks {
         return queueOffer(receiver, element, null);
     }
 
-    /** Weaves {@code Queue.offer}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the queue @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it was accepted */
+    /** Weaves {@code Queue.offer}, with the enclosing method's own monitor (#796). @param receiver the queue @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it was accepted */
     public static boolean queueOffer(Queue<Object> receiver, Object element,
                                      @Nullable Object monitor) {
         record(receiver, "offer", true);
@@ -344,7 +345,7 @@ public final class AgentCollectionHooks {
         return queuePoll(receiver, null);
     }
 
-    /** Weaves {@code Queue.poll}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the queue @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the head, or null */
+    /** Weaves {@code Queue.poll}, with the enclosing method's own monitor (#796). @param receiver the queue @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the head, or null */
     public static @Nullable Object queuePoll(Queue<Object> receiver,
                                              @Nullable Object monitor) {
         record(receiver, "poll", true);
@@ -368,7 +369,7 @@ public final class AgentCollectionHooks {
         return dequeOfferFirst(receiver, element, null);
     }
 
-    /** Weaves {@code Deque.offerFirst}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it was accepted */
+    /** Weaves {@code Deque.offerFirst}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it was accepted */
     public static boolean dequeOfferFirst(Deque<Object> receiver, Object element,
                                           @Nullable Object monitor) {
         record(receiver, "offerFirst", true);
@@ -385,7 +386,7 @@ public final class AgentCollectionHooks {
         return dequeOfferLast(receiver, element, null);
     }
 
-    /** Weaves {@code Deque.offerLast}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it was accepted */
+    /** Weaves {@code Deque.offerLast}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it was accepted */
     public static boolean dequeOfferLast(Deque<Object> receiver, Object element,
                                          @Nullable Object monitor) {
         record(receiver, "offerLast", true);
@@ -402,7 +403,7 @@ public final class AgentCollectionHooks {
         dequeAddFirst(receiver, element, null);
     }
 
-    /** Weaves {@code Deque.addFirst}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one */
+    /** Weaves {@code Deque.addFirst}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none */
     public static void dequeAddFirst(Deque<Object> receiver, Object element,
                                      @Nullable Object monitor) {
         record(receiver, "addFirst", true);
@@ -423,7 +424,7 @@ public final class AgentCollectionHooks {
         dequeAddLast(receiver, element, null);
     }
 
-    /** Weaves {@code Deque.addLast}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one */
+    /** Weaves {@code Deque.addLast}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none */
     public static void dequeAddLast(Deque<Object> receiver, Object element,
                                     @Nullable Object monitor) {
         record(receiver, "addLast", true);
@@ -444,7 +445,7 @@ public final class AgentCollectionHooks {
         dequePush(receiver, element, null);
     }
 
-    /** Weaves {@code Deque.push}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one */
+    /** Weaves {@code Deque.push}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none */
     public static void dequePush(Deque<Object> receiver, Object element,
                                  @Nullable Object monitor) {
         record(receiver, "push", true);
@@ -465,7 +466,7 @@ public final class AgentCollectionHooks {
         return dequePollFirst(receiver, null);
     }
 
-    /** Weaves {@code Deque.pollFirst}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    /** Weaves {@code Deque.pollFirst}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequePollFirst(Deque<Object> receiver,
                                                   @Nullable Object monitor) {
         record(receiver, "pollFirst", true);
@@ -479,7 +480,7 @@ public final class AgentCollectionHooks {
         return dequePollLast(receiver, null);
     }
 
-    /** Weaves {@code Deque.pollLast}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    /** Weaves {@code Deque.pollLast}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequePollLast(Deque<Object> receiver,
                                                  @Nullable Object monitor) {
         record(receiver, "pollLast", true);
@@ -493,7 +494,7 @@ public final class AgentCollectionHooks {
         return dequeRemoveFirst(receiver, null);
     }
 
-    /** Weaves {@code Deque.removeFirst}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    /** Weaves {@code Deque.removeFirst}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequeRemoveFirst(Deque<Object> receiver,
                                                     @Nullable Object monitor) {
         record(receiver, "removeFirst", true);
@@ -507,7 +508,7 @@ public final class AgentCollectionHooks {
         return dequeRemoveLast(receiver, null);
     }
 
-    /** Weaves {@code Deque.removeLast}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    /** Weaves {@code Deque.removeLast}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequeRemoveLast(Deque<Object> receiver,
                                                    @Nullable Object monitor) {
         record(receiver, "removeLast", true);
@@ -521,7 +522,7 @@ public final class AgentCollectionHooks {
         return dequePop(receiver, null);
     }
 
-    /** Weaves {@code Deque.pop}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    /** Weaves {@code Deque.pop}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequePop(Deque<Object> receiver,
                                             @Nullable Object monitor) {
         record(receiver, "pop", true);
@@ -535,7 +536,7 @@ public final class AgentCollectionHooks {
         return queueRemove(receiver, null);
     }
 
-    /** Weaves {@code Queue.remove}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the queue @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    /** Weaves {@code Queue.remove}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the queue @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object queueRemove(Queue<Object> receiver,
                                                @Nullable Object monitor) {
         record(receiver, "remove", true);

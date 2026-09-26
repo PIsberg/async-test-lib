@@ -99,7 +99,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.9.8
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. Inside a synchronized method, an entry with a synchronized variant (the sleeps, and the queue offers and takes, #796) first loads the method's monitor, ALOAD 0 or an LDC of the class for a static method, which the variant consumes as its last parameter: one more value and no branch, so only maxStack grows, and the substitution wrapper asks for COMPUTE_MAXS itself. The one instruction the visitor inserts outside a substitution is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. Inside a synchronized method, an entry with a synchronized variant (the sleeps, and the queue offers and takes, #796) first loads the method's monitor, ALOAD 0 or an LDC of the class for a static method, which the variant consumes as its last parameter: one more value and no branch, so only maxStack grows, and the substitution wrapper asks for COMPUTE_MAXS itself. A queue offer or take in any other instance method loads this the same way for its hook to probe (#751), except in a constructor, where this may be uninitialised and would not verify, and after a store to local 0. The one instruction the visitor inserts outside a substitution is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
 final class CollectionAccessWeaver {
 
     /**
@@ -192,7 +192,10 @@ final class CollectionAccessWeaver {
          * offers and takes whose hand-off only a shared lock makes (#796). It takes the same
          * arguments plus the monitor, receiver first for a virtual call as ever, and the weaver
          * loads that monitor at the call site: {@code this} for an instance method, the class for
-         * a static one.
+         * a static one. A virtual entry, which today means a queue row, also gets the variant in an
+         * instance method that is not {@code synchronized}, other than a constructor, with
+         * {@code this} as a monitor that may or may not be held: a {@code synchronized} method that
+         * hands the queue call to a helper holds it there too, so its hook asks (#751).
          */
         Entry whenSynchronized(String hook) {
             return new Entry(declaredBy, method, this.hook, returning, isStatic, hook,
@@ -1418,7 +1421,8 @@ final class CollectionAccessWeaver {
                         MethodVisitor delegate =
                                 super.visitMethod(access, name, descriptor, signature, exceptions);
                         return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable,
-                                access, instrumentedType.getInternalName(), Collections.emptySet(), null);
+                                access, name, instrumentedType.getInternalName(),
+                                Collections.emptySet(), null);
                     }
                 };
             }
@@ -1482,7 +1486,7 @@ final class CollectionAccessWeaver {
                         MethodVisitor downstream = super.visitMethod(bm.access(), bm.name(),
                                 bm.descriptor(), bm.signature(), bm.exceptions());
                         SubstitutingMethodVisitor smv = new SubstitutingMethodVisitor(
-                                downstream, targets, typePool, assignable, bm.access(),
+                                downstream, targets, typePool, assignable, bm.access(), bm.name(),
                                 instrumentedType.getInternalName(), waitingMethods, finalLoopHook);
                         bm.replay(smv);
                     }
@@ -1510,6 +1514,13 @@ final class CollectionAccessWeaver {
 
         /** Whether that monitor is the class rather than {@code this}. */
         private final boolean enclosingIsStatic;
+
+        /**
+         * Whether {@code this} may be loaded from local 0 here: an instance method other than a
+         * constructor, where it may still be uninitialised, until the first store to local 0, after
+         * which the slot may hold something else (#751).
+         */
+        private boolean thisIsLoadable;
 
         /** The class being woven, for loading its {@code Class} as a static method's monitor. */
         private final String owningClassInternalName;
@@ -1578,7 +1589,7 @@ final class CollectionAccessWeaver {
 
         SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
                                   TypePool typePool, Map<String, Boolean> assignable,
-                                  int access, String owningClassInternalName,
+                                  int access, String methodName, String owningClassInternalName,
                                   Set<String> waitingMethods,
                                   @org.jspecify.annotations.Nullable Target loopHookTarget) {
             super(Opcodes.ASM9, delegate);
@@ -1587,6 +1598,7 @@ final class CollectionAccessWeaver {
             this.assignable = assignable;
             this.enclosingIsSynchronized = (access & Opcodes.ACC_SYNCHRONIZED) != 0;
             this.enclosingIsStatic = (access & Opcodes.ACC_STATIC) != 0;
+            this.thisIsLoadable = !enclosingIsStatic && !"<init>".equals(methodName);
             this.owningClassInternalName = owningClassInternalName;
             this.waitingMethods = waitingMethods;
             this.loopHookTarget = loopHookTarget;
@@ -1608,10 +1620,15 @@ final class CollectionAccessWeaver {
                             && name.equals(target.methodName())
                             && descriptor.equals(target.callSiteDescriptor())
                             && ownerIsAssignable(owner, target)) {
-                        if (enclosingIsSynchronized && target.hasSynchronizedVariant()) {
-                            // A queue offer or take inside a synchronized method: the monitor
-                            // goes on top of the call's own arguments, as for the sleep below,
-                            // and the variant takes it as its last parameter (#796).
+                        if (target.hasSynchronizedVariant()
+                                && (enclosingIsSynchronized || thisIsLoadable)) {
+                            // A queue offer or take: the enclosing method's own monitor goes on
+                            // top of the call's arguments, as for the sleep below, and the
+                            // variant takes it as its last parameter (#796). A synchronized
+                            // method holds it by construction. Any other instance method passes
+                            // this too, because a synchronized method that hands its queue call
+                            // to a helper still holds it there, and the hook counts it only
+                            // when it is held (#751).
                             loadEnclosingMonitor();
                             super.visitMethodInsn(Opcodes.INVOKESTATIC,
                                     target.hookOwnerInternalName(), target.synchronizedHookName(),
@@ -1684,9 +1701,10 @@ final class CollectionAccessWeaver {
         }
 
         /**
-         * Pushes the monitor the enclosing {@code synchronized} method holds: {@code this} for an
-         * instance method, the class for a static one. One reference on the stack, no branch, which
-         * the synchronized hook variant then consumes; only maxStack grows.
+         * Pushes the enclosing method's own monitor: {@code this} for an instance method, the class
+         * for a static one, which is only reached inside a {@code synchronized} method. One
+         * reference on the stack, no branch, which the hook variant then consumes; only maxStack
+         * grows.
          */
         private void loadEnclosingMonitor() {
             if (enclosingIsStatic) {
@@ -1780,6 +1798,9 @@ final class CollectionAccessWeaver {
         @Override
         public void visitVarInsn(int opcode, int varIndex) {
             justSubstituted = null;
+            if (varIndex == 0 && opcode >= Opcodes.ISTORE && opcode <= Opcodes.ASTORE) {
+                thisIsLoadable = false;
+            }
             super.visitVarInsn(opcode, varIndex);
         }
 
@@ -2032,6 +2053,9 @@ final class CollectionAccessWeaver {
         @Override
         public void visitIincInsn(int varIndex, int increment) {
             justSubstituted = null;
+            if (varIndex == 0) {
+                thisIsLoadable = false;
+            }
             super.visitIincInsn(varIndex, increment);
         }
 

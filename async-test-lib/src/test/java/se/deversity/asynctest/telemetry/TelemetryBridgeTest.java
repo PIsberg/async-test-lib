@@ -255,20 +255,18 @@ class TelemetryBridgeTest {
     }
 
     @Test
-    void aPlainDequeHandOffWithAnInvisibleSideKeepsItsEdge() throws InterruptedException {
+    void aPlainDequeHandOffWithNoLockOnASideIsNotAnOwnershipHandOff() throws InterruptedException {
         Object pool = new Object();
-        String why = "a side with no lock the agent can see may hold a synchronized method's "
-                + "monitor, which comes from the access flag and is never recorded, and may be the "
-                + "very monitor the other side shows. Dropping the edge there reported correct "
-                + "pools, so AtomicityValidator leaves these alone until the weaver passes the "
-                + "method's monitor to the queue hooks (#751); SharedCollectionDetector still "
-                + "reports a deque accessed without its lock. Case: ";
-        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, null),
-                why + "no visible lock on either side");
-        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), pool, null),
-                why + "a visible lock on the offer side only");
-        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool),
-                why + "a visible lock on the poll side only");
+        String why = "a side that holds no lock shares none with the other, and with a synchronized "
+                + "method's monitor passed to the hooks (#796) an empty lockset is an unguarded "
+                + "side, not an invisible one. An ArrayDeque can then hand one order to two "
+                + "pollers, so the take is no hand-off (#751). Case: ";
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, null),
+                why + "no lock on either side");
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), pool, null),
+                why + "a lock on the offer side only");
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool),
+                why + "a lock on the poll side only");
     }
 
     @Test

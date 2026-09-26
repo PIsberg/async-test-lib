@@ -1954,7 +1954,7 @@ public final class TelemetryRegistry {
      * <p>A container that orders nothing itself, an {@code ArrayDeque} (see {@link #ordersNothing}),
      * hands an element over only under a lock its callers share, so its take is flagged in the
      * event's write slot and carries the locks this thread holds; the validator drops the edge when
-     * those and the matching offer's locks are both non-empty and share no member (#751).
+     * those and the matching offer's locks share no member, an empty set sharing none (#751).
      *
      * @param taken     the object that left the queue, or {@code null}
      * @param container the queue it left, or {@code null} when unknown
@@ -1965,17 +1965,19 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * {@link #ownershipTaken(Object, Object)} inside a {@code synchronized} method.
+     * {@link #ownershipTaken(Object, Object)} with the enclosing method's own monitor in hand.
      *
-     * <p>The method's monitor comes from its access flag, with no instruction for
-     * {@link HeldLocks} to see, so the weaver passes it to the queue hooks and it joins the locks
-     * a take from a container that orders nothing carries (#796). Without it a
-     * {@code synchronized}-method pool would read as unguarded.
+     * <p>A {@code synchronized} method's monitor comes from its access flag, with no instruction
+     * for {@link HeldLocks} to see, so the weaver passes it to the queue hooks and it joins the
+     * locks a take from a container that orders nothing carries (#796). Without it a
+     * {@code synchronized}-method pool would read as unguarded. Any other instance method passes
+     * its {@code this} as well, which counts only when this thread holds it: a
+     * {@code synchronized} method that polls through a helper holds it there too (#751).
      *
      * @param taken     the object that left the queue, or {@code null}
      * @param container the queue it left, or {@code null} when unknown
-     * @param monitor   the monitor of the enclosing {@code synchronized} method, which this
-     *                  thread holds; {@code null} outside one
+     * @param monitor   the enclosing method's own monitor, counted when this thread holds it;
+     *                  {@code null} for none
      * @since 1.12.3
      */
     public static void ownershipTaken(@Nullable Object taken, @Nullable Object container,
@@ -1997,7 +1999,7 @@ public final class TelemetryRegistry {
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, ordersNothing,
-                ordersNothing ? HeldLocks.registeredLockFingerprint(monitor, true) : 0L, false,
+                ordersNothing ? HeldLocks.registeredLockFingerprint(ifHeld(monitor), true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
                 container == null ? 0 : System.identityHashCode(container));
     }
@@ -2032,14 +2034,14 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * {@link #ownershipOffered(Object, Object)} inside a {@code synchronized} method, whose
-     * monitor joins the locks the offer carries; see
+     * {@link #ownershipOffered(Object, Object)} with the enclosing method's own monitor in hand,
+     * which joins the locks the offer carries when held; see
      * {@link #ownershipTaken(Object, Object, Object)} (#796).
      *
      * @param offered   the element being offered, or {@code null}
      * @param container the queue it is offered to
-     * @param monitor   the monitor of the enclosing {@code synchronized} method, which this
-     *                  thread holds; {@code null} outside one
+     * @param monitor   the enclosing method's own monitor, counted when this thread holds it;
+     *                  {@code null} for none
      * @since 1.12.3
      */
     public static void ownershipOffered(@Nullable Object offered, @Nullable Object container,
@@ -2054,9 +2056,20 @@ public final class TelemetryRegistry {
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, ordersNothing,
-                ordersNothing ? HeldLocks.registeredLockFingerprint(monitor, true) : 0L, false,
+                ordersNothing ? HeldLocks.registeredLockFingerprint(ifHeld(monitor), true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
                 System.identityHashCode(container));
+    }
+
+    /**
+     * {@return {@code monitor} when this thread holds it, else {@code null}}
+     *
+     * <p>Inside a {@code synchronized} method the answer is yes by construction. Elsewhere the
+     * weaver passes {@code this} on the chance that a {@code synchronized} caller holds it (#751),
+     * and only asking tells the two apart. Asked only for a container that orders nothing.
+     */
+    private static @Nullable Object ifHeld(@Nullable Object monitor) {
+        return monitor != null && Thread.holdsLock(monitor) ? monitor : null;
     }
 
     /**
