@@ -194,6 +194,45 @@ class JdbcConnectionSharedDetectorTest {
                         + "must not excuse it");
     }
 
+    /** An overlap names both threads: the one already holding and the one that took it. */
+    @Test
+    void anOverlapCountsTheHolderAndTheThreadThatJoinedIt() {
+        JdbcConnectionSharedDetector detector = new JdbcConnectionSharedDetector();
+        Connection shared = stubConnection();
+        Thread holder = Thread.ofPlatform().name("holder").unstarted(() -> { });
+        Thread joiner = Thread.ofPlatform().name("joiner").unstarted(() -> { });
+
+        detector.recordAccess(shared, "shared-conn", holder);
+        detector.recordAccess(shared, "shared-conn", joiner);
+        detector.recordRelease(shared, joiner);
+
+        String msg = detector.analyze().violations.get(0);
+        assertTrue(msg.contains("accessed from 2 threads (holder, joiner)")
+                        || msg.contains("accessed from 2 threads (joiner, holder)"),
+                "two threads held the connection at once, so both are the defect: " + msg);
+    }
+
+    /** Unnamed threads overlapping are counted apart, by id, not merged under one blank name. */
+    @Test
+    void unnamedThreadsOverlappingAreCountedApart() {
+        JdbcConnectionSharedDetector detector = new JdbcConnectionSharedDetector();
+        Connection shared = stubConnection();
+        Thread first = Thread.ofVirtual().unstarted(() -> { });
+        Thread second = Thread.ofVirtual().unstarted(() -> { });
+        Thread third = Thread.ofVirtual().unstarted(() -> { });
+
+        detector.recordAccess(shared, "shared-conn", first);
+        detector.recordAccess(shared, "shared-conn", second);
+        detector.recordAccess(shared, "shared-conn", third);
+        detector.recordRelease(shared, third);
+
+        String msg = detector.analyze().violations.get(0);
+        assertTrue(msg.contains("accessed from 3 threads ("), "three unnamed threads held it at once: " + msg);
+        for (Thread t : new Thread[] {first, second, third}) {
+            assertTrue(msg.contains("#" + t.threadId()), "each unnamed thread is listed by id: " + msg);
+        }
+    }
+
     /**
      * A caller that never models ownership keeps exactly the behaviour it had.
      *

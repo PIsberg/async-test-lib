@@ -131,6 +131,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry and a finding on two of them printed `2 threads ()`. An unnamed thread now prints as
   `#N`, as #790 does; a named thread still prints by its bare name. The name is taken once, on the
   thread's first access in the round, so the record path allocates nothing new per access.
+- **`JdbcConnectionSharedDetector` counts every thread in an overlap.** With ownership modelled
+  (`recordRelease`), the report counted and named only the threads that took a resource while
+  another held it, never the one already holding it, and kept them by name, so unnamed threads
+  merged into one blank entry: two named threads read as `accessed from 1 threads (second)`, and
+  three virtual threads as `1 threads ()`. Every holder at the moment of an overlap is now counted,
+  by thread id, and an unnamed one prints as `#N`, as #798 does for the rest of the family.
 - **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
   failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
   was judged by it. A blocking acquire through the agent now clears it
