@@ -30,6 +30,38 @@ public class UncaughtExceptionHandlerDetectorTest {
     }
 
     @Test
+    void testNoIssueWhenAJvmWideDefaultHandlerIsSet() {
+        // #758: the report's own fix names Thread.setDefaultUncaughtExceptionHandler, and a thread
+        // with no handler of its own dispatches to it through its ThreadGroup.
+        var previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((th, ex) -> {});
+        try {
+            var d = new UncaughtExceptionHandlerDetector();
+            Thread t = new Thread(() -> {});
+            d.recordThreadStart(t);
+            d.recordUncaughtException(t, new RuntimeException("boom"));
+            assertFalse(d.analyze().hasIssues());
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous);
+        }
+    }
+
+    @Test
+    void testDetectsUncaughtExceptionWhenNeitherHandlerNorDefaultIsSet() {
+        var previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(null);
+        try {
+            var d = new UncaughtExceptionHandlerDetector();
+            Thread t = new Thread(() -> {});
+            d.recordThreadStart(t);
+            d.recordUncaughtException(t, new RuntimeException("boom"));
+            assertTrue(d.analyze().hasIssues());
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous);
+        }
+    }
+
+    @Test
     void testDetectsUncaughtExceptionWithNoHandler() {
         var d = new UncaughtExceptionHandlerDetector();
         Thread t = new Thread(() -> {});

@@ -304,7 +304,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 96. Uncaught Exception Handler Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects threads started without a custom `Thread.UncaughtExceptionHandler` that subsequently throw an uncaught exception. Without a handler, the exception only reaches the thread group's default (stderr) handler, so the submitting code has no way to detect that the thread died.
+* **Description**: Detects threads started without a custom `Thread.UncaughtExceptionHandler` that subsequently throw an uncaught exception. Without a handler, the exception only reaches the thread group's default (stderr) handler, so the submitting code has no way to detect that the thread died. A JVM-wide handler set with `Thread.setDefaultUncaughtExceptionHandler` when the exception is recorded counts as a handler, and such a thread is not reported.
 * **Buggy Code**:
   ```java
   Thread worker = new Thread(this::riskyTask);

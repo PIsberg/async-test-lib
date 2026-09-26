@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was judged by it. A blocking acquire through the agent now clears it
   (`TryLockMisuseDetector.recordLockAcquired`); a failed try followed directly by `unlock()` still
   reports.
+- **`UncaughtExceptionHandlerDetector` honours a JVM-wide default handler (#758).** A thread with
+  no handler of its own was reported even when `Thread.setDefaultUncaughtExceptionHandler` had set
+  the handler its exception is dispatched to, which is the fix the report itself suggests. The
+  default is sampled when the exception is recorded.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through

@@ -221,7 +221,7 @@ AsyncTestContext.cfCommonPoolBlockingMonitor()             // CompletableFutureC
 | `detectSharedXmlParser` | boolean | true | Detect `DocumentBuilder` / `SAXParser` / `Transformer` / `XPath` instances accessed from multiple threads |
 | `detectBoxedPrimitiveLock` | boolean | true | Detect `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals |
 | `detectSharedTimeZone` | boolean | true | Detect `TimeZone` instances mutated (`setRawOffset`, `setID`) from multiple threads |
-| `detectUncaughtExceptionHandler` | boolean | true | Detect threads started without a custom `UncaughtExceptionHandler` that subsequently throw |
+| `detectUncaughtExceptionHandler` | boolean | true | Detect threads started without a custom `UncaughtExceptionHandler`, and with no JVM-wide default handler, that subsequently throw |
 
 #### Context accessors for Phase 12 detectors
 

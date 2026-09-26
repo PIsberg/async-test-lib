@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Detects threads that are started without a custom {@link Thread.UncaughtExceptionHandler}
- * and that subsequently throw an uncaught exception.
+ * Detects threads that are started without a custom {@link Thread.UncaughtExceptionHandler},
+ * with no JVM-wide default handler set either, and that subsequently throw an uncaught exception.
  *
  * <p>Without an explicit handler, uncaught exceptions are routed only to the thread group's
  * default handler (typically a stderr print). The submitting code has no way to detect
@@ -33,6 +33,7 @@ public class UncaughtExceptionHandlerDetector {
     private static class ThreadRecord {
         final String  threadName;
         final boolean hasCustomHandler;
+        volatile boolean coveredByDefaultHandler;
         volatile @Nullable Throwable uncaughtException;
 
         ThreadRecord(String tname, boolean hasCustomHandler) {
@@ -62,13 +63,21 @@ public class UncaughtExceptionHandlerDetector {
     /**
      * Records that a thread terminated with an uncaught exception.
      *
+     * <p>A thread with no handler of its own dispatches to its {@link ThreadGroup}, which hands the
+     * exception to {@link Thread#getDefaultUncaughtExceptionHandler()} when one is set. That
+     * JVM-wide default is sampled here, at the moment of the exception, because that is the
+     * handler the dispatch would reach; a thread covered by it is not reported (#758).
+     *
      * @param thread    the thread that threw (null-safe)
      * @param throwable the uncaught exception
      */
     public void recordUncaughtException(Thread thread, Throwable throwable) {
         if (thread == null) return;
         ThreadRecord rec = threads.get(thread.threadId());
-        if (rec != null) rec.uncaughtException = throwable;
+        if (rec != null) {
+            rec.coveredByDefaultHandler = Thread.getDefaultUncaughtExceptionHandler() != null;
+            rec.uncaughtException = throwable;
+        }
     }
 
     /**
@@ -77,7 +86,8 @@ public class UncaughtExceptionHandlerDetector {
     public UncaughtExceptionHandlerReport analyze() {
         UncaughtExceptionHandlerReport r = new UncaughtExceptionHandlerReport();
         for (ThreadRecord rec : threads.values()) {
-            if (!rec.hasCustomHandler && rec.uncaughtException != null) {
+            if (!rec.hasCustomHandler && rec.uncaughtException != null
+                    && !rec.coveredByDefaultHandler) {
                 r.violations.add(String.format(
                         "Thread '%s' threw '%s' but had no custom UncaughtExceptionHandler — "
                                 + "the exception was only printed to stderr and ignored by the submitter",
