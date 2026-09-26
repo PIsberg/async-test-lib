@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a row other than `CONTEXTUAL` or `OBSERVED` whose detector reads one, unless the test names the
   finding path that decides without it. On the current tree every row agrees; the six rows that read
   a lockset on one path and are classified by a weaker one are named with that path. No tier moved.
+- **`Thread.join` weaving is tested with the agent attached (#743).** The four woven `join`
+  overloads were covered only by the table-resolution test, which proves a call site is matched and
+  not that the match orders anything. `ThreadJoinWeavingTest` has a child write a field its parent
+  reads: after each overload returned the pair is silent, and read before the join it is reported.
+  With the join entries removed from the weaver's table, all four joined cases report.
 
 ### Changed
 
