@@ -4376,7 +4376,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_threadStartJoin_ordersTheChildsWrite", JDK,
                     "java.lang.Thread",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the parent writes the input before start() and reads the output after "
                             + "join(). Thread.start orders the first and Thread.join the second, "
@@ -4384,7 +4384,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_threadStartJoin_readsBeforeTheJoin", JDK,
                     "java.lang.Thread",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same child with the parent reading its output before join(). Nothing "
                             + "orders the child's write against that read",
@@ -4593,7 +4593,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_executorSubmit_futureGetOrdersTheTask", JDK,
                     "java.util.concurrent.ExecutorService",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the input is written before submit() and the output read after get(). The "
                             + "java.util.concurrent package javadoc orders both: submission "
@@ -4601,7 +4601,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_executorSubmit_readsBeforeTheGet", JDK,
                     "java.util.concurrent.ExecutorService",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same task with the output read before get(), unordered with the "
                             + "task's write",
@@ -4719,19 +4719,6 @@ final class Corpus {
                             + "body"),
             Map.entry("idiom_sharedRandom_splittableDrawnByEveryThread",
                     "the twin of the row above, on the SplittableRandom recording API"),
-            Map.entry("idiom_threadStartJoin_ordersTheChildsWrite",
-                    "the agent drops accesses on a thread the runner did not start (#500), so the "
-                            + "child's half of the idiom is invisible to it; the body records both "
-                            + "halves to RaceConditionDetector, and the woven start and join are "
-                            + "the edges"),
-            Map.entry("idiom_threadStartJoin_readsBeforeTheJoin",
-                    "the twin of the row above, recording the same accesses the same way"),
-            Map.entry("idiom_executorSubmit_futureGetOrdersTheTask",
-                    "the pool thread is not a runner worker, so the agent drops the task's "
-                            + "accesses (#500); the body records both halves to "
-                            + "RaceConditionDetector"),
-            Map.entry("idiom_executorSubmit_readsBeforeTheGet",
-                    "the twin of the row above, recording the same accesses the same way"),
             Map.entry("idiom_digestHolderPool_checkoutDeclared",
                     "the woven take names the holder, not the digest the detector tracks, and a "
                             + "monitor is no edge (#747), so the taker declares the checkout with "

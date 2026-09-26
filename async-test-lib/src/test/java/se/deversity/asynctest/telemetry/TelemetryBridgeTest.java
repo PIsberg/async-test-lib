@@ -52,6 +52,125 @@ class TelemetryBridgeTest {
         }
     }
 
+    // ---- Threads the body hands work to (#745) ----------------------------------------------
+
+    private static final long CHILD = 800_001L;
+    private static final long GRANDCHILD = 800_002L;
+    private static final long POOL = 800_003L;
+
+    private static void started(TelemetryBridge bridge, long parent, long child) {
+        bridge.onEvent(parent, TelemetryRegistry.THREAD_STARTING, false, child);
+    }
+
+    private static void submitted(TelemetryBridge bridge, long submitter, long token) {
+        bridge.onEvent(submitter, TelemetryRegistry.TASK_SUBMITTED, false, token);
+    }
+
+    private static void taskStarted(TelemetryBridge bridge, long thread, long token) {
+        bridge.onEvent(thread, TelemetryRegistry.TASK_STARTED, false, token);
+    }
+
+    private static void taskEnded(TelemetryBridge bridge, long thread) {
+        bridge.onEvent(thread, TelemetryRegistry.TASK_ENDED, false, 0L);
+    }
+
+    /** {@return whether {@code thread}'s access reached the bridge's validator} */
+    private static boolean forwarded(TelemetryBridge bridge, long thread) {
+        long before = bridge.droppedNonWorkerEvents();
+        bridge.onEvent(thread, "com.example.Probe.value", false);
+        return bridge.droppedNonWorkerEvents() == before;
+    }
+
+    @Test
+    void aThreadAWorkerStartsIsPartOfTheRunAndSoAreItsOwn() {
+        AtomicityValidator av = new AtomicityValidator();
+        try (TelemetryBridge bridge = TelemetryBridge.activate(av, Set.of(WORKER_A))) {
+            started(bridge, WORKER_A, CHILD);
+            bridge.onEvent(CHILD, "com.example.Account.balance", true);
+            bridge.onEvent(WORKER_A, "com.example.Account.balance", false);
+            started(bridge, CHILD, GRANDCHILD);
+
+            assertTrue(forwarded(bridge, GRANDCHILD), "a thread the child started works for the run too");
+            assertEquals(0L, bridge.droppedNonWorkerEvents(),
+                    "the start events are not accesses, and every access came from the run");
+        }
+        assertTrue(av.analyzeAtomicity().unsafeFieldAccesses.stream()
+                        .anyMatch(s -> s.contains("com.example.Account.balance")),
+                "the child's write and the worker's read, nothing ordering them, are a race between "
+                        + "the body and the thread it spawned");
+    }
+
+    @Test
+    void aThreadStartedOutsideTheRunStaysOutside() {
+        try (TelemetryBridge bridge = TelemetryBridge.activate(new AtomicityValidator(), Set.of(WORKER_A))) {
+            started(bridge, NON_WORKER, CHILD);
+
+            assertFalse(forwarded(bridge, CHILD),
+                    "a thread started by a thread the run does not own is not the run's");
+        }
+    }
+
+    @Test
+    void aThreadStartedInOneRunIsNotPartOfTheNext() {
+        try (TelemetryBridge first = TelemetryBridge.activate(new AtomicityValidator(), Set.of(WORKER_A))) {
+            started(first, WORKER_A, CHILD);
+            assertTrue(forwarded(first, CHILD), "precondition: the first run owns its child");
+        }
+        try (TelemetryBridge next = TelemetryBridge.activate(new AtomicityValidator(), Set.of(WORKER_B))) {
+            assertFalse(forwarded(next, CHILD),
+                    "a child that outlives the run that started it must contribute nothing to the "
+                            + "next run: that run never saw it start");
+        }
+    }
+
+    @Test
+    void aPoolThreadIsPartOfTheRunOnlyWhileItRunsTheRunsTask() {
+        try (TelemetryBridge bridge = TelemetryBridge.activate(new AtomicityValidator(), Set.of(WORKER_A))) {
+            assertFalse(forwarded(bridge, POOL), "precondition: a pool thread is nobody's");
+
+            submitted(bridge, WORKER_A, 7L);
+            taskStarted(bridge, POOL, 7L);
+            assertTrue(forwarded(bridge, POOL), "running a task a worker submitted");
+            taskEnded(bridge, POOL);
+            assertFalse(forwarded(bridge, POOL), "the same thread after that task ended");
+
+            submitted(bridge, NON_WORKER, 8L);
+            taskStarted(bridge, POOL, 8L);
+            assertFalse(forwarded(bridge, POOL), "running a task submitted from outside the run");
+            taskEnded(bridge, POOL);
+
+            taskStarted(bridge, POOL, 7L);
+            assertFalse(forwarded(bridge, POOL), "a token is taken up once");
+            taskEnded(bridge, POOL);
+        }
+    }
+
+    @Test
+    void aTaskInsideATaskIsJudgedOnItsOwn() {
+        try (TelemetryBridge bridge = TelemetryBridge.activate(new AtomicityValidator(), Set.of(WORKER_A))) {
+            submitted(bridge, WORKER_A, 1L);
+            taskStarted(bridge, POOL, 1L);
+            taskStarted(bridge, POOL, 2L);
+            assertFalse(forwarded(bridge, POOL),
+                    "a fork-join worker helping with somebody else's task inside the run's");
+            submitted(bridge, POOL, 3L);
+            taskEnded(bridge, POOL);
+            assertTrue(forwarded(bridge, POOL), "back in the run's task");
+            submitted(bridge, POOL, 4L);
+            taskEnded(bridge, POOL);
+            assertFalse(forwarded(bridge, POOL), "after both");
+
+            taskStarted(bridge, CHILD, 3L);
+            assertFalse(forwarded(bridge, CHILD),
+                    "submitted from the task that was not the run's, while it ran");
+            taskEnded(bridge, CHILD);
+            taskStarted(bridge, CHILD, 4L);
+            assertTrue(forwarded(bridge, CHILD),
+                    "submitted from the run's task while it ran, begun after that task ended");
+            taskEnded(bridge, CHILD);
+        }
+    }
+
     @Test
     void forwardsWorkerEventsAndDropsNonWorkerEvents() {
         AtomicityValidator av = new AtomicityValidator();

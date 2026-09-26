@@ -1929,9 +1929,9 @@ probe was not kept, so nothing would have noticed any of them coming back. The `
 broken twin: the same code with the synchronization removed or put in the wrong place. The agent is
 attached as `fields=true,collections=true` with Surefire's own classes excluded, as in lane one,
 and bodies record nothing, except in the rows `Corpus.idiomManualApiRows()` names with a reason:
-the idiom is invisible to every woven call site there, because the thread doing half of it is one
-the runner did not start and the agent drops (#500), or because `ThreadLocalRandom` and
-`java.util.Random` are not woven. `IdiomRowPremise` fails the lane if any other body touches
+the idiom is invisible to every woven call site there, because `ThreadLocalRandom` and
+`java.util.Random` are not woven, a check-then-act is no single call, or a pool hands out a holder
+around the instance a detector tracks. `IdiomRowPremise` fails the lane if any other body touches
 `AsyncTestContext`, and fails a named row whose body no longer does.
 
 **The bar on a correct row** is stricter than either pair lane's:
@@ -1970,6 +1970,14 @@ and an `AtomicReference` get acquires the store whose value it returned. In the 
 after (JDK 26, Windows 11), all four correct rows were silent with nothing at `FACT` or above, and
 their twins still drew `PROMPT`/`HIGH` from the detector they name; only the holder pool is left in
 `Corpus.idiomKnownGaps()`.
+
+**Two pairs moved to the woven path by #745.** The `Thread.start`/`join` and executor submit/get
+rows ran on the manual API in run L, recording both halves to `RaceConditionDetector`, because the
+agent dropped every access on a thread the runner did not start. The bridge now forwards a thread a
+worker starts, from its first access, and a pool thread while it runs a task a worker submitted.
+The four bodies record nothing and name `AtomicityValidator`. In the first full run after (JDK 26,
+Windows 11), both correct rows were silent with nothing at `FACT` or above, and both twins drew
+`PROMPT`/`HIGH` from `AtomicityValidator`. Run L's table below still shows the rows as they were.
 
 **What it found on its first run.** One seed row still drew a finding on the integration branch:
 a single writer bumping a volatile with a read-then-write while the other threads read it drew a
@@ -2051,9 +2059,9 @@ hand-off now names `AtomicityValidator`, and `SharedCollectionDetector` reports 
 **What it does not measure.** A correct row that other detectors question below `FACT` passes, and
 only the report says so. The idioms are the ones the probe and the model's documented limits named,
 not a survey of user code, so a clean lane is a floor under those shapes and no statement about any
-other. Rows whose idiom runs half on a thread the runner did not start are measured through the
-manual API, which tests the model and not the agent: until the agent can attribute such a thread's
-accesses to a round (#500), the woven path cannot see those idioms at all.
+other. Work a body hands to a thread in a way the agent does not see, a thread started in unwoven
+code or through a `Thread.Builder`, or a task given to `Executor.execute`, is still dropped, and no
+row measures it.
 
 ## Reproducing it
 

@@ -185,6 +185,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `v = map.get(k); map.put(k, v + 1)` two equal puts are the lost update itself, and a check that
   also gates other work, such as sending once, is a defect whatever is put; the javadoc says to
   record those without the value.
+- **The agent attributes a thread the body starts, and a task it submits, to the run (#745).**
+  The telemetry bridge forwarded only the runner's workers, so a child thread a worker started and
+  a pool thread running a task a worker submitted had every field access dropped
+  (`runner.telemetry.unattributed`), and a race between a body and the thread it spawned passed
+  silent. A woven `Thread.start` now tells the bridge which thread started which, and a task
+  submitted to a JDK executor or to `CompletableFuture.supplyAsync`/`runAsync` carries a token its
+  wrapper publishes at the submit and around the task. The bridge forwards a thread started by a
+  forwarded one from its first access, and a pool thread only while it runs a task a forwarded
+  thread submitted. Attribution lives in the run's own bridge, so a thread that outlives its run,
+  or a pool shared across tests, gives a later run only what that run's workers hand it.
+  `SpawnedWorkAttributionWeavingTest` pins both directions end to end (an unjoined child's write
+  and an ungotten task's write are reported, the joined and gotten ones stay silent, and a
+  lingering child from the previous run contributes nothing), and the corpus idiom lane's
+  `start`/`join` and executor submit/get rows run on the woven path instead of the manual API.
+  Still dropped: a thread started in unwoven code or through a `Thread.Builder`, a task given to
+  `Executor.execute`, and a pool thread's work outside a wrapped task.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

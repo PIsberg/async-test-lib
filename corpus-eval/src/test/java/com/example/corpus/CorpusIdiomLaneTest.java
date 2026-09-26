@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
-import se.deversity.asynctest.diagnostics.RaceConditionDetector;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -216,26 +215,17 @@ class CorpusIdiomLaneTest {
     }
 
     /**
-     * The parent writes the input, starts a child that computes, joins it, reads the output.
-     * Manual API: the agent drops a thread the runner did not start (#500), so the child's half
-     * is reported by the body; the detector is fetched on the worker, where the context lives.
+     * The parent writes the input, starts a child that computes, joins it, reads the output. The
+     * child's accesses are the run's because a worker started it (#745).
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_threadStartJoin_ordersTheChildsWrite() {
         correct(() -> {
-            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
             Result result = new Result();
-            races.recordFieldWrite(result, "input");
             result.input = (int) Thread.currentThread().threadId();
-            Thread child = new Thread(() -> {
-                races.recordFieldRead(result, "input");
-                int input = result.input;
-                races.recordFieldWrite(result, "output");
-                result.output = input * 2;
-            });
+            Thread child = new Thread(() -> result.output = result.input * 2);
             child.start();
             child.join();
-            races.recordFieldRead(result, "output");
             use(result.output);
         });
     }
@@ -244,18 +234,10 @@ class CorpusIdiomLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_threadStartJoin_readsBeforeTheJoin() {
         broken(() -> {
-            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
             Result result = new Result();
-            races.recordFieldWrite(result, "input");
             result.input = (int) Thread.currentThread().threadId();
-            Thread child = new Thread(() -> {
-                races.recordFieldRead(result, "input");
-                int input = result.input;
-                races.recordFieldWrite(result, "output");
-                result.output = input * 2;
-            });
+            Thread child = new Thread(() -> result.output = result.input * 2);
             child.start();
-            races.recordFieldRead(result, "output");
             use(result.output);
             child.join();
         });
@@ -726,25 +708,19 @@ class CorpusIdiomLaneTest {
     }
 
     /**
-     * Submit a task that reads the input and writes the output, get() it, read the output.
-     * Manual API: the pool thread is not a runner worker, so the agent drops its half (#500).
+     * Submit a task that reads the input and writes the output, get() it, read the output. The
+     * pool thread's accesses are the run's while it runs a task a worker submitted (#745).
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_executorSubmit_futureGetOrdersTheTask() {
         correct(() -> {
-            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
             Result result = new Result();
-            races.recordFieldWrite(result, "input");
             result.input = (int) Thread.currentThread().threadId();
             try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
                 Future<?> task = executor.submit(() -> {
-                    races.recordFieldRead(result, "input");
-                    int input = result.input;
-                    races.recordFieldWrite(result, "output");
-                    result.output = input * 2;
+                    result.output = result.input * 2;
                 });
                 getUnchecked(task);
-                races.recordFieldRead(result, "output");
                 use(result.output);
             }
         });
@@ -754,18 +730,12 @@ class CorpusIdiomLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_executorSubmit_readsBeforeTheGet() {
         broken(() -> {
-            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
             Result result = new Result();
-            races.recordFieldWrite(result, "input");
             result.input = (int) Thread.currentThread().threadId();
             try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
                 Future<?> task = executor.submit(() -> {
-                    races.recordFieldRead(result, "input");
-                    int input = result.input;
-                    races.recordFieldWrite(result, "output");
-                    result.output = input * 2;
+                    result.output = result.input * 2;
                 });
-                races.recordFieldRead(result, "output");
                 use(result.output);
                 getUnchecked(task);
             }

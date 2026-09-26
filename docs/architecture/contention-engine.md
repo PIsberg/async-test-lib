@@ -173,21 +173,30 @@ thread ids. `forCurrentContext(Set<Long>)` resolves the validator via
 #### What the filter cannot see
 
 `workerThreadIds` holds the ids of the runner's own workers, and each worker adds its id as it
-starts. A test body that submits its racing work to its own executor, or starts
-`new Thread(...)`, therefore produces accesses on threads that are not in the set, and the bridge
-drops them: it has no way to attribute them to a round.
+starts. The bridge also forwards the threads the workers hand work to (#745). A woven
+`Thread.start` publishes which thread started which, and a thread started by a forwarded thread
+is forwarded from its first access. A task submitted to a JDK executor, or to
+`CompletableFuture.supplyAsync`/`runAsync`, runs wrapped, and the wrapper publishes a token when
+it is submitted and again around the task, so the pool thread is forwarded while it runs a task a
+forwarded thread submitted, and not before or after. Those events travel through the same ring
+as the accesses, ahead of anything the new thread or task publishes, and the bridge judges them
+when they drain. A bridge is one run, so a thread that outlives its run, or a pool shared by
+several tests, contributes to a later run only what that run's own workers hand it.
 
-That is the right call, and it makes a clean atomicity report mean *the workers were clean*
-rather than *the code was clean*. Since 1.11.2 the gap is announced rather than silent. The
-bridge counts what it dropped (`droppedNonWorkerEvents()`), and `ConcurrencyRunner` logs one
-line per test at INFO when the count is non-zero:
+Work handed over any other way is still dropped: a thread started in code the agent does not
+weave or through a `Thread.Builder`, a task given to `Executor.execute` or to an executor outside
+the JDK, and a pool thread's work outside a wrapped task, such as a dependent stage's function. A
+clean atomicity report means *the workers and their woven hand-offs were clean* rather than *the
+code was clean*. Since 1.11.2 the gap is announced rather than silent. The bridge counts what it
+dropped (`droppedNonWorkerEvents()`), and `ConcurrencyRunner` logs one line per test at INFO when
+the count is non-zero:
 
 ```
 runner.telemetry.unattributed test=… events=42 reason="…" hint="…"
 ```
 
-To get evidence from that work, run it on the `@AsyncTest` workers themselves. Attributing child
-threads by parentage would need a thread-start hook in the agent and is not implemented.
+To get evidence from that work, start it with `Thread.start` or submit it to a JDK executor from
+the `@AsyncTest` workers, or run it on the workers themselves.
 
 ---
 

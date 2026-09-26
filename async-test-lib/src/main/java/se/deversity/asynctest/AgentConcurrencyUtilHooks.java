@@ -16,6 +16,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import org.jspecify.annotations.Nullable;
@@ -905,47 +906,62 @@ public final class AgentConcurrencyUtilHooks {
      * has an object to name at the moment it happens; the wrapper is that object. It takes the
      * submitter's stamp when it is made, which the running thread receives before the task, and
      * takes the running thread's stamp when the task ends, before the executor completes the
-     * future, so a get that returned finds it. One object of three fields per submission; the
-     * stamps are snapshots the threads already hold.
+     * future, so a get that returned finds it. It also carries a token the telemetry bridge
+     * attributes the task by: the submitter publishes it when the wrapper is made, and the running
+     * thread publishes it around the task, so a task a worker submitted is judged as part of the
+     * worker's run while it runs, and the pool thread is not before or after (#745). One object of
+     * four fields per submission; the stamps are snapshots the threads already hold.
      */
     static final class HandedTask implements Runnable, Callable<Object>, Supplier<Object> {
 
+        /** Where task tokens come from; unique in the JVM, which is what the bridge matches on. */
+        private static final AtomicLong TOKENS = new AtomicLong();
+
         private final Object task;
         private final HappensBefore.Stamp submitted;
+        private final long token;
         private volatile HappensBefore.@Nullable Stamp finished;
 
         HandedTask(Object task) {
             this.task = task;
             this.submitted = HappensBefore.handOff();
+            this.token = TOKENS.incrementAndGet();
+            TelemetryRegistry.taskSubmitted(token);
         }
 
         @Override
         public void run() {
             HappensBefore.receive(submitted);
+            TelemetryRegistry.taskStarted(token);
             try {
                 ((Runnable) task).run();
             } finally {
                 finished = HappensBefore.handOff();
+                TelemetryRegistry.taskEnded();
             }
         }
 
         @Override
         public @Nullable Object call() throws Exception {
             HappensBefore.receive(submitted);
+            TelemetryRegistry.taskStarted(token);
             try {
                 return ((Callable<?>) task).call();
             } finally {
                 finished = HappensBefore.handOff();
+                TelemetryRegistry.taskEnded();
             }
         }
 
         @Override
         public @Nullable Object get() {
             HappensBefore.receive(submitted);
+            TelemetryRegistry.taskStarted(token);
             try {
                 return ((Supplier<?>) task).get();
             } finally {
                 finished = HappensBefore.handOff();
+                TelemetryRegistry.taskEnded();
             }
         }
 

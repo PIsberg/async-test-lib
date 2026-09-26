@@ -35,5 +35,8 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
 - **Thread attribution is by the accessing thread.** The event carries the id of the thread
   that ran the accessor. The bridge preserves this by using the explicit-thread-id overload,
   so analysis reflects the worker thread and not the drain thread — but only events from the
-  configured worker-thread-id set are forwarded; accesses on other application threads during
-  the round are treated as noise and dropped.
+  configured worker-thread-id set, and from the threads those workers hand work to, are
+  forwarded: a thread a worker starts through a woven `Thread.start`, and a pool thread while it
+  runs a task a worker submitted to a JDK executor (#745). Accesses on other application threads
+  during the round, a thread started in unwoven code or a task given to `Executor.execute`
+  included, are treated as noise and dropped.

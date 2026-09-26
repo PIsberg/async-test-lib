@@ -112,7 +112,7 @@ Different rules, because the body cooperates and the class contract is no longer
 ## Adding an idiom-lane row
 
 1. Write the idiom the way a user writes it, in `CorpusIdiomLaneTest`, and record nothing. If no
-   woven call site can show a detector the idiom (a thread the runner did not start, a
+   woven call site can show a detector the idiom (a thread started in unwoven code, a
    `ThreadLocalRandom`, a `java.util.Random`), record what the body did and add the row to
    `Corpus.idiomManualApiRows()` with that reason.
 2. Add its broken twin directly after it: the same code with the synchronization removed or put
