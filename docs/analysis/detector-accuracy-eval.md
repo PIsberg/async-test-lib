@@ -247,7 +247,10 @@ from `HappensBefore.release`/`acquire`/`fork`/`join` in the test. An edge only r
 two siblings started by one parent, and two threads that use the digest at once after a hand-off,
 still fire, and an unwoven latch nobody declared orders nothing. Pinned in
 `SharedMessageDigestDetectorTest`, through the manual API and through the hook methods the weaver
-substitutes. `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
+substitutes. A take-over also restarts the lockset (#746): one thread setting the digest up
+unlocked and handing it to threads that always lock it is consistent locking, provided every later
+access is ordered after the hand-off. A guarded use reached through an edge the model never saw is
+not, and brings the unlocked set-up back into the lockset, so it still fires. `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
 per-round lockset from the same windows (`sawUnguardedRound()`), so one lock per round, a
 different one each round, no longer reads as inconsistent locking.
 

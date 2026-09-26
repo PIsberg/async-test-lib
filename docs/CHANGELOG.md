@@ -89,6 +89,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inside a running constructor starts deeper and closes nothing, so an escape after it still
   reports. A read made before the later constructor records its start is still undecidable from
   the stack and counts against the earlier instance.
+- **The lock-aware `Shared*` family starts its lockset again at an ordered hand-off (#746).** A
+  thread that set an instance up unlocked and handed it on through an edge the model sees, after
+  which every use was under one lock, was still reported: the unlocked accesses before the hand-off
+  stayed in the window's lockset. `SelfGuard` now restarts the lockset at a take-over, and only
+  while every later access is ordered after the previous owner's last one; an access that is not
+  may overlap the unlocked ones and brings them back. Pinned both ways in
+  `SharedMessageDigestDetectorTest`: a guarded use reached through an unseen edge, and an unguarded
+  use after the hand-off, still fire.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through

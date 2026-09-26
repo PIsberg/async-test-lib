@@ -67,6 +67,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * instance exactly as before: an edge only ever removes a finding, so two threads using the
  * instance at once still report.
  *
+ * <p>A take-over also starts the lockset again. Nothing before it can overlap anything ordered
+ * after it, so one thread setting an instance up unlocked and handing it to threads that then
+ * always lock it is consistent locking (#746). That holds only while every later access is
+ * ordered after the hand-off: one that is not may overlap the accesses before it, and from then
+ * on the lockset is the whole window's again.
+ *
  * <p>Public only so that {@code AsyncTestContext} can own and bind the {@link Scope}; everything
  * else here is package-private and belongs to the detectors.
  *
@@ -236,16 +242,37 @@ public final class SelfGuard {
         /** Whether an access no ordering explains, by another thread, was seen in this window. */
         final boolean shared;
 
-        /** The locks held at every access in this window; empty once one held none of them. */
+        /**
+         * The locks the verdict reads: held at every access since the latest ordered hand-off,
+         * while every access since is ordered after it, and otherwise at every access in this
+         * window. Empty once one of those accesses held none of them.
+         */
         final int[] locks;
 
+        /** The locks held at every access in this window, hand-offs or not. */
+        final int[] windowLocks;
+
+        /** The owner before the latest ordered hand-off; meaningful only with a {@code handOffStamp}. */
+        final long handOffOwner;
+
+        /**
+         * That owner's clock at its last access before the hand-off, or {@code null} when
+         * {@code locks} covers the whole window: before any hand-off, and once an access that is
+         * not ordered after the hand-off brought the earlier accesses back into the set.
+         */
+        final HappensBefore.@Nullable Stamp handOffStamp;
+
         Window(long key, long owner, HappensBefore.@Nullable Stamp ownerStamp, boolean shared,
-               int[] locks) {
+               int[] locks, int[] windowLocks, long handOffOwner,
+               HappensBefore.@Nullable Stamp handOffStamp) {
             this.key = key;
             this.owner = owner;
             this.ownerStamp = ownerStamp;
             this.shared = shared;
             this.locks = locks;
+            this.windowLocks = windowLocks;
+            this.handOffOwner = handOffOwner;
+            this.handOffStamp = handOffStamp;
         }
     }
 
@@ -419,7 +446,8 @@ public final class SelfGuard {
                                       HappensBefore.@Nullable Stamp stamp) {
             if (current == null || key > current.key) {
                 // The first access of a round: nothing recorded earlier in the run overlapped it.
-                return new Window(key, threadId, stamp, false, probe(null, instance, forWrite));
+                int[] locks = probe(null, instance, forWrite);
+                return new Window(key, threadId, stamp, false, locks, locks, 0L, null);
             }
             // The same window, or an access still in flight from an older round or owner while a
             // newer one has started. The latter joins the newer window, the direction that can
@@ -427,28 +455,56 @@ public final class SelfGuard {
             boolean shared = current.shared;
             long owner = current.owner;
             HappensBefore.@Nullable Stamp ownerStamp = current.ownerStamp;
+            boolean handedOff = false;
             if (!shared) {
                 if (threadId == owner) {
                     ownerStamp = stamp;
                 } else if (HappensBefore.ordered(owner, ownerStamp, threadId, stamp)) {
                     // Ordered after the owner's latest access, and so, by transitivity, after
                     // every access of this window: a hand-off, not an overlap.
+                    handedOff = true;
                     owner = threadId;
                     ownerStamp = stamp;
                 } else {
                     shared = true;
                 }
             }
-            int[] locks = current.locks.length == 0
-                    ? current.locks
-                    : probe(current.locks, instance, forWrite);
+            int[] windowLocks = current.windowLocks.length == 0
+                    ? current.windowLocks
+                    : probe(current.windowLocks, instance, forWrite);
+            long handOffOwner = current.handOffOwner;
+            HappensBefore.@Nullable Stamp handOffStamp = current.handOffStamp;
+            int[] locks;
+            if (handedOff) {
+                // Every earlier access of the window happens before this one, so none of them can
+                // overlap it or anything ordered after it: the lockset starts again here (#746),
+                // for as long as every later access is ordered after the previous owner's last.
+                handOffOwner = current.owner;
+                handOffStamp = current.ownerStamp;
+                locks = probe(null, instance, forWrite);
+            } else if (handOffStamp != null
+                    && !HappensBefore.ordered(handOffOwner, handOffStamp, threadId, stamp)) {
+                // Not ordered after the hand-off, so it may overlap the accesses before it, which
+                // count again: the lockset is the whole window's from here on.
+                handOffStamp = null;
+                locks = windowLocks;
+            } else if (handOffStamp == null) {
+                locks = windowLocks;
+            } else {
+                locks = current.locks.length == 0
+                        ? current.locks
+                        : probe(current.locks, instance, forWrite);
+            }
             if (shared == current.shared
                     && owner == current.owner
                     && ownerStamp == current.ownerStamp // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
-                    && locks == current.locks) { // NOPMD CompareObjectsWithEquals - intersect returns its input when nothing dropped
+                    && locks == current.locks // NOPMD CompareObjectsWithEquals - intersect returns its input when nothing dropped
+                    && windowLocks == current.windowLocks // NOPMD CompareObjectsWithEquals - as above
+                    && handOffStamp == current.handOffStamp) { // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
                 return current;
             }
-            return new Window(current.key, owner, ownerStamp, shared, locks);
+            return new Window(current.key, owner, ownerStamp, shared, locks, windowLocks,
+                    handOffOwner, handOffStamp);
         }
 
         private static int[] probe(int @Nullable [] candidate, @Nullable Object instance,
@@ -466,7 +522,8 @@ public final class SelfGuard {
          * the instance ({@link Scope#ownershipTaken(Object)}): the owner before it and the owner
          * after it are judged apart. A thread whose access the {@link HappensBefore} model orders
          * after every earlier access of its window is not a second thread either; it took the
-         * instance over. Once true it stays true.
+         * instance over, and the lockset starts again at its access for as long as every later
+         * access is ordered after the hand-off. Once true it stays true.
          */
         final boolean sawUnguardedSharing() {
             return unguardedSharing;

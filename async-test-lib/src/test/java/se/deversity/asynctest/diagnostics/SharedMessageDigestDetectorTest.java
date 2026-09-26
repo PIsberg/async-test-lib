@@ -707,6 +707,105 @@ public class SharedMessageDigestDetectorTest {
                 "an edge orders the accesses before it, not the concurrent ones after it");
     }
 
+    // ---- The lockset starts again at an ordered hand-off (#746) --------------------------------
+    //
+    // A sets the digest up with no lock and hands it on through a latch; from then on every use
+    // is under the digest's own monitor. The lockset over the whole window is empty, because A
+    // held nothing, but A's accesses are ordered before every later one, so no later access can
+    // overlap them. Starting a fresh lockset at the hand-off is sound only while every later
+    // access is ordered after it; one that is not may overlap A's unlocked use and still counts.
+
+    /** Uses {@code md} under its own monitor, which the lockset sees with no declaration. */
+    private static void useGuarded(MessageDigest md) {
+        synchronized (md) {
+            use(md);
+        }
+    }
+
+    /** A uses the digest unlocked and counts {@code handedOver} down through the woven hook. */
+    private static Runnable setUpAndHandOver(MessageDigest md, java.util.concurrent.CountDownLatch handedOver) {
+        return () -> {
+            use(md);
+            se.deversity.asynctest.AgentConcurrencyUtilHooks.countDown(handedOver);
+        };
+    }
+
+    /** Waits for {@code handedOver} through the woven hook, which is the edge the model sees. */
+    private static void awaitWoven(java.util.concurrent.CountDownLatch handedOver) {
+        try {
+            se.deversity.asynctest.AgentConcurrencyUtilHooks.await(handedOver);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    void guardedUseAfterAnOrderedHandOffIsNotSharing() throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        Runnable guardedAfter = () -> {
+            awaitWoven(handedOver);
+            together(barrier, () -> useGuarded(md)).run();
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, setUpAndHandOver(md, handedOver), guardedAfter, guardedAfter);
+
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(),
+                "every access after the hand-off was guarded, and the unlocked one is ordered before"
+                        + " all of them; got " + report.violations);
+    }
+
+    @Test
+    void aGuardedUseNotOrderedAfterTheHandOffStillFires() throws Exception {
+        // B takes over through the woven latch and uses the digest guarded. C also uses it guarded,
+        // but reaches it through an edge the model never saw, so nothing orders C after A's
+        // unlocked use: that pair may overlap, and the hand-off must not excuse it.
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        var unseen = new java.util.concurrent.CountDownLatch(1);
+        Runnable b = () -> {
+            awaitWoven(handedOver);
+            useGuarded(md);
+            unseen.countDown();
+        };
+        Runnable c = () -> {
+            await(unseen);
+            useGuarded(md);
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, setUpAndHandOver(md, handedOver), b, c);
+
+        assertTrue(detectorOf(ctx).analyze().hasIssues(),
+                "C's guarded use is not ordered after A's unlocked one");
+    }
+
+    @Test
+    void anUnguardedUseAfterAnOrderedHandOffStillFires() throws Exception {
+        // Both successors are ordered after A, and they overlap each other with one unguarded.
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        Runnable guarded = () -> {
+            awaitWoven(handedOver);
+            together(barrier, () -> useGuarded(md)).run();
+        };
+        Runnable careless = () -> {
+            awaitWoven(handedOver);
+            together(barrier, () -> use(md)).run();
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, setUpAndHandOver(md, handedOver), guarded, careless);
+
+        assertTrue(detectorOf(ctx).analyze().hasIssues(),
+                "the lockset restarts at the hand-off, and an unguarded use after it empties it again");
+    }
+
     private static void await(java.util.concurrent.CountDownLatch latch) {
         try {
             latch.await();
