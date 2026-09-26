@@ -169,4 +169,35 @@ public class ConcurrentMapComputeRecursionDetectorTest {
         assertTrue(s.contains("CONCURRENT MAP COMPUTE RECURSION"));
         assertTrue(s.contains("Fix"));
     }
+
+    /**
+     * A default virtual thread has no name, so a report naming the thread by name alone printed
+     * "Thread ''" (#790). It is named by its id instead.
+     */
+    @Test
+    void anUnnamedVirtualThreadIsReportedByIdNotByAnEmptyName() {
+        var d = new ConcurrentMapComputeRecursionDetector();
+        Map<String, String> map = new ConcurrentHashMap<>();
+        Thread vt = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", vt.getName(), "precondition: a default virtual thread has no name");
+        d.recordComputeStart(map, "key-A", vt, "cache");
+        d.recordComputeStart(map, "key-A", vt, "cache");
+        d.recordComputeStart(map, "key-B", vt, "cache");
+        String report = d.analyze().toString();
+        assertFalse(report.contains("Thread ''"), "no finding may name a thread as '': " + report);
+        assertTrue(report.contains("Thread '#" + vt.threadId() + "'"),
+                "the unnamed thread must be named by its id: " + report);
+    }
+
+    /** A named thread keeps its name, with its id beside it. */
+    @Test
+    void aNamedThreadIsReportedByNameAndId() {
+        var d = new ConcurrentMapComputeRecursionDetector();
+        Map<String, String> map = new ConcurrentHashMap<>();
+        Thread t = new Thread(() -> { }, "worker-1");
+        d.recordComputeStart(map, "key-A", t, "cache");
+        d.recordComputeStart(map, "key-A", t, "cache");
+        String report = d.analyze().toString();
+        assertTrue(report.contains("Thread 'worker-1 (id=" + t.threadId() + ")'"), report);
+    }
 }

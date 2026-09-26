@@ -420,4 +420,29 @@ public class StatefulLambdaDetectorTest {
         assertTrue(s.contains("STATEFUL LAMBDA"));
         assertTrue(s.contains("Fix"));
     }
+
+    /**
+     * Default virtual threads have no name, so the executing threads printed as one empty entry
+     * and every mutation event as " -> counter" (#790). Each thread is named by its id.
+     */
+    @Test
+    void unnamedVirtualThreadsAreReportedByIdNotByAnEmptyName() {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable task = () -> counter[0]++;
+        Thread first = Thread.ofVirtual().unstarted(() -> { });
+        Thread second = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", first.getName(), "precondition: a default virtual thread has no name");
+        for (Thread t : java.util.List.of(first, second)) {
+            d.recordExecution(task, "task", t);
+            d.recordCapturedMutation(task, "counter", counter, t);
+        }
+        String msg = d.analyze().violations.get(0);
+        String one = "#" + first.threadId();
+        String two = "#" + second.threadId();
+        assertTrue(msg.contains("(" + one + ", " + two + ")") || msg.contains("(" + two + ", " + one + ")"),
+                "both executing threads must be listed by id: " + msg);
+        assertTrue(msg.contains(one + " \u2192 counter") && msg.contains(two + " \u2192 counter"),
+                "each mutation must name its thread by id: " + msg);
+    }
 }

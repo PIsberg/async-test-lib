@@ -37,7 +37,7 @@ ordinary code.
 
    ```
    CONCURRENT MAP COMPUTE RECURSION DETECTED:
-     - Thread 'async-test-worker-1': compute*()/merge() on adjacency-map for key 'B'
+     - Thread 'async-test-worker-1 (id=31)': compute*()/merge() on adjacency-map for key 'B'
        entered while key(s) [A] on the same map were still being computed ...
    ```
 

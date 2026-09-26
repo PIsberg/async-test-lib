@@ -92,8 +92,10 @@ public class StatefulLambdaDetector {
         LambdaState s = lambdas.computeIfAbsent(
                 new IdentityKey(lambda), id -> new LambdaState(name != null ? name
                         : lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda)));
-        s.executingThreadIds.add(thread.threadId());
-        s.executingThreadNames.add(thread.getName());
+        // The label is built once per thread, and carries the id, so unnamed threads stay apart.
+        if (s.executingThreadIds.add(thread.threadId())) {
+            s.executingThreadNames.add(ReportSections.threadLabel(thread));
+        }
     }
 
     /**
@@ -141,7 +143,7 @@ public class StatefulLambdaDetector {
         if (capturedState != null && isThreadSafeByType(capturedState)) return;
         String label = capturedName != null ? capturedName : "capturedState";
         LambdaState s = noteCaptureAccess(lambda, capturedState, true, thread);
-        s.mutationEvents.add(thread.getName() + " → " + label);
+        s.mutationEvents.add(ReportSections.threadLabel(thread) + " → " + label);
     }
 
     /**

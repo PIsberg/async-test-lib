@@ -81,4 +81,20 @@ public class FutureIgnoredDetectorTest {
         assertTrue(s.contains("IGNORED FUTURE"));
         assertTrue(s.contains("Fix"));
     }
+
+    /**
+     * A default virtual thread has no name, so the submitter printed as "thread ''" (#790). It is
+     * named by its id instead.
+     */
+    @Test
+    void anUnnamedVirtualSubmitterIsReportedByIdNotByAnEmptyName() {
+        var d = new FutureIgnoredDetector();
+        Thread vt = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", vt.getName(), "precondition: a default virtual thread has no name");
+        d.recordSubmit(CompletableFuture.completedFuture(null), "backgroundTask", vt);
+        String msg = d.analyze().violations.get(0);
+        assertFalse(msg.contains("thread ''"), "the submitter must not print as '': " + msg);
+        assertTrue(msg.contains("thread '#" + vt.threadId() + "'"),
+                "the unnamed submitter must be named by its id: " + msg);
+    }
 }

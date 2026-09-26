@@ -96,7 +96,7 @@ public final class ThreadLocalRandomMisuseDetector {
         IdentityKey key = new IdentityKey(rng);
         int id = key.hashCode();
         final String label = (name != null) ? name : "ThreadLocalRandom@" + id;
-        instances.computeIfAbsent(key, k -> new State(label, thread.getName()))
+        instances.computeIfAbsent(key, k -> new State(label, ReportSections.threadLabel(thread)))
                 .obtainingThreadIds.add(thread.threadId());
     }
 
@@ -112,7 +112,7 @@ public final class ThreadLocalRandomMisuseDetector {
         State s = instances.get(new IdentityKey(rng));
         if (s == null) return; // never recorded as obtained — nothing to correlate
         if (!s.obtainingThreadIds.contains(thread.threadId())) {
-            s.misusingThreads.add(thread.getName());
+            s.misusingThreads.add(ReportSections.threadLabel(thread));
         }
     }
     /**

@@ -297,4 +297,22 @@ class VarHandleNonAtomicUpdateDetectorTest {
         a.join();
         b.join();
     }
+
+    /**
+     * A default virtual thread has no name, so the lost-update detail printed "thread ''" (#790).
+     * It is named by its id instead.
+     */
+    @Test
+    void anUnnamedVirtualThreadIsNamedByIdInTheLostUpdateDetail() {
+        Holder h = new Holder();
+        Thread vt = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", vt.getName(), "precondition: a default virtual thread has no name");
+        detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, vt);
+        detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, vt);
+        detector.recordAtomicUpdate(COUNT, h, "count", OTHER);
+        String report = detector.analyze().toString();
+        assertFalse(report.contains("thread ''"), "the detail must not name a thread as '': " + report);
+        assertTrue(report.contains("thread '#" + vt.threadId() + "' read 'count'"),
+                "the unnamed thread must be named by its id: " + report);
+    }
 }

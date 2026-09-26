@@ -53,7 +53,7 @@ public class FutureIgnoredDetector {
         String label = taskName != null ? taskName
                 : "task@" + Integer.toHexString(System.identityHashCode(future));
         submits.put(new IdentityKey(future),
-                new SubmitRecord(label, thread.getName()));
+                new SubmitRecord(label, ReportSections.threadLabel(thread)));
     }
 
     /**

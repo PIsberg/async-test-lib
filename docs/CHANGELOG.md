@@ -68,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name, printed an empty name for every thread, and the upgrade report collapsed them into one.
   A thread now prints as `name (id=N)`, or `#N` when it has no name, in the report line and in
   the `deadlockedThreads` attribute.
+- **Six more detectors name unnamed threads by id (#790).** ConcurrentMapComputeRecursion,
+  FutureIgnored, StatefulLambda, ThreadLocalContamination, ThreadLocalRandomMisuse and
+  VarHandleNonAtomicUpdate (its lost-update detail) printed `Thread.getName()` alone, so every
+  default virtual thread read as `''`. StatefulLambda also listed its executing threads as one
+  empty entry, and ThreadLocalRandomMisuse counted every unnamed misusing thread as one, so two
+  threads read as `used by 1 thread(s)`. They now print a thread the way #766 does, `name (id=N)`
+  or `#N`, which changes their report text for named threads too. DaemonThreadHygiene is
+  unchanged: it never reports a virtual thread, and its report already prints the thread id.
 - **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
   failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
   was judged by it. A blocking acquire through the agent now clears it

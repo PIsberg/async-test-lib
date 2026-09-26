@@ -88,7 +88,7 @@ public class ThreadLocalContaminationDetector {
                 key, name != null ? name : "ThreadLocal@" + key.hashCode());
             contaminations.add(String.format(
                 "Thread '%s' in '%s': read %s whose value was set in task %d — not cleared between tasks",
-                thread.getName(), s.currentTaskName, label, setTask));
+                ReportSections.threadLabel(thread), s.currentTaskName, label, setTask));
         }
     }
 
