@@ -397,8 +397,13 @@ class CacheConcurrencyDetectorTest {
                         + " gets in one round write the map at once");
     }
 
+    // #807: a WeakHashMap read does expunge cleared entries, but the JDK makes that safe among
+    // readers. expungeStaleEntries unlinks each entry inside synchronized (queue), so two expunging
+    // readers take turns; it keeps the unlinked entry's next so a traversal standing on it goes on;
+    // and a get never returns a cleared entry's value, whose key no longer matches. Gets alone in a
+    // round are reads, like a HashMap's; a put beside them in the same round still reports.
     @Test
-    void getsAloneInOneRoundOnAWeakHashMapAreReportedBesideAPutInAnother() throws InterruptedException {
+    void getsAloneInOneRoundOnAWeakHashMapAreNotReportedBesideAPutInAnother() throws InterruptedException {
         Map<String, String> cache = new java.util.WeakHashMap<>();
         SelfGuard.Scope scope = new SelfGuard.Scope();
         Runnable get = () -> detector.recordGet(cache, "weak-cache", "k");
@@ -406,8 +411,54 @@ class CacheConcurrencyDetectorTest {
         round(scope, () -> detector.recordPut(cache, "weak-cache", "k", "v"));
         round(scope, get, get);
 
+        assertFalse(detector.analyze().hasIssues(),
+                "expunging is serialized on the map's reference queue, so gets alone only race "
+                        + "one another's reads: " + detector.analyze());
+    }
+
+    @Test
+    void getsOnAWeakHashMapUnderOneReadLockAreNotReported() throws InterruptedException {
+        Map<String, String> cache = new java.util.WeakHashMap<>();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable get = () -> underLock(lock, true, () -> detector.recordGet(cache, "weak-cache", "k"));
+
+        round(scope, () -> underLock(lock, false,
+                () -> detector.recordPut(cache, "weak-cache", "k", "v")));
+        round(scope, get, get);
+        round(scope, () -> underLock(lock, false,
+                () -> detector.recordPut(cache, "weak-cache", "k2", "w")), get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "puts under the write lock and gets under the read lock is the read-write idiom, "
+                        + "and a get's expunging needs no more: " + detector.analyze());
+    }
+
+    @Test
+    void aWeakHashMapGetBesideAnUnguardedPutInOneRoundIsReported() throws InterruptedException {
+        Map<String, String> cache = new java.util.WeakHashMap<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> detector.recordPut(cache, "weak-cache", "k", "v"),
+                () -> detector.recordGet(cache, "weak-cache", "k"));
+
         assertTrue(detector.analyze().hasIssues(),
-                "a WeakHashMap get() expunges cleared entries, so two unguarded gets write the map");
+                "a put races a get in the same round with no lock held");
+    }
+
+    /** Runs {@code body} holding {@code lock}'s read view if {@code shared}, else its write view. */
+    private static void underLock(java.util.concurrent.locks.ReentrantReadWriteLock lock,
+                                  boolean shared, Runnable body) {
+        java.util.concurrent.locks.Lock view = shared ? lock.readLock() : lock.writeLock();
+        view.lock();
+        HeldLocks.acquired(lock, shared);
+        try {
+            body.run();
+        } finally {
+            HeldLocks.released(lock, shared);
+            view.unlock();
+        }
     }
 
     /**

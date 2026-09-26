@@ -254,10 +254,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not count against reads after it. A writer and an unguarded reader in the same round still
   report. The detectors that record every access as a write keep their verdict. A read that writes
   still counts as a write for this rule: a `get` on a `LinkedHashMap` (which may be access-ordered,
-  relinking the entry on every `get`), any read of a `WeakHashMap` (which expunges cleared entries)
-  and a `Calendar.get()` (which recomputes the fields after a `set()`), so gets alone in one round
-  on an LRU cache or a shared calendar still report. The lockset still judges those reads as reads,
-  so a read lock held over them guards them as before.
+  relinking the entry on every `get`) and a `Calendar.get()` (which recomputes the fields after a
+  `set()`), so gets alone in one round on an LRU cache or a shared calendar still report. The
+  lockset still judges those reads as reads, so a read lock held over them guards them as before.
 - **A read that writes now needs an exclusive lock where the detector knows it writes (#807).** The
   lockset judged every such read as a read, so readers holding one shared read lock counted as
   guarded while they wrote the instance together. `CalendarDetector` now tracks per calendar whether
@@ -270,6 +269,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   library (`--add-opens java.base/java.util=ALL-UNNAMED`); the library never opens it, and an
   unknown order keeps the verdict it had. `recordSet` cannot tell `set()` from `setTime()`, which
   leaves nothing to recompute, so a `get` after a recorded `setTime()` also counts as a write.
+- **A `WeakHashMap` read counts as a read (#807).** #787 counted every read of one as a write for
+  the round rule, because a read expunges cleared entries, so gets alone in one round beside a put
+  in another were reported. The JDK makes expunging safe among readers: `expungeStaleEntries`
+  unlinks each entry inside `synchronized (queue)`, keeps the unlinked entry's `next` for a
+  traversal standing on it, and a `get` never returns a cleared entry's value. Gets alone in a
+  round, and gets under one read lock beside puts under the write lock, are no finding; a put and
+  an unguarded get in one round still are. `WeakHashMapSharedDetector` records every access as a
+  write and keeps its verdict.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`

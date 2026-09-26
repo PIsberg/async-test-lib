@@ -59,13 +59,14 @@ import java.util.concurrent.atomic.AtomicReference;
  * be in the same window as the reads, so unguarded readers in one round and a writer in another,
  * which never overlapped them, are no finding. A detector that cannot tell a read from a write
  * records every access as a write, which keeps the verdict it had. Some reads write: a
- * {@code get} on an access-ordered {@link java.util.LinkedHashMap} relinks the entry, one on a
- * {@link java.util.WeakHashMap} expunges cleared entries, and one on a {@link java.util.Calendar}
- * after a {@code set} recomputes its fields. Those count as writes for this rule
- * ({@code TrackedInstance.readWrites}). A read the detector knows writes is recorded as a write,
- * so it needs an exclusive lock as well (#807): a {@code get} on a map known to be access-ordered
- * ({@link #relinksOnGet(Object)}), and a {@code Calendar} get after a recorded {@code set}. Where
- * that is not known, the lockset judges the read as a read, so a read lock held over it guards it.
+ * {@code get} on an access-ordered {@link java.util.LinkedHashMap} relinks the entry, and one on a
+ * {@link java.util.Calendar} after a {@code set} recomputes its fields. Those count as writes for
+ * this rule ({@code TrackedInstance.readWrites}). A read the detector knows writes is recorded as a
+ * write, so it needs an exclusive lock as well (#807): a {@code get} on a map known to be
+ * access-ordered ({@link #relinksOnGet(Object)}), and a {@code Calendar} get after a recorded
+ * {@code set}. Where that is not known, the lockset judges the read as a read, so a read lock held
+ * over it guards it. A {@link java.util.WeakHashMap} read expunges cleared entries, but the JDK
+ * serializes that among readers, so it is a read (see {@code readWrites}).
  *
  * <p>Within a round the verdict is also per owner. A pool that hands an instance out through a
  * queue gives it to one thread at a time, and a take is the edge between one owner's accesses
@@ -564,9 +565,12 @@ public final class SelfGuard {
          * for the rule that a window whose accesses all read is not shared (#787)}
          *
          * <p>A {@code get} on an access-ordered {@link java.util.LinkedHashMap} moves the entry to
-         * the end of the list, a read of a {@link java.util.WeakHashMap} expunges cleared
-         * entries, and a {@code get} on a {@link java.util.Calendar} after a {@code set}
-         * recomputes the fields into the instance, so readers alone race one another. Whether a
+         * the end of the list, and a {@code get} on a {@link java.util.Calendar} after a
+         * {@code set} recomputes the fields into the instance, so readers alone race one another.
+         * A read of a {@link java.util.WeakHashMap} is not listed although it expunges cleared
+         * entries: the JDK unlinks each one inside {@code synchronized (queue)}, keeps the
+         * unlinked entry's {@code next} for a traversal standing on it, and never returns a
+         * cleared entry's value, so readers alone do not race (#807). Whether a
          * {@code LinkedHashMap} is access-ordered is private to {@code java.util}, so every one
          * counts unless {@link LinkedHashMapOrder} could read it as insertion-ordered, which
          * keeps the verdict one whose order is unknown had before #787. Only the round rule reads
@@ -578,7 +582,6 @@ public final class SelfGuard {
         static boolean readWrites(@Nullable Object instance) {
             return instance instanceof java.util.LinkedHashMap
                             && LinkedHashMapOrder.of(instance) != LinkedHashMapOrder.INSERTION
-                    || instance instanceof java.util.WeakHashMap
                     || instance instanceof java.util.Calendar;
         }
 
