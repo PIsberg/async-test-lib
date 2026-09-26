@@ -152,6 +152,49 @@ public class SynchronizedNonFinalDetectorTest {
     }
 
     @Test
+    void aReassignedInstanceLockIsReportedThroughTheOwnerTakingCallTheNoteNames() {
+        // #793: the three-argument form cannot decide a non-final instance field, so it is
+        // deprecated for one in favour of the call its note names. That migration has to hold on
+        // exactly this shape: one holder whose non-final lock is reassigned between two uses.
+        NonFinalInstanceLock holder = new NonFinalInstanceLock();
+        Object original = holder.lock;
+        Object replacement = new Object();
+
+        SynchronizedNonFinalDetector ownerless = new SynchronizedNonFinalDetector();
+        ownerless.recordLockObject(original, "lock", NonFinalInstanceLock.class);
+        ownerless.recordLockObject(replacement, "lock", NonFinalInstanceLock.class);
+        assertFalse(ownerless.analyze().hasIssues(),
+            "the deprecated form is undecided here, which is the gap the migration closes: "
+                + ownerless.analyze());
+
+        SynchronizedNonFinalDetector migrated = new SynchronizedNonFinalDetector();
+        migrated.recordLockObject(original, "lock", NonFinalInstanceLock.class, holder);
+        migrated.recordLockObject(replacement, "lock", NonFinalInstanceLock.class, holder);
+        SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = migrated.analyze();
+        assertTrue(report.hasIssues(),
+            "with the owner, one holder synchronizing on two objects is the reassignment: " + report);
+        assertTrue(report.violations.get(0).contains("NonFinalInstanceLock.lock"), report.toString());
+    }
+
+    @Test
+    void perInstanceNonFinalLocksStaySilentThroughTheOwnerTakingCall() {
+        // The twin, and the idiom the migration must not break: many holders, each synchronizing
+        // on its own lock field that is not declared final but is never reassigned. Several
+        // monitors on one field, one per owner, is correct code.
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        for (int i = 0; i < 3; i++) {
+            NonFinalInstanceLock holder = new NonFinalInstanceLock();
+            detector.recordLockObject(holder.lock, "lock", NonFinalInstanceLock.class, holder);
+            detector.recordLockObject(holder.lock, "lock", NonFinalInstanceLock.class, holder);
+        }
+
+        assertFalse(detector.analyze().hasIssues(),
+            "each holder kept its own lock, so nothing was reassigned: " + detector.analyze());
+        assertFalse(detector.analyze().toString().contains("Undecided"),
+            "the owner decides every slot, so nothing is left undecided: " + detector.analyze());
+    }
+
+    @Test
     void testSingleObjectNoIssues() {
         SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
         Object lock = new Object();

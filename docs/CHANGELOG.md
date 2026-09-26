@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`SynchronizedNonFinalDetector.recordLockObject(lock, fieldId, ownerClass)` is deprecated for a
+  non-final instance field (#793).** Without the instance, one holder reassigning its lock and
+  several holders each keeping their own record the same monitors, so this form can never tell
+  them apart, and a reassigned instance lock recorded through it goes unreported. Pass the owner:
+  `recordLockObject(lock, fieldId, ownerClass, owner)`. The method itself is not deprecated,
+  since it stays exact for static and final fields. A test pins the migration both ways: the
+  reassigned holder reports through the owner-taking call, and holders that each keep their own
+  non-final lock stay silent.
 - **Trust tiers are capped by what each detector decides from.** VERDICT needed only a
   both-directions pair, and a detector whose finding is the test's own `record*` call, a thread
   count or a threshold passes that rule by construction. `DetectorTrust.Evidence` now classifies
