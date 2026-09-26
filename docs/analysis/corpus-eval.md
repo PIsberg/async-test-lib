@@ -1814,6 +1814,21 @@ a confined one, which does not depend on the JDK's wording. But three of them ca
 is the same defect the netty `ByteBuf` note above refuses to leave unremarked. It is recorded in
 `Corpus`'s own comment and filed as #437.
 
+### Lock twins for two lockset detectors (#771)
+
+`VAR_HANDLE_NON_ATOMIC_UPDATE` and `SYSTEM_PROPERTY_MUTATION` stay silent when one lock covers
+every access, and until #771 only their unit tests said so. Each had a silent row, but it separated
+on something other than the lock: an atomic update in place of the plain set, and a key private to
+each thread. Each now has a third row that is its firing row inside a `synchronized` block and
+nothing else. `recorded_varHandle_plainGetThenPlainSetUnderTheReceiversMonitor` holds the
+receiver's monitor across the same plain get and plain set, on the same handle and receiver, and
+`recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor` holds
+`System.getProperties()` around the same shared-key write. Both stayed silent on their first run,
+and both fired with the `synchronized` removed, so the lock is what separates them.
+Neither moves a tier: `SYSTEM_PROPERTY_MUTATION` is already registered on its key-separated pair,
+and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades each finding, which `PairEvidence` holds back as
+`GRADED`.
+
 ### Where the roster stands, derived rather than counted
 
 | | Detectors |

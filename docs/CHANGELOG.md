@@ -150,6 +150,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   javadoc and demonstrates a seek-then-read returning the wrong record. Not seen: a lock released
   and taken again between the seek and the I/O, which reads as held across, and a self-contained
   call relying on where an earlier one left the cursor, such as `write(buffer)` then `position()`.
+- **The corpus measures the lock direction for `VAR_HANDLE_NON_ATOMIC_UPDATE` and
+  `SYSTEM_PROPERTY_MUTATION` (#771).** Both detectors stay silent when one lock covers every
+  access, and only unit tests said so: each corpus silent row separated on something else (an atomic
+  update, a per-thread key). The recording lane gains a silent twin for each that is its firing row
+  inside `synchronized` and nothing else, on the receiver's monitor and on `System.getProperties()`.
+  Both stay silent, and both fire with the `synchronized` removed. No tier moves:
+  `SYSTEM_PROPERTY_MUTATION` is already registered, and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades its
+  findings, which holds its pair back from promotion.
 
 ### Fixed
 

@@ -3152,6 +3152,16 @@ class CorpusRecordingLaneTest {
                 .recordSet("corpus.own." + self.threadId(), "v", self);
     }
 
+    /** The firing row's writers of one shared key, each holding the properties table's monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (System.getProperties()) {
+            AsyncTestContext.systemPropertyMutationDetector()
+                    .recordSet("corpus.shared.key", "v", Thread.currentThread());
+        }
+    }
+
     // --- WeakReferenceRace ---------------------------------------------------------------------
 
     /** A get recorded as having returned null where the caller expected its referent. */
@@ -3946,6 +3956,20 @@ class CorpusRecordingLaneTest {
         detector.recordGet(ATOMIC_HANDLE, ATOMIC_RECEIVER, "counter",
                 se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, self);
         detector.recordAtomicUpdate(ATOMIC_HANDLE, ATOMIC_RECEIVER, "counter", self);
+    }
+
+    /** The firing row's plain get and plain set, with every thread holding the receiver's monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_varHandle_plainGetThenPlainSetUnderTheReceiversMonitor() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.varHandleNonAtomicUpdateDetector();
+        synchronized (PLAIN_RECEIVER) {
+            detector.recordGet(PLAIN_HANDLE, PLAIN_RECEIVER, "counter",
+                    se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.PLAIN, self);
+            detector.recordSet(PLAIN_HANDLE, PLAIN_RECEIVER, "counter",
+                    se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.PLAIN, self);
+        }
     }
 
     // --- The thread-lifecycle family ------------------------------------------------------------

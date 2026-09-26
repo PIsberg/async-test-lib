@@ -2814,6 +2814,15 @@ final class Corpus {
                             + "contends, so what remains is a single-threaded mutation, which "
                             + "this detector deliberately does not report"),
 
+            new RecordingSubject("recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the firing row's six writers of one process-global key, each holding the "
+                            + "properties table's own monitor. The writes take turns, which is "
+                            + "how a set-and-restore shares a global property correctly, so the "
+                            + "one thing left is the hygiene note the detector gives any mutation"),
+
             // --- WeakReferenceRace: the referent can be collected between a null check and a
             //     use, and the pair differs by whether anything keeps it reachable.
 
@@ -3308,6 +3317,15 @@ final class Corpus {
                             + "atomic update, which is what the class provides "
                             + "compareAndSet and getAndAdd for. The pair separates on the "
                             + "access mode the caller chose"),
+
+            new RecordingSubject("recorded_varHandle_plainGetThenPlainSetUnderTheReceiversMonitor", JDK,
+                    "java.lang.invoke.VarHandle",
+                    DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the plain get and plain set of the firing row on the same handle and "
+                            + "receiver, with every thread holding the receiver's monitor across "
+                            + "both. The threads take turns, so no write can land between a read "
+                            + "and its write, and the monitor orders what plain mode does not"),
 
             // --- The thread-lifecycle family. Four detectors that watch what happens to a
             //     thread rather than to shared data: was it joined, did anyone hear it die, will
