@@ -314,6 +314,53 @@ class AgentLockHooksTest {
                         + "make the detector fire on the correct idiom");
     }
 
+    @Test
+    @DisplayName("a failed try that falls back to lock() before unlocking is not misuse (#757)")
+    void failedTryThenBlockingLockIsNotMisuse() throws InterruptedException {
+        ReentrantLock lock = new ReentrantLock();
+        CountDownLatch taken = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = new Thread(() -> {
+            lock.lock();
+            taken.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        }, "trylock-fallback-holder");
+        holder.start();
+        taken.await();
+        try {
+            assertFalse(misuseSeen(lock, () -> {
+                        assertFalse(AgentLockHooks.tryLock(lock), "the lock is held elsewhere");
+                        release.countDown();
+                        joinQuietly(holder);
+                        AgentLockHooks.lock(lock);
+                        assertTrue(lock.isHeldByCurrentThread(),
+                                "the fallback really acquired the lock the unlock releases");
+                    }),
+                    "if (!lock.tryLock()) lock.lock(); ... unlock() holds the lock at the unlock, "
+                            + "so the stale false from the try must not be judged there");
+        } finally {
+            release.countDown();
+            holder.join();
+        }
+        assertFalse(lock.isLocked(), "the fallback's unlock released the real lock");
+    }
+
+    /** Joins {@code thread} from inside a lambda, keeping the interrupt. */
+    private static void joinQuietly(Thread thread) {
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** {@code AgentLockHooks.tryLock(lock, ...)} with the checked exception out of the lambda. */
     private static boolean timedTry(Lock lock) {
         try {

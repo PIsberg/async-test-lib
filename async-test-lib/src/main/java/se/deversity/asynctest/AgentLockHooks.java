@@ -181,6 +181,9 @@ public final class AgentLockHooks {
      * <p>No allocation: the name is {@code Class.getName()}, which {@code Class} already holds,
      * the same choice {@link AgentCollectionHooks} documents for its label.
      *
+     * <p>{@code TryLockMisuseDetector} is told too, so a failed {@code tryLock} that falls back to
+     * a blocking acquire is not judged at the {@code unlock()} by the stale failure (#757).
+     *
      * @param identity the lockset identity, the owner for a view
      * @param lock     the lock the call site actually named
      */
@@ -192,6 +195,10 @@ public final class AgentLockHooks {
         LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
         if (leak != null) {
             leak.recordLockAcquired(lock, lock.getClass().getName());
+        }
+        TryLockMisuseDetector tryLocks = AsyncTestContext.currentTryLockMisuseDetector();
+        if (tryLocks != null) {
+            tryLocks.recordLockAcquired(lock, Thread.currentThread());
         }
     }
 

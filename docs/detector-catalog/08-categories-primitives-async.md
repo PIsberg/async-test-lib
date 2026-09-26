@@ -270,7 +270,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 109. TryLock Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `Lock.unlock()` called after `tryLock()` returned `false` (or without checking its result at all). Unlocking a lock the thread never acquired throws `IllegalMonitorStateException` or corrupts the lock's internal state.
+* **Description**: Detects `Lock.unlock()` called after `tryLock()` returned `false` (or without checking its result at all). Unlocking a lock the thread never acquired throws `IllegalMonitorStateException` or corrupts the lock's internal state. A failed `tryLock()` that falls back to a blocking `lock()` before the `unlock()` holds the lock and is not reported.
 * **Buggy Code**:
   ```java
   lock.tryLock();

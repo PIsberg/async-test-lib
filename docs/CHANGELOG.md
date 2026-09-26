@@ -62,6 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
+  failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
+  was judged by it. A blocking acquire through the agent now clears it
+  (`TryLockMisuseDetector.recordLockAcquired`); a failed try followed directly by `unlock()` still
+  reports.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
