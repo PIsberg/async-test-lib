@@ -235,7 +235,10 @@ pool that checks an instance out to one thread at a time is not reported. Since 
 verdict also follows the shared `HappensBefore` model: a thread whose use of the instance that
 model orders after the previous thread's, through a latch, a queue or map hand-off, a
 `Thread.start` or a `join` that the agent wove or the test declared, takes the instance over
-instead of sharing it. Two threads using it at once still report, edge or no edge.
+instead of sharing it. Two threads using it at once still report, edge or no edge. A take-over
+also starts the lockset again, so unlocked set-up before the hand-off does not count against
+locked use after it, as long as every later access is ordered after the hand-off; one that is
+not brings the earlier accesses back into the lockset.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
 tier is one a reader has to rank alone. The split is 37 VERDICT, 73 PROMPT, 29 FACT and 7

@@ -231,4 +231,27 @@ class HttpClientConcurrencyDetectorTest {
         assertEquals(1, report.uncompletedRequests.size(),
                 "two sends and one response leave one send unanswered: " + report.uncompletedRequests);
     }
+
+    /**
+     * Two clients may share a name. Each keeps its own thread-activity line; filed under the
+     * name, the second client's line overwrote the first's (#767).
+     */
+    @Test
+    void twoClientsWithTheSameNameEachKeepTheirThreadActivity() throws InterruptedException {
+        Object one = new Object();
+        Object two = new Object();
+        detector.recordClientCreated(one, "api");
+        detector.recordClientCreated(two, "api");
+        detector.recordRequestSent(one, new Object(), "call");
+        detector.recordRequestSent(two, new Object(), "call");
+        Thread other = new Thread(() -> detector.recordRequestSent(two, new Object(), "call"));
+        other.start();
+        other.join();
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("api: 1 threads made HTTP requests"),
+                "the first client's line survives beside the second's: " + report);
+        assertTrue(report.contains("api: 2 threads made HTTP requests"),
+                "the second client's line survives beside the first's: " + report);
+    }
 }

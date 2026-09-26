@@ -80,8 +80,10 @@ public class SynchronizedNonFinalDetectorTest {
             "Each thread built its own service, and each service has a private final lock. That "
                 + "is correct code, and without the owner it is indistinguishable from one "
                 + "reassigned field, so it cannot be a VERDICT finding: " + detector.analyze());
-        assertTrue(detector.analyze().toString().contains("recordLockObject"),
-            "the report should still say how to have it decided: " + detector.analyze());
+        assertFalse(detector.analyze().toString().contains("Undecided"),
+            "GuardedService.lock is declared final, so several monitors can only be several "
+                + "instances; the declaration decides it without the owner (#768): "
+                + detector.analyze());
     }
 
     @Test
@@ -98,6 +100,55 @@ public class SynchronizedNonFinalDetectorTest {
             "one instance synchronized on two objects is a reassigned lock");
         assertTrue(detector.analyze().violations.get(0).contains("NOT FINAL"),
             "and only here is that claim earned: " + detector.analyze().violations);
+    }
+
+    /** A static lock field somebody reassigns: one slot per class, so a new monitor is a reassignment. */
+    private static final class ReassignedStaticLock {
+        private static Object lock = new Object();
+    }
+
+    @Test
+    void aReassignedStaticLockRecordedWithoutAnOwnerIsReported() {
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        Object original = ReassignedStaticLock.lock;
+        try {
+            // The three-argument form, which is all a static field needs: the class is the only
+            // owner such a field has, so two monitors on it mean the field was reassigned (#768).
+            detector.recordLockObject(ReassignedStaticLock.lock, "lock", ReassignedStaticLock.class);
+            ReassignedStaticLock.lock = new Object();
+            detector.recordLockObject(ReassignedStaticLock.lock, "lock", ReassignedStaticLock.class);
+        } finally {
+            ReassignedStaticLock.lock = original;
+        }
+
+        SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
+        assertTrue(report.hasIssues(),
+            "a static field has one value per class, so two monitors on it are a reassignment: "
+                + report);
+        assertTrue(report.violations.get(0).contains("ReassignedStaticLock.lock"), report.toString());
+    }
+
+    /** A non-final instance lock field: several monitors are ambiguous without the instance. */
+    private static final class NonFinalInstanceLock {
+        private Object lock = new Object();
+    }
+
+    @Test
+    void aNonFinalInstanceFieldWithoutAnOwnerSaysHowToDecideIt() {
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        for (int i = 0; i < 3; i++) {
+            NonFinalInstanceLock holder = new NonFinalInstanceLock();
+            detector.recordLockObject(holder.lock, "lock", NonFinalInstanceLock.class);
+        }
+
+        SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
+        assertFalse(report.hasIssues(),
+            "three instances that never reassigned their lock record exactly what one reassigned "
+                + "field does, so this stays unreported: " + report);
+        assertTrue(report.toString().contains("non-final instance field"),
+            "the note should say which of the two it could not tell apart: " + report);
+        assertTrue(report.toString().contains("recordLockObject(lock, \"lock\", NonFinalInstanceLock.class, this)"),
+            "and give the call that decides it, with this slot's own names: " + report);
     }
 
     @Test

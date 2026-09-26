@@ -1568,12 +1568,21 @@ public class AtomicityValidator {
      * the locks every write held. Writers all holding {@code {A, B}} while one reader holds
      * {@code A} and another {@code B} collapses the plain intersection, yet every pairing is
      * mutually excluded.
+     *
+     * <p>The streamed write lockset spans the whole run, so a different lock in each round
+     * empties it although the harness orders the rounds; once it has, each round's own writes
+     * name the locks that round's reads are judged against, as {@link FieldGuard#isSafePublication}
+     * does for the safe-publication excuse (#781). A round whose writes share no lock ends the
+     * answer, and a round with no write has no writer for its reads to race.
      */
     private static boolean hintReadsConfirmedUnderTheWriteLock(List<FieldAccessRecord> history,
                                                                long instance, FieldGuard locks,
                                                                boolean constructionExcused) {
-        int[] writeLocks = locks.writeLockSurvivors();
-        if (writeLocks.length == 0) {
+        int[] runWide = locks.writeLockSurvivors();
+        Map<Long, int[]> perRound = runWide.length == 0
+                ? writeLocksPerRound(history, instance, constructionExcused)
+                : null;
+        if (perRound != null && perRound.isEmpty()) {
             return false;
         }
         List<Integer> uncoveredReads = new ArrayList<>();
@@ -1586,7 +1595,8 @@ public class AtomicityValidator {
             if (access.fingerprint == UNMODELLED) {
                 return false;
             }
-            if (access.write || heldOneOf(access, writeLocks)) {
+            int[] writeLocks = perRound == null ? runWide : perRound.get(access.epoch);
+            if (access.write || writeLocks == null || heldOneOf(access, writeLocks)) {
                 continue;
             }
             uncoveredReads.add(i);
@@ -1597,11 +1607,43 @@ public class AtomicityValidator {
             return true;
         }
         for (int at : uncoveredReads) {
-            if (confirmedLater(history, at, instance, writeLocks, constructionExcused)) {
+            int[] writeLocks = perRound == null ? runWide : perRound.get(history.get(at).epoch);
+            if (writeLocks != null
+                    && confirmedLater(history, at, instance, writeLocks, constructionExcused)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * {@return the locks every write of {@code instance} held, per round; empty when some round's
+     * writes share none or there is no write at all}
+     *
+     * <p>The per-round counterpart of {@link FieldGuard#writeLockSurvivors()}, with the same
+     * resolution and the same rule as {@link #everyWriteOfTheRoundSharedALock}: a write that
+     * carried no fingerprint says nothing about its locks and ends the answer.
+     */
+    private static Map<Long, int[]> writeLocksPerRound(List<FieldAccessRecord> history,
+                                                       long instance, boolean constructionExcused) {
+        Map<Long, int[]> perRound = new HashMap<>();
+        for (FieldAccessRecord access : history) {
+            if (access.instanceKey != instance || !access.write
+                    || (access.exclusivePhase && constructionExcused)) {
+                continue;
+            }
+            if (access.fingerprint == UNMODELLED) {
+                return Map.of();
+            }
+            int[] held = heldLocksOf(access);
+            int[] previous = perRound.get(access.epoch);
+            int[] common = previous == null ? held : Lockset.intersect(previous, held);
+            if (common.length == 0) {
+                return Map.of();
+            }
+            perRound.put(access.epoch, common);
+        }
+        return perRound;
     }
 
     /** {@return whether a later read on the same thread and round held one of the write locks} */

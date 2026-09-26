@@ -16,8 +16,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>A validation that fails is not a finding. Under contention it is the normal path of the
  * idiom below: the caller learns the values may be torn, drops them and re-reads under the read
- * lock or retries. What the caller does after a failed validation is not recorded, so using the
- * torn values anyway is not something this detector can see; a read that is never validated is.
+ * lock or retries. Using the torn values anyway is the finding, and it is visible only where the
+ * use is recorded with {@link #recordValuesUsed}: the stamp passed there is the one the used values
+ * were read under, so a use after a re-read under the read lock names the read-lock stamp and stays
+ * silent, while a use under the failed optimistic stamp is reported. A read that is never validated
+ * is reported whether or not its use is recorded.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -28,20 +31,26 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * int x = sharedX;
  * mon.recordDataAccessed(lock, stamp, Thread.currentThread(), "sharedX");
  *
- * if (!lock.validate(stamp)) {
- *     mon.recordValidateCalled(lock, stamp, false, Thread.currentThread());
- *     // must re-read under a full lock here
- * } else {
- *     mon.recordValidateCalled(lock, stamp, true, Thread.currentThread());
+ * boolean valid = lock.validate(stamp);
+ * mon.recordValidateCalled(lock, stamp, valid, Thread.currentThread());
+ * if (!valid) {
+ *     stamp = lock.readLock();                     // re-read under a full lock
+ *     try { x = sharedX; } finally { lock.unlockRead(stamp); }
  * }
+ * mon.recordValuesUsed(lock, stamp, Thread.currentThread());
+ * use(x);
  * }</pre>
  */
 public class OptimisticReadValidationDetector {
+
+    /** Where a read stands: not yet validated, failed its validation, or already reported as used. */
+    private enum State { PENDING, FAILED, REPORTED }
 
     private static class OptimisticRead {
         final long         stamp;
         final String       threadName;
         final List<String> accessedFields = new ArrayList<>();
+        volatile State     state          = State.PENDING;
 
         OptimisticRead(long stamp, String threadName) {
             this.stamp = stamp;
@@ -55,8 +64,12 @@ public class OptimisticReadValidationDetector {
      */
     private record ReadKey(IdentityKey lock, long threadId) { }
 
-    private final Map<ReadKey, OptimisticRead> pendingReads = new ConcurrentHashMap<>();
-    private final List<String>                 violations   = new CopyOnWriteArrayList<>();
+    /**
+     * The latest read per (lock, thread) that is still pending or failed its validation. A read
+     * that validated is removed; a failed one stays so a later use of its values can be matched.
+     */
+    private final Map<ReadKey, OptimisticRead> reads      = new ConcurrentHashMap<>();
+    private final List<String>                 violations = new CopyOnWriteArrayList<>();
 
     private static ReadKey key(Object lock, Thread thread) {
         return new ReadKey(new IdentityKey(lock), thread.threadId());
@@ -72,12 +85,12 @@ public class OptimisticReadValidationDetector {
     public void recordOptimisticReadStarted(Object lock, long stamp, Thread thread) {
         if (lock == null || thread == null) return;
         OptimisticRead replaced =
-            pendingReads.put(key(lock, thread), new OptimisticRead(stamp, thread.getName()));
+            reads.put(key(lock, thread), new OptimisticRead(stamp, thread.getName()));
         // A new optimistic read replaces the pending one for this (lock, thread).
         // If the replaced read had accessed data without ever being validated, that
         // evidence must be flushed now — otherwise the replacement silently erases
         // the violation and analyze() never sees it.
-        if (replaced != null && !replaced.accessedFields.isEmpty()) {
+        if (replaced != null && replaced.state == State.PENDING && !replaced.accessedFields.isEmpty()) {
             violations.add(neverValidatedViolation(replaced));
         }
     }
@@ -93,8 +106,8 @@ public class OptimisticReadValidationDetector {
      */
     public void recordDataAccessed(Object lock, long stamp, Thread thread, String fieldName) {
         if (lock == null || thread == null) return;
-        OptimisticRead read = pendingReads.get(key(lock, thread));
-        if (read != null && read.stamp == stamp && fieldName != null) {
+        OptimisticRead read = reads.get(key(lock, thread));
+        if (read != null && read.stamp == stamp && read.state == State.PENDING && fieldName != null) {
             read.accessedFields.add(fieldName);
         }
     }
@@ -103,7 +116,8 @@ public class OptimisticReadValidationDetector {
      * Call immediately after {@code lock.validate(stamp)}.
      *
      * @param result the boolean returned by {@code validate()}; either value closes the read, since a
-     *               false one is the caller's cue to re-read under a lock
+     *               false one is the caller's cue to re-read under a lock. After a false one,
+     *               {@link #recordValuesUsed} with this stamp reports the torn values being used
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param stamp the stamp returned by the {@code StampedLock} operation
@@ -112,15 +126,40 @@ public class OptimisticReadValidationDetector {
     public void recordValidateCalled(Object lock, long stamp, boolean result, Thread thread) {
         if (lock == null || thread == null) return;
         ReadKey k = key(lock, thread);
-        OptimisticRead read = pendingReads.get(k);
+        OptimisticRead read = reads.get(k);
         if (read == null) return;
         // A validate() for some other stamp does not validate the pending read —
         // leave it pending so its missing validation is still reported at analysis
         // time (removing it here silently discarded the evidence).
-        if (read.stamp != stamp) return;
+        if (read.stamp != stamp || read.state != State.PENDING) return;
         // Validated either way. A false result is the idiom's retry signal, not a use of the
-        // torn values, so it is not reported (it used to be, which fired on correct code).
-        pendingReads.remove(k);
+        // torn values, so it is not reported (it used to be, which fired on correct code). The
+        // failed read is kept so that recordValuesUsed can still catch its values being used.
+        if (result) {
+            reads.remove(k);
+        } else {
+            read.state = State.FAILED;
+        }
+    }
+
+    /**
+     * Call where the values read under {@code stamp} are used, after the {@code validate()} that
+     * was meant to gate them. Pass the stamp the used values were read under: after a failed
+     * validation that is the read-lock stamp of the re-read, so the retry idiom stays silent,
+     * while using the optimistic values themselves is reported. A use before any
+     * {@code validate()} adds nothing to the never-validated finding already reported for it.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param stamp the stamp the used values were read under
+     * @param thread the thread performing the operation
+     * @since 1.12.3
+     */
+    public void recordValuesUsed(Object lock, long stamp, Thread thread) {
+        if (lock == null || thread == null) return;
+        OptimisticRead read = reads.get(key(lock, thread));
+        if (read == null || read.stamp != stamp || read.state != State.FAILED) return;
+        read.state = State.REPORTED; // one finding per read, however often its values are used
+        violations.add(usedAfterFailedValidation(read));
     }
 
     /**
@@ -129,8 +168,8 @@ public class OptimisticReadValidationDetector {
     public OptimisticReadValidationReport analyze() {
         OptimisticReadValidationReport r = new OptimisticReadValidationReport();
         // reads still pending at analysis time were never validated
-        for (OptimisticRead read : pendingReads.values()) {
-            if (!read.accessedFields.isEmpty()) {
+        for (OptimisticRead read : reads.values()) {
+            if (read.state == State.PENDING && !read.accessedFields.isEmpty()) {
                 r.violations.add(neverValidatedViolation(read));
             }
         }
@@ -142,6 +181,14 @@ public class OptimisticReadValidationDetector {
         return String.format(
             "Thread '%s': data accessed (%s) during optimistic read but validate() was never called",
             read.threadName, String.join(", ", read.accessedFields));
+    }
+
+    private static String usedAfterFailedValidation(OptimisticRead read) {
+        return String.format(
+            "Thread '%s': values read optimistically (%s) were used after validate() returned false,"
+                + " so they may be torn",
+            read.threadName,
+            read.accessedFields.isEmpty() ? "no fields recorded" : String.join(", ", read.accessedFields));
     }
 
     /** Report produced by {@link #analyze()}. */

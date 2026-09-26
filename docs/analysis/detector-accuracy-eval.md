@@ -73,7 +73,7 @@ still invisible.
 | UncaughtExceptionHandlerDetector | fires (thread throws with no custom handler) | silent (same throw, handler installed) | genuine both-direction detector |
 | CompletableFutureCompletionLeakDetector | fires (future created, never completed) | silent (created and completed) | genuine both-direction detector |
 | ThreadLeakDetector | fires (thread started, still alive at analysis) | silent (joined and recorded as ended) | genuine both-direction detector; auto mode, which watches the global thread count, is off by default |
-| ConstructorSafetyValidator | fires (another thread reads a field before the constructor returns) | silent (ordinary constructor, read after it returned) | genuine both-direction detector since #357 removed the sub-microsecond rule, which fired on every fast constructor; since 1.12.3 the records are checked against the stack, so a read after the constructor returned is silent even when the end was recorded late or never |
+| ConstructorSafetyValidator | fires (another thread reads a field before the constructor returns) | silent (ordinary constructor, read after it returned) | genuine both-direction detector since #357 removed the sub-microsecond rule, which fired on every fast constructor; since 1.12.3 the records are checked against the stack, so a read after the constructor returned is silent even when the end was recorded late or never, including on a pooled thread that has since recorded the start of another instance (#778) |
 | ThreadLocalMonitor | fires (set on two threads, never removed) | silent (`remove()` in a finally block) | genuine both-direction detector |
 | LockDowngradeDetector | fires (write released before the read lock was taken, **and** another thread observed taking the write lock in the gap) | silent on the correct downgrade however contended, and silent on the same shape with nobody in the gap | evidence-gated since #355: the shape alone is also correct code that writes one thing and later reads another, so it is not reported without an observed writer. Deliberate false negative |
 | StampedLockDetector | fires (a failed `validate()` with no fallback; a write stamp one thread took and never released; a read stamp released again while another reader holds) | silent (the `validate()`-then-`readLock()` fallback; the same write released in a `finally`; the same read released once) | leaks since #588 need two facts: an acquisition no recorded unlock matched, and the lock still held at analysis; matching is per thread and lock instance, not per name; since #604 a repeated read release is reported only when the lock's reader count confirms a hold was taken |
@@ -218,7 +218,16 @@ threads in one round made a lone reconfiguration in a later round a race. Those 
 per round (`SelfGuard.RoundThreads`): the extra condition must hold within one round, and a
 report counts and names the threads of the round the finding came from, or of the busiest round
 where no round is marked. Pinned in each detector's own test and in
-`SharedMessageDigestDetectorTest` for the family's printed count.
+`SharedMessageDigestDetectorTest` for the family's printed count. `StringBuilderDetector`'s
+exception finding followed (#783): it counts the users of the busiest round an exception came
+from, so one thread per round, each failing alone, is not concurrent access.
+
+`FalseSharingDetector`, off unless its experimental property is set, followed in #765. Its pair
+predicate (two or more threads on one field, a different set on the adjacent one) and its
+high-contention line compared thread sets over the run. It keeps no per-instance verdict, and a
+pair compares two fields, which the three rounds `RoundThreads` retains cannot answer, so the round
+is stamped on each recorded access instead, from the same `SelfGuard.Scope` clock, and both
+predicates are taken within one round. Pinned in `FalseSharingDetectorTest` in both directions.
 
 Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
 `BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched
@@ -245,7 +254,10 @@ from `HappensBefore.release`/`acquire`/`fork`/`join` in the test. An edge only r
 two siblings started by one parent, and two threads that use the digest at once after a hand-off,
 still fire, and an unwoven latch nobody declared orders nothing. Pinned in
 `SharedMessageDigestDetectorTest`, through the manual API and through the hook methods the weaver
-substitutes. `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
+substitutes. A take-over also restarts the lockset (#746): one thread setting the digest up
+unlocked and handing it to threads that always lock it is consistent locking, provided every later
+access is ordered after the hand-off. A guarded use reached through an edge the model never saw is
+not, and brings the unlocked set-up back into the lockset, so it still fires. `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
 per-round lockset from the same windows (`sawUnguardedRound()`), so one lock per round, a
 different one each round, no longer reads as inconsistent locking.
 

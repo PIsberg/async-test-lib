@@ -147,6 +147,132 @@ class FalseSharingDetectorTest {
         }
     }
 
+    // ---- Thread sets are taken within one round (#765) -----------------------------------------
+    //
+    // The runner finishes one round before it starts the next, and with virtual threads every body
+    // execution is a fresh thread. Thread sets kept across the run make accesses from different
+    // rounds, which never overlapped, read as concurrent.
+
+    /**
+     * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
+     * bound, released together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable... bodies) throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
+
+    private static Runnable times(int n, Runnable access) {
+        return () -> {
+            for (int i = 0; i < n; i++) {
+                access.run();
+            }
+        };
+    }
+
+    @Test
+    void adjacentFieldsTouchedInDifferentRoundsAreNotFalseSharing() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+
+            // Round one: two threads on a. Round two: two other threads on b. No round touched both.
+            round(scope, () -> detector.recordFieldAccess(obj, "a", int.class),
+                    () -> detector.recordFieldAccess(obj, "a", int.class));
+            round(scope, () -> detector.recordFieldAccess(obj, "b", int.class),
+                    () -> detector.recordFieldAccess(obj, "b", int.class));
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.falseSharedPairs.isEmpty(),
+                    "a and b were never accessed in the same round, so no two threads contended "
+                            + "for their cache line: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void adjacentFieldsTouchedByDifferentThreadsInOneRoundStillFire() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+
+            round(scope, () -> detector.recordFieldAccess(obj, "a", int.class),
+                    () -> detector.recordFieldAccess(obj, "a", int.class),
+                    () -> detector.recordFieldAccess(obj, "b", int.class),
+                    () -> detector.recordFieldAccess(obj, "b", int.class));
+            round(scope, () -> detector.recordFieldAccess(obj, "a", int.class));
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.falseSharedPairs.size(),
+                    "round one had two threads on a and two others on b: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void oneThreadPerRoundIsNotHighContention() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+
+            round(scope, times(60, () -> detector.recordFieldAccess(obj, "a", int.class)));
+            round(scope, times(60, () -> detector.recordFieldAccess(obj, "a", int.class)));
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.highContentionFields.isEmpty(),
+                    "each round had one thread on a; two threads in different rounds never "
+                            + "contended: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void twoThreadsInOneRoundAreStillHighContention() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+
+            round(scope, times(60, () -> detector.recordFieldAccess(obj, "a", int.class)),
+                    times(60, () -> detector.recordFieldAccess(obj, "a", int.class)));
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.highContentionFields.size(),
+                    "two threads hammered a in the same round: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
     static class TwoCounters {
         int a;
         int b;

@@ -1,7 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,6 +37,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       covers an end recorded late (after publishing) or never. Only a read made while the
  *       constructor is still on the constructing thread's stack is a finding: the reference
  *       escaped it.</li>
+ *   <li>A start recorded on the constructing thread at the same stack depth as an earlier
+ *       construction, or shallower, closes that earlier one: its constructor frame was popped
+ *       for the new one to run there. A pooled thread that goes on to build another instance
+ *       of the same class therefore stops reading as still building the first (#778), while a
+ *       construction nested inside a running constructor starts deeper and closes nothing.
+ *       What the stack cannot tell apart is the window between the later constructor starting
+ *       and its start being recorded, or a later constructor of the class that records no
+ *       start: a read made there still counts against the earlier instance.</li>
  * </ul>
  */
 public class ConstructorSafetyValidator {
@@ -42,12 +53,24 @@ public class ConstructorSafetyValidator {
     private static final StackWalker WALKER =
             StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
 
-    private static boolean insideConstructorOf(Object object) {
+    /**
+     * The depth, counted from the bottom of the recording thread's stack, of the innermost
+     * constructor frame of the object's class, or {@code -1} when no such frame is running.
+     */
+    private static int constructorDepthOf(Object object) {
         Class<?> type = object.getClass();
-        return WALKER.walk(frames -> frames.anyMatch(frame ->
-                "<init>".equals(frame.getMethodName())
+        return WALKER.walk(frames -> {
+            List<StackWalker.StackFrame> stack = frames.toList();
+            for (int i = 0; i < stack.size(); i++) {
+                StackWalker.StackFrame frame = stack.get(i);
+                if ("<init>".equals(frame.getMethodName())
                         && frame.getDeclaringClass() != Object.class
-                        && frame.getDeclaringClass().isAssignableFrom(type)));
+                        && frame.getDeclaringClass().isAssignableFrom(type)) {
+                    return stack.size() - i;
+                }
+            }
+            return -1;
+        });
     }
 
     /** Names of the object's class and its superclasses below {@code Object}. */
@@ -71,6 +94,8 @@ public class ConstructorSafetyValidator {
         final WeakReference<Thread> constructingThread;
         /** Classes whose {@code <init>} frame on that stack means the constructor is running. */
         final Set<String> constructorOwners;
+        /** Where the constructor frame sat on that stack, counted from the bottom, at the start. */
+        final int constructorDepth;
         volatile boolean constructionComplete = false;
         /** Accesses made before construction finished, by a thread other than the constructor's. */
         final AtomicInteger accessesDuringConstruction = new AtomicInteger(0);
@@ -83,11 +108,12 @@ public class ConstructorSafetyValidator {
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
         final Map<String, FieldAccessInfo> fieldAccesses = new ConcurrentHashMap<>();
 
-        ObjectState(Object object, Thread constructing) {
+        ObjectState(Object object, Thread constructing, int constructorDepth) {
             this.className = object.getClass().getSimpleName();
             this.constructingThreadId = constructing.threadId();
             this.constructingThread = new WeakReference<>(constructing);
             this.constructorOwners = constructorOwners(object.getClass());
+            this.constructorDepth = constructorDepth;
         }
 
         /** Whether a constructor of the object's class is on the constructing thread's stack now. */
@@ -114,6 +140,11 @@ public class ConstructorSafetyValidator {
     }
     
     private final Map<IdentityKey, ObjectState> objects = new ConcurrentHashMap<>();
+    /**
+     * Per constructing thread, its recorded constructions not yet seen to end, innermost on top.
+     * Each deque is touched only by the thread it belongs to.
+     */
+    private final Map<Long, Deque<ObjectState>> openConstructions = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -124,12 +155,27 @@ public class ConstructorSafetyValidator {
     public void recordConstructionStart(Object object) {
         if (!enabled || object == null) return;
 
-        if (!insideConstructorOf(object)) {
+        int depth = constructorDepthOf(object);
+        if (depth < 0) {
             // Recorded outside any constructor of the object: it is already built.
             return;
         }
-        IdentityKey id = new IdentityKey(object);
-        objects.putIfAbsent(id, new ObjectState(object, Thread.currentThread()));
+        Thread current = Thread.currentThread();
+        ObjectState state = new ObjectState(object, current, depth);
+        if (objects.putIfAbsent(new IdentityKey(object), state) != null) {
+            return; // a superclass or subclass constructor of the same object recorded it first
+        }
+        // A construction this thread started at the same depth or deeper has returned: the frame
+        // it ran in was popped for this one to sit there. Without this, a pooled thread inside a
+        // later instance's constructor of the same class read as still building the earlier one
+        // whose end was never recorded (#778). A nested construction starts deeper and closes
+        // nothing, so the outer one stays open.
+        Deque<ObjectState> open = openConstructions.computeIfAbsent(
+                current.threadId(), k -> new ArrayDeque<>());
+        while (!open.isEmpty() && open.peek().constructorDepth >= depth) {
+            open.pop().constructionComplete = true;
+        }
+        open.push(state);
     }
     
     /**
@@ -250,6 +296,7 @@ public class ConstructorSafetyValidator {
      */
     public void reset() {
         objects.clear();
+        openConstructions.clear();
     }
     /**
      * Disable.

@@ -18,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AsyncTestContext.ownershipTaken(instance)` declares a pool checkout the agent cannot see.
 - Record methods that let detectors see what they could not: `recordSiblingWaitEnded`,
   `recordBlockingWaitEnded`, `recordWaitAttempted(Object)`, `recordCapturedMutation(lambda, name,
-  state, thread)`, owner-keyed `LazyInitRace` overloads, `recordIntegrate(name, state, thread)`,
-  `ABAProblemDetector.recordRead(name, value)`, `recordRequestSent(client, request, name)`.
+  state, thread)`, `recordCapturedRead(lambda, state, thread)`, owner-keyed `LazyInitRace` overloads,
+  `recordIntegrate(name, state, thread)`, `ABAProblemDetector.recordRead(name, value)`,
+  `recordRequestSent(client, request, name)`.
 - **corpus-eval gains an `idioms` lane.** Correct user-code concurrency (a queue hand-off, volatile
   publication, `start`/`join`, an `AtomicInteger` counter, a latch, a pool checkout, guarded waits and
   more) runs with the agent attached and every detector on, each idiom beside its broken twin. A
@@ -62,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LockUpgradeDeadlockDetector` and `LockDowngradeDetector` name unnamed threads by id (#766).**
+  Both printed a thread by name alone, so a finding on default virtual threads, which have no
+  name, printed an empty name for every thread, and the upgrade report collapsed them into one.
+  A thread now prints as `name (id=N)`, or `#N` when it has no name, in the report line and in
+  the `deadlockedThreads` attribute.
 - **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
   failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
   was judged by it. A blocking acquire through the agent now clears it
@@ -80,6 +86,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand-recorded thread by the flag it had at `recordThread`, but `setDaemon` may run between the
   recording and `start()`, the order the detector's own usage example shows. A thread made daemon
   after recording was reported as non-daemon, and one made non-daemon after recording was missed.
+- **`ConstructorSafetyValidator` no longer mistakes a pooled thread's next construction for the
+  previous one (#778).** With no end recorded, it judged "still constructing" by any constructor of
+  the class on the constructing thread's stack, so a pooled thread building a second instance made
+  every read of the first, already published one an escape. A start recorded on that thread at
+  the same stack depth or shallower now closes the earlier construction; a construction nested
+  inside a running constructor starts deeper and closes nothing, so an escape after it still
+  reports. A read made before the later constructor records its start is still undecidable from
+  the stack and counts against the earlier instance.
+- **The lock-aware `Shared*` family starts its lockset again at an ordered hand-off (#746).** A
+  thread that set an instance up unlocked and handed it on through an edge the model sees, after
+  which every use was under one lock, was still reported: the unlocked accesses before the hand-off
+  stayed in the window's lockset. `SelfGuard` now restarts the lockset at a take-over, and only
+  while every later access is ordered after the previous owner's last one; an access that is not
+  may overlap the unlocked ones and brings them back. Pinned both ways in
+  `SharedMessageDigestDetectorTest`: a guarded use reached through an unseen edge, and an unguarded
+  use after the hand-off, still fire.
+- **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
+  (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
+  only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`
+  names on `ownerClass` now decides it: a static non-final field is reported, since a class has
+  one value for it, and a final field is not, since its monitors can only be several instances. A
+  non-final instance field stays a note, which now names the four-argument call that decides it.
+- **`OptimisticReadValidationDetector` can see torn values used after a failed `validate()`
+  (#762).** A failed validation closes the read like a successful one, so the retry idiom stays
+  silent, but nothing recorded what the caller did next, and using the optimistic values anyway
+  went unreported. The new `recordValuesUsed(lock, stamp, thread)` takes the stamp the used values
+  were read under: the failed optimistic stamp reports, once per read; the read-lock stamp of a
+  re-read, or a stamp that validated, stays silent. A use with no `validate()` at all is still the
+  one never-validated finding.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
@@ -100,16 +135,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the mutators of the round that raced; and `SharedJsonMapperReconfigDetector` judges "used by two
   threads" and "a thread that never used it" within the round of the reconfiguration, so a mapper
   reconfigured in a round where nothing else used it is not reported.
+- **`StringBuilderDetector`'s exception finding counts one round's threads (#783).** "N
+  exception(s) while N threads used it" counted every thread of the run, so one thread per round,
+  each failing alone, read as concurrent access. It now counts the users of the busiest round an
+  exception was recorded in, and needs two of them; two threads sharing the builder in one round
+  still report, with that round's count.
+- **`HttpClientConcurrencyDetector` keeps one thread-activity line per client (#767).** The lines
+  were filed under the client's name, so two clients registered under one name overwrote each
+  other's and the report showed only one. Each client object now gets its own line, still printed
+  under its name.
+- **`FalseSharingDetector` compares thread sets within one round (#765).** Behind its experimental
+  flag it compared each field's threads over the whole run, so with virtual threads two threads on
+  one field in one round and two others on the adjacent field in a later round were reported as a
+  pair, and one thread per round hammering a field read as a high-contention field. Both findings
+  now need their threads in the same round; the same accesses inside one round still report.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common
   to every recorded access. The map detector keys sites by map identity and key equality instead of
   strings, LazyInitRace keys a field by its owner, and SynchronizedNonFinal reports a changing
-  monitor only when the owner is recorded.
+  monitor only when the owner is recorded or the field's declaration decides it (#768).
 - **`StatefulLambdaDetector` judges the lock per captured object** (#769). The lockset was kept per
   lambda, so a lambda mutating two captures, each under its own lock, intersected the two locks to
   nothing and was reported. A capture mutated with no lock, or under a different lock on each
   thread, is still reported.
+- **`StatefulLambdaDetector` sees a thread that only reads a capture** (#770). Only a mutation was
+  recorded, so a lambda that one thread wrote through while other threads read the capture put one
+  thread in the round and was not reported. `recordCapturedRead(lambda, state, thread)` records the
+  read, with the lock probe taken on the reading thread: a writer and its readers all under one lock
+  are not reported, and a read outside the writer's lock is. Reads with no mutation are not reported.
+  `recordExecution` still names no capture and does not count as a read.
 - **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
   LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
   OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by
@@ -141,6 +196,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   excuse intersected write locks over the whole run, so a correct lazy initialiser that took a
   different lock in each round was reported. Each round's own writes now decide once the run-wide
   set is empty; two writes under two locks inside one round still report.
+- **`AtomicityValidator` judges the confirmed-hint excuse per round (#781).** An unlocked read
+  re-read under the write lock (#311) was checked against write locks intersected over the whole
+  run, so the idiom with a different lock in each round was reported. Once that set is empty, each
+  round's reads are judged against that round's write locks; two write locks in one round still
+  report.
 - **`AtomicityValidator.recordFieldAccessOn` keeps two objects apart (#750).** Owner-aware accesses
   were grouped by field name alone, so two objects that each stayed on one thread merged into one
   history and read as a field shared by two threads. They are now grouped by the owner they name;

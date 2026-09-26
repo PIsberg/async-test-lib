@@ -115,9 +115,24 @@ public final class LockUpgradeDeadlockDetector {
             State s = violations.computeIfAbsent(id, k -> new State(
                 lockName != null ? lockName : "ReentrantReadWriteLock@" + id.hashCode()
             ));
-            s.deadlockedThreads.add(thread.getName());
+            s.deadlockedThreads.add(threadLabel(thread));
         }
     }
+
+    /**
+     * Names a thread for a report: its name and id, or {@code #id} alone when it has no name,
+     * which is every virtual thread created without one. Named by name only, those threads all
+     * printed as "" and collapsed into one entry (#766); the id also keeps two threads that share
+     * a name apart. {@link LockDowngradeDetector} names its threads the same way.
+     *
+     * @param thread the thread to name
+     * @return the label the report prints for it
+     */
+    static String threadLabel(Thread thread) {
+        String name = thread.getName();
+        return name.isEmpty() ? "#" + thread.threadId() : name + " (id=" + thread.threadId() + ")";
+    }
+
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *

@@ -379,7 +379,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 80. Optimistic Read Validation Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `StampedLock` optimistic reads whose data is used without a matching `validate(stamp)` call. An optimistic read stamp is only valid if no write lock was acquired in between, so skipping validation silently introduces torn-snapshot data corruption. A `validate()` that returns false is not a finding: it is the idiom's cue to re-read under the read lock or retry, and what the caller does next is not recorded. Locks are tracked by identity, so two locks whose identity hashes collide stay separate.
+* **Description**: Detects `StampedLock` optimistic reads whose data is used without a matching `validate(stamp)` call. An optimistic read stamp is only valid if no write lock was acquired in between, so skipping validation silently introduces torn-snapshot data corruption. A `validate()` that returns false is not a finding: it is the idiom's cue to re-read under the read lock or retry. Using the optimistic values anyway is, and it is seen where the use is recorded with `recordValuesUsed(lock, stamp, thread)`, passing the stamp the used values were read under: the failed optimistic stamp is reported, the read-lock stamp of a re-read is not. Locks are tracked by identity, so two locks whose identity hashes collide stay separate.
 * **Buggy Code**:
   ```java
   long stamp = lock.tryOptimisticRead();
