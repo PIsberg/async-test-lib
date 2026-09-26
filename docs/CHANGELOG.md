@@ -229,6 +229,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   land inside a sequence. No caller, example or corpus row records `transferTo` or
   `transferFrom`, which #819 dropped from the implicit-position list because they neither use nor
   move the position; the record method's javadoc now says so.
+- **`FILE_CHANNEL_POSITION_RACE` lets go of the channel at each round start (#831).** A thread's
+  open seek lived in a per-thread slot that kept the channel reference until the thread sought
+  again, so a pooled worker that never did kept it reachable. `AsyncTestContext.markInvocationStart()`
+  now calls the detector's new `markInvocationStart()`, which clears every slot opened since the
+  last one; the seeks are linked through themselves, so listing one allocates nothing.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

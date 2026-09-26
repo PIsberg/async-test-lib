@@ -162,6 +162,50 @@ class FileChannelPositionRaceDetectorTest {
         }
     }
 
+    /**
+     * #831: the per-thread seek slot held the channel until the thread's next seek, so a pooled
+     * worker kept it reachable across rounds. The round start clears every slot; seen from outside,
+     * a read after it relies on no seek made before it, with or without a round clock bound.
+     */
+    @Test
+    void aRoundStartForgetsEveryOpenSeek() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        d.recordImplicitPositionAccess(channel, "read");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "the seek belonged to the round before, so the read relies on nothing: " + d.analyze());
+    }
+
+    @Test
+    void aSeekMadeAfterARoundStartIsForgottenAtTheNextOne() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        d.recordImplicitPositionAccess(channel, "read");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "a thread whose slot one round start cleared is cleared again by the next: "
+                + d.analyze());
+    }
+
+    @Test
+    void aSeekAndItsReadAfterARoundStartAreStillASequence() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertTrue(d.analyze().hasIssues(),
+            "clearing the slot at the round start must not lose the round's own seek");
+    }
+
     @Test
     void positionalOnlyAccessAcrossThreadsIsNotFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();

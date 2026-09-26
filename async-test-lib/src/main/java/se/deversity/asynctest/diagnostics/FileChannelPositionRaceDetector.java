@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Detects a {@link FileChannel} / {@link SeekableByteChannel} whose implicit position one
@@ -103,15 +104,29 @@ public final class FileChannelPositionRaceDetector {
 
         /** {@link HeldLocks#acquisitionMark()} at the seek; only locks held since guard the I/O. */
         long locksMark;
+
+        /** Whether this seek is on {@link #openSeeks}, where a round start finds it. */
+        boolean listed;
+
+        /** The seek listed before this one on {@link #openSeeks}, or {@code null} at the end. */
+        @Nullable Seek next;
     }
 
     private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
      * The calling thread's open seek, if it recorded one. Confined to its thread; set on the
-     * thread's first seek and reused after that, and replaced by the thread's next seek.
+     * thread's first seek and reused after that, replaced by the thread's next seek, and its
+     * channel cleared at the next round start.
      */
     private final ThreadLocal<Seek> seeks = new ThreadLocal<>();
+
+    /**
+     * Every seek opened since the last round start, linked through {@link Seek#next}, so that
+     * {@link #markInvocationStart()}, which runs on the runner thread, can reach the slots of the
+     * workers. The seek objects are the links, so listing one allocates nothing.
+     */
+    private final AtomicReference<@Nullable Seek> openSeeks = new AtomicReference<>();
 
     /**
      * Record an implicit-position operation: one of {@code read}, {@code write},
@@ -169,6 +184,14 @@ public final class FileChannelPositionRaceDetector {
         seek.channel = channel;
         seek.round = SelfGuard.RoundThreads.roundNow();
         seek.locksMark = HeldLocks.acquisitionMark();
+        if (!seek.listed) {
+            seek.listed = true;
+            Seek head;
+            do {
+                head = openSeeks.get();
+                seek.next = head;
+            } while (!openSeeks.compareAndSet(head, seek));
+        }
     }
 
     /**
@@ -190,6 +213,29 @@ public final class FileChannelPositionRaceDetector {
             return null;
         }
         return seek;
+    }
+
+    /**
+     * Starts a new invocation round: every thread's open seek is forgotten, and its slot lets go
+     * of the channel.
+     *
+     * <p>A seek is relied on only within its round, which the round clock already decides, but the
+     * slot of a pooled worker held the channel reference until that worker sought again, if it ever
+     * did (#831). No worker is running when the runner calls this; a seek that a thread the test
+     * left running records meanwhile may stay listed or be forgotten, and either way is not relied
+     * on in a later round.
+     *
+     * @since 1.12.3
+     */
+    public void markInvocationStart() {
+        Seek seek = openSeeks.getAndSet(null);
+        while (seek != null) {
+            Seek next = seek.next;
+            seek.channel = null;
+            seek.next = null;
+            seek.listed = false;
+            seek = next;
+        }
     }
 
     /**
