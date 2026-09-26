@@ -75,6 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an atomicity violation. No `failOn` outcome changes, and the test pins that agreement.
   `AtomicityValidator`'s `DetectorDefaultSeverity` entry is removed as redundant; it declared the
   same `HIGH` the fallback gives.
+- **`ABAProblemDetector` keeps every compare-and-set it records (#763).** Attempts were keyed by
+  their identity hash, so a later attempt sharing one replaced an earlier one, and a stale
+  compare-and-set already judged an ABA dropped out of the report: of 300,000, two runs reported
+  299,986 and 299,985. Attempts are now keyed by instance.
 - **`LockUpgradeDeadlockDetector` and `LockDowngradeDetector` name unnamed threads by id (#766).**
   Both printed a thread by name alone, so a finding on default virtual threads, which have no
   name, printed an empty name for every thread, and the upgrade report collapsed them into one.

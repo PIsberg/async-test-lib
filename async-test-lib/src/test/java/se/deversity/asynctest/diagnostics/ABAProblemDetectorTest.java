@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -79,6 +83,44 @@ class ABAProblemDetectorTest {
         assertTrue(report.hasIssues(), report.toString());
         assertFalse(report.successfulABACases.isEmpty());
         assertTrue(report.toString().contains("HIGH"), report.toString());
+    }
+
+    @Test
+    void everyStaleCasIsReportedHoweverManyThereAre() throws InterruptedException {
+        // Well past the birthday bound for a 31-bit identity hash (about 54,000 objects), so
+        // some twenty pairs of these attempts share a hash. An attempt keyed by its bare hash
+        // replaced the one before it, and that one's finding was gone (#763).
+        int batches = 30;
+        int perBatch = 10_000;
+        ABAProblemDetector detector = new ABAProblemDetector();
+        for (int b = 0; b < batches; b++) {
+            CountDownLatch read = new CountDownLatch(perBatch);
+            CountDownLatch toggled = new CountDownLatch(1);
+            List<Thread> casThreads = new ArrayList<>(perBatch);
+            for (int i = 0; i < perBatch; i++) {
+                String next = "n" + (b * perBatch + i);
+                casThreads.add(Thread.ofVirtual().start(() -> {
+                    detector.recordRead("head", "A");        // each reads A ...
+                    read.countDown();
+                    try {
+                        toggled.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;                              // shows up as a missing finding
+                    }
+                    detector.recordCASAttempt("head", "A", next, true, "A"); // ... CAS succeeds
+                }));
+            }
+            read.await();
+            detector.recordValueChange("head", "A", "B");    // ... after this thread's A -> B -> A
+            detector.recordValueChange("head", "B", "A");
+            toggled.countDown();
+            for (Thread t : casThreads) {
+                t.join();
+            }
+        }
+        assertEquals(batches * perBatch, detector.analyzeABA().successfulABACases.size(),
+            "every stale compare-and-set set a distinct value, so each is its own finding");
     }
 
     @Test
