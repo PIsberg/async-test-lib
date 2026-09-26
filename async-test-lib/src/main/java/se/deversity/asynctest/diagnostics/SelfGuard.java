@@ -653,6 +653,18 @@ public final class SelfGuard {
         }
 
         /**
+         * {@return the calling thread's round, started without recording a thread when none has
+         * been recorded in it yet}
+         *
+         * <p>For an event a detector judges against the threads of its round without counting its
+         * own thread among them: the threads recorded later in the round join the same
+         * {@link Round}, and its sets are complete once the round is over (#784).
+         */
+        Round current() {
+            return roundFor(roundNow());
+        }
+
+        /**
          * Marks {@code round} as the one a finding came from; the first mark wins, so the report
          * names the round that first raced.
          *

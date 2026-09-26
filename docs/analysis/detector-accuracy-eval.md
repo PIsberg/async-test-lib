@@ -222,6 +222,10 @@ where no round is marked. Pinned in each detector's own test and in
 `SharedMessageDigestDetectorTest` for the family's printed count. `StringBuilderDetector`'s
 exception finding followed (#783): it counts the users of the busiest round an exception came
 from, so one thread per round, each failing alone, is not concurrent access.
+`SharedJsonMapperReconfigDetector`'s condition then widened within the round (#784): it had asked
+only about users recorded before the reconfiguration, so one recorded first in its round was
+never reported. A reconfiguration inside a run now races with any other user of its round,
+judged once the round's users are complete.
 
 `FalseSharingDetector`, off unless its experimental property is set, followed in #765. Its pair
 predicate (two or more threads on one field, a different set on the adjacent one) and its

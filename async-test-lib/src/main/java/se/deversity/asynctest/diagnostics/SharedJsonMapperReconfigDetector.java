@@ -30,13 +30,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * findings in reports.
  *
  * <p>Configuring a mapper fully before it is shared ("config-then-use") is the correct,
- * safe pattern and is <em>not</em> flagged. This detector only reports a mutation that
- * happens after the instance has already been used, and only when that mutation either
- * comes from a thread that never used the instance, or the instance has already been used
- * from two or more distinct threads — the exact preconditions for a configuration race.
- * "Already" means earlier in the same invocation round: the runner finishes one round's workers
- * before it starts the next, so a use in an earlier round cannot be in flight during the
- * mutation, and with virtual threads every round runs on fresh threads.
+ * safe pattern and is <em>not</em> flagged. This detector reports a mutation only when a
+ * thread other than the mutating one uses the instance in the same invocation round - the
+ * precondition for a configuration race. Inside a run that use may be recorded before or after
+ * the mutation, since a round's workers are released together and either order overlaps (#784).
+ * Outside a run the whole of it is one round and only a use recorded before the mutation counts,
+ * because a later one cannot be told from a use that followed the configuration by a thread start.
+ * Uses in other rounds never count: the runner finishes one round's workers before it starts the
+ * next, so a use in another round cannot be in flight during the mutation, and with virtual
+ * threads every round runs on fresh threads.
  *
  * <p>Synchronization awareness is partial. A use or a mutation recorded while the accessing
  * thread holds the mapper's own monitor - the {@code synchronized (mapper)} idiom - counts as
@@ -71,13 +73,24 @@ public final class SharedJsonMapperReconfigDetector {
     private static final class MutationRecord {
         final String description;
         final String threadName;
+        final long threadId;
         /** The users of the round the mutation was made in. */
         final SelfGuard.RoundThreads.Round users;
 
-        MutationRecord(String description, String threadName, SelfGuard.RoundThreads.Round users) {
+        MutationRecord(String description, Thread thread, SelfGuard.RoundThreads.Round users) {
             this.description = description;
-            this.threadName = threadName;
+            this.threadName = thread.getName();
+            this.threadId = thread.threadId();
             this.users = users;
+        }
+
+        /** {@return whether a thread other than the mutating one used the mapper in its round} */
+        boolean usedByAnotherThread() {
+            return usedByAnotherThread(users, threadId);
+        }
+
+        static boolean usedByAnotherThread(SelfGuard.RoundThreads.Round users, long threadId) {
+            return users.size() >= 2 || (users.size() == 1 && !users.contains(threadId));
         }
     }
 
@@ -90,6 +103,12 @@ public final class SharedJsonMapperReconfigDetector {
          */
         final SelfGuard.RoundThreads users = new SelfGuard.RoundThreads();
         final List<MutationRecord> violatingMutations = new CopyOnWriteArrayList<>();
+        /**
+         * Mutations made in a run's round before another thread had used the mapper in it. Each is
+         * judged in {@link #analyze()}, once its round's users are complete: a use later in the
+         * same round overlapped it as much as one before it would have (#784).
+         */
+        final List<MutationRecord> pendingMutations = new CopyOnWriteArrayList<>();
 
         State(String className) {
             this.className = className;
@@ -116,11 +135,12 @@ public final class SharedJsonMapperReconfigDetector {
      * {@code setSerializationInclusion}) made against {@code mapper} on the current
      * thread.
      *
-     * <p>A mutation observed before any {@link #recordUse} call for the same instance is
-     * the correct "config-then-use" pattern and is never flagged. A mutation observed
-     * after use has begun is only flagged when it either originates from a thread that
-     * never used the instance, or the instance has already been used from two or more
-     * distinct threads. Both are judged within the calling thread's invocation round.
+     * <p>A mutation is flagged when a thread other than the mutating one uses the instance in the
+     * same invocation round. Inside a run that thread's use may come before or after the mutation:
+     * the round's workers are released together, so either order overlaps. Outside a run, where
+     * the whole of it is one round, only a use recorded before the mutation counts, so a
+     * mutation observed before any {@link #recordUse} call for the same instance is the correct
+     * "config-then-use" pattern and is never flagged there.
      *
      * @param mapper              the mapper/serializer instance under observation (null-safe)
      * @param mutationDescription descriptive label for reports (may be {@code null})
@@ -129,18 +149,20 @@ public final class SharedJsonMapperReconfigDetector {
         if (mapper == null) return;
         State s = stateFor(mapper);
         s.noteAccess(mapper);
-        // Use "so far" means so far in this round: the runner finished every earlier round's
-        // workers before this one started, so nothing they did can be in flight now.
+        // Uses are this round's: the runner finished every earlier round's workers before this one
+        // started, so nothing they did can be in flight now.
         SelfGuard.RoundThreads.Round users = s.users.inCurrentRound();
-        if (users == null || users.size() == 0) {
+        Thread thread = Thread.currentThread();
+        String desc = (mutationDescription != null) ? mutationDescription : "configuration change";
+        if (users != null && MutationRecord.usedByAnotherThread(users, thread.threadId())) {
+            s.violatingMutations.add(new MutationRecord(desc, thread, users));
             return;
         }
-        Thread thread = Thread.currentThread();
-        boolean usedByMultipleThreads = users.size() >= 2;
-        boolean fromNonUsingThread = !users.contains(thread.threadId());
-        if (usedByMultipleThreads || fromNonUsingThread) {
-            String desc = (mutationDescription != null) ? mutationDescription : "configuration change";
-            s.violatingMutations.add(new MutationRecord(desc, thread.getName(), users));
+        // Nobody else has used it in this round yet. In a run's round somebody still may, and that
+        // use overlaps this mutation too (#784); outside a run a later use cannot be told from one
+        // that followed the configuration by a thread start, so it stays config-then-use.
+        if (SelfGuard.Scope.current() != null) {
+            s.pendingMutations.add(new MutationRecord(desc, thread, s.users.current()));
         }
     }
 
@@ -160,12 +182,18 @@ public final class SharedJsonMapperReconfigDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.violatingMutations.isEmpty() || !s.sawUnguardedSharing()) continue;
+            List<MutationRecord> flagged = new ArrayList<>(s.violatingMutations);
+            for (MutationRecord m : s.pendingMutations) {
+                if (m.usedByAnotherThread()) {
+                    flagged.add(m);
+                }
+            }
+            if (flagged.isEmpty() || !s.sawUnguardedSharing()) continue;
             List<String> descriptions = new ArrayList<>();
             List<String> mutatingThreads = new ArrayList<>();
             // The users printed are one round's: the busiest round a flagged mutation was made in.
-            SelfGuard.RoundThreads.Round users = s.violatingMutations.get(0).users;
-            for (MutationRecord m : s.violatingMutations) {
+            SelfGuard.RoundThreads.Round users = flagged.get(0).users;
+            for (MutationRecord m : flagged) {
                 descriptions.add(m.description);
                 if (!mutatingThreads.contains(m.threadName)) {
                     mutatingThreads.add(m.threadName);
@@ -175,7 +203,7 @@ public final class SharedJsonMapperReconfigDetector {
                 }
             }
             String msg = String.format(
-                    "%s reconfigured after concurrent use had begun: %s (mutated by %s) while "
+                    "%s reconfigured during concurrent use: %s (mutated by %s) while "
                             + "used by %d thread(s) (%s) — configuration methods are not safe once a "
                             + "serializer/mapper is visible to other threads; an unsynchronized reconfiguration racing with "
                             + "serialize/deserialize calls causes intermittent corruption or "
@@ -194,7 +222,7 @@ public final class SharedJsonMapperReconfigDetector {
                     List.of(),
                     Map.of(
                             "className", s.className,
-                            "mutationCount", s.violatingMutations.size(),
+                            "mutationCount", flagged.size(),
                             "mutationDescriptions", List.copyOf(descriptions),
                             "usingThreadCount", users.size()),
                     Instant.now()));
