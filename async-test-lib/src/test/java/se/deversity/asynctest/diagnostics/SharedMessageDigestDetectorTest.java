@@ -957,7 +957,7 @@ public class SharedMessageDigestDetectorTest {
      *
      * @param owners      how many owners follow the unlocked one
      * @param unguarded   the owner, 1 to {@code owners}, that uses the digest unlocked, 0 for none
-     * @param after       the owner whose hand-off the late thread is ordered after
+     * @param after       the owner whose hand-off the late thread is ordered after, -1 for none
      * @param lateGuarded whether the late thread holds the digest's monitor
      */
     private static boolean chainReported(int owners, int unguarded, int after, boolean lateGuarded)
@@ -987,7 +987,9 @@ public class SharedMessageDigestDetectorTest {
             };
         }
         bodies[owners + 1] = () -> {
-            awaitWoven(handedOver[after]);
+            if (after >= 0) {
+                awaitWoven(handedOver[after]);
+            }
             await(lastDone);
             if (lateGuarded) {
                 useGuarded(md);
@@ -1021,12 +1023,38 @@ public class SharedMessageDigestDetectorTest {
     @Test
     void aChainLongerThanTheHandOffsKeptFallsBackSoundly() throws Exception {
         // More hand-offs than one window keeps apart. The first is kept, so a late use ordered
-        // after it alone is still judged precisely; the later ones merge, which may only widen
-        // what a late use falls back to, never drop an owner it may overlap.
+        // after it alone is still judged precisely; a later one is dropped only once it no longer
+        // changes what a late use falls back to, never so as to drop an owner it may overlap.
         assertFalse(chainReported(12, 0, 0, true),
                 "the late use is ordered after the unlocked set-up and may overlap only guarded uses");
         assertTrue(chainReported(12, 10, 8, true),
                 "the late use is not ordered after owner 10, which used the digest unlocked");
+    }
+
+    @Test
+    void aGuardedUseOrderedAfterAHandOffPastTheEighthIsJudgedFromIt() throws Exception {
+        // #821: owner 8 uses the digest unlocked, and the late use is ordered after owner 9's
+        // hand-off, so after owner 8 as well. Only the guarded owners 10 to 12 may overlap it.
+        // With the ninth hand-off merged into the eighth, the late use fell back to owner 7's
+        // hand-off and reported owner 8's unlocked use, which it is ordered after.
+        assertFalse(chainReported(12, 8, 9, true),
+                "the late use is ordered after owner 8's unlocked use and may overlap only guarded uses");
+        assertFalse(chainReported(40, 30, 31, true),
+                "the same far down a chain several times longer than the hand-offs kept");
+    }
+
+    @Test
+    void aLateUseThatMayOverlapAnOwnerPastTheEighthStillFires() throws Exception {
+        assertTrue(chainReported(12, 10, 9, true),
+                "the late use is not ordered after owner 10, which used the digest unlocked");
+        assertTrue(chainReported(40, 32, 31, true),
+                "the late use is not ordered after owner 32, which used the digest unlocked");
+        assertTrue(chainReported(12, 0, 9, false),
+                "the late use holds no lock and may overlap owners 10 to 12");
+        assertTrue(chainReported(12, 0, -1, false),
+                "the late use is ordered after no hand-off and holds no lock");
+        assertTrue(chainReported(12, 0, -1, true),
+                "the late use is ordered after no hand-off, so it may overlap the unlocked set-up");
     }
 
     // ---- A use recorded for another thread carries no clock (#792) -----------------------------
@@ -1062,6 +1090,81 @@ public class SharedMessageDigestDetectorTest {
                 "a use recorded for another thread has no clock, so the hand-off is not seen");
         assertFalse(attributedHandOffReported(true),
                 "the same use recorded for the caller is ordered after the set-up and takes over");
+    }
+
+    // ---- An owner whose clock dropped the hand-off before it (#821) ----------------------------
+    //
+    // A clock keeps at most HappensBefore.MAX_ENTRIES threads and drops the lowest ids first. B
+    // takes the digest over from A's unlocked set-up, then learns of more threads than that, all
+    // started after A, so its clock no longer knows A. B's next use is still ordered after the
+    // hand-off, by program order after the use that took over. Checked against B's clock instead,
+    // it fell back to the whole window while the digest was unshared, and a guarded use by C,
+    // ordered after A's hand-off but not after B, then reported A's set-up.
+
+    /** Starts more threads than a clock keeps, each releasing one object, and acquires it. */
+    private static void learnOfMoreThreadsThanAClockKeeps() {
+        Object crowd = new Object();
+        Thread[] threads = new Thread[HappensBefore.MAX_ENTRIES + 8];
+        for (int i = 0; i < threads.length; i++) {
+            threads[i] = new Thread(() -> HappensBefore.release(crowd), "crowd-" + i);
+            threads[i].start();
+        }
+        try {
+            for (Thread thread : threads) {
+                thread.join();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+        HappensBefore.acquire(crowd);
+    }
+
+    private static boolean droppedClockReported(boolean lateGuarded) throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        var ownerDone = new java.util.concurrent.CountDownLatch(1);
+        var setUpThread = new java.util.concurrent.atomic.AtomicLong();
+        var forgotSetUp = new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable setUp = setUpAndHandOver(md, handedOver);
+        Runnable a = () -> {
+            setUpThread.set(Thread.currentThread().threadId());
+            setUp.run();
+        };
+        Runnable b = () -> {
+            awaitWoven(handedOver);
+            useGuarded(md);
+            learnOfMoreThreadsThanAClockKeeps();
+            forgotSetUp.set(HappensBefore.current().countOf(setUpThread.get()) == 0);
+            useGuarded(md);
+            ownerDone.countDown();
+        };
+        Runnable c = () -> {
+            awaitWoven(handedOver);
+            await(ownerDone);
+            if (lateGuarded) {
+                useGuarded(md);
+            } else {
+                use(md);
+            }
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, a, b, c);
+        assertTrue(forgotSetUp.get(), "precondition: the owner's clock dropped the set-up thread");
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void anOwnerWhoseClockDroppedTheHandOffStillJudgesFromIt() throws Exception {
+        assertFalse(droppedClockReported(true),
+                "C is ordered after A's unlocked set-up and may overlap only B's guarded uses");
+    }
+
+    @Test
+    void anUnguardedUseNextToAnOwnerWhoseClockDroppedTheHandOffStillFires() throws Exception {
+        assertTrue(droppedClockReported(false),
+                "C holds no lock and may overlap B");
     }
 
     private static void await(java.util.concurrent.CountDownLatch latch) {
