@@ -54,6 +54,25 @@ class StaticInitDeadlockDetectorTest {
     }
 
     @Test
+    void aRecordedCycleIsGradedAFactNotAVerdict() {
+        detector.recordInitStart(Config.class, threadA);
+        detector.recordInitStart(Registry.class, threadB);
+        detector.recordInitRequest(Registry.class, threadA);
+        detector.recordInitRequest(Config.class, threadB);
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        GradedFindings.Grade grade = grades.get(0);
+        assertEquals(IssueSeverity.CRITICAL, grade.severity(), "the path changes the tier, not the severity");
+        assertEquals(TrustTier.FACT, grade.tier(),
+                "every edge of the cycle is a record call the initializers made; the JVM was not "
+                        + "asked whether anything is blocked (#753): " + grade);
+        assertEquals(DetectorTrust.Evidence.ASSERTED, grade.evidence(), grade.toString());
+        assertEquals(grades, DetectorTrust.clampToCap("StaticInitDeadlockDetector", grades),
+                "graded at its own evidence, nothing is left for the report path to lower");
+    }
+
+    @Test
     void theReportExplainsWhyThePlatformDetectorMissesIt() {
         detector.recordInitStart(Config.class, threadA);
         detector.recordInitStart(Registry.class, threadB);

@@ -173,6 +173,8 @@ public final class VirtualThreadPoolingDetector {
                             + " pooled workers are virtual threads that never terminate — a virtual thread"
                             + " is per-task and must never be pooled (JEP 444)",
                     info.name, info.executorClass, info.maximumPoolSize);
+            r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.VERDICT, msg,
+                    DetectorTrust.Evidence.OBSERVED));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "VirtualThreadPooling",
@@ -199,6 +201,8 @@ public final class VirtualThreadPoolingDetector {
                             + " task and terminates; reuse carries ThreadLocal state across tasks and"
                             + " implies a pool upstream",
                     tasks.threadName, entry.getKey(), count, via);
+            r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.FACT, msg,
+                    DetectorTrust.Evidence.ASSERTED));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "VirtualThreadPooling",
@@ -218,29 +222,24 @@ public final class VirtualThreadPoolingDetector {
     public static final class Report implements GradedFindings {
         public final List<String> violations = new ArrayList<>();
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Grades of the findings collected so far, in report order; see {@link #grades()}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
 
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         /**
-         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
-         * the same detector.
+         * One grade per finding, set by the path that produced it rather than by its severity.
          *
-         * <p>Both findings rest on the factory probe, which distinguishes a virtual-thread factory from a
-         * platform one by construction rather than by guessing, so pooling virtual threads and
-         * reusing them across tasks are both verdicts.
+         * <p>The pooled executor rests on the factory probe: the thread the executor's own factory
+         * made said it was virtual, which is {@link DetectorTrust.Evidence#OBSERVED} and a verdict.
+         * Reuse rests on two {@code recordTaskExecution} calls from one virtual thread; the thread
+         * is real, but where one task ends and the next begins is the recording's claim, so it is a
+         * {@link TrustTier#FACT} on {@link DetectorTrust.Evidence#ASSERTED} evidence. Both are HIGH,
+         * and grading by severity made reuse a verdict too until #753.
          */
         @Override
         public List<GradedFindings.Grade> grades() {
-            return structuredViolations.stream()
-                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
-                    .toList();
-        }
-
-        private static TrustTier tierOf(IssueSeverity severity) {
-            return switch (severity) {
-            case HIGH -> TrustTier.VERDICT;
-            default -> TrustTier.PROMPT;
-            };
+            return List.copyOf(grades);
         }
 
         @Override

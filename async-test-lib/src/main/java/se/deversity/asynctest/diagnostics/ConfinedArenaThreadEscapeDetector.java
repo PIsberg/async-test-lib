@@ -75,12 +75,22 @@ public final class ConfinedArenaThreadEscapeDetector {
      */
     private static final Thread PROBE = new Thread(() -> { }, "async-test-confinement-probe");
 
-    private static final @Nullable Method IS_ACCESSIBLE_BY = lookup("isAccessibleBy", Thread.class);
-    private static final @Nullable Method SCOPE            = lookup("scope");
+    private static final String SEGMENT = "java.lang.foreign.MemorySegment";
 
-    private static @Nullable Method lookup(String name, Class<?>... params) {
+    private static final @Nullable Method IS_ACCESSIBLE_BY = lookup(SEGMENT, "isAccessibleBy", Thread.class);
+    private static final @Nullable Method SCOPE            = lookup(SEGMENT, "scope");
+
+    /**
+     * {@code MemorySegment.Scope.isAlive()}, resolved on the public interface. Resolved on the
+     * scope's runtime class, as it was until #753, it named a method of the non-exported
+     * {@code jdk.internal.foreign} package that no caller outside {@code java.base} may invoke, so
+     * the JVM never answered and every use-after-close finding rested on a recorded close.
+     */
+    private static final @Nullable Method IS_ALIVE         = lookup(SEGMENT + "$Scope", "isAlive");
+
+    private static @Nullable Method lookup(String type, String name, Class<?>... params) {
         try {
-            Method m = Class.forName("java.lang.foreign.MemorySegment").getMethod(name, params);
+            Method m = Class.forName(type).getMethod(name, params);
             m.setAccessible(true);
             return m;
         } catch (ClassNotFoundException | NoSuchMethodException | RuntimeException e) {
@@ -108,6 +118,8 @@ public final class ConfinedArenaThreadEscapeDetector {
         final Set<String> accessingThreads = ConcurrentHashMap.newKeySet();
         final LongAdder wrongThreadAccesses = new LongAdder();
         final LongAdder afterCloseAccesses  = new LongAdder();
+        /** The subset of {@link #afterCloseAccesses} the JVM confirmed: its scope was not alive. */
+        final LongAdder afterCloseObserved  = new LongAdder();
         final Set<String> offendingThreads  = ConcurrentHashMap.newKeySet();
         final AtomicBoolean jvmAnswered       = new AtomicBoolean();
         SegmentState(String label, @Nullable IdentityKey arenaKey, long byteSize) {
@@ -186,9 +198,12 @@ public final class ConfinedArenaThreadEscapeDetector {
             }
         }
 
-        Boolean alive = isAlive(segment);
-        if (Boolean.FALSE.equals(alive) || (s.arenaKey != null && isClosed(s.arenaKey))) {
+        boolean dead = Boolean.FALSE.equals(isAlive(segment));
+        if (dead || (s.arenaKey != null && isClosed(s.arenaKey))) {
             s.afterCloseAccesses.increment();
+            if (dead) {
+                s.afterCloseObserved.increment();
+            }
             s.offendingThreads.add(thread.getName());
         }
     }
@@ -248,13 +263,11 @@ public final class ConfinedArenaThreadEscapeDetector {
     }
 
     private static @Nullable Boolean isAlive(Object segment) {
-        if (SCOPE == null) return null;
+        if (SCOPE == null || IS_ALIVE == null) return null;
         try {
             Object scope = SCOPE.invoke(segment);
             if (scope == null) return null;
-            Method alive = scope.getClass().getMethod("isAlive");
-            alive.setAccessible(true);
-            Object r = alive.invoke(scope);
+            Object r = IS_ALIVE.invoke(scope);
             return (r instanceof Boolean b) ? b : null;
         } catch (ReflectiveOperationException | RuntimeException e) {
             return null;
@@ -264,6 +277,13 @@ public final class ConfinedArenaThreadEscapeDetector {
     /**
      * Evaluate the observed state and produce a report. Idempotent: calling it N times on
      * quiescent state yields N identical reports.
+     *
+     * <p>Each finding is graded by the path that produced it (#753). Where the JVM answered,
+     * through {@code isAccessibleBy} or {@code scope().isAlive()}, it is a {@link TrustTier#VERDICT}
+     * on {@link DetectorTrust.Evidence#OBSERVED} evidence. Where the recorded calls are all there
+     * is, it names {@link DetectorTrust.Evidence#ASSERTED}: a use after a close the test recorded is
+     * a {@link TrustTier#FACT}, and the owner and closer comparisons stay prompts, since the arena
+     * may be a shared one.
      *
      * @return the report of confinement violations and use-after-close accesses
      */
@@ -275,6 +295,8 @@ public final class ConfinedArenaThreadEscapeDetector {
             if (wrong > 0) {
                 boolean certain = s.jvmAnswered.get();
                 add(r, s.label, certain ? IssueSeverity.CRITICAL : IssueSeverity.MEDIUM,
+                    certain ? TrustTier.VERDICT : TrustTier.PROMPT,
+                    certain ? DetectorTrust.Evidence.OBSERVED : DetectorTrust.Evidence.ASSERTED,
                     certain
                         ? String.format(
                             "CRITICAL: segment '%s' belongs to a confined arena and was accessed "
@@ -293,19 +315,28 @@ public final class ConfinedArenaThreadEscapeDetector {
 
             long afterClose = s.afterCloseAccesses.sum();
             if (afterClose > 0) {
-                add(r, s.label, IssueSeverity.CRITICAL, String.format(
+                boolean observed = s.afterCloseObserved.sum() > 0;
+                add(r, s.label, IssueSeverity.CRITICAL,
+                    observed ? TrustTier.VERDICT : TrustTier.FACT,
+                    observed ? DetectorTrust.Evidence.OBSERVED : DetectorTrust.Evidence.ASSERTED,
+                    String.format(
                     "CRITICAL: segment '%s'%s was accessed %d time(s) after its arena was closed. "
                     + "The backing memory is freed at close, so this is a use-after-free reachable "
                     + "from Java: it throws IllegalStateException at best and reads freed memory "
-                    + "at worst.",
-                    s.label, size(s), afterClose), s.accessingThreads.size());
+                    + "at worst. %s",
+                    s.label, size(s), afterClose, observed
+                        ? "The JVM answered scope().isAlive() = false."
+                        : "This rests on the close the test recorded; the JVM did not confirm that "
+                          + "the segment was dead."),
+                    s.accessingThreads.size());
             }
         }
 
         for (ArenaState a : arenas.values()) {
             String wrongCloser = a.closedByWrongThread.get();
             if (wrongCloser != null) {
-                add(r, a.label, IssueSeverity.HIGH, String.format(
+                add(r, a.label, IssueSeverity.HIGH, TrustTier.PROMPT, DetectorTrust.Evidence.ASSERTED,
+                    String.format(
                     "HIGH: arena '%s' was created by thread '%s' but closed by thread '%s'. "
                     + "Arena.ofConfined().close() from a non-owner throws WrongThreadException; "
                     + "if the arena is shared this is legal but still leaves every other thread's "
@@ -316,7 +347,9 @@ public final class ConfinedArenaThreadEscapeDetector {
         return r;
     }
 
-    private static void add(Report r, String label, IssueSeverity severity, String msg, int threadCount) {
+    private static void add(Report r, String label, IssueSeverity severity, TrustTier tier,
+                            DetectorTrust.Evidence evidence, String msg, int threadCount) {
+        r.grades.add(new GradedFindings.Grade(severity, tier, msg, evidence));
         r.violations.add(msg);
         r.structuredViolations.add(new Violation(
                 "ConfinedArenaThreadEscape",
@@ -338,6 +371,8 @@ public final class ConfinedArenaThreadEscapeDetector {
         public final List<String> violations = new ArrayList<>();
         /** The same findings as machine-readable {@link Violation} records. */
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Grades of the findings collected so far, in report order; see {@link #grades()}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
 
         /**
          * Checks if any issues were detected.
@@ -347,25 +382,19 @@ public final class ConfinedArenaThreadEscapeDetector {
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         /**
-         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
-         * the same detector.
+         * One grade per finding, set by the path that produced it rather than by its severity.
          *
-         * <p>Access after the arena closed, and access the JDK itself rejects through
-         * {@code MemorySegment.isAccessibleBy}, are verdicts: the confinement was violated. The
-         * weaker findings infer ownership from what was recorded and stay prompts.
+         * <p>An access the JDK rejects through {@code MemorySegment.isAccessibleBy}, and an access
+         * to a segment whose {@code scope().isAlive()} answers false, are verdicts on
+         * {@link DetectorTrust.Evidence#OBSERVED} evidence. An access after a close only the test
+         * recorded is a fact about that recording, and the owner and closer comparisons stay
+         * prompts; all three name {@link DetectorTrust.Evidence#ASSERTED}. Graded by its CRITICAL
+         * severity, the recorded close was a verdict too, and the evidence cap that then held the
+         * detector at FACT held the JVM-answered findings there with it (#753).
          */
         @Override
         public List<GradedFindings.Grade> grades() {
-            return structuredViolations.stream()
-                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
-                    .toList();
-        }
-
-        private static TrustTier tierOf(IssueSeverity severity) {
-            return switch (severity) {
-            case CRITICAL -> TrustTier.VERDICT;
-            default -> TrustTier.PROMPT;
-            };
+            return List.copyOf(grades);
         }
 
         @Override

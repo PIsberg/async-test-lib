@@ -208,7 +208,7 @@ class DetectorTrustCoverageTest {
         GradedFindings.Grade prompt = new GradedFindings.Grade(IssueSeverity.MEDIUM, TrustTier.PROMPT, "owner");
 
         List<GradedFindings.Grade> clamped =
-                DetectorTrust.clampToCap("ConfinedArenaThreadEscapeDetector", List.of(verdict, prompt));
+                DetectorTrust.clampToCap("SharedMemorySegmentRaceDetector", List.of(verdict, prompt));
         assertEquals(List.of(new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.FACT, "closed"), prompt),
                 clamped, "an ASSERTED detector's VERDICT grade becomes FACT; severity and summary stay");
 
@@ -218,6 +218,32 @@ class DetectorTrustCoverageTest {
         assertEquals(TrustTier.PROMPT,
                 DetectorTrust.clampToCap("SomeThirdPartyDetector", List.of(verdict)).get(0).tier(),
                 "a detector the table does not know is capped at the PROMPT it resolves to");
+    }
+
+    /**
+     * A detector classified by its strongest path must not lend that path's cap to a finding its
+     * weaker path produced (#753). Before grades named their evidence the cap was per detector,
+     * so a detector with one JVM-answered path and one recorded path had to be classified by the
+     * recorded one, and the JVM-answered verdicts were clamped to FACT with it.
+     */
+    @Test
+    @DisplayName("a grade is capped by the evidence it names as well as by its detector's")
+    void clampActsPerGradeOnTheEvidenceEachNames() {
+        GradedFindings.Grade recorded = new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.VERDICT,
+                "closed", DetectorTrust.Evidence.ASSERTED);
+        GradedFindings.Grade observed = new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.VERDICT,
+                "refused", DetectorTrust.Evidence.OBSERVED);
+
+        assertEquals(List.of(new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.FACT, "closed",
+                                DetectorTrust.Evidence.ASSERTED), observed),
+                DetectorTrust.clampToCap("RecordMutableComponentLeakDetector", List.of(recorded, observed)),
+                "under an OBSERVED detector the recorded grade is capped at FACT and the observed one passes");
+        assertEquals(TrustTier.FACT,
+                DetectorTrust.clampToCap("SharedMemorySegmentRaceDetector", List.of(observed)).get(0).tier(),
+                "a grade's own evidence can only lower its detector's cap, never lift it");
+        assertEquals(TrustTier.PROMPT,
+                DetectorTrust.clampToCap("SomeThirdPartyDetector", List.of(observed)).get(0).tier(),
+                "a third-party grade claiming OBSERVED stays at the PROMPT an unknown detector gets");
     }
 
     @Test

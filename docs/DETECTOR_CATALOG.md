@@ -121,7 +121,8 @@ with a threshold, given a pair on the right side of it. `ExecutorDeadlockDetecto
 VERDICT that way while its finding was a lifetime counter of recorded waits. Since 2026-09-26
 every row in `DetectorTrust` also names what its detector decides from, read from its record path
 and `analyze()`, and the class caps the tier. `DetectorTrustCoverageTest` refuses a row above its
-cap, and the report path lowers a graded finding above its detector's cap before the gate reads it.
+cap, and the report path lowers a graded finding above its detector's cap, or above the cap of the
+evidence the finding itself names, before the gate reads it.
 The class is declared by hand, so `DetectorEvidenceMatchesCodeTest` checks it against the
 detector's source: a `CONTEXTUAL` row whose detector reads no lockset, monitor probe or
 happens-before edge fails, and so does a row other than `CONTEXTUAL` or `OBSERVED` whose detector
@@ -195,16 +196,20 @@ their reports implement `GradedFindings` and carry a tier on each finding, so `m
 acts on the recorded cycle, the lost update or the observed mutation without being held back by
 the note beside it. Before that, a verdict-only gate stayed green on every one of them.
 
-The grades were meant to be conservative: a finding becomes VERDICT only where its claim is
-something observed rather than inferred, such as the JVM refusing a thread access to a segment, or
-a probe reporting the thread kind a task actually ran on. Four reports grade by severity rather
-than by path, and so grade a finding decided from the test's own record calls as VERDICT too: an
-access after a recorded close (`CONFINED_ARENA_THREAD_ESCAPE`, `SHARED_MEMORY_SEGMENT_RACE`), a
-cycle of recorded init requests (`STATIC_INIT_DEADLOCK`) and two recorded executions on one
-virtual thread (`VIRTUAL_THREAD_POOLING`). Their evidence class is therefore `ASSERTED`, and the
-report path clamps each of their grades to FACT before the gate or the banner reads it, the
-JVM-answered ones included, until the grade follows the path. `VAR_HANDLE_NON_ATOMIC_UPDATE`,
-`RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK` keep their VERDICT grades.
+A finding becomes VERDICT only where its claim is something observed rather than inferred, such as
+the JVM refusing a thread access to a segment, or a probe reporting the thread kind a task actually
+ran on. Each grade follows the path that produced it and names that path's evidence, and the
+report path caps it by that evidence as well as by the detector's class (#753). Four reports used
+to grade by severity instead, and so graded a finding decided from the test's own record calls as
+VERDICT too, which forced their evidence class down to `ASSERTED` and clamped their JVM-answered
+findings to FACT with it. Now an access after a recorded close (`CONFINED_ARENA_THREAD_ESCAPE`,
+`SHARED_MEMORY_SEGMENT_RACE`), a cycle of recorded init requests (`STATIC_INIT_DEADLOCK`) and two
+recorded executions on one virtual thread (`VIRTUAL_THREAD_POOLING`) are FACT on `ASSERTED`
+evidence, while the JVM refusing a thread, a segment whose scope the JVM says is dead and a pool
+whose factory makes virtual threads are VERDICT on `OBSERVED` evidence. `STATIC_INIT_DEADLOCK`
+and `SHARED_MEMORY_SEGMENT_RACE` have no VERDICT path, so they stay `ASSERTED`.
+`VAR_HANDLE_NON_ATOMIC_UPDATE`, `RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK`
+keep their VERDICT grades.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,

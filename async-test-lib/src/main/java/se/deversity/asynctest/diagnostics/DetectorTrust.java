@@ -101,8 +101,10 @@ public final class DetectorTrust {
      *
      * <p>A detector that decides differently on different paths is classified by its weakest
      * path, because the row's tier applies to every finding it makes. A report that implements
-     * {@link GradedFindings} is the exception: each of its findings carries its own tier, so its
-     * class is the one behind its strongest grade, and the clamp keeps every grade at or below it.
+     * {@link GradedFindings} is the exception: each of its findings carries its own tier and names
+     * the evidence of the path that produced it ({@link GradedFindings.Grade#evidence()}), so its
+     * class is the one behind its strongest grade, and the clamp keeps every grade at or below
+     * both that class's cap and the cap of the evidence it names.
      *
      * @since 1.12.3
      */
@@ -177,12 +179,14 @@ public final class DetectorTrust {
      * executor finding with an advisory churn threshold.
      *
      * <p>The last column is the {@link Evidence} class, read from each detector's record path and
-     * {@code analyze()} on 2026-09-26. Four of the graded detectors are {@link Evidence#ASSERTED}
-     * although one of their paths observes the JVM: confined-arena escape and memory-segment race
-     * grade a use after a recorded {@code recordClose} as VERDICT, static-init deadlock grades a
-     * cycle of recorded init requests as VERDICT, and virtual-thread pooling grades two recorded
-     * executions on one thread as VERDICT. The class names that weakest VERDICT-grade path, so the
-     * report path clamps all four to FACT until each grades by path.
+     * {@code analyze()} on 2026-09-26. A graded detector is classified by the path behind its
+     * strongest grade, and each of its grades names its own path's evidence, which the report path
+     * caps it by too (#753). Confined-arena escape and virtual-thread pooling are therefore
+     * {@link Evidence#OBSERVED}: the JVM refusing a thread, a scope that is not alive and a factory
+     * probe are verdicts, while a use after a recorded close and two recorded executions on one
+     * thread are {@link Evidence#ASSERTED} facts. Memory-segment race and static-init deadlock stay
+     * {@link Evidence#ASSERTED}, since neither has a finding above FACT: the one close either sees is
+     * a recorded one, and a cycle of recorded init requests is the recording's claim.
      *
      * <p>The column is written by hand, and {@code DetectorEvidenceMatchesCodeTest} checks the part
      * of it the code shows: a {@link Evidence#CONTEXTUAL} row whose detector reads no lockset,
@@ -318,12 +322,12 @@ public final class DetectorTrust {
             row(DetectorType.EXECUTOR_DEADLOCK, "ExecutorDeadlockDetector", "ExecutorDeadlock", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.FUTURE_BLOCKING, "FutureBlockingDetector", "FutureBlocking", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.FLOW_PUBLISHER_CONCURRENCY, "FlowPublisherConcurrencyDetector", "FlowPublisherConcurrency", TrustTier.PROMPT, Evidence.ASSERTED),
-            row(DetectorType.CONFINED_ARENA_THREAD_ESCAPE, "ConfinedArenaThreadEscapeDetector", "ConfinedArenaThreadEscape", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.CONFINED_ARENA_THREAD_ESCAPE, "ConfinedArenaThreadEscapeDetector", "ConfinedArenaThreadEscape", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.SHARED_MEMORY_SEGMENT_RACE, "SharedMemorySegmentRaceDetector", "SharedMemorySegmentRace", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, "VarHandleNonAtomicUpdateDetector", "VarHandleNonAtomicUpdate", TrustTier.PROMPT, Evidence.CONTEXTUAL),
             row(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, "RecordMutableComponentLeakDetector", "RecordMutableComponentLeak", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.STATIC_INIT_DEADLOCK, "StaticInitDeadlockDetector", "StaticInitDeadlock", TrustTier.PROMPT, Evidence.ASSERTED),
-            row(DetectorType.VIRTUAL_THREAD_POOLING, "VirtualThreadPoolingDetector", "VirtualThreadPooling", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.VIRTUAL_THREAD_POOLING, "VirtualThreadPoolingDetector", "VirtualThreadPooling", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.PLATFORM_THREAD_PER_TASK, "PlatformThreadPerTaskDetector", "PlatformThreadPerTask", TrustTier.ADVISORY, Evidence.OBSERVED),
             row(DetectorType.SHARED_SPLITTABLE_RANDOM, "SharedSplittableRandomDetector", "SharedSplittableRandom", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, "CompletableFutureCompletionRaceDetector", "CompletableFutureCompletionRace", TrustTier.FACT, Evidence.ASSERTED),
@@ -445,9 +449,12 @@ public final class DetectorTrust {
      *
      * <p>A graded report names its own tiers, and nothing in the report type stops it from naming
      * one its evidence cannot carry. This is where that stops: the report path applies it before
-     * the {@code failOn} gate, the console banner or a listener reads a grade. Returns
-     * {@code grades} itself when nothing needed lowering, which is the case for every built-in
-     * report the table classifies correctly.
+     * the {@code failOn} gate, the console banner or a listener reads a grade. A grade that names
+     * its own {@link GradedFindings.Grade#evidence()} is capped by the lower of that class and the
+     * detector's, so a detector classified by its strongest path still cannot lend that path's cap
+     * to a finding its weaker path produced; a declared class never raises the detector's cap.
+     * Returns {@code grades} itself when nothing needed lowering, which is the case for every
+     * built-in report the table classifies correctly.
      *
      * @param detectorName the reporting detector's name as it appears in the report map
      * @param grades       the report's grades, in report order
@@ -455,20 +462,27 @@ public final class DetectorTrust {
      */
     @API(status = Status.EXPERIMENTAL, since = "1.12.3")
     public static List<GradedFindings.Grade> clampToCap(String detectorName, List<GradedFindings.Grade> grades) {
-        TrustTier cap = capOfDetector(detectorName);
+        TrustTier detectorCap = capOfDetector(detectorName);
         boolean exceeds = false;
         for (GradedFindings.Grade grade : grades) {
-            exceeds |= grade.tier().compareTo(cap) > 0;
+            exceeds |= grade.tier().compareTo(capOf(grade, detectorCap)) > 0;
         }
         if (!exceeds) {
             return grades;
         }
         List<GradedFindings.Grade> clamped = new ArrayList<>(grades.size());
         for (GradedFindings.Grade grade : grades) {
+            TrustTier cap = capOf(grade, detectorCap);
             clamped.add(grade.tier().compareTo(cap) > 0
-                    ? new GradedFindings.Grade(grade.severity(), cap, grade.summary())
+                    ? new GradedFindings.Grade(grade.severity(), cap, grade.summary(), grade.evidence())
                     : grade);
         }
         return List.copyOf(clamped);
+    }
+
+    /** {@return the lower of the detector's cap and the cap of the evidence the grade declares} */
+    private static TrustTier capOf(GradedFindings.Grade grade, TrustTier detectorCap) {
+        Evidence declared = grade.evidence();
+        return declared == null || declared.cap().compareTo(detectorCap) >= 0 ? detectorCap : declared.cap();
     }
 }

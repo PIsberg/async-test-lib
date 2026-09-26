@@ -74,6 +74,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other two at PROMPT. 32 VERDICT and 5 FACT rows moved down, and a graded finding is clamped to
   its detector's cap at run time. A build gating on `minTrust = VERDICT` now fails on fewer
   detectors, each of which it can stand behind.
+- **Graded findings take their tier from the path that produced them, not their severity (#753).**
+  `GradedFindings.Grade` gains an optional `evidence` component, and the report path caps a grade
+  by the evidence it names as well as by its detector's class, so a recorded path no longer drags
+  a JVM-answered one down with it. What changed tier, for a `minTrust` gate and for folding in a
+  passing run:
+  - `CONFINED_ARENA_THREAD_ESCAPE`: a thread `MemorySegment.isAccessibleBy` refuses goes from FACT
+    (clamped) to VERDICT. An access to a segment whose `scope().isAlive()` is false is VERDICT, and
+    is now reported at all: the liveness probe resolved `isAlive` on a non-exported JDK class and
+    never answered, so only a close the test recorded could raise the finding. An access after a
+    close only the test recorded stays FACT, now on its own `ASSERTED` evidence; the owner
+    comparison and the wrong closer stay PROMPT. The finding text says which close it rests on.
+  - `VIRTUAL_THREAD_POOLING`: a pool whose factory makes virtual threads goes from FACT (clamped)
+    to VERDICT; two recorded executions on one virtual thread stay FACT.
+  - `SHARED_MEMORY_SEGMENT_RACE` and `STATIC_INIT_DEADLOCK`: no tier changes. The access after a
+    recorded close and the recorded init cycle are FACT at the source instead of VERDICT clamped
+    to FACT, and the live init sample stays FACT.
+  `CONFINED_ARENA_THREAD_ESCAPE` and `VIRTUAL_THREAD_POOLING` are classified `OBSERVED` (was
+  `ASSERTED`); both detector-wide tiers stay PROMPT.
 - **The trust banner no longer claims more than its weakest finding.** A block mixing a VERDICT and
   a PROMPT finding was headed "a finding means the code is wrong"; it now reads
   `trust=PROMPT..VERDICT` and lists each finding's tier.

@@ -91,6 +91,42 @@ class VirtualThreadPoolingDetectorTest {
     }
 
     @Test
+    void aProbedPoolIsAVerdictAfterTheClamp() {
+        ExecutorService pool = Executors.newFixedThreadPool(2, Thread.ofVirtual().factory());
+        try {
+            detector.registerExecutor(pool, "virtual-fixed-pool");
+        } finally {
+            pool.shutdownNow();
+        }
+
+        var gated = DetectorTrust.clampToCap("VirtualThreadPoolingDetector", detector.analyze().grades());
+        assertEquals(1, gated.size(), gated.toString());
+        assertEquals(TrustTier.VERDICT, gated.get(0).tier(),
+                "the factory's own thread said it was virtual, so the evidence cap must not lower "
+                        + "it (#753): " + gated);
+        assertEquals(DetectorTrust.Evidence.OBSERVED, gated.get(0).evidence(), gated.toString());
+    }
+
+    @Test
+    void recordedReuseIsAFactNotAVerdict() throws InterruptedException {
+        Thread worker = Thread.ofVirtual().name("reused-vt").start(() -> {
+            detector.recordTaskExecution("hand-rolled-pool");
+            detector.recordTaskExecution("hand-rolled-pool");
+        });
+        worker.join();
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(IssueSeverity.HIGH, grades.get(0).severity(), "the path changes the tier, not the severity");
+        assertEquals(TrustTier.FACT, grades.get(0).tier(),
+                "two recordTaskExecution calls on one thread are where the task boundaries come "
+                        + "from, so the recording is the evidence: " + grades);
+        assertEquals(DetectorTrust.Evidence.ASSERTED, grades.get(0).evidence(), grades.toString());
+        assertEquals(grades, DetectorTrust.clampToCap("VirtualThreadPoolingDetector", grades),
+                "graded at its own evidence, nothing is left for the report path to lower");
+    }
+
+    @Test
     void singleTaskPerVirtualThread_isClean() throws InterruptedException {
         for (int i = 0; i < 3; i++) {
             Thread.ofVirtual().name("vt-" + i).start(() -> detector.recordTaskExecution("per-task")).join();
