@@ -201,6 +201,59 @@ public class StatefulLambdaDetectorTest {
         assertTrue(d.analyze().violations.get(0).contains("counter"));
     }
 
+    // #785: a mutation recorded without its captured object has no capture identity, so it is
+    // judged against the lambda, and all of a lambda's unnamed captures share one lockset. This
+    // pins that documented limit, and beside it the named form that judges each capture alone.
+    @Test
+    void twoUnnamedCapturesEachGuardedByItsOwnLockAreReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertTrue(runTwoCapturesUnderTheirOwnDeclaredLocks(d, false),
+                "unnamed captures share the lambda's lockset, so lock H for one capture and lock M "
+                        + "for the other leave no lock common to every mutation");
+        assertTrue(d.analyze().violations.get(0).contains("hits"));
+    }
+
+    @Test
+    void twoNamedCapturesEachGuardedByItsOwnDeclaredLockAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertFalse(runTwoCapturesUnderTheirOwnDeclaredLocks(d, true),
+                "each named capture held its own lock at every mutation: " + d.analyze().violations);
+    }
+
+    private static boolean runTwoCapturesUnderTheirOwnDeclaredLocks(
+            StatefulLambdaDetector d, boolean named) throws InterruptedException {
+        int[] hits = {0};
+        int[] misses = {0};
+        Object hitsLock = new Object();
+        Object missesLock = new Object();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(hitsLock)) {
+                synchronized (hitsLock) {
+                    hits[0]++;
+                    if (named) {
+                        d.recordCapturedMutation(task[0], "hits", hits, Thread.currentThread());
+                    } else {
+                        d.recordCapturedMutation(task[0], "hits", Thread.currentThread());
+                    }
+                }
+            }
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(missesLock)) {
+                synchronized (missesLock) {
+                    misses[0]++;
+                    if (named) {
+                        d.recordCapturedMutation(task[0], "misses", misses, Thread.currentThread());
+                    } else {
+                        d.recordCapturedMutation(task[0], "misses", Thread.currentThread());
+                    }
+                }
+            }
+        };
+        onTwoThreads(task[0]);
+        return d.analyze().hasIssues();
+    }
+
     // #770: only a mutation was recorded, so one mutating thread beside threads that only read
     // the capture put a single thread in the round and read as unshared.
     @Test

@@ -178,6 +178,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read, with the lock probe taken on the reading thread: a writer and its readers all under one lock
   are not reported, and a read outside the writer's lock is. Reads with no mutation are not reported.
   `recordExecution` still names no capture and does not count as a read.
+- **`StatefulLambdaDetector` documents that unnamed captures share one lockset** (#785). A mutation
+  recorded through `recordCapturedMutation(lambda, name, thread)` names no captured object, so it is
+  judged against the lambda, and two such captures each under its own lock are still reported. The
+  overload's javadoc now says so and points to `recordCapturedMutation(lambda, name, state, thread)`,
+  and a test pins both forms. The overload is not deprecated: its replacement is experimental, and
+  the limit only adds findings, never hides one.
 - **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
   LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
   OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by

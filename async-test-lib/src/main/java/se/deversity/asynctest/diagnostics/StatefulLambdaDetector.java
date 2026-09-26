@@ -24,8 +24,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Two kinds of mutation are not the race and are not reported. Mutation of state that is
  * thread-safe by type, when the caller names the captured object through
  * {@link #recordCapturedMutation(Object, String, Object, Thread)}, and mutation that one lock
- * covered every time. The lock is judged per captured object, so two captures each guarded by
- * its own lock are both covered. The lock the detector can see is the captured object's own
+ * covered every time. The lock is judged per captured object, so two named captures each guarded
+ * by its own lock are both covered; mutations recorded without their object are all judged
+ * against the lambda, as one capture. The lock the detector can see is the captured object's own
  * monitor (or the lambda's, when no object is named), a lock declared with
  * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
  * the finding standing.
@@ -100,7 +101,12 @@ public class StatefulLambdaDetector {
      * Call this whenever the lambda writes to a captured mutable container.
      *
      * <p>Without the captured object the detector cannot tell thread-safe state from a plain
-     * container; prefer {@link #recordCapturedMutation(Object, String, Object, Thread)}.
+     * container, and it has no capture to judge the lock against: the mutation is judged against
+     * the lambda, so all of one lambda's mutations recorded through this overload share one
+     * lockset, whatever {@code capturedName} says. Two such captures each guarded by its own lock
+     * are therefore reported, because no one lock covered both. Prefer
+     * {@link #recordCapturedMutation(Object, String, Object, Thread)}, which judges each captured
+     * object on its own.
      *
      * @param lambda        the lambda, Runnable, or Callable instance
      * @param capturedName  name of the captured variable being mutated
