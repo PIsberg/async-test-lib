@@ -237,6 +237,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each failing alone, read as concurrent access. It now counts the users of the busiest round an
   exception was recorded in, and needs two of them; two threads sharing the builder in one round
   still report, with that round's count.
+- **`StringBuilderDetector` needs two writers and unguarded sharing in the same round (#782).**
+  Each condition was judged per round, but not in the same one, so a round where one writer raced a
+  reader plus a round where two writers held a common lock reported "mutated by 2 threads", a
+  finding neither round supports. The sharing verdict is now taken afresh each round and the
+  finding latches on the first round that meets both, whose writers are the count printed; a guarded
+  round with more writers no longer lends its count. The exception finding now compares each error
+  round once it is over, so a round whose users arrived after its exception is counted with them.
 - **`HttpClientConcurrencyDetector` keeps one thread-activity line per client (#767).** The lines
   were filed under the client's name, so two clients registered under one name overwrote each
   other's and the report showed only one. Each client object now gets its own line, still printed
