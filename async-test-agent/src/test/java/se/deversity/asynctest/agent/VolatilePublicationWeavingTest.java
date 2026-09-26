@@ -193,6 +193,46 @@ class VolatilePublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("a volatile read stays acquired however many other volatile reads follow it (#805)")
+    void aReadIsNotForgottenAfterOtherVolatileReads() throws InterruptedException {
+        VolatilePublicationBean bean = new VolatilePublicationBean();
+        boolean[] seen = new boolean[1];
+        List<String> findings = findings(() -> bean.publish(5), writerRuns -> {
+            writerRuns.run();
+            seen[0] = bean.bumpDataAfterManyVolatileReads();
+        });
+
+        assertTrue(seen[0], "the reader read ready after the writer finished");
+        assertEquals(6, bean.observedData(), "the reader updated what the writer wrote");
+        assertFalse(mentions(findings, ".data"),
+                "The reader read ready (true, published) and then twelve other volatile fields "
+                        + "before updating data. The acquire of ready orders data however many "
+                        + "reads come between; a finding means an edge was dropped. Findings "
+                        + "were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a volatile read in an earlier method does not order an access after another field's read (#805)")
+    void aReadInAnEarlierMethodDoesNotOrderALaterOne() throws InterruptedException {
+        VolatilePublicationBean bean = new VolatilePublicationBean();
+        boolean[] seen = {true, true};
+        List<String> findings = findings(() -> bean.publish(5), writerRuns -> {
+            seen[0] = bean.peekReady();
+            writerRuns.run();
+            seen[1] = bean.bumpDataAfterOther();
+        });
+
+        assertFalse(seen[0], "the read of ready came before the writer ran");
+        assertFalse(seen[1], "nothing writes other");
+        assertEquals(6, bean.observedData(), "the update came after the writer finished");
+        assertTrue(mentions(findings, ".data"),
+                "The reader's only read of ready returned false, in an earlier method, and the "
+                        + "method that updates data read only other, which nobody wrote. Nothing "
+                        + "orders data; silence means an old read of ready was acquired at a "
+                        + "later access. Findings were: " + findings);
+    }
+
+    @Test
     @DisplayName("every volatile stack shape survives the verifier and keeps its value")
     void everyVolatileShapeKeepsItsValue() {
         assertEquals("true,3,x,300,70001,1099511627777,1.5,4.5,n,4,-8589934593,-2.0,-7,true",

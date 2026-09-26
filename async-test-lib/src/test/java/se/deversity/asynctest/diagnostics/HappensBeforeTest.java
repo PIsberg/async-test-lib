@@ -157,52 +157,30 @@ class HappensBeforeTest {
     }
 
     @Test
-    @DisplayName("a marked access acquires the fields its thread read, including one written after the read hook")
-    void aNotedVolatileReadIsAcquiredAtTheMarkedAccess() throws InterruptedException {
-        Object holder = new Object();
-        AtomicReference<Recorded> writer = new AtomicReference<>();
-        Recorded reader = onNewThread(() -> {
-            // The hook runs before the read instruction, and the write can land in between.
-            HappensBefore.volatileRead(holder, "Holder.ready");
-            try {
-                writer.set(onNewThread(() -> { }, true,
-                        () -> HappensBefore.releaseVolatile(holder, "Holder.ready")));
-            } catch (InterruptedException e) {
-                throw new IllegalStateException(e);
-            }
-            HappensBefore.acquireVolatileReads(holder);
-        }, false, () -> { });
-        Recorded otherReader = onNewThread(() -> {
-            HappensBefore.volatileRead(holder, "Holder.other");
-            HappensBefore.acquireVolatileReads(holder);
-        }, false, () -> { });
-        Recorded otherObject = onNewThread(() -> {
-            HappensBefore.volatileRead(holder, "Holder.ready");
-            HappensBefore.acquireVolatileReads(new Object());
-        }, false, () -> { });
-
-        assertTrue(ordered(writer.get(), reader), "the reader read the field the writer released");
-        assertFalse(ordered(writer.get(), otherReader), "a read of another field receives nothing");
-        assertFalse(ordered(writer.get(), otherObject),
-                "the marked access was on another object, whose fields this thread never read");
-    }
-
-    @Test
-    @DisplayName("a thread remembers its last volatile reads, and a read that old orders nothing")
-    void anEvictedVolatileReadOrdersNothing() throws InterruptedException {
+    @DisplayName("a volatile read stays acquired however many volatile fields the thread reads next (#805)")
+    void anAcquiredReadIsNeverForgotten() throws InterruptedException {
         Object holder = new Object();
         Recorded writer = onNewThread(() -> { }, true,
-                () -> HappensBefore.releaseVolatile(holder, "Holder.ready"));
+                () -> HappensBefore.releaseVolatile(holder, "Holder.ready", 1L));
         Recorded reader = onNewThread(() -> {
-            HappensBefore.volatileRead(holder, "Holder.ready");
-            for (int i = 0; i < HappensBefore.VOLATILE_READS; i++) {
-                HappensBefore.volatileRead(holder, "Holder.field" + i);
+            HappensBefore.acquireVolatile(holder, "Holder.ready", 1L);
+            // More fields than the thread keeps clocks for at hand, so the first one is evicted.
+            for (int i = 0; i <= HappensBefore.FIELD_CLOCK_CACHE; i++) {
+                HappensBefore.acquireVolatile(new Object(), "Holder.ready", 1L);
             }
-            HappensBefore.acquireVolatileReads(holder);
+        }, false, () -> { });
+        Recorded readAgain = onNewThread(() -> {
+            HappensBefore.acquireVolatile(holder, "Holder.ready", 0L); // the older value: nothing
+            for (int i = 0; i <= HappensBefore.FIELD_CLOCK_CACHE; i++) {
+                HappensBefore.acquireVolatile(new Object(), "Holder.ready", 1L);
+            }
+            HappensBefore.acquireVolatile(holder, "Holder.ready", 1L);
         }, false, () -> { });
 
-        assertFalse(ordered(writer, reader),
-                "forgetting a read loses an edge, which is the direction the model may err in");
+        assertTrue(ordered(writer, reader),
+                "the acquire went into the thread's clock at the read; later reads take nothing away");
+        assertTrue(ordered(writer, readAgain),
+                "a field whose clock fell out of the thread's cache is found again at its next read");
     }
 
     @Test

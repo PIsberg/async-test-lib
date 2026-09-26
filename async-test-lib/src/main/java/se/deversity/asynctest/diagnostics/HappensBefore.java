@@ -113,11 +113,8 @@ public final class HappensBefore {
     /** Passed as the entry to keep when merging into a clock that belongs to no thread. */
     private static final long NO_OWNER = Long.MIN_VALUE;
 
-    /** How many volatile fields a thread remembers having read; see the class javadoc. */
-    static final int VOLATILE_READS = 8;
-
     /** How many volatile field clocks a thread keeps at hand; a miss costs a lookup, not an edge. */
-    private static final int FIELD_CLOCK_CACHE = 8;
+    static final int FIELD_CLOCK_CACHE = 8;
 
     /** Each thread's clock, created at its first synchronization event or stamp. */
     private static final ThreadLocal<ThreadClock> CLOCKS = ThreadLocal.withInitial(HappensBefore::start);
@@ -309,68 +306,6 @@ public final class HappensBefore {
         cache[me.nextFieldClock] = clock;
         me.nextFieldClock = (me.nextFieldClock + 1) % FIELD_CLOCK_CACHE;
         return clock;
-    }
-
-    /**
-     * Notes that the calling thread is about to read a volatile field, for a caller that learns of
-     * the read before it is made. The agent reports the value after the read instead, through
-     * {@link #acquireVolatile(Object, String, long)}.
-     *
-     * <p>Nothing is acquired here: the value has not been seen yet. The field is remembered, and
-     * {@link #acquireVolatileReads} takes the acquire at a later access that follows
-     * the read. The field's clock is created now, even when nobody has written the field yet, so
-     * that a write landing between this call and the read is still found. A field the thread
-     * already remembers costs a scan of {@value #VOLATILE_READS} entries and allocates nothing.
-     *
-     * @param owner the object the field belongs to, the declaring class for a static field;
-     *              {@code null} is ignored
-     * @param field the field's name, qualified or simple
-     */
-    @API(status = Status.INTERNAL)
-    public static void volatileRead(@Nullable Object owner, String field) {
-        if (owner == null) {
-            return;
-        }
-        ThreadClock me = CLOCKS.get();
-        FieldClock[] reads = me.volatileReads;
-        if (reads == null) {
-            reads = new FieldClock[VOLATILE_READS];
-            me.volatileReads = reads;
-        }
-        for (FieldClock read : reads) {
-            if (read != null && read.is(owner, field)) {
-                return;
-            }
-        }
-        reads[me.nextVolatileRead] = syncClock(owner).field(field);
-        me.nextVolatileRead = (me.nextVolatileRead + 1) % VOLATILE_READS;
-    }
-
-    /**
-     * Orders the calling thread after the writes of every volatile field of {@code owner} it has
-     * read, as far as {@link #volatileRead} remembers them.
-     *
-     * <p>For an access that follows a noted volatile read of the same object. Fields
-     * of {@code owner} the thread has not read acquire nothing, which is the difference from an
-     * acquire of the whole object (#742).
-     *
-     * @param owner the object the marked access is on; {@code null} is ignored
-     */
-    @API(status = Status.INTERNAL)
-    public static void acquireVolatileReads(@Nullable Object owner) {
-        if (owner == null) {
-            return;
-        }
-        ThreadClock me = CLOCKS.get();
-        FieldClock[] reads = me.volatileReads;
-        if (reads == null) {
-            return;
-        }
-        for (FieldClock read : reads) {
-            if (read != null && read.belongsTo(owner)) {
-                acquireStamp(me, read.published());
-            }
-        }
     }
 
     /** Merges {@code clock} into {@code me}, when anything has been released to it. */
@@ -882,15 +817,6 @@ public final class HappensBefore {
         @Nullable Stamp beforeLastRelease;
 
         @Nullable Stamp lastReleased;
-
-        /**
-         * The volatile fields this thread last read, oldest overwritten first, created at its first
-         * volatile read. Read and written by the owning thread only.
-         */
-        FieldClock @Nullable [] volatileReads;
-
-        /** Where the next volatile read goes in {@link #volatileReads}. */
-        int nextVolatileRead;
 
         /**
          * The volatile field clocks this thread used last, a lookup cache for

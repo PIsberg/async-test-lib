@@ -128,6 +128,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stored that value published into its thread's clock, at the read. Measured with a throwaway
   probe: a spin read of a published field still allocates 0 bytes per iteration, and a write then
   a read on one thread 88 against 80.
+- **A volatile read is no longer forgotten, and no longer outlives its method (#805).** For the
+  per-field model each thread remembered its last 8 volatile reads, and an access the weaver
+  marked acquired the fields of its object among them: more than 8 other volatile reads in
+  between evicted the entry and reported a correctly published access, and a read in an earlier
+  method still ordered an access after a read of another field, which hid a race. With the
+  acquire taken at the read, the ring is gone (`HappensBefore.volatileRead` and
+  `acquireVolatileReads` are removed). What a thread keeps is a cache of 8 field clocks, where a
+  miss costs a lookup and never an edge.
 - **A refused offer or a failed `compareAndSet` no longer publishes (#742).** The agent's hooks
   release the element to the happens-before model before the call, so the take that returns it
   finds the release, and left that release in place when a bounded queue refused the element, a
