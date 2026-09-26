@@ -60,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   throughput advisory; `VisibilityMonitor` reports value divergence as an observation, since it
   records a name and a value and cannot tell a stale read from a value meant to change;
   `MemoryOrderingMonitor` asks for a happens-before edge instead of claiming a stale read.
+- **`DetectorStateIsKeyedByIdentityTest` sees an identity hash built into a key (#763).** It
+  matched only a hash passed straight into a map call or stored in an int local first, so
+  `identityHashCode(lock) + ":" + threadId`, the key `OptimisticReadValidationDetector` used
+  until 1eef9c4f, and `(long) identityHashCode(attempt)` in `ABAProblemDetector` both passed. It
+  now flags a key argument that holds the hash anywhere, and follows it one step through a local
+  and one step through a single-`return` helper. Run against the old `OptimisticReadValidation`
+  source it reports all four of its map calls. `SpinLocks` keys by hash on purpose and checks the
+  referent on every lookup, so it is listed as deliberate, and the gate fails if it stops matching.
 
 ### Fixed
 
