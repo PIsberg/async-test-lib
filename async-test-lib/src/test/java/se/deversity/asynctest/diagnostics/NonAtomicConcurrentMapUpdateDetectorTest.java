@@ -147,6 +147,57 @@ class NonAtomicConcurrentMapUpdateDetectorTest {
                         + "thread; merging them by their string form invented a shared site");
     }
 
+    /**
+     * The verdict-evidence-corpus argues this detector's VERDICT from its lockset and its
+     * happens-before model (#818): a check-then-act ordered after another thread's cannot land
+     * between that thread's check and its put. Both halves hand over through the same latch; only
+     * the declared edge differs.
+     */
+    @Test
+    void checkThenActOrderedAfterAnotherThreadsIsNotFlagged() throws Exception {
+        assertFalse(handedOver(true).analyze().hasIssues(),
+                "the second caller's check-then-act happens after the first one's, so no update "
+                        + "can be lost between them");
+    }
+
+    @Test
+    void theSameHandOverWithoutTheEdgeIsStillFlagged() throws Exception {
+        assertTrue(handedOver(false).analyze().hasIssues(),
+                "with no edge the model cannot order the two callers, so the lockset decides, "
+                        + "and no lock covered either");
+    }
+
+    private static NonAtomicConcurrentMapUpdateDetector handedOver(boolean declared) throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        var latch = new java.util.concurrent.CountDownLatch(1);
+        Thread first = new Thread(() -> {
+            d.recordCheckThenAct(map, "k", "lazy-fill", Thread.currentThread());
+            map.putIfAbsent("k", "v");
+            if (declared) {
+                HappensBefore.release(latch);
+            }
+            latch.countDown();
+        });
+        Thread second = new Thread(() -> {
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (declared) {
+                HappensBefore.acquire(latch);
+            }
+            d.recordCheckThenAct(map, "k", "lazy-fill", Thread.currentThread());
+        });
+        second.start();
+        first.start();
+        first.join();
+        second.join();
+        return d;
+    }
+
     private static void fillUnder(NonAtomicConcurrentMapUpdateDetector d,
                                   ConcurrentMap<String, String> map, Object lock) {
         try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {

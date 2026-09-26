@@ -18,20 +18,20 @@
 # that stops being true fails the corpus build rather than quietly vouching for a tier.
 #
 # The bar is the one the in-repo pairs meet: the two subjects differ in the defect and in nothing
-# else. Three corpus-measured detectors are deliberately absent, and the reason in each case is
-# the detector's model rather than the pair (#406, #419):
+# else. The detectors on a "# held: TYPE" line below are corpus-measured and deliberately absent,
+# and the reason in each case is the detector's model rather than the pair (#406, #419).
+# DetectorTrustCoverageTest refuses a held detector that is also registered here or classified
+# VERDICT, and so a commented-out registration kept with the class that capped it, as in the last
+# section: the argument and the tier cannot disagree again (#818). Whether the argument still
+# describes the detector is a reading, and no gate does that.
 #
+# held: CACHE_CONCURRENCY
 #   CACHE_CONCURRENCY asks the map's own type whether it synchronizes itself, so given one class
 #   both halves of a pair get the same answer by construction and no same-class pair can exist. It
 #   also consults no lock at all, so a HashMap correctly guarded by the caller's own lock draws the
 #   same finding as a raced one. That is the definition of PROMPT.
 #
-#   CONCURRENT_MAP_CHECK_THEN_ACT is classified by its caller. recordCheckThenAct IS the assertion
-#   that a check-then-act happened; the detector's own decision is only whether more than one
-#   thread reached the same (map, key). A same-class pair exists and is in the corpus, and it makes
-#   the silence a decision rather than an absence of calls, but it cannot make a finding mean the
-#   code is wrong, because the body declared that before the detector saw anything.
-#
+# held: FILE_CHANNEL_POSITION_RACE
 #   FILE_CHANNEL_POSITION_RACE has a same-class pair in the corpus and it is a good one: the two
 #   rows share one channel and differ only in the read overload, so the silence is the operation
 #   model deciding. What it cannot show is the other half of what VERDICT means. This entry used
@@ -43,6 +43,24 @@
 #   write(buffer) lose nothing, and they draw the same finding as a thread whose position(n)
 #   another thread's call lands behind. The firing row is that self-contained shape. Re-ask once a
 #   finding needs a call landing between a thread's position(n) and the I/O that relies on it.
+#
+#   CONCURRENT_MAP_CHECK_THEN_ACT was held here from 2026-08-29 because its only decision was
+#   whether more than one thread reached the same (map, key): recordCheckThenAct is the body saying
+#   a check-then-act happened, so a finding said no more than the body had. Re-asked on 2026-09-26
+#   (#818), and it no longer holds. Since 2026-09-25 the detector keeps SelfGuard's per-round
+#   lockset and happens-before model, so a check-then-act that every caller makes inside one lock,
+#   the map's own monitor, a lock declared through HeldLocks or one the agent wove, stays silent,
+#   and so does one ordered after another's. The recorded call now names an operation that is
+#   correct on one thread, under one lock or in order, not the defect; the finding is the
+#   detector's own: two callers on one key, unordered, with no lock in common. That is CONTEXTUAL,
+#   the same evidence the Shared* family's lines below carry. The registration below predates the
+#   lockset: the second wave made it on 2026-09-07 by the shape rule, while this paragraph still
+#   held, and it was unearned until 2026-09-25. The corpus pair separates on the key; the idiom
+#   lane separates on the lock (idiom_synchronizedCheckThenAct_onAConcurrentHashMap silent,
+#   idiom_synchronizedCheckThenAct_withoutTheMonitor firing), as do the detector's unit tests.
+#   What neither reaches: a lock the library never saw, which leaves the finding standing as it
+#   does for every lockset detector, and a check-then-act whose every caller puts the same value,
+#   which loses nothing and is still reported, because the detector is never told the value.
 #
 # Blank lines and # comments are ignored.
 

@@ -75,8 +75,9 @@ final class PairEvidence {
      *
      * <p>VERDICT means a finding says the code is wrong. A pair can vary exactly the defect and
      * still not earn that, when correct code reached another way draws the same finding, or the
-     * finding is decided by a number the body supplied. {@code verdict-evidence-corpus} records
-     * three such detectors in prose; these are the ones found by reading pairs the shape rule
+     * finding is decided by a number the body supplied. {@code verdict-evidence-corpus} names
+     * such detectors on its {@code # held:} lines, which the library's DetectorTrustCoverageTest
+     * keeps off its registrations (#818); these are the ones found by reading pairs the shape rule
      * held back, recorded as data so that the backlog of pairs nobody has read is a number
      * {@link #unreviewed()} derives rather than one a document states.
      *

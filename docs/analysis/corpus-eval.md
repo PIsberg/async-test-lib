@@ -786,7 +786,7 @@ Nine detectors were promoted on that basis, taking `VERDICT` from 10 of 146 to 1
 `MUTABLE_MAP_KEY`, `JDBC_CONNECTION_SHARED` and `CONCURRENT_MODIFICATIONS`. Each of those pairs
 varies the defect and nothing else on the same class, which is the bar the in-repo twins meet.
 
-### Two that stay PROMPT, and why the pair was not the problem
+### Two that stayed PROMPT, and why the pair was not the problem
 
 Three pairs were held back at first because each joined two different classes, so what separated
 fire from silence was the class as much as the defect. Revisiting them for
@@ -806,15 +806,22 @@ halves of a pair get the same answer before the run starts. It also consults no 
 correctly guarded by the caller's own lock draws the same finding as a raced one, which is the
 definition of `PROMPT` rather than a gap to close.
 
-**`CONCURRENT_MAP_CHECK_THEN_ACT` is classified by its caller.** `recordCheckThenAct` is itself the
-assertion that a check-then-act happened; the detector's only decision is whether more than one
-thread reached the same `(map, key)` site with no one lock covering every call (the lockset since
-2026-09-25; before it, a check-then-act inside `synchronized` was reported too). Its silent row
-was worse than cross-class - it called no
-detector API at all, so a detector that fired on every single record call would have passed it - and
-a same-class row was written to fix that: the same map class, the same recorded check-then-act, on a
-key private to each thread. The silence is now a decision rather than an absence of calls. It still
-does not reach `VERDICT`, because the body declared the defect before the detector saw anything.
+**`CONCURRENT_MAP_CHECK_THEN_ACT` was classified by its caller.** `recordCheckThenAct` is the
+body saying a check-then-act happened, and in 2026-08 the detector's only decision was whether more
+than one thread reached the same `(map, key)` site. Its silent row was worse than cross-class - it
+called no detector API at all, so a detector that fired on every single record call would have
+passed it - and a same-class row was written to fix that: the same map class, the same recorded
+check-then-act, on a key private to each thread. The silence became a decision rather than an
+absence of calls, and the detector stayed `PROMPT` because the body had declared everything the
+finding said.
+
+That stopped being true on 2026-09-25, when the detector took the per-round lockset and the
+happens-before model: a check-then-act every caller makes under one lock, or one ordered after
+another's, is silent, so the recorded call names an operation that is correct on one thread and
+the finding is the detector's own. It was registered as `VERDICT` evidence on 2026-09-07 by the
+shape rule, before that change, while the evidence file's header still argued it out; #818 re-read
+it against the lockset, kept the registration, and made the file's held detectors a list its gate
+checks. The idiom lane's `idiom_synchronizedCheckThenAct_*` pair separates on the lock itself.
 
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|

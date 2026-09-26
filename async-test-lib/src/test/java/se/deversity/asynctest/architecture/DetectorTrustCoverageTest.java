@@ -373,18 +373,21 @@ class DetectorTrustCoverageTest {
     private static final String CORPUS_EVIDENCE_RESOURCE =
             "/META-INF/async-test/verdict-evidence-corpus";
 
-    /** {@return the corpus-backed evidence, detector to its two subject ids, fire first} */
-    private static Map<DetectorType, List<String>> corpusEvidence() {
-        Map<DetectorType, List<String>> parsed = new HashMap<>();
-        String content;
+    /** {@return the text of {@link #CORPUS_EVIDENCE_RESOURCE}} */
+    private static String corpusEvidenceText() {
         try (java.io.InputStream in =
                      DetectorTrustCoverageTest.class.getResourceAsStream(CORPUS_EVIDENCE_RESOURCE)) {
             assertNotNull(in, CORPUS_EVIDENCE_RESOURCE + " is missing from the classpath");
-            content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException("Could not read " + CORPUS_EVIDENCE_RESOURCE, e);
         }
-        for (String raw : content.split("\n")) {
+    }
+
+    /** {@return the corpus-backed evidence, detector to its two subject ids, fire first} */
+    private static Map<DetectorType, List<String>> corpusEvidence() {
+        Map<DetectorType, List<String>> parsed = new HashMap<>();
+        for (String raw : corpusEvidenceText().split("\n")) {
             String line = raw.strip();
             if (line.isEmpty() || line.startsWith("#")) {
                 continue;
@@ -423,6 +426,61 @@ class DetectorTrustCoverageTest {
                     entry.getKey() + " is backed twice, here and in EVIDENCE. Keep the in-repo "
                             + "pair, which this gate can resolve, and drop the corpus line.");
         }
+    }
+
+    /** A {@code # held: TYPE} line: the paragraph under it says why the model keeps TYPE out. */
+    private static final Pattern HELD_LINE = Pattern.compile("#\\s*held:\\s*([A-Z][A-Z0-9_]*)");
+
+    /** A commented-out registration kept with the evidence class that capped it. */
+    private static final Pattern CAPPED_LINE = Pattern.compile(
+            "#\\s+([A-Z][A-Z0-9_]*)\\s*=\\s*[^,\\s]+\\s*,\\s*[^,\\s]+\\s+\\[([A-Z_]+)\\]");
+
+    /**
+     * The evidence file names detectors it deliberately leaves out, and until #818 it did so only
+     * in prose: its header argued that CONCURRENT_MAP_CHECK_THEN_ACT could not back a VERDICT while
+     * a line further down registered it and the trust table rated it VERDICT, and nothing read the
+     * header. The absences are now lines this parses, and a detector named as absent may be
+     * neither registered nor classified VERDICT, so the argument and the tier cannot disagree.
+     */
+    @Test
+    @DisplayName("a detector the corpus evidence file holds out is neither registered nor VERDICT")
+    void aDetectorNamedAsAbsentIsNeitherRegisteredNorVerdict() {
+        Map<DetectorType, List<String>> registered = corpusEvidence();
+        Map<DetectorType, String> absent = new EnumMap<>(DetectorType.class);
+        int held = 0;
+        int capped = 0;
+        for (String raw : corpusEvidenceText().split("\n")) {
+            String line = raw.strip();
+            Matcher heldLine = HELD_LINE.matcher(line);
+            Matcher cappedLine = CAPPED_LINE.matcher(line);
+            if (heldLine.matches()) {
+                absent.put(DetectorType.valueOf(heldLine.group(1)), "held on its model");
+                held++;
+            } else if (cappedLine.matches()) {
+                absent.put(DetectorType.valueOf(cappedLine.group(1)),
+                        "kept as capped at " + cappedLine.group(2));
+                capped++;
+            }
+        }
+        assertTrue(held > 0 && capped > 0,
+                CORPUS_EVIDENCE_RESOURCE + " parsed to " + held + " held and " + capped + " capped "
+                        + "lines, so this gate is reading a format the file no longer uses");
+
+        List<String> contradictions = new ArrayList<>();
+        for (Map.Entry<DetectorType, String> entry : absent.entrySet()) {
+            DetectorType type = entry.getKey();
+            if (registered.containsKey(type)) {
+                contradictions.add(type + " is " + entry.getValue() + " and also registered");
+            } else if (DetectorTrust.tierOf(type) == TrustTier.VERDICT) {
+                contradictions.add(type + " is " + entry.getValue() + " and DetectorTrust rates it VERDICT");
+            }
+        }
+        assertTrue(contradictions.isEmpty(),
+                CORPUS_EVIDENCE_RESOURCE + " argues these detectors out of VERDICT and vouches for "
+                        + "them at the same time. Re-read the argument against the detector: if it "
+                        + "still holds, remove the registration and lower the tier; if it no longer "
+                        + "does, rewrite the paragraph to say what changed and drop the held or "
+                        + "commented line: " + contradictions);
     }
 
     private static Path repoRoot() {

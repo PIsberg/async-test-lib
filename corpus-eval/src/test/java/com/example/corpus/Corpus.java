@@ -1820,10 +1820,10 @@ final class Corpus {
             // demonstrated the atomic primitive that fixes the row above, and as evidence it was
             // empty: it called no detector API, so a detector that fired on every recordCheckThenAct
             // would have passed it. It cannot be repaired either, and that is the interesting part.
-            // The correct use of a ConcurrentMap has no check-then-act to record, so for this
-            // detector the correct twin is unrecordable - which is the same fact, seen from the
-            // other side, as its staying PROMPT: the caller declares the defect, and a caller with
-            // nothing to declare is silent before the detector is consulted.
+            // The correct use of a ConcurrentMap has no check-then-act to record, so that twin is
+            // unrecordable. The recordable correct twin is a check-then-act every caller makes
+            // under one lock, which the detector's lockset (2026-09-25) keeps silent: the idiom
+            // lane's idiom_synchronizedCheckThenAct_* pair, and why it is VERDICT (#818).
             // recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys is the silent row that
             // does exercise the model, on the same class as the firing row.
             // --- JdbcConnectionShared: a pool is the documented fix, and used to be reported

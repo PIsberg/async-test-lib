@@ -163,11 +163,11 @@ Two detectors the corpus measures in both directions stay `PROMPT`, and the reas
 is the detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
 synchronizes itself, so given one class both halves of a pair get the same answer by construction,
 and it consults no lock at all: a `HashMap` correctly guarded by the caller's own lock draws the
-same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the third. It is
-classified by its caller, because `recordCheckThenAct` is itself the assertion that a
-check-then-act happened, and its own decision is whether more than one thread reached the same
-`(map, key)` site with no lock common to every call; the `synchronized` twin of the firing body
-is silent since 2026-09-25, when that lockset was added.
+same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the third, held because
+`recordCheckThenAct` is the body saying a check-then-act happened and the detector only counted
+threads on the `(map, key)` site. Since 2026-09-25 it also asks whether one lock covered every
+call and whether the happens-before model orders them, so the `synchronized` twin of the firing
+body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818).
 `FILE_CHANNEL_POSITION_RACE` has the better pair of the two - one shared channel, differing only
 in the read overload - and now carries the per-round lockset the `Shared*` family has, so a caller
 who wraps `position(n)` and `read(buffer)` in `synchronized (channel)`, or in a lock declared

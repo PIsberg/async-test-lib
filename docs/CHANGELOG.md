@@ -100,6 +100,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of 40,000 for an unguarded `position(n)` then `read(buffer)`, and none under
   `synchronized (channel)`. `FileChannelPositionRaceDetectorTest` pins a declared lock staying
   silent, two different locks firing, and the self-contained case the hold rests on.
+- **`CONCURRENT_MAP_CHECK_THEN_ACT` stays VERDICT, now for a reason the evidence file agrees
+  with (#818).** The header of `verdict-evidence-corpus` argued it could not back a VERDICT,
+  because `recordCheckThenAct` is the body saying a check-then-act happened and the detector only
+  counted threads on the `(map, key)` site, while a line further down registered it and
+  `DetectorTrust` rated it VERDICT. Re-read against the detector, the argument stopped holding on
+  2026-09-25: the detector now asks whether one lock covered every call and whether the
+  happens-before model orders them, so the recorded call names an operation that is correct on one
+  thread and the finding is the detector's own. The tier does not change, so neither does what a
+  `minTrust = VERDICT` gate or a passing run's report shows. The registration was made on 2026-09-07,
+  before that model existed, and was unearned for 18 days. The header now names held detectors on
+  `# held:` lines, and `DetectorTrustCoverageTest` refuses a detector named there, or kept as a
+  commented-out capped line, that is also registered or rated VERDICT; restoring the old header's
+  hold fails it with `CONCURRENT_MAP_CHECK_THEN_ACT is held on its model and also registered`.
+  Known limits, unchanged: a lock the library never saw leaves the finding standing, and callers
+  that all put the same value lose nothing and are still reported.
 
 ### Fixed
 
