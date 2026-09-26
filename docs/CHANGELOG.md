@@ -212,6 +212,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   held across, since nothing reports its release. A lock held across the whole sequence still
   guards it, with another lock released and taken again inside it or the same lock taken again
   reentrantly around the read.
+- **`FILE_CHANNEL_POSITION_RACE`: every read or write after a seek relies on it, not only the
+  first (#831).** A thread that sought once and read twice, letting its lock go between the reads,
+  looked self-contained on the second read, though that read starts wherever a call in the gap
+  left the cursor. Every read or write a thread makes on the channel after a seek, in the same
+  round and until its next seek, is now judged as relying on it, under the locks held since the
+  seek. A `position` call stays a seek and is never judged as relying on the call before it: the
+  operation name cannot tell `position()` from `position(long)`, and reading it that way would
+  report a fresh seek under the lock before each read, which is correct. So `write(buffer)` then
+  `position()` to learn where it landed is still not reported, and a test pins that choice.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

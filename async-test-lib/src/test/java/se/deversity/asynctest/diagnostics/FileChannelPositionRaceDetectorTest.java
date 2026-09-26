@@ -405,6 +405,98 @@ class FileChannelPositionRaceDetectorTest {
             "one woven synchronized block around the seek and the read guards them: " + d.analyze());
     }
 
+    /**
+     * #831: after one seek, a thread that keeps reading without seeking again relies on the seek
+     * for every read, since each starts where the one before left the cursor. Only the first read
+     * used to count, so a second read after the lock was let go looked self-contained.
+     */
+    @Test
+    void aSecondReadAfterOneSeekReliesOnItToo() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        try (var held = HeldLocks.holding(lock)) {
+            seekThenRead(d, channel);
+        }
+        try (var held = HeldLocks.holding(lock)) {
+            d.recordImplicitPositionAccess(channel, "read");
+        }
+        inAnotherThread(() -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        });
+        assertTrue(d.analyze().hasIssues(),
+            "the second read continues from where the first left the cursor, and the other "
+                + "thread's read can move it while the lock is free between the two");
+    }
+
+    @Test
+    void aChainOfReadsAfterOneSeekUnderOneLockIsNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var held = HeldLocks.holding(lock)) {
+                seekThenRead(d, channel);
+                d.recordImplicitPositionAccess(channel, "read");
+                d.recordImplicitPositionAccess(channel, "write");
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "one lock held from the seek through every read and write relying on it: "
+                + d.analyze());
+    }
+
+    @Test
+    void seekingAgainUnderTheLockBeforeEachReadIsNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            for (int i = 0; i < 2; i++) {
+                try (var held = HeldLocks.holding(lock)) {
+                    seekThenRead(d, channel);
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "each read relies on the seek made under the same hold, not on the one before the "
+                + "lock was let go: " + d.analyze());
+    }
+
+    /**
+     * Decided and pinned (#831): a {@code position} call is always a seek and never the call
+     * relying on an earlier one. The label cannot tell {@code position()} from
+     * {@code position(long)}, and even {@code position()} after a write is as likely to start the
+     * next sequence as to ask where the write landed. Reading it as relying on the write would
+     * report this correct idiom, every access under the lock and a fresh seek before each read, so
+     * a {@code write(buffer)} then {@code position()} to learn where it landed stays unreported.
+     */
+    @Test
+    void aSeekAfterAnEarlierCallStartsASequenceRatherThanRelyingOnTheCall() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "write");
+            }
+            try (var held = HeldLocks.holding(lock)) {
+                seekThenRead(d, channel);
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "a position call after a self-contained write, under a lock taken again, is the "
+                + "next sequence's seek: " + d.analyze());
+    }
+
     @Test
     void seekThenReadUnderDifferentLocksIsFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();

@@ -43,23 +43,28 @@ import java.util.concurrent.ConcurrentHashMap;
  * thread that uses the channel, open one {@code FileChannel} per thread, or switch to
  * {@code AsynchronousFileChannel}, whose read/write methods always take an explicit position.
  *
- * <p><strong>What is judged.</strong> A {@code position} call a thread records opens a seek; that
- * thread's next other implicit-position call on the same channel, in the same invocation round,
- * is the I/O relying on it, and the two are one sequence. The verdict is {@link SelfGuard}'s,
- * taken per invocation round, with each sequence's I/O as the write and every other
- * implicit-position call as a read: a round is reported when a thread completed a sequence and
- * another thread made an implicit-position call that no lock common to both and no
- * happens-before edge keeps out of it. The channel's own monitor counts as a lock, as does one
- * declared through {@link HeldLocks}; a read lock guards the self-contained calls and not a
- * sequence, since it admits other readers. A lock guards a sequence only if its thread held it
- * without a break from the seek to the I/O: one released and taken again between them lets
+ * <p><strong>What is judged.</strong> A {@code position} call a thread records opens a seek, and
+ * every other implicit-position call that thread makes on the same channel after it, in the same
+ * invocation round and until its next seek, is I/O relying on it: each starts where the seek and
+ * the calls since left the cursor, so a second read after one seek relies on it as much as the
+ * first (#831). The verdict is {@link SelfGuard}'s, taken per invocation round, with each
+ * sequence's I/O as the write and every other implicit-position call as a read: a round is reported
+ * when a thread completed a sequence and another thread made an implicit-position call that no lock
+ * common to both and no happens-before edge keeps out of it. The channel's own monitor counts as a
+ * lock, as does one declared through {@link HeldLocks}; a read lock guards the self-contained calls
+ * and not a sequence, since it admits other readers. A lock guards a sequence only if its thread
+ * held it without a break from the seek to the I/O: one released and taken again between them lets
  * another thread's call in, and is not counted for the I/O (#831). That is decided from
  * {@link HeldLocks}, so it covers declared locks and, with the agent attached, woven
  * {@code synchronized} blocks and {@code Lock} calls; the channel's own monitor left and entered
  * again in code the agent does not weave still reads as held across, since nothing reports its
- * release. A self-contained call relying on where an earlier one left the cursor, such as a
- * {@code write(buffer)} followed by {@code position()} to learn where it landed, is not a
- * sequence either.
+ * release. A {@code position} call is always a seek, never I/O relying on the call before it: the
+ * operation name cannot tell {@code position()} from {@code position(long)}, and even a
+ * {@code position()} after a write starts the next sequence as often as it asks where the write
+ * landed. So a self-contained call relying on where an earlier one left the cursor, such as a
+ * {@code write(buffer)} followed by {@code position()} to learn where it landed, is not a sequence;
+ * reading it as one would report every thread that seeks afresh under its lock after an earlier
+ * call.
  *
  * <p>Usage:
  * <pre>{@code
@@ -104,8 +109,7 @@ public final class FileChannelPositionRaceDetector {
 
     /**
      * The calling thread's open seek, if it recorded one. Confined to its thread; set on the
-     * thread's first seek and reused after that, and its channel is cleared by the I/O that
-     * closes the seek.
+     * thread's first seek and reused after that, and replaced by the thread's next seek.
      */
     private final ThreadLocal<Seek> seeks = new ThreadLocal<>();
 
@@ -115,10 +119,11 @@ public final class FileChannelPositionRaceDetector {
      * channel's shared cursor.
      *
      * <p>An operation whose name starts with {@code position}, for {@code position(long)} or
-     * {@code position()}, is a seek: the calling thread's next other implicit-position call on
-     * the same channel, in the same invocation round, is the read or write relying on it. Only
-     * such a sequence can be reported, and only when another thread's implicit-position call can
-     * land inside it; a self-contained call is recorded so that it can be that other call.
+     * {@code position()}, is a seek: every other implicit-position call the calling thread makes
+     * on the same channel after it, in the same invocation round and until its next seek, is a
+     * read or write relying on it. Only such a sequence can be reported, and only when another
+     * thread's implicit-position call can land inside it; a self-contained call is recorded so
+     * that it can be that other call.
      *
      * @param channel   the channel instance (null-safe)
      * @param operation short name of the operation, e.g. {@code "read"}
@@ -130,21 +135,21 @@ public final class FileChannelPositionRaceDetector {
             s.operations.add(operation);
         }
         Thread caller = Thread.currentThread();
-        Seek closed = null;
+        Seek reliedOn = null;
         if (operation != null && operation.startsWith("position")) {
             openSeek(channel);
         } else {
-            closed = closeSeek(channel);
+            reliedOn = seekReliedOn(channel);
         }
-        if (closed == null) {
-            // Everything but the I/O closing a seek is a read in SelfGuard's terms, which a round
+        if (reliedOn == null) {
+            // Everything but I/O relying on a seek is a read in SelfGuard's terms, which a round
             // of reads alone never reports and a read lock guards.
             s.noteAccess(channel, false, caller);
             return;
         }
-        // The I/O closing a seek is the write: it needs a lock that excludes every other
+        // I/O relying on a seek is the write: it needs a lock that excludes every other
         // implicit-position call, and one released and taken again since the seek did not (#831).
-        long previous = HeldLocks.countOnlyHeldSince(closed.locksMark);
+        long previous = HeldLocks.countOnlyHeldSince(reliedOn.locksMark);
         try {
             s.noteAccess(channel, true, caller);
         } finally {
@@ -165,17 +170,23 @@ public final class FileChannelPositionRaceDetector {
 
     /**
      * {@return the calling thread's open seek when it is on {@code channel} and from this round,
-     * closing it, or {@code null} when the call relies on no seek}
+     * or {@code null} when the call relies on no seek}
+     *
+     * <p>The seek stays open for the calls after this one, which start where this one leaves the
+     * cursor.
      */
     @SuppressWarnings("ReferenceEquality") // channels are tracked by identity, as instances is
-    private @Nullable Seek closeSeek(Object channel) {
+    private @Nullable Seek seekReliedOn(Object channel) {
         Seek seek = seeks.get();
         if (seek == null || seek.channel != channel) { // NOPMD CompareObjectsWithEquals - channels by identity
             return null;
         }
-        seek.channel = null;
-        // A seek left open by an earlier round's body says nothing about this round's I/O.
-        return seek.round == SelfGuard.RoundThreads.roundNow() ? seek : null;
+        if (seek.round != SelfGuard.RoundThreads.roundNow()) {
+            // A seek left open by an earlier round's body says nothing about this round's I/O.
+            seek.channel = null;
+            return null;
+        }
+        return seek;
     }
 
     /**
