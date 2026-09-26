@@ -67,8 +67,10 @@ public final class SpinLockTableBean {
      * {@code getAndSet} through the handle (observed since #658), and the thread then replaces
      * {@link #afterRelease} with nothing held. The lock must not outlive its release.
      */
-    public int growThenWriteAfterUnobservedRelease() {
+    public boolean growThenWriteAfterUnobservedRelease() {
+        boolean won = false;
         if (BUSY.compareAndSet(this, 0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -76,8 +78,7 @@ public final class SpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        Object[] seen = afterRelease;
-        return seen == null ? 0 : seen.length;
+        return afterRelease != null && won;
     }
 
     /** Replaces the table under the spinlock, released by {@code getAndSet} used as a statement (#658). */
@@ -110,8 +111,10 @@ public final class SpinLockTableBean {
      * The twin: {@code getAndSetRelease} releases (woven since #667), and {@link #afterRelease} is
      * then replaced with nothing held.
      */
-    public int growThenWriteAfterGetAndSetRelease() {
+    public boolean growThenWriteAfterGetAndSetRelease() {
+        boolean won = false;
         if (BUSY.compareAndSet(this, 0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -119,8 +122,7 @@ public final class SpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        Object[] seen = afterRelease;
-        return seen == null ? 0 : seen.length;
+        return afterRelease != null && won;
     }
 
     private static Object[] next(Object[] current) {
