@@ -60,19 +60,6 @@ class DetectorStateIsKeyedByIdentityTest {
     private static final Set<String> KEYWORDS = Set.of("if", "for", "while", "switch", "catch", "synchronized");
 
     /**
-     * Files still keyed by a bare identity hash because an open pull request rewrites the same
-     * lines, and converting them here too would give both a conflict to resolve. Each converts in
-     * the follow-up that empties this map, which is what closes #564.
-     *
-     * <p>Deliberately not checked for staleness. The pull requests merge in an order nobody here
-     * controls, and a check that failed once one of them had fixed its file would turn the main
-     * branch red on a merge that did nothing wrong.
-     */
-    private static final Map<String, String> PENDING = Map.of(
-            "ExecutorShutdownDetector.java", "#573 keys it by identity itself",
-            "ThreadLocalMonitor.java", "#574 keys it by identity itself");
-
-    /**
      * Files keyed by an identity hash on purpose, each of which tells a collision apart itself.
      * An entry here needs a reason a reviewer can check against the file.
      */
@@ -89,7 +76,6 @@ class DetectorStateIsKeyedByIdentityTest {
                 "a file excused as deliberate no longer matches, so its exemption would only hide "
                         + "the next key written there; remove it from DELIBERATE: "
                         + DELIBERATE.keySet() + " vs " + offenders.keySet());
-        PENDING.keySet().forEach(offenders::remove);
         DELIBERATE.keySet().forEach(offenders::remove);
 
         assertTrue(offenders.isEmpty(),
