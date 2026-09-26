@@ -13,7 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Detects serializer/mapper instances (Jackson {@code ObjectMapper}, a Gson built via
- * {@code GsonBuilder}, or similar) that are reconfigured after concurrent use has begun.
+ * {@code GsonBuilder}, or similar) that are reconfigured while another thread uses them in the same round.
  *
  * <p><strong>Why it matters.</strong> Serialization mappers are typically documented as
  * thread-safe for read/write operations ({@code readValue}/{@code writeValue}) once fully
