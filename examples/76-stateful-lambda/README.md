@@ -51,7 +51,23 @@ The 400 is worth a second look: it is the number of distinct thread ids, and `@A
 virtual threads by default, one per body execution. With `threads = 8, invocations = 50` that is
 400, not 8. See issue #349.
 
+## One writer, many readers
+
+`TaskScheduler.peakTracker()` is the same bug in a quieter shape: one shared `IntConsumer` that
+reads the captured `peak` on every call and writes it only when a sample beats it. Most calls
+only read, so a round can hold a single writing thread, and a detector that saw only the writes
+would call the tracker unshared. `observePeakTracker` reports the reads with
+`recordCapturedRead(task, peak, thread)`, which puts the reading threads on the capture beside the
+writer: one writer beside an unguarded reader is reported, readers with no writer are not.
+
+`testStatefulLambdaDetector_peakReadBesideItsWriter_reports` and
+`testStatefulLambdaDetector_readersWithNoWriter_isSilent` pin both directions; remove `@Disabled`
+from `test_concurrent_detectsPeakReadRacingItsWriter` to see it under `@AsyncTest`.
+
 ## The Fix
 
 Use `AtomicInteger` or `LongAdder` for the captured counter, or give each
-submitted task its own independent state.
+submitted task its own independent state. For the peak, use
+`AtomicInteger.accumulateAndGet(sample, Math::max)`, or read and write it inside
+`synchronized (peak)`: the detector sees the capture's own monitor, so a read under the writer's
+lock is not reported.

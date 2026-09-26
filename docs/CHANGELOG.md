@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state, thread)`, `recordCapturedRead(lambda, state, thread)`, owner-keyed `LazyInitRace` overloads,
   `recordIntegrate(name, state, thread)`, `ABAProblemDetector.recordRead(name, value)`,
   `recordRequestSent(client, request, name)`.
+- **`recordValuesUsed` and `recordCapturedRead` are in the accuracy eval and the examples (#788).**
+  Both were pinned only by their detectors' unit tests. `DetectorAccuracyEvalTest` gains the pairs:
+  optimistic values used after a `validate()` that latches force to fail fire, while the same failed
+  validation followed by a re-read under `readLock()`, and a use after a passing `validate()`, stay
+  silent; a captured read outside the writer's `synchronized (counter)` fires, the same read inside
+  it stays silent, and a reader recorded only through `recordExecution` is pinned as the false
+  negative `recordCapturedRead` exists for. `examples/62-optimistic-read-validation` and
+  `examples/76-stateful-lambda` each gain a both-directions `@Test` pair and a `@Disabled`
+  demonstration of the new record method.
 - **corpus-eval gains an `idioms` lane.** Correct user-code concurrency (a queue hand-off, volatile
   publication, `start`/`join`, an `AtomicInteger` counter, a latch, a pool checkout, guarded waits and
   more) runs with the agent attached and every detector on, each idiom beside its broken twin. A

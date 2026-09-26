@@ -36,6 +36,11 @@ VERDICT pairs belong to detectors that decide that way or on a threshold, among 
 are now FACT or PROMPT. Their cases still run and still pass, and they show what a FACT or PROMPT
 needs: that the detector separates the recorded bug from the recorded fix._
 
+_Updated 2026-09-27 (#788): two record methods added in 1.12.3 had only unit tests. The
+`OptimisticReadValidationDetector` row pins `recordValuesUsed`, with the failed validation forced
+by latches rather than left to a writer's timing, and the `StatefulLambdaDetector` row pins
+`recordCapturedRead` beside a writer, including the reader it cannot see without it._
+
 ## What was measured
 
 For each detector: does it fire on genuinely buggy concurrent code (true positive), and
@@ -44,8 +49,8 @@ The twin records the identical event stream through the detector's public record
 while the underlying code holds a real lock, uses CAS, or orders its locks consistently.
 Every recording happens from two live threads released by a CyclicBarrier.
 
-This is a recording-level eval of twenty detectors, one of them behind an experimental gate, not a corpus study
-of all 142. It measures the analyzers' models, which is the property that decides whether
+This is a recording-level eval of the detectors in the table below, one of them behind an experimental
+gate, not a corpus study of every detector. It measures the analyzers' models, which is the property that decides whether
 a finding on your code means your code is wrong. Since the guard-on-self change the twins
 distinguish where the lock lives: guarding with the shared instance's own monitor
 (`synchronized (theInstance)`) is now recognized, guarding with any other lock object is
@@ -77,6 +82,8 @@ still invisible.
 | ThreadLocalMonitor | fires (set on two threads, never removed) | silent (`remove()` in a finally block) | genuine both-direction detector |
 | LockDowngradeDetector | fires (write released before the read lock was taken, **and** another thread observed taking the write lock in the gap) | silent on the correct downgrade however contended, and silent on the same shape with nobody in the gap | evidence-gated since #355: the shape alone is also correct code that writes one thing and later reads another, so it is not reported without an observed writer. Deliberate false negative |
 | StampedLockDetector | fires (a failed `validate()` with no fallback; a write stamp one thread took and never released; a read stamp released again while another reader holds) | silent (the `validate()`-then-`readLock()` fallback; the same write released in a `finally`; the same read released once) | leaks since #588 need two facts: an acquisition no recorded unlock matched, and the lock still held at analysis; matching is per thread and lock instance, not per name; since #604 a repeated read release is reported only when the lock's reader count confirms a hold was taken |
+| OptimisticReadValidationDetector | fires (a value read under an optimistic stamp is used after `validate()` returned false; latches put the write inside the read's window, so the validation fails every run) | silent when the same failed validation is followed by a re-read under `readLock()` and the use names that stamp; silent on the same use after a `validate()` that passed | since #762 a failed validation is the idiom's retry signal, not a finding: the finding is the use, recorded with `recordValuesUsed` and judged against the latest `validate()` of the stamp the used values were read under. A use that is not recorded is not seen, so a failed validation followed by an unrecorded use is silent |
+| StatefulLambdaDetector | fires (one run of the shared task writes the capture under `synchronized (counter)`, another run on a second thread reads it holding nothing, the read recorded with `recordCapturedRead`); the same unguarded read recorded only through `recordExecution` is **silent** (pinned false negative) | silent when the read takes the same monitor | since #770 a recorded read puts its thread on the capture, probed for locks on the reading thread; reads alone never report, and the mutation has to share the round (#787). `recordExecution` names no capture, so a reader recorded only that way is invisible |
 | CountDownLatchDetector | fires (a worker never signals, the waiter's await expires) | silent when a later await on the same latch succeeded | evidence-gated since #477: a CountDownLatch only counts down and never blocks again once it is at zero, so a success proves the latch fell and the earlier timeout was a wait that started too early |
 | ConditionVariableDetector | fires with the lock and predicate registered (the producer signals `notFull`, the consumer stays parked on `notEmpty` at analysis while the item is ready); registered without its lock, or with the lock but no predicate, the same parked consumer is only a note (pinned false negative, #666) | silent when the producer signals `notEmpty`, including a second signal made into an empty condition; silent on an idle consumer parked while its predicate is false; with the lock registered, silent on an await the body recorded but never parked in | since #666 the only finding is a thread `getWaitQueueLength` shows parked while the registered predicate holds; a missing signal (per-await pairing since #583), a recorded await with no lock, and a lock-only parked thread are notes. A worker interrupted at the round timeout has left the queue before analysis, so the lock cannot count it |
 | PhaserDetector | fires (two workers `arriveAndDeregister` a phaser created for one party; the second gets a negative phase) | silent when the phaser is created for both workers and terminates at zero parties | decided on the real phaser since #587: a negative arrival phase counts only when no party is left registered, so termination, `forceTermination` and `onAdvance` are silent, and a timeout counts only if its phase is still current at analysis |
@@ -325,8 +332,8 @@ verdict must not change depending on whether two threads raced to register the i
 - Recording-level: it measures the analyzers, not end-to-end reachability under a bare
   `@AsyncTest` (that is `DetectionCoverageTest`'s job) and not the agent's weaving
   (that is `AgentFeedsDetectorEndToEndTest`'s job).
-- 25 distinct detectors of 142: the 9 above plus the 19 of the Shared* family, three of which
-  appear in both. The first set was chosen to cover each mechanism class - access-pattern
+- A subset of the detectors: the table above plus the Shared* family, three of which appear in
+  both. The first set was chosen to cover each mechanism class - access-pattern
   analyzers, per-thread state machines, graph analysis, and JVM introspection - and the second
   covers one whole cluster. Extending the pair harness further is mechanical; the helper
   (`onTwoThreads`) and the pinning convention are in place.

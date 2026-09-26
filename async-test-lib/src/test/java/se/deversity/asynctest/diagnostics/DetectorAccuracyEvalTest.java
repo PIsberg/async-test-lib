@@ -3512,4 +3512,212 @@ class DetectorAccuracyEvalTest {
                 "the last timed wait ran out and the thread returned without acting on the "
                         + "condition; the recorded give-up closes that return (#607). Report:\n" + report);
     }
+
+    // ---- StatefulLambdaDetector, one writer beside a reader: #770 ----
+
+    /**
+     * One task object, run once on each of two threads: the first run mutates the captured
+     * counter under the counter's own monitor, the second only reads it. How the reader is
+     * recorded, and whether it takes the writer's lock, is what the rows below vary. Before #770
+     * only a mutation could be recorded, so the reader reached the detector as an execution with
+     * no capture, and one writing thread looked unshared.
+     */
+    private static Runnable writerBesideReader(StatefulLambdaDetector detector, int[] counter,
+                                               boolean readerRecordsTheRead, boolean readerLocks) {
+        AtomicBoolean writerTaken = new AtomicBoolean();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            detector.recordExecution(task[0], "task", Thread.currentThread());
+            if (!writerTaken.getAndSet(true)) {
+                synchronized (counter) {
+                    counter[0]++;
+                    detector.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+                }
+            } else if (readerLocks) {
+                synchronized (counter) {
+                    readCapture(detector, task[0], counter, readerRecordsTheRead);
+                }
+            } else {
+                readCapture(detector, task[0], counter, readerRecordsTheRead);
+            }
+        };
+        return task[0];
+    }
+
+    private static void readCapture(StatefulLambdaDetector detector, Runnable task, int[] counter,
+                                    boolean recordTheRead) {
+        if (recordTheRead) {
+            detector.recordCapturedRead(task, counter, Thread.currentThread());
+        }
+        assertTrue(counter[0] >= 0, "the read itself, which is what races the write");
+    }
+
+    @Test
+    @DisplayName("stateful lambda: a captured read outside the writer's lock fires (true positive)")
+    void statefulLambdaFiresWhenAReadRacesTheWriter() throws InterruptedException {
+        StatefulLambdaDetector detector = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable task = writerBesideReader(detector, counter, true, false);
+        onTwoThreads(task, task);
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "one thread wrote the capture under synchronized (counter) and the other read it "
+                        + "holding nothing, so the writer's lock ordered nothing: the reader can "
+                        + "see a stale or half-published value");
+        assertTrue(report.violations.get(0).contains("counter"), report.violations.toString());
+    }
+
+    @Test
+    @DisplayName("stateful lambda: the same read under the writer's lock stays silent (true negative)")
+    void statefulLambdaStaysSilentWhenTheReadTakesTheWritersLock() throws InterruptedException {
+        StatefulLambdaDetector detector = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable task = writerBesideReader(detector, counter, true, true);
+        onTwoThreads(task, task);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the write and the read both held synchronized (counter), the capture's own "
+                        + "monitor, which the detector sees without a declaration. Reporting here "
+                        + "would be reporting the fix: " + detector.analyze().violations);
+    }
+
+    @Test
+    @DisplayName("stateful lambda: a reader recorded only as an execution stays silent (pinned false negative)")
+    void statefulLambdaMissesAReaderThatRecordsNoRead() throws InterruptedException {
+        StatefulLambdaDetector detector = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable task = writerBesideReader(detector, counter, false, false);
+        onTwoThreads(task, task);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "PINNED FALSE NEGATIVE: the same unguarded read as the true-positive row, but "
+                        + "recordExecution names no capture and probes no lock, so only one thread "
+                        + "touched the capture as far as the detector knows. This is the #770 shape; "
+                        + "recordCapturedRead is the fix, and the first row is it working. If this "
+                        + "fires, executions started counting as reads - update the javadoc of "
+                        + "recordCapturedRead and detector-accuracy-eval.md");
+    }
+
+    // ---- OptimisticReadValidationDetector, using the values: #762 ----
+
+    /** What the reader does with the values once {@code validate()} has answered. */
+    private enum AfterValidate { USE_THE_OPTIMISTIC_VALUES, REREAD_UNDER_THE_READ_LOCK_IF_TORN }
+
+    /**
+     * Reads {@code stock} optimistically on one thread while the other takes the write lock,
+     * ordered by latches rather than left to chance: with {@code writeInsideTheWindow} the write
+     * lands between the read and its {@code validate()}, so the validation fails every run;
+     * without it the write finishes before the read starts, so it passes every run. Returns
+     * whether the validation passed, for the caller to check its own premise.
+     */
+    private static boolean optimisticReadBesideAWriter(OptimisticReadValidationDetector detector,
+            StampedLock lock, int[] stock, boolean writeInsideTheWindow, AfterValidate then)
+            throws InterruptedException {
+        CountDownLatch readStarted = new CountDownLatch(1);
+        CountDownLatch written = new CountDownLatch(1);
+        AtomicBoolean validated = new AtomicBoolean();
+        Runnable reader = () -> {
+            Thread me = Thread.currentThread();
+            if (!writeInsideTheWindow) {
+                awaitLatch(written);
+            }
+            long stamp = lock.tryOptimisticRead();
+            detector.recordOptimisticReadStarted(lock, stamp, me);
+            int seen = stock[0];
+            detector.recordDataAccessed(lock, stamp, me, "stock");
+            readStarted.countDown();
+            if (writeInsideTheWindow) {
+                awaitLatch(written);
+            }
+            boolean valid = lock.validate(stamp);
+            detector.recordValidateCalled(lock, stamp, valid, me);
+            validated.set(valid);
+            long usedStamp = stamp;
+            if (!valid && then == AfterValidate.REREAD_UNDER_THE_READ_LOCK_IF_TORN) {
+                usedStamp = lock.readLock();
+                try {
+                    seen = stock[0];
+                } finally {
+                    lock.unlockRead(usedStamp);
+                }
+            }
+            detector.recordValuesUsed(lock, usedStamp, me);
+            assertTrue(seen >= 0, "the use of the values, which is what the detector judges");
+        };
+        Runnable writer = () -> {
+            if (writeInsideTheWindow) {
+                awaitLatch(readStarted);
+            }
+            long stamp = lock.writeLock();
+            try {
+                stock[0]++;
+            } finally {
+                lock.unlockWrite(stamp);
+            }
+            written.countDown();
+        };
+        onTwoThreads(reader, writer);
+        return validated.get();
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("the other thread never reached its step");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    @DisplayName("optimistic read: values used after validate() returned false fire (true positive)")
+    void optimisticReadFiresWhenTornValuesAreUsed() throws InterruptedException {
+        OptimisticReadValidationDetector detector = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        boolean validated = optimisticReadBesideAWriter(detector, lock, new int[] {100}, true,
+                AfterValidate.USE_THE_OPTIMISTIC_VALUES);
+
+        assertFalse(validated, "premise: the write landed inside the read's window");
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "validate() said the snapshot may be torn and the reader used it anyway, with no "
+                        + "re-read and no retry: that use is the defect, not the failed validation");
+        assertTrue(report.violations.get(0).contains("used after validate() returned false"),
+                report.violations.toString());
+    }
+
+    @Test
+    @DisplayName("optimistic read: the same torn read, re-read under readLock() before use, stays silent (true negative)")
+    void optimisticReadStaysSilentWhenTheTornValuesAreReread() throws InterruptedException {
+        OptimisticReadValidationDetector detector = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        boolean validated = optimisticReadBesideAWriter(detector, lock, new int[] {100}, true,
+                AfterValidate.REREAD_UNDER_THE_READ_LOCK_IF_TORN);
+
+        assertFalse(validated, "premise: the write landed inside the read's window");
+        assertFalse(detector.analyze().hasIssues(),
+                "the same failed validation as the row above, followed by the documented "
+                        + "fallback: the values used are the ones re-read under the read-lock "
+                        + "stamp. Until #762 the failed validation itself was the finding, so "
+                        + "this idiom fired whenever a writer intervened: "
+                        + detector.analyze().violations);
+    }
+
+    @Test
+    @DisplayName("optimistic read: values used after validate() returned true stay silent (true negative)")
+    void optimisticReadStaysSilentWhenTheValidationPassed() throws InterruptedException {
+        OptimisticReadValidationDetector detector = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        boolean validated = optimisticReadBesideAWriter(detector, lock, new int[] {100}, false,
+                AfterValidate.USE_THE_OPTIMISTIC_VALUES);
+
+        assertTrue(validated, "premise: the write finished before the optimistic read began");
+        assertFalse(detector.analyze().hasIssues(),
+                "the same use of the optimistic values, after a validate() that passed: nothing "
+                        + "wrote between the read and the check, so the snapshot is consistent: "
+                        + detector.analyze().violations);
+    }
 }
