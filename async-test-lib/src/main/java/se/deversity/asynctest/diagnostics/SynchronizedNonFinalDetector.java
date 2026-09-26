@@ -40,7 +40,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * one value per class, so several monitors are a reassignment and are reported. The rest, a
  * non-final instance field or a {@code fieldId} that names no declared field, are listed in the
  * report text as undecided and are not findings; pass the owner to
- * {@link #recordLockObject(Object, String, Class, Object)} to have them decided.
+ * {@link #recordLockObject(Object, String, Class, Object)} to have them decided. For a non-final
+ * instance field the three-argument form is deprecated in favour of that one (#793): nothing
+ * recorded without the instance can tell its two readings apart, so it never reports.
  *
  * <p>Usage:
  * <pre>{@code
@@ -99,8 +101,17 @@ public class SynchronizedNonFinalDetector {
      * names on {@code ownerClass}: a {@code static} non-final field is reported, a {@code final}
      * one is not. A non-final instance field is undecidable, since a reassigned field and several
      * instances each with their own lock record the same thing, so it is listed as a note naming
-     * the call that decides it and is never reported. For an instance field, use
-     * {@link #recordLockObject(Object, String, Class, Object)}.
+     * the call that decides it and is never reported.
+     *
+     * <p><b>Deprecated for a non-final instance field</b> (#793). This form is exact for
+     * {@code static} and {@code final} fields, so the method itself is not deprecated, but on a
+     * non-final instance field it can never produce a finding: one instance whose lock is
+     * reassigned between two uses goes unreported. Pass the instance that declares the field to
+     * {@link #recordLockObject(Object, String, Class, Object)} instead:
+     * <pre>{@code
+     * // was: detector.recordLockObject(service.lock, "lock", Service.class);
+     * detector.recordLockObject(service.lock, "lock", Service.class, service);
+     * }</pre>
      *
      * @param lockObject the object used as the monitor
      * @param fieldId    the field's name, optionally qualified, e.g. {@code "lock"} or
@@ -126,7 +137,8 @@ public class SynchronizedNonFinalDetector {
      * @param lockObject the object used as the monitor
      * @param fieldId    a stable identifier for the field, e.g. {@code "MyService.lock"}
      * @param ownerClass the class that declares the field (used in reports)
-     * @param owner      the instance that declares the field, or {@code null} when unknown
+     * @param owner      the instance that declares the field, or {@code null} when unknown; a
+     *                   non-final instance field is only decided with it
      * @since 1.11.2
      */
     public void recordLockObject(Object lockObject, String fieldId, Class<?> ownerClass,

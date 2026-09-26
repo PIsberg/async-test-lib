@@ -119,8 +119,8 @@ authority on which row is which - each outcome above is one assertion in it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
   than one thread touched this field and at least one wrote". On the agent-fed path an object
   that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`; out of an
-  `ArrayDeque` or another unsynchronized `java.util` queue, not a poll whose recorded locks and the
-  offer's are both non-empty and share none, #751) is judged per ownership generation, so each owner may bring its own lock, or none while the object is exclusive
+  `ArrayDeque` or another unsynchronized `java.util` queue, only a poll whose locks share one with
+  the offer's, #751) is judged per ownership generation, so each owner may bring its own lock, or none while the object is exclusive
   to it (#555); a lock that changes inside one round with no take, a thread that uses an object
   it did not take, and two locks inside one generation still fire, and each direction is a case in
   `DetectorAccuracyEvalTest`. The report only mentions locks when
@@ -274,9 +274,12 @@ still fire, and an unwoven latch nobody declared orders nothing. Pinned in
 substitutes. A take-over also restarts the lockset (#746): one thread setting the digest up
 unlocked and handing it to threads that always lock it is consistent locking, provided every later
 access is ordered after the hand-off. A guarded use reached through an edge the model never saw is
-not, and brings the unlocked set-up back into the lockset, so it still fires. `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
+not, and brings the unlocked set-up back into the lockset, so it still fires. After several
+hand-offs, a use ordered after an earlier one but not the latest brings back only the accesses
+since that earlier one (#792). `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
 per-round lockset from the same windows (`sawUnguardedRound()`), so one lock per round, a
-different one each round, no longer reads as inconsistent locking.
+different one each round, no longer reads as inconsistent locking, and neither does one lock
+before an ordered hand-off and another after it.
 
 The last row is why the model is an intersection and not a per-thread "was anything held" flag.
 Two threads that each take their own lock have serialised nothing, and a flag would call that

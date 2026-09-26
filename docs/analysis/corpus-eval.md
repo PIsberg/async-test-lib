@@ -1913,14 +1913,16 @@ a correct row is printed in the lane report rather than asserted.
 too, listed in `Corpus.idiomKnownGaps()` with the reason, the way `DetectorCoverage` lists refused
 detectors. Each must still draw its finding, and the run fails the day a fix makes one silent, until
 its entry is deleted, so a closed gap cannot stay listed as open. Every one was run before it was
-pinned, and one of the five candidates is not a row because it could not be pinned either way. A
-validated `StampedLock` optimistic read (the class javadoc's own `Point` example) is judged by the
-confirming-read excuse (#311), which clears a point once some reader's validation has failed and it
-re-read under the read lock. Whether any validation fails depends on whether a reader overlapped
-the writer, so the row was silent in some runs and reported in others, on a point per round as on
-one point shared by the run. A row that flips with the schedule is a flaky gate in either
-direction; the gap it would pin (`tryOptimisticRead` and `validate` are not woven) stands, and is
-recorded as a follow-up rather than as a row.
+pinned, and one of the five candidates was at first not a row because it could not be pinned
+either way. A validated `StampedLock` optimistic read (the class javadoc's own `Point` example) was
+judged by the confirming-read excuse (#311), which clears a point once some reader's validation has
+failed and it re-read under the read lock. Whether any validation fails depends on whether a reader
+overlapped the writer, so the row was silent in some runs and reported in others, on a point per
+round as on one point shared by the run. The agent now weaves `tryOptimisticRead` and `validate`
+(#740): reads a validation confirmed count as reads under the lock in shared mode, and reads a
+failed one covered are dropped. The pair is a row since, `idiom_stampedLock_validatesItsOptimisticRead`
+silent and `idiom_stampedLock_usesAnOptimisticReadUnvalidated` firing, and it held in three
+consecutive full runs.
 
 **What it found on its first run.** One seed row still drew a finding on the integration branch:
 a single writer bumping a volatile with a read-then-write while the other threads read it drew a
@@ -1935,16 +1937,19 @@ reason every row now writes non-constant values and builds its shared object per
 `Exchanger` row whose parcels all held the constant `7` was silent through the one-constant-store
 excuse rather than through any ordering. A queue hand-off twin over one `ArrayDeque` shared by the
 whole run was silent on `AtomicityValidator`, because orders left in the deque were read in later
-rounds and excused as corroborated constructions. With a deque per round it still reports the
-orders in some runs and not others, depending on whether a poll caught an offer, so that twin pins
-`SharedCollectionDetector`, which reports the unguarded deque in every run.
+rounds and excused as corroborated constructions. With a deque per round it still reported the
+orders in some runs and not others, depending on whether a poll caught an offer, so that twin first
+pinned `SharedCollectionDetector`, which reports the unguarded deque in every run. Every woven take
+was then an ownership hand-off, the unguarded one included. Since #751 and #796 a take out of a plain
+`java.util` queue is a hand-off only under a lock the offer shared, a `synchronized` method's
+monitor among the locks, so the twin pins `AtomicityValidator`.
 
 Run L (JDK 26, Windows 11, 16 cores), threads=6, invocations=40:
 
 | Row | Expected | Named detector | Named detector said | FACT or above, any detector |
 |---|---|---|---|---|
 | `idiom_blockingQueue_handsOffAMutableObject` | correct: silent | `AtomicityValidator` | silent | - |
-| `idiom_blockingQueue_handsOffThroughAPlainDeque` | twin: fires | `SharedCollectionDetector` | PROMPT/HIGH | - |
+| `idiom_blockingQueue_handsOffThroughAPlainDeque` | twin: fires | `AtomicityValidator` (was `SharedCollectionDetector`, #751) | PROMPT/HIGH | - |
 | `idiom_volatileFlag_publishesPlainData` | correct: silent | `AtomicityValidator` | silent | - |
 | `idiom_volatileFlag_plainFlagPublishesNothing` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
 | `idiom_threadStartJoin_ordersTheChildsWrite` | correct: silent | `RaceConditionDetector` | silent | - |
@@ -1992,8 +1997,9 @@ into a hand-off.
 The "FACT or above" column is empty on every correct row. The only findings at that tier are on
 twins, from the `VERDICT` detectors whose twin they are. Below `FACT`, no detector other than a
 row's named one spoke on any row in this run, correct or twin. In other runs `AtomicityValidator`
-also reports on two twins, the deque hand-off and the captured `ThreadLocalRandom`, both of which
-share an object with no ordering; neither is a correct row, so neither moves a gate.
+also reported on two twins, the deque hand-off and the captured `ThreadLocalRandom`, both of which
+share an object with no ordering; neither is a correct row, so neither moved a gate. The deque
+hand-off now names `AtomicityValidator`, and `SharedCollectionDetector` reports it below `FACT`.
 
 **What it does not measure.** A correct row that other detectors question below `FACT` passes, and
 only the report says so. The idioms are the ones the probe and the model's documented limits named,

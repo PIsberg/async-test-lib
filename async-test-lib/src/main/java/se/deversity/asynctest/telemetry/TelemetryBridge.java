@@ -7,6 +7,7 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.HappensBefore;
+import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.VisibilityMonitor;
 import se.deversity.vibetags.annotations.AIKeepInSync;
 
@@ -125,6 +126,38 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
 
     /** A soft bound on a per-run map; chosen as generous, not derived from a measured field count. */
     static final int MAX_MEMOIZED_IDENTIFIERS = 4096;
+
+    /**
+     * How many reads one {@code StampedLock} speculation holds back before they are delivered as
+     * plain reads (#740). An optimistic read covers a handful of fields; a speculation past this is
+     * not the idiom, and holding it would grow without bound. Chosen as generous, not measured.
+     */
+    static final int MAX_SPECULATIVE_READS = 256;
+
+    /**
+     * The open {@code StampedLock} speculations, by producer thread (#740): the reads a thread made
+     * after {@code tryOptimisticRead}, held back until its {@code validate} says whether they
+     * count. Only the drain thread touches it, from {@link #onEvent} and {@link #onFlush}, so it
+     * needs no synchronization; {@link #close()} never reads it.
+     */
+    private final java.util.Map<Long, Speculation> speculations = new java.util.HashMap<>();
+
+    /** One thread's optimistic read in progress: the lock's identity and the reads so far. */
+    private static final class Speculation {
+        final int lock;
+        final java.util.List<HeldRead> reads = new java.util.ArrayList<>();
+
+        Speculation(int lock) {
+            this.lock = lock;
+        }
+    }
+
+    /** A read held back until its speculation is judged: the arguments it will be recorded with. */
+    private record HeldRead(String field, long threadId, long lockFingerprint, int ownMonitor,
+                            int methodMonitor, boolean volatileField, int constantTag, int identity,
+                            int storedIdentity, @Nullable Object receiver,
+                            HappensBefore.@Nullable Stamp stamp, long round) {
+    }
 
     private TelemetryBridge(AtomicityValidator atomicityValidator, LongPredicate workerFilter) {
         this.atomicityValidator = atomicityValidator;
@@ -444,6 +477,44 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName == null) return;
+        if (TelemetryRegistry.OPTIMISTIC_READ_STARTED.equals(qualifiedName)) {
+            // A StampedLock speculation starts: this thread's reads wait for its validate (#740).
+            // One still open on this thread was never validated, so its reads were used as read.
+            Speculation previous = speculations.put(threadId, new Speculation(identity));
+            if (previous != null) {
+                deliver(previous, false);
+            }
+            return;
+        }
+        if (TelemetryRegistry.OPTIMISTIC_READ_VALIDATED.equals(qualifiedName)) {
+            // The write slot carries the answer. A validate on a lock this thread has no
+            // speculation on judges nothing the bridge held back.
+            Speculation open = speculations.get(threadId);
+            if (open != null && open.lock == identity) {
+                speculations.remove(threadId);
+                if (isWrite) {
+                    deliver(open, true);
+                }
+            }
+            return;
+        }
+        if (!speculations.isEmpty()) {
+            // Anything but a read ends this thread's speculation first, so its reads stay ahead
+            // of what followed them.
+            if (!isWrite && !qualifiedName.startsWith("#")) {
+                Speculation open = speculations.get(threadId);
+                if (open != null && open.reads.size() < MAX_SPECULATIVE_READS) {
+                    holdBack(open, threadId, qualifiedName, lockFingerprint, volatileField,
+                            constantTag, identity, afterVolatileRead, ownMonitor, methodMonitor,
+                            storedIdentity, receiver, stamp, round);
+                    return;
+                }
+            }
+            Speculation ended = speculations.remove(threadId);
+            if (ended != null) {
+                deliver(ended, false);
+            }
+        }
         if (TelemetryRegistry.OWNERSHIP_TAKEN.equals(qualifiedName)) {
             // Not a field access: a worker took the object with this identity out of a queue or
             // an atomic slot, which starts a new ownership generation for it (#555). The write
@@ -474,6 +545,76 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             atomicityValidator.recordContainerDrained(storedIdentity, threadId);
             return;
         }
+        recordField(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, receiver,
+                stamp, round);
+    }
+
+    /**
+     * Holds back one read of an open speculation, filtered and resolved as {@link #recordField}
+     * would record it (#740). A field under a lock-free protocol is forgotten here and now, exactly
+     * as it would be there.
+     */
+    private void holdBack(Speculation open, long threadId, String qualifiedName,
+                          long lockFingerprint, boolean volatileField, int constantTag,
+                          int identity, boolean afterVolatileRead, int ownMonitor,
+                          int methodMonitor, int storedIdentity, @Nullable Object receiver,
+                          HappensBefore.@Nullable Stamp stamp, long round) {
+        String field = memoizedFieldIdentifier(qualifiedName);
+        if (TelemetryRegistry.isAtomicallyManaged(qualifiedName)
+                || TelemetryRegistry.isAtomicallyManaged(field)) {
+            atomicityValidator.forgetField(field);
+            return;
+        }
+        boolean safelyPublished = afterVolatileRead
+                && TelemetryRegistry.isPublishedByVolatile(qualifiedName);
+        open.reads.add(new HeldRead(field, threadId, lockFingerprint, ownMonitor, methodMonitor,
+                volatileField || safelyPublished, constantTag, identity, storedIdentity, receiver,
+                stamp, round));
+    }
+
+    /**
+     * Delivers a closed speculation's reads (#740). When its {@code validate} held, no write lock
+     * was taken while they ran, so they saw what a reader holding the lock in shared mode sees,
+     * and they are recorded with that lock added; a failed {@code validate} never reaches here,
+     * because the caller discards what it read. Otherwise they were used as read and are recorded
+     * exactly as they were made.
+     */
+    private void deliver(Speculation speculation, boolean validated) {
+        for (HeldRead read : speculation.reads) {
+            long locks = validated
+                    ? HeldLocks.withLock(read.lockFingerprint(), speculation.lock)
+                    : read.lockFingerprint();
+            atomicityValidator.recordFieldAccessUnderLocks(read.field(), null, false,
+                    read.threadId(), locks, read.ownMonitor(), read.methodMonitor(),
+                    read.volatileField(), read.constantTag(), read.identity(),
+                    read.storedIdentity(), read.receiver(), read.stamp(), read.round());
+        }
+    }
+
+    /**
+     * Delivers every speculation still open: a flush means the producers stopped, so none of them
+     * is going to be validated, and each was used as read (#740). Runs on the drain thread.
+     */
+    @Override
+    public void onFlush() {
+        if (speculations.isEmpty()) {
+            return;
+        }
+        if (active) {
+            for (Speculation open : speculations.values()) {
+                deliver(open, false);
+            }
+        }
+        speculations.clear();
+    }
+
+    /** The field path of {@link #onEvent}: filters, resolves and records one access. */
+    private void recordField(long threadId, String qualifiedName, boolean isWrite,
+                             long lockFingerprint, boolean volatileField, int constantTag,
+                             int identity, boolean afterVolatileRead, int ownMonitor,
+                             int methodMonitor, int storedIdentity, @Nullable Object receiver,
+                             HappensBefore.@Nullable Stamp stamp, long round) {
         String field = memoizedFieldIdentifier(qualifiedName);
         // A field under a lock-free protocol is not something a lockset can judge. Dropping the
         // event rather than passing it on keeps that honest: the detectors say nothing about the

@@ -158,4 +158,69 @@ class FileChannelPositionRaceDetectorTest {
             "both threads held the channel's monitor around the cursor-moving call, so the "
                 + "cursor cannot interleave: " + d.analyze());
     }
+
+    @Test
+    void implicitPositionAccessUnderADeclaredLockIsNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "position");
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        };
+        guarded.run();
+        Thread t = new Thread(guarded);
+        t.start();
+        t.join();
+        assertFalse(d.analyze().hasIssues(),
+            "a private lock declared through HeldLocks is in the lockset like the channel's own "
+                + "monitor, so a seek-then-read held under it on every thread is guarded: "
+                + d.analyze());
+    }
+
+    @Test
+    void implicitPositionAccessUnderDifferentLocksIsFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lockA = new Object();
+        Object lockB = new Object();
+        try (var held = HeldLocks.holding(lockA)) {
+            d.recordImplicitPositionAccess(channel, "read");
+        }
+        Thread t = new Thread(() -> {
+            try (var held = HeldLocks.holding(lockB)) {
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        });
+        t.start();
+        t.join();
+        assertTrue(d.analyze().hasIssues(),
+            "each thread held a lock, but no lock was common to both accesses, so nothing "
+                + "orders the two cursor moves");
+    }
+
+    /**
+     * Pins the limit {@code PairEvidence.HELD_ON_MODEL} holds this detector at PROMPT for.
+     *
+     * <p>A lone {@code write(ByteBuffer)} per thread is not a race on a real {@code FileChannel}:
+     * the channel lets one position-changing operation run at a time, so each record lands whole
+     * and none is lost, only in an order nobody chose. The hazard is a thread's
+     * {@code position(n)} and the read or write that relies on it with another thread's call in
+     * between, and the detector keeps no sequence to tell the two apart. When it learns to, this
+     * test goes red and the hold should be re-read.
+     */
+    @Test
+    void selfContainedImplicitCallsAreReportedLikeASeekThenWrite() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "write");
+        Thread t = new Thread(() -> d.recordImplicitPositionAccess(channel, "write"));
+        t.start();
+        t.join();
+        assertTrue(d.analyze().hasIssues(),
+            "two threads with one unguarded write each are reported, whether or not either "
+                + "relied on where the cursor was");
+    }
 }

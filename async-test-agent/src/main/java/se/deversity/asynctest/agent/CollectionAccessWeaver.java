@@ -42,6 +42,7 @@ import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.jar.asm.AnnotationVisitor;
 import net.bytebuddy.jar.asm.Attribute;
 import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.ClassWriter;
 import net.bytebuddy.jar.asm.Handle;
 import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
@@ -98,7 +99,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.9.8
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. The one instruction the visitor inserts rather than substitutes is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. Inside a synchronized method, an entry with a synchronized variant (the sleeps, and the queue offers and takes, #796) first loads the method's monitor, ALOAD 0 or an LDC of the class for a static method, which the variant consumes as its last parameter: one more value and no branch, so only maxStack grows, and the substitution wrapper asks for COMPUTE_MAXS itself. A queue offer or take in any other instance method loads this the same way for its hook to probe (#751), except in a constructor, where this may be uninitialised and would not verify, and after a store to local 0. The one instruction the visitor inserts outside a substitution is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
 final class CollectionAccessWeaver {
 
     /**
@@ -187,9 +188,14 @@ final class CollectionAccessWeaver {
         /**
          * The hook to call instead when the enclosing method is {@code synchronized}.
          *
-         * <p>Only meaningful where holding a monitor changes the answer, which today is the
-         * sleep. It takes the same arguments plus the monitor, and the weaver loads that monitor
-         * at the call site: {@code this} for an instance method, the class for a static one.
+         * <p>Only meaningful where holding a monitor changes the answer: the sleep, and the queue
+         * offers and takes whose hand-off only a shared lock makes (#796). It takes the same
+         * arguments plus the monitor, receiver first for a virtual call as ever, and the weaver
+         * loads that monitor at the call site: {@code this} for an instance method, the class for
+         * a static one. A virtual entry, which today means a queue row, also gets the variant in an
+         * instance method that is not {@code synchronized}, other than a constructor, with
+         * {@code this} as a monitor that may or may not be held: a {@code synchronized} method that
+         * hands the queue call to a helper holds it there too, so its hook asks (#751).
          */
         Entry whenSynchronized(String hook) {
             return new Entry(declaredBy, method, this.hook, returning, isStatic, hook,
@@ -272,32 +278,51 @@ final class CollectionAccessWeaver {
             // The conditional two-argument removal, which is a mutation like its sibling (#440).
             Entry.call(Map.class, "remove", "mapRemove", Object.class, Object.class),
             Entry.call(Map.class, "containsKey", "mapContainsKey", Object.class),
-            Entry.call(Collection.class, "add", "collectionAdd", Object.class),
-            Entry.call(Collection.class, "remove", "collectionRemove", Object.class),
+            // Every row that offers into or takes out of a queue has a synchronized-method
+            // variant. A plain deque hands an element over only under a lock both sides share, and
+            // a synchronized method's monitor has no instruction HeldLocks could see (#796).
+            Entry.call(Collection.class, "add", "collectionAdd", Object.class)
+                    .whenSynchronized("collectionAdd"),
+            Entry.call(Collection.class, "remove", "collectionRemove", Object.class)
+                    .whenSynchronized("collectionRemove"),
             Entry.call(Collection.class, "contains", "collectionContains", Object.class),
             Entry.call(Collection.class, "clear", "collectionClear"),
             Entry.call(List.class, "get", "listGet", int.class),
             Entry.call(List.class, "set", "listSet", int.class, Object.class),
-            Entry.call(Queue.class, "offer", "queueOffer", Object.class),
-            Entry.call(Queue.class, "poll", "queuePoll"),
+            Entry.call(Queue.class, "offer", "queueOffer", Object.class)
+                    .whenSynchronized("queueOffer"),
+            Entry.call(Queue.class, "poll", "queuePoll")
+                    .whenSynchronized("queuePoll"),
             Entry.call(Queue.class, "peek", "queuePeek"),
             // The entry and removal forms #664 left unwoven (#692). An element that went in
             // through one of these had no recorded offer, so every thread got the #557 excuse,
             // and one that came out through one of these was never a take, so the remover's own
             // accesses read as an alias's.
-            Entry.call(Collection.class, "addAll", "collectionAddAll", Collection.class),
+            Entry.call(Collection.class, "addAll", "collectionAddAll", Collection.class)
+                    .whenSynchronized("collectionAddAll"),
             Entry.call(Collection.class, "removeIf", "collectionRemoveIf", Predicate.class),
-            Entry.call(Queue.class, "remove", "queueRemove"),
-            Entry.call(Deque.class, "offerFirst", "dequeOfferFirst", Object.class),
-            Entry.call(Deque.class, "offerLast", "dequeOfferLast", Object.class),
-            Entry.call(Deque.class, "addFirst", "dequeAddFirst", Object.class),
-            Entry.call(Deque.class, "addLast", "dequeAddLast", Object.class),
-            Entry.call(Deque.class, "push", "dequePush", Object.class),
-            Entry.call(Deque.class, "pollFirst", "dequePollFirst"),
-            Entry.call(Deque.class, "pollLast", "dequePollLast"),
-            Entry.call(Deque.class, "removeFirst", "dequeRemoveFirst"),
-            Entry.call(Deque.class, "removeLast", "dequeRemoveLast"),
-            Entry.call(Deque.class, "pop", "dequePop"),
+            Entry.call(Queue.class, "remove", "queueRemove")
+                    .whenSynchronized("queueRemove"),
+            Entry.call(Deque.class, "offerFirst", "dequeOfferFirst", Object.class)
+                    .whenSynchronized("dequeOfferFirst"),
+            Entry.call(Deque.class, "offerLast", "dequeOfferLast", Object.class)
+                    .whenSynchronized("dequeOfferLast"),
+            Entry.call(Deque.class, "addFirst", "dequeAddFirst", Object.class)
+                    .whenSynchronized("dequeAddFirst"),
+            Entry.call(Deque.class, "addLast", "dequeAddLast", Object.class)
+                    .whenSynchronized("dequeAddLast"),
+            Entry.call(Deque.class, "push", "dequePush", Object.class)
+                    .whenSynchronized("dequePush"),
+            Entry.call(Deque.class, "pollFirst", "dequePollFirst")
+                    .whenSynchronized("dequePollFirst"),
+            Entry.call(Deque.class, "pollLast", "dequePollLast")
+                    .whenSynchronized("dequePollLast"),
+            Entry.call(Deque.class, "removeFirst", "dequeRemoveFirst")
+                    .whenSynchronized("dequeRemoveFirst"),
+            Entry.call(Deque.class, "removeLast", "dequeRemoveLast")
+                    .whenSynchronized("dequeRemoveLast"),
+            Entry.call(Deque.class, "pop", "dequePop")
+                    .whenSynchronized("dequePop"),
             // The blocking and timed forms only BlockingDeque declares. Its untimed offerFirst,
             // offerLast, pollFirst and pollLast are Deque's, woven by the entries above.
             Entry.call(BlockingDeque.class, "putFirst", "blockingDequePutFirst", Object.class),
@@ -336,8 +361,9 @@ final class CollectionAccessWeaver {
                     ReentrantReadWriteLock.WriteLock.class),
             // StampedLock implements no locking interface and hands back a long, so the concrete
             // class anchors every entry; the hooks record the lock object itself, exclusive for a
-            // write stamp and shared for a read stamp. tryOptimisticRead and validate are absent
-            // on purpose: an optimistic read holds nothing a lockset could record.
+            // write stamp and shared for a read stamp. An optimistic read holds nothing a lockset
+            // could record, so tryOptimisticRead and validate record nothing there: they mark the
+            // start and the outcome of a speculation in the telemetry stream instead (#740).
             Entry.call(StampedLock.class, "writeLock", "writeLock"),
             Entry.call(StampedLock.class, "readLock", "readLock"),
             Entry.call(StampedLock.class, "writeLockInterruptibly", "writeLockInterruptibly"),
@@ -353,6 +379,8 @@ final class CollectionAccessWeaver {
             Entry.call(StampedLock.class, "tryConvertToReadLock", "tryConvertToReadLock", long.class),
             Entry.call(StampedLock.class, "tryConvertToOptimisticRead", "tryConvertToOptimisticRead",
                     long.class),
+            Entry.call(StampedLock.class, "tryOptimisticRead", "tryOptimisticRead"),
+            Entry.call(StampedLock.class, "validate", "validate", long.class),
             Entry.view(StampedLock.class, "asReadLock", "asReadLock", Lock.class),
             Entry.view(StampedLock.class, "asWriteLock", "asWriteLock", Lock.class));
 
@@ -650,8 +678,13 @@ final class CollectionAccessWeaver {
         if (hookName == null) {
             return null;
         }
-        Class<?>[] signature = new Class<?>[entry.parameters().length + 1];
-        System.arraycopy(entry.parameters(), 0, signature, 0, entry.parameters().length);
+        // The ordinary hook's parameters, receiver first for a virtual call (#796), then the monitor.
+        int receiver = entry.isStatic() ? 0 : 1;
+        Class<?>[] signature = new Class<?>[receiver + entry.parameters().length + 1];
+        if (receiver == 1) {
+            signature[0] = entry.declaredBy();
+        }
+        System.arraycopy(entry.parameters(), 0, signature, receiver, entry.parameters().length);
         signature[signature.length - 1] = Object.class;
         try {
             return Type.getType(hooks.getMethod(hookName, signature)).getDescriptor();
@@ -1339,9 +1372,15 @@ final class CollectionAccessWeaver {
     /** Applies one table of {@link Target}s to every method of a woven class. */
     private record SubstitutionWrapper(List<Target> targets) implements AsmVisitorWrapper {
 
+        /**
+         * Asks for {@code COMPUTE_MAXS}, never {@code COMPUTE_FRAMES}: a synchronized-method
+         * variant loads the monitor on top of the call's own arguments, one value deeper than the
+         * method was compiled for. The agent always weaves monitors next to these tables, and that
+         * visitor asks too, but a table applied on its own must not depend on it (#796).
+         */
         @Override
         public int mergeWriter(int flags) {
-            return flags;
+            return flags | ClassWriter.COMPUTE_MAXS;
         }
 
         @Override
@@ -1385,7 +1424,8 @@ final class CollectionAccessWeaver {
                         MethodVisitor delegate =
                                 super.visitMethod(access, name, descriptor, signature, exceptions);
                         return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable,
-                                access, instrumentedType.getInternalName(), Collections.emptySet(), null);
+                                access, name, instrumentedType.getInternalName(),
+                                Collections.emptySet(), null);
                     }
                 };
             }
@@ -1449,7 +1489,7 @@ final class CollectionAccessWeaver {
                         MethodVisitor downstream = super.visitMethod(bm.access(), bm.name(),
                                 bm.descriptor(), bm.signature(), bm.exceptions());
                         SubstitutingMethodVisitor smv = new SubstitutingMethodVisitor(
-                                downstream, targets, typePool, assignable, bm.access(),
+                                downstream, targets, typePool, assignable, bm.access(), bm.name(),
                                 instrumentedType.getInternalName(), waitingMethods, finalLoopHook);
                         bm.replay(smv);
                     }
@@ -1477,6 +1517,13 @@ final class CollectionAccessWeaver {
 
         /** Whether that monitor is the class rather than {@code this}. */
         private final boolean enclosingIsStatic;
+
+        /**
+         * Whether {@code this} may be loaded from local 0 here: an instance method other than a
+         * constructor, where it may still be uninitialised, until the first store to local 0, after
+         * which the slot may hold something else (#751).
+         */
+        private boolean thisIsLoadable;
 
         /** The class being woven, for loading its {@code Class} as a static method's monitor. */
         private final String owningClassInternalName;
@@ -1545,7 +1592,7 @@ final class CollectionAccessWeaver {
 
         SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
                                   TypePool typePool, Map<String, Boolean> assignable,
-                                  int access, String owningClassInternalName,
+                                  int access, String methodName, String owningClassInternalName,
                                   Set<String> waitingMethods,
                                   @org.jspecify.annotations.Nullable Target loopHookTarget) {
             super(Opcodes.ASM9, delegate);
@@ -1554,6 +1601,7 @@ final class CollectionAccessWeaver {
             this.assignable = assignable;
             this.enclosingIsSynchronized = (access & Opcodes.ACC_SYNCHRONIZED) != 0;
             this.enclosingIsStatic = (access & Opcodes.ACC_STATIC) != 0;
+            this.thisIsLoadable = !enclosingIsStatic && !"<init>".equals(methodName);
             this.owningClassInternalName = owningClassInternalName;
             this.waitingMethods = waitingMethods;
             this.loopHookTarget = loopHookTarget;
@@ -1575,9 +1623,24 @@ final class CollectionAccessWeaver {
                             && name.equals(target.methodName())
                             && descriptor.equals(target.callSiteDescriptor())
                             && ownerIsAssignable(owner, target)) {
-                        super.visitMethodInsn(Opcodes.INVOKESTATIC,
-                                target.hookOwnerInternalName(), target.hookMethodName(),
-                                target.hookDescriptor(), false);
+                        if (target.hasSynchronizedVariant()
+                                && (enclosingIsSynchronized || thisIsLoadable)) {
+                            // A queue offer or take: the enclosing method's own monitor goes on
+                            // top of the call's arguments, as for the sleep below, and the
+                            // variant takes it as its last parameter (#796). A synchronized
+                            // method holds it by construction. Any other instance method passes
+                            // this too, because a synchronized method that hands its queue call
+                            // to a helper still holds it there, and the hook counts it only
+                            // when it is held (#751).
+                            loadEnclosingMonitor();
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                    target.hookOwnerInternalName(), target.synchronizedHookName(),
+                                    target.synchronizedHookDescriptor(), false);
+                        } else {
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                    target.hookOwnerInternalName(), target.hookMethodName(),
+                                    target.hookDescriptor(), false);
+                        }
                         justSubstituted = target.hasDiscardVariant() ? target : null;
                         if (target.hasLoopBackEdgeHook()) {
                             loopTracked = target;
@@ -1610,11 +1673,7 @@ final class CollectionAccessWeaver {
                         // the lockset instead would need a push on entry and a pop on every exit
                         // including the exceptional one, and that needs frames.
                         if (enclosingIsSynchronized && target.hasSynchronizedVariant()) {
-                            if (enclosingIsStatic) {
-                                super.visitLdcInsn(Type.getObjectType(owningClassInternalName));
-                            } else {
-                                super.visitVarInsn(Opcodes.ALOAD, 0);
-                            }
+                            loadEnclosingMonitor();
                             super.visitMethodInsn(Opcodes.INVOKESTATIC,
                                     target.hookOwnerInternalName(), target.synchronizedHookName(),
                                     target.synchronizedHookDescriptor(), false);
@@ -1642,6 +1701,20 @@ final class CollectionAccessWeaver {
                 unresolvedCalls.add(name + descriptor);
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+        }
+
+        /**
+         * Pushes the enclosing method's own monitor: {@code this} for an instance method, the class
+         * for a static one, which is only reached inside a {@code synchronized} method. One
+         * reference on the stack, no branch, which the hook variant then consumes; only maxStack
+         * grows.
+         */
+        private void loadEnclosingMonitor() {
+            if (enclosingIsStatic) {
+                super.visitLdcInsn(Type.getObjectType(owningClassInternalName));
+            } else {
+                super.visitVarInsn(Opcodes.ALOAD, 0);
+            }
         }
 
         @Override
@@ -1728,6 +1801,9 @@ final class CollectionAccessWeaver {
         @Override
         public void visitVarInsn(int opcode, int varIndex) {
             justSubstituted = null;
+            if (varIndex == 0 && opcode >= Opcodes.ISTORE && opcode <= Opcodes.ASTORE) {
+                thisIsLoadable = false;
+            }
             super.visitVarInsn(opcode, varIndex);
         }
 
@@ -1980,6 +2056,9 @@ final class CollectionAccessWeaver {
         @Override
         public void visitIincInsn(int varIndex, int increment) {
             justSubstituted = null;
+            if (varIndex == 0) {
+                thisIsLoadable = false;
+            }
             super.visitIincInsn(varIndex, increment);
         }
 

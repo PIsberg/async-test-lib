@@ -38,7 +38,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 65. Cache Concurrency Detector
 * **Severity**: `HIGH`
-* **Description**: Detects unsynchronized `HashMap`/`LinkedHashMap`-backed caches accessed from multiple threads: mutation during iteration, read-write races producing stale reads or lost updates, and cache stampede where multiple threads recompute the same value simultaneously.
+* **Description**: Detects unsynchronized `HashMap`/`LinkedHashMap`-backed caches accessed from multiple threads: mutation during iteration, read-write races producing stale reads or lost updates, and cache stampede where multiple threads recompute the same value simultaneously. A `get` on an access-ordered `LinkedHashMap`, the usual LRU cache, relinks the entry, so gets under one shared read lock are reported; whether a map is access-ordered can only be read when the test JVM opens `java.util` to the library (`--add-opens java.base/java.util=ALL-UNNAMED`), and without that a read lock still guards the gets.
 * **Buggy Code**:
   ```java
   Map<String, Object> cache = new HashMap<>(); // not thread-safe
@@ -379,7 +379,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 80. Optimistic Read Validation Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `StampedLock` optimistic reads whose data is used without a matching `validate(stamp)` call. An optimistic read stamp is only valid if no write lock was acquired in between, so skipping validation silently introduces torn-snapshot data corruption. A `validate()` that returns false is not a finding: it is the idiom's cue to re-read under the read lock or retry. Using the optimistic values anyway is, and it is seen where the use is recorded with `recordValuesUsed(lock, stamp, thread)`, passing the stamp the used values were read under: the failed optimistic stamp is reported, the read-lock stamp of a re-read is not. A use is judged against the latest `validate()` of its stamp, so a stamp that validated and then failed a revalidation is reported when its values are used after the failure. Locks are tracked by identity, so two locks whose identity hashes collide stay separate.
+* **Description**: Detects `StampedLock` optimistic reads whose data is used without a matching `validate(stamp)` call. An optimistic read stamp is only valid if no write lock was acquired in between, so skipping validation silently introduces torn-snapshot data corruption. A `validate()` that returns false is not a finding: it is the idiom's cue to re-read under the read lock or retry. Using the optimistic values anyway is, and it is seen where the use is recorded with `recordValuesUsed(lock, stamp, thread)`, passing the stamp the used values were read under: the failed optimistic stamp is reported, the read-lock stamp of a re-read is not. A use is judged against the latest `validate()` of its stamp, so a stamp that validated and then failed a revalidation is reported when its values are used after the failure. A `validate()` covers only the reads before it: data read under a stamp after its successful validation, and not validated again, is reported. Locks are tracked by identity, so two locks whose identity hashes collide stay separate.
 * **Buggy Code**:
   ```java
   long stamp = lock.tryOptimisticRead();

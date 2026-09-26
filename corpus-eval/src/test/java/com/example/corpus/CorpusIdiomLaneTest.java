@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.StampedLock;
 import java.util.function.Supplier;
 
 /**
@@ -955,6 +956,82 @@ class CorpusIdiomLaneTest {
                 holder.digest.update(PAYLOAD);
             }
             use(holder.digest.digest().length);
+        });
+    }
+
+    // --- A StampedLock optimistic read, validated (#740) ---------------------------------------
+
+    /** The {@code StampedLock} class javadoc's point: moved under the write lock, read optimistically. */
+    private static final class Point {
+        private final StampedLock lock = new StampedLock();
+        private double x;
+        private double y;
+
+        void move(double deltaX, double deltaY) {
+            long stamp = lock.writeLock();
+            try {
+                x += deltaX;
+                y += deltaY;
+            } finally {
+                lock.unlockWrite(stamp);
+            }
+        }
+
+        double distanceFromOrigin() {
+            long stamp = lock.tryOptimisticRead();
+            double currentX = x;
+            double currentY = y;
+            if (!lock.validate(stamp)) {
+                stamp = lock.readLock();
+                try {
+                    currentX = x;
+                    currentY = y;
+                } finally {
+                    lock.unlockRead(stamp);
+                }
+            }
+            return Math.hypot(currentX, currentY);
+        }
+
+        double distanceWithoutValidating() {
+            lock.tryOptimisticRead();
+            double currentX = x;
+            double currentY = y;
+            return Math.hypot(currentX, currentY);
+        }
+    }
+
+    private static final Rounds<Point> POINTS = new Rounds<>(Point::new);
+    private static final Rounds<Point> UNVALIDATED_POINTS = new Rounds<>(Point::new);
+
+    /**
+     * The round's first thread moves the point under the write lock, every other thread reads it
+     * optimistically, validates, and re-reads under the read lock when the validation failed.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stampedLock_validatesItsOptimisticRead() {
+        correct(() -> {
+            Turn<Point> turn = POINTS.next();
+            Point point = turn.shared();
+            if (turn.opensTheRound()) {
+                point.move(1, turn.ticket());
+            } else {
+                use((long) point.distanceFromOrigin());
+            }
+        });
+    }
+
+    /** The same point, read under an optimistic stamp that is never validated. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stampedLock_usesAnOptimisticReadUnvalidated() {
+        broken(() -> {
+            Turn<Point> turn = UNVALIDATED_POINTS.next();
+            Point point = turn.shared();
+            if (turn.opensTheRound()) {
+                point.move(1, turn.ticket());
+            } else {
+                use((long) point.distanceWithoutValidating());
+            }
         });
     }
 

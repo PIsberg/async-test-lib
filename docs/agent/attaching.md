@@ -212,10 +212,14 @@ Three limits worth knowing before switching it on:
   Lock weaving rides along too: a `Lock.lock()`/`unlock()` call site in woven code feeds the same
   lockset, `ReadWriteLock.readLock()`/`writeLock()` call sites resolve each view to its owner,
   in shared mode for the read side, and `StampedLock`'s own call shapes are modelled the same way
-  (write stamps exclusive, read stamps shared, optimistic reads deliberately nothing), so a
-  collection guarded by a `ReentrantLock`, a `ReentrantReadWriteLock` or a `StampedLock` reports
-  nothing either. A lock acquired only inside unwoven code still needs
-  `AsyncTestContext.holdingLock(...)`.
+  (write stamps exclusive, read stamps shared), so a collection guarded by a `ReentrantLock`, a
+  `ReentrantReadWriteLock` or a `StampedLock` reports nothing either. An optimistic read holds
+  nothing, so `tryOptimisticRead()` and `validate(long)` mark where a speculation starts and
+  whether it held: the field reads in between count as reads under the lock in shared mode when
+  `validate` returned `true`, are dropped when it returned `false`, since the caller discards what
+  it read, and count as plain reads when nothing validated them before the thread's next
+  speculation, its next write or the end of the round (#740). A lock acquired only inside unwoven
+  code still needs `AsyncTestContext.holdingLock(...)`.
 - **Spinlocks and hand-offs are exclusion too (with `fields=true`).** A won
   `VarHandle.compareAndSet(this, 0, 1)` on an `int` field is a spinlock: the weaver replaces the
   call with a hook that performs it and declares a lock on that receiver's flag, released by a
@@ -244,9 +248,13 @@ Three limits worth knowing before switching it on:
   object a reference `getAndSet` returns, or a `Queue.poll` or JCTools `MessagePassingQueue`
   `poll`/`relaxedPoll` hands back, is reported as taken. A queue that orders nothing itself, an
   unsynchronized `java.util` collection such as an `ArrayDeque`, does not count when the offer and the
-  poll both held locks the agent records and those share none; with a recorded lock on one side
-  only, or on neither, it still counts, since a `synchronized` method's monitor is never recorded
-  and may be the lock the other side shows (#751). A
+  poll held no lock in common, a side with no lock sharing none: an unguarded deque, one guarded on
+  one side only, and one guarded by two different locks hand nothing over (#751). A `synchronized`
+  method's monitor counts, though no instruction takes it: the weaver hands it to the offer and take
+  hooks (#796), and in any other instance method but a constructor it hands over `this`, which
+  counts when held, so a `synchronized` method that polls through a private helper is seen too. A
+  monitor held only by a `synchronized` method of another object up the stack is not seen, and
+  such a pool is reported. A
   take starts a new ownership generation, exclusive to the taker until another thread touches it, and
   locks only have to agree within a generation. That is netty's chunk moving between magazines
   (#555). Another thread's access inside the generation the receiver is still in withdraws the

@@ -169,10 +169,12 @@ check-then-act happened, and its own decision is whether more than one thread re
 `(map, key)` site with no lock common to every call; the `synchronized` twin of the firing body
 is silent since 2026-09-25, when that lockset was added.
 `FILE_CHANNEL_POSITION_RACE` has the better pair of the two - one shared channel, differing only
-in the read overload - but `analyze()` reports on `accessingThreadIds.size() > 1` and the detector
-holds no representation of a lock, so a caller who wraps `position(n)` and `read(buffer)` in
-`synchronized (channel)`, which genuinely fixes the race, draws the identical finding. The remedy
-is the lockset the `Shared*` family already carries, not a different pair.
+in the read overload - and now carries the per-round lockset the `Shared*` family has, so a caller
+who wraps `position(n)` and `read(buffer)` in `synchronized (channel)`, or in a lock declared
+through `HeldLocks`, is silent. It stays `PROMPT` because it judges accesses, not the seek-then-I/O
+sequence the race is (#755): `FileChannel` runs one operation involving the position at a time, so
+threads that each make one self-contained `read(buffer)` or `write(buffer)` lose nothing and still
+draw the finding, and the pair's firing row is that shape.
 
 **Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
@@ -243,7 +245,8 @@ model orders after the previous thread's, through a latch, a queue or map hand-o
 instead of sharing it. Two threads using it at once still report, edge or no edge. A take-over
 also starts the lockset again, so unlocked set-up before the hand-off does not count against
 locked use after it, as long as every later access is ordered after the hand-off; one that is
-not brings the earlier accesses back into the lockset.
+not brings back the accesses since the latest earlier hand-off it is ordered after, or every
+access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
 tier is one a reader has to rank alone. The split is 37 VERDICT, 73 PROMPT, 29 FACT and 7

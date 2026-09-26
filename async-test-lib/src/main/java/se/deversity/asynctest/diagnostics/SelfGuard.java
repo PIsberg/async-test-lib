@@ -4,7 +4,9 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,10 +59,14 @@ import java.util.concurrent.atomic.AtomicReference;
  * be in the same window as the reads, so unguarded readers in one round and a writer in another,
  * which never overlapped them, are no finding. A detector that cannot tell a read from a write
  * records every access as a write, which keeps the verdict it had. Some reads write: a
- * {@code get} on an access-ordered {@link java.util.LinkedHashMap} relinks the entry, one on a
- * {@link java.util.WeakHashMap} expunges cleared entries, and one on a {@link java.util.Calendar}
- * after a {@code set} recomputes its fields. Those count as writes for this rule
- * ({@code TrackedInstance.readWrites}), while the lockset still judges them as reads.
+ * {@code get} on an access-ordered {@link java.util.LinkedHashMap} relinks the entry, and one on a
+ * {@link java.util.Calendar} after a {@code set} recomputes its fields. Those count as writes for
+ * this rule ({@code TrackedInstance.readWrites}). A read the detector knows writes is recorded as a
+ * write, so it needs an exclusive lock as well (#807): a {@code get} on a map known to be
+ * access-ordered ({@link #relinksOnGet(Object)}), and a {@code Calendar} get after a recorded
+ * {@code set}. Where that is not known, the lockset judges the read as a read, so a read lock held
+ * over it guards it. A {@link java.util.WeakHashMap} read expunges cleared entries, but the JDK
+ * serializes that among readers, so it is a read (see {@code readWrites}).
  *
  * <p>Within a round the verdict is also per owner. A pool that hands an instance out through a
  * queue gives it to one thread at a time, and a take is the edge between one owner's accesses
@@ -81,7 +87,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * after it, so one thread setting an instance up unlocked and handing it to threads that then
  * always lock it is consistent locking (#746). That holds only while every later access is
  * ordered after the hand-off: one that is not may overlap the accesses before it, and from then
- * on the lockset is the whole window's again.
+ * on the lockset starts at the latest earlier hand-off that access is ordered after, or at the
+ * start of the window when there is none (#792). The same lockset answers
+ * {@link TrackedInstance#sawUnguardedRound()}, so one lock before a hand-off and another after
+ * it lose no update either: nothing after the hand-off can land between a read and a write
+ * before it.
+ *
+ * <p>An access recorded for a thread other than the caller carries no clock. The caller's says
+ * nothing about that thread, and the thread's own, read at the record, may already know an edge
+ * made after the access, which would order the access after something it raced with. So such an
+ * access never takes an instance over, and one after a hand-off is ordered after none of them.
  *
  * <p>Public only so that {@code AsyncTestContext} can own and bind the {@link Scope}; everything
  * else here is package-private and belongs to the detectors.
@@ -104,6 +119,71 @@ public final class SelfGuard {
             + " HappensBefore.release(...) and acquire(...))";
 
     private SelfGuard() {
+    }
+
+    /**
+     * {@return whether a {@code get} on {@code map} is known to write it: {@code map} is a
+     * {@link java.util.LinkedHashMap} in access order, the usual LRU cache, which relinks the entry
+     * it returns (#807)}
+     *
+     * <p>The order is a private field of {@code java.util}, read only when that package is already
+     * open to this library, for example by {@code --add-opens java.base/java.util=ALL-UNNAMED}; the
+     * library never opens it. Otherwise the order is unknown and this is {@code false}, so a read
+     * lock held over the {@code get} still guards it, as it did before the order could be read.
+     *
+     * @param map the map a {@code get} or {@code getOrDefault} reads
+     */
+    static boolean relinksOnGet(@Nullable Object map) {
+        return LinkedHashMapOrder.of(map) == LinkedHashMapOrder.ACCESS;
+    }
+
+    /**
+     * Reads a {@link java.util.LinkedHashMap}'s order, where {@code java.util} lets it be read.
+     */
+    static final class LinkedHashMapOrder {
+
+        /** The order could not be read, or the object is no {@code LinkedHashMap}. */
+        static final int UNKNOWN = 0;
+
+        /** A {@code get} moves the entry to the end: the map writes on every read of a key. */
+        static final int ACCESS = 1;
+
+        /** A {@code get} only reads. */
+        static final int INSERTION = 2;
+
+        /** The private {@code accessOrder} field, or {@code null} when it cannot be read. */
+        private static final @Nullable Field ACCESS_ORDER = accessOrderField();
+
+        private LinkedHashMapOrder() {
+        }
+
+        /**
+         * {@return {@link #ACCESS}, {@link #INSERTION} or {@link #UNKNOWN} for {@code map}}
+         *
+         * @param map the object whose order is asked for
+         */
+        static int of(@Nullable Object map) {
+            Field field = ACCESS_ORDER;
+            if (field == null || !(map instanceof java.util.LinkedHashMap)) {
+                return UNKNOWN;
+            }
+            try {
+                return field.getBoolean(map) ? ACCESS : INSERTION;
+            } catch (IllegalAccessException e) { // NOPMD - an unreadable order is an unknown one
+                return UNKNOWN;
+            }
+        }
+
+        private static @Nullable Field accessOrderField() {
+            try {
+                Field field = java.util.LinkedHashMap.class.getDeclaredField("accessOrder");
+                // trySetAccessible answers false, and opens nothing, unless java.util is already
+                // open to this library's module.
+                return field.getType() == boolean.class && field.trySetAccessible() ? field : null;
+            } catch (NoSuchFieldException | RuntimeException e) { // NOPMD - unreadable is unknown
+                return null;
+            }
+        }
     }
 
     /**
@@ -231,7 +311,8 @@ public final class SelfGuard {
      * <p>Immutable and replaced by compare-and-set, so the record path takes no lock. An access
      * that changes nothing (the same thread again, with the same clock, under the same locks)
      * replaces nothing and allocates nothing; a new window costs one object per instance per
-     * round, and so does an owner's access after a synchronization event changed its clock.
+     * round, and so does an owner's access after a synchronization event changed its clock. A
+     * take-over costs one more, the {@link HandOff} it keeps.
      */
     private static final class Window {
 
@@ -253,24 +334,22 @@ public final class SelfGuard {
         final boolean shared;
 
         /**
-         * The locks the verdict reads: held at every access since the latest ordered hand-off,
-         * while every access since is ordered after it, and otherwise at every access in this
-         * window. Empty once one of those accesses held none of them.
+         * The locks the verdict reads: held at every access since {@code handOff}, and at every
+         * access in this window when there is none. Empty once one of those accesses held none of
+         * them.
          */
         final int[] locks;
 
         /** The locks held at every access in this window, hand-offs or not. */
         final int[] windowLocks;
 
-        /** The owner before the latest ordered hand-off; meaningful only with a {@code handOffStamp}. */
-        final long handOffOwner;
-
         /**
-         * That owner's clock at its last access before the hand-off, or {@code null} when
-         * {@code locks} covers the whole window: before any hand-off, and once an access that is
-         * not ordered after the hand-off brought the earlier accesses back into the set.
+         * The ordered hand-off {@code locks} starts at, the latest one every access since is
+         * ordered after, with the hand-offs before it; or {@code null} when {@code locks} covers
+         * the whole window: before any hand-off, and once an access ordered after none of them
+         * brought every earlier access back into the set.
          */
-        final HappensBefore.@Nullable Stamp handOffStamp;
+        final @Nullable HandOff handOff;
 
         /**
          * Whether one of the accesses {@code locks} covers was a write. Accesses that only read
@@ -283,19 +362,118 @@ public final class SelfGuard {
         final boolean windowWrote;
 
         Window(long key, long owner, HappensBefore.@Nullable Stamp ownerStamp, boolean shared,
-               int[] locks, int[] windowLocks, long handOffOwner,
-               HappensBefore.@Nullable Stamp handOffStamp, boolean wrote, boolean windowWrote) {
+               int[] locks, int[] windowLocks, @Nullable HandOff handOff, boolean wrote,
+               boolean windowWrote) {
             this.key = key;
             this.owner = owner;
             this.ownerStamp = ownerStamp;
             this.shared = shared;
             this.locks = locks;
             this.windowLocks = windowLocks;
-            this.handOffOwner = handOffOwner;
-            this.handOffStamp = handOffStamp;
+            this.handOff = handOff;
             this.wrote = wrote;
             this.windowWrote = windowWrote;
         }
+    }
+
+    /**
+     * An ordered hand-off inside a window, with the ones before it (#792).
+     *
+     * <p>An access ordered after an earlier hand-off but not after a later one may overlap the
+     * accesses since the earlier one and none before it, so the verdict falls back to that one
+     * rather than to the whole window. Immutable, like the window, and allocated only at a
+     * take-over. At most {@link #MAX_KEPT} are kept per window; past that a new hand-off absorbs
+     * the one before it, and an access ordered after the absorbed one falls back one hand-off
+     * further, which can only add a finding.
+     */
+    private static final class HandOff {
+
+        /** How many hand-offs one window keeps apart. */
+        static final int MAX_KEPT = 8;
+
+        /** The owner before this hand-off. */
+        final long owner;
+
+        /** That owner's clock at its last access before this hand-off. */
+        final HappensBefore.Stamp stamp;
+
+        /**
+         * The locks held at every access from {@code previous} up to this hand-off; not read when
+         * there is no {@code previous}, since falling back past this one reaches the whole window.
+         */
+        final int[] locksBefore;
+
+        /** Whether one of the accesses {@code locksBefore} covers was a write. */
+        final boolean wroteBefore;
+
+        /** The hand-off before this one in the same window, {@code null} for the first kept. */
+        final @Nullable HandOff previous;
+
+        /** How many hand-offs this one and those before it keep. */
+        final int depth;
+
+        private HandOff(long owner, HappensBefore.Stamp stamp, int[] locksBefore,
+                        boolean wroteBefore, @Nullable HandOff previous, int depth) {
+            this.owner = owner;
+            this.stamp = stamp;
+            this.locksBefore = locksBefore;
+            this.wroteBefore = wroteBefore;
+            this.previous = previous;
+            this.depth = depth;
+        }
+
+        /**
+         * {@return the hand-off from {@code owner}, whose last access carried {@code stamp}, after
+         * {@code latest}, where {@code locks} and {@code wrote} cover the accesses since
+         * {@code latest}}
+         */
+        static HandOff after(@Nullable HandOff latest, long owner, HappensBefore.Stamp stamp,
+                             int[] locks, boolean wrote) {
+            if (latest == null) {
+                return new HandOff(owner, stamp, locks, wrote, null, 1);
+            }
+            if (latest.depth < MAX_KEPT) {
+                return new HandOff(owner, stamp, locks, wrote, latest, latest.depth + 1);
+            }
+            // Full: absorb the latest, so what it separated falls back together. The first is never
+            // absorbed, and with MAX_KEPT above one the absorbed one always has a previous.
+            return new HandOff(owner, stamp, retain(locks, latest.locksBefore),
+                    wrote || latest.wroteBefore, latest.previous, latest.depth);
+        }
+    }
+
+    /** {@return the members of {@code set} that {@code other} also has; {@code set} when all are} */
+    private static int[] retain(int[] set, int[] other) {
+        int kept = 0;
+        for (int lock : set) {
+            if (contains(other, lock)) {
+                kept++;
+            }
+        }
+        if (kept == set.length) {
+            return set;
+        }
+        if (kept == 0) {
+            return HeldLocks.NONE;
+        }
+        int[] survivors = new int[kept];
+        int at = 0;
+        for (int lock : set) {
+            if (contains(other, lock)) {
+                survivors[at] = lock;
+                at++;
+            }
+        }
+        return survivors;
+    }
+
+    private static boolean contains(int[] set, int lock) {
+        for (int member : set) {
+            if (member == lock) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -387,19 +565,23 @@ public final class SelfGuard {
          * for the rule that a window whose accesses all read is not shared (#787)}
          *
          * <p>A {@code get} on an access-ordered {@link java.util.LinkedHashMap} moves the entry to
-         * the end of the list, a read of a {@link java.util.WeakHashMap} expunges cleared
-         * entries, and a {@code get} on a {@link java.util.Calendar} after a {@code set}
-         * recomputes the fields into the instance, so readers alone race one another. Whether a
+         * the end of the list, and a {@code get} on a {@link java.util.Calendar} after a
+         * {@code set} recomputes the fields into the instance, so readers alone race one another.
+         * A read of a {@link java.util.WeakHashMap} is not listed although it expunges cleared
+         * entries: the JDK unlinks each one inside {@code synchronized (queue)}, keeps the
+         * unlinked entry's {@code next} for a traversal standing on it, and never returns a
+         * cleared entry's value, so readers alone do not race (#807). Whether a
          * {@code LinkedHashMap} is access-ordered is private to {@code java.util}, so every one
-         * counts, which keeps the verdict an insertion-ordered one had before #787. Only the
-         * round rule reads this: the lockset still judges the access as a read, so a read lock
-         * held over it guards it as it did before.
+         * counts unless {@link LinkedHashMapOrder} could read it as insertion-ordered, which
+         * keeps the verdict one whose order is unknown had before #787. Only the round rule reads
+         * this: the lockset still judges the access as a read, so a read lock held over it guards
+         * it, unless the detector knew the read writes and recorded it as a write (#807).
          *
          * @param instance the instance being read
          */
         static boolean readWrites(@Nullable Object instance) {
             return instance instanceof java.util.LinkedHashMap
-                    || instance instanceof java.util.WeakHashMap
+                            && LinkedHashMapOrder.of(instance) != LinkedHashMapOrder.INSERTION
                     || instance instanceof java.util.Calendar;
         }
 
@@ -437,7 +619,9 @@ public final class SelfGuard {
             long key = windowKey(instance);
             // The caller's clock, and only for an access it makes itself: a clock says nothing
             // about the thread an access is attributed to on its behalf, so such an access carries
-            // none and orders nothing. The snapshot changes only at a synchronization event.
+            // none and orders nothing. That thread's own clock is not a substitute: read now, it
+            // may know an edge made after the access (#792). The snapshot changes only at a
+            // synchronization event.
             HappensBefore.@Nullable Stamp stamp = threadId == Thread.currentThread().threadId()
                     ? HappensBefore.current()
                     : null;
@@ -492,8 +676,7 @@ public final class SelfGuard {
             if (current == null || key > current.key) {
                 // The first access of a round: nothing recorded earlier in the run overlapped it.
                 int[] locks = probe(null, instance, forWrite);
-                return new Window(key, threadId, stamp, false, locks, locks, 0L, null,
-                        writes, writes);
+                return new Window(key, threadId, stamp, false, locks, locks, null, writes, writes);
             }
             // The same window, or an access still in flight from an older round or owner while a
             // newer one has started. The latter joins the newer window, the direction that can
@@ -519,27 +702,23 @@ public final class SelfGuard {
                     ? current.windowLocks
                     : probe(current.windowLocks, instance, forWrite);
             boolean windowWrote = current.windowWrote || writes;
-            long handOffOwner = current.handOffOwner;
-            HappensBefore.@Nullable Stamp handOffStamp = current.handOffStamp;
+            HandOff handOff = current.handOff;
             int[] locks;
             boolean wrote;
             if (handedOff) {
                 // Every earlier access of the window happens before this one, so none of them can
                 // overlap it or anything ordered after it: the lockset starts again here (#746),
                 // for as long as every later access is ordered after the previous owner's last.
-                // So do the writes: one made before the hand-off cannot race a read after it.
-                handOffOwner = current.owner;
-                handOffStamp = current.ownerStamp;
+                // So do the writes: one made before the hand-off cannot race a read after it. The
+                // hand-off is kept with the ones before it, for an access ordered after one of
+                // those but not after this one. The previous owner's clock is known here: the
+                // model ordered this access after it.
+                handOff = HandOff.after(current.handOff, current.owner,
+                        Objects.requireNonNull(current.ownerStamp), current.locks,
+                        current.wrote);
                 locks = probe(null, instance, forWrite);
                 wrote = writes;
-            } else if (handOffStamp != null
-                    && !HappensBefore.ordered(handOffOwner, handOffStamp, threadId, stamp)) {
-                // Not ordered after the hand-off, so it may overlap the accesses before it, which
-                // count again: the lockset and the writes are the whole window's from here on.
-                handOffStamp = null;
-                locks = windowLocks;
-                wrote = windowWrote;
-            } else if (handOffStamp == null) {
+            } else if (handOff == null) {
                 locks = windowLocks;
                 wrote = windowWrote;
             } else {
@@ -547,19 +726,37 @@ public final class SelfGuard {
                         ? current.locks
                         : probe(current.locks, instance, forWrite);
                 wrote = current.wrote || writes;
+                // Not ordered after the hand-off, so it may overlap the accesses before it, back
+                // to the latest earlier hand-off it is ordered after (#792): from here on the
+                // lockset and the writes are those since that one, or the whole window's when it
+                // is ordered after none. An access ordered after a hand-off is ordered after every
+                // one before it, through the owner that took over there, so walking back, the
+                // first it is ordered after is the latest.
+                while (handOff != null
+                        && !HappensBefore.ordered(handOff.owner, handOff.stamp, threadId, stamp)) {
+                    HandOff passed = handOff;
+                    handOff = passed.previous;
+                    if (handOff == null) {
+                        locks = windowLocks;
+                        wrote = windowWrote;
+                    } else {
+                        locks = retain(locks, passed.locksBefore);
+                        wrote = wrote || passed.wroteBefore;
+                    }
+                }
             }
             if (shared == current.shared
                     && owner == current.owner
                     && ownerStamp == current.ownerStamp // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
                     && locks == current.locks // NOPMD CompareObjectsWithEquals - intersect returns its input when nothing dropped
                     && windowLocks == current.windowLocks // NOPMD CompareObjectsWithEquals - as above
-                    && handOffStamp == current.handOffStamp // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
+                    && handOff == current.handOff // NOPMD CompareObjectsWithEquals - a hand-off is replaced, never mutated
                     && wrote == current.wrote
                     && windowWrote == current.windowWrote) {
                 return current;
             }
             return new Window(current.key, owner, ownerStamp, shared, locks, windowLocks,
-                    handOffOwner, handOffStamp, wrote, windowWrote);
+                    handOff, wrote, windowWrote);
         }
 
         private static int[] probe(int @Nullable [] candidate, @Nullable Object instance,
@@ -578,7 +775,8 @@ public final class SelfGuard {
          * after it are judged apart. A thread whose access the {@link HappensBefore} model orders
          * after every earlier access of its window is not a second thread either; it took the
          * instance over, and the lockset starts again at its access for as long as every later
-         * access is ordered after the hand-off. A window whose accesses all read is not shared
+         * access is ordered after the hand-off, and at the latest earlier hand-off a later access
+         * is ordered after once one is not. A window whose accesses all read is not shared
          * (#787), and a write before a hand-off does not count against reads ordered after it.
          * Once true it stays true.
          */
@@ -593,9 +791,11 @@ public final class SelfGuard {
          * <p>For a detector whose finding does not need a second thread but whose lockset must
          * not span rounds: the runner finishes one round before it starts the next, so a
          * different lock in each round is consistent locking, and two locks inside one round
-         * are not. Rounds and takes split windows exactly as for
-         * {@link #sawUnguardedSharing()}. With no context installed the whole run is one round,
-         * and this answers what {@link #sawUnguardedAccess()} does. Once true it stays true.
+         * are not, unless an ordered hand-off separates them: this reads the lockset the sharing
+         * verdict does, which starts again at a hand-off (#792). Rounds and takes split windows
+         * exactly as for {@link #sawUnguardedSharing()}. With no context installed the whole run
+         * is one round, and but for ordered hand-offs this answers what
+         * {@link #sawUnguardedAccess()} does. Once true it stays true.
          */
         final boolean sawUnguardedRound() {
             return unguardedRound;

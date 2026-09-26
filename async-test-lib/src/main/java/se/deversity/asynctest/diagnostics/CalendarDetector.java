@@ -4,6 +4,7 @@ import java.util.Calendar;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -53,6 +54,13 @@ public class CalendarDetector {
         final AtomicInteger errorCount = new AtomicInteger(0);
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
         volatile long firstAccessTime = 0;
+        /**
+         * Whether a recorded {@code set} or {@code add} left fields for the next {@code get} to
+         * recompute (#807). That {@code get} writes the time and every field into the instance,
+         * so it needs the exclusive lock a {@code set} does; the gets after it only read, and a
+         * read lock guards them. A calendar starts complete, as {@code getInstance()} returns one.
+         */
+        final AtomicBoolean fieldsPending = new AtomicBoolean();
 
         CalendarState(Calendar calendar, String name) {
             this.name = name != null ? name : "calendar@" + System.identityHashCode(calendar);
@@ -85,6 +93,10 @@ public class CalendarDetector {
     /**
      * Record a {@code set()} or {@code setTime()} call.
      *
+     * <p>The next recorded {@code get} then counts as a write, which needs an exclusive lock: after
+     * a {@code set()} it recomputes the fields into the instance. {@code setTime()} recomputes them
+     * at once, but is recorded the same way, so the {@code get} after it counts as a write too.
+     *
      * @param calendar the Calendar instance
      * @param name     the label (should match registration)
      */
@@ -94,6 +106,9 @@ public class CalendarDetector {
 
     /**
      * Record an {@code add()} or {@code roll()} call.
+     *
+     * <p>As with {@link #recordSet}, the next recorded {@code get} then counts as a write: an
+     * {@code add} to a date field and most rolls leave the fields to recompute.
      *
      * @param calendar the Calendar instance
      * @param name     the label (should match registration)
@@ -125,7 +140,14 @@ public class CalendarDetector {
                 k -> new CalendarState(calendar, name));
 
         long now = System.currentTimeMillis();
-        state.noteAccess(calendar, !"get".equals(method));
+        boolean get = "get".equals(method);
+        // A get recomputes the fields a set or add left, which is a write; it consumes that work,
+        // so the gets after it read (#807). Checked before the swap to keep plain reads read-only.
+        state.noteAccess(calendar, !get
+                || state.fieldsPending.get() && state.fieldsPending.getAndSet(false));
+        if (!get) {
+            state.fieldsPending.set(true);
+        }
         state.accessingThreads.add(Thread.currentThread().threadId());
         if (state.firstAccessTime == 0) state.firstAccessTime = now;
 

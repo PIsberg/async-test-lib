@@ -1954,13 +1954,34 @@ public final class TelemetryRegistry {
      * <p>A container that orders nothing itself, an {@code ArrayDeque} (see {@link #ordersNothing}),
      * hands an element over only under a lock its callers share, so its take is flagged in the
      * event's write slot and carries the locks this thread holds; the validator drops the edge when
-     * those and the matching offer's locks are both non-empty and share no member (#751).
+     * those and the matching offer's locks share no member, an empty set sharing none (#751).
      *
      * @param taken     the object that left the queue, or {@code null}
      * @param container the queue it left, or {@code null} when unknown
      * @since 1.12.1
      */
     public static void ownershipTaken(@Nullable Object taken, @Nullable Object container) {
+        ownershipTaken(taken, container, null);
+    }
+
+    /**
+     * {@link #ownershipTaken(Object, Object)} with the enclosing method's own monitor in hand.
+     *
+     * <p>A {@code synchronized} method's monitor comes from its access flag, with no instruction
+     * for {@link HeldLocks} to see, so the weaver passes it to the queue hooks and it joins the
+     * locks a take from a container that orders nothing carries (#796). Without it a
+     * {@code synchronized}-method pool would read as unguarded. Any other instance method passes
+     * its {@code this} as well, which counts only when this thread holds it: a
+     * {@code synchronized} method that polls through a helper holds it there too (#751).
+     *
+     * @param taken     the object that left the queue, or {@code null}
+     * @param container the queue it left, or {@code null} when unknown
+     * @param monitor   the enclosing method's own monitor, counted when this thread holds it;
+     *                  {@code null} for none
+     * @since 1.12.3
+     */
+    public static void ownershipTaken(@Nullable Object taken, @Nullable Object container,
+                                      @Nullable Object monitor) {
         if (taken == null) {
             return;
         }
@@ -1978,9 +1999,62 @@ public final class TelemetryRegistry {
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, ordersNothing,
-                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
+                ordersNothing ? HeldLocks.registeredLockFingerprint(ifHeld(monitor), true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
                 container == null ? 0 : System.identityHashCode(container));
+    }
+
+    /**
+     * The target an event carries when a thread starts a {@code StampedLock} optimistic read; see
+     * {@link #OWNERSHIP_TAKEN} for why a reserved name (#740).
+     */
+    static final String OPTIMISTIC_READ_STARTED = "#optimistic-read";
+
+    /**
+     * The target an event carries when a thread's {@code StampedLock.validate} answered, with the
+     * answer in the write slot (#740).
+     */
+    static final String OPTIMISTIC_READ_VALIDATED = "#optimistic-validated";
+
+    /**
+     * Records that the calling thread took an optimistic stamp from {@code lock} (#740).
+     *
+     * <p>Nothing is held: a {@code StampedLock} optimistic read is a speculation that
+     * {@link #optimisticReadValidated} later confirms or refutes. The drain side holds this thread's
+     * reads from here until that answer arrives, so the start is published after the stamp is
+     * taken and before any read it covers. The lock's identity rides in the identity slot.
+     *
+     * <p>Allocation-free and non-throwing like every other hook on this path.
+     *
+     * @param lock the lock the stamp came from, or {@code null}
+     * @since 1.12.3
+     */
+    public static void optimisticReadStarted(@Nullable Object lock) {
+        if (lock == null || STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), OPTIMISTIC_READ_STARTED, false, 0L, false,
+                Integer.MIN_VALUE, System.identityHashCode(lock), false, 0, 0, 0);
+    }
+
+    /**
+     * Records what the calling thread's {@code validate} on {@code lock} answered (#740).
+     *
+     * <p>Published after the answer, so it drains after every read of the speculation it closes.
+     * {@code true} means no write lock was taken since the stamp, and the reads in between saw
+     * what a reader holding the lock in shared mode would have seen; {@code false} means the
+     * caller discards what it read.
+     *
+     * @param lock  the lock that was asked, or {@code null}
+     * @param valid what {@code validate} returned
+     * @since 1.12.3
+     */
+    public static void optimisticReadValidated(@Nullable Object lock, boolean valid) {
+        if (lock == null || STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), OPTIMISTIC_READ_VALIDATED, valid, 0L, false,
+                Integer.MIN_VALUE, System.identityHashCode(lock), false, 0, 0, 0);
     }
 
     /**
@@ -2009,6 +2083,22 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static void ownershipOffered(@Nullable Object offered, @Nullable Object container) {
+        ownershipOffered(offered, container, null);
+    }
+
+    /**
+     * {@link #ownershipOffered(Object, Object)} with the enclosing method's own monitor in hand,
+     * which joins the locks the offer carries when held; see
+     * {@link #ownershipTaken(Object, Object, Object)} (#796).
+     *
+     * @param offered   the element being offered, or {@code null}
+     * @param container the queue it is offered to
+     * @param monitor   the enclosing method's own monitor, counted when this thread holds it;
+     *                  {@code null} for none
+     * @since 1.12.3
+     */
+    public static void ownershipOffered(@Nullable Object offered, @Nullable Object container,
+                                        @Nullable Object monitor) {
         if (offered == null || container == null || STOPPED.get()) {
             return;
         }
@@ -2019,9 +2109,20 @@ public final class TelemetryRegistry {
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, ordersNothing,
-                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
+                ordersNothing ? HeldLocks.registeredLockFingerprint(ifHeld(monitor), true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
                 System.identityHashCode(container));
+    }
+
+    /**
+     * {@return {@code monitor} when this thread holds it, else {@code null}}
+     *
+     * <p>Inside a {@code synchronized} method the answer is yes by construction. Elsewhere the
+     * weaver passes {@code this} on the chance that a {@code synchronized} caller holds it (#751),
+     * and only asking tells the two apart. Asked only for a container that orders nothing.
+     */
+    private static @Nullable Object ifHeld(@Nullable Object monitor) {
+        return monitor != null && Thread.holdsLock(monitor) ? monitor : null;
     }
 
     /**
@@ -2866,7 +2967,7 @@ public final class TelemetryRegistry {
             return;
         }
         try {
-            executor.submit(TelemetryRegistry::drainOnce).get(FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            executor.submit(TelemetryRegistry::drainAndSettle).get(FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (ExecutionException | TimeoutException | RejectedExecutionException ignored) { // NOPMD EmptyCatchBlock — best-effort flush, same rule as drainOnce below
@@ -2919,6 +3020,25 @@ public final class TelemetryRegistry {
      */
     public static TelemetryEventBuffer buffer() {
         return BUFFER;
+    }
+
+    /**
+     * {@link #drainOnce()}, then tells the callback the flush it asked for is complete, on the
+     * drain thread as every callback method runs (#740). Only a requested flush settles: the
+     * periodic drain runs while producers are still running, and settling there would close a
+     * speculation whose validation had not been published yet.
+     */
+    private static void drainAndSettle() {
+        drainOnce();
+        TelemetryEventBuffer.DrainCallback cb = drainCallback;
+        if (cb == null) {
+            return;
+        }
+        try {
+            cb.onFlush();
+        } catch (RuntimeException | StackOverflowError ignored) { // NOPMD EmptyCatchBlock - same containment rule as drainOnce
+            // Best-effort like the drain itself: a failing consumer must not fail the flush.
+        }
     }
 
     private static void drainOnce() {

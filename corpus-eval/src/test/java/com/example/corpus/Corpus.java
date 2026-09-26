@@ -4285,14 +4285,14 @@ final class Corpus {
 
             new RecordingSubject("idiom_blockingQueue_handsOffThroughAPlainDeque", JDK,
                     "java.util.ArrayDeque",
-                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same hand-off through an ArrayDeque, offered to and polled from by six "
-                            + "threads with no lock. The deque is the synchronization that was "
-                            + "removed, so the collection detector is the one it must wake. "
-                            + "AtomicityValidator also reports the orders in some runs and not in "
-                            + "others, depending on whether a poll ever caught an offer, so it is "
-                            + "not what this row pins",
+                            + "threads with no lock. An ArrayDeque orders nothing and a poll out "
+                            + "of it is a hand-off only under a lock the offer shared, so the "
+                            + "orders' writes on two threads are unordered. The pair names the "
+                            + "same detector on both halves; the deque itself also wakes "
+                            + "SharedCollectionDetector (#751, #796)",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("idiom_volatileFlag_publishesPlainData", JDK,
@@ -4609,6 +4609,26 @@ final class Corpus {
                     "the same declaration over peek(): every thread declares the one digest its "
                             + "own and uses it at once, and a declaration cannot make that a "
                             + "hand-off",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_stampedLock_validatesItsOptimisticRead", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the class javadoc's Point: one writer per round moves it under the write "
+                            + "lock, and every reader reads it after tryOptimisticRead, validates, "
+                            + "and re-reads under the read lock when the validation failed. A "
+                            + "validate that held means no write lock was taken since the stamp, "
+                            + "so the reads it covers were reads under the lock in shared mode "
+                            + "(#740)"),
+
+            new RecordingSubject("idiom_stampedLock_usesAnOptimisticReadUnvalidated", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same point read after tryOptimisticRead and used with no validate. "
+                            + "Nothing says the reads were consistent, so they are plain reads "
+                            + "racing the writer's",
                     IssueSeverity.HIGH)
     );
 

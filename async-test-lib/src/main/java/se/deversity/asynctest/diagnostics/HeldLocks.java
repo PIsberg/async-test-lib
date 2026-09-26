@@ -320,6 +320,77 @@ public final class HeldLocks {
     }
 
     /**
+     * {@return {@link #lockFingerprint(boolean)} with {@code heldMonitor} counted among the held
+     * locks, registered the same way, or 0 for none}
+     *
+     * <p>For a monitor this thread holds without this registry having seen it taken: the monitor of
+     * a {@code synchronized} method, which comes from the access flag with no instruction to weave.
+     * The weaver knows it statically and passes it to the hooks that need it (#796). The caller
+     * vouches that it is held, and nothing is probed. The members stay recoverable through
+     * {@link #members(long)}, so a set holding the monitor this way and one holding it through a
+     * woven {@code synchronized} block intersect on it.
+     *
+     * @param heldMonitor a monitor this thread holds, {@code null} for none
+     * @param forWrite    whether the access being recorded is a write
+     * @since 1.12.3
+     */
+    public static long registeredLockFingerprint(@Nullable Object heldMonitor, boolean forWrite) {
+        if (heldMonitor == null) {
+            return lockFingerprint(forWrite);
+        }
+        return current().registeredFingerprint(System.identityHashCode(heldMonitor), forWrite);
+    }
+
+    /**
+     * {@return the fingerprint of the locks behind {@code fingerprint} plus the lock whose identity
+     * hash is {@code lockHash}, registered like the rest, or {@code fingerprint} itself when its
+     * members cannot be recovered}
+     *
+     * <p>For a consumer that learns after the fact that an access was covered by one more lock
+     * than the producer held: the reads of a {@code StampedLock} optimistic read whose
+     * {@code validate} held saw what a reader holding that lock in shared mode sees (#740). The
+     * value is the one a producer holding both would have computed for a read, so it intersects
+     * with everything recorded under the lock itself. A fingerprint the registry no longer knows,
+     * because it filled, is returned unchanged rather than guessed at.
+     *
+     * @param fingerprint a value from {@link #lockFingerprint(boolean)} for a read, 0 for none
+     * @param lockHash    {@code System.identityHashCode} of the lock to add
+     * @since 1.12.3
+     */
+    public static long withLock(long fingerprint, int lockHash) {
+        int[] held = members(fingerprint);
+        if (held == null) {
+            return fingerprint;
+        }
+        long sum = 0L;
+        long xor = 0L;
+        for (int hash : held) {
+            if (hash == lockHash) {
+                return fingerprint;
+            }
+            sum += hash;
+            xor ^= hash;
+        }
+        long value = digest(sum + lockHash, xor ^ lockHash, held.length + 1);
+        if (!LocksetRegistry.isRegistered(value)) {
+            int[] withLock = Arrays.copyOf(held, held.length + 1);
+            withLock[held.length] = lockHash;
+            LocksetRegistry.register(value, withLock);
+        }
+        return value;
+    }
+
+    /**
+     * {@return the commutative digest of a lockset from the sum and xor of its identity hashes and
+     * its size}, never 0, which means nothing held
+     */
+    private static long digest(long sum, long xor, int size) {
+        long value = (sum * 0x9E3779B97F4A7C15L) ^ (xor << 1) ^ ((long) size << 48);
+        // 0 is reserved for "nothing held", so a set that digests to it borrows another bit.
+        return value == 0L ? 1L : value;
+    }
+
+    /**
      * {@return the identity hashes behind a fingerprint produced by {@link #lockFingerprint(boolean)},
      * or {@code null} when the fingerprint is not one this registry has seen}
      *
@@ -592,9 +663,7 @@ public final class HeldLocks {
                 sum += extraHash;
                 xor ^= extraHash;
             }
-            long value = (sum * 0x9E3779B97F4A7C15L) ^ (xor << 1) ^ ((long) size << 48);
-            // 0 is reserved for "nothing held", so a set that digests to it borrows another bit.
-            return value == 0L ? 1L : value;
+            return digest(sum, xor, size);
         }
 
         /**
@@ -616,6 +685,18 @@ public final class HeldLocks {
                 }
             }
             return forWrite ? writeFingerprint : readFingerprint;
+        }
+
+        /**
+         * {@return the digest over the held locks plus {@code extraHash}, registering its members
+         * the first time any thread computes it since the registry was last cleared}
+         */
+        long registeredFingerprint(int extraHash, boolean forWrite) {
+            long value = fingerprint(extraHash, forWrite);
+            if (value != 0L && !LocksetRegistry.isRegistered(value)) {
+                LocksetRegistry.register(value, snapshot(true, extraHash, forWrite));
+            }
+            return value;
         }
 
         boolean containsHash(int hash) {

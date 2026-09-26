@@ -6,7 +6,8 @@ import java.util.Queue;
 /**
  * An object pool over a plain {@code ArrayDeque}, in the shapes #751 has to tell apart: the deque
  * guarded by {@code synchronized} methods, by {@code synchronized} blocks on the pool, by a mix of
- * the two, by two different locks, and not guarded at all.
+ * the two, by two different locks, and not guarded at all, and a class-wide pool guarded by
+ * {@code static synchronized} methods (#796).
  *
  * <p>The item is used with no lock between a borrow and the next give-back, which is correct in
  * the first three shapes: the pool's monitor serialises the deque, so each item leaves it to one
@@ -33,7 +34,7 @@ public final class PlainDequePoolBean {
         item.uses = item.uses + 1;
     }
 
-    /** Returns an item through a {@code synchronized} method, the monitor the weaver cannot see. */
+    /** Returns an item through a {@code synchronized} method, whose monitor no instruction takes. */
     public synchronized void giveBack(Item item) {
         free.offer(item);
     }
@@ -72,5 +73,45 @@ public final class PlainDequePoolBean {
     /** {@return an item borrowed with no lock held, the broken pool} */
     public Item borrowUnguarded() {
         return free.poll();
+    }
+
+    /** Returns an item through a {@code synchronized} method that hands the offer to a helper. */
+    public synchronized void giveBackThroughAHelper(Item item) {
+        putBack(item);
+    }
+
+    /** {@return an item, borrowed through a {@code synchronized} method that polls in a helper} */
+    public synchronized Item borrowThroughAHelper() {
+        return takeOne();
+    }
+
+    /** The offer, in a method that is not itself {@code synchronized}: its callers are. */
+    private void putBack(Item item) {
+        free.offer(item);
+    }
+
+    /** The poll, in a method that is not itself {@code synchronized}: its callers are. */
+    private Item takeOne() {
+        return free.poll();
+    }
+
+    /** One pool for the whole class, guarded by {@code static synchronized} methods. */
+    private static final Queue<Item> SHARED_FREE = new ArrayDeque<>();
+
+    /** Returns an item through a {@code static synchronized} method, which holds the class. */
+    public static synchronized void giveBackToTheSharedPool(Item item) {
+        SHARED_FREE.offer(item);
+    }
+
+    /** {@return an item from the shared pool, through a {@code static synchronized} method} */
+    public static synchronized Item borrowFromTheSharedPool() {
+        return SHARED_FREE.poll();
+    }
+
+    /** {@return an item from the shared pool under a lock its give-backs never take, the broken pool} */
+    public Item borrowFromTheSharedPoolUnderAnotherLock() {
+        synchronized (otherLock) {
+            return SHARED_FREE.poll();
+        }
     }
 }

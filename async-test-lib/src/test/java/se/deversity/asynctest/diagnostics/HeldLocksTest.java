@@ -29,6 +29,30 @@ class HeldLocksTest {
     }
 
     @Test
+    @DisplayName("a lock added after the fact matches a thread that held it (#740)")
+    void withLockEqualsTheFingerprintOfAThreadHoldingBoth() {
+        Object monitor = new Object();
+        Object stamped = new Object();
+        long monitorOnly;
+        long both;
+        try (var held = HeldLocks.holding(monitor)) {
+            monitorOnly = HeldLocks.lockFingerprint(false);
+            try (var shared = HeldLocks.holding(stamped)) {
+                both = HeldLocks.lockFingerprint(false);
+            }
+        }
+        long added = HeldLocks.withLock(monitorOnly, System.identityHashCode(stamped));
+        assertEquals(both, added,
+                "adding a lock on the drain side must give the value a thread holding both computes, "
+                        + "or reads confirmed by validate() would not intersect with the writes");
+        assertEquals(2, HeldLocks.members(added).length, "and its members must be recoverable");
+        assertEquals(HeldLocks.withLock(0L, System.identityHashCode(stamped)),
+                HeldLocks.withLock(HeldLocks.withLock(0L, System.identityHashCode(stamped)),
+                        System.identityHashCode(stamped)),
+                "a lock the set already holds is not counted twice");
+    }
+
+    @Test
     @DisplayName("a declared lock is held until the guard closes")
     void holdingTracksTheLockForTheScope() {
         Object lock = new Object();

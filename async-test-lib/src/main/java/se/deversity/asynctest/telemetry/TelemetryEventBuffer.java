@@ -243,6 +243,22 @@ public final class TelemetryEventBuffer {
             onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
                     identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity);
         }
+
+        /**
+         * Invoked on the drain thread after a drain that {@code TelemetryRegistry.flush()} asked
+         * for, once every event published before the flush has been delivered.
+         *
+         * <p>A flush marks a point where the caller has stopped its producers, the end of a round
+         * or of a run, so anything a consumer is still holding back for a later event from the
+         * same producer will not get that event. The bridge uses it to deliver the reads of a
+         * {@code StampedLock} speculation that was never validated (#740). {@code default} for the
+         * reason the overloads above are: not overriding it keeps the previous behaviour.
+         *
+         * @since 1.12.3
+         */
+        default void onFlush() {
+            // Nothing held back, nothing to settle.
+        }
     }
 
     /**

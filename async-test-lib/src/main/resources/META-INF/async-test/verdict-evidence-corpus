@@ -34,11 +34,15 @@
 #
 #   FILE_CHANNEL_POSITION_RACE has a same-class pair in the corpus and it is a good one: the two
 #   rows share one channel and differ only in the read overload, so the silence is the operation
-#   model deciding. What it cannot show is the other half of what VERDICT means. analyze() reports
-#   whenever accessingThreadIds.size() > 1 and the detector carries no representation of a lock at
-#   all, so a caller that wraps position(n) and read(buffer) in synchronized(channel) - which
-#   genuinely fixes the race - draws the identical finding. Same disqualifier as CACHE_CONCURRENCY,
-#   and the same remedy: give it the lockset the Shared* family already has, then re-ask.
+#   model deciding. What it cannot show is the other half of what VERDICT means. This entry used
+#   to name the missing lockset; the detector now keeps SelfGuard's per-round lockset, so a caller
+#   that wraps position(n) and read(buffer) in synchronized(channel), or in a lock declared through
+#   HeldLocks, stays silent. Re-asked on 2026-09-26 (#755) and still held, on the unit it judges:
+#   an access, not the seek-then-I/O sequence the race is. FileChannel runs one operation involving
+#   the position at a time, so threads that each make one self-contained read(buffer) or
+#   write(buffer) lose nothing, and they draw the same finding as a thread whose position(n)
+#   another thread's call lands behind. The firing row is that self-contained shape. Re-ask once a
+#   finding needs a call landing between a thread's position(n) and the I/O that relies on it.
 #
 # Blank lines and # comments are ignored.
 

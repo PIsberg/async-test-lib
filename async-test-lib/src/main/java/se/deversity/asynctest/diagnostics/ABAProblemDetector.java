@@ -50,6 +50,17 @@ import java.util.concurrent.atomic.AtomicLong;
  * it, and it is not. The window ends at the next round start ({@link #markInvocationStart()}),
  * because the harness orders its rounds.
  *
+ * <p><strong>Limits.</strong> The verdict assumes every change to the variable is recorded. An
+ * unrecorded write that takes the variable off the value a compare-and-set wrote hides the one
+ * witness that a toggle recorded after it really followed it, so that toggle is reported. The
+ * read side has no such witness: a read changes nothing, and it sees A whether an A-B-A ran just
+ * before it or just after it. A change recorded after the read is therefore taken as after it
+ * (#810). That is wrong only when the toggle ran wholly before the read and both of its records
+ * landed after the read's, which needs two threads, one moving the value away and another moving
+ * it back, or one thread that makes both changes before recording the first: a thread that
+ * records each change right after making it cannot. Those records are the records of a real ABA,
+ * so it is reported as one.
+ *
  * <p>A value going A to B and back to A is not a finding on its own. One thread pushing and
  * then popping, a flag set and cleared, a counter incremented and decremented: each is an
  * A-B-A history, and none of them hurts a compare-and-set whose premise was read after the
@@ -77,8 +88,8 @@ public class ABAProblemDetector {
         final String varName;
         /**
          * The latest recorded read per thread. A compare-and-set takes its premise from the read
-         * just before it, so a later read replaces an earlier one, and a compare-and-set
-         * consumes the read it was checked against.
+         * just before it, so a later read replaces an earlier one, a compare-and-set consumes
+         * the read it was checked against, and a round start drops the rest.
          */
         final Map<Long, ValueRead> reads = new ConcurrentHashMap<>();
         /**
@@ -199,8 +210,8 @@ public class ABAProblemDetector {
      * Record a CAS (Compare-And-Swap) attempt, on the thread that made it.
      *
      * <p>A successful attempt is an ABA finding when this thread's last recorded read of the
-     * variable saw {@code expectedValue}, and after that read other threads recorded a change
-     * away from it and a change back to it (see the class documentation).
+     * variable in this round saw {@code expectedValue}, and after that read other threads recorded
+     * a change away from it and a change back to it (see the class documentation).
      *
      * @param variableName a label identifying the variable in the report
      * @param expectedValue the value the compare-and-set expected to find
@@ -431,9 +442,19 @@ public class ABAProblemDetector {
      * change recorded from here on happened after every compare-and-set recorded before it and
      * cannot be the late record of an A-B-A one of them missed.
      *
+     * <p>It also drops every read no compare-and-set consumed. A pooled worker runs the body again
+     * on the same thread, and its compare-and-set in this round, with no read recorded in it, would
+     * otherwise be judged against last round's read and last round's changes, all of which ended
+     * before this round began (#810). No worker is running when the runner calls this; a read that
+     * a thread the test left running records meanwhile is either kept or dropped, and dropping it
+     * only withholds a verdict.
+     *
      * @since 1.12.3
      */
     public void markInvocationStart() {
+        for (AtomicValueHistory history : trackedVariables.values()) {
+            history.reads.clear();
+        }
         long[] started = roundStarts;
         long[] next = Arrays.copyOf(started, started.length + 1);
         next[started.length] = sequence.incrementAndGet();

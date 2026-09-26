@@ -172,6 +172,17 @@ class TelemetryBridgeTest {
         }
     }
 
+    /** Runs {@code body} holding {@code monitor} as a synchronized method does: unseen by HeldLocks. */
+    private static void inMethod(@org.jspecify.annotations.Nullable Object monitor, Runnable body) {
+        if (monitor == null) {
+            body.run();
+            return;
+        }
+        synchronized (monitor) {
+            body.run();
+        }
+    }
+
     /**
      * Replays the idiom lane's queue hand-off (#751) through the real hooks and the real ring: one
      * worker builds an order and offers it, a second polls it and updates it outside any lock, one
@@ -186,6 +197,23 @@ class TelemetryBridgeTest {
                                                  @org.jspecify.annotations.Nullable Object offerLock,
                                                  @org.jspecify.annotations.Nullable Object pollLock)
             throws InterruptedException {
+        return orderHandedOffThrough(queue, offerLock, null, pollLock, null);
+    }
+
+    /**
+     * {@link #orderHandedOffThrough(java.util.Queue, Object, Object)} with a {@code synchronized}
+     * method around either side (#796): its monitor is held, never recorded in the lockset, and
+     * handed to the hook the way the weaver hands it.
+     *
+     * @param offerMethod the monitor of a synchronized method around the offer, {@code null} for none
+     * @param pollMethod  the monitor of a synchronized method around the poll, {@code null} for none
+     */
+    private static boolean orderHandedOffThrough(java.util.Queue<Object> queue,
+                                                 @org.jspecify.annotations.Nullable Object offerLock,
+                                                 @org.jspecify.annotations.Nullable Object offerMethod,
+                                                 @org.jspecify.annotations.Nullable Object pollLock,
+                                                 @org.jspecify.annotations.Nullable Object pollMethod)
+            throws InterruptedException {
         AtomicityValidator av = new AtomicityValidator();
         Order order = new Order();
         try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
@@ -193,14 +221,16 @@ class TelemetryBridgeTest {
                 long me = Thread.currentThread().threadId();
                 TelemetryRegistry.recordAccess(order, null, null, me, "Order.quantity", true,
                         false, Integer.MIN_VALUE, false, false);
-                under(offerLock, () -> se.deversity.asynctest.AgentCollectionHooks.queueOffer(queue, order));
+                under(offerLock, () -> inMethod(offerMethod,
+                        () -> se.deversity.asynctest.AgentCollectionHooks.queueOffer(queue, order, offerMethod)));
             });
             producer.start();
             producer.join();
             Thread consumer = new Thread(() -> {
                 long me = Thread.currentThread().threadId();
                 Object[] taken = new Object[1];
-                under(pollLock, () -> taken[0] = se.deversity.asynctest.AgentCollectionHooks.queuePoll(queue));
+                under(pollLock, () -> inMethod(pollMethod,
+                        () -> taken[0] = se.deversity.asynctest.AgentCollectionHooks.queuePoll(queue, pollMethod)));
                 TelemetryRegistry.recordAccess(taken[0], null, null, me, "Order.quantity", false,
                         false, Integer.MIN_VALUE, false, false);
                 TelemetryRegistry.recordAccess(taken[0], null, null, me, "Order.quantity", true,
@@ -225,20 +255,18 @@ class TelemetryBridgeTest {
     }
 
     @Test
-    void aPlainDequeHandOffWithAnInvisibleSideKeepsItsEdge() throws InterruptedException {
+    void aPlainDequeHandOffWithNoLockOnASideIsNotAnOwnershipHandOff() throws InterruptedException {
         Object pool = new Object();
-        String why = "a side with no lock the agent can see may hold a synchronized method's "
-                + "monitor, which comes from the access flag and is never recorded, and may be the "
-                + "very monitor the other side shows. Dropping the edge there reported correct "
-                + "pools, so AtomicityValidator leaves these alone until the weaver passes the "
-                + "method's monitor to the queue hooks (#751); SharedCollectionDetector still "
-                + "reports a deque accessed without its lock. Case: ";
-        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, null),
-                why + "no visible lock on either side");
-        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), pool, null),
-                why + "a visible lock on the offer side only");
-        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool),
-                why + "a visible lock on the poll side only");
+        String why = "a side that holds no lock shares none with the other, and with a synchronized "
+                + "method's monitor passed to the hooks (#796) an empty lockset is an unguarded "
+                + "side, not an invisible one. An ArrayDeque can then hand one order to two "
+                + "pollers, so the take is no hand-off (#751). Case: ";
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, null),
+                why + "no lock on either side");
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), pool, null),
+                why + "a lock on the offer side only");
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool),
+                why + "a lock on the poll side only");
     }
 
     @Test
@@ -248,6 +276,154 @@ class TelemetryBridgeTest {
                 "offer and poll both under the pool's monitor is the synchronized object pool: "
                         + "the lock serialises the deque, so the order leaves it to one thread only, "
                         + "and the consumer's unlocked use of what it took is its own (#751)");
+    }
+
+    @Test
+    void aSynchronizedMethodsMonitorIsALockTheHandOffIsJudgedBy() throws InterruptedException {
+        Object pool = new Object();
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool, new Object(), null),
+                "the offer ran inside a synchronized method on the pool and the poll under a lock the "
+                        + "offers never take. The method's monitor reaches the hook from the weaver, "
+                        + "so both sides show a lock and they share none (#796)");
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool, pool, null),
+                "a synchronized-method offer and a synchronized-block poll on the same pool share its "
+                        + "monitor, whichever way each side took it (#796)");
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool, null, pool),
+                "both sides in synchronized methods on the pool is the synchronized object pool (#796)");
+    }
+
+    /** The StampedLock javadoc's point, reduced to the one coordinate the cases need (#740). */
+    static final class Point {
+        int x;
+    }
+
+    /** How the reader in {@link #optimisticReadReported} treats its optimistic stamp. */
+    enum Reader {
+        /** Validates, and nothing wrote in between, so the validation holds. */
+        VALIDATES,
+        /** Validates after a writer ran in between, so the validation fails and it re-reads. */
+        VALIDATES_AND_FALLS_BACK,
+        /** Validates after a writer ran in between, and retries optimistically until one holds. */
+        RETRIES_UNTIL_VALID,
+        /** Validates after a writer ran in between, and gives up without reading again. */
+        VALIDATES_AND_GIVES_UP,
+        /** Uses what it read and never validates. */
+        NEVER_VALIDATES
+    }
+
+    /**
+     * One writer moves the point under the write lock and one reader reads it optimistically,
+     * through the real lock hooks, ring and bridge, in an order fixed by the test (#740).
+     *
+     * @return whether AtomicityValidator reported the point's field
+     */
+    private static boolean optimisticReadReported(Reader reader) throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        java.util.concurrent.ExecutorService readerThread =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        Runnable write = () -> {
+            long me = Thread.currentThread().threadId();
+            long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(lock);
+            try {
+                TelemetryRegistry.recordAccess(point, null, null, me, "Point.x", true, false,
+                        Integer.MIN_VALUE, false, false);
+                point.x++;
+            } finally {
+                se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, stamp);
+            }
+        };
+        Runnable read = () -> TelemetryRegistry.recordAccess(point, null, null,
+                Thread.currentThread().threadId(), "Point.x", false, false, Integer.MIN_VALUE,
+                false, false);
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(write);
+            writer.start();
+            writer.join();
+            long[] stamp = new long[1];
+            readerThread.submit(() -> {
+                stamp[0] = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                read.run();
+            }).get(10, TimeUnit.SECONDS);
+            if (reader == Reader.VALIDATES_AND_FALLS_BACK || reader == Reader.RETRIES_UNTIL_VALID
+                    || reader == Reader.VALIDATES_AND_GIVES_UP) {
+                Thread second = new Thread(write);
+                second.start();
+                second.join();
+            }
+            if (reader == Reader.RETRIES_UNTIL_VALID) {
+                readerThread.submit(() -> {
+                    long current = stamp[0];
+                    while (!se.deversity.asynctest.AgentLockHooks.validate(lock, current)) {
+                        current = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                        read.run();
+                    }
+                }).get(10, TimeUnit.SECONDS);
+            } else if (reader == Reader.VALIDATES_AND_GIVES_UP) {
+                readerThread.submit(() -> se.deversity.asynctest.AgentLockHooks.validate(lock, stamp[0]))
+                        .get(10, TimeUnit.SECONDS);
+            } else if (reader != Reader.NEVER_VALIDATES) {
+                readerThread.submit(() -> {
+                    if (!se.deversity.asynctest.AgentLockHooks.validate(lock, stamp[0])) {
+                        long readStamp = se.deversity.asynctest.AgentLockHooks.readLock(lock);
+                        try {
+                            read.run();
+                        } finally {
+                            se.deversity.asynctest.AgentLockHooks.unlockRead(lock, readStamp);
+                        }
+                    }
+                }).get(10, TimeUnit.SECONDS);
+            }
+            TelemetryRegistry.flush();
+            return av.analyzeAtomicity().unsafeFieldAccesses.stream()
+                    .anyMatch(line -> line.startsWith("Point.x"));
+        } finally {
+            readerThread.shutdownNow();
+        }
+    }
+
+    @Test
+    void aValidatedOptimisticReadIsAReadUnderTheLock() throws Exception {
+        assertFalse(optimisticReadReported(Reader.VALIDATES),
+                "the read ran between tryOptimisticRead and a validate that held, so no write lock "
+                        + "was taken in between and it saw what a reader holding the lock in shared "
+                        + "mode would have seen. It shares the writer's lock (#740)");
+    }
+
+    @Test
+    void aFailedValidationDropsItsReadsAndTheFallbackIsGuarded() throws Exception {
+        assertFalse(optimisticReadReported(Reader.VALIDATES_AND_FALLS_BACK),
+                "a writer ran between the stamp and the validate, so the validate failed and the "
+                        + "reader threw its speculative read away and read again under the read "
+                        + "lock. The discarded read is no access, and the re-read is guarded (#740)");
+    }
+
+    @Test
+    void aFailedValidationsReadsAreNoAccessesAtAll() throws Exception {
+        assertFalse(optimisticReadReported(Reader.VALIDATES_AND_GIVES_UP),
+                "the speculative read overlapped a writer, validate said so, and the reader "
+                        + "discarded what it read and used nothing. A read nobody uses is no access; "
+                        + "delivered as a plain read it would be a finding with nothing behind it, "
+                        + "because no re-read under the lock confirms it (#740)");
+    }
+
+    @Test
+    void aRetryLoopKeepsOnlyTheReadsOfTheValidationThatHeld() throws Exception {
+        assertFalse(optimisticReadReported(Reader.RETRIES_UNTIL_VALID),
+                "the first speculative read overlapped a writer and its validate failed, so the "
+                        + "reader discarded it and read again optimistically until a validate held. "
+                        + "Only the read that validation covered was used, and it counts as a read "
+                        + "under the lock; the discarded one is no access at all (#740)");
+    }
+
+    @Test
+    void anOptimisticReadNeverValidatedIsAnUnguardedRead() throws Exception {
+        assertTrue(optimisticReadReported(Reader.NEVER_VALIDATES),
+                "the reader used what it read under an optimistic stamp and never asked validate, "
+                        + "so nothing says the read was consistent: it is a plain read racing the "
+                        + "writer, and a speculation nobody closes must still reach the detector by "
+                        + "the end of the run (#740)");
     }
 
     @Test

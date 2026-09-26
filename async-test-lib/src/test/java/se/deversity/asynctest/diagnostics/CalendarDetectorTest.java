@@ -240,6 +240,73 @@ public class CalendarDetectorTest {
             "both gets held the read lock and nothing set the calendar: " + detector.analyze());
     }
 
+    // #807: the lockset judged every get() as a read, so a read lock guarded it even when a set()
+    // had left the fields to recompute. Then the first get() writes them, and the other readers
+    // holding the same read lock read and write them alongside it.
+    @Test
+    void getsUnderOneReadLockAfterASetAreReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> underLock(lock, false, () -> {
+            cal.set(Calendar.DAY_OF_MONTH, 3);
+            detector.recordSet(cal, "read-locked-calendar");
+        }));
+        Runnable get = () -> underLock(lock, true, () -> {
+            cal.get(Calendar.DAY_OF_MONTH);
+            detector.recordGet(cal, "read-locked-calendar");
+        });
+        round(scope, get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "the first get() after the set() recomputes the fields, which a read lock does not "
+                + "make exclusive");
+    }
+
+    // The twin: a get() that already recomputed the fields leaves nothing to write, so the gets
+    // after it only read, and one read lock guards them.
+    @Test
+    void getsUnderOneReadLockAfterAGetCompletedTheSetAreNotReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> underLock(lock, false, () -> {
+            cal.set(Calendar.DAY_OF_MONTH, 3);
+            detector.recordSet(cal, "read-locked-calendar");
+            cal.get(Calendar.DAY_OF_MONTH);
+            detector.recordGet(cal, "read-locked-calendar");
+        }));
+        Runnable get = () -> underLock(lock, true, () -> {
+            cal.get(Calendar.DAY_OF_MONTH);
+            detector.recordGet(cal, "read-locked-calendar");
+        });
+        round(scope, get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "the writer's own get() recomputed the fields under the write lock, so the later gets "
+                + "only read: " + detector.analyze());
+    }
+
+    /** Runs {@code body} holding {@code lock}'s read view if {@code shared}, else its write view. */
+    private static void underLock(java.util.concurrent.locks.ReentrantReadWriteLock lock,
+                                  boolean shared, Runnable body) {
+        java.util.concurrent.locks.Lock view = shared ? lock.readLock() : lock.writeLock();
+        view.lock();
+        HeldLocks.acquired(lock, shared);
+        try {
+            body.run();
+        } finally {
+            HeldLocks.released(lock, shared);
+            view.unlock();
+        }
+    }
+
     /**
      * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
      * bound, released together so their accesses overlap, as a run's workers are.
