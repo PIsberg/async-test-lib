@@ -194,6 +194,9 @@ public class AtomicityValidator {
         /** Whether the field is declared {@code volatile}, as resolved at weave time. */
         private volatile boolean volatileField;
 
+        /** Whether a write carried the volatile bit; see {@link #hasVolatileWrites()}. */
+        private volatile boolean volatileWrite;
+
         /**
          * The one constant every write stored, {@link #UNSET} before the first write, and
          * {@code Integer.MIN_VALUE} once a write stored something else.
@@ -240,6 +243,22 @@ public class AtomicityValidator {
 
         void noteVolatile() {
             volatileField = true;
+        }
+
+        void noteVolatileWrite() {
+            volatileWrite = true;
+        }
+
+        /**
+         * {@return whether a write to this field carried the volatile bit}
+         *
+         * <p>The one reading of the bit that means "declared {@code volatile}". The bridge also
+         * sets it on a read of a plain field that follows a volatile read of the same object, its
+         * safely-published mark, which {@link #isVolatileField()} cannot tell apart; that mark only
+         * ever rides on a read.
+         */
+        boolean hasVolatileWrites() {
+            return volatileWrite;
         }
 
         void noteWriteFingerprint(long observed) {
@@ -673,6 +692,9 @@ public class AtomicityValidator {
         if (volatileField && fieldName != null && !fieldName.isBlank()) {
             FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
             guard.noteVolatile();
+            if (isWrite) {
+                guard.noteVolatileWrite();
+            }
         }
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
     }
@@ -783,6 +805,9 @@ public class AtomicityValidator {
                 ignored -> new FieldGuard());
         if (volatileField) {
             guard.noteVolatile();
+            if (isWrite) {
+                guard.noteVolatileWrite();
+            }
         }
         if (isWrite) {
             guard.noteWriteConstant(constantTag);
@@ -1279,6 +1304,15 @@ public class AtomicityValidator {
                         && HappensBefore.everyConflictOrdered(roundAccesses, true)) {
                     sawUnguarded = false;
                 }
+                // A volatile field written by one thread in the round: that thread's
+                // read-then-write cannot lose an update, and the other threads' reads of a
+                // volatile are synchronization rather than data races, which is how
+                // RaceConditionDetector judges the same field. Two writers keep the finding,
+                // which is what keeps volatile count++ reportable.
+                if (sawUnguarded && locks != null && locks.hasVolatileWrites()
+                        && writerThreads(roundAccesses) == 1) {
+                    sawUnguarded = false;
+                }
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 
@@ -1302,6 +1336,17 @@ public class AtomicityValidator {
         }
 
         return report;
+    }
+
+    /** {@return how many distinct threads wrote in {@code accesses}} */
+    private static int writerThreads(List<FieldAccessRecord> accesses) {
+        Set<Long> writers = new HashSet<>();
+        for (FieldAccessRecord access : accesses) {
+            if (access.write) {
+                writers.add(access.threadId);
+            }
+        }
+        return writers.size();
     }
 
     /**

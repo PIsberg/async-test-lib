@@ -135,4 +135,47 @@ class OrderedPublicationTest {
     void mapPublicationWithoutTheAcquireStillReports() throws InterruptedException {
         assertTrue(mapPublicationReported(false));
     }
+
+    /** A volatile gauge: bumped with a read-then-write, read by everyone else. */
+    static final class Gauge {
+        volatile long latest;
+    }
+
+    /**
+     * One thread reads the gauge, then another bumps it with a read-then-write; with
+     * {@code secondWriter} a third bumps it too, from a clock that never saw the second's write.
+     */
+    private static boolean volatileGaugeReported(boolean secondWriter) throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Gauge gauge = new Gauge();
+        Stamped reader = onNewThread(() -> { }, () -> { });
+        Stamped writer = onNewThread(() -> { }, () -> HappensBefore.release(gauge));
+        access(validator, "Gauge.latest", false, reader, true, NO_CONSTANT, gauge);
+        access(validator, "Gauge.latest", false, writer, true, NO_CONSTANT, gauge);
+        access(validator, "Gauge.latest", true, writer, true, NO_CONSTANT, gauge);
+        if (secondWriter) {
+            Stamped other = onNewThread(() -> { }, () -> HappensBefore.release(gauge));
+            access(validator, "Gauge.latest", false, other, true, NO_CONSTANT, gauge);
+            access(validator, "Gauge.latest", true, other, true, NO_CONSTANT, gauge);
+        }
+        return validator.analyzeAtomicity().unsafeFieldAccesses.stream()
+                .anyMatch(line -> line.startsWith("Gauge.latest"));
+    }
+
+    @Test
+    @DisplayName("a volatile bumped by a single writer and read by other threads is not a finding")
+    void aSingleWriterVolatileIsNotAFinding() throws InterruptedException {
+        assertFalse(volatileGaugeReported(false),
+                "one writer's read-then-write cannot lose an update, and a volatile's reads are "
+                        + "synchronization rather than data races: the race detector says so for "
+                        + "the same field, and this detector claims the same model");
+    }
+
+    @Test
+    @DisplayName("the same volatile bumped by two writers is still a finding: volatile count++")
+    void twoWritersOnAVolatileStillReport() throws InterruptedException {
+        assertTrue(volatileGaugeReported(true),
+                "two threads' read-then-write on one volatile lose updates whatever the "
+                        + "visibility, which is the finding volatile count++ exists to keep");
+    }
 }
