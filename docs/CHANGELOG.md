@@ -315,6 +315,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only the fields read since the validate. Reading everything before the validate, revalidating
   after each read, and the retry loop falling back to the read lock stay silent; a read whose
   failed validate was already reported for a use is not reported a second time.
+- **`OptimisticReadValidationDetector` names the whole torn snapshot in a failed-use finding
+  (#815).** A read made on a stamp whose `validate()` had already failed was not recorded, and a
+  read after a passing `validate()` dropped the fields read before it, so read x, validate, read y,
+  failed revalidation, use named only y, and read x, failed validate, read y, use named only x.
+  The finding now names every field read under the stamp: the failure makes the snapshot torn as a
+  whole, and re-reading only the later fields under the read lock would still pair them with the
+  stale earlier ones. The never-validated finding still names only the reads no `validate()`
+  covered, and no verdict changed. Each field is named once and at most eight per read, with the
+  rest counted (`, and N more reads`); a stamp read in a loop used to add a name per read.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through

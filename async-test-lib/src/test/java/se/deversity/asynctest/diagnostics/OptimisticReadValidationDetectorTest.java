@@ -398,6 +398,8 @@ public class OptimisticReadValidationDetectorTest {
     /**
      * A read after a successful validate() that then fails its own revalidation, and is used anyway:
      * one finding, the failed use, not a second one for the missing validate() it was re-armed for.
+     * It names the whole snapshot, x as well as y (#815): x predates the writer and y may not, so
+     * the pair is torn, and re-reading only y under the read lock would still pair it with a stale x.
      */
     @Test
     void aReadAfterAValidateThatFailsItsRevalidationAndIsUsedIsReportedOnce() {
@@ -420,6 +422,124 @@ public class OptimisticReadValidationDetectorTest {
         assertEquals(1, report.violations.size(), report.violations.toString());
         assertTrue(report.violations.get(0).contains("validate() returned false"),
                 report.violations.get(0));
+        assertTrue(report.violations.get(0).contains("(sharedX, sharedY)"),
+                "the failed use names every field of the torn snapshot: " + report.violations.get(0));
+    }
+
+    /**
+     * A read made on a stamp whose validate() already failed is part of the snapshot the caller then
+     * uses, so the finding names it too (#815); it used to name only the fields read before the
+     * failed validate().
+     */
+    @Test
+    void aFailedUseNamesTheFieldsReadAfterTheFailedValidateToo() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        lock.unlockWrite(lock.writeLock());            // the concurrent writer
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertFalse(valid, "premise: the write invalidated the stamp");
+        d.recordDataAccessed(lock, stamp, t, "sharedY"); // read on anyway, under the failed stamp
+        d.recordValuesUsed(lock, stamp, t);
+        d.recordValuesUsed(lock, stamp, t);
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(), "reported once: " + report.violations);
+        assertTrue(report.violations.get(0).contains("(sharedX, sharedY)"),
+                "the failed use names every field of the torn snapshot: " + report.violations.get(0));
+    }
+
+    /**
+     * Naming a read made on a failed stamp changes no verdict: with no use recorded under that stamp
+     * it is still the retry idiom's discarded attempt, and silent.
+     */
+    @Test
+    void aReadOnAFailedStampWithNoUseStaysSilent() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        lock.unlockWrite(lock.writeLock());
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordDataAccessed(lock, stamp, t, "sharedY");
+
+        assertFalse(d.analyze().hasIssues(), d.analyze().violations.toString());
+    }
+
+    /**
+     * The names are kept once each and at most {@code MAX_NAMED_FIELDS} of them, so a stamp read in
+     * a loop does not grow its record with every read; the reads past the cap are counted instead.
+     */
+    @Test
+    void aFailedUseNamesEachFieldOnceUpToTheCapAndCountsTheRest() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+        int cap = OptimisticReadValidationDetector.MAX_NAMED_FIELDS;
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        for (int i = 0; i < 1_000; i++) {
+            d.recordDataAccessed(lock, stamp, t, "field0");
+        }
+        for (int i = 0; i < cap + 3; i++) {
+            d.recordDataAccessed(lock, stamp, t, "field" + i);
+        }
+        lock.unlockWrite(lock.writeLock());
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordValuesUsed(lock, stamp, t);
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        String v = report.violations.get(0);
+        StringBuilder named = new StringBuilder("(field0");
+        for (int i = 1; i < cap; i++) {
+            named.append(", field").append(i);
+        }
+        named.append(", and 3 more reads)");
+        assertTrue(v.contains(named), "first " + cap + " fields named once each, rest counted: " + v);
+    }
+
+    /**
+     * A field read before a passing validate() and read again after it: the never-validated finding
+     * for the second read names it, and a failed use names it once.
+     */
+    @Test
+    void aFieldReReadAfterAPassingValidateIsNamedByBothFindings() {
+        Thread t = Thread.currentThread();
+
+        var neverValidated = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        long stamp = lock.tryOptimisticRead();
+        neverValidated.recordOptimisticReadStarted(lock, stamp, t);
+        neverValidated.recordDataAccessed(lock, stamp, t, "sharedX");
+        neverValidated.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        neverValidated.recordDataAccessed(lock, stamp, t, "sharedX");
+        var report = neverValidated.analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        assertTrue(report.violations.get(0).contains("(sharedX)"), report.violations.get(0));
+
+        var failedUse = new OptimisticReadValidationDetector();
+        StampedLock lock2 = new StampedLock();
+        long stamp2 = lock2.tryOptimisticRead();
+        failedUse.recordOptimisticReadStarted(lock2, stamp2, t);
+        failedUse.recordDataAccessed(lock2, stamp2, t, "sharedX");
+        failedUse.recordValidateCalled(lock2, stamp2, lock2.validate(stamp2), t);
+        lock2.unlockWrite(lock2.writeLock());
+        failedUse.recordDataAccessed(lock2, stamp2, t, "sharedX");
+        failedUse.recordValidateCalled(lock2, stamp2, lock2.validate(stamp2), t);
+        failedUse.recordValuesUsed(lock2, stamp2, t);
+        report = failedUse.analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        assertTrue(report.violations.get(0).contains("(sharedX)"), report.violations.get(0));
     }
 
     /**
