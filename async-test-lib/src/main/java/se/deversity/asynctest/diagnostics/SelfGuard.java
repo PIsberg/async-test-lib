@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -61,7 +62,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code get} on an access-ordered {@link java.util.LinkedHashMap} relinks the entry, one on a
  * {@link java.util.WeakHashMap} expunges cleared entries, and one on a {@link java.util.Calendar}
  * after a {@code set} recomputes its fields. Those count as writes for this rule
- * ({@code TrackedInstance.readWrites}), while the lockset still judges them as reads.
+ * ({@code TrackedInstance.readWrites}). A read the detector knows writes is recorded as a write,
+ * so it needs an exclusive lock as well (#807): a {@code get} on a map known to be access-ordered
+ * ({@link #relinksOnGet(Object)}), and a {@code Calendar} get after a recorded {@code set}. Where
+ * that is not known, the lockset judges the read as a read, so a read lock held over it guards it.
  *
  * <p>Within a round the verdict is also per owner. A pool that hands an instance out through a
  * queue gives it to one thread at a time, and a take is the edge between one owner's accesses
@@ -114,6 +118,71 @@ public final class SelfGuard {
             + " HappensBefore.release(...) and acquire(...))";
 
     private SelfGuard() {
+    }
+
+    /**
+     * {@return whether a {@code get} on {@code map} is known to write it: {@code map} is a
+     * {@link java.util.LinkedHashMap} in access order, the usual LRU cache, which relinks the entry
+     * it returns (#807)}
+     *
+     * <p>The order is a private field of {@code java.util}, read only when that package is already
+     * open to this library, for example by {@code --add-opens java.base/java.util=ALL-UNNAMED}; the
+     * library never opens it. Otherwise the order is unknown and this is {@code false}, so a read
+     * lock held over the {@code get} still guards it, as it did before the order could be read.
+     *
+     * @param map the map a {@code get} or {@code getOrDefault} reads
+     */
+    static boolean relinksOnGet(@Nullable Object map) {
+        return LinkedHashMapOrder.of(map) == LinkedHashMapOrder.ACCESS;
+    }
+
+    /**
+     * Reads a {@link java.util.LinkedHashMap}'s order, where {@code java.util} lets it be read.
+     */
+    static final class LinkedHashMapOrder {
+
+        /** The order could not be read, or the object is no {@code LinkedHashMap}. */
+        static final int UNKNOWN = 0;
+
+        /** A {@code get} moves the entry to the end: the map writes on every read of a key. */
+        static final int ACCESS = 1;
+
+        /** A {@code get} only reads. */
+        static final int INSERTION = 2;
+
+        /** The private {@code accessOrder} field, or {@code null} when it cannot be read. */
+        private static final @Nullable Field ACCESS_ORDER = accessOrderField();
+
+        private LinkedHashMapOrder() {
+        }
+
+        /**
+         * {@return {@link #ACCESS}, {@link #INSERTION} or {@link #UNKNOWN} for {@code map}}
+         *
+         * @param map the object whose order is asked for
+         */
+        static int of(@Nullable Object map) {
+            Field field = ACCESS_ORDER;
+            if (field == null || !(map instanceof java.util.LinkedHashMap)) {
+                return UNKNOWN;
+            }
+            try {
+                return field.getBoolean(map) ? ACCESS : INSERTION;
+            } catch (IllegalAccessException e) { // NOPMD - an unreadable order is an unknown one
+                return UNKNOWN;
+            }
+        }
+
+        private static @Nullable Field accessOrderField() {
+            try {
+                Field field = java.util.LinkedHashMap.class.getDeclaredField("accessOrder");
+                // trySetAccessible answers false, and opens nothing, unless java.util is already
+                // open to this library's module.
+                return field.getType() == boolean.class && field.trySetAccessible() ? field : null;
+            } catch (NoSuchFieldException | RuntimeException e) { // NOPMD - unreadable is unknown
+                return null;
+            }
+        }
     }
 
     /**
@@ -499,14 +568,16 @@ public final class SelfGuard {
          * entries, and a {@code get} on a {@link java.util.Calendar} after a {@code set}
          * recomputes the fields into the instance, so readers alone race one another. Whether a
          * {@code LinkedHashMap} is access-ordered is private to {@code java.util}, so every one
-         * counts, which keeps the verdict an insertion-ordered one had before #787. Only the
-         * round rule reads this: the lockset still judges the access as a read, so a read lock
-         * held over it guards it as it did before.
+         * counts unless {@link LinkedHashMapOrder} could read it as insertion-ordered, which
+         * keeps the verdict one whose order is unknown had before #787. Only the round rule reads
+         * this: the lockset still judges the access as a read, so a read lock held over it guards
+         * it, unless the detector knew the read writes and recorded it as a write (#807).
          *
          * @param instance the instance being read
          */
         static boolean readWrites(@Nullable Object instance) {
             return instance instanceof java.util.LinkedHashMap
+                            && LinkedHashMapOrder.of(instance) != LinkedHashMapOrder.INSERTION
                     || instance instanceof java.util.WeakHashMap
                     || instance instanceof java.util.Calendar;
         }

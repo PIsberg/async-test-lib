@@ -258,6 +258,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a `Calendar.get()` (which recomputes the fields after a `set()`), so gets alone in one round
   on an LRU cache or a shared calendar still report. The lockset still judges those reads as reads,
   so a read lock held over them guards them as before.
+- **A read that writes now needs an exclusive lock where the detector knows it writes (#807).** The
+  lockset judged every such read as a read, so readers holding one shared read lock counted as
+  guarded while they wrote the instance together. `CalendarDetector` now tracks per calendar whether
+  a recorded `set` or `add` left fields to recompute: the first `get` after one counts as a write,
+  so gets under one read lock after a `set` report, while gets under one read lock with nothing
+  pending, or after a `get` already recomputed the fields, stay silent. `CacheConcurrencyDetector`
+  and `SharedCollectionDetector` judge a `get` on a `LinkedHashMap` known to be access-ordered as a
+  write, and gets alone in one round on one known to be insertion-ordered as reads. The order is a
+  private field of `java.util`, read only when the test JVM already opens that package to the
+  library (`--add-opens java.base/java.util=ALL-UNNAMED`); the library never opens it, and an
+  unknown order keeps the verdict it had. `recordSet` cannot tell `set()` from `setTime()`, which
+  leaves nothing to recompute, so a `get` after a recorded `setTime()` also counts as a write.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`

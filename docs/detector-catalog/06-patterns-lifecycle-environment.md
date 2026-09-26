@@ -38,7 +38,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 65. Cache Concurrency Detector
 * **Severity**: `HIGH`
-* **Description**: Detects unsynchronized `HashMap`/`LinkedHashMap`-backed caches accessed from multiple threads: mutation during iteration, read-write races producing stale reads or lost updates, and cache stampede where multiple threads recompute the same value simultaneously.
+* **Description**: Detects unsynchronized `HashMap`/`LinkedHashMap`-backed caches accessed from multiple threads: mutation during iteration, read-write races producing stale reads or lost updates, and cache stampede where multiple threads recompute the same value simultaneously. A `get` on an access-ordered `LinkedHashMap`, the usual LRU cache, relinks the entry, so gets under one shared read lock are reported; whether a map is access-ordered can only be read when the test JVM opens `java.util` to the library (`--add-opens java.base/java.util=ALL-UNNAMED`), and without that a read lock still guards the gets.
 * **Buggy Code**:
   ```java
   Map<String, Object> cache = new HashMap<>(); // not thread-safe

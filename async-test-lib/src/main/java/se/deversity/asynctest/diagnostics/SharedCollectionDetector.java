@@ -133,7 +133,10 @@ public class SharedCollectionDetector {
     public void recordRead(Object collection, String name, String operation) {
         if (collection == null) return;
         CollectionState state = resolveState(collection, name);
-        state.noteAccess(collection, false);
+        // A get on an access-ordered LinkedHashMap relinks the entry, so for the lockset it is a
+        // write, which a read lock does not guard (#807). containsKey and iteration do not relink.
+        state.noteAccess(collection, ("get".equals(operation) || "getOrDefault".equals(operation))
+                && SelfGuard.relinksOnGet(collection));
         state.readThreads.add(Thread.currentThread().threadId());
         state.readCount.incrementAndGet();
     }
