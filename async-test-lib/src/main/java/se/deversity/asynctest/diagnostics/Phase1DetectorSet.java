@@ -169,8 +169,8 @@ public final class Phase1DetectorSet {
      * with issues, keyed by detector name, in stable declaration order.
      *
      * <p>Unlike {@link #printReports()} this performs no printing or listener
-     * firing — used by the runner's success-path {@code failOn} gate, which
-     * needs the reports as data before deciding whether to fail the test.
+     * firing, for a caller that needs the reports as data. The runner does not call
+     * it: its {@code failOn} gate reads these detectors through the registry.
      *
      * <p>Returns an empty map when {@link #reportedByRegistry} is {@code true}: these
      * detectors are the same instances {@code DetectorRegistry.analyzeAll()} already
