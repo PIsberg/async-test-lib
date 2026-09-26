@@ -1192,9 +1192,13 @@ final class DetectorRegistry {
         try {
             R report = analyze.apply(detector);
             if (Boolean.TRUE.equals(hasIssues.apply(report))) {
+                // A grade above the detector's evidence cap is lowered here, the one place grades
+                // enter the sink, so the failOn gate, the banner and findingGrades() all read the
+                // tier the evidence can carry rather than the one the report named.
                 out.add(name, report.toString(),
                         report instanceof se.deversity.asynctest.diagnostics.GradedFindings graded
-                                ? graded.grades() : null,
+                                ? se.deversity.asynctest.diagnostics.DetectorTrust.clampToCap(name, graded.grades())
+                                : null,
                         se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
                                 .orElse(null));
             }

@@ -1020,7 +1020,9 @@ public final class AsyncTestContext {
      * to judge a detector's findings individually rather than as one block, which is what lets a
      * verdict-grade finding fail a build even though the same detector can also produce a
      * prompt-grade one. Callers that find no entry fall back to the detector's own tier and
-     * severity.
+     * severity. Each tier is already clamped to the detector's evidence cap
+     * ({@link se.deversity.asynctest.diagnostics.DetectorTrust#clampToCap}), so a grade here never
+     * claims more than the detector decides from.
      *
      * <p>Call after {@link #analyzeAllNamed()}; on its own this returns the previous pass's
      * grades, or empty when no pass has run.
