@@ -42,7 +42,7 @@ class TelemetryEventBufferTest {
         Object receiver = new Object();
         java.lang.ref.WeakReference<Object> watch = new java.lang.ref.WeakReference<>(receiver);
         buffer.publish(10L, "ClassA.field", true, 0L, false, Integer.MIN_VALUE,
-                System.identityHashCode(receiver), false, 0, 0, 0, receiver, null);
+                System.identityHashCode(receiver), false, 0, 0, 0, receiver, null, 0L);
 
         List<Object> seen = new ArrayList<>();
         buffer.drain(new TelemetryEventBuffer.DrainCallback() {
@@ -56,7 +56,8 @@ class TelemetryEventBufferTest {
                                 long lockFingerprint, boolean volatileField, int constantTag,
                                 int identity, boolean afterVolatileRead, int ownMonitor,
                                 int methodMonitor, int storedIdentity, Object delivered,
-                                se.deversity.asynctest.diagnostics.HappensBefore.Stamp stamp) {
+                                se.deversity.asynctest.diagnostics.HappensBefore.Stamp stamp,
+                                long round) {
                 seen.add(delivered);
             }
         });

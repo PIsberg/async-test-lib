@@ -468,6 +468,18 @@ public class AtomicityValidator {
      */
     private final java.util.concurrent.atomic.AtomicLong invocationEpoch =
             new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * The {@link HappensBefore#round()} token each of this validator's rounds started with:
+     * element {@code k - 1} started round {@code k}. Replaced, never mutated, by the runner thread.
+     *
+     * <p>What lets an agent event carry its round rather than acquire one on arrival. The runner
+     * flushes the ring before each round start, but the flush waits one second at most; a drain
+     * slower than that delivered the round's remaining events after the next round had started,
+     * and they were paired with it.
+     */
+    private volatile long[] roundTokens = new long[0];
+
     private volatile boolean enabled = true;
 
     /**
@@ -481,7 +493,28 @@ public class AtomicityValidator {
      * @since 1.7.3
      */
     public void markInvocationStart() {
+        long[] started = roundTokens;
+        long[] next = java.util.Arrays.copyOf(started, started.length + 1);
+        next[started.length] = HappensBefore.nextRound();
+        roundTokens = next;
         invocationEpoch.incrementAndGet();
+    }
+
+    /**
+     * {@return this validator's round for an access published under {@code round}}
+     *
+     * <p>The number of this validator's round starts at or before the token. Tokens only grow and a
+     * worker reads its token after the start of its round and before the start of the next, so
+     * tokens other runs started in between still count as this validator's current round. A token
+     * of 0 is an access that carried none, which keeps the round current now, as always.
+     */
+    private long epochOf(long round) {
+        if (round <= 0L) {
+            return invocationEpoch.get();
+        }
+        long[] started = roundTokens;
+        int at = java.util.Arrays.binarySearch(started, round);
+        return at >= 0 ? at + 1L : -(at + 1L);
     }
     /**
      * Records compound operation start so it can be analysed at the end of the run.
@@ -776,7 +809,7 @@ public class AtomicityValidator {
                                             int storedIdentity) {
         recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint,
                 ownMonitor, methodMonitor, volatileField, constantTag, identity, storedIdentity,
-                null, null);
+                null, null, 0L);
     }
 
     /**
@@ -798,6 +831,9 @@ public class AtomicityValidator {
      * @param stamp           the accessing thread's {@link HappensBefore} clock at the access,
      *                        {@code null} when none was taken; when {@code threadId} is the
      *                        calling thread's own, its clock is taken here instead
+     * @param round           {@link HappensBefore#round()} when the access happened, 0 when
+     *                        unknown; it decides the access's round, which is otherwise the round
+     *                        current when this call is made
      * @since 1.12.3
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
@@ -805,13 +841,13 @@ public class AtomicityValidator {
                                             int ownMonitor, int methodMonitor,
                                             boolean volatileField, int constantTag, int identity,
                                             int storedIdentity, @Nullable Object receiver,
-                                            HappensBefore.@Nullable Stamp stamp) {
+                                            HappensBefore.@Nullable Stamp stamp, long round) {
         boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
                 methodMonitor, volatileField, constantTag, identity, threadId);
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
                 ownMonitor, methodMonitor, exclusive, storedIdentity, generationOf(identity),
                 identity == 0 ? 0 : instanceOf(receiver),
-                stamp != null ? stamp : stampIfOwn(threadId));
+                stamp != null ? stamp : stampIfOwn(threadId), epochOf(round));
     }
 
     /**
@@ -827,14 +863,14 @@ public class AtomicityValidator {
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0,
-                false, 0, 0, 0, stampIfOwn(threadId));
+                false, 0, 0, 0, stampIfOwn(threadId), invocationEpoch.get());
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
                         int identity, int ownMonitor, int methodMonitor, boolean exclusivePhase,
                         int storedIdentity, int generation, int instance,
-                        HappensBefore.@Nullable Stamp stamp) {
+                        HappensBefore.@Nullable Stamp stamp, long epoch) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -858,13 +894,13 @@ public class AtomicityValidator {
 
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
-            history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
+            history.add(new FieldAccessRecord(threadId, isWrite, epoch,
                     ownerKnown, identity, lockFingerprint, ownMonitor, methodMonitor,
                     exclusivePhase, isWrite ? storedIdentity : 0, generation, instance, stamp));
             // Index the owner's own writes as they arrive, so asking "did this published object
             // then go quiet" later costs a map lookup rather than a scan of every history.
             if (isWrite && identity != 0) {
-                lastOwnWriteEpoch.merge(identity, invocationEpoch.get(), Math::max);
+                lastOwnWriteEpoch.merge(identity, epoch, Math::max);
             }
         }
 
@@ -1682,6 +1718,7 @@ public class AtomicityValidator {
         generationTakers.clear();
         offers.clear();
         instances.clear();
+        roundTokens = new long[0];
         invocationEpoch.set(0);
     }
     /**

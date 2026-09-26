@@ -115,6 +115,10 @@ public final class HappensBefore {
     /** Where {@link #SYNC} keys arrive once their object is collected. */
     private static final ReferenceQueue<Object> COLLECTED = new ReferenceQueue<>();
 
+    /** The harness round token; see {@link #round()}. */
+    private static final java.util.concurrent.atomic.AtomicLong ROUNDS =
+            new java.util.concurrent.atomic.AtomicLong();
+
     private HappensBefore() {
     }
 
@@ -226,6 +230,27 @@ public final class HappensBefore {
             me.published = false;
         }
         return me.current;
+    }
+
+    /**
+     * {@return the current harness round token, for an event to carry from where it was published}
+     *
+     * <p>The harness orders its rounds: every access of one round happens before every access of
+     * the next. A detector marks each round start with {@link #nextRound()}, and an access stamped
+     * with the token current when it happened belongs to the round that token started, however
+     * late a consumer on another thread gets to it. Tokens are process-wide and only grow; each
+     * detector maps the ones it started to its own round numbers. A worker reads the token after
+     * the runner's submission that started its round and before the latch that ends it, so it
+     * always reads its own round's token or one another run started since.
+     */
+    @API(status = Status.INTERNAL)
+    public static long round() {
+        return ROUNDS.get();
+    }
+
+    /** {@return a new round token, strictly greater than every earlier one} */
+    static long nextRound() {
+        return ROUNDS.incrementAndGet();
     }
 
     /**

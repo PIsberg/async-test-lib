@@ -150,6 +150,36 @@ class TelemetryBridgeTest {
                 "a read the weaver did not mark as following the volatile read acquires nothing");
     }
 
+    /**
+     * Two accesses from two workers, the first still in the ring when the next round starts, which
+     * is what a {@code TelemetryRegistry.flush()} that gave up after its one-second wait leaves.
+     */
+    private static boolean lateDrainReported(boolean nextRoundStartsBeforeTheDrain) {
+        AtomicityValidator av = new AtomicityValidator();
+        TelemetryBridge bridge = TelemetryBridge.detached(av, id -> true);
+        TelemetryEventBuffer ring = new TelemetryEventBuffer(16);
+        Object owner = new Object();
+        int identity = System.identityHashCode(owner);
+        av.markInvocationStart();
+        ring.publish(WORKER_A, "com.example.Slot.value", true, 0L, false, Integer.MIN_VALUE,
+                identity, false, 0, 0, 0, owner, null, se.deversity.asynctest.diagnostics.HappensBefore.round());
+        if (nextRoundStartsBeforeTheDrain) {
+            av.markInvocationStart();
+        }
+        ring.publish(WORKER_B, "com.example.Slot.value", false, 0L, false, Integer.MIN_VALUE,
+                identity, false, 0, 0, 0, owner, null, se.deversity.asynctest.diagnostics.HappensBefore.round());
+        ring.drain(bridge);
+        return av.analyzeAtomicity().hasIssues();
+    }
+
+    @Test
+    void anEventDrainedAfterTheNextRoundStartedStaysInTheRoundThatProducedIt() {
+        assertFalse(lateDrainReported(true),
+                "the write was published in round 1 and the read in round 2; attributing both to "
+                        + "the round current at drain time paired accesses the harness ordered");
+        assertTrue(lateDrainReported(false), "the same two accesses in one round still race");
+    }
+
     @Test
     void anOfferEventNamesTheOwnerBeforeATakeFirstGeneration() {
         // What the queue hooks publish (#630): the offer and the take carry the queue's identity

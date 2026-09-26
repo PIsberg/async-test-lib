@@ -404,7 +404,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                         int identity, boolean afterVolatileRead, int ownMonitor,
                         int methodMonitor, int storedIdentity) {
         onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
-                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null, null);
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null, null,
+                0L);
     }
 
     /**
@@ -426,6 +427,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * @param storedIdentity    identity hash of the reference this write stored, 0 when unknown
      * @param receiver          the object the field belongs to, {@code null} when not known
      * @param stamp             the worker's ordering clock at the access, {@code null} when none
+     * @param round             the harness round token at publish time, 0 when unknown
      * @since 1.12.3
      */
     @Override
@@ -433,7 +435,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                         long lockFingerprint, boolean volatileField, int constantTag,
                         int identity, boolean afterVolatileRead, int ownMonitor,
                         int methodMonitor, int storedIdentity, @Nullable Object receiver,
-                        HappensBefore.@Nullable Stamp stamp) {
+                        HappensBefore.@Nullable Stamp stamp, long round) {
         if (!active) {
             return;
         }
@@ -485,7 +487,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                 && TelemetryRegistry.isPublishedByVolatile(qualifiedName);
         atomicityValidator.recordFieldAccessUnderLocks(field, null, isWrite, threadId,
                 lockFingerprint, ownMonitor, methodMonitor, volatileField || safelyPublished,
-                constantTag, identity, storedIdentity, receiver, stamp);
+                constantTag, identity, storedIdentity, receiver, stamp, round);
     }
 
     /**

@@ -204,7 +204,7 @@ public final class TelemetryRegistry {
         // clock says what this access is ordered after. A thread-local read; no allocation.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(),
                 volatileField, constantTag, identity, afterVolatileRead, 0, 0, 0, null,
-                HappensBefore.current());
+                HappensBefore.current(), HappensBefore.round());
     }
 
     /**
@@ -252,7 +252,7 @@ public final class TelemetryRegistry {
         acquireIfAfterVolatileRead(receiver, afterVolatileRead);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
-                identity == 0 ? null : receiver, HappensBefore.current());
+                identity == 0 ? null : receiver, HappensBefore.current(), HappensBefore.round());
         releaseIfVolatileWrite(receiver, isWrite, volatileField);
     }
 
@@ -334,7 +334,8 @@ public final class TelemetryRegistry {
         // hashes collide; the ring lends it for one callback and then clears the slot.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
-                storedIdentity, identity == 0 ? null : receiver, HappensBefore.current());
+                storedIdentity, identity == 0 ? null : receiver, HappensBefore.current(),
+                HappensBefore.round());
         releaseIfVolatileWrite(receiver, isWrite, volatileField);
     }
 

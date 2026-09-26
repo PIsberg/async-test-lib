@@ -49,7 +49,7 @@ class OrderedPublicationTest {
     private static void access(AtomicityValidator validator, String field, boolean write,
                                Stamped at, boolean volatileField, int constant, Object owner) {
         validator.recordFieldAccessUnderLocks(field, null, write, at.thread(), 0L, 0, 0,
-                volatileField, constant, System.identityHashCode(owner), 0, owner, at.stamp());
+                volatileField, constant, System.identityHashCode(owner), 0, owner, at.stamp(), 0L);
     }
 
     private static boolean volatileFlagReported(boolean readerAcquires) throws InterruptedException {

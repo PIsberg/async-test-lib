@@ -230,13 +230,16 @@ public final class TelemetryEventBuffer {
          *                          field or when the producer did not have it
          * @param stamp             the producer's {@link HappensBefore} clock at the access,
          *                          {@code null} when none was taken
+         * @param round             {@link HappensBefore#round()} when the event was published, so
+         *                          a consumer can attribute it to the round that produced it
+         *                          however late it drains; 0 when unknown
          * @since 1.12.3
          */
         default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
                              long lockFingerprint, boolean volatileField, int constantTag,
                              int identity, boolean afterVolatileRead, int ownMonitor,
                              int methodMonitor, int storedIdentity, @Nullable Object receiver,
-                             HappensBefore.@Nullable Stamp stamp) {
+                             HappensBefore.@Nullable Stamp stamp, long round) {
             onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
                     identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity);
         }
@@ -263,6 +266,8 @@ public final class TelemetryEventBuffer {
         @Nullable Object receiver;
         /** The producer's ordering clock at the access; immutable, so sharing it is safe. */
         HappensBefore.@Nullable Stamp stamp;
+        /** The harness round current when the event was published. */
+        long round;
     }
 
     private static final VarHandle SEQ_VH;
@@ -480,7 +485,8 @@ public final class TelemetryEventBuffer {
                         boolean afterVolatileRead, int ownMonitor, int methodMonitor,
                         int storedIdentity) {
         publish(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
-                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null, null);
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null, null,
+                0L);
     }
 
     /**
@@ -504,13 +510,16 @@ public final class TelemetryEventBuffer {
      * @param receiver          the object the field belongs to, {@code null} for a static field
      * @param stamp             the producer's {@link HappensBefore} clock at the access, taken on
      *                          the producer because the drain thread's own clock orders nothing
+     * @param round             {@link HappensBefore#round()} at publish time, 0 when unknown. The
+     *                          drain can run after the harness has started the next round, and an
+     *                          event attributed at drain time would then join the wrong one.
      * @since 1.12.3
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
                         boolean volatileField, int constantTag, int identity,
                         boolean afterVolatileRead, int ownMonitor, int methodMonitor,
                         int storedIdentity, @Nullable Object receiver,
-                        HappensBefore.@Nullable Stamp stamp) {
+                        HappensBefore.@Nullable Stamp stamp, long round) {
         long fullSinceNanos = 0L;
         int spins = 0;
         for (;;) {
@@ -557,6 +566,7 @@ public final class TelemetryEventBuffer {
                 event.storedIdentity = storedIdentity;
                 event.receiver = receiver;
                 event.stamp = stamp;
+                event.round = round;
                 // Release fence: consumer will not observe the event until this store completes.
                 SEQ_VH.setRelease(event, seq);
                 return;
@@ -600,7 +610,8 @@ public final class TelemetryEventBuffer {
                 callback.onEvent(event.threadId, event.targetField, event.isWrite,
                         event.lockFingerprint, event.volatileField, event.constantTag,
                         event.identity, event.afterVolatileRead, event.ownMonitor,
-                        event.methodMonitor, event.storedIdentity, event.receiver, event.stamp);
+                        event.methodMonitor, event.storedIdentity, event.receiver, event.stamp,
+                        event.round);
             } finally {
                 // Before the cursor moves past the slot, so no producer can be writing it yet.
                 event.receiver = null;
