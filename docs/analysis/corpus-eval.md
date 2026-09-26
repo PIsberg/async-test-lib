@@ -1909,6 +1909,19 @@ the runner did not start and the agent drops (#500), or because `ThreadLocalRand
 A twin must wake its named detector at its pinned severity. What other detectors say below `FACT` on
 a correct row is printed in the lane report rather than asserted.
 
+**Known gaps.** Correct idioms whose ordering the happens-before model does not observe yet are rows
+too, listed in `Corpus.idiomKnownGaps()` with the reason, the way `DetectorCoverage` lists refused
+detectors. Each must still draw its finding, and the run fails the day a fix makes one silent, until
+its entry is deleted, so a closed gap cannot stay listed as open. Every one was run before it was
+pinned, and one of the five candidates is not a row because it could not be pinned either way. A
+validated `StampedLock` optimistic read (the class javadoc's own `Point` example) is judged by the
+confirming-read excuse (#311), which clears a point once some reader's validation has failed and it
+re-read under the read lock. Whether any validation fails depends on whether a reader overlapped
+the writer, so the row was silent in some runs and reported in others, on a point per round as on
+one point shared by the run. A row that flips with the schedule is a flaky gate in either
+direction; the gap it would pin (`tryOptimisticRead` and `validate` are not woven) stands, and is
+recorded as a follow-up rather than as a row.
+
 **What it found on its first run.** One seed row still drew a finding on the integration branch:
 a single writer bumping a volatile with a read-then-write while the other threads read it drew a
 `PROMPT`/`HIGH` "mixed read/write compound access" from `AtomicityValidator`.
@@ -1958,6 +1971,14 @@ Run L (JDK 26, Windows 11, 16 cores), threads=6, invocations=40:
 | `idiom_countDownLatch_readersSkipTheAwait` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
 | `idiom_sharedRandom_drawnByEveryThread` | correct: LOW note | `SharedRandomDetector` | ADVISORY/LOW | - |
 | `idiom_sharedRandom_splittableDrawnByEveryThread` | twin: fires | `SharedSplittableRandomDetector` | VERDICT/HIGH | `SharedSplittableRandomDetector` VERDICT/HIGH |
+| `idiom_completableFuture_publishesThroughCompletion` | correct: known gap | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_completableFuture_readersSkipTheJoin` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_executorSubmit_futureGetOrdersTheTask` | correct: known gap | `RaceConditionDetector` | PROMPT/HIGH | - |
+| `idiom_executorSubmit_readsBeforeTheGet` | twin: fires | `RaceConditionDetector` | PROMPT/HIGH | - |
+| `idiom_exchanger_swapsFilledParcels` | correct: known gap | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_exchanger_swapsThroughAPlainField` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_atomicReference_publishesAFreshlyBuiltObject` | correct: known gap | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_atomicReference_plainFieldPublishesNothing` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
 
 The "FACT or above" column is empty on every correct row. The only findings at that tier are on
 twins, from the `VERDICT` detectors whose twin they are. Below `FACT`, no detector other than a

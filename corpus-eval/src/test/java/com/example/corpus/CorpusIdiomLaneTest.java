@@ -684,6 +684,198 @@ class CorpusIdiomLaneTest {
             use(SHARED_SPLITTABLE.nextInt(100));
         });
     }
+    // --- Known gaps: correct idioms the happens-before model does not see yet ------------------
+
+    private static final class Promise {
+        int data;
+        final CompletableFuture<Promise> done = new CompletableFuture<>();
+    }
+
+    private static final Rounds<Promise> PROMISES = new Rounds<>(Promise::new);
+    private static final Rounds<Promise> UNJOINED_PROMISES = new Rounds<>(Promise::new);
+
+    /** The round's first thread writes and completes a future; the others join it and read. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_completableFuture_publishesThroughCompletion() {
+        correct(() -> {
+            Turn<Promise> turn = PROMISES.next();
+            Promise promise = turn.shared();
+            if (turn.opensTheRound()) {
+                promise.data = 42 + turn.ticket();
+                promise.done.complete(promise);
+            } else {
+                use(promise.done.join().data);
+            }
+        });
+    }
+
+    /** The same completion, with the readers not joining it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_completableFuture_readersSkipTheJoin() {
+        broken(() -> {
+            Turn<Promise> turn = UNJOINED_PROMISES.next();
+            Promise promise = turn.shared();
+            if (turn.opensTheRound()) {
+                promise.data = 42 + turn.ticket();
+                promise.done.complete(promise);
+            } else {
+                use(promise.data);
+            }
+        });
+    }
+
+    /**
+     * Submit a task that reads the input and writes the output, get() it, read the output.
+     * Manual API: the pool thread is not a runner worker, so the agent drops its half (#500).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_executorSubmit_futureGetOrdersTheTask() {
+        correct(() -> {
+            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
+            Result result = new Result();
+            races.recordFieldWrite(result, "input");
+            result.input = (int) Thread.currentThread().threadId();
+            try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+                Future<?> task = executor.submit(() -> {
+                    races.recordFieldRead(result, "input");
+                    int input = result.input;
+                    races.recordFieldWrite(result, "output");
+                    result.output = input * 2;
+                });
+                getUnchecked(task);
+                races.recordFieldRead(result, "output");
+                use(result.output);
+            }
+        });
+    }
+
+    /** The same task, with the output read before the get(). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_executorSubmit_readsBeforeTheGet() {
+        broken(() -> {
+            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
+            Result result = new Result();
+            races.recordFieldWrite(result, "input");
+            result.input = (int) Thread.currentThread().threadId();
+            try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+                Future<?> task = executor.submit(() -> {
+                    races.recordFieldRead(result, "input");
+                    int input = result.input;
+                    races.recordFieldWrite(result, "output");
+                    result.output = input * 2;
+                });
+                races.recordFieldRead(result, "output");
+                use(result.output);
+                getUnchecked(task);
+            }
+        });
+    }
+
+    private static final class Parcel {
+        int contents;
+    }
+
+    private static final class Swap {
+        Parcel left;
+    }
+
+    private static final Exchanger<Parcel> EXCHANGER = new Exchanger<>();
+    private static final Swap PLAIN_SWAP = new Swap();
+
+    /** Each thread fills a parcel, exchanges it with a partner, and reads what it got. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_exchanger_swapsFilledParcels() {
+        correct(() -> {
+            Parcel mine = new Parcel();
+            mine.contents = (int) Thread.currentThread().threadId();
+            try {
+                Parcel theirs = EXCHANGER.exchange(mine, 10, TimeUnit.SECONDS);
+                use(theirs.contents);
+            } catch (TimeoutException e) {
+                throw new AssertionError("an exchange round lost its partner", e);
+            }
+        });
+    }
+
+    /** The same swap through a plain field, which orders nothing. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_exchanger_swapsThroughAPlainField() {
+        broken(() -> {
+            Parcel mine = new Parcel();
+            mine.contents = (int) Thread.currentThread().threadId();
+            Parcel theirs = PLAIN_SWAP.left;
+            PLAIN_SWAP.left = mine;
+            if (theirs != null) {
+                use(theirs.contents);
+            }
+        });
+    }
+
+    private static final class Config {
+        private int port;
+
+        int getPort() {
+            return port;
+        }
+
+        void setPort(int port) {
+            this.port = port;
+        }
+    }
+
+    private static final class PlainReference {
+        Config value;
+    }
+
+    private static final Rounds<AtomicReference<Config>> CONFIGS = new Rounds<>(AtomicReference::new);
+    private static final Rounds<PlainReference> PLAIN_CONFIGS = new Rounds<>(PlainReference::new);
+
+    /** The round's first thread builds a config and sets it; the others get it and read it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_atomicReference_publishesAFreshlyBuiltObject() {
+        correct(() -> {
+            Turn<AtomicReference<Config>> turn = CONFIGS.next();
+            AtomicReference<Config> reference = turn.shared();
+            if (turn.opensTheRound()) {
+                Config config = new Config();
+                config.setPort(8080 + turn.ticket());
+                reference.set(config);
+            } else {
+                Config config = reference.get();
+                for (int spins = 0; config == null && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                    config = reference.get();
+                }
+                if (config != null) {
+                    use(config.getPort());
+                }
+            }
+        });
+    }
+
+    /** The same publication through a plain field. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_atomicReference_plainFieldPublishesNothing() {
+        broken(() -> {
+            Turn<PlainReference> turn = PLAIN_CONFIGS.next();
+            PlainReference reference = turn.shared();
+            if (turn.opensTheRound()) {
+                Config config = new Config();
+                config.setPort(8080 + turn.ticket());
+                reference.value = config;
+            } else {
+                Config config = reference.value;
+                for (int spins = 0; config == null && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                    config = reference.value;
+                }
+                if (config != null) {
+                    use(config.getPort());
+                }
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

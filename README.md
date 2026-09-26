@@ -103,7 +103,11 @@ carry `VERDICT`, the tier a build can fail on; a pair alone is not enough, becau
 must also decide from something other than the test's own record call. HikariCP joins the corpus
 as an eighth library
 in the recording lane, because a connection pool is the one subject that cannot be exercised
-without something to pool.
+without something to pool. The `idioms` lane writes correct user-code concurrency the way a test
+body would, a queue hand-off, a volatile flag, a latch, a guarded `wait` loop, each beside its
+broken twin and with every detector on: a correct idiom fails the run on any finding at `FACT` or
+above, and the correct idioms the happens-before model does not see yet are listed as known gaps
+with the reason, so that a fix flips them visibly.
 
 The library agent pairs put the woven JDK call inside Guava, Jackson, HikariCP, Spring, commons-lang3
 or Groovy instead of the test file, so 17 of the 20 agent-fed detectors are measured on a call site

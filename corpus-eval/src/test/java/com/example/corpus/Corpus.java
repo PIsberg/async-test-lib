@@ -4507,6 +4507,73 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same draw from one SplittableRandom, whose javadoc says instances are "
                             + "not thread-safe: the thread-safety Random has is what is missing",
+                    IssueSeverity.HIGH),
+
+            // --- Known gaps: correct idioms whose ordering the happens-before model does not
+            //     observe yet. Each is in Corpus.idiomKnownGaps() with the reason, and each still
+            //     has its twin, so the day the gap closes the pair is already written.
+
+            new RecordingSubject("idiom_completableFuture_publishesThroughCompletion", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the writer writes and then completes a future; every reader joins it and "
+                            + "then reads. CompletionStage's javadoc orders actions before "
+                            + "completion before actions after a join that observes it"),
+
+            new RecordingSubject("idiom_completableFuture_readersSkipTheJoin", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same completion with the readers not joining, so nothing orders the "
+                            + "write before their reads",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_executorSubmit_futureGetOrdersTheTask", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the input is written before submit() and the output read after get(). The "
+                            + "java.util.concurrent package javadoc orders both: submission "
+                            + "before the task runs, and the task before the get that returns"),
+
+            new RecordingSubject("idiom_executorSubmit_readsBeforeTheGet", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same task with the output read before get(), unordered with the "
+                            + "task's write",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_exchanger_swapsFilledParcels", JDK,
+                    "java.util.concurrent.Exchanger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread fills a parcel, exchanges it and reads its partner's. The "
+                            + "Exchanger javadoc orders each thread's actions before exchange() "
+                            + "before its partner's actions after it returns"),
+
+            new RecordingSubject("idiom_exchanger_swapsThroughAPlainField", JDK,
+                    IDIOM_LANE + "Swap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same swap through a plain field: the field and the parcels behind it "
+                            + "are written and read by different threads with nothing between",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_atomicReference_publishesAFreshlyBuiltObject", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the writer finishes a config with setters and then set()s it; readers get() "
+                            + "it and read it. AtomicReference.set has volatile-write semantics "
+                            + "and get volatile-read, which order the setters before the reads"),
+
+            new RecordingSubject("idiom_atomicReference_plainFieldPublishesNothing", JDK,
+                    IDIOM_LANE + "PlainReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same publication through a plain field, which orders nothing",
                     IssueSeverity.HIGH)
     );
 
@@ -4539,6 +4606,11 @@ final class Corpus {
                     + "child's half of the idiom is invisible to it; the body records both "
                     + "halves to RaceConditionDetector, and the woven start and join are the edges",
             "idiom_threadStartJoin_readsBeforeTheJoin",
+            "the twin of the row above, recording the same accesses the same way",
+            "idiom_executorSubmit_futureGetOrdersTheTask",
+            "the pool thread is not a runner worker, so the agent drops the task's accesses "
+                    + "(#500); the body records both halves to RaceConditionDetector",
+            "idiom_executorSubmit_readsBeforeTheGet",
             "the twin of the row above, recording the same accesses the same way"
     );
 
@@ -4552,6 +4624,17 @@ final class Corpus {
      * fails until the entry is deleted, so a closed gap cannot stay listed as open.
      */
     private static final Map<String, String> IDIOM_KNOWN_GAPS = Map.of(
+            "idiom_completableFuture_publishesThroughCompletion",
+            "CompletableFuture.complete and join are not woven, so HappensBefore sees no edge "
+                    + "from the completing thread to the joining ones",
+            "idiom_executorSubmit_futureGetOrdersTheTask",
+            "ExecutorService.submit and Future.get are not woven, and the pool thread is "
+                    + "started inside the JDK, so neither the submission nor the get is an edge",
+            "idiom_exchanger_swapsFilledParcels",
+            "Exchanger.exchange is not woven, so the swap orders nothing in HappensBefore",
+            "idiom_atomicReference_publishesAFreshlyBuiltObject",
+            "AtomicReference.set and get are substituted for the spinlock detectors only; "
+                    + "HappensBefore takes no release from the set or acquire from the get"
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
