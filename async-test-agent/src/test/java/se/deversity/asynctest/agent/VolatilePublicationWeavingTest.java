@@ -118,6 +118,43 @@ class VolatilePublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("a node published through a volatile next is ordered for the reader that read it (#804)")
+    void linkedNodePublicationIsSilent() throws InterruptedException {
+        VolatilePublicationBean bean = new VolatilePublicationBean();
+        boolean[] updated = new boolean[1];
+        List<String> findings = findings(() -> bean.link(1), writerRuns -> {
+            writerRuns.run();
+            updated[0] = bean.updateLinked();
+        });
+
+        assertTrue(updated[0], "the reader must have reached the node, or nothing was measured");
+        assertFalse(mentions(findings, "Node.value"),
+                "The writer set node.value and then published the node with the volatile write "
+                        + "head.next = node; the reader's volatile read of head.next returned that "
+                        + "node, so the writer's write happens before the reader's read and write "
+                        + "of node.value. A finding here means the acquire of head.next did not "
+                        + "order the reader's later access to the object it returned. Findings "
+                        + "were: " + findings);
+    }
+
+    @Test
+    @DisplayName("the same node reached through a plain field keeps its finding (#804)")
+    void plainLinkedNodeIsReported() throws InterruptedException {
+        VolatilePublicationBean bean = new VolatilePublicationBean();
+        boolean[] updated = new boolean[1];
+        List<String> findings = findings(() -> bean.linkPlain(1), writerRuns -> {
+            writerRuns.run();
+            updated[0] = bean.updatePlain();
+        });
+
+        assertTrue(updated[0], "the reader must have reached the node, or nothing was measured");
+        assertTrue(mentions(findings, "Node.value"),
+                "The node was stored through a plain field, so nothing orders the writer's "
+                        + "node.value write before the reader's update: the twin that shows the "
+                        + "silence above comes from the volatile read. Findings were: " + findings);
+    }
+
+    @Test
     @DisplayName("a volatile read that saw the published value orders the update after it")
     void flagPublicationIsSilent() throws InterruptedException {
         VolatilePublicationBean bean = new VolatilePublicationBean();
