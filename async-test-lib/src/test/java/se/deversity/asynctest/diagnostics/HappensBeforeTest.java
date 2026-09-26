@@ -118,6 +118,45 @@ class HappensBeforeTest {
     }
 
     @Test
+    @DisplayName("a volatile read receives the write whose value it returned, and no later one (#742)")
+    void aVolatileReadIsMatchedByTheValueItReturned() throws InterruptedException {
+        Object holder = new Object();
+        Recorded first = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.state", 1L));
+        Recorded second = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.state", 2L));
+        Recorded sawSecond = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.state", 2L), false, () -> { });
+        Recorded sawFirst = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.state", 1L), false, () -> { });
+        Recorded sawNeither = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.state", 0L), false, () -> { });
+
+        assertTrue(ordered(second, sawSecond), "the read returned what the second write stored");
+        assertTrue(ordered(first, sawSecond),
+                "and a volatile read synchronizes with every earlier write of the field too");
+        assertTrue(ordered(first, sawFirst),
+                "the first value, which a read returns while the second writer has released and "
+                        + "not yet stored, receives the first write");
+        assertFalse(ordered(second, sawFirst), "but not the second, which that read never saw");
+        assertFalse(ordered(first, sawNeither) || ordered(second, sawNeither),
+                "a value neither write stored, the field's initial one, receives nothing");
+    }
+
+    @Test
+    @DisplayName("a release that did not say what it stored matches any value read")
+    void aReleaseWithoutAValueMatchesEveryRead() throws InterruptedException {
+        Object holder = new Object();
+        Recorded writer = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.state"));
+        Recorded reader = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.state", 42L), false, () -> { });
+
+        assertTrue(ordered(writer, reader),
+                "a caller recording by hand releases without a value, and keeps the answer it had");
+    }
+
+    @Test
     @DisplayName("a marked access acquires the fields its thread read, including one written after the read hook")
     void aNotedVolatileReadIsAcquiredAtTheMarkedAccess() throws InterruptedException {
         Object holder = new Object();

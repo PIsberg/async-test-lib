@@ -181,17 +181,12 @@ class AgentHappensBeforeFeedTest {
         assertTrue(latchReported(false));
     }
 
-    private static boolean volatileFlagReported(boolean afterVolatileRead)
-            throws InterruptedException {
-        return volatileFlagReported("Box.ready", afterVolatileRead);
-    }
-
     /**
-     * A writer publishes {@code Box.value} with a volatile write of {@code Box.ready}; the reader
-     * reads the volatile field {@code readField} of the same box, then {@code Box.value} in an
-     * access the weaver marks as following that read.
+     * A writer publishes {@code Box.value} with a volatile write of {@code Box.ready}, storing 1;
+     * the reader reads the volatile field {@code readField} of the same box, which returns
+     * {@code valueRead}, then {@code Box.value}. Each side emits exactly what the weaver emits.
      */
-    private static boolean volatileFlagReported(String readField, boolean afterVolatileRead)
+    private static boolean volatileFlagReported(String readField, int valueRead)
             throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();
         Box box = new Box();
@@ -199,9 +194,10 @@ class AgentHappensBeforeFeedTest {
         Thread writer = new Thread(() -> {
             box.value = 5;
             detector.recordFieldWrite(box, "value");
-            // What the weaver emits before a volatile write of Box.ready.
+            // What the weaver emits before a volatile write of Box.ready that stores 1.
             TelemetryRegistry.recordAccess(box, null, null, Thread.currentThread().threadId(),
                     "Box.ready", true, true, Integer.MIN_VALUE, false, false);
+            TelemetryRegistry.volatileStore(box, 1, "Box.ready");
             flagged.countDown();
         });
         Thread reader = new Thread(() -> {
@@ -211,12 +207,13 @@ class AgentHappensBeforeFeedTest {
                 Thread.currentThread().interrupt();
                 return;
             }
-            // What the weaver emits before the volatile read of readField.
+            // What the weaver emits around the volatile read of readField: before, then after.
             TelemetryRegistry.recordAccess(box, null, null, Thread.currentThread().threadId(),
                     readField, false, true, Integer.MIN_VALUE, false, false);
+            TelemetryRegistry.volatileLoad(box, valueRead, readField);
             // A plain read the weaver marks as following a volatile read of the same object.
             TelemetryRegistry.recordAccess(box, null, null, Thread.currentThread().threadId(),
-                    "Box.value", false, false, Integer.MIN_VALUE, afterVolatileRead, false);
+                    "Box.value", false, false, Integer.MIN_VALUE, true, false);
             detector.recordFieldRead(box, "value");
         });
         writer.start();
@@ -227,20 +224,26 @@ class AgentHappensBeforeFeedTest {
     }
 
     @Test
-    @DisplayName("a woven volatile write publishes to a later access that follows a volatile read")
+    @DisplayName("a woven volatile write publishes to a read that returned the value it stored")
     void wovenVolatilePublication() throws InterruptedException {
-        assertFalse(volatileFlagReported(true));
-        assertTrue(volatileFlagReported(false),
-                "an access the weaver did not mark as following a volatile read acquires nothing");
+        assertFalse(volatileFlagReported("Box.ready", 1));
+    }
+
+    @Test
+    @DisplayName("a volatile read that returned the older value receives nothing (#742)")
+    void aReadOfTheOlderValueReceivesNothing() throws InterruptedException {
+        assertTrue(volatileFlagReported("Box.ready", 0),
+                "the reader read 0, not the 1 the writer stored: it synchronizes with a write "
+                        + "before the writer's, and Box.value reached it through nothing");
     }
 
     @Test
     @DisplayName("a volatile read of one field does not receive what a write of another published (#742)")
     void aVolatileEdgeIsPerField() throws InterruptedException {
-        assertTrue(volatileFlagReported("Box.other", true),
+        assertTrue(volatileFlagReported("Box.other", 1),
                 "the reader read Box.other, which nobody wrote: Box.value reached it through "
                         + "nothing, and the write of Box.ready must not order it");
-        assertFalse(volatileFlagReported("Box.ready", true),
+        assertFalse(volatileFlagReported("Box.ready", 1),
                 "the twin reads the flag the writer set, which orders the plain write before it");
     }
 

@@ -37,7 +37,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * allocation added to one passes it (#752). The recording body prices the record paths that are
  * meant to cost nothing, or close to it, per access once warm: {@code SelfGuard}'s lockset probe,
  * round window and {@link HappensBefore} stamp, reached through {@link SharedCollectionDetector},
- * and the remembered-volatile-read scan and acquire the agent's field hook runs on the accessing
+ * and the volatile-read acquire the agent's load hook runs on the accessing
  * thread. It drives the first 1,024 times per execution and the second 512 times, so a few bytes
  * more per access move its cost by tens of kilobytes. The paths that store every access by design,
  * {@link RaceConditionDetector}'s field records (a volatile field among them) and the agent's
@@ -73,7 +73,7 @@ class RunnerAllocationBudgetTest {
 
     /**
      * Loop iterations per execution of the recording body; each makes two {@code SelfGuard}
-     * accesses and one remembered volatile read and acquire.
+     * accesses and one volatile read's acquire.
      */
     static final int ITERATIONS = 512;
 
@@ -98,7 +98,7 @@ class RunnerAllocationBudgetTest {
      * call, 32 bytes on each of 1,024 accesses per execution, measured 123,804 on JDK 26 and
      * 122,337 on JDK 21, while the empty body's test stayed green. The ceiling sits 18,773 bytes
      * above the highest reading, so it catches an object of 24 bytes or more per SelfGuard access
-     * or stamp (1,024 per execution), or of 40 bytes or more per remembered volatile read (512);
+     * or stamp (1,024 per execution), or of 40 bytes or more per volatile read acquired (512);
      * the smallest object, 16 bytes, per SelfGuard access passes. The empty body's ceiling sees
      * none of these.
      *
@@ -232,10 +232,11 @@ class RunnerAllocationBudgetTest {
             // The box's field accesses hold its own monitor, which both detectors see, so the run
             // reports nothing and the cost measured is recording's, not a report's.
             synchronized (box) {
-                // What the weaver emits before a volatile read of Box.ready, then before a plain
-                // read it marks as following that volatile read.
+                // What the weaver emits around a volatile read of Box.ready, before it and after it
+                // with the value read, then before a plain read it marks as following that read.
                 TelemetryRegistry.recordAccess(box, null, threadId, "Box.ready", false, true,
                         Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.volatileLoad(box, 1, "Box.ready");
                 TelemetryRegistry.recordAccess(box, null, threadId, "Box.value", false, false,
                         Integer.MIN_VALUE, true, false);
                 races.recordFieldRead(box, "ready");
@@ -248,10 +249,9 @@ class RunnerAllocationBudgetTest {
                     collections.recordRead(shared, "shared", "get");
                     collections.recordWrite(shared, "shared", "add");
                 }
-                // The part of the hook above that runs on the accessing thread for each volatile
-                // read and each marked access: the remembered-read scan and the acquire.
-                HappensBefore.volatileRead(box, "Box.ready");
-                HappensBefore.acquireVolatileReads(box);
+                // The hook the weaver emits after each volatile read: the field-clock lookup and
+                // the acquire of the release whose value the read returned.
+                TelemetryRegistry.volatileLoad(box, 1, "Box.ready");
             }
             // One publish per execution: a plain write, then the volatile write that releases it,
             // recorded by hand and by the agent's hook, then a release for the next acquirer.
@@ -260,6 +260,7 @@ class RunnerAllocationBudgetTest {
                 races.recordFieldWrite(box, "ready");
                 TelemetryRegistry.recordAccess(box, null, threadId, "Box.ready", true, true,
                         Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.volatileStore(box, 1, "Box.ready");
             }
             HappensBefore.release(handOff);
         }

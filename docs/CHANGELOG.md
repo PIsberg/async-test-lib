@@ -112,12 +112,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write released its whole object and a later access the weaver marked as following a volatile
   read acquired it, so reading one volatile field ordered a plain access after a write of another
   field of the same object, which publishes nothing to that reader, and the race between them went
-  unreported. The clock is now kept per object and field: the agent's hook notes which volatile
-  fields a thread reads, and the marked access acquires only those; `RaceConditionDetector`'s own
-  volatile rule, for a test that records by hand, acquires only the field it recorded a read of.
-  Reading the field that was written still orders the access. Still approximate: the weaver
-  reports a volatile read before it happens and not the value it returned, so an access after a
-  read that saw an older value is still ordered.
+  unreported. The clock is now kept per object and field, and a read acquires only the field it
+  read; `RaceConditionDetector`'s own volatile rule, for a test that records by hand, acquires
+  only the field it recorded a read of. Reading the field that was written still orders the
+  access.
+- **A woven volatile read acquires at the read, and only what the write it saw published (#742,
+  #804).** The weaver reported a volatile read before the read instruction and never saw its
+  value, so the acquire waited for the next access the weaver marked and took the field's clock
+  as it was by then. An access after a read that returned an older value was ordered by a write
+  the read never saw, which hid the race; and a node read through a volatile `next` acquired
+  nothing for the node, because the marked access was on another object, so correct linked-node
+  publication was reported (#804). The weaver now hands the value to the model on both sides of a
+  volatile field instruction, just before a store and just after a load
+  (`TelemetryRegistry.volatileStore` / `volatileLoad`), and the reader takes what the write that
+  stored that value published into its thread's clock, at the read. Measured with a throwaway
+  probe: a spin read of a published field still allocates 0 bytes per iteration, and a write then
+  a read on one thread 88 against 80.
 - **A refused offer or a failed `compareAndSet` no longer publishes (#742).** The agent's hooks
   release the element to the happens-before model before the call, so the take that returns it
   finds the release, and left that release in place when a bounded queue refused the element, a
