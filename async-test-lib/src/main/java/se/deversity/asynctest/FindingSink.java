@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.GradedFindings;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,6 +26,7 @@ final class FindingSink {
 
     private final Map<String, String> reports = new LinkedHashMap<>();
     private final Map<String, List<GradedFindings.Grade>> grades = new LinkedHashMap<>();
+    private final Map<String, IssueSeverity> severities = new LinkedHashMap<>();
 
     /**
      * Records one detector's report, and its per-finding grades when it has any.
@@ -34,9 +36,22 @@ final class FindingSink {
      * grade rather than the last pass overwriting the earlier one.
      */
     void add(String detectorName, String report, @Nullable List<GradedFindings.Grade> findingGrades) {
+        add(detectorName, report, findingGrades, null);
+    }
+
+    /**
+     * Records one detector's report with the most severe severity among its structured findings,
+     * when it has any. A merged report keeps the more severe of the passes' severities.
+     */
+    void add(String detectorName, String report, @Nullable List<GradedFindings.Grade> findingGrades,
+             @Nullable IssueSeverity structuredSeverity) {
         reports.merge(detectorName, report, (first, second) -> first + "\n" + second);
         if (findingGrades != null && !findingGrades.isEmpty()) {
             grades.computeIfAbsent(detectorName, name -> new ArrayList<>()).addAll(findingGrades);
+        }
+        if (structuredSeverity != null) {
+            severities.merge(detectorName, structuredSeverity,
+                    (first, second) -> first.compareTo(second) <= 0 ? first : second);
         }
     }
 
@@ -48,5 +63,10 @@ final class FindingSink {
     /** {@return the graded findings, keyed by detector name; absent for ungraded detectors} */
     Map<String, List<GradedFindings.Grade>> grades() {
         return grades;
+    }
+
+    /** {@return the structured severities, keyed by detector name; absent where a report has none} */
+    Map<String, IssueSeverity> severities() {
+        return severities;
     }
 }

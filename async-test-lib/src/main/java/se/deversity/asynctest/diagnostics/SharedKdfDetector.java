@@ -90,9 +90,8 @@ public final class SharedKdfDetector {
             final String algo = algorithm != null ? algorithm : "unknown";
             s = instances.computeIfAbsent(key, k -> new State(label, algo));
         }
-        s.noteAccess(kdf);
         if (operation != null) s.operations.add(operation);
-        s.noteThread(thread);
+        s.noteAccess(kdf, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.

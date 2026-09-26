@@ -160,7 +160,7 @@ final class AgentRowPremise {
      * @param source     the lane's source
      * @param methodName the row's test method
      */
-    private static String bodyOf(String source, String methodName) {
+    static String bodyOf(String source, String methodName) {
         Matcher declaration = Pattern.compile(
                 "(?m)^\\s*(?:private\\s+)?(?:static\\s+)?void\\s+"
                         + Pattern.quote(methodName) + "\\s*\\(\\)\\s*\\{").matcher(source);

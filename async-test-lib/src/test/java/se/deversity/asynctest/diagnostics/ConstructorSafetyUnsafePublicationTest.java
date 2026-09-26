@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Unsafe publication — another thread touching an object before its constructor has finished —
@@ -36,23 +37,24 @@ class ConstructorSafetyUnsafePublicationTest {
     @Test
     void anObjectTouchedByAnotherThreadDuringConstructionIsReported() throws InterruptedException {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object underConstruction = new Object();
 
-        // The constructing thread starts building the object...
-        validator.recordConstructionStart(underConstruction);
-
-        // ...and leaks `this` to another thread before the constructor returns.
+        // The constructor starts building the object, leaks `this` to another thread before it
+        // returns, and then completes normally, as it does in real code.
         CountDownLatch done = new CountDownLatch(1);
-        Thread other = new Thread(() -> {
-            validator.recordFieldAccess(underConstruction, "value", System.nanoTime());
-            done.countDown();
-        });
-        other.start();
-        assertTrue(done.await(5, TimeUnit.SECONDS), "the publishing thread must finish");
-        other.join();
-
-        // The constructor then completes normally, as it does in real code.
-        validator.recordConstructionEnd(underConstruction);
+        new ConstructorSafetySubject(validator, underConstruction -> {
+            Thread other = new Thread(() -> {
+                validator.recordFieldAccess(underConstruction, "value", System.nanoTime());
+                done.countDown();
+            });
+            other.start();
+            try {
+                assertTrue(done.await(5, TimeUnit.SECONDS), "the publishing thread must finish");
+                other.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                fail(e);
+            }
+        }, true);
 
         ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
 
@@ -65,11 +67,9 @@ class ConstructorSafetyUnsafePublicationTest {
     @Test
     void theConstructingThreadTouchingItsOwnFieldsIsNotUnsafe() {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object obj = new Object();
 
-        validator.recordConstructionStart(obj);
-        validator.recordFieldAccess(obj, "value", System.nanoTime());
-        validator.recordConstructionEnd(obj);
+        new ConstructorSafetySubject(validator,
+                self -> validator.recordFieldAccess(self, "value", System.nanoTime()), true);
 
         ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
 

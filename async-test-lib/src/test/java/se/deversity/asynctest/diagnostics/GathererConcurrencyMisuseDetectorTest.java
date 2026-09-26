@@ -75,13 +75,17 @@ class GathererConcurrencyMisuseDetectorTest {
     }
 
     @Test
-    void emitsSharedStateWarning_forParallelMultiThread() throws Exception {
+    void parallelGathererWithACombinerIntegratingOnManyThreadsIsSilent() throws Exception {
+        // Gatherer.of(initializer, integrator, combiner, finisher) on a parallel stream: the
+        // runtime gives every segment its own state from the initializer and merges them with the
+        // combiner. The integrator running on two threads is that contract working, not a race.
         detector.registerGatherer("g", true, true);
         integrateOnTwoThreads("g");
 
         var report = detector.analyze();
-        assertFalse(report.getSharedStateIssues().isEmpty(),
-            "Concurrent integration should prompt a state-confinement check");
+        assertFalse(report.hasIssues(),
+            "A parallel gatherer with a combiner is the correct shape; integration on several "
+                + "threads is how it runs: " + report);
     }
 
     // ---- Unregistered gatherer ----
@@ -204,6 +208,64 @@ class GathererConcurrencyMisuseDetectorTest {
                 + "while the others are still adding to it: test for at least two distinct "
                 + "threads and claim the report once, rather than for exactly two.");
         }
+    }
+
+    /** Two threads integrate {@code name}, the first against {@code stateA}, the second {@code stateB}. */
+    private void integrateStatesOnTwoThreads(String name, Object stateA, Object stateB) throws Exception {
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        Object[] states = {stateA, stateB};
+        Thread[] workers = new Thread[2];
+        for (int i = 0; i < 2; i++) {
+            Object state = states[i];
+            workers[i] = new Thread(() -> {
+                try {
+                    barrier.await();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+                detector.recordIntegrate(name, state, Thread.currentThread());
+            });
+            workers[i].start();
+        }
+        for (Thread w : workers) {
+            w.join();
+        }
+    }
+
+    @Test
+    void parallelGathererWithACombinerAndOneStatePerSegmentIsSilent() throws Exception {
+        // Two segments, two states from the initializer: equal contents, distinct objects.
+        detector.registerGatherer("g", true, true);
+        integrateStatesOnTwoThreads("g", new java.util.ArrayList<String>(), new java.util.ArrayList<String>());
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+            "Each segment integrated its own state, which is the parallel contract: " + report);
+    }
+
+    @Test
+    void parallelGathererWithACombinerSharingOneStateAcrossSegmentsFires() throws Exception {
+        // An initializer returning a captured instance: every segment integrates the same object.
+        detector.registerGatherer("g", true, true);
+        java.util.List<String> shared = new java.util.ArrayList<>();
+        integrateStatesOnTwoThreads("g", shared, shared);
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(), "One state integrated on two threads races: " + report);
+        assertFalse(report.getSharedStateIssues().isEmpty(), report.toString());
+        assertTrue(report.toString().contains("HIGH"), report.toString());
+    }
+
+    @Test
+    void oneLabelRegisteredWithTwoShapesDrawsNoMissingCombinerVerdict() throws Exception {
+        // Two unrelated gatherers under one label: a combiner-less one and a parallel-safe one.
+        // Which of them each integration belongs to cannot be recovered from the label.
+        detector.registerGatherer("g", false, true);
+        detector.registerGatherer("g", true, true);
+        integrateOnTwoThreads("g");
+
+        assertTrue(detector.analyze().getMissingCombinerIssues().isEmpty(),
+            "A label registered with two shapes cannot support a verdict about one of them");
     }
 
     @Test

@@ -87,4 +87,35 @@ class LockUpgradeDeadlockDetectorTest {
         assertTrue(rendered.contains("LOCK UPGRADE DEADLOCK DETECTED"));
         assertTrue(rendered.contains("my-lock"));
     }
+
+    /**
+     * Two read-write locks whose identity hashes collide are two locks. Keyed by the bare hash, a
+     * declared read hold on one made a write attempt on the other look like an upgrade.
+     */
+    @Test
+    void readHoldOnOneLockDoesNotMakeAWriteOnAnotherSharingItsIdentityHashAnUpgrade() {
+        LockUpgradeDeadlockDetector detector = new LockUpgradeDeadlockDetector();
+        java.util.List<ReentrantReadWriteLock> colliding =
+                IdentityCollisions.pair(ReentrantReadWriteLock::new);
+        Thread self = Thread.currentThread();
+
+        detector.recordReadLockAcquired(colliding.get(0), "first", self);
+        detector.recordWriteLockAcquisitionAttempt(colliding.get(1), "second", self);
+
+        LockUpgradeDeadlockDetector.Report report = detector.analyze();
+        assertFalse(report.hasIssues(), "the read and the write were on different locks: " + report);
+    }
+
+    /** The same declared sequence on one lock is the upgrade, and still fires. */
+    @Test
+    void declaredReadThenWriteOnTheSameLockIsStillAnUpgrade() {
+        LockUpgradeDeadlockDetector detector = new LockUpgradeDeadlockDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        Thread self = Thread.currentThread();
+
+        detector.recordReadLockAcquired(lock, "only", self);
+        detector.recordWriteLockAcquisitionAttempt(lock, "only", self);
+
+        assertTrue(detector.analyze().hasIssues());
+    }
 }

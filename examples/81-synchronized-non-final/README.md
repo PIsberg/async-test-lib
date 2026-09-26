@@ -18,8 +18,11 @@ lock identity silently changes at runtime.
 
 Remove the `@Disabled` annotation from `test_concurrent_detectsNonFinalLock`
 and run the test. `SynchronizedNonFinalDetector` records the monitor object
-passed to `recordLockObject()` per invocation, detects when different object
-instances are used for the same field ID, and flags the violation.
+passed to `recordLockObject()` together with the cache that owns it, detects
+when one cache uses different object instances for the same field ID, and
+flags the violation. The owner is what makes that decidable: without it, a
+changing monitor is also what several caches each holding their own final
+lock look like, and the detector does not report it.
 
 ## The Fix
 

@@ -5,17 +5,25 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 /**
- * Detects memory ordering violations and compiler reordering issues.
- * 
- * Problems detected:
- * - Writes visible in wrong order
- * - Reads see stale values
- * - Reordering causes incorrect synchronization
+ * Flags a read that did not return the value of another thread's write recorded just before it.
+ *
+ * <p><strong>What it can claim.</strong> The log is ordered by when each record call was
+ * appended, not by when the memory operations happened: a record is made after the read or
+ * write it describes, by a thread that can be descheduled in between. So a write recorded before
+ * a read does not mean the write happened before the read, and a read that returned something
+ * else is consistent with a stale read (no happens-before edge from the write to the read) and
+ * equally with a read that simply ran first. The finding says exactly that: these two records,
+ * in this order, disagree. It is a prompt to check for a missing happens-before edge, never a
+ * verdict, and the trust tier says so.
+ *
+ * <p>A read whose value a later-recorded write produced is not reported: that read saw a write
+ * whose record had not landed yet, which is the log lagging, not the read being stale.
  */
 public class MemoryOrderingMonitor {
     
@@ -79,22 +87,24 @@ public class MemoryOrderingMonitor {
         for (List<MemoryAccess> accesses : locationAccesses.values()) {
             if (accesses.size() < 2) continue;
             
-            // Look for read-after-write patterns from different threads
+            // Look for read-after-write patterns from different threads, in record order
             for (int i = 0; i < accesses.size() - 1; i++) {
                 MemoryAccess a1 = accesses.get(i);
                 MemoryAccess a2 = accesses.get(i + 1);
                 
                 // If write followed by read from different thread
                 if ("WRITE".equals(a1.operation) && "READ".equals(a2.operation) && 
-                    a1.threadId != a2.threadId) {
-                    
-                    // Check if read saw the written value
-                    if (!Objects.equals(a1.value, a2.value)) {
-                        report.staleCoreads.add(String.format(
-                            "%s: Write by T-%d (%s), read by T-%d (%s)",
-                            a1.location, a1.threadId, a1.value, a2.threadId, a2.value
-                        ));
-                    }
+                    a1.threadId != a2.threadId
+                    // Check if read saw the written value, or one a later record explains
+                    && !Objects.equals(a1.value, a2.value)
+                    && !writtenByALaterRecord(accesses, i + 2, a2.value)) {
+                    report.staleCoreads.add(String.format(Locale.ROOT,
+                        "%s: T-%d's write of %s was recorded, then T-%d's read returned %s. "
+                            + "Record order is not memory order: the read may have run before "
+                            + "the write, or not seen it. If T-%d must see this write, give it a "
+                            + "happens-before edge to the read",
+                        a1.location, a1.threadId, a1.value, a2.threadId, a2.value, a2.threadId
+                    ));
                 }
             }
         }
@@ -109,6 +119,17 @@ public class MemoryOrderingMonitor {
         // thread seeing writes land out of order. A per-thread log cannot witness one. The stale
         // co-read check above is the signal that can, and it stays.
         return report;
+    }
+
+    /** Whether a write recorded at or after {@code from} wrote {@code value}. */
+    private static boolean writtenByALaterRecord(List<MemoryAccess> accesses, int from, Object value) {
+        for (int j = from; j < accesses.size(); j++) {
+            MemoryAccess later = accesses.get(j);
+            if ("WRITE".equals(later.operation) && Objects.equals(later.value, value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -139,7 +160,11 @@ public class MemoryOrderingMonitor {
     }
     
     public static class MemoryOrderingReport {
-        /** Reads that did not see a value another thread had written — a real visibility bug. */
+        /**
+         * Reads that did not return the value of another thread's write recorded just before
+         * them. Record order is not memory order, so each is a prompt to check for a missing
+         * happens-before edge, not proof of a visibility bug.
+         */
         public final Set<String> staleCoreads = new HashSet<>();
         /**
          * Retained for source and binary compatibility, and still honoured by {@link #hasIssues()}
@@ -167,10 +192,12 @@ public class MemoryOrderingMonitor {
             }
             
             StringBuilder sb = new StringBuilder();
-            sb.append("MEMORY ORDERING ISSUES DETECTED:\n");
+            sb.append(IssueSeverity.HIGH.format())
+              .append(": MEMORY ORDERING: reads that disagree with the write recorded before them\n");
             
             if (!staleCoreads.isEmpty()) {
-                sb.append("\nStale reads:\n");
+                sb.append("\nReads that did not return the preceding recorded write "
+                        + "(record order, not memory order):\n");
                 for (String issue : staleCoreads) {
                     sb.append("  - ").append(issue).append("\n");
                 }

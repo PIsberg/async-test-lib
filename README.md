@@ -98,10 +98,16 @@ the corpus. Saying so is the difference between a measurement and a marketing nu
 lanes exist for exactly that reason. One records what the body did, the way a user following
 `AsyncTestContext` would; the other attaches the agent and writes the bug next to its fix. Between
 them 131 of the 146 detectors are paired with a case that must fire and a twin that must stay
-silent, and the other 15 carry a written reason. 61 of those pairs are what let their detectors
-carry `VERDICT`, the tier a build can fail on. HikariCP joins the corpus as an eighth library
+silent, and the other 15 carry a written reason. 33 of those pairs are what let their detectors
+carry `VERDICT`, the tier a build can fail on; a pair alone is not enough, because the detector
+must also decide from something other than the test's own record call. HikariCP joins the corpus
+as an eighth library
 in the recording lane, because a connection pool is the one subject that cannot be exercised
-without something to pool.
+without something to pool. The `idioms` lane writes correct user-code concurrency the way a test
+body would, a queue hand-off, a volatile flag, a latch, a guarded `wait` loop, each beside its
+broken twin and with every detector on: a correct idiom fails the run on any finding at `FACT` or
+above, and the correct idioms the happens-before model does not see yet are listed as known gaps
+with the reason, so that a fix flips them visibly.
 
 The library agent pairs put the woven JDK call inside Guava, Jackson, HikariCP, Spring, commons-lang3
 or Groovy instead of the test file, so 17 of the 20 agent-fed detectors are measured on a call site
@@ -410,8 +416,14 @@ mvn test -Dasync-test.baseline=async-test-baseline.txt -Dasync-test.baseline.upd
 mvn test -Dasync-test.baseline=async-test-baseline.txt                                    # enforce
 ```
 
-Each baseline line is `com.example.MyTest#method | DetectorName` — diff-friendly and
-hand-editable; delete lines as you fix the findings.
+Each baseline line is `com.example.MyTest#method | DetectorName | finding` — diff-friendly and
+hand-editable; delete lines as you fix the findings. A finding the file does not name still fails,
+even when the same detector has other findings in the file. Two-field lines written by releases
+before 1.12.3 keep accepting the whole detector for that test.
+
+On a passing run, PROMPT and ADVISORY reports print as one line each; add
+`-Dasync-test.report.full=true` to print them in full. Listeners and report files always get the
+full text.
 
 ---
 

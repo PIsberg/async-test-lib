@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
@@ -36,8 +37,8 @@ import java.util.concurrent.atomic.LongAdder;
  *
  * <p>Cooperative API: report every CAS attempt via {@link #recordCasAttempt} and
  * every {@code incrementAndGet()}-style update via {@link #recordUpdate}. A finding
- * is raised for an atomic instance when, over the observed window, at least two
- * distinct threads contended for it, the total attempt count reached the
+ * is raised for an atomic instance when at least two distinct threads touched it
+ * inside one invocation round, the total attempt count reached the
  * configured threshold, and at least 10% of the CAS attempts failed.
  *
  * <p>Usage:
@@ -72,14 +73,13 @@ public final class HighContentionAtomicDetector {
     /** Minimum failed-CAS ratio (failures / total attempts) required to raise a finding. */
     private static final double FAILURE_RATIO_THRESHOLD = 0.10;
 
-    /** Minimum number of distinct contending threads required to raise a finding. */
-    private static final int MIN_DISTINCT_THREADS = 2;
-
     private static final class State {
         final String label;
         final LongAdder totalAttempts  = new LongAdder();
         final LongAdder failedAttempts = new LongAdder();
         final Set<Long>   threadIds    = ConcurrentHashMap.newKeySet();
+        /** Two threads in one round, the gate; the run-wide id set only counts them for the report. */
+        final RoundSharing sharing     = new RoundSharing();
 
         State(String label) {
             this.label = label;
@@ -87,6 +87,8 @@ public final class HighContentionAtomicDetector {
     }
 
     private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    /** Current invocation round, bumped by {@link #markInvocationStart()}. */
+    private final AtomicLong invocationEpoch = new AtomicLong();
     private final long attemptThreshold;
 
     /** Creates a detector using {@link #DEFAULT_ATTEMPT_THRESHOLD} as the attempt threshold. */
@@ -142,8 +144,21 @@ public final class HighContentionAtomicDetector {
                 k -> new State(atomic.getClass().getSimpleName() + "@" + k.hashCode()));
     }
 
-    private static void track(State s, Thread thread) {
+    private void track(State s, Thread thread) {
         s.threadIds.add(thread.threadId());
+        s.sharing.record(invocationEpoch.get(), thread.threadId());
+    }
+
+    /**
+     * Internal: called at the start of each invocation round. Two threads count as contending
+     * only inside one round: the runner orders rounds, and with virtual threads every body
+     * execution has a fresh thread id, so a failing CAS used as logic by one thread per round
+     * would otherwise read as contention.
+     *
+     * @since 1.12.3
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
     }
 
     /**
@@ -157,7 +172,7 @@ public final class HighContentionAtomicDetector {
             int threadCount = s.threadIds.size();
             long attempts = s.totalAttempts.sum();
             long failures = s.failedAttempts.sum();
-            if (threadCount < MIN_DISTINCT_THREADS) continue;
+            if (!s.sharing.sharedWithinARound()) continue;
             if (attempts < attemptThreshold) continue;
             double failureRatio = (attempts == 0) ? 0.0 : (double) failures / attempts;
             if (failureRatio < FAILURE_RATIO_THRESHOLD) continue;

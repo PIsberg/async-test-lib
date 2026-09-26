@@ -105,7 +105,13 @@ class RoundStartFanOutIsCompleteTest {
                     + ". Teach OWNER_OF_PREFIX the class that declares it.");
         }
         String field = segments[segments.length - 1];
-        return Class.forName(owner).getDeclaredField(field).getType().getSimpleName();
+        // A nested round clock (SelfGuard.Scope) is declared in its outer class's file, which is
+        // the name declaringDetectors() finds, so credit the call to the top-level class.
+        Class<?> type = Class.forName(owner).getDeclaredField(field).getType();
+        while (type.getEnclosingClass() != null) {
+            type = type.getEnclosingClass();
+        }
+        return type.getSimpleName();
     }
 
     private static Path mainSources() {

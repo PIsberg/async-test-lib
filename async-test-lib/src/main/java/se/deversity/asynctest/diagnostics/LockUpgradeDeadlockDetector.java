@@ -43,9 +43,12 @@ public final class LockUpgradeDeadlockDetector {
      * Read holds per lock, per thread, as a count. A set lost the second of two nested read
      * acquires at the first release, so a thread still holding the read lock read as free and
      * its write attempt, which really blocks forever, went unreported (#566).
+     *
+     * <p>Locks are keyed by identity. Keyed by the bare identity hash, two locks that shared one
+     * were one lock, and a read hold on one made a write attempt on the other an upgrade.
      */
-    private final Map<Integer, Map<Long, Integer>> readHolds = new ConcurrentHashMap<>();
-    private final Map<Integer, State> violations = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, Map<Long, Integer>> readHolds = new ConcurrentHashMap<>();
+    private final Map<IdentityKey, State> violations = new ConcurrentHashMap<>();
 
     /**
      * Record acquisition of a read lock.
@@ -56,8 +59,7 @@ public final class LockUpgradeDeadlockDetector {
      */
     public void recordReadLockAcquired(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
-        int id = System.identityHashCode(lock);
-        readHolds.computeIfAbsent(id, k -> new ConcurrentHashMap<>())
+        readHolds.computeIfAbsent(new IdentityKey(lock), k -> new ConcurrentHashMap<>())
                 .merge(thread.threadId(), 1, Integer::sum);
     }
 
@@ -69,8 +71,7 @@ public final class LockUpgradeDeadlockDetector {
      */
     public void recordReadLockReleased(ReentrantReadWriteLock lock, Thread thread) {
         if (lock == null || thread == null) return;
-        int id = System.identityHashCode(lock);
-        Map<Long, Integer> holds = readHolds.get(id);
+        Map<Long, Integer> holds = readHolds.get(new IdentityKey(lock));
         if (holds != null) {
             holds.computeIfPresent(thread.threadId(), (k, count) -> count > 1 ? count - 1 : null);
         }
@@ -99,7 +100,7 @@ public final class LockUpgradeDeadlockDetector {
      */
     public void recordWriteLockAcquisitionAttempt(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
-        int id = System.identityHashCode(lock);
+        IdentityKey id = new IdentityKey(lock);
         boolean upgrade;
         if (thread.threadId() == Thread.currentThread().threadId()
                 && (lock.isWriteLockedByCurrentThread() || lock.getReadHoldCount() > 0)) {
@@ -112,7 +113,7 @@ public final class LockUpgradeDeadlockDetector {
         }
         if (upgrade) {
             State s = violations.computeIfAbsent(id, k -> new State(
-                lockName != null ? lockName : "ReentrantReadWriteLock@" + id
+                lockName != null ? lockName : "ReentrantReadWriteLock@" + id.hashCode()
             ));
             s.deadlockedThreads.add(thread.getName());
         }

@@ -8,12 +8,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Detects incorrect usage of {@link java.util.concurrent.locks.StampedLock} optimistic reads:
- * reading data after {@code tryOptimisticRead()} without calling {@code validate(stamp)},
- * or continuing to use data after a failed validation.
+ * reading data after {@code tryOptimisticRead()} without calling {@code validate(stamp)}.
  *
  * <p>An optimistic read stamp is only valid if no write lock was acquired between
  * {@code tryOptimisticRead()} and {@code validate(stamp)}. Using data from an invalidated
  * optimistic read silently introduces torn-snapshot data corruption.
+ *
+ * <p>A validation that fails is not a finding. Under contention it is the normal path of the
+ * idiom below: the caller learns the values may be torn, drops them and re-reads under the read
+ * lock or retries. What the caller does after a failed validation is not recorded, so using the
+ * torn values anyway is not something this detector can see; a read that is never validated is.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -45,12 +49,17 @@ public class OptimisticReadValidationDetector {
         }
     }
 
-    // key = lockIdentityHash:threadId
-    private final Map<String, OptimisticRead> pendingReads = new ConcurrentHashMap<>();
-    private final List<String>                violations   = new CopyOnWriteArrayList<>();
+    /**
+     * The lock by identity and the reading thread. The lock used to be keyed by its identity hash,
+     * which two live locks can share, so one lock's optimistic read replaced another's.
+     */
+    private record ReadKey(IdentityKey lock, long threadId) { }
 
-    private static String key(Object lock, Thread thread) {
-        return System.identityHashCode(lock) + ":" + thread.threadId();
+    private final Map<ReadKey, OptimisticRead> pendingReads = new ConcurrentHashMap<>();
+    private final List<String>                 violations   = new CopyOnWriteArrayList<>();
+
+    private static ReadKey key(Object lock, Thread thread) {
+        return new ReadKey(new IdentityKey(lock), thread.threadId());
     }
 
     /**
@@ -93,7 +102,8 @@ public class OptimisticReadValidationDetector {
     /**
      * Call immediately after {@code lock.validate(stamp)}.
      *
-     * @param result the boolean returned by {@code validate()}
+     * @param result the boolean returned by {@code validate()}; either value closes the read, since a
+     *               false one is the caller's cue to re-read under a lock
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param stamp the stamp returned by the {@code StampedLock} operation
@@ -101,20 +111,16 @@ public class OptimisticReadValidationDetector {
      */
     public void recordValidateCalled(Object lock, long stamp, boolean result, Thread thread) {
         if (lock == null || thread == null) return;
-        String k = key(lock, thread);
+        ReadKey k = key(lock, thread);
         OptimisticRead read = pendingReads.get(k);
         if (read == null) return;
         // A validate() for some other stamp does not validate the pending read —
         // leave it pending so its missing validation is still reported at analysis
         // time (removing it here silently discarded the evidence).
         if (read.stamp != stamp) return;
+        // Validated either way. A false result is the idiom's retry signal, not a use of the
+        // torn values, so it is not reported (it used to be, which fired on correct code).
         pendingReads.remove(k);
-        if (!result && !read.accessedFields.isEmpty()) {
-            violations.add(String.format(
-                "Thread '%s': data accessed (%s) during optimistic read but stamp validation FAILED — "
-                + "value is a torn snapshot from a concurrent write",
-                read.threadName, String.join(", ", read.accessedFields)));
-        }
     }
 
     /**

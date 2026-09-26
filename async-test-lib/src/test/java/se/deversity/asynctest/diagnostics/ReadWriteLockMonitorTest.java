@@ -92,4 +92,29 @@ class ReadWriteLockMonitorTest {
         assertEquals(viaAnalyzeFairness.hasFairnessIssues(), viaAnalyze.hasFairnessIssues());
         assertEquals(viaAnalyzeFairness.toString(), viaAnalyze.toString());
     }
+
+    /**
+     * Two read-write locks whose identity hashes collide are two locks. Keyed by the bare hash,
+     * the second registration was dropped as a duplicate and every read taken on the second lock
+     * was counted, and reported, under the first lock's name.
+     */
+    @Test
+    void locksSharingAnIdentityHashAreReportedUnderTheirOwnNames() {
+        ReadWriteLockMonitor monitor = new ReadWriteLockMonitor();
+        java.util.List<Object> colliding = IdentityCollisions.pair(Object::new);
+        monitor.registerLock(colliding.get(0), "first");
+        monitor.registerLock(colliding.get(1), "second");
+
+        for (int i = 0; i < 30; i++) {
+            monitor.recordReadLockAcquired(colliding.get(1), 0);
+            monitor.recordReadLockReleased(colliding.get(1));
+        }
+        monitor.recordWriteLockAcquired(colliding.get(1), 0);
+        monitor.recordWriteLockReleased(colliding.get(1));
+
+        ReadWriteLockMonitor.ReadWriteLockReport report = monitor.analyzeFairness();
+        assertEquals(1, report.readerDominatedLocks.size(), report.toString());
+        assertTrue(report.readerDominatedLocks.iterator().next().startsWith("second:"),
+                "the reads were taken on the lock registered as 'second': " + report.readerDominatedLocks);
+    }
 }

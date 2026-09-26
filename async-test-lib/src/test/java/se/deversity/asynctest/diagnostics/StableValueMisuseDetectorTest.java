@@ -35,6 +35,42 @@ class StableValueMisuseDetectorTest {
                 + detector.analyze().getReentrantIssues());
     }
 
+    @Test
+    void aFreshHolderSetOncePerRoundUnderTheSameLabelIsNotSetTwice() {
+        // Each round builds its own StableValue (a per-test instance field) under the label
+        // "CONFIG" and sets it once. Three holders, three sets, no second set on any of them.
+        Thread[] setters = { new Thread("r1"), new Thread("r2"), new Thread("r3") };
+        for (Thread setter : setters) {
+            detector.markInvocationStart();
+            detector.recordSet("CONFIG", setter);
+            detector.recordRead("CONFIG", setter);
+        }
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "one set per fresh holder is the contract: " + report);
+        assertTrue(report.getContentionWarnings().isEmpty(),
+            "three rounds with one setter each is not three threads racing one holder: " + report);
+    }
+
+    @Test
+    void oneHolderSetTwiceInOneRoundStillFires() {
+        detector.markInvocationStart();
+        detector.recordSet("CONFIG", new Thread("a"));
+        detector.recordSet("CONFIG", new Thread("b"));
+        assertFalse(detector.analyze().getDoubleSetIssues().isEmpty());
+    }
+
+    @Test
+    void aHolderSetInAnEarlierRoundIsNotReadBeforeSetInTheNext() {
+        // A static StableValue set in round one and only read afterwards.
+        Thread t = Thread.currentThread();
+        detector.markInvocationStart();
+        detector.recordSet("CONFIG", t);
+        detector.markInvocationStart();
+        detector.recordRead("CONFIG", t);
+        assertTrue(detector.analyze().getReadBeforeSetIssues().isEmpty(),
+            detector.analyze().getReadBeforeSetIssues().toString());
+    }
+
     // ---- Happy path ----
 
     @Test

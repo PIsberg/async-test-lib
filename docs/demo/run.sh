@@ -20,7 +20,7 @@ echo "fields allow threads to overwrite each other's changes, producing lost upd
 echo "stale reads, and silently wrong results"
 echo ""
 echo "Concurrent write hotspots:"
-echo -e "  - ${BOLD}CounterTest@6b8f3c1.counter${RESET}: 8 writes observed across 8 threads"
+echo -e "  - ${BOLD}CounterTest@6b8f3c1.counter${RESET}: written by 8 threads, 8 writes in all"
 echo ""
 echo "Unsynchronized access sequences:"
 echo "  - counter: thread 47 write followed immediately by thread 48 write"

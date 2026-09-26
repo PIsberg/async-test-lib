@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -31,9 +32,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * and release counts cannot see the second shape, because the pair the caller instrumented is
  * balanced; the lock can. The analysing thread's own holds are never reported.
  *
- * <p>A hold is a leak only if its holder has stopped working (#609). The holder is named by the
- * lock ({@code "Locked by thread X"}) and looked up among the threads that recorded against the lock
- * and the live platform threads. The hold is reported when no thread of that name is alive (the
+ * <p>A hold is a leak only if its holder has stopped working (#609). The lock names its holder only
+ * by name ({@code "Locked by thread X"}), and a name is not an identity: virtual threads are unnamed
+ * by default, so every one of them is {@code ""}. So the holder is first the thread last recorded
+ * acquiring the lock while holding it, when that thread has the name the lock gives; only failing
+ * that is it looked up by name among the threads that recorded against the lock and the live
+ * platform threads. The hold is reported when no thread of that name is alive (the
  * holder finished with the lock taken), or when every one that is sits idle in a pool
  * ({@code ThreadPoolExecutor.getTask}, {@code ForkJoinPool.awaitWork}), which is how a runner worker
  * or an executor thread looks once the task that took the lock has ended. A holder that is alive
@@ -171,6 +175,9 @@ public class ReentrantLockDetector {
         }
         Observed seen = observedFor(lock);
         seen.touch();
+        if (lock.isHeldByCurrentThread()) {
+            seen.holder.set(Thread.currentThread());
+        }
         seen.observeAcquisition(lock, Thread.currentThread());
     }
 
@@ -190,7 +197,14 @@ public class ReentrantLockDetector {
         if (info != null) {
             info.recordRelease(threadName);
         }
-        observedFor(lock).touch();
+        Observed seen = observedFor(lock);
+        seen.touch();
+        // One hold or none left: the last one goes now (recorded before the unlock) or has gone
+        // (recorded after it). More than one left is a hold this thread keeps, which is the
+        // leaked re-entry, so the thread stays the recorded holder.
+        if (lock.getHoldCount() <= 1) {
+            seen.holder.compareAndSet(Thread.currentThread(), null);
+        }
     }
 
     /**
@@ -309,8 +323,17 @@ public class ReentrantLockDetector {
     private enum HolderState { GONE, IDLE, WORKING }
 
     private HolderState stateOf(String holderName, ReentrantLock lock, Set<Thread> platformThreads) {
-        Set<Thread> candidates = Collections.newSetFromMap(new IdentityHashMap<>());
         Observed seen = observed.get(lock);
+        Thread recorded = seen != null ? seen.holder.get() : null;
+        if (recorded != null && holderName.equals(recorded.getName())) {
+            // The thread itself, not a name: another alive thread that shares the name, as every
+            // unnamed virtual thread does, is not the holder and must not excuse its hold.
+            if (!recorded.isAlive()) {
+                return HolderState.GONE;
+            }
+            return idleInAPool(recorded) ? HolderState.IDLE : HolderState.WORKING;
+        }
+        Set<Thread> candidates = Collections.newSetFromMap(new IdentityHashMap<>());
         if (seen != null) {
             candidates.addAll(seen.threads);
         }
@@ -548,6 +571,11 @@ public class ReentrantLockDetector {
      */
     private static final class Observed {
         final Set<Thread> threads = ConcurrentHashMap.newKeySet();
+        /**
+         * The thread last recorded acquiring the lock while it held it, until it records giving
+         * its last hold back. The lock itself names its owner only by name.
+         */
+        final AtomicReference<@Nullable Thread> holder = new AtomicReference<>();
         /** Per queued thread, who acquired ahead of it during its current wait. Guarded by this. */
         private final Map<Thread, Set<Thread>> passedOverBy = new IdentityHashMap<>();
         /** Per thread, how many times a thread that had already acquired ahead of it did so again. Guarded by this. */

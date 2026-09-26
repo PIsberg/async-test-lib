@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -21,11 +24,34 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Data structure corruption
  * - Lost updates
  * - Incorrect synchronization
+ *
+ * <p><strong>What is a finding.</strong> Only that interleaving, in the order the events were
+ * recorded: a thread records the read its compare-and-set expects
+ * ({@link #recordRead(String, Object)}), <em>other</em> threads record a change away from that
+ * value and a change back to it, and then the first thread records a successful
+ * compare-and-set expecting the value it read. Record each event where it happens, on the
+ * thread doing it; the detector orders events by when they were recorded and has no other
+ * clock.
+ *
+ * <p>A value going A to B and back to A is not a finding on its own. One thread pushing and
+ * then popping, a flag set and cleared, a counter incremented and decremented: each is an
+ * A-B-A history, and none of them hurts a compare-and-set whose premise was read after the
+ * toggle, or one taken by the thread that did the toggling. Such cycles are still counted in
+ * {@link ABAReport#variablesWithCycles} and shown as context beside a finding.
  */
 public class ABAProblemDetector {
-    
+
+    /** Record order across all variables; the only clock the interleaving check has. */
+    private final AtomicLong sequence = new AtomicLong();
+
     private static class AtomicValueHistory {
         final String varName;
+        /**
+         * The latest recorded read per thread. A compare-and-set takes its premise from the read
+         * just before it, so a later read replaces an earlier one, and a compare-and-set
+         * consumes the read it was checked against.
+         */
+        final Map<Long, ValueRead> reads = new ConcurrentHashMap<>();
         /**
          * Guards {@link #changes}. A dedicated private lock rather than the list itself: this
          * class is extensible, so its fields are reachable by subclasses, and a lock a subclass
@@ -42,13 +68,19 @@ public class ABAProblemDetector {
         }
     }
     
+    private record ValueRead(long seq, Object value) { }
+
     private static class ValueChange {
         final Object oldValue;
         final Object newValue;
+        final long seq;
+        final long threadId;
 
-        ValueChange(Object old, Object neu) {
+        ValueChange(Object old, Object neu, long seq, long threadId) {
             this.oldValue = old;
             this.newValue = neu;
+            this.seq = seq;
+            this.threadId = threadId;
         }
         
         @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // identity equality intentional for atomic value tracking
@@ -87,9 +119,10 @@ public class ABAProblemDetector {
             AtomicValueHistory::new
         );
         
-        ValueChange change = new ValueChange(oldValue, newValue);
+        long tid = Thread.currentThread().threadId();
         synchronized (history.changesLock) {
-            history.changes.add(change);
+            // Sequence taken under the lock, so the list stays in record order.
+            history.changes.add(new ValueChange(oldValue, newValue, sequence.incrementAndGet(), tid));
         }
         
         // Detect cycles (A -> B -> A pattern)
@@ -97,7 +130,38 @@ public class ABAProblemDetector {
     }
     
     /**
-     * Record a CAS (Compare-And-Swap) attempt.
+     * Record the read a compare-and-set will take as its expected value, on the thread that
+     * reads it: the {@code observed = ref.get()} at the top of a lock-free retry loop.
+     *
+     * <p>This is what places the premise in time. Without it the detector cannot tell a
+     * compare-and-set whose expected value was read before another thread's A-B-A from one read
+     * after it, and it draws no ABA verdict.
+     *
+     * @param variableName a label identifying the variable in the report
+     * @param observedValue the value read
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordRead(String variableName, Object observedValue) {
+        if (!enabled) return;
+
+        AtomicValueHistory history = trackedVariables.computeIfAbsent(variableName,
+            AtomicValueHistory::new
+        );
+        long seq;
+        synchronized (history.changesLock) {
+            // Under the changes lock so the read is ordered against changes on this variable.
+            seq = sequence.incrementAndGet();
+        }
+        history.reads.put(Thread.currentThread().threadId(), new ValueRead(seq, observedValue));
+    }
+
+    /**
+     * Record a CAS (Compare-And-Swap) attempt, on the thread that made it.
+     *
+     * <p>A successful attempt is an ABA finding when this thread's last recorded read of the
+     * variable saw {@code expectedValue}, and after that read other threads recorded a change
+     * away from it and a change back to it (see the class documentation).
      *
      * @param variableName a label identifying the variable in the report
      * @param expectedValue the value the compare-and-set expected to find
@@ -114,9 +178,13 @@ public class ABAProblemDetector {
         );
         
         CASAttempt attempt = new CASAttempt(expectedValue, newValue);
-        
-        // Detect ABA: Value changed but came back to expected
-        if (succeeded && detectABA(history, attempt)) {
+        long tid = Thread.currentThread().threadId();
+        // The attempt consumes its premise: a retry reads again before it tries again.
+        ValueRead premise = history.reads.remove(tid);
+
+        // Detect ABA: the value moved away and came back while this thread held a stale read
+        if (succeeded && premise != null && sameValue(premise.value(), expectedValue)
+                && detectABA(history, attempt, premise.seq(), tid)) {
             attempt.wasABA = true;
         }
         
@@ -160,35 +228,45 @@ public class ABAProblemDetector {
         }
     }
     
-    private boolean detectABA(AtomicValueHistory history, CASAttempt attempt) {
-        // Snapshot under the list's own lock: iterating a synchronizedList while other threads
-        // append throws ConcurrentModificationException, which would lose the ABA finding.
+    /**
+     * Whether, after the attempting thread's read at {@code readSeq}, another thread recorded a
+     * change away from the expected value and a thread other than the attempting one then
+     * recorded a change back to it.
+     *
+     * <p>The attempting thread's own changes do not count: a thread cannot be surprised by a
+     * toggle it made itself, and its own compare-and-set is recorded as a change too.
+     */
+    private boolean detectABA(AtomicValueHistory history, CASAttempt attempt, long readSeq, long casThread) {
         List<ValueChange> changes = history.changes;
-        List<ValueChange> snapshot;
+        boolean movedAway = false;
+        // Walked under the lock: the list is appended to concurrently. Only the tail after the
+        // read is visited, newest first until the read's position is passed.
         synchronized (history.changesLock) {
-            snapshot = new ArrayList<>(changes);
-        }
-
-        boolean foundExpectedBefore = false;
-        boolean foundDifferentAfter = false;
-
-        for (ValueChange change : snapshot) {
-            if (!foundExpectedBefore) {
-                if (change.isSameValue(change.newValue, attempt.expectedValue)) {
-                    foundExpectedBefore = true;
+            int start = changes.size();
+            while (start > 0 && changes.get(start - 1).seq > readSeq) {
+                start--;
+            }
+            for (int i = start; i < changes.size(); i++) {
+                ValueChange change = changes.get(i);
+                if (change.threadId == casThread) {
+                    continue;
                 }
-            } else if (!foundDifferentAfter) {
-                if (!change.isSameValue(change.newValue, attempt.expectedValue)) {
-                    foundDifferentAfter = true;
-                }
-            } else {
-                if (change.isSameValue(change.newValue, attempt.expectedValue)) {
-                    return true; // A -> B -> A confirmed
+                if (!movedAway) {
+                    movedAway = sameValue(change.oldValue, attempt.expectedValue)
+                            && !sameValue(change.newValue, attempt.expectedValue);
+                } else if (sameValue(change.newValue, attempt.expectedValue)) {
+                    return true; // A -> B -> A behind this thread's back
                 }
             }
         }
-
         return false;
+    }
+
+    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // identity equality intentional for atomic value tracking
+    private static boolean sameValue(Object v1, Object v2) {
+        if (v1 == null && v2 == null) return true;
+        if (v1 == null || v2 == null) return false;
+        return v1.equals(v2) || v1 == v2;
     }
     
     /**
@@ -256,7 +334,8 @@ public class ABAProblemDetector {
          * {@return whether there are issues}
          */
         public boolean hasIssues() {
-            return !variablesWithCycles.isEmpty() || !successfulABACases.isEmpty();
+            // A cycle alone is context, not a finding: see the class documentation.
+            return !successfulABACases.isEmpty();
         }
         
         @Override
@@ -266,10 +345,10 @@ public class ABAProblemDetector {
             }
             
             StringBuilder sb = new StringBuilder();
-            sb.append("ABA PROBLEM DETECTED:\n");
+            sb.append(IssueSeverity.HIGH.format()).append(": ABA PROBLEM DETECTED:\n");
             
             if (!variablesWithCycles.isEmpty()) {
-                sb.append("\nVariables with A->B->A cycles:\n");
+                sb.append("\nVariables with A->B->A cycles (context; a cycle alone is not a finding):\n");
                 for (Map.Entry<String, Integer> entry : variablesWithCycles.entrySet()) {
                     sb.append(String.format("  - %s: %d cycles detected%n",
                         entry.getKey(), entry.getValue()));

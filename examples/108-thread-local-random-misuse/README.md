@@ -9,8 +9,10 @@ Requires async-test-lib 1.7.0+.
 `IdGenerator` caches the result of `ThreadLocalRandom.current()` in a `final` field at
 construction time. `ThreadLocalRandom.current()` returns the generator that belongs to the
 *calling* thread; storing that reference and reusing it from other threads defeats the
-per-thread isolation the class is built on. Concurrent use of a single cached instance
-from multiple threads corrupts and biases the produced output.
+per-thread isolation the class is built on. The object holds no state of its own: every
+call acts on the calling thread's seed, and only `current()` initializes that seed, so a
+worker that uses the cached reference without calling `current()` draws a sequence set by
+its thread id rather than a seeded one.
 
 ## How to Reproduce
 

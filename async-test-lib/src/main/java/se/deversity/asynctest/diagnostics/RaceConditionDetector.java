@@ -1,16 +1,21 @@
 package se.deversity.asynctest.diagnostics;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects potential race conditions by tracking cross-thread field accesses.
@@ -23,16 +28,30 @@ import java.util.concurrent.atomic.AtomicLong;
  * access also held. An undeclared lock in unwoven code is invisible and the finding stands, which
  * {@code DetectorAccuracyEvalTest} pins.
  *
+ * <p><strong>Ordering.</strong> Each access is also stamped with the recording thread's
+ * {@link HappensBefore} clock, and a round whose every conflicting pair is ordered by it produces
+ * no finding either: an object handed through a queue, a field published by a volatile flag, a
+ * child ordered by {@code Thread.start} and {@code join}. The edges come from the agent's woven
+ * calls or from the test declaring them through {@link HappensBefore}; this detector adds one of
+ * its own, for a field the tracked object's class declares {@code volatile}: a recorded write
+ * releases the object, a recorded read acquires it, and two reads or a read and a write of that
+ * field are never a race, since volatile accesses are synchronization. Two threads writing it
+ * still are, which is what keeps {@code volatile count++} a finding. Record a volatile write
+ * before making it and a volatile read after making it, so that the release precedes every read
+ * that can see the value; recorded the other way round, a reader that sees the write before it
+ * is recorded finds nothing to acquire and the fields it publishes keep their finding. An
+ * ordering edge only ever removes a finding.
+ *
  * <p><strong>Why findings are not graded.</strong> A per-finding grade would have to separate a
  * race the library can stand behind from one it cannot, and nothing this detector records can:
- * an access with no visible lock may still hold an undeclared one, and the recording API carries no
- * volatile or hand-off ordering, so a lock-free read of a volatile field and a confined hand-off
- * look like the race they are not. Every finding is therefore the same kind of claim, which is what
- * the detector's single {@code PROMPT} tier already says.
+ * an access with no visible lock may still hold an undeclared one, and a hand-off that went
+ * through a call neither the agent nor the test described looks like the race it is not. Every
+ * finding is therefore the same kind of claim, which is what the detector's single {@code PROMPT}
+ * tier already says.
  */
 public class RaceConditionDetector {
 
-    private static class FieldAccess {
+    private static class FieldAccess implements HappensBefore.Access {
         final long threadId;
         final long timestamp;
         final boolean write;
@@ -50,18 +69,37 @@ public class RaceConditionDetector {
          * and were reported (#570). Empty for an unguarded access, which allocates nothing.
          */
         final int[] locks;
+        /** The recording thread's clock at the access; shared with its neighbours, never copied. */
+        final HappensBefore.Stamp stamp;
 
-        FieldAccess(long threadId, boolean write, long epoch, int[] locks) {
+        FieldAccess(long threadId, boolean write, long epoch, int[] locks,
+                    HappensBefore.Stamp stamp) {
             this.threadId = threadId;
             this.timestamp = System.nanoTime();
             this.write = write;
             this.epoch = epoch;
             this.locks = locks;
+            this.stamp = stamp;
         }
 
         /** {@return whether some lock was held at both this access and {@code other}} */
         boolean sharesLocksWith(FieldAccess other) {
             return intersection(locks, other.locks).length > 0;
+        }
+
+        @Override
+        public long orderThread() {
+            return threadId;
+        }
+
+        @Override
+        public boolean orderWrite() {
+            return write;
+        }
+
+        @Override
+        public HappensBefore.Stamp orderStamp() {
+            return stamp;
         }
     }
 
@@ -74,15 +112,58 @@ public class RaceConditionDetector {
     static int[] intersection(int[] left, int[] right) {
         return Lockset.intersect(left, right);
     }
+
+    /** One field of one object: its accesses, whether it is volatile, and where it was first written. */
+    private static final class FieldState {
+        final Queue<FieldAccess> accesses = new ConcurrentLinkedQueue<>();
+        /** Whether the tracked object's class declares a field of this name {@code volatile}. */
+        final boolean volatileField;
+        /** Set once, by the first write that tried; the capture is not repeated when it found nothing. */
+        volatile boolean siteAttempted;
+        volatile SiteCapture.@Nullable Site firstWrite;
+
+        FieldState(boolean volatileField) {
+            this.volatileField = volatileField;
+        }
+    }
+
     private static class ObjectFieldState {
         final String className;
         final int objectId;
-        final Map<String, Queue<FieldAccess>> fieldAccesses = new ConcurrentHashMap<>();
+        final Class<?> type;
+        final Map<String, FieldState> fields = new ConcurrentHashMap<>();
 
-        ObjectFieldState(String className, int objectId) {
-            this.className = className;
+        ObjectFieldState(Class<?> type, int objectId) {
+            this.className = type.getSimpleName();
             this.objectId = objectId;
+            this.type = type;
         }
+    }
+
+    /**
+     * Declared field names per class, mapped to whether each is volatile, searched up the
+     * hierarchy. Computed once per class, so a new tracked object costs a lookup.
+     */
+    private static final ClassValue<Map<String, Boolean>> VOLATILE_FIELDS = new ClassValue<>() {
+        @Override
+        protected Map<String, Boolean> computeValue(Class<?> type) {
+            Map<String, Boolean> fields = new HashMap<>();
+            for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+                try {
+                    for (Field field : current.getDeclaredFields()) {
+                        fields.putIfAbsent(field.getName(), Modifier.isVolatile(field.getModifiers()));
+                    }
+                } catch (SecurityException | LinkageError ignored) { // NOPMD EmptyCatchBlock - an unreadable class declares nothing we can use
+                    // Fall through: the field is then treated as not volatile, the old answer.
+                }
+            }
+            return fields;
+        }
+    };
+
+    /** {@return whether {@code type} declares {@code fieldName} volatile; false when it has no such field} */
+    private static boolean isVolatile(Class<?> type, String fieldName) {
+        return Boolean.TRUE.equals(VOLATILE_FIELDS.get(type).get(fieldName));
     }
 
     private final Map<IdentityKey, ObjectFieldState> objects = new ConcurrentHashMap<>();
@@ -126,6 +207,9 @@ public class RaceConditionDetector {
     /**
      * Records field write so it can be analysed at the end of the run.
      *
+     * <p>For a field declared {@code volatile}, call this before the write rather than after; see
+     * the class javadoc.
+     *
      * @param object the object the access is on, tracked by identity
      * @param fieldName the field involved, as it should appear in the report
      */
@@ -141,8 +225,10 @@ public class RaceConditionDetector {
         // identityHashCode keying merged distinct objects on hash collision.
         ObjectFieldState state = objects.computeIfAbsent(
             new IdentityKey(object),
-            key -> new ObjectFieldState(object.getClass().getSimpleName(), key.hashCode())
+            key -> new ObjectFieldState(object.getClass(), key.hashCode())
         );
+        FieldState field = state.fields.computeIfAbsent(fieldName,
+                name -> new FieldState(isVolatile(state.type, name)));
 
         // ConcurrentLinkedQueue, deliberately not a synchronizedList: this method runs on
         // the racing threads themselves, between the very accesses being hunted. A shared
@@ -158,8 +244,23 @@ public class RaceConditionDetector {
         // consistently guarded, which is a false negative and a divergence between two detectors
         // that claim the same model (#500).
         int[] locks = HeldLocks.intersect(null, object, write);
-        state.fieldAccesses.computeIfAbsent(fieldName, ignored -> new ConcurrentLinkedQueue<>())
-            .add(new FieldAccess(Thread.currentThread().threadId(), write, invocationEpoch.get(), locks));
+        if (write && !field.siteAttempted) {
+            // Once per field: a stack walk per access would be a probe effect of its own.
+            field.siteAttempted = true;
+            field.firstWrite = SiteCapture.capture().orElse(null);
+        }
+        if (field.volatileField && !write) {
+            // A volatile read receives what the writes before it published. Recorded after the
+            // read it describes, so the acquire comes after the value was actually seen.
+            HappensBefore.acquire(object);
+        }
+        // Stamp before enqueueing and before any release below: the record order is what the
+        // analysis replays, and it must agree with the order the clocks describe.
+        field.accesses.add(new FieldAccess(Thread.currentThread().threadId(), write,
+                invocationEpoch.get(), locks, HappensBefore.current()));
+        if (field.volatileField && write) {
+            HappensBefore.release(object);
+        }
     }
     /**
      * Analyses what has been recorded about race conditions and builds the report for it.
@@ -170,18 +271,21 @@ public class RaceConditionDetector {
         RaceConditionReport report = new RaceConditionReport();
 
         for (ObjectFieldState state : objects.values()) {
-            for (Map.Entry<String, Queue<FieldAccess>> entry : state.fieldAccesses.entrySet()) {
+            for (Map.Entry<String, FieldState> entry : state.fields.entrySet()) {
                 String fieldName = entry.getKey();
+                FieldState field = entry.getValue();
                 // One weakly-consistent snapshot per field, taken up front: safe against
                 // concurrent recordAccess (the runner's timeout path analyzes while
                 // cancelled workers may still be unwinding), and every check below then
-                // reasons about the same fixed data instead of a moving target.
-                List<FieldAccess> snapshot = new ArrayList<>(entry.getValue());
+                // reasons about the same fixed data instead of a moving target. The snapshot
+                // keeps the record order, which the ordering check replays.
+                List<FieldAccess> snapshot = new ArrayList<>(field.accesses);
                 if (snapshot.size() < 2) {
                     continue;
                 }
 
-                String fieldRef = String.format("%s@%x.%s", state.className, state.objectId, fieldName);
+                String fieldRef = String.format(Locale.ROOT, "%s@%x.%s",
+                        state.className, state.objectId, fieldName);
 
                 // Pair accesses only within their invocation round: the runner ends a round
                 // by awaiting the worker latch and starts the next by submitting fresh
@@ -192,7 +296,7 @@ public class RaceConditionDetector {
                     byEpoch.computeIfAbsent(access.epoch, ignored -> new ArrayList<>()).add(access);
                 }
                 for (List<FieldAccess> roundAccesses : byEpoch.values()) {
-                    analyzeRound(report, fieldRef, roundAccesses);
+                    analyzeRound(report, fieldRef, roundAccesses, field);
                 }
             }
         }
@@ -202,16 +306,17 @@ public class RaceConditionDetector {
 
     /**
      * Race analysis for one field within one invocation round. Inside a round the harness
-     * provides no ordering between worker threads, so cross-thread pairs here are genuine
-     * suspects (user-level synchronization is still invisible — see the class Javadoc).
+     * provides no ordering between worker threads, so cross-thread pairs here are suspects unless
+     * a lock covers every access or the shared ordering model orders every conflicting pair.
      */
-    private void analyzeRound(RaceConditionReport report, String fieldRef, List<FieldAccess> accesses) {
+    private void analyzeRound(RaceConditionReport report, String fieldRef, List<FieldAccess> accesses,
+                              FieldState field) {
         if (accesses.size() < 2) {
             return;
         }
 
         Set<Long> threads = new HashSet<>();
-        boolean hasWrite = false;
+        Set<Long> writers = new HashSet<>();
         int writeCount = 0;
         // "Guarded" means some lock was held at every access: the Eraser lockset, the intersection
         // of the locks held at each. Two threads taking different locks share none and race
@@ -223,7 +328,7 @@ public class RaceConditionDetector {
             threads.add(access.threadId);
             commonLocks = commonLocks == null ? access.locks : intersection(commonLocks, access.locks);
             if (access.write) {
-                hasWrite = true;
+                writers.add(access.threadId);
                 writeCount++;
                 commonWriteLocks = commonWriteLocks == null
                         ? access.locks : intersection(commonWriteLocks, access.locks);
@@ -232,7 +337,7 @@ public class RaceConditionDetector {
         boolean allGuarded = commonLocks != null && commonLocks.length > 0;
         boolean allWritesGuarded = commonWriteLocks != null && commonWriteLocks.length > 0;
 
-        if (threads.size() < 2 || !hasWrite) {
+        if (threads.size() < 2 || writers.isEmpty()) {
             return;
         }
 
@@ -243,44 +348,85 @@ public class RaceConditionDetector {
             return;
         }
 
-        // Record events for deduplication
+        // A volatile field's reads are synchronization, not data races; only two writers conflict.
+        boolean readsConflict = !field.volatileField;
+        if (!readsConflict && writers.size() < 2) {
+            return;
+        }
+        // Every conflicting pair ordered by the happens-before model: a hand-off, a publication,
+        // a start or a join the lockset cannot see. An edge only ever removes a finding.
+        if (HappensBefore.everyConflictOrdered(accesses, readsConflict)) {
+            return;
+        }
+
+        SiteCapture.Site site = field.firstWrite;
+        // Record events for deduplication. -1 is the event contract's "line unknown"; the report
+        // text below never prints it.
         for (FieldAccess access : accesses) {
             if (access.write) {
                 deduplicator.record(new RaceConditionEvent(
                     "RaceCondition",
                     fieldRef,
-                    -1, // Line number unknown in this detector
+                    site == null ? -1 : site.lineNumber(),
                     access.threadId
                 ));
             }
         }
 
-        if (writeCount > 1 && !allWritesGuarded) {
-            report.potentialRaces.add(String.format(
-                "%s: %d writes observed across %d threads",
-                fieldRef, writeCount, threads.size()
+        if (writers.size() > 1 && !allWritesGuarded
+                && !HappensBefore.everyConflictOrdered(accesses, false)) {
+            report.potentialRaces.add(String.format(Locale.ROOT,
+                "%s: written by %d threads, %d writes in all%s",
+                fieldRef, writers.size(), writeCount,
+                site == null ? "" : ", first at " + site.render()
             ));
         }
 
+        FieldAccess[] pair = firstRacingPair(accesses, readsConflict);
+        if (pair.length == 2) {
+            report.unsafeAccesses.add(String.format(Locale.ROOT,
+                "%s: thread %d %s followed by thread %d %s",
+                fieldRef,
+                pair[0].threadId,
+                pair[0].write ? "write" : "read",
+                pair[1].threadId,
+                pair[1].write ? "write" : "read"
+            ));
+        }
+    }
+
+    /**
+     * {@return the first pair in time that conflicts, shares no lock and is not ordered, or an
+     * empty array}
+     *
+     * <p>Adjacent pairs first, which is what the sequence line has always described; when the
+     * unordered pair is not adjacent (a read ordered after the write sits between them), the
+     * earliest one further apart, so a reported round always names the pair that makes it one.
+     */
+    private static FieldAccess[] firstRacingPair(List<FieldAccess> accesses,
+                                                 boolean readsConflict) {
         List<FieldAccess> ordered = new ArrayList<>(accesses);
         ordered.sort((left, right) -> Long.compare(left.timestamp, right.timestamp));
-
         for (int i = 1; i < ordered.size(); i++) {
-            FieldAccess previous = ordered.get(i - 1);
-            FieldAccess current = ordered.get(i);
-            if (previous.threadId != current.threadId && (previous.write || current.write)
-                    && !previous.sharesLocksWith(current)) {
-                report.unsafeAccesses.add(String.format(
-                    "%s: thread %d %s followed by thread %d %s",
-                    fieldRef,
-                    previous.threadId,
-                    previous.write ? "write" : "read",
-                    current.threadId,
-                    current.write ? "write" : "read"
-                ));
-                break;
+            if (races(ordered.get(i - 1), ordered.get(i), readsConflict)) {
+                return new FieldAccess[] {ordered.get(i - 1), ordered.get(i)};
             }
         }
+        for (int i = 2; i < ordered.size(); i++) {
+            for (int j = i - 2; j >= 0; j--) {
+                if (races(ordered.get(j), ordered.get(i), readsConflict)) {
+                    return new FieldAccess[] {ordered.get(j), ordered.get(i)};
+                }
+            }
+        }
+        return new FieldAccess[0];
+    }
+
+    private static boolean races(FieldAccess earlier, FieldAccess later, boolean readsConflict) {
+        boolean conflicting = readsConflict ? earlier.write || later.write : earlier.write && later.write;
+        return earlier.threadId != later.threadId && conflicting
+                && !earlier.sharesLocksWith(later)
+                && !HappensBefore.ordered(earlier.threadId, earlier.stamp, later.threadId, later.stamp);
     }
 
     /**

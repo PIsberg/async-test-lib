@@ -61,8 +61,11 @@ two instructions with nothing to undo. A static reference store needs one instru
 `DUP; LDC class; SWAP`, because the value sits alone with the class constant pushed above it
 ([#337](https://github.com/PIsberg/async-test-lib/issues/337)); without that, class-scope
 lazy-init was the one double-submit shape the value evidence could not reach. Every other shape
-passes `null`, which the analysis reads as "not known" rather than as evidence. Only
-identity hashes leave the call — neither the receiver nor the stored value is retained.
+passes `null`, which the analysis reads as "not known" rather than as evidence. The stored value
+leaves the call as an identity hash only. The receiver also travels as itself, because two live
+objects can share an identity hash and the atomicity model groups accesses per object: the ring
+buffer lends it to the drain for one callback and then clears the slot, and the model keeps it
+only weakly, so neither is retained by the telemetry path.
 
 It is off by default because the cost scales with the instrumented surface, not with the number of
 accessors: every field read and write in every matched class emits an event. Pair it with
@@ -174,6 +177,24 @@ and read back through a `ClassReader` at the end, was built and measured on the 
 2.14x: the second reader rebuilds the whole constant pool as strings, which costs more than the
 captured lambdas it saves. It is not in the tree, and the measurement is recorded here so the same
 afternoon is not spent twice.
+
+**Ordering the lockset cannot see (1.12.3).** The same hooks feed the shared happens-before model,
+`HappensBefore`, which `RaceConditionDetector` and `AtomicityValidator` consult before they report
+a round: a round whose every conflicting pair the model orders is not reported. The detectors on
+the shared per-instance round verdict (`SelfGuard`, the `Shared*` family among them) consult it
+too: a thread whose use of the instance the model orders after the previous thread's takes it
+over rather than sharing it, while two threads using it at once still report. For the field
+stream the accessing thread's clock is stamped at publish time and travels through the ring with
+the event, since the drain thread's own clock orders nothing. The edges are the ones the Java memory
+model names for the woven calls: an element offered to and taken from a `java.util.concurrent`
+queue (or any `BlockingQueue` or `ConcurrentMap`, and the synchronized wrappers), a value put into
+and read back from such a map, `CountDownLatch.countDown` and an `await` that reached zero,
+`Semaphore.release` and an acquire that took a permit, and `Thread.start` and a `Thread.join` that
+returned with the thread finished (every `join` overload is substituted for this). With
+`fields=true`, a volatile write releases its object and a later access the weaver marks as
+following a volatile read of the same object acquires it. An `ArrayDeque` or a `HashMap` promises
+nothing and gives no edge. A lock hand-off is deliberately not an edge: the lockset judges locking,
+and ordering it by the one schedule a run took would hide what another schedule exposes.
 
 Three limits worth knowing before switching it on:
 

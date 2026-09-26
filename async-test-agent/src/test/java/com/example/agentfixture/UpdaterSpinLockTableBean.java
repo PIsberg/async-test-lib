@@ -63,8 +63,10 @@ public final class UpdaterSpinLockTableBean {
      * then replaces {@link #afterRelease} with nothing held. Two threads do that with nothing excluding
      * them, which is a race whatever the lockset believed.
      */
-    public int growThenWriteAfterUnobservedRelease() {
+    public boolean growThenWriteAfterUnobservedRelease() {
+        boolean won = false;
         if (BUSY.compareAndSet(this, 0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -72,7 +74,7 @@ public final class UpdaterSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        return length(afterRelease);
+        return afterRelease != null && won;
     }
 
     /** Replaces the table under the spinlock, released by {@code getAndSet} through the updater (#658). */
@@ -103,8 +105,10 @@ public final class UpdaterSpinLockTableBean {
      * The twin: {@code getAndUpdate} releases (woven since #667), and {@link #afterRelease} is then
      * replaced with nothing held.
      */
-    public int growThenWriteAfterGetAndUpdate() {
+    public boolean growThenWriteAfterGetAndUpdate() {
+        boolean won = false;
         if (BUSY.compareAndSet(this, 0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -112,7 +116,7 @@ public final class UpdaterSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        return length(afterRelease);
+        return afterRelease != null && won;
     }
 
     private static int length(Object[] seen) {

@@ -193,4 +193,36 @@ class RecordMutableComponentLeakDetectorTest {
             "Mutating a java.util.concurrent component is what the Fix text recommends; "
                 + "reporting it as an observed mutation contradicts the detector's own advice: " + report);
     }
+
+    /**
+     * A record touched by one thread per invocation round is handed on, not shared: the runner
+     * joins one round before the next. With virtual threads each round's thread has a fresh id,
+     * and the same body on one pooled platform thread would have one id and no finding.
+     */
+    @Test
+    void aRecordTouchedByOneThreadPerRoundIsNotShared() {
+        List<String> items = new ArrayList<>(List.of("a"));
+        Order order = new Order("o-1", items);
+
+        detector.recordShared(order, "order", threadA);
+        detector.markInvocationStart();
+        detector.recordShared(order, "order", threadB);
+        items.add("b");
+
+        assertFalse(detector.analyze().hasIssues(), detector.analyze().toString());
+    }
+
+    /** The same two threads inside one round share it. */
+    @Test
+    void aRecordTouchedByTwoThreadsInOneRoundIsShared() {
+        List<String> items = new ArrayList<>(List.of("a"));
+        Order order = new Order("o-1", items);
+
+        detector.markInvocationStart();
+        detector.recordShared(order, "order", threadA);
+        detector.recordShared(order, "order", threadB);
+        items.add("b");
+
+        assertTrue(detector.analyze().toString().contains("changed contents while shared"));
+    }
 }

@@ -2,25 +2,25 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static se.deversity.asynctest.diagnostics.ConstructorSafetySubject.onAnotherThread;
 
 class ConstructorSafetyValidatorTest {
 
     @Test
-    void theReportCountsThreadsRatherThanAccesses() throws InterruptedException {
+    void theReportCountsThreadsRatherThanAccesses() {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object subject = new Object();
 
-        validator.recordConstructionStart(subject);
         // One other thread, reading the half-built object three times. That is one escape, not
         // three threads, and the message says threads (#501).
-        Thread escapee = new Thread(() -> {
+        new ConstructorSafetySubject(validator, self -> onAnotherThread(() -> {
             for (int i = 0; i < 3; i++) {
-                validator.recordFieldAccess(subject, "state", System.nanoTime());
+                validator.recordFieldAccess(self, "state", System.nanoTime());
             }
-        });
-        escapee.start();
-        escapee.join();
+        }), true);
 
         ConstructorSafetyValidator.ConstructorSafetyReport report =
                 validator.validateConstructorSafety();
@@ -42,27 +42,79 @@ class ConstructorSafetyValidatorTest {
     @Test
     void completeConstructionNoIssues() {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object obj = new Object();
-        long now = System.nanoTime();
-        validator.recordConstructionStart(obj);
-        validator.recordFieldAccess(obj, "field1", now + 100);
-        validator.recordConstructionEnd(obj);
+        new ConstructorSafetySubject(validator,
+                self -> validator.recordFieldAccess(self, "field1", System.nanoTime()), true);
         ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
         assertFalse(report.hasIssues());
     }
 
     @Test
-    void fieldAccessBeforeEndDetected() {
+    void aFieldReadByAnotherThreadWhileTheConstructorRunsIsReported() {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object obj = new Object();
-        long now = System.nanoTime();
-        validator.recordConstructionStart(obj);
-        validator.recordFieldAccess(obj, "sharedField", now + 50);
+        new ConstructorSafetySubject(validator,
+                self -> onAnotherThread(() -> validator.recordFieldAccess(self, "name", System.nanoTime())),
+                true);
         ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
-        // Object never had recordConstructionEnd called — construction is incomplete
-        assertTrue(report.hasIssues() ||
-                !report.fieldsAccessedDuringConstruction.isEmpty() ||
-                !report.possiblyIncompleteConstructions.isEmpty());
+        assertTrue(report.hasIssues(), report.toString());
+        assertTrue(report.fieldsAccessedDuringConstruction.contains("ConstructorSafetySubject.name"),
+            report.fieldsAccessedDuringConstruction.toString());
+        assertTrue(report.toString().contains("HIGH"), report.toString());
+    }
+
+    @Test
+    void anEscapeIsReportedEvenWhenTheEndIsNeverRecorded() {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        new ConstructorSafetySubject(validator,
+                self -> onAnotherThread(() -> validator.recordFieldAccess(self, "name", System.nanoTime())),
+                false);
+        assertTrue(validator.validateConstructorSafety().hasIssues(),
+            "the read happened while the constructor was on the constructing thread's stack");
+    }
+
+    @Test
+    void aStartRecordedOutsideAnyConstructorIsNotAConstruction() {
+        // The object is built before any record: publishing it through a concurrent
+        // collection, reading it elsewhere, then recording the "end", is safe publication
+        // however the records are placed.
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        Object built = new Object();
+        validator.recordConstructionStart(built);
+        Queue<Object> handoff = new ConcurrentLinkedQueue<>();
+        handoff.add(built);
+        onAnotherThread(() -> validator.recordFieldAccess(handoff.poll(), "name", System.nanoTime()));
+        validator.recordConstructionEnd(built);
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
+        assertFalse(report.hasIssues(), "no constructor was running at any record: " + report);
+    }
+
+    @Test
+    void anEndRecordedAfterSafePublicationIsNotAnEscape() {
+        // Start recorded in the constructor, the end left out there and recorded by the caller
+        // only after it has published the finished object through a concurrent queue.
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        ConstructorSafetySubject subject = new ConstructorSafetySubject(validator, self -> { }, false);
+        Queue<ConstructorSafetySubject> handoff = new ConcurrentLinkedQueue<>();
+        handoff.add(subject);
+        onAnotherThread(() -> validator.recordFieldAccess(handoff.poll(), "name", System.nanoTime()));
+        validator.recordConstructionEnd(subject);
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
+        assertFalse(report.hasIssues(),
+            "the constructor had returned before the reference was published: " + report);
+    }
+
+    @Test
+    void readsOnTwoThreadsOfAnObjectWhoseEndWasNeverRecordedAreNotAnEscape() {
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        ConstructorSafetySubject subject = new ConstructorSafetySubject(validator, self -> { }, false);
+        validator.recordFieldAccess(subject, "name", System.nanoTime());
+        onAnotherThread(() -> validator.recordFieldAccess(subject, "name", System.nanoTime()));
+
+        ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
+        assertFalse(report.hasIssues(), "both reads came after the constructor returned: " + report);
+        assertTrue(report.fieldsAccessedDuringConstruction.isEmpty(),
+            report.fieldsAccessedDuringConstruction.toString());
     }
 
     @Test
@@ -84,8 +136,7 @@ class ConstructorSafetyValidatorTest {
     @Test
     void reportToStringNoIssues() {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
-        String text = report.toString();
+        String text = validator.validateConstructorSafety().toString();
         assertNotNull(text);
         assertFalse(text.isBlank());
     }
@@ -93,10 +144,11 @@ class ConstructorSafetyValidatorTest {
     @Test
     void resetClearsState() {
         ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
-        Object obj = new Object();
-        validator.recordConstructionStart(obj);
+        new ConstructorSafetySubject(validator,
+                self -> onAnotherThread(() -> validator.recordFieldAccess(self, "name", System.nanoTime())),
+                true);
+        assertTrue(validator.validateConstructorSafety().hasIssues());
         validator.reset();
-        ConstructorSafetyValidator.ConstructorSafetyReport report = validator.validateConstructorSafety();
-        assertFalse(report.hasIssues());
+        assertFalse(validator.validateConstructorSafety().hasIssues());
     }
 }

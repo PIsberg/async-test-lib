@@ -77,6 +77,96 @@ class NonAtomicConcurrentMapUpdateDetectorTest {
     }
 
     @Test
+    void checkThenActUnderTheMapsOwnMonitorIsNotFlagged() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        Runnable fillOnce = () -> {
+            synchronized (map) {
+                if (!map.containsKey("k")) {
+                    map.put("k", "v");
+                }
+                d.recordCheckThenAct(map, "k", "lazy-fill", Thread.currentThread());
+            }
+        };
+        onTwoThreads(fillOnce);
+
+        assertFalse(d.analyze().hasIssues(),
+                "every check-then-act on the key held one lock, so no second caller could land "
+                        + "between the check and the put; reporting it as a lost update at HIGH "
+                        + "is a false positive: " + d.analyze());
+    }
+
+    @Test
+    void checkThenActUnderADeclaredPrivateLockIsNotFlagged() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        Object lock = new Object();
+        Runnable fillOnce = () -> {
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+                synchronized (lock) {
+                    if (!map.containsKey("k")) {
+                        map.put("k", "v");
+                    }
+                    d.recordCheckThenAct(map, "k", "lazy-fill", Thread.currentThread());
+                }
+            }
+        };
+        onTwoThreads(fillOnce);
+
+        assertFalse(d.analyze().hasIssues(), "one declared lock covered both callers");
+    }
+
+    @Test
+    void checkThenActUnderTwoDifferentLocksIsStillFlagged() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        Object first = new Object();
+        Object second = new Object();
+        Thread a = new Thread(() -> fillUnder(d, map, first));
+        Thread b = new Thread(() -> fillUnder(d, map, second));
+        a.start();
+        a.join();
+        b.start();
+        b.join();
+
+        assertTrue(d.analyze().hasIssues(),
+                "each caller held a lock, but not the same one, so they never excluded each other");
+    }
+
+    @Test
+    void distinctKeysWithTheSameStringFormAreTrackedSeparately() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<Object, String> map = new ConcurrentHashMap<>();
+        d.recordCheckThenAct(map, 1, "op", Thread.currentThread());
+        Thread t = new Thread(() -> d.recordCheckThenAct(map, "1", "op", Thread.currentThread()));
+        t.start();
+        t.join();
+
+        assertFalse(d.analyze().hasIssues(),
+                "Integer 1 and String \"1\" are two keys of the map, so each was reached by one "
+                        + "thread; merging them by their string form invented a shared site");
+    }
+
+    private static void fillUnder(NonAtomicConcurrentMapUpdateDetector d,
+                                  ConcurrentMap<String, String> map, Object lock) {
+        try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+            synchronized (lock) {
+                map.putIfAbsent("k", "v");
+                d.recordCheckThenAct(map, "k", "lazy-fill", Thread.currentThread());
+            }
+        }
+    }
+
+    private static void onTwoThreads(Runnable body) throws InterruptedException {
+        Thread a = new Thread(body);
+        Thread b = new Thread(body);
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+    }
+
+    @Test
     void nullsAreIgnored() {
         var d = new NonAtomicConcurrentMapUpdateDetector();
         d.recordCheckThenAct(null, "k", "op", Thread.currentThread());

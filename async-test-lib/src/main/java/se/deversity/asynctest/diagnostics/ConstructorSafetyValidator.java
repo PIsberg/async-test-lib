@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.lang.ref.WeakReference;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -16,8 +17,47 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Lack of visibility barriers
  * 
  * This detector tracks object construction and access across threads.
+ *
+ * <p><strong>What counts as construction.</strong> The object's constructor running, which is
+ * where the hazard lives, bounded by {@link #recordConstructionStart(Object)} and
+ * {@link #recordConstructionEnd(Object)} recorded from inside it. The records are checked
+ * against the stack rather than taken at their word:
+ * <ul>
+ *   <li>A start recorded with no constructor of the object's class on the recording thread's
+ *       stack is not a construction. The reference already exists outside its constructor, so
+ *       the object is built, and publishing it through a volatile, a concurrent collection, a
+ *       lock or a plain field happens after construction ended in program order. Nothing is
+ *       tracked.</li>
+ *   <li>A read by another thread before the end is recorded is checked against the
+ *       constructing thread's stack at that moment. If no constructor of the object's class is
+ *       running there, the constructor has returned and the read is after construction, which
+ *       covers an end recorded late (after publishing) or never. Only a read made while the
+ *       constructor is still on the constructing thread's stack is a finding: the reference
+ *       escaped it.</li>
+ * </ul>
  */
 public class ConstructorSafetyValidator {
+
+    /** Walks the recording thread's stack for a constructor frame of the object's class. */
+    private static final StackWalker WALKER =
+            StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+
+    private static boolean insideConstructorOf(Object object) {
+        Class<?> type = object.getClass();
+        return WALKER.walk(frames -> frames.anyMatch(frame ->
+                "<init>".equals(frame.getMethodName())
+                        && frame.getDeclaringClass() != Object.class
+                        && frame.getDeclaringClass().isAssignableFrom(type)));
+    }
+
+    /** Names of the object's class and its superclasses below {@code Object}. */
+    private static Set<String> constructorOwners(Class<?> type) {
+        Set<String> owners = new HashSet<>();
+        for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+            owners.add(c.getName());
+        }
+        return owners;
+    }
     
     private static class ObjectState {
         final String className;
@@ -27,6 +67,10 @@ public class ConstructorSafetyValidator {
          * if we remember who was constructing.
          */
         final long constructingThreadId;
+        /** The constructing thread itself, weakly, so its stack can be read at an access. */
+        final WeakReference<Thread> constructingThread;
+        /** Classes whose {@code <init>} frame on that stack means the constructor is running. */
+        final Set<String> constructorOwners;
         volatile boolean constructionComplete = false;
         /** Accesses made before construction finished, by a thread other than the constructor's. */
         final AtomicInteger accessesDuringConstruction = new AtomicInteger(0);
@@ -39,31 +83,53 @@ public class ConstructorSafetyValidator {
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
         final Map<String, FieldAccessInfo> fieldAccesses = new ConcurrentHashMap<>();
 
-        ObjectState(String className, long constructingThreadId) {
-            this.className = className;
-            this.constructingThreadId = constructingThreadId;
+        ObjectState(Object object, Thread constructing) {
+            this.className = object.getClass().getSimpleName();
+            this.constructingThreadId = constructing.threadId();
+            this.constructingThread = new WeakReference<>(constructing);
+            this.constructorOwners = constructorOwners(object.getClass());
+        }
+
+        /** Whether a constructor of the object's class is on the constructing thread's stack now. */
+        boolean constructorStillRunning() {
+            Thread constructing = constructingThread.get();
+            if (constructing == null || !constructing.isAlive()) {
+                return false;
+            }
+            for (StackTraceElement frame : constructing.getStackTrace()) {
+                if ("<init>".equals(frame.getMethodName())
+                        && constructorOwners.contains(frame.getClassName())) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
     private static final class FieldAccessInfo {
         final AtomicInteger accessCount = new AtomicInteger(0);
         final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
+        /** Set once a thread other than the constructor's read this field inside the window. */
+        volatile boolean accessedByAnotherThreadDuringConstruction = false;
     }
     
     private final Map<IdentityKey, ObjectState> objects = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
-     * Mark the start of object construction.
+     * Mark the start of object construction, from inside the object's constructor.
      *
      * @param object the object the access is on, tracked by identity
      */
     public void recordConstructionStart(Object object) {
         if (!enabled || object == null) return;
 
+        if (!insideConstructorOf(object)) {
+            // Recorded outside any constructor of the object: it is already built.
+            return;
+        }
         IdentityKey id = new IdentityKey(object);
-        objects.putIfAbsent(id, new ObjectState(object.getClass().getSimpleName(),
-                                                Thread.currentThread().threadId()));
+        objects.putIfAbsent(id, new ObjectState(object, Thread.currentThread()));
     }
     
     /**
@@ -105,7 +171,8 @@ public class ConstructorSafetyValidator {
         fieldInfo.accessingThreadIds.add(threadId);
         state.accessingThreadIds.add(threadId);
         
-        if (!state.constructionComplete && threadId != state.constructingThreadId) {
+        if (!state.constructionComplete && threadId != state.constructingThreadId
+                && !constructorReturned(state)) {
             // A thread other than the one still running the constructor can see this object:
             // unsafe publication. Comparing against the *constructing* thread is the whole
             // point — the previous check compared threadId to Thread.currentThread().threadId(),
@@ -113,9 +180,23 @@ public class ConstructorSafetyValidator {
             // counter never moved.
             state.accessesDuringConstruction.incrementAndGet();
             state.threadsAccessingDuringConstruction.add(threadId);
+            fieldInfo.accessedByAnotherThreadDuringConstruction = true;
         }
     }
     
+    /**
+     * Whether the constructor has returned although no end was recorded: the constructing
+     * thread's stack no longer holds a constructor of the object's class. Once seen, the
+     * construction is closed, so later reads skip the stack walk.
+     */
+    private static boolean constructorReturned(ObjectState state) {
+        if (state.constructorStillRunning()) {
+            return false;
+        }
+        state.constructionComplete = true;
+        return true;
+    }
+
     /**
      * Validate constructor safety.
      *
@@ -149,16 +230,15 @@ public class ConstructorSafetyValidator {
                 );
             }
 
-            // Check for field races during construction
+            // Fields another thread read inside the window. This used to be "the field was
+            // touched by two threads at any time, and the construction is not closed now",
+            // which counted reads made after a safe publication whenever the end was recorded
+            // late or never; the access itself has to fall inside the window.
             for (Map.Entry<String, FieldAccessInfo> entry : state.fieldAccesses.entrySet()) {
-                FieldAccessInfo fieldInfo = entry.getValue();
-                if (fieldInfo.accessingThreadIds.size() > 1) {
-                    // Multiple threads accessing same field
-                    if (!state.constructionComplete) {
-                        report.fieldsAccessedDuringConstruction.add(
-                            state.className + "." + entry.getKey()
-                        );
-                    }
+                if (entry.getValue().accessedByAnotherThreadDuringConstruction) {
+                    report.fieldsAccessedDuringConstruction.add(
+                        state.className + "." + entry.getKey()
+                    );
                 }
             }
         }
@@ -210,7 +290,7 @@ public class ConstructorSafetyValidator {
             }
             
             StringBuilder sb = new StringBuilder();
-            sb.append("CONSTRUCTOR SAFETY ISSUES DETECTED:\n");
+            sb.append(IssueSeverity.HIGH.format()).append(": CONSTRUCTOR SAFETY ISSUES DETECTED:\n");
             
             if (!unsafeObjects.isEmpty()) {
                 sb.append("\nObjects accessed by multiple threads during construction:\n");

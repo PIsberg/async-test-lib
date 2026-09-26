@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorFeed;
+import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
@@ -236,6 +237,203 @@ final class CorpusGates {
     }
 
     /**
+     * The idiom lane's gates.
+     *
+     * <p>The structural ones are the pair lanes': every row has a method and every method a row,
+     * every finding belongs to a row, the agent is attached, every detector a row names is
+     * exposed, nothing unexposed reports, and every firing row pins its severity and gets it. The
+     * rest are this lane's own, because its correct rows claim more than a silent row anywhere
+     * else does. See {@link #everyCorrectIdiomDrewNothingWorthFailingOn}.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that produced them
+     * @param laneTest the lane's test class, whose methods the rows must name
+     */
+    static void checkIdiomLane(List<CorpusRecorder.Finding> findings,
+                               CorpusLane lane,
+                               Class<?> laneTest) {
+        List<RecordingSubject> subjects = Corpus.subjectsFor(lane);
+        everyRecordingSubjectIsExercised(lane, laneTest);
+        everyRecordingFindingIsAttributed(findings, lane);
+        theAgentIsAttachedTheWayThisLaneRequires(lane);
+        everyPairedDetectorIsExposed(lane);
+        everyReportingDetectorWasExposed(findings, lane);
+        everyFiringRowPinsItsSeverity(lane);
+        everyCorrectIdiomHasABrokenTwin(subjects);
+        everyIdiomBodyRecordsOnlyWithAReason(IdiomRowPremise.read(), Corpus.idiomManualApiRows());
+        everyBrokenTwinWokeItsDetector(findings, lane, subjects);
+        everyCorrectIdiomDrewNothingWorthFailingOn(findings, subjects, Corpus.idiomKnownGaps());
+    }
+
+    /**
+     * Every broken twin wakes the detector it names, at the severity it pins.
+     *
+     * <p>The pair lanes' outcome gate, restricted to the firing rows: a correct row's silence is
+     * judged by {@link #everyCorrectIdiomDrewNothingWorthFailingOn}, whose bar is not "the named
+     * detector said nothing" alone.
+     *
+     * @param findings what the detectors reported
+     * @param lane     the lane that produced them
+     * @param subjects the lane's rows
+     */
+    static void everyBrokenTwinWokeItsDetector(List<CorpusRecorder.Finding> findings,
+                                               CorpusLane lane,
+                                               List<RecordingSubject> subjects) {
+        everySubjectGotTheOutcomeItsRecordedCallsOblige(findings, lane, subjects.stream()
+                .filter(subject -> subject.expectation() == RecordingSubject.Expectation.MUST_FIRE)
+                .toList());
+    }
+
+    /**
+     * Every correct idiom row is followed by its broken twin, and every twin follows one.
+     *
+     * <p>A correct row alone passes for a detector that was never wired to the idiom; its twin
+     * is what shows the detector can see the idiom at all. The rows are declared in pairs, so the
+     * check is the declaration order.
+     *
+     * @param subjects the lane's rows, in declaration order
+     */
+    static void everyCorrectIdiomHasABrokenTwin(List<RecordingSubject> subjects) {
+        List<String> unpaired = new ArrayList<>();
+        for (int i = 0; i < subjects.size(); i += 2) {
+            RecordingSubject correct = subjects.get(i);
+            RecordingSubject twin = i + 1 < subjects.size() ? subjects.get(i + 1) : null;
+            if (correct.expectation() != RecordingSubject.Expectation.MUST_STAY_SILENT
+                    || twin == null
+                    || twin.expectation() != RecordingSubject.Expectation.MUST_FIRE) {
+                unpaired.add(correct.testMethod());
+            }
+        }
+        assertTrue(unpaired.isEmpty(),
+                "the idiom lane declares each correct row followed by its broken twin, and these "
+                        + "break that order, so a correct row may have no twin to show its "
+                        + "detector can see the idiom at all: " + unpaired);
+    }
+
+    /**
+     * Only the rows named as needing the manual API may call it, and each of those does.
+     *
+     * @param source     the idiom lane's source
+     * @param manualRows the rows allowed to record, with the reason
+     */
+    static void everyIdiomBodyRecordsOnlyWithAReason(String source, Map<String, String> manualRows) {
+        List<String> unexplained = IdiomRowPremise.linesThatRecordWithoutAReason(source, manualRows);
+        List<String> stale = IdiomRowPremise.manualRowsThatRecordNothing(source, manualRows);
+        assertTrue(unexplained.isEmpty(),
+                "the idiom lane's bodies are written the way a user writes them, and these lines "
+                        + "call the recording API outside the rows Corpus names as needing it: "
+                        + unexplained);
+        assertTrue(stale.isEmpty(),
+                "these rows are named as needing the manual API and their bodies no longer call "
+                        + "it, so the reason on file describes a body that is gone: " + stale);
+    }
+
+    /**
+     * A correct idiom draws no finding worth failing a build on, from any detector.
+     *
+     * <p>Three rules, one per kind of correct row:
+     *
+     * <ul>
+     *   <li>Every correct row: no finding at {@code FACT} tier or above from any detector. A
+     *       {@code FACT} finding states an observation as true and a {@code VERDICT} says the
+     *       code is wrong, and neither can be said of these bodies. Below {@code FACT} a
+     *       detector from elsewhere is asking a question, and the report prints what it asked.
+     *   <li>A correct row: nothing at any tier from the detector it names. That detector is the
+     *       one the idiom is about, and the false positives this lane was built from were
+     *       {@code PROMPT}-tier findings of exactly that kind, which the tier bar alone would
+     *       let back in.
+     *   <li>A correct row that pins a severity is expecting a note: its detector must report, at
+     *       that severity, below {@code FACT}. A row in {@link Corpus#idiomKnownGaps()} is the
+     *       opposite of a note, a known false positive, and its detector must still report: once
+     *       it stops, the gap is closed and its entry has to go.
+     * </ul>
+     *
+     * @param findings  what the detectors reported
+     * @param subjects  the lane's rows
+     * @param knownGaps the correct rows pinned as still reporting, with the reason
+     */
+    static void everyCorrectIdiomDrewNothingWorthFailingOn(List<CorpusRecorder.Finding> findings,
+                                                           List<RecordingSubject> subjects,
+                                                           Map<String, String> knownGaps) {
+        List<String> wrong = new ArrayList<>();
+        for (String gap : knownGaps.keySet()) {
+            boolean correctRow = subjects.stream().anyMatch(subject -> subject.testMethod().equals(gap)
+                    && subject.expectation() == RecordingSubject.Expectation.MUST_STAY_SILENT);
+            if (!correctRow) {
+                wrong.add(gap + " is listed as a known gap but names no correct row of this lane");
+            }
+        }
+        for (RecordingSubject subject : subjects) {
+            if (subject.expectation() != RecordingSubject.Expectation.MUST_STAY_SILENT) {
+                continue;
+            }
+            String own = DetectorExposure.classOf(subject.detector());
+            boolean gap = knownGaps.containsKey(subject.testMethod());
+            List<CorpusRecorder.Finding> mine = findings.stream()
+                    .filter(finding -> finding.subject().equals(subject.testMethod()))
+                    .toList();
+            List<CorpusRecorder.Finding> fromOwn = mine.stream()
+                    .filter(finding -> finding.detector().equals(own))
+                    .toList();
+            for (CorpusRecorder.Finding finding : mine) {
+                boolean theGapItself = gap && finding.detector().equals(own);
+                if (claimedTier(finding).atLeast(TrustTier.FACT) && !theGapItself) {
+                    wrong.add(finding.detector() + " reported " + claimedTier(finding) + "/"
+                            + finding.severity() + " on the correct idiom " + subject.testMethod()
+                            + ": " + finding.evidence());
+                }
+            }
+            IssueSeverity note = subject.expectedSeverity();
+            if (gap) {
+                if (fromOwn.isEmpty()) {
+                    wrong.add(subject.testMethod() + " is a known gap and " + own + " no longer "
+                            + "reports on it, so the gap is closed: delete its entry from "
+                            + "Corpus.idiomKnownGaps() and let the row hold the correct bar");
+                }
+            } else if (note != null) {
+                boolean asPinned = !fromOwn.isEmpty()
+                        && fromOwn.stream().allMatch(finding -> finding.severity() == note);
+                if (!asPinned) {
+                    wrong.add(subject.testMethod() + " expects a " + note + " note from " + own
+                            + " and got " + fromOwn.stream().map(CorpusRecorder.Finding::severity)
+                                    .toList());
+                }
+            } else {
+                for (CorpusRecorder.Finding finding : fromOwn) {
+                    wrong.add(own + " reported " + finding.tier() + "/" + finding.severity()
+                            + " on " + subject.testMethod() + ", the correct idiom it names: "
+                            + finding.evidence());
+                }
+            }
+        }
+        assertTrue(wrong.isEmpty(),
+                "these rows are correct concurrency written the way a user writes it, and a "
+                        + "detector said otherwise. Either a detector is wrong about correct code, "
+                        + "which is the defect this lane exists to catch, or a row's pin is stale: "
+                        + String.join(" | ", wrong));
+    }
+
+    /**
+     * {@return the strongest tier {@code finding} can carry once the runner has clamped it}
+     *
+     * <p>A listener sees a {@code Violation}, which carries no grade, and {@link CorpusRecorder}
+     * stamps it with the detector's row tier. For most detectors that is the tier the runner gates
+     * on. A detector whose report grades each finding can put one above its row tier, up to its
+     * evidence cap, and the runner lowers anything past the cap
+     * ({@code DetectorTrust.clampToCap}). Which grade a given violation got is not visible here,
+     * so a graded detector's finding is read at its cap: the most the runner could let it claim,
+     * which is the reading that cannot let a claim through the idiom bar.
+     *
+     * @param finding what a detector reported
+     */
+    static TrustTier claimedTier(CorpusRecorder.Finding finding) {
+        return DetectorExposure.typeOf(finding.detector())
+                .filter(PairEvidence::carriesPerFindingGrades)
+                .map(type -> DetectorTrust.capOfDetector(finding.detector()))
+                .orElse(finding.tier());
+    }
+
+    /**
      * Refuses a run where the silent deadlock row ran on an already deadlocked JVM.
      */
     static void theDeadlockRowsRanInOrder(boolean silentRowRanOnCleanJvm, boolean deadlockStarted) {
@@ -320,8 +518,8 @@ final class CorpusGates {
      * grants it against a case that fires on a bug and a case that stays silent on the correct
      * twin. Its own gate resolves that evidence by reflection over its own test methods, which
      * cannot reach this module: this module depends on the library, so the library cannot depend
-     * back. 61 detectors are classified VERDICT on the strength of pairs that live here, named
-     * in {@code META-INF/async-test/verdict-evidence-corpus}.
+     * back. The detectors classified VERDICT on the strength of pairs that live here are named in
+     * {@code META-INF/async-test/verdict-evidence-corpus}.
      *
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
      * fails if one is missing, points at a different detector, or has drifted to the wrong

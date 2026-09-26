@@ -61,7 +61,7 @@ public class SharedRandomDetectorTest {
         assertNotNull(report);
         assertTrue(report.hasIssues(), "Should detect shared random access");
         assertFalse(report.sharedRandoms.isEmpty(), "Should report shared randoms");
-        assertTrue(report.sharedRandoms.get(0).contains("observes sharing, not locks"));
+        assertTrue(report.sharedRandoms.get(0).contains("Random is thread-safe"));
     }
 
     @Test
@@ -255,7 +255,7 @@ public class SharedRandomDetectorTest {
         
         String reportStr = report.toString();
         assertNotNull(reportStr);
-        assertTrue(reportStr.contains("SHARED RANDOM ISSUES DETECTED"), "Report should have header");
+        assertTrue(reportStr.contains("SHARED RANDOM CONTENTION ADVISORY"), "Report should have header");
         assertTrue(reportStr.contains("Shared Random Instances"), "Report should mention shared randoms");
         assertTrue(reportStr.contains("Method Breakdown:"), "Report should include method breakdown section");
         assertTrue(reportStr.contains("Random Activity:"), "Report should include random activity section");
@@ -303,6 +303,38 @@ public class SharedRandomDetectorTest {
         assertTrue(report.hasIssues(), "Should detect 3 threads accessing");
         assertTrue(report.randomActivity.get("activity-random").contains("3 threads"),
                    "Should report 3 threads");
+    }
+
+    @Test
+    void aSharedRandomIsReportedAsALowContentionNoteNotAsABug() throws InterruptedException {
+        SharedRandomDetector detector = new SharedRandomDetector();
+        Random random = new Random();
+        detector.registerRandom(random, "shared");
+        Runnable caller = () -> {
+            random.nextInt();
+            detector.recordRandomAccess(random, "shared", "nextInt");
+        };
+        Thread first = new Thread(caller);
+        Thread second = new Thread(caller);
+        first.start();
+        second.start();
+        first.join();
+        second.join();
+
+        SharedRandomDetector.SharedRandomReport report = detector.analyze();
+        String text = report.toString();
+        assertTrue(report.hasIssues(), "two threads on one Random is still worth a note");
+        assertEquals(java.util.Optional.of(IssueSeverity.LOW), IssueSeverity.markedIn(text),
+                "java.util.Random is documented thread-safe, so the only true statement is a "
+                        + "contention note, and the failOn gate reads its severity from the text: "
+                        + text);
+        assertTrue(text.contains("thread-safe"), text);
+        assertFalse(text.contains("synchroniz"),
+                "Random needs no external synchronization; asking the reader to verify it "
+                        + "implies correct code is broken: " + text);
+        assertEquals(TrustTier.ADVISORY,
+                DetectorTrust.tierOf(se.deversity.asynctest.DetectorType.SHARED_RANDOM),
+                "a note about correct code is ADVISORY, not a verdict that the code is wrong");
     }
 
     @Test

@@ -92,7 +92,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 32. Volatile Array Detector
 * **Severity**: `HIGH`
-* **Description**: Flags the misconception that `volatile` on an array reference makes its elements volatile too — only reassignment of the reference is visible across threads, not writes to individual elements, so element updates can be invisible to other threads.
+* **Description**: Flags the misconception that `volatile` on an array reference makes its elements volatile too — only reassignment of the reference is visible across threads, not writes to individual elements, so element updates can be invisible to other threads. An array whose every recorded element write and read held one lock the detector can see (`synchronized (array)`, a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove) is not reported: the lock supplies the ordering.
 * **Buggy Code**:
   ```java
   private volatile int[] counters = new int[10];
@@ -190,7 +190,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 36. Synchronized on Non-Final Field Detector
 * **Severity**: `HIGH`
-* **Description**: Flags synchronizing on a lock field that is not `final`, since a reassignment mid-flight lets different threads synchronize on different object instances, providing no real mutual exclusion.
+* **Description**: Flags synchronizing on a lock field that is not `final`, since a reassignment mid-flight lets different threads synchronize on different object instances, providing no real mutual exclusion. The finding needs the owning instance (`recordLockObject(lock, fieldId, ownerClass, owner)`): one instance synchronizing on more than one object is a reassigned lock. Recorded without the owner, a changing monitor is also what several instances each holding their own final lock look like, so it is listed in the report text as undecided and not reported.
 * **Buggy Code**:
   ```java
   private Object lock = new Object(); // not final - can be reassigned
@@ -245,7 +245,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 38. Lazy Initialization Race Detector
 * **Severity**: `HIGH`
-* **Description**: Detects lazy-init races where multiple threads observe a non-volatile field as `null` simultaneously and each proceeds to construct it, causing duplicate initialization and possible visibility inconsistency.
+* **Description**: Detects lazy-init races where multiple threads observe a non-volatile field as `null` simultaneously and each proceeds to construct it, causing duplicate initialization and possible visibility inconsistency. Pass the instance that declares the field (`recordNullCheck(owner, fieldId, ...)`, `recordInitialization(owner, fieldId)`) so a holder created per invocation or per thread is judged on its own initialisations; keyed by the label alone, every such holder reads as one field initialised many times.
 * **Buggy Code**:
   ```java
   private ExpensiveObject instance; // not volatile, no synchronization

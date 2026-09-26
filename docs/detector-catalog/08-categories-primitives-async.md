@@ -44,7 +44,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 99. Shared SecureRandom Detector
 * **Severity**: `HIGH`
-* **Description**: Flags a `SecureRandom` instance accessed from more than one thread. Thread safety is provider-dependent — some providers serialize internally at a large contention cost, others (Bouncy Castle, custom SPIs) may not synchronize at all, producing biased, predictable, or duplicate output under concurrent access, which is a security bug.
+* **Description**: Flags a `SecureRandom` instance accessed from more than one thread within one invocation round (rounds are ordered by the runner, and with virtual threads each body execution has a fresh thread id, so ids gathered across rounds are not sharing). Thread safety is provider-dependent — some providers serialize internally at a large contention cost, others (Bouncy Castle, custom SPIs) may not synchronize at all, producing biased, predictable, or duplicate output under concurrent access, which is a security bug.
 * **Buggy Code**:
   ```java
   private final SecureRandom secureRandom = new SecureRandom();
@@ -189,7 +189,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 105. ThreadLocalRandom Misuse Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects a cached `ThreadLocalRandom.current()` reference used from a thread other than the one that obtained it. The whole point of the class is per-thread isolation with no shared state; caching and reusing the reference across threads reintroduces contention and (since it lacks `Random`'s synchronization) state corruption and biased output.
+* **Description**: Detects a cached `ThreadLocalRandom.current()` reference used on a thread that never called `current()` itself. `current()` returns one JVM-wide object whose methods act on the calling thread's own seed, and it is `current()` that seeds the calling thread, so a thread that skips it draws a sequence set by its thread id instead of a seeded one. Because every thread gets the same object, the detector tracks which threads recorded an obtain, not which instance: `current()` called on every thread is silent.
 * **Buggy Code**:
   ```java
   private final Random rng = ThreadLocalRandom.current(); // captured once, cached
@@ -243,7 +243,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 108. Lock Upgrade Deadlock Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a thread attempting to acquire the write lock of a `ReentrantReadWriteLock` while it still holds that lock's read lock. `ReentrantReadWriteLock` does not support upgrading a read lock to a write lock on the same thread, so the attempt deadlocks permanently. This is the detector that reports that condition: `LockDowngradeDetector` observes it too, through its own recording API, and forwards what it records here when both are enabled, so a caller who instrumented either API gets exactly one finding under this name. A thread that already holds the write lock may take the read lock and then the write lock again, which is a legal reentrant acquire and is not reported. When the recording thread really holds the lock, the lock itself decides (`isWriteLockedByCurrentThread`, `getReadHoldCount`); the recorded read holds, counted per thread, decide only for a body that records acquisitions without taking the lock. Record a blocking `writeLock().lock()` only: a `tryLock()` made while holding the read lock returns `false` at once and does not deadlock. Trust tier `VERDICT`, on a corpus pair that takes the real lock in both halves (#566).
+* **Description**: Detects a thread attempting to acquire the write lock of a `ReentrantReadWriteLock` while it still holds that lock's read lock. `ReentrantReadWriteLock` does not support upgrading a read lock to a write lock on the same thread, so the attempt deadlocks permanently. This is the detector that reports that condition: `LockDowngradeDetector` observes it too, through its own recording API, and forwards what it records here when both are enabled, so a caller who instrumented either API gets exactly one finding under this name. A thread that already holds the write lock may take the read lock and then the write lock again, which is a legal reentrant acquire and is not reported. When the recording thread really holds the lock, the lock itself decides (`isWriteLockedByCurrentThread`, `getReadHoldCount`); the recorded read holds, counted per thread, decide only for a body that records acquisitions without taking the lock. Record a blocking `writeLock().lock()` only: a `tryLock()` made while holding the read lock returns `false` at once and does not deadlock. Trust tier `FACT`: the corpus pair takes the real lock in both halves (#566), but the recorded-hold fallback decides from the body's own records, so the evidence class is `ASSERTED`.
 * **Buggy Code**:
   ```java
   rwLock.readLock().lock();

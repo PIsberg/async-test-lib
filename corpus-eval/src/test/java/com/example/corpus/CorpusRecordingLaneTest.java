@@ -22,6 +22,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.util.ConcurrentReferenceHashMap;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.diagnostics.ABAProblemDetector;
+import se.deversity.asynctest.diagnostics.ConstructorSafetyValidator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,6 +63,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.concurrent.ConcurrentMap;
 import java.util.List;
 import java.util.Collection;
@@ -734,16 +738,34 @@ class CorpusRecordingLaneTest {
     private static final ThreadLocal<java.util.SplittableRandom> CONFINED_SPLITTABLE =
             ThreadLocal.withInitial(SHARED_SPLITTABLE::split);
 
-    /** The object whose construction the loud safety row leaves open for the run. */
-    private static final Object UNDER_CONSTRUCTION = new Object();
+    /**
+     * A settings holder that records its own construction, start first and end last, and hands
+     * itself to {@code onRegister} in between: a constructor that registers {@code this} with a
+     * listener before it has assigned its field. The constructor safety pair builds one per body.
+     */
+    static final class ListenedSettings {
+        String name;
 
-    /** The twin whose construction is recorded as finished before anybody reads it. */
-    private static final Object FULLY_CONSTRUCTED = new Object();
+        ListenedSettings(ConstructorSafetyValidator validator, Consumer<ListenedSettings> onRegister) {
+            validator.recordConstructionStart(this);
+            onRegister.accept(this);
+            this.name = "settings";
+            validator.recordConstructionEnd(this);
+        }
+    }
 
-    /** One declaration each, because recordConstructionStart is a lifecycle, not a per-body event. */
-    private final AtomicBoolean constructionOpened = new AtomicBoolean();
-
-    private final AtomicBoolean constructionClosed = new AtomicBoolean();
+    /** A registration listener that reads the settings from another thread and waits for it. */
+    private static void readOnAnotherThread(ConstructorSafetyValidator validator, ListenedSettings settings) {
+        Thread listener = new Thread(() -> {
+            validator.recordFieldAccess(settings, "name", System.nanoTime());
+        }, "settings-listener");
+        listener.start();
+        try {
+            listener.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
     /**
      * Broken by a timed-out await at the top of every body, then awaited, caught and reset (#662).
@@ -873,26 +895,11 @@ class CorpusRecordingLaneTest {
     /** A pool of one, whose task waits on a sibling it can never let run. */
     private static final Object DEADLOCKING_POOL = new Object();
 
-    /**
-     * The twin, sized above the whole run rather than above one body.
-     *
-     * <p>{@code ExecutorDeadlockDetector.waitingOnSibling} and its counterpart in
-     * {@code FutureBlockingDetector} only ever grow - nothing decrements them when the wait ends
-     * - so the silent row has to declare a pool larger than {@code THREADS * INVOCATIONS}, or it
-     * would eventually out-count its own capacity and report for a reason unrelated to the model.
-     */
-    private static final Object ROOMY_POOL = new Object();
-
     /** The same shape for the future-blocking pair. */
     private static final Object BLOCKED_POOL = new Object();
 
-    private static final Object ROOMY_BLOCKED_POOL = new Object();
-
     /** The subscriber the loud Flow row signals after completing it. */
     private static final Object COMPLETED_SUBSCRIBER = new Object();
-
-    /** What the silent executor rows declare: above the whole run, not above one body. */
-    private static final int MORE_THREADS_THAN_THE_RUN = THREADS * INVOCATIONS * 10;
 
     /** The twin whose every stamp comes back; the leaking row takes a fresh lock per body. */
     private static final java.util.concurrent.locks.StampedLock RELEASED_STAMPED_LOCK =
@@ -2944,10 +2951,12 @@ class CorpusRecordingLaneTest {
     }
 
     /**
-     * An optimistic read whose validation comes back false.
+     * An optimistic read whose values are used with no validation at all.
      *
      * <p>{@code StampedLock}'s optimistic mode is documented as valid only once {@code validate}
-     * confirms the stamp, so a read used after a failed validation saw a value mid-write.
+     * confirms the stamp, so a read that is never validated may have seen a value mid-write. The
+     * missing call is the defect. A validation that comes back false is not: it is the idiom's cue
+     * to re-read under the lock, and the detector no longer reports it.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_optimisticRead_usedWithoutValidating() {
@@ -2957,7 +2966,6 @@ class CorpusRecordingLaneTest {
         long stamp = UNVALIDATED_STAMPED_LOCK.tryOptimisticRead();
         detector.recordOptimisticReadStarted(UNVALIDATED_STAMPED_LOCK, stamp, self);
         detector.recordDataAccessed(UNVALIDATED_STAMPED_LOCK, stamp, self, "balance");
-        detector.recordValidateCalled(UNVALIDATED_STAMPED_LOCK, stamp, false, self);
     }
 
     /** The identical three calls with a validation that succeeds: the documented protocol. */
@@ -3299,12 +3307,20 @@ class CorpusRecordingLaneTest {
 
     // --- SynchronizedNonFinal -------------------------------------------------------------------
 
-    /** A fresh monitor each time, which is what locking on a reassignable field looks like. */
+    /** The one instance whose lock field the reassigning row keeps replacing. */
+    private static final Object REASSIGNING_OWNER = new Object();
+
+    /**
+     * A fresh monitor each time on one shared owner, which is what locking on a reassignable
+     * field looks like. The owner is named: without it a changing monitor is also what every
+     * instance with its own final lock looks like, and the detector no longer reports that.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_synchronized_onAReassignableLock() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.synchronizedNonFinalDetector()
-                .recordLockObject(new Object(), "reassignableLock", CorpusRecordingLaneTest.class);
+                .recordLockObject(new Object(), "reassignableLock", CorpusRecordingLaneTest.class,
+                        REASSIGNING_OWNER);
     }
 
     /** One final lock object for the run: the idiom every guide prints. */
@@ -3790,24 +3806,50 @@ class CorpusRecordingLaneTest {
 
     // --- The value-lifecycle family -------------------------------------------------------------
 
-    /** A value that goes A to B and back to A, which a value-only compare-and-set cannot see. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_aba_valueReturnedToItsOriginal() {
-        CorpusRecorder.countBodyExecution();
-        var detector = AsyncTestContext.abaProblemDetector();
-        String slot = perInvocation("aba-restored");
-        detector.recordValueChange(slot, "A", "B");
-        detector.recordValueChange(slot, "B", "A");
+    /**
+     * Swings {@code ref} A to B and back to A on another thread, recording both changes there,
+     * and waits for it: the "other thread" of an ABA.
+     */
+    private static void toggleOnAnotherThread(ABAProblemDetector detector, String slot,
+                                              AtomicReference<String> ref) throws InterruptedException {
+        Thread other = new Thread(() -> {
+            if (ref.compareAndSet("A", "B")) {
+                detector.recordValueChange(slot, "A", "B");
+            }
+            if (ref.compareAndSet("B", "A")) {
+                detector.recordValueChange(slot, "B", "A");
+            }
+        }, "aba-toggler");
+        other.start();
+        other.join();
     }
 
-    /** The same two transitions going onwards to C, so nothing is ever restored. */
+    /** A read of A held across another thread's A to B to A, then a compareAndSet that succeeds. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_aba_valueMovedOnwards() {
+    void recorded_aba_premiseReadBeforeAnotherThreadsToggle() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.abaProblemDetector();
-        String slot = perInvocation("aba-onwards");
-        detector.recordValueChange(slot, "A", "B");
-        detector.recordValueChange(slot, "B", "C");
+        String slot = perInvocation("aba-stale");
+        AtomicReference<String> ref = new AtomicReference<>("A");
+        String seen = ref.get();
+        detector.recordRead(slot, seen);
+        toggleOnAnotherThread(detector, slot, ref);
+        boolean swapped = ref.compareAndSet(seen, "C");
+        detector.recordCASAttempt(slot, seen, "C", swapped, ref.get());
+    }
+
+    /** The same toggle and compareAndSet, with the read taken after the toggle finished. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_aba_premiseReadAfterAnotherThreadsToggle() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.abaProblemDetector();
+        String slot = perInvocation("aba-fresh");
+        AtomicReference<String> ref = new AtomicReference<>("A");
+        toggleOnAnotherThread(detector, slot, ref);
+        String seen = ref.get();
+        detector.recordRead(slot, seen);
+        boolean swapped = ref.compareAndSet(seen, "C");
+        detector.recordCASAttempt(slot, seen, "C", swapped, ref.get());
     }
 
     /** A read of a write-once holder nothing has set. */
@@ -4324,27 +4366,21 @@ class CorpusRecordingLaneTest {
         detector.recordWaitExit(SIGNALLED_CONDITION, true);
     }
 
-    /** Fields read by other threads while the object's construction is still open. */
+    /** A constructor that registers itself, and the listener reads it from another thread. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_object_accessedDuringConstruction() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.constructorSafetyValidator();
-        if (constructionOpened.compareAndSet(false, true)) {
-            detector.recordConstructionStart(UNDER_CONSTRUCTION);
-        }
-        detector.recordFieldAccess(UNDER_CONSTRUCTION, "name", System.nanoTime());
+        new ListenedSettings(detector, self -> readOnAnotherThread(detector, self));
     }
 
-    /** The identical reads of an object whose construction was recorded as finished first. */
+    /** The same listener, registered after the constructor has returned. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_object_accessedAfterConstruction() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.constructorSafetyValidator();
-        if (constructionClosed.compareAndSet(false, true)) {
-            detector.recordConstructionStart(FULLY_CONSTRUCTED);
-            detector.recordConstructionEnd(FULLY_CONSTRUCTED);
-        }
-        detector.recordFieldAccess(FULLY_CONSTRUCTED, "name", System.nanoTime());
+        ListenedSettings settings = new ListenedSettings(detector, self -> { });
+        readOnAnotherThread(detector, settings);
     }
 
     /** A synchronizer expecting a thousand parties and receiving six. */
@@ -4660,13 +4696,14 @@ class CorpusRecordingLaneTest {
         detector.recordIntegrate("parallel-gatherer", Thread.currentThread());
     }
 
-    /** The same integrations against a sequential gatherer that has a combiner. */
+    /** A parallel gatherer with a combiner, each segment integrating its own state. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_gatherer_sequentialWithACombiner() {
+    void recorded_gatherer_parallelWithACombiner() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.gathererConcurrencyMisuseDetector();
-        detector.registerGatherer("sequential-gatherer", true, false);
-        detector.recordIntegrate("sequential-gatherer", Thread.currentThread());
+        detector.registerGatherer("parallel-safe-gatherer", true, true);
+        List<String> segmentState = new ArrayList<>();
+        detector.recordIntegrate("parallel-safe-gatherer", segmentState, Thread.currentThread());
     }
 
     /** A lazy constant whose computation finishes with no value. */
@@ -4869,24 +4906,32 @@ class CorpusRecordingLaneTest {
         // Two submissions to one start, so submitted minus running leaves work queued. The rule
         // is "every worker is waiting on a sibling AND something is still queued": a body that
         // submits and starts exactly one task leaves nothing queued and reports nothing, however
-        // many waits it records. Both halves of the pair keep this shape, so only the pool size
-        // separates them.
+        // many waits it records. The wait is never ended: the sibling cannot run, which is the
+        // deadlock.
         detector.recordTaskSubmitted(DEADLOCKING_POOL);
         detector.recordTaskSubmitted(DEADLOCKING_POOL);
         detector.recordTaskStarted(DEADLOCKING_POOL);
         detector.recordWaitingOnSibling(DEADLOCKING_POOL);
     }
 
-    /** The identical wait on a pool sized above the whole run. */
+    /**
+     * The same wait on a pool of two that each call creates, the way a test writes
+     * {@code Executors.newFixedThreadPool(2)}: the second thread runs the sibling, so the wait ends.
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_executor_taskWaitedWithThreadsToSpare() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.executorDeadlockDetector();
-        detector.registerExecutor(ROOMY_POOL, "roomy-pool", MORE_THREADS_THAN_THE_RUN);
-        detector.recordTaskSubmitted(ROOMY_POOL);
-        detector.recordTaskSubmitted(ROOMY_POOL);
-        detector.recordTaskStarted(ROOMY_POOL);
-        detector.recordWaitingOnSibling(ROOMY_POOL);
+        Object pool = new Object();
+        detector.registerExecutor(pool, "per-call-pool", 2);
+        detector.recordTaskSubmitted(pool);           // the parent
+        detector.recordTaskStarted(pool);
+        detector.recordTaskSubmitted(pool);           // its sibling
+        detector.recordTaskStarted(pool);             // on the pool's second thread
+        detector.recordWaitingOnSibling(pool);
+        detector.recordSiblingWaitEnded(pool);        // get() returned
+        detector.recordTaskCompleted(pool);           // the sibling
+        detector.recordTaskCompleted(pool);           // the parent
     }
 
     /** Every thread of a pool of one recorded blocked waiting on a future. */
@@ -4901,17 +4946,21 @@ class CorpusRecordingLaneTest {
         detector.recordBlockingWait(BLOCKED_POOL);
     }
 
-    /** The same blocking wait on a pool sized above the whole run. */
+    /** The same blocking wait on a per-call pool of two, whose second thread runs the future. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void recorded_future_blockedWithThreadsToSpare() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.futureBlockingDetector();
-        detector.registerExecutor(ROOMY_BLOCKED_POOL, "roomy-blocked-pool",
-                MORE_THREADS_THAN_THE_RUN);
-        detector.recordTaskSubmitted(ROOMY_BLOCKED_POOL);
-        detector.recordTaskSubmitted(ROOMY_BLOCKED_POOL);
-        detector.recordTaskStarted(ROOMY_BLOCKED_POOL);
-        detector.recordBlockingWait(ROOMY_BLOCKED_POOL);
+        Object pool = new Object();
+        detector.registerExecutor(pool, "per-call-pool", 2);
+        detector.recordTaskSubmitted(pool);           // the task that blocks
+        detector.recordTaskStarted(pool);
+        detector.recordTaskSubmitted(pool);           // the future it blocks on
+        detector.recordTaskStarted(pool);             // on the pool's second thread
+        detector.recordBlockingWait(pool);
+        detector.recordBlockingWaitEnded(pool);       // get() returned
+        detector.recordTaskCompleted(pool);           // the future's task
+        detector.recordTaskCompleted(pool);           // the task that blocked
     }
 
     /** An onNext delivered after the subscriber was completed: onComplete is terminal. */

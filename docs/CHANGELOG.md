@@ -7,7 +7,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One happens-before model for the field detectors** (`diagnostics.HappensBefore`, experimental):
+  per-thread and per-object vector clocks, fed by the agent from calls it already weaves (hand-offs
+  through `java.util.concurrent` queues and maps and the synchronized wrappers, concurrent-map
+  put/get, latches, semaphores, `Thread.start` and, newly woven, `Thread.join`, and the volatile
+  write/read bits), and by `HappensBefore.release/acquire/fork/join` for recording-fed tests. An
+  edge can only remove a finding, never add one.
+- `AsyncTestContext.ownershipTaken(instance)` declares a pool checkout the agent cannot see.
+- Record methods that let detectors see what they could not: `recordSiblingWaitEnded`,
+  `recordBlockingWaitEnded`, `recordWaitAttempted(Object)`, `recordCapturedMutation(lambda, name,
+  state, thread)`, owner-keyed `LazyInitRace` overloads, `recordIntegrate(name, state, thread)`,
+  `ABAProblemDetector.recordRead(name, value)`, `recordRequestSent(client, request, name)`.
+- **corpus-eval gains an `idioms` lane.** Correct user-code concurrency (a queue hand-off, volatile
+  publication, `start`/`join`, an `AtomicInteger` counter, a latch, a pool checkout, guarded waits and
+  more) runs with the agent attached and every detector on, each idiom beside its broken twin. A
+  correct idiom fails the run on any finding at FACT or above, and the idioms the happens-before
+  model does not see yet (`CompletableFuture`, executor submit/get, `Exchanger`, `AtomicReference`)
+  are pinned rows that flip visibly when fixed. The false positives fixed here were all found this
+  way, by a throwaway probe; the lane keeps them from coming back.
+
+### Changed
+
+- **Trust tiers are capped by what each detector decides from.** VERDICT needed only a
+  both-directions pair, and a detector whose finding is the test's own `record*` call, a thread
+  count or a threshold passes that rule by construction. `DetectorTrust.Evidence` now classifies
+  every detector (OBSERVED, CONTEXTUAL, ASSERTED, CONTEXT_FREE, HEURISTIC) and a gate refuses a
+  tier above its class's cap: VERDICT needs OBSERVED or CONTEXTUAL, ASSERTED stops at FACT, the
+  other two at PROMPT. 32 VERDICT and 5 FACT rows moved down, and a graded finding is clamped to
+  its detector's cap at run time. A build gating on `minTrust = VERDICT` now fails on fewer
+  detectors, each of which it can stand behind.
+- **The trust banner no longer claims more than its weakest finding.** A block mixing a VERDICT and
+  a PROMPT finding was headed "a finding means the code is wrong"; it now reads
+  `trust=PROMPT..VERDICT` and lists each finding's tier.
+- **Passing runs print PROMPT and ADVISORY reports as one line each.** With the defaults every
+  detector printed its full report, so what the library can stand behind was buried under what it
+  cannot. A block that trips `failOn` still prints in full, listeners still receive the full text,
+  and `-Dasync-test.report.full=true` restores full printing.
+- **`failOn` uses the severity a detector put in its structured findings.** Detectors with no
+  severity word in their text were gated as HIGH: `ThreadLocalCacheDegradation` (MEDIUM) no longer
+  fails a `failOn = HIGH` build, and some `Scope*` findings now gate as CRITICAL.
+- **A baseline accepts findings, not whole detectors.** Accepting one known finding hid every new
+  finding that detector later reported in the same test. Entries now carry a finding fingerprint
+  (`FORMAT_VERSION` 2); existing detector-wide lines keep working and are announced at INFO
+  (`baseline.detector-wide.suppressed`) when they hide something. This file shape ships with the
+  reader that understands it, which the expand-contract rule in SUPPORT_POLICY otherwise asks not
+  to do; readers from 1.9.4 on refuse a v2 file by its marker, older ones suppress less, never more.
+- **Four detectors now say what they can observe.** A shared `java.util.Random` is a LOW contention
+  advisory (the class is documented thread-safe); virtual-thread monitor queues are a MEDIUM
+  throughput advisory; `VisibilityMonitor` reports value divergence as an observation, since it
+  records a name and a value and cannot tell a stale read from a value meant to change;
+  `MemoryOrderingMonitor` asks for a happens-before edge instead of claiming a stale read.
+
 ### Fixed
+
+- **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
+  hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
+  publishing through a volatile, an object published in the same round through
+  `ConcurrentHashMap`, and a child ordered by `Thread.start`/`join` were all reported; the model
+  above now orders them. The race hotspot line counts writer threads rather than writes and no
+  longer prints line `-1`.
+- **Lock-aware detectors judge sharing within one invocation round, per owner, in happens-before
+  order.** The runner finishes a round before starting the next, but `SelfGuard` counted threads
+  over the whole run, so with virtual threads any instance used in two rounds read as shared, and a
+  different lock each round read as inconsistent locking. A take out of a woven queue or atomic slot
+  now starts a new owner, so a `MessageDigest` pool is not reported, and a latch, `start` or `join`
+  that orders two threads excuses them. `AtomicityValidator` and `AtomicNonAtomicUpdateDetector`
+  judge their lockset per round too. Concurrent unguarded use still reports.
+- **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
+  iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
+  VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common
+  to every recorded access. The map detector keys sites by map identity and key equality instead of
+  strings, LazyInitRace keys a field by its owner, and SynchronizedNonFinal reports a changing
+  monitor only when the owner is recorded.
+- **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
+  LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
+  OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by
+  `identityHashCode`, so two live objects sharing one merged into a false inversion, upgrade or lost
+  update. REENTRANT_LOCK matched a holder by thread name, so one unnamed virtual thread excused
+  another's leak. HTTP_CLIENT also reported a reused `HttpRequest` as unanswered and blamed an
+  arbitrary client.
+- **Per-round state for detectors that counted thread ids across rounds.** SHARED_SECURE_RANDOM,
+  HIGH_CONTENTION_ATOMIC, RECORD_MUTABLE_COMPONENT_LEAK, FINAL_FIELD_MUTATION (concurrent mutators),
+  LAMBDA_LOST_UPDATE, LAZY_INIT_RACE, STABLE_VALUE_MISUSE, LAZY_CONSTANT_MISUSE and
+  LAZY_COLLECTION_MISUSE read `threads = 1` over several rounds as sharing, or a fresh object per
+  round under a reused label as "set twice".
+- **Detector models that fired on the correct idiom.** Executor-deadlock and future-blocking counted
+  waits ever recorded against the pool size and now count waits that overlap (the corpus twin that
+  had to declare a pool larger than the whole run is gone). `wait()` on the only monitor held is not
+  nested monitor lockout. A failed `StampedLock.validate()` followed by a retry is not a torn read.
+  `ThreadLocalRandom.current()` on every thread is correct use. A parallel gatherer with a combiner
+  is judged on state identity. ABA needs a stale read held across another thread's A-B-A, not an
+  A-B-A history. Constructor safety is judged by the constructing thread's stack.
+- **Agent events keep the round that produced them** even when the drain runs past the 1 s flush
+  budget; they were paired with the next round.
+- **Docs.** A detector flag set to `false` does not opt out under the default `detectAll = true`;
+  only `excludes` does. The stale `DetectorType` constant count in the architecture docs is gone and
+  `DetectorCatalogCoverageTest` now catches that wording.
+- **`AtomicityValidator` no longer reports a volatile that one thread writes and others read.** One
+  writer's read-then-write cannot lose an update and volatile reads are not data races;
+  `RaceConditionDetector` already agreed. Two writers still report.
 
 - **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
   `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read

@@ -128,7 +128,26 @@ public final class AsyncTestListenerRegistry {
      * @param report the report content
      */
     public static void fireDetectorReport(String detectorName, String report) {
-        GLOBAL.fireDetectorReport(detectorName, report);
+        GLOBAL.fireDetectorReport(detectorName, report, null);
+    }
+
+    /**
+     * Fires the same events as {@link #fireDetectorReport(String, String)}, with the severity the
+     * detector put in its structured findings taking precedence over the one read from the text.
+     *
+     * <p>The runner calls this so the severity a listener (and so the JSON and SARIF output) sees is
+     * the one the {@code failOn} gate acted on.
+     *
+     * @param detectorName the reporting detector, as it appears in the report
+     * @param report the report content
+     * @param structuredSeverity the report's most severe structured severity, or {@code null} to
+     *                           read it from the text
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public static void fireDetectorReport(String detectorName, String report,
+                                          @Nullable IssueSeverity structuredSeverity) {
+        GLOBAL.fireDetectorReport(detectorName, report, structuredSeverity);
     }
 
     /**

@@ -91,8 +91,7 @@ public final class WeakHashMapSharedDetector {
         }
         // Probed on the accessing thread, which is the one inside (or outside) the guarded
         // region; the explicit thread parameter is attribution only.
-        s.noteAccess(map);
-        s.noteThread(thread);
+        s.noteAccess(map, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.

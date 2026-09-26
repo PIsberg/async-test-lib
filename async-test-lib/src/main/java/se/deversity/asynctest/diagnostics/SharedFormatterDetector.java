@@ -51,8 +51,7 @@ public class SharedFormatterDetector {
         FormatterState s = formatters.computeIfAbsent(
             new IdentityKey(formatter), id -> new FormatterState(name != null ? name
                         : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter)));
-        s.noteAccess(formatter);
-        s.noteThread(thread);
+        s.noteAccess(formatter, thread);
     }
 
     /**

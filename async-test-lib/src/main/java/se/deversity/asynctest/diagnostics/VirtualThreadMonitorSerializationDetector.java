@@ -9,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +29,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>This is easy to miss precisely because the fix landed. The old symptom - carriers pinned,
  * the pool wedged - is gone, so a JDK 24 upgrade reads as "the pinning warnings went away" when
  * what actually happened is that the same bottleneck stopped announcing itself.
+ *
+ * <p><strong>What a finding is, and is not.</strong> A queue of virtual threads on a monitor is
+ * what correct {@code synchronized} code looks like under contention, and {@code @AsyncTest}
+ * creates that contention on purpose. So the finding is a throughput observation and never a
+ * correctness verdict: it is {@link TrustTier#ADVISORY}, marked {@link IssueSeverity#MEDIUM}
+ * (performance degradation) in the report text, and the report says it is not a correctness
+ * finding. The liveness hazard of a monitor on JDK 21 to 23, a pinned carrier, belongs to
+ * {@link VirtualThreadPinningDetector}.
  *
  * <p>{@code LOCK_CONTENTION} does not cover this: it has no notion of a virtual thread, so it
  * scores four platform workers and four thousand virtual ones the same way. Here the queue depth
@@ -196,17 +205,18 @@ public final class VirtualThreadMonitorSerializationDetector {
                     : " On this JDK (" + jdkFeatureVersion + ") the monitor no longer pins the carrier, so "
                       + "nothing else reports it - the throughput limit is all that is left, and it is silent.";
 
-            String msg = String.format(
+            String msg = String.format(Locale.ROOT,
                     "Monitor '%s' had %d virtual thread(s) queued on it at once (the deepest queue overall "
                     + "was %d), %d distinct virtual thread(s) across %d acquisition(s). synchronized admits "
                     + "one thread at a time, so an unbounded virtual fan-out onto this monitor is a queue "
-                    + "rather than concurrency.%s",
+                    + "rather than concurrency. This is a throughput observation, not a correctness "
+                    + "finding: correct code under contention queues the same way.%s",
                     s.label, virtualPeak, peak, virtual, s.acquisitions.get(), pinningNote);
 
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "VirtualThreadMonitorSerialization",
-                    IssueSeverity.HIGH, msg, List.of(),
+                    IssueSeverity.MEDIUM, msg, List.of(),
                     Map.of("monitor", s.label,
                            "peakWaiting", peak,
                            "peakVirtualWaiting", virtualPeak,
@@ -235,7 +245,8 @@ public final class VirtualThreadMonitorSerializationDetector {
         @Override
         public String toString() {
             if (violations.isEmpty()) return "VIRTUAL THREAD MONITOR SERIALIZATION - clean";
-            StringBuilder sb = new StringBuilder("VIRTUAL THREAD MONITOR SERIALIZATION DETECTED:\n");
+            StringBuilder sb = new StringBuilder("VIRTUAL THREAD MONITOR SERIALIZATION DETECTED (")
+                    .append(IssueSeverity.MEDIUM.getLabel()).append(", advisory):\n");
             for (String v : violations) sb.append("  - ").append(v).append('\n');
             sb.append("  Why: JEP 491 stopped synchronized from pinning a virtual thread to its carrier, which\n")
               .append("       removed the symptom and left the cause. One thread at a time is still one thread at\n")

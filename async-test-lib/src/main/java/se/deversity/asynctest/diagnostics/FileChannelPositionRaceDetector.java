@@ -83,12 +83,11 @@ public final class FileChannelPositionRaceDetector {
     public void recordImplicitPositionAccess(Object channel, String operation) {
         if (channel == null) return;
         State s = stateFor(channel);
-        s.noteAccess(channel);
         if (operation != null) {
             s.operations.add(operation);
         }
         Thread thread = Thread.currentThread();
-        s.noteThread(thread);
+        s.noteAccess(channel, thread);
     }
 
     /**

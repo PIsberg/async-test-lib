@@ -37,6 +37,35 @@ class LazyConstantMisuseDetectorTest {
                 + detector.analyze().getReentrantIssues());
     }
 
+    @Test
+    void aFreshConstantComputedOncePerRoundUnderTheSameLabelIsNotComputedTwice() {
+        // Each round builds its own LazyConstant under "CONFIG"; each computes once, to a value
+        // that differs by round (a timestamp, a per-round fixture). Not a race on one constant.
+        for (int round = 0; round < 3; round++) {
+            detector.markInvocationStart();
+            Thread t = new Thread("round-" + round);
+            detector.recordGet("CONFIG", t);
+            detector.recordComputeStart("CONFIG", t);
+            detector.recordComputeEnd("CONFIG", t, "value-" + round);
+        }
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "one computation per fresh constant: " + report);
+    }
+
+    @Test
+    void oneConstantComputedTwiceInOneRoundStillFires() {
+        detector.markInvocationStart();
+        Thread a = new Thread("a");
+        Thread b = new Thread("b");
+        detector.recordComputeStart("CONFIG", a);
+        detector.recordComputeStart("CONFIG", b);
+        detector.recordComputeEnd("CONFIG", a, "x");
+        detector.recordComputeEnd("CONFIG", b, "y");
+        var report = detector.analyze();
+        assertFalse(report.getMultipleComputeIssues().isEmpty(), report.toString());
+        assertFalse(report.getNonDeterministicIssues().isEmpty(), report.toString());
+    }
+
     // ---- Happy path ----
 
     @Test

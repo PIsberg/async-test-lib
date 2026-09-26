@@ -27,6 +27,15 @@ in both directions and were promoted, `ConcurrentModificationDetector` fires on 
 thread-safe code and stays at PROMPT. `@AsyncTest(minTrust = ...)` restricts the failOn gate to
 the tiers you name._
 
+_Updated 2026-09-26 (evidence caps): a both-directions case is necessary for VERDICT and no longer
+sufficient. The detector must also decide from the JVM's own state or from synchronization it can
+see, because a detector whose finding is the recorded call itself passes both directions by
+construction: record the defect and it fires, leave it out and it is silent. Six of the in-repo
+VERDICT pairs belong to detectors that decide that way or on a threshold, among them the
+`LockLeakDetector` and `CompletableFutureExceptionDetector` promotions above, and those detectors
+are now FACT or PROMPT. Their cases still run and still pass, and they show what a FACT or PROMPT
+needs: that the detector separates the recorded bug from the recorded fix._
+
 ## What was measured
 
 For each detector: does it fire on genuinely buggy concurrent code (true positive), and
@@ -58,13 +67,13 @@ still invisible.
 | LockLeakDetector | fires (two acquisitions recorded, no release) | silent (every acquire released, nothing held at analysis time) | genuine both-direction detector |
 | ReentrantLockDetector | fires (a hold re-entered and never released, recorded acquire and release balanced) | silent (the same contention, a `tryLock` timeout recorded and handled, the lock free at analysis) | evidence-gated since #589: the lock's own `isLocked()` at analysis is the finding, and a recorded timeout is context, because backing off on one is correct |
 | CompletableFutureExceptionDetector | fires (completed exceptionally with no handler registered) | silent (same failure, handler registered first) | genuine both-direction detector |
-| ConcurrentModificationDetector | fires (modification recorded while an iterator is live) | silent on a `CopyOnWriteArrayList`, on a snapshot iterator modified during iteration, and on an `ArrayList` whose mutations all ran under one **declared** lock | since #292 the collection's own type is consulted; since the shared `Lockset` it also intersects declared and agent-observed locks. An undeclared lock is still invisible, by design |
+| ConcurrentModificationDetector | fires (modification recorded while an iterator is live; iteration outside the lock the writers hold) | silent on a `CopyOnWriteArrayList`, on a snapshot iterator modified during iteration, on an `ArrayList` whose mutations all ran under one **declared** lock, and on concurrent iteration plus mutation all under `synchronized (list)` | since #292 the collection's own type is consulted; since the shared `Lockset` it also intersects declared and agent-observed locks. The concurrent-iteration finding had no lock check until 2026-09-25 and reported the `synchronizedList` iteration idiom; it now intersects the locks held at every iteration start and mutation. An undeclared lock is still invisible, by design |
 | ResourceLeakDetector | fires (two opens, no close) | silent (every open closed, nothing open at analysis time) | genuine both-direction detector |
 | InterruptMonitor | fires (InterruptedException caught, flag never restored) | silent (catch-and-restore) | genuine both-direction detector |
 | UncaughtExceptionHandlerDetector | fires (thread throws with no custom handler) | silent (same throw, handler installed) | genuine both-direction detector |
 | CompletableFutureCompletionLeakDetector | fires (future created, never completed) | silent (created and completed) | genuine both-direction detector |
 | ThreadLeakDetector | fires (thread started, still alive at analysis) | silent (joined and recorded as ended) | genuine both-direction detector; auto mode, which watches the global thread count, is off by default |
-| ConstructorSafetyValidator | fires (another thread reads a field before the constructor returns) | silent (ordinary constructor, read after it returned) | genuine both-direction detector since #357 removed the sub-microsecond rule, which fired on every fast constructor |
+| ConstructorSafetyValidator | fires (another thread reads a field before the constructor returns) | silent (ordinary constructor, read after it returned) | genuine both-direction detector since #357 removed the sub-microsecond rule, which fired on every fast constructor; since 1.12.3 the records are checked against the stack, so a read after the constructor returned is silent even when the end was recorded late or never |
 | ThreadLocalMonitor | fires (set on two threads, never removed) | silent (`remove()` in a finally block) | genuine both-direction detector |
 | LockDowngradeDetector | fires (write released before the read lock was taken, **and** another thread observed taking the write lock in the gap) | silent on the correct downgrade however contended, and silent on the same shape with nobody in the gap | evidence-gated since #355: the shape alone is also correct code that writes one thing and later reads another, so it is not reported without an observed writer. Deliberate false negative |
 | StampedLockDetector | fires (a failed `validate()` with no fallback; a write stamp one thread took and never released; a read stamp released again while another reader holds) | silent (the `validate()`-then-`readLock()` fallback; the same write released in a `finally`; the same read released once) | leaks since #588 need two facts: an acquisition no recorded unlock matched, and the lock still held at analysis; matching is per thread and lock instance, not per name; since #604 a repeated read release is reported only when the lock's reader count confirms a hold was taken |
@@ -92,21 +101,25 @@ authority on which row is which - each outcome above is one assertion in it.
   these patterns means the specific bug shape is absent.
 - For RaceConditionDetector, SharedMessageDigestDetector and SharedStatefulCryptoDetector
   a finding now means "touched by more than one thread, and no single lock covered every
-  access". Code guarded by the instance's own monitor does not fire, and neither does code
+  access". For the two Shared* detectors both halves are judged within one invocation round,
+  because the runner finishes one round before it starts the next; see the Shared* section
+  below. Code guarded by the instance's own monitor does not fire, and neither does code
   guarded by any other lock the test declares with `AsyncTestContext.holdingLock(...)`. A lock
   that was never declared is invisible and the finding stands, so it remains a prompt to verify
   synchronization rather than a verdict; the report wording says exactly that.
 - For `AtomicityValidator` the answer depends on how the access was recorded.
   `recordFieldAccessOn(owner, field, value, isWrite)` gives it the full lockset, and a field
-  covered by one lock across every access produces no finding. The agent-fed path gets a weaker
+  covered by one lock across every access of a round produces no finding. Since 1.12.3 that
+  lockset is judged per round on both paths, so a different lock in each round is consistent
+  locking: the harness orders the rounds. The agent-fed path gets a weaker
   model: it compares whole lock sets by fingerprint rather than intersecting them, so a field one
   thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
   than one thread touched this field and at least one wrote". On the agent-fed path an object
   that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`) is judged per
   ownership generation, so each owner may bring its own lock, or none while the object is exclusive
-  to it (#555); a lock that changes with no take, a thread that uses an object it did not take, and
-  two locks inside one generation still fire, and each direction is a case in
+  to it (#555); a lock that changes inside one round with no take, a thread that uses an object
+  it did not take, and two locks inside one generation still fire, and each direction is a case in
   `DetectorAccuracyEvalTest`. The report only mentions locks when
   the caller supplied some.
 - **Ownership-generation boundary (#559).** Exclusivity ends at the first foreign access in drain
@@ -171,15 +184,57 @@ lockset now and both directions are pinned like the rest.
 | Unguarded sharing (true positive) | 19 of 19 fire | 20 of 20 fire |
 | `synchronized(instance)` twin (true negative) | 2 of 19 stay silent | 18 of 20 stay silent |
 | Declared `ReentrantLock` twin (true negative) | not measured | 18 of 20 stay silent |
+| One thread per round, a fresh thread each round (true negative) | not measured | 18 of 18 stay silent |
 | Two threads, two different declared locks | not measured | 18 of 18 fire, correctly |
 
 The 18 all reach those answers through one shared model rather than 18 copies of it.
 `SelfGuard.TrackedInstance` keeps the Eraser candidate set - the locks held at every access to
 that instance, intersected - and a detector's state class extends it, its record path calls
-`noteAccess(instance)`, and its `analyze()` reports only when `sawUnguardedAccess()`, which is
-now "the intersection is empty". The instance's own monitor is one member of that set rather
-than a special case. The finding's wording comes from the same place (`SelfGuard.REPORT_NOTE`),
-so the report cannot claim awareness the code does not have.
+`noteAccess(instance)`, and its `analyze()` reports only when `sawUnguardedSharing()`: within
+one invocation round, more than one thread touched the instance and the intersection of that
+round's locksets is empty. The instance's own monitor is one member of that set rather than a
+special case. The finding's wording comes from the same place (`SelfGuard.REPORT_NOTE`), so the
+report cannot claim awareness the code does not have.
+
+The round matters because the runner orders rounds: every worker of one round has finished
+before the next round's are submitted, so two threads that used an instance in different rounds
+never overlapped. Until 2026-09-25 both the thread count and the lockset spanned the whole run.
+With pooled platform workers, sequential use by different workers in different rounds read as
+sharing; with virtual threads, the default, every body execution runs on a fresh thread, so any
+instance used in two rounds at all was "accessed from 2 threads". A lock that guarded all of one
+round and a different lock that guarded all of the next also emptied the intersection. The round
+comes from a clock `AsyncTestContext` binds to each worker (`SelfGuard.Scope`); a detector
+driven with no context installed sees one round, the whole run, as before. The "one thread per
+round" row pins it for the whole roster.
+
+Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
+`BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched
+it in one round and no lock covered the use, so it read as sharing. A take is the hand-off edge:
+the queue held the only shared reference, so the previous owner put it back before the next could
+take it. `SelfGuard.Scope.ownershipTaken` counts takes per tracked instance, and the window key is
+(round, takes so far), so one owner's accesses and the next's are judged apart. The agent's woven
+queue takes and atomic-slot swaps (`collections=true`) reach it synchronously from
+`TelemetryRegistry.ownershipTaken`, on the taking thread; a checkout the weaver never sees is
+declared with `AsyncTestContext.ownershipTaken(instance)`. An old owner that keeps using the
+instance after handing it back joins the new owner's window and is still reported. Pinned in
+`SharedMessageDigestDetectorTest`, through the woven hook methods called directly rather than a
+real agent attach. What it does not see: a pool of wrapper objects, where the take names the
+wrapper and the access names the digest inside it.
+
+Within an owner's window the verdict also follows the shared `HappensBefore` model (1.12.3). Two
+threads in one round that the program ordered, one using a `MessageDigest` and counting a latch
+down while the other awaits it and then uses the digest, or a parent that uses it, starts a child
+that uses it and joins the child, never overlapped, yet read as sharing, because a lockset cannot
+see an ordering no lock provides. Each access now carries its thread's clock, and a thread whose
+access the model orders after the window's latest one takes the instance over. The edges come
+from the agent's woven latches, semaphores, queue and map hand-offs, `Thread.start` and `join`, or
+from `HappensBefore.release`/`acquire`/`fork`/`join` in the test. An edge only removes a finding:
+two siblings started by one parent, and two threads that use the digest at once after a hand-off,
+still fire, and an unwoven latch nobody declared orders nothing. Pinned in
+`SharedMessageDigestDetectorTest`, through the manual API and through the hook methods the weaver
+substitutes. `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
+per-round lockset from the same windows (`sawUnguardedRound()`), so one lock per round, a
+different one each round, no longer reads as inconsistent locking.
 
 The last row is why the model is an intersection and not a per-thread "was anything held" flag.
 Two threads that each take their own lock have serialised nothing, and a flag would call that

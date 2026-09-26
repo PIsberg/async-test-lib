@@ -88,7 +88,7 @@ class RaceConditionRecordPathDogfoodTest {
     /**
      * {@return the write count the report states for the field ending in {@code suffix}, or -1}
      *
-     * <p>Reads the {@code "<field>: N writes observed across M threads"} line that
+     * <p>Reads the {@code "<field>: written by M threads, N writes in all"} line that
      * {@code potentialRaces} carries.
      */
     private static int writesReportedFor(RaceConditionDetector.RaceConditionReport report,
@@ -102,7 +102,7 @@ class RaceConditionRecordPathDogfoodTest {
         return matcher == null ? -1 : Integer.parseInt(matcher.group(1));
     }
 
-    private static final Pattern WRITES_OBSERVED = Pattern.compile("(\\d+) writes observed");
+    private static final Pattern WRITES_OBSERVED = Pattern.compile("(\\d+) writes in all");
 
     private static Stream<String> findingsOf(RaceConditionDetector.RaceConditionReport report) {
         Set<String> races = report.potentialRaces;

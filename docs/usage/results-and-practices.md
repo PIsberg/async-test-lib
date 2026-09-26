@@ -14,6 +14,21 @@ synchronization, not a verdict. Which is which is measured, not asserted:
 
 Start with `failOn = CRITICAL`, which gates on the trustworthy end of the scale.
 
+The console follows the same ranking. Each report opens with a banner naming its detector and tier
+(`trust=VERDICT`, or a span such as `trust=PROMPT..VERDICT` when a detector grades its findings one
+by one, followed by one line per graded finding). On a passing run, VERDICT and FACT reports print
+in full, and each PROMPT or ADVISORY report prints as a single line:
+
+```
+[AsyncTest] RecordMutableComponentLeakDetector trust=PROMPT findings=1: structural risk in a shared record: order
+[AsyncTest] 1 PROMPT/ADVISORY report(s) shown as one line each; rerun with -Dasync-test.report.full=true to print them in full
+```
+
+Pass `-Dasync-test.report.full=true` to print every report in full. A report that fails the build
+always prints in full, and so does every report of a test that failed or timed out, because there
+a prompt is a candidate cause. Listeners, and the JSON, JUnit XML and SARIF output, receive the full
+text either way.
+
 ### Adopting into an existing suite
 
 An established codebase will produce findings the first time `detectAll` runs, and a gate that is

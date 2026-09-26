@@ -148,6 +148,120 @@ public class LazyInitRaceDetectorTest {
                 "Field A initialized cleanly should not appear in races");
     }
 
+    /** A lazily initialised holder with a synchronized getter: the correct idiom. */
+    private static final class Holder {
+        private Object instance;
+
+        synchronized Object get(LazyInitRaceDetector detector) {
+            if (instance == null) {
+                detector.recordNullCheck(this, "Holder.instance", true, false);
+                instance = new Object();
+                detector.recordInitialization(this, "Holder.instance");
+            } else {
+                detector.recordNullCheck(this, "Holder.instance", false, false);
+            }
+            return instance;
+        }
+    }
+
+    @Test
+    void aFreshSynchronizedHolderEachRoundIsNotASecondInitialisation() throws InterruptedException {
+        LazyInitRaceDetector detector = new LazyInitRaceDetector();
+        for (int round = 0; round < 3; round++) {
+            Holder holder = new Holder();
+            onTwoThreads(() -> holder.get(detector));
+        }
+
+        assertFalse(detector.analyze().hasIssues(),
+            "Three holders, each initialised once by a synchronized getter. One label for the "
+                + "field is not one field: keyed by the label alone, the three initialisations "
+                + "read as one field initialised three times: " + detector.analyze());
+    }
+
+    @Test
+    void aHolderPerThreadIsNotASecondInitialisation() throws InterruptedException {
+        LazyInitRaceDetector detector = new LazyInitRaceDetector();
+        onTwoThreads(() -> new Holder().get(detector));
+
+        assertFalse(detector.analyze().hasIssues(),
+            "each thread initialised its own holder once: " + detector.analyze());
+    }
+
+    @Test
+    void labelOnlyRecordingIsJudgedPerInvocationRound() throws InterruptedException {
+        LazyInitRaceDetector detector = new LazyInitRaceDetector();
+        for (int round = 0; round < 3; round++) {
+            detector.markInvocationStart();
+            Object lock = new Object();
+            boolean[] initialised = {false};
+            onTwoThreads(() -> {
+                synchronized (lock) {
+                    detector.recordNullCheck("Service.instance", !initialised[0], false);
+                    if (!initialised[0]) {
+                        initialised[0] = true;
+                        detector.recordInitialization("Service.instance");
+                    }
+                }
+            });
+        }
+
+        assertFalse(detector.analyze().hasIssues(),
+            "each round built its own service and initialised it once; the rounds are not one "
+                + "field initialised three times: " + detector.analyze());
+    }
+
+    @Test
+    void aRaceWithinOneRoundStillFiresAfterEarlierCleanRounds() throws InterruptedException {
+        LazyInitRaceDetector detector = new LazyInitRaceDetector();
+        detector.markInvocationStart();
+        detector.recordNullCheck("Service.instance", true, false);
+        detector.recordInitialization("Service.instance");
+        detector.markInvocationStart();
+        java.util.concurrent.CyclicBarrier bothSawNull = new java.util.concurrent.CyclicBarrier(2);
+        onTwoThreads(() -> {
+            detector.recordNullCheck("Service.instance", true, false);
+            await(bothSawNull);
+            detector.recordInitialization("Service.instance");
+        });
+        detector.markInvocationStart();
+
+        assertTrue(detector.analyze().hasIssues(), "the second round initialised twice");
+        assertTrue(detector.analyze().races.get(0).contains("initialized 2 time(s)"),
+            detector.analyze().races.toString());
+    }
+
+    @Test
+    void twoThreadsRacingOnOneHolderStillFire() throws InterruptedException {
+        LazyInitRaceDetector detector = new LazyInitRaceDetector();
+        Object owner = new Object();
+        java.util.concurrent.CyclicBarrier bothSawNull = new java.util.concurrent.CyclicBarrier(2);
+        onTwoThreads(() -> {
+            detector.recordNullCheck(owner, "Racy.instance", true, false);
+            await(bothSawNull);
+            detector.recordInitialization(owner, "Racy.instance");
+        });
+
+        assertTrue(detector.analyze().hasIssues(), "one holder initialised by both threads");
+    }
+
+    private static void await(java.util.concurrent.CyclicBarrier barrier) {
+        try {
+            barrier.await();
+        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void onTwoThreads(Runnable body) throws InterruptedException {
+        Thread a = new Thread(body);
+        Thread b = new Thread(body);
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+    }
+
     @Test
     void testNullFieldIdIsIgnored() {
         LazyInitRaceDetector detector = new LazyInitRaceDetector();

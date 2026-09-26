@@ -15,6 +15,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.SharedCollectionDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
@@ -137,19 +138,32 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Map.put}. @param receiver the map @param key the key @param value the value @return the previous value */
     public static @Nullable Object mapPut(Map<Object, Object> receiver, Object key, Object value) {
         record(receiver, "put", true);
+        // A concurrent map publishes the value to whoever later reads it (HappensBefore): the
+        // release comes before the put, so every get that can return the value finds it.
+        if (value != null && HappensBefore.publishesElements(receiver)) {
+            HappensBefore.release(value);
+        }
         return receiver.put(key, value);
     }
 
     /** Weaves {@code Map.get}. @param receiver the map @param key the key @return the mapped value */
     public static @Nullable Object mapGet(Map<Object, Object> receiver, Object key) {
         record(receiver, "get", false);
-        return receiver.get(key);
+        return received(receiver, receiver.get(key));
     }
 
     /** Weaves {@code Map.remove}. @param receiver the map @param key the key @return the removed value */
     public static @Nullable Object mapRemove(Map<Object, Object> receiver, Object key) {
         record(receiver, "remove", true);
-        return receiver.remove(key);
+        return received(receiver, receiver.remove(key));
+    }
+
+    /** {@return {@code value}, after acquiring what its put published when the map orders it} */
+    private static @Nullable Object received(Map<Object, Object> receiver, @Nullable Object value) {
+        if (value != null && HappensBefore.publishesElements(receiver)) {
+            HappensBefore.acquire(value);
+        }
+        return value;
     }
 
     /**

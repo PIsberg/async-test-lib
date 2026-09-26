@@ -163,4 +163,89 @@ public class AtomicityValidatorTest {
         assertEquals(viaAnalyzeAtomicity.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeAtomicity.toString(), viaAnalyze.toString());
     }
+
+    // ---- The lock is judged within one round ---------------------------------------------------
+    //
+    // A lock that guarded every access of one round says nothing about the next round's: the
+    // harness ordered them. A different lock in each round is consistent locking, and two locks
+    // inside one round are not.
+
+    static final class Box {
+        int value;
+    }
+
+    private static void onThreads(Runnable... bodies) throws InterruptedException {
+        Thread[] threads = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            threads[i] = new Thread(bodies[i], "worker-" + i);
+        }
+        for (Thread thread : threads) {
+            thread.start();
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
+    }
+
+    /** A read then a write of {@code box.value}, naming the owner, under {@code lock}. */
+    private static Runnable ownerAwareIncrementUnder(AtomicityValidator validator, Box box, Object lock) {
+        return () -> {
+            synchronized (lock) {
+                try (var held = HeldLocks.holding(lock)) {
+                    validator.recordFieldAccessOn(box, "Box.value", box.value, false);
+                    box.value++;
+                    validator.recordFieldAccessOn(box, "Box.value", box.value, true);
+                }
+            }
+        };
+    }
+
+    /** The same, recorded the way the agent's drain does: with the lock fingerprint. */
+    private static Runnable fingerprintedIncrementUnder(AtomicityValidator validator, Object lock) {
+        return () -> {
+            long thread = Thread.currentThread().threadId();
+            synchronized (lock) {
+                try (var held = HeldLocks.holding(lock)) {
+                    validator.recordFieldAccessUnderLocks("Box.count", null, false, thread,
+                            HeldLocks.lockFingerprint(false));
+                    validator.recordFieldAccessUnderLocks("Box.count", null, true, thread,
+                            HeldLocks.lockFingerprint(true));
+                }
+            }
+        };
+    }
+
+    @Test
+    void aDifferentLockInEachRoundIsNotInconsistentLocking() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Box box = new Box();
+        for (Object lock : new Object[] {new Object(), new Object()}) {
+            validator.markInvocationStart();
+            onThreads(ownerAwareIncrementUnder(validator, box, lock),
+                    ownerAwareIncrementUnder(validator, box, lock),
+                    fingerprintedIncrementUnder(validator, lock),
+                    fingerprintedIncrementUnder(validator, lock));
+        }
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.hasIssues(),
+                "each round held one lock at every access, for both lock models: " + report);
+    }
+
+    @Test
+    void twoLocksInOneRoundStillFire() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Box box = new Box();
+        validator.markInvocationStart();
+        onThreads(ownerAwareIncrementUnder(validator, box, new Object()),
+                ownerAwareIncrementUnder(validator, box, new Object()),
+                fingerprintedIncrementUnder(validator, new Object()),
+                fingerprintedIncrementUnder(validator, new Object()));
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(report.unsafeFieldAccesses.stream().anyMatch(s -> s.startsWith("Box.value")),
+                "owner-aware: two locks in one round exclude nothing; got " + report.unsafeFieldAccesses);
+        assertTrue(report.unsafeFieldAccesses.stream().anyMatch(s -> s.startsWith("Box.count")),
+                "fingerprinted: two locks in one round exclude nothing; got " + report.unsafeFieldAccesses);
+    }
 }

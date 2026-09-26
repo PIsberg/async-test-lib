@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -191,6 +192,123 @@ final class CorpusReport {
             throw new UncheckedIOException("could not write the recording-lane report", e);
         }
         return target;
+    }
+
+    /**
+     * Renders the idiom lane, where every finding on a correct row is printed, at every tier.
+     *
+     * <p>The pair lanes print each row filtered to the detector it names, because that is the
+     * row's whole claim. A correct idiom claims more: that nothing worth failing on is said about
+     * it by anything. So the table prints every detector that spoke, and the tier each spoke at,
+     * which is also the only place the sub-{@code FACT} questions the gate lets through are
+     * written down.
+     *
+     * @param findings    what the detectors reported
+     * @param threads     threads per subject
+     * @param invocations rounds per subject
+     * @param lane        the lane that ran
+     * @return the file written
+     */
+    static Path writeIdioms(List<CorpusRecorder.Finding> findings,
+                            int threads,
+                            int invocations,
+                            CorpusLane lane) {
+        StringBuilder out = new StringBuilder();
+        out.append("# Corpus eval run - ").append(lane.propertyValue()).append(" lane\n\n")
+                .append("Correct user-code concurrency idioms, each followed by its broken twin, ")
+                .append("with every detector on and the agent attached. A correct row must draw ")
+                .append("nothing at FACT tier or above from any detector and nothing at any tier ")
+                .append("from the detector it names; a twin must wake its named detector.\n\n")
+                .append("- Lane: ").append(lane.propertyValue()).append('\n')
+                .append("- JVM: ").append(System.getProperty("java.version"))
+                .append(" (").append(System.getProperty("java.vm.name")).append(")\n")
+                .append("- OS: ").append(System.getProperty("os.name"))
+                .append(' ').append(System.getProperty("os.version"))
+                .append(" (").append(System.getProperty("os.arch")).append(")\n")
+                .append("- Configuration: threads=").append(threads)
+                .append(", invocations=").append(invocations)
+                .append(", detectAll=true, agent=fields=true,collections=true\n")
+                .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append('\n')
+                .append(LibraryBuild.describe()).append("\n\n");
+
+        out.append("## Per row\n\n")
+                .append("| Row | Expected | Named detector | Named detector said | FACT or above, any detector | Below FACT, other detectors | Events |\n")
+                .append("|---|---|---|---|---|---|---:|\n");
+        for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
+            String own = DetectorExposure.classOf(subject.detector());
+            List<CorpusRecorder.Finding> mine = findings.stream()
+                    .filter(finding -> finding.subject().equals(subject.testMethod()))
+                    .toList();
+            List<CorpusRecorder.Finding> fromOwn = mine.stream()
+                    .filter(finding -> finding.detector().equals(own)).toList();
+            List<CorpusRecorder.Finding> strong = mine.stream()
+                    .filter(finding -> CorpusGates.claimedTier(finding).atLeast(TrustTier.FACT))
+                    .toList();
+            List<CorpusRecorder.Finding> weakOthers = mine.stream()
+                    .filter(finding -> !CorpusGates.claimedTier(finding).atLeast(TrustTier.FACT))
+                    .filter(finding -> !finding.detector().equals(own)).toList();
+            String expected = subject.expectation() == RecordingSubject.Expectation.MUST_FIRE
+                    ? "twin: fires"
+                    : Corpus.idiomKnownGaps().containsKey(subject.testMethod())
+                            ? "correct: known gap"
+                            : subject.expectedSeverity() != null
+                                    ? "correct: " + subject.expectedSeverity() + " note"
+                                    : "correct: silent";
+            out.append("| `").append(subject.testMethod()).append("` | ")
+                    .append(expected).append(" | `").append(own).append("` | ")
+                    .append(fromOwn.isEmpty() ? "silent" : tiersOf(fromOwn)).append(" | ")
+                    .append(strong.isEmpty() ? "-" : detectorsOf(strong)).append(" | ")
+                    .append(weakOthers.isEmpty() ? "-" : detectorsOf(weakOthers)).append(" | ")
+                    .append(CorpusRecorder.eventsFor(subject.testMethod())).append(" |\n");
+        }
+
+        out.append("\nWhy each row must come out as it does:\n\n");
+        for (RecordingSubject subject : Corpus.subjectsFor(lane)) {
+            out.append("- `").append(subject.testMethod()).append("` - ")
+                    .append(subject.rationale()).append(".\n");
+        }
+        if (!Corpus.idiomKnownGaps().isEmpty()) {
+            out.append("\n## Known gaps\n\n");
+            Corpus.idiomKnownGaps().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(gap -> out.append("- `").append(gap.getKey()).append("` - ")
+                            .append(gap.getValue()).append(".\n"));
+        }
+        if (!Corpus.idiomManualApiRows().isEmpty()) {
+            out.append("\n## Rows that call the manual API\n\n");
+            Corpus.idiomManualApiRows().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(row -> out.append("- `").append(row.getKey()).append("` - ")
+                            .append(row.getValue()).append(".\n"));
+        }
+        out.append('\n').append(recordingExposure(findings, lane));
+        out.append('\n').append(recordingSummary(findings, lane));
+
+        Path target = Path.of("target", "corpus-eval", lane.reportFile());
+        try {
+            Files.createDirectories(target.getParent());
+            Files.writeString(target, out.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not write the idiom-lane report", e);
+        }
+        return target;
+    }
+
+    /** {@return each finding as tier/severity, for a table cell} */
+    private static String tiersOf(List<CorpusRecorder.Finding> findings) {
+        return findings.stream()
+                .map(finding -> finding.tier() + "/" + finding.severity())
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /** {@return each finding as detector tier/severity, for a table cell} */
+    private static String detectorsOf(List<CorpusRecorder.Finding> findings) {
+        return findings.stream()
+                .map(finding -> "`" + finding.detector() + "` " + finding.tier() + "/"
+                        + finding.severity())
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     /**

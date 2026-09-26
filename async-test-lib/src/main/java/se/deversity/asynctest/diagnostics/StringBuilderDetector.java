@@ -183,7 +183,7 @@ public class StringBuilderDetector {
 
             report.totalBuilders++;
 
-            if (mutators > 1 && state.sawUnguardedAccess()) {
+            if (mutators > 1 && state.sawUnguardedSharing()) {
                 report.sharedBuilderViolations.add(String.format(
                         "%s: mutated by %d threads (append: %d, insert: %d, delete: %d, replace: %d) — NOT THREAD SAFE!" + SelfGuard.REPORT_NOTE,
                         state.name, mutators,

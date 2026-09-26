@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -8,20 +9,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Flags {@link java.util.Random} instances accessed from more than one thread.
- * 
- * Common Random misuse issues detected:
- * - Shared Random instance accessed by multiple threads
- * - Thread contention on Random causing performance degradation
- * - Potential data corruption from unsynchronized concurrent nextInt()/nextLong() calls
- * 
- * Note: java.util.Random is thread-safe but uses atomic operations that can cause
- * contention. For high-concurrency scenarios, ThreadLocalRandom should be used instead.
+ * Notes {@link java.util.Random} instances used from more than one thread, as a performance
+ * advisory.
  *
- * The detector observes sharing, not locks — a shared instance guarded by
- * external synchronization is flagged all the same; treat a finding as a
- * prompt to verify the sharing is intended, or to switch to ThreadLocalRandom.
- * 
+ * <p>{@code java.util.Random} is thread-safe: its javadoc says instances are safe for use by
+ * multiple threads, and that concurrent use of one instance may see contention and poor
+ * performance. Every call advances one {@code AtomicLong} seed with a compare-and-set, so a shared
+ * instance is correct code whose callers retry on each other. A finding therefore says nothing
+ * about correctness, is marked {@link IssueSeverity#LOW} in the report text, and belongs to
+ * {@link TrustTier#ADVISORY}: {@code ThreadLocalRandom.current()} gives each thread its own seed and
+ * is faster under contention. The note is about contention, so an external lock does not silence
+ * it; a lock serializes the callers a second time.
+ *
  * Usage:
  * <pre>{@code
  * @AsyncTest(threads = 4, detectSharedRandom = true)
@@ -121,10 +120,9 @@ public class SharedRandomDetector {
         for (RandomState state : randoms.values()) {
             // Check for shared access (multiple threads using same Random)
             if (state.accessingThreads.size() > 1) {
-                report.sharedRandoms.add(String.format(
-                    "%s: accessed by %d threads (%d total accesses)"
-                        + " (the detector observes sharing, not locks — verify external"
-                        + " synchronization or use a per-thread instance)",
+                report.sharedRandoms.add(String.format(Locale.ROOT,
+                    "%s: one Random used by %d threads (%d total accesses); correct, since"
+                        + " Random is thread-safe, but the callers contend on its one seed",
                     state.name, state.accessingThreads.size(), state.accessCount.get()));
                 
                 // Build method breakdown
@@ -142,7 +140,7 @@ public class SharedRandomDetector {
                 if (duration > 0 && state.accessCount.get() > 100) {
                     double accessesPerSecond = state.accessCount.get() * 1000.0 / duration;
                     if (accessesPerSecond > 10000) { // More than 10k accesses/second
-                        report.highContention.add(String.format(
+                        report.highContention.add(String.format(Locale.ROOT,
                             "%s: high contention detected (%.0f accesses/sec)",
                             state.name, accessesPerSecond));
                     }
@@ -151,7 +149,7 @@ public class SharedRandomDetector {
 
             // Track activity
             if (state.accessCount.get() > 0) {
-                report.randomActivity.put(state.name, String.format(
+                report.randomActivity.put(state.name, String.format(Locale.ROOT,
                     "%d accesses from %d threads",
                     state.accessCount.get(), state.accessingThreads.size()));
             }
@@ -186,7 +184,8 @@ public class SharedRandomDetector {
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append("SHARED RANDOM ISSUES DETECTED:\n");
+            sb.append("SHARED RANDOM CONTENTION ADVISORY (").append(IssueSeverity.LOW.getLabel())
+                    .append("):\n");
 
             if (!sharedRandoms.isEmpty()) {
                 sb.append("  Shared Random Instances:\n");
@@ -221,13 +220,12 @@ public class SharedRandomDetector {
             }
 
             sb.append("""
-  Why: java.util.Random uses a shared AtomicLong seed. Under concurrent use, threads contend on that
-       single seed via CAS, causing high contention and throughput that degrades with thread count.
-       In the worst case, the contention serialises random number generation across all threads.
-  Fix:
-    - Use ThreadLocalRandom.current().nextInt(...) — each thread has its own seed, zero contention
-    - For cryptographic randomness: use SecureRandom with a per-thread or synchronized instance
-    - For reproducible testing: SplittableRandom is thread-safe-by-split and supports parallel streams\
+  Why: java.util.Random is thread-safe, so this is a performance note and not a bug. Every call
+       advances one AtomicLong seed with a compare-and-set, and concurrent callers retry on each
+       other, so throughput falls as threads are added.
+  If the contention matters:
+    - Use ThreadLocalRandom.current().nextInt(...): each thread has its own seed, no contention
+    - For a reproducible sequence per task: SplittableRandom, split() once per task\
 """);
             return sb.toString();
         }

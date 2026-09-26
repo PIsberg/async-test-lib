@@ -6,6 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.Nullable;
 
@@ -17,6 +18,13 @@ import org.jspecify.annotations.Nullable;
  * instance. Concurrent writes from multiple test threads — or from production code under
  * test — introduce non-deterministic configuration, race conditions in property-reading
  * code, and test pollution that survives to subsequent test methods.
+ *
+ * <p>Writes to one key from several threads are not reported when one lock covered every one
+ * of them: the threads then take turns, and a set-and-restore under a shared lock is the correct
+ * way to share a process-global property. The lock the detector can see is the properties
+ * table's own monitor ({@code synchronized (System.getProperties())}), a lock declared with
+ * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
+ * the finding standing.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -47,7 +55,12 @@ public class SystemPropertyMutationDetector {
         }
     }
 
+    /** The locks common to every recorded write of one key: the SelfGuard lockset. */
+    private static final class KeyGuard extends SelfGuard.TrackedInstance {
+    }
+
     private final List<MutationEvent> events = new CopyOnWriteArrayList<>();
+    private final Map<String, KeyGuard> guards = new ConcurrentHashMap<>();
 
     /**
      * Records a {@code System.setProperty(key, value)} call.
@@ -58,6 +71,7 @@ public class SystemPropertyMutationDetector {
      */
     public void recordSet(String key, String value, Thread thread) {
         if (key == null || thread == null) return;
+        noteWrite(key, thread);
         events.add(new MutationEvent(key, value, thread.threadId(), thread.getName(), "set"));
     }
 
@@ -69,7 +83,22 @@ public class SystemPropertyMutationDetector {
      */
     public void recordClear(String key, Thread thread) {
         if (key == null || thread == null) return;
+        noteWrite(key, thread);
         events.add(new MutationEvent(key, null, thread.threadId(), thread.getName(), "clear"));
+    }
+
+    /**
+     * Intersects the key's lockset with the locks the calling thread holds. The properties
+     * table's own monitor is the instance probed, so {@code synchronized (System.getProperties())}
+     * counts with no declaration; the explicit thread parameter of the record methods is
+     * attribution only, and the probe is always the caller.
+     */
+    private void noteWrite(String key, Thread thread) {
+        KeyGuard guard = guards.get(key);
+        if (guard == null) {
+            guard = guards.computeIfAbsent(key, k -> new KeyGuard());
+        }
+        guard.noteAccess(System.getProperties(), true, thread.threadId());
     }
 
     /**
@@ -96,12 +125,21 @@ public class SystemPropertyMutationDetector {
                 threadNames.add(e.threadName);
             }
 
-            if (threadIds.size() > 1) {
+            KeyGuard guard = guards.get(key);
+            boolean unguarded = guard == null || guard.sawUnguardedSharing();
+            if (threadIds.size() > 1 && unguarded) {
                 r.violations.add(String.format(
                         "Property '%s' mutated from %d threads (%s) — "
                                 + "concurrent property mutation causes non-deterministic "
-                                + "configuration and test pollution",
+                                + "configuration and test pollution" + SelfGuard.REPORT_NOTE,
                         key, threadIds.size(), String.join(", ", threadNames)));
+            } else if (threadIds.size() > 1) {
+                // One lock covered every write, so the threads took turns. The hygiene question
+                // a single-threaded mutation raises still applies.
+                r.singleThreadMutations.add(String.format(
+                        "Property '%s' mutated from %d threads under one lock — "
+                                + "verify the property is restored after the test",
+                        key, threadIds.size()));
             } else if (!mutations.isEmpty()) {
                 // Even single-thread mutation is worth reporting as a hygiene issue
                 MutationEvent first = mutations.get(0);

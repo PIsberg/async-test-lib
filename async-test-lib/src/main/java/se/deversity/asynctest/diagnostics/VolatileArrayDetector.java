@@ -18,6 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * Example:
  *   volatile int[] array = new int[10];  // Elements are NOT volatile!
  *   array[0] = 42;  // May not be visible to other threads
+ *
+ * <p>An array written by several threads is reported only when no one lock covered every
+ * recorded element write and read: a lock orders the element accesses the volatile keyword
+ * does not. The lock the detector can see is the array's own monitor
+ * ({@code synchronized (array)}), a lock declared with {@code AsyncTestContext.holdingLock(...)},
+ * or one the agent wove; a lock it never saw leaves the finding standing.
  */
 public class VolatileArrayDetector {
 
@@ -82,6 +88,8 @@ public class VolatileArrayDetector {
         if (info != null) {
             Set<String> accesses = elementAccesses.get(info);
             if (accesses != null) {
+                // Probed first, while the caller is still inside whatever region guards it.
+                info.noteAccess(array, true);
                 String accessKey = Thread.currentThread().threadId() + ":write:" + index;
                 accesses.add(accessKey);
                 
@@ -115,6 +123,7 @@ public class VolatileArrayDetector {
         if (info != null) {
             Set<String> accesses = elementAccesses.get(info);
             if (accesses != null) {
+                info.noteAccess(array, false);
                 accesses.add(Thread.currentThread().getName() + ":read:" + index);
             }
         }
@@ -171,9 +180,16 @@ public class VolatileArrayDetector {
      * @return the findings this detector collected during the run
      */
     public VolatileArrayReport analyze() {
-        return new VolatileArrayReport(
-            problematicArrays
-        );
+        // Written by several threads is the shape; no lock common to every recorded access is
+        // what makes it a finding. A monitor or lock held across every element write and read
+        // orders them as surely as a volatile element would.
+        Set<ArrayInfo> unguarded = new HashSet<>();
+        for (ArrayInfo info : problematicArrays) {
+            if (info.sawUnguardedSharing()) {
+                unguarded.add(info);
+            }
+        }
+        return new VolatileArrayReport(unguarded);
     }
 
     /**
@@ -213,6 +229,7 @@ public class VolatileArrayDetector {
                     sb.append("      Problem: volatile keyword only applies to array reference,\n");
                     sb.append("               not individual elements. Element updates may not\n");
                     sb.append("               be visible across threads.\n");
+                    sb.append("     ").append(SelfGuard.REPORT_NOTE.trim()).append('\n');
                 }
                 sb.append("  Why: The volatile keyword guarantees visibility of the array reference (the pointer to the array object),\n");
                 sb.append("       NOT the individual array elements. A write to array[i] in Thread A may remain invisible to Thread B\n");
@@ -235,7 +252,7 @@ public class VolatileArrayDetector {
     /**
      * Internal array information.
      */
-    static class ArrayInfo {
+    static class ArrayInfo extends SelfGuard.TrackedInstance {
         final String name;
         final Object array;
         final Class<?> componentType;

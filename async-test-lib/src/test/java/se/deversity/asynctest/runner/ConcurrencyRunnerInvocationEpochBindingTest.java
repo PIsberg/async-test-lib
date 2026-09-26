@@ -639,4 +639,243 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
             EngineTestKit.engine("junit-jupiter").selectors(selectClass(fixture)).execute();
         }
     }
+
+    // ---- a thread set that spans rounds is not two threads at once ----
+    //
+    // Virtual threads are the default, and each body execution gets a fresh one, so with
+    // threads = 1 a subject touched in two rounds is touched by two thread ids that never ran at
+    // the same time: the runner joins round one before round two starts. Each detector below
+    // used to count those ids over the whole run and report sharing; each pair is the cross-round
+    // run that must stay silent and the same-round run that must still fire.
+
+    /** One SecureRandom, one thread per round, two rounds. */
+    public static class SecureRandomCrossRound {
+        static final java.security.SecureRandom RNG = new java.security.SecureRandom();
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectSharedSecureRandom = true)
+        void body() {
+            AsyncTestContext.sharedSecureRandomDetector().recordAccess(RNG, "rng", Thread.currentThread());
+        }
+    }
+
+    /** The same SecureRandom touched by two threads inside one round. */
+    public static class SecureRandomSameRound {
+        static final java.security.SecureRandom RNG = new java.security.SecureRandom();
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectSharedSecureRandom = true)
+        void body() {
+            AsyncTestContext.sharedSecureRandomDetector().recordAccess(RNG, "rng", Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("a SecureRandom used by one thread per round is not shared across threads")
+    void secureRandomCrossRoundIsNotShared() {
+        run(SecureRandomCrossRound.class);
+        assertFalse(REPORTS.containsKey("SharedSecureRandomDetector"),
+                "no two threads used the instance at once, so there is no contention and no "
+                        + "concurrent access: " + REPORTS.get("SharedSecureRandomDetector"));
+    }
+
+    @Test
+    @DisplayName("a SecureRandom used by two threads in one round is shared, so the silence above is not vacuous")
+    void secureRandomSameRoundIsShared() {
+        run(SecureRandomSameRound.class);
+        assertTrue(REPORTS.containsKey("SharedSecureRandomDetector"), "Reports: " + REPORTS.keySet());
+    }
+
+    /** A once-flag CAS, failing on every attempt after the first, one thread per round. */
+    public static class CasFlagCrossRound {
+        static final java.util.concurrent.atomic.AtomicBoolean FLAG =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectHighContentionAtomic = true)
+        void body() {
+            var d = AsyncTestContext.highContentionAtomicDetector();
+            for (int i = 0; i < 600; i++) {
+                d.recordCasAttempt(FLAG, FLAG.compareAndSet(false, true));
+            }
+        }
+    }
+
+    /** The same failing CAS from two threads inside one round. */
+    public static class CasFlagSameRound {
+        static final java.util.concurrent.atomic.AtomicBoolean FLAG =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectHighContentionAtomic = true)
+        void body() {
+            var d = AsyncTestContext.highContentionAtomicDetector();
+            for (int i = 0; i < 600; i++) {
+                d.recordCasAttempt(FLAG, FLAG.compareAndSet(false, true));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("CAS failures by one thread per round are not contention")
+    void casFailuresCrossRoundAreNotContention() {
+        run(CasFlagCrossRound.class);
+        assertFalse(REPORTS.containsKey("HighContentionAtomicDetector"),
+                "one thread at a time cannot contend with itself: "
+                        + REPORTS.get("HighContentionAtomicDetector"));
+    }
+
+    @Test
+    @DisplayName("the same CAS failures from two threads in one round are reported, so the silence above is not vacuous")
+    void casFailuresSameRoundAreContention() {
+        run(CasFlagSameRound.class);
+        assertTrue(REPORTS.containsKey("HighContentionAtomicDetector"), "Reports: " + REPORTS.keySet());
+    }
+
+    /** A record exposing a mutable list, mutated by one thread per round. */
+    record Order(java.util.List<String> items) { }
+
+    public static class RecordCrossRound {
+        static final Order ORDER = new Order(new java.util.ArrayList<>());
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectRecordMutableComponentLeak = true)
+        void body() {
+            AsyncTestContext.recordMutableComponentLeakDetector().recordShared(ORDER, "order", Thread.currentThread());
+            ORDER.items().add("item");
+        }
+    }
+
+    /** The same record touched and mutated by two threads inside one round. */
+    public static class RecordSameRound {
+        static final Order ORDER = new Order(java.util.Collections.synchronizedList(new java.util.ArrayList<>()));
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectRecordMutableComponentLeak = true)
+        void body() {
+            AsyncTestContext.recordMutableComponentLeakDetector().recordShared(ORDER, "order", Thread.currentThread());
+            ORDER.items().add("item");
+        }
+    }
+
+    @Test
+    @DisplayName("a record handed from round to round is not shared between threads")
+    void recordCrossRoundIsNotShared() {
+        run(RecordCrossRound.class);
+        assertFalse(REPORTS.containsKey("RecordMutableComponentLeakDetector"),
+                "one thread touched the record in each round, and the runner orders the rounds: "
+                        + REPORTS.get("RecordMutableComponentLeakDetector"));
+    }
+
+    @Test
+    @DisplayName("a record touched by two threads in one round is shared, so the silence above is not vacuous")
+    void recordSameRoundIsShared() {
+        run(RecordSameRound.class);
+        assertTrue(REPORTS.containsKey("RecordMutableComponentLeakDetector"), "Reports: " + REPORTS.keySet());
+    }
+
+    /** A reflective final-field write, once per round, one thread per round. */
+    public static class FinalFieldCrossRound {
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectFinalFieldMutation = true)
+        void body() {
+            AsyncTestContext.finalFieldMutationDetector().recordMutation("Config.MAX", Thread.currentThread());
+        }
+    }
+
+    /** The same write from two threads inside one round. */
+    public static class FinalFieldSameRound {
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectFinalFieldMutation = true)
+        void body() {
+            AsyncTestContext.finalFieldMutationDetector().recordMutation("Config.MAX", Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("final-field writes in successive rounds are ordered, so they are not concurrent mutators")
+    void finalFieldWritesCrossRoundAreNotConcurrent() {
+        run(FinalFieldCrossRound.class);
+        String report = REPORTS.get("FinalFieldMutationDetector");
+        assertTrue(report != null && report.contains("reflectively mutated"),
+                "the mutation itself is still the finding: " + REPORTS.keySet());
+        assertFalse(report.contains("Concurrent mutators"),
+                "the runner joins round one before round two writes, so the writes are ordered: " + report);
+    }
+
+    @Test
+    @DisplayName("final-field writes by two threads in one round are concurrent mutators, so the absence above is not vacuous")
+    void finalFieldWritesSameRoundAreConcurrent() {
+        run(FinalFieldSameRound.class);
+        String report = REPORTS.get("FinalFieldMutationDetector");
+        assertTrue(report != null && report.contains("Concurrent mutators"), "Report: " + report);
+    }
+
+    /** A counter the body resets and bumps once per round, one thread per round. */
+    public static class LambdaCrossRound {
+        static final int[] COUNTER = {0};
+        static final Runnable TASK = () -> { };
+
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectLambdaLostUpdate = true)
+        void body() {
+            COUNTER[0] = 0;
+            int before = COUNTER[0];
+            COUNTER[0] = before + 1;
+            AsyncTestContext.lambdaLostUpdateDetector()
+                    .recordReadModifyWrite(TASK, "counter", before, before + 1, Thread.currentThread());
+        }
+    }
+
+    /** Two threads that both read 0 and both wrote 1, inside one round: a lost update. */
+    public static class LambdaSameRound {
+        static final Runnable TASK = () -> { };
+
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectLambdaLostUpdate = true)
+        void body() {
+            AsyncTestContext.lambdaLostUpdateDetector()
+                    .recordReadModifyWrite(TASK, "counter", 0, 1, Thread.currentThread());
+        }
+    }
+
+    @Test
+    @DisplayName("the same pre-value read in two rounds is not a lost update")
+    void lambdaCrossRoundIsNotALostUpdate() {
+        run(LambdaCrossRound.class);
+        assertFalse(REPORTS.containsKey("LambdaLostUpdateDetector"),
+                "each round reset the counter and made one update from it; no write was "
+                        + "overwritten unread: " + REPORTS.get("LambdaLostUpdateDetector"));
+    }
+
+    @Test
+    @DisplayName("two threads reading the same pre-value in one round lost an update, so the silence above is not vacuous")
+    void lambdaSameRoundIsALostUpdate() {
+        run(LambdaSameRound.class);
+        assertTrue(REPORTS.containsKey("LambdaLostUpdateDetector"), "Reports: " + REPORTS.keySet());
+    }
+
+    /** A holder the body builds afresh every round, initialised once per round by one thread. */
+    public static class LazyInitCrossRound {
+        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectLazyInitRace = true)
+        void body() {
+            AsyncTestContext.lazyInitRaceDetector().recordNullCheck("holder.value", true, false);
+            AsyncTestContext.lazyInitRaceDetector().recordInitialization("holder.value");
+        }
+    }
+
+    /** Two threads that both saw null and both initialised, inside one round. */
+    public static class LazyInitSameRound {
+        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectLazyInitRace = true)
+        void body() {
+            AsyncTestContext.lazyInitRaceDetector().recordNullCheck("holder.value", true, false);
+            AsyncTestContext.lazyInitRaceDetector().recordInitialization("holder.value");
+        }
+    }
+
+    @Test
+    @DisplayName("one initialisation per round of a holder built each round is not a duplicate initialisation")
+    void lazyInitCrossRoundIsNotADuplicate() {
+        run(LazyInitCrossRound.class);
+        assertFalse(REPORTS.containsKey("LazyInitRaceDetector"),
+                "each round built its own holder and initialised it once: "
+                        + REPORTS.get("LazyInitRaceDetector"));
+    }
+
+    @Test
+    @DisplayName("two threads initialising in one round is a race, so the silence above is not vacuous")
+    void lazyInitSameRoundIsARace() {
+        run(LazyInitSameRound.class);
+        assertTrue(REPORTS.containsKey("LazyInitRaceDetector"), "Reports: " + REPORTS.keySet());
+    }
 }

@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
@@ -35,7 +36,7 @@ import java.util.concurrent.atomic.LongAdder;
  * <ul>
  *   <li><strong>Observed mutation (HIGH, a verdict).</strong> The detector fingerprints every
  *       component when it first sees an instance and re-reads it at analysis time. A component
- *       whose contents changed, on a record touched by more than one thread, is a fact rather
+ *       whose contents changed, on a record touched by two threads in one round, is a fact rather
  *       than an inference: shared mutable state was mutated during the run.</li>
  *   <li><strong>Structural risk (MEDIUM, a prompt).</strong> A shared record holding a
  *       {@code java.util.ArrayList}, a raw array or a {@code java.util.Date} is a hole whether or
@@ -98,6 +99,8 @@ public final class RecordMutableComponentLeakDetector {
         final Object instance;
         final Set<Long>   threadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> threadNames = ConcurrentHashMap.newKeySet();
+        /** Two threads in one round, the sharing gate; the id set only counts them for the report. */
+        final RoundSharing sharing    = new RoundSharing();
         /** Component name to first-sight fingerprint; {@code null} value means "not fingerprintable". */
         final Map<String, String> firstSight = new LinkedHashMap<>();
         State(String label, Object instance) {
@@ -109,10 +112,26 @@ public final class RecordMutableComponentLeakDetector {
 
     private final Map<IdentityKey, State> records = new ConcurrentHashMap<>();
     private final LongAdder dropped   = new LongAdder();
+    /** Current invocation round, bumped by {@link #markInvocationStart()}. */
+    private final AtomicLong invocationEpoch = new AtomicLong();
+
+    /**
+     * Internal: called at the start of each invocation round. A record counts as shared only when
+     * two threads touch it inside one round: the runner orders rounds, and with virtual threads
+     * every body execution has a fresh thread id, so a record handed from round to round by one
+     * thread at a time would otherwise read as shared, and the same code on one pooled platform
+     * thread would not.
+     *
+     * @since 1.12.3
+     */
+    public void markInvocationStart() {
+        invocationEpoch.incrementAndGet();
+    }
 
     /**
      * Record that a record instance was touched by a thread. Call it from every thread that
-     * reads or passes the record; the detector reports only instances seen by more than one.
+     * reads or passes the record; the detector reports only instances two threads touched
+     * inside one invocation round.
      *
      * <p>The first call for an instance snapshots each component's contents, which is what makes
      * a later change observable rather than merely possible. Non-record arguments are
@@ -146,6 +165,7 @@ public final class RecordMutableComponentLeakDetector {
         }
         s.threadIds.add(thread.threadId());
         s.threadNames.add(thread.getName());
+        s.sharing.record(invocationEpoch.get(), thread.threadId());
     }
 
     /** Populate the first-sight fingerprints. Called once, inside computeIfAbsent. */
@@ -223,7 +243,7 @@ public final class RecordMutableComponentLeakDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : records.values()) {
-            if (s.threadIds.size() < 2) continue;    // not shared: nothing this detector can claim
+            if (!s.sharing.sharedWithinARound()) continue;    // not shared: nothing this detector can claim
 
             List<String> mutated    = new ArrayList<>();
             List<String> structural = new ArrayList<>();

@@ -19,6 +19,7 @@ import se.deversity.asynctest.diagnostics.DeadlockDetector;
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.GradedFindings;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.TrustTier;
@@ -166,6 +167,12 @@ public class ConcurrencyRunner {
 
     /** See {@link #resolveQuiesceGraceMillis()}. */
     private static final String QUIESCE_GRACE_PROPERTY = "async-test.quiesce.grace.ms";
+
+    /**
+     * {@code -Dasync-test.report.full=true} prints PROMPT and ADVISORY reports in full on a
+     * passing run; by default each is one line (see {@link #analyzeAndGate}).
+     */
+    static final String FULL_REPORT_PROPERTY = "async-test.report.full";
 
     /** Default for {@link #resolveQuiesceGraceMillis()}. */
     private static final long DEFAULT_QUIESCE_GRACE_MS = 2_000L;
@@ -681,6 +688,11 @@ public class ConcurrencyRunner {
      * baseline file ({@code -Dasync-test.baseline=<path>}) or recorded to it in
      * update mode ({@code -Dasync-test.baseline.update=true}).
      *
+     * <p>On the console, a block none of whose findings is FACT or VERDICT grade prints as one
+     * line ({@link #foldedLine}) unless {@value #FULL_REPORT_PROPERTY} is {@code true} or the
+     * block fails the run. A default run enables every detector, and printed in full those
+     * blocks buried the findings the library stands behind. Listeners get the full text always.
+     *
      * <p>Only called on the success path (see {@link #execute}); failure/timeout paths
      * call {@link #printPhase2Reports} directly and never reach the failOn gate below.
      */
@@ -696,24 +708,64 @@ public class ConcurrencyRunner {
         }
 
         Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
+        Map<String, IssueSeverity> structured = phase2Analysis.severities();
 
         String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
         Baseline baseline = Baseline.fromSystemProperties();
 
+        boolean fingerprinting = baseline.size() > 0 || Baseline.updateMode();
+        boolean fullReports = Boolean.getBoolean(FULL_REPORT_PROPERTY);
+        int folded = 0;
         int suppressed = 0;
         List<String> failing = new ArrayList<>();
+        Map<String, List<String>> failingFingerprints = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : reports.entrySet()) {
-            if (baseline.contains(testId, e.getKey())) {
+            List<GradedFindings.Grade> grades = graded.getOrDefault(e.getKey(), List.of());
+            List<String> fingerprints = fingerprinting
+                    ? Baseline.fingerprints(e.getValue(), grades) : List.of();
+            List<String> uncovered = new ArrayList<>();
+            for (String fingerprint : fingerprints) {
+                if (!baseline.covers(testId, e.getKey(), fingerprint)) {
+                    uncovered.add(fingerprint);
+                }
+            }
+            if (fingerprinting && uncovered.isEmpty()) {
                 suppressed++;
                 continue;
             }
-            List<GradedFindings.Grade> grades = graded.getOrDefault(e.getKey(), List.of());
-            System.err.println(trustBanner(e.getKey(), bannerTier(e.getKey(), grades)));
-            System.err.println(e.getValue());
-            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue());
-            if (trips(config, e.getKey(), e.getValue(), grades)) {
-                failing.add(e.getKey());
+            if (baseline.contains(testId, e.getKey())) {
+                // An entry from before findings had fingerprints: it still accepts the whole
+                // detector, but the user is told it is now hiding something it was not recorded for.
+                suppressed++;
+                log.info("baseline.detector-wide.suppressed test={} detector={} uncovered={} "
+                        + "hint=\"a detector-wide baseline entry hides findings it was not recorded for; "
+                        + "delete that line and rerun with -D{}=true to accept only the current ones\"",
+                    testId, e.getKey(), uncovered.size(), Baseline.UPDATE_PROPERTY);
+                continue;
             }
+            // Gate only on what the baseline does not already accept: a covered verdict must not
+            // fail the run because a new prompt beside it made the block print.
+            List<GradedFindings.Grade> gated = grades.isEmpty() || !fingerprinting ? grades
+                    : grades.stream().filter(g -> uncovered.contains(Baseline.fingerprint(g.summary()))).toList();
+            IssueSeverity structuredSeverity = structured.get(e.getKey());
+            boolean trips = trips(config, e.getKey(), e.getValue(), structuredSeverity, gated);
+            // A block that fails the run always prints in full: the assertion says "full reports above".
+            if (!fullReports && !trips && foldsOnConsole(e.getKey(), grades)) {
+                System.err.println(foldedLine(e.getKey(), e.getValue(), grades));
+                folded++;
+            } else {
+                System.err.println(trustBanner(e.getKey(), grades));
+                System.err.println(e.getValue());
+            }
+            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue(), structuredSeverity);
+            if (trips) {
+                failing.add(e.getKey());
+                failingFingerprints.put(e.getKey(), fingerprints);
+            }
+        }
+        if (folded > 0) {
+            System.err.println("[AsyncTest] " + folded + " PROMPT/ADVISORY report(s) shown as one line each;"
+                    + " rerun with -D" + FULL_REPORT_PROPERTY + "=true to print them in full");
         }
         if (suppressed > 0) {
             log.info("[AsyncTest] {} baselined finding(s) suppressed for {}", suppressed, testId);
@@ -723,7 +775,7 @@ public class ConcurrencyRunner {
         }
 
         if (Baseline.updateMode()) {
-            int added = Baseline.record(testId, failing);
+            int added = Baseline.record(testId, failingFingerprints);
             log.warn("[AsyncTest] Baseline update mode: recorded {} finding(s) for {} instead of failing",
                     added, testId);
             return;
@@ -1226,8 +1278,9 @@ public class ConcurrencyRunner {
 
     private static String trustHint(TrustTier tier) {
         return switch (tier) {
-            case VERDICT -> "(a finding means the code is wrong; measured on the bug and on its correct twin)";
-            case FACT -> "(the report states what was observed; whether it is a bug is your call)";
+            case VERDICT -> "(a finding means the code is wrong; decided from observed state or visible"
+                    + " synchronization, and measured on the bug and on its correct twin)";
+            case FACT -> "(the report states what was observed or recorded; whether it is a bug is your call)";
             case PROMPT -> "(a prompt to verify; synchronization the library cannot see may make this correct)";
             case ADVISORY -> "(a performance or hygiene note, not a correctness claim)";
         };
@@ -1243,9 +1296,10 @@ public class ConcurrencyRunner {
      * for a detector whose findings are all the same kind.
      */
     private static boolean trips(AsyncTestConfig config, String detectorName, String report,
+                                 @Nullable IssueSeverity structuredSeverity,
                                  List<GradedFindings.Grade> grades) {
         if (grades.isEmpty()) {
-            return config.failOn.triggeredBy(DetectorDefaultSeverity.of(detectorName, report))
+            return config.failOn.triggeredBy(DetectorDefaultSeverity.of(detectorName, report, structuredSeverity))
                     && DetectorTrust.tierOfDetector(detectorName).atLeast(config.minTrust);
         }
         return grades.stream().anyMatch(grade ->
@@ -1253,22 +1307,100 @@ public class ConcurrencyRunner {
     }
 
     /**
-     * The tier shown above a report: the best any of its findings carries, so a reader is not told
-     * a block is only a prompt when it contains a verdict.
+     * The banner for a detector whose report may grade its findings one by one.
+     *
+     * <p>The head line claims no more than the weakest finding under it supports: it names the
+     * lowest tier, and the span when the grades differ ({@code trust=PROMPT..VERDICT}). It used to
+     * name the best tier, so a block holding one observed mutation and one structural note was
+     * headed "a finding means the code is wrong", and the note inherited that sentence. Each
+     * graded finding then gets a line of its own with its tier and severity, so the reader can
+     * tell which line is the verdict. The {@code failOn} gate is unaffected: {@link #trips} still
+     * judges every finding on its own grade.
+     *
+     * <p>An ungraded detector gets the one-line banner of its detector-wide tier.
      */
-    private static TrustTier bannerTier(String detectorName, List<GradedFindings.Grade> grades) {
-        return grades.stream()
+    static String trustBanner(String detectorName, List<GradedFindings.Grade> grades) {
+        if (grades.isEmpty()) {
+            return trustBanner(detectorName, DetectorTrust.tierOfDetector(detectorName));
+        }
+        TrustTier lowest = grades.get(0).tier();
+        TrustTier highest = lowest;
+        for (GradedFindings.Grade grade : grades) {
+            lowest = grade.tier().compareTo(lowest) < 0 ? grade.tier() : lowest;
+            highest = grade.tier().compareTo(highest) > 0 ? grade.tier() : highest;
+        }
+        String span = lowest == highest ? lowest.toString() : lowest + ".." + highest;
+        StringBuilder banner = new StringBuilder("[AsyncTest] ").append(detectorName)
+                .append(" trust=").append(span).append(' ').append(trustHint(lowest));
+        for (GradedFindings.Grade grade : grades) {
+            banner.append(System.lineSeparator()).append("[AsyncTest]   finding trust=")
+                    .append(grade.tier()).append(" severity=").append(grade.severity())
+                    .append(": ").append(grade.summary());
+        }
+        return banner.toString();
+    }
+
+    /**
+     * Whether a passing run prints this block as one line: when none of its findings is FACT or
+     * VERDICT grade. A block holding a verdict among prompts prints in full, so folding never
+     * hides a finding the library stands behind.
+     */
+    static boolean foldsOnConsole(String detectorName, List<GradedFindings.Grade> grades) {
+        TrustTier best = grades.stream()
                 .map(GradedFindings.Grade::tier)
                 .max(java.util.Comparator.naturalOrder())
                 .orElseGet(() -> DetectorTrust.tierOfDetector(detectorName));
+        return !best.atLeast(TrustTier.FACT);
     }
 
+    /**
+     * One line for a folded block: detector, tier, finding count and the first finding's headline.
+     *
+     * <p>A graded report names its findings in its grades. Any other report is read by the
+     * convention nearly every built-in detector follows, one {@code "  - "} bullet per finding;
+     * a report without one counts as a single finding headed by its first line.
+     */
+    static String foldedLine(String detectorName, String report, List<GradedFindings.Grade> grades) {
+        int count;
+        String headline;
+        TrustTier tier;
+        if (grades.isEmpty()) {
+            List<String> bullets = report.lines().filter(l -> l.startsWith("  - ")).toList();
+            count = Math.max(1, bullets.size());
+            headline = bullets.isEmpty()
+                    ? report.lines().map(String::strip).filter(l -> !l.isEmpty()).findFirst().orElse("")
+                    : bullets.get(0).substring(4).strip();
+            tier = DetectorTrust.tierOfDetector(detectorName);
+        } else {
+            count = grades.size();
+            headline = grades.get(0).summary();
+            tier = grades.stream().map(GradedFindings.Grade::tier)
+                    .min(java.util.Comparator.naturalOrder()).orElseThrow();
+        }
+        if (headline.length() > FOLDED_HEADLINE_LIMIT) {
+            headline = headline.substring(0, FOLDED_HEADLINE_LIMIT) + "...";
+        }
+        return "[AsyncTest] " + detectorName + " trust=" + tier + " findings=" + count + ": " + headline;
+    }
+
+    private static final int FOLDED_HEADLINE_LIMIT = 160;
+
+    /**
+     * Prints every finding in full on the failure and timeout paths.
+     *
+     * <p>Deliberately not folded the way {@link #analyzeAndGate} folds PROMPT and ADVISORY blocks:
+     * here the test has already failed on its own evidence, so a prompt-grade finding is no longer
+     * noise but a candidate cause, and only failing tests reach this path, which bounds the output.
+     */
     private static void printPhase2Reports(Phase2Analysis phase2Analysis) {
+        Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
+        Map<String, IssueSeverity> structured = phase2Analysis.severities();
         for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
             System.err.println("\n" + trustBanner(finding.getKey(),
-                    DetectorTrust.tierOfDetector(finding.getKey())));
+                    graded.getOrDefault(finding.getKey(), List.of())));
             System.err.println(finding.getValue());
-            AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue());
+            AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue(),
+                    structured.get(finding.getKey()));
         }
     }
 
@@ -1310,6 +1442,12 @@ public class ConcurrencyRunner {
         Map<String, List<GradedFindings.Grade>> grades() {
             get();
             return ctx.findingGrades();
+        }
+
+        /** {@return the structured severities of this run, keyed by detector; runs {@link #get()} first} */
+        Map<String, IssueSeverity> severities() {
+            get();
+            return ctx.findingSeverities();
         }
 
         /** {@return the findings of this run, keyed by the detector that produced each} */

@@ -120,7 +120,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 69. Nested Monitor Lockout Detector
 * **Severity**: `CRITICAL`
-* **Description**: Detects the nested-monitor-lockout anti-pattern — performing a blocking operation (`Object.wait()`, `Future.get()`, `Lock.lock()`) while holding a monitor on a different object — which can deadlock two threads in a way invisible to a thread dump, and otherwise degrades throughput by holding a coarse lock across a blocking call.
+* **Description**: Detects the nested-monitor-lockout anti-pattern — performing a blocking operation (`Object.wait()`, `Future.get()`, `Lock.lock()`) while holding a monitor on a different object — which can deadlock two threads in a way invisible to a thread dump, and otherwise degrades throughput by holding a coarse lock across a blocking call. A `wait()` on the one monitor held, the canonical `synchronized (m) { while (!ready) m.wait(); }`, is silent: `wait()` releases the monitor it is called on. Record waits with `recordWaitAttempted(m)`, which reports only when another monitor stays held; an operation string naming `wait(` is read the same way, counting the recorded monitors beyond one.
 * **Buggy Code**:
   ```java
   synchronized (lockA) {
@@ -379,7 +379,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 80. Optimistic Read Validation Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `StampedLock` optimistic reads whose data is used without a matching `validate(stamp)` call, or where `validate()` fails but the stale data is used anyway. An optimistic read stamp is only valid if no write lock was acquired in between, so skipping validation silently introduces torn-snapshot data corruption.
+* **Description**: Detects `StampedLock` optimistic reads whose data is used without a matching `validate(stamp)` call. An optimistic read stamp is only valid if no write lock was acquired in between, so skipping validation silently introduces torn-snapshot data corruption. A `validate()` that returns false is not a finding: it is the idiom's cue to re-read under the read lock or retry, and what the caller does next is not recorded. Locks are tracked by identity, so two locks whose identity hashes collide stay separate.
 * **Buggy Code**:
   ```java
   long stamp = lock.tryOptimisticRead();

@@ -73,8 +73,18 @@ public class StableValueMisuseDetector {
         final AtomicBoolean contentionReported = new AtomicBoolean(false);
     }
 
-    // Per-holder state, keyed by the caller-supplied descriptive name.
+    // Per-holder state, keyed by the caller-supplied descriptive name, for the current round.
     private final Map<String, State> states = new ConcurrentHashMap<>();
+
+    /**
+     * Names set in any round so far. A read in a later round of a name set earlier is not a
+     * read before set: the holder may be a static one that round set, and the name alone cannot
+     * say it is not.
+     */
+    private final Set<String> setInAnEarlierRound = ConcurrentHashMap.newKeySet();
+
+    /** Names already warned about for contention, so the warning is made once per name. */
+    private final Set<String> contentionWarned = ConcurrentHashMap.newKeySet();
 
     // Per-thread set of holder names whose orElseSet supplier is currently running (reentrancy).
     private final Map<Long, Set<String>> activeSuppliers = new ConcurrentHashMap<>();
@@ -96,7 +106,8 @@ public class StableValueMisuseDetector {
     }
 
     /**
-     * Clears the per-thread in-flight state left over from the previous invocation round.
+     * Closes the previous invocation round: clears the per-thread in-flight state it left
+     * over, and the per-holder state a name reused in the next round would otherwise carry.
      *
      * <p>Called by {@code ConcurrencyRunner} before each round, after the previous round's
      * workers have all finished, so nothing is legitimately in flight when it runs.
@@ -112,6 +123,17 @@ public class StableValueMisuseDetector {
      */
     public void markInvocationStart() {
         activeSuppliers.clear();
+        // The holder state is per object, and a name is all the detector has. A test that
+        // builds its StableValue per round (an instance field, a fixture) reuses the name for a
+        // new, unset holder, and carrying the old state over read its one set as a second one
+        // and its setters from every round as threads racing it. So a double set and set
+        // contention are judged within a round; only "was it ever set" survives.
+        for (Map.Entry<String, State> e : states.entrySet()) {
+            if (e.getValue().set.get()) {
+                setInAnEarlierRound.add(e.getKey());
+            }
+        }
+        states.clear();
     }
 
     /**
@@ -141,7 +163,8 @@ public class StableValueMisuseDetector {
         // the threshold. The one-shot flag avoids both duplicates and the missed-edge
         // race of comparing size() to an exact value under concurrent adds.
         if (s.settingThreadIds.size() >= SET_CONTENTION_THRESHOLD
-                && s.contentionReported.compareAndSet(false, true)) {
+                && s.contentionReported.compareAndSet(false, true)
+                && contentionWarned.add(name)) {
             contentionWarnings.add(
                 "StableValue '" + name + "': " + s.settingThreadIds.size()
                 + " distinct threads raced to set it. Only one value is stored; the "
@@ -162,7 +185,7 @@ public class StableValueMisuseDetector {
         if (name == null || thread == null) return;
         totalReads.incrementAndGet();
         State s = stateFor(name);
-        if (!s.set.get()) {
+        if (!s.set.get() && !setInAnEarlierRound.contains(name)) {
             readBeforeSetReports.add(
                 "Thread " + thread.getName() + " (id=" + thread.threadId() + "): "
                 + "StableValue '" + name + "' read via orElseThrow()/get() before it was set — "

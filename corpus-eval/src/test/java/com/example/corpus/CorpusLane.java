@@ -78,7 +78,24 @@ enum CorpusLane {
      * rows run, which keeps the lane to about half of the agent-pair lane's time.
      */
     AGENT_PAIRS_LIBRARY_EXCLUDED("agent-pairs-library-excluded",
-            "corpus-eval-agent-pairs-library-excluded.md");
+            "corpus-eval-agent-pairs-library-excluded.md"),
+
+    /**
+     * Correct user-code concurrency idioms, each with its broken twin, and every detector on.
+     *
+     * <p>The other lanes measure library classes and pairs written around one detector. None of
+     * them measures a body shaped like a user's own test: an object handed through a
+     * {@code BlockingQueue}, data published by a volatile flag, a child thread joined before its
+     * result is read. The false positives fixed for 1.12.3 lived in exactly those bodies, and a
+     * throwaway probe found them. This lane keeps the probe.
+     *
+     * <p>The agent is attached as in lane four, and the bodies record nothing except in the rows
+     * {@link Corpus#idiomManualApiRows()} names, where the idiom can only be seen through the
+     * manual API. A correct row's bar is neither of the other two lanes': nothing at {@code FACT}
+     * tier or above from any detector, and nothing at any tier from the detector the row names.
+     * See {@link CorpusGates#checkIdiomLane}.
+     */
+    IDIOMS("idioms", "corpus-eval-idioms.md");
 
     private final String propertyValue;
     private final String reportFile;
@@ -139,7 +156,8 @@ enum CorpusLane {
 
     /** {@return whether the agent is attached with -javaagent in this lane} */
     boolean attachesTheAgent() {
-        return this == AGENT_ON || this == AGENT_PAIRS || this == AGENT_PAIRS_LIBRARY_EXCLUDED;
+        return this == AGENT_ON || this == AGENT_PAIRS || this == AGENT_PAIRS_LIBRARY_EXCLUDED
+                || this == IDIOMS;
     }
 
     /** {@return the lane this JVM is running, defaulting to the attached one} */

@@ -111,9 +111,12 @@ public class AtomicNonAtomicUpdateDetector {
     public AtomicNonAtomicUpdateReport analyze() {
         AtomicNonAtomicUpdateReport r = new AtomicNonAtomicUpdateReport();
         for (AtomicState s : atomics.values()) {
-            // A get+set pair inside a critical section every access shares is excluded from the
-            // interleaving this detector names, so the lockset decides, as for the Shared* family.
-            if (s.nonAtomicUpdates.get() > 0 && s.sawUnguardedAccess()) {
+            // A get+set pair inside a critical section every access of its round shares is
+            // excluded from the interleaving this detector names, so the lockset decides, as for
+            // the Shared* family. Judged per round: the runner orders rounds, so a different lock
+            // in each round loses no update. A single thread's get+set still counts, as it always
+            // has: the pattern is the finding, and the next thread only has to arrive.
+            if (s.nonAtomicUpdates.get() > 0 && s.sawUnguardedRound()) {
                 r.violations.add(String.format("%s: %d non-atomic get+set sequence(s) detected" + SelfGuard.REPORT_NOTE,
                     s.name, s.nonAtomicUpdates.get()));
                 r.details.addAll(s.details);

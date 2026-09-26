@@ -1,6 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,7 +34,12 @@ public class ReadWriteLockMonitor {
         }
     }
     
-    private final Map<Integer, LockState> locks = new ConcurrentHashMap<>();
+    /**
+     * Per lock, by identity. Keyed by the bare identity hash, two locks that shared one were one
+     * entry: the second registration was dropped as a duplicate and its reads and writes were
+     * counted, and reported, under the first lock's name.
+     */
+    private final Map<IdentityKey, LockState> locks = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -43,8 +51,8 @@ public class ReadWriteLockMonitor {
     public void registerLock(Object rwLock, String name) {
         if (!enabled) return;
         
-        int id = System.identityHashCode(rwLock);
-        locks.putIfAbsent(id, new LockState(name));
+        if (rwLock == null) return;
+        locks.putIfAbsent(new IdentityKey(rwLock), new LockState(name));
     }
     
     /**
@@ -56,8 +64,7 @@ public class ReadWriteLockMonitor {
     public void recordReadLockAcquired(Object rwLock, long waitTimeMs) {
         if (!enabled) return;
         
-        int id = System.identityHashCode(rwLock);
-        LockState state = locks.get(id);
+        LockState state = stateOf(rwLock);
         if (state == null) return;
         
         state.readLockCount.incrementAndGet();
@@ -72,8 +79,7 @@ public class ReadWriteLockMonitor {
     public void recordReadLockReleased(Object rwLock) {
         if (!enabled) return;
         
-        int id = System.identityHashCode(rwLock);
-        LockState state = locks.get(id);
+        LockState state = stateOf(rwLock);
         if (state == null) return;
         
         state.currentReaders.remove(Thread.currentThread().threadId());
@@ -88,8 +94,7 @@ public class ReadWriteLockMonitor {
     public void recordWriteLockAcquired(Object rwLock, long waitTimeMs) {
         if (!enabled) return;
         
-        int id = System.identityHashCode(rwLock);
-        LockState state = locks.get(id);
+        LockState state = stateOf(rwLock);
         if (state == null) return;
         
         state.writeLockCount.incrementAndGet();
@@ -112,13 +117,16 @@ public class ReadWriteLockMonitor {
     public void recordWriteLockReleased(Object rwLock) {
         if (!enabled) return;
         
-        int id = System.identityHashCode(rwLock);
-        LockState state = locks.get(id);
+        LockState state = stateOf(rwLock);
         if (state == null) return;
         
         state.currentWriter = -1;
     }
     
+    private @Nullable LockState stateOf(@Nullable Object rwLock) {
+        return rwLock == null ? null : locks.get(new IdentityKey(rwLock));
+    }
+
     /**
      * Analyze read-write lock fairness.
      *
@@ -136,7 +144,7 @@ public class ReadWriteLockMonitor {
             // Check for reader/writer imbalance
             double ratio = reads / (double) Math.max(1, writes);
             if (ratio > 10) {
-                report.readerDominatedLocks.add(String.format(
+                report.readerDominatedLocks.add(String.format(Locale.ROOT,
                     "%s: %.1fx more reads than writes (may cause writer starvation)",
                     state.lockName, ratio
                 ));
@@ -145,7 +153,7 @@ public class ReadWriteLockMonitor {
             // Check for writer starvation
             int starv = state.writerStarvations.get();
             if (starv > 0) {
-                report.starvedWriters.add(String.format(
+                report.starvedWriters.add(String.format(Locale.ROOT,
                     "%s: Writers starved %d times (max wait: %dms)",
                     state.lockName, starv, state.maxWriteWaitTime
                 ));
@@ -153,7 +161,7 @@ public class ReadWriteLockMonitor {
             
             // Check for long write waits
             if (state.maxWriteWaitTime > 50) {
-                report.longWriteWaits.add(String.format(
+                report.longWriteWaits.add(String.format(Locale.ROOT,
                     "%s: Max write wait time %dms",
                     state.lockName, state.maxWriteWaitTime
                 ));

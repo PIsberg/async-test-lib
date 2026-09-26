@@ -18,7 +18,7 @@ mvn install -DskipTests -Djacoco.skip=true    # so the module can resolve the cu
 mvn -f corpus-eval/pom.xml test
 ```
 
-A run executes five lanes and writes one report per lane under `target/corpus-eval/`:
+A run executes six lanes and writes one report per lane under `target/corpus-eval/`:
 
 | Lane | Report | What it is |
 |---|---|---|
@@ -27,6 +27,7 @@ A run executes five lanes and writes one report per lane under `target/corpus-ev
 | `recording` | `corpus-eval-recording.md` | The same libraries, with bodies that call the recording API. A different measurement over a different denominator, which is why it writes its own report and is never merged into the other two. |
 | `agent-pairs` | `corpus-eval-agent-pairs.md` | The mirror image of the recording lane, for the 20 agent-fed detectors it cannot reach. The agent is attached and the body records nothing: the difference between a firing row and its silent twin is a field declaration, and everything in between comes from the weaver. `AgentRowPremise` fails the lane if a body here touches the recording API. Some pairs call the JDK type from the test file; others call only Guava, Jackson, HikariCP, Spring, commons-lang3 or Groovy, so the woven call sits inside the library, and `LibraryReach` accounts for which agent-fed detectors that reaches. |
 | `agent-pairs-library-excluded` | `corpus-eval-agent-pairs-library-excluded.md` | The agent-pair lane's library rows again, with every corpus library on the agent's `excludes=` list. A library pair claims its finding came from a JDK call inside the library, so with the library unwoven each firing row must go silent. `CorpusGates.checkLibraryExclusionLane` fails on a row that still fires, on a library row whose package the excludes list does not cover, and on a row that did not run in full. A row that uses a library type but whose woven call site is the test body (`Corpus.BODY_CALL_SITE_ROWS`, the JCTools hand-off pair) makes no such claim and does not run here. |
+| `idioms` | `corpus-eval-idioms.md` | Correct user-code concurrency, the way a user writes it, with every detector on and the agent attached: a mutable object handed through a `BlockingQueue`, plain data published by a volatile flag, a latch, a guarded wait loop, a pool checked out through a queue. Each correct row is followed by its broken twin, the same code with the synchronization removed or misplaced, which must wake its named detector. A correct row fails the run on any finding at `FACT` tier or above from any detector (a graded detector's finding is read at its evidence cap), and on any finding at all from the detector it names. Correct idioms the happens-before model does not see yet are listed in `Corpus.idiomKnownGaps()` with the reason, and must keep reporting until a fix closes them. `IdiomRowPremise` fails the lane if a body records outside the rows `Corpus.idiomManualApiRows()` names. |
 
 Those files are the source of truth for a given run; the document under `docs/` is a copy of one.
 
@@ -107,3 +108,22 @@ Different rules, because the body cooperates and the class contract is no longer
 5. Run it. `CorpusGates.checkRecordingLane` fails if a method has no row, if a row has no method,
    if a recorded-to detector is not exposed, or if any subject's outcome differs from what its
    row states.
+
+## Adding an idiom-lane row
+
+1. Write the idiom the way a user writes it, in `CorpusIdiomLaneTest`, and record nothing. If no
+   woven call site can show a detector the idiom (a thread the runner did not start, a
+   `ThreadLocalRandom`, a `java.util.Random`), record what the body did and add the row to
+   `Corpus.idiomManualApiRows()` with that reason.
+2. Add its broken twin directly after it: the same code with the synchronization removed or put
+   in the wrong place. Declare the two `RecordingSubject` rows in that order;
+   `CorpusGates.everyCorrectIdiomHasABrokenTwin` reads the order.
+3. Name the detector the idiom is about on the correct row, and the one the twin must wake on the
+   twin, with the severity the lane report shows it firing at.
+4. Run it. If the correct row draws a finding, that is the result: fix the detector with a unit
+   test in the library, or, if the fix is large, list the row in `Corpus.idiomKnownGaps()` with
+   what the model is missing. Never reshape the idiom to dodge a finding.
+5. A shared object that has to be fresh per round, and a writer role, come from `Rounds`, a
+   ticket counter over objects built before the run. Build a per-round object rather than one
+   shared across the whole run: an object that outlives its round is read as a construction that
+   later rounds corroborate, which excuses exactly the accesses the row is about.

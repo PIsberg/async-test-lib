@@ -141,6 +141,107 @@ public class ConcurrentModificationDetectorTest {
     }
 
     @Test
+    void iterationAndMutationUnderTheCollectionsOwnMonitorIsNotReported() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        list.add("item");
+        detector.registerCollection(list, "guarded-list");
+
+        Runnable iterateThenAdd = () -> {
+            synchronized (list) {
+                detector.recordIterationStarted(list, "guarded-list");
+                for (String ignored : list) {
+                    // read under the lock every writer also takes
+                }
+                detector.recordIterationEnded(list, "guarded-list");
+                list.add("more");
+                detector.recordModification(list, "guarded-list", "add");
+            }
+        };
+        runOnTwoThreads(iterateThenAdd, iterateThenAdd);
+
+        ConcurrentModificationDetector.ConcurrentModificationReport report = detector.analyze();
+        assertTrue(report.concurrentIterations.isEmpty(),
+            "Every iteration and every add held the list's own monitor, which is the idiom "
+                + "Collections.synchronizedList documents for iterating. No iterator can see a "
+                + "writer, and this detector is VERDICT tier: " + report.concurrentIterations);
+        assertFalse(report.hasIssues(), "a consistently locked list is correct code: " + report);
+    }
+
+    @Test
+    void iterationUnderADeclaredLockThatEveryWriterHoldsIsNotReported() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        detector.registerCollection(list, "declared-lock-list");
+
+        Runnable iterateThenAdd = () -> {
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    detector.recordIterationStarted(list, "declared-lock-list");
+                    detector.recordIterationEnded(list, "declared-lock-list");
+                    list.add("more");
+                    detector.recordModification(list, "declared-lock-list", "add");
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        runOnTwoThreads(iterateThenAdd, iterateThenAdd);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "one declared lock covered every iteration and every mutation");
+    }
+
+    @Test
+    void iterationOutsideTheLockTheWritersHoldIsStillReported() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        list.add("item");
+        detector.registerCollection(list, "half-guarded-list");
+
+        Runnable iterateUnlockedThenAddLocked = () -> {
+            detector.recordIterationStarted(list, "half-guarded-list");
+            detector.recordIterationEnded(list, "half-guarded-list");
+            synchronized (list) {
+                list.add("more");
+                detector.recordModification(list, "half-guarded-list", "add");
+            }
+        };
+        runOnTwoThreads(iterateUnlockedThenAddLocked, iterateUnlockedThenAddLocked);
+
+        ConcurrentModificationDetector.ConcurrentModificationReport report = detector.analyze();
+        assertFalse(report.concurrentIterations.isEmpty(),
+            "the writers locked and the iterators did not, so an iterator can still see a "
+                + "structural change mid-walk; locking only the writes is the classic half-fix");
+    }
+
+    private static void runOnTwoThreads(Runnable first, Runnable second) throws InterruptedException {
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(2);
+        Thread[] workers = {
+            new Thread(() -> awaitThen(start, first)),
+            new Thread(() -> awaitThen(start, second))
+        };
+        for (Thread worker : workers) {
+            worker.start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
+
+    private static void awaitThen(java.util.concurrent.CyclicBarrier start, Runnable body) {
+        try {
+            start.await();
+        } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        body.run();
+    }
+
+    @Test
     void testConcurrentMutationDetection() {
         ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
         List<String> list = new ArrayList<>();

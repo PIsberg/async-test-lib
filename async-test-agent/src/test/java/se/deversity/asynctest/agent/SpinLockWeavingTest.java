@@ -28,8 +28,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -144,21 +146,43 @@ class SpinLockWeavingTest {
 
     /** Runs {@code work} 200 times on each of two threads with the bridge active, then analyzes. */
     private static AtomicityValidator.AtomicityReport drive(Runnable work) throws Exception {
+        return driveTwin(() -> {
+            work.run();
+            return true;
+        });
+    }
+
+    /**
+     * Runs a twin the way {@link #drive(Runnable)} does, except that each worker keeps going past
+     * 200 calls until one of its calls took the spinlock, which is when {@code work} returns
+     * {@code true}. A twin's finding is two threads writing after the release, and a worker that
+     * lost all 200 attempts wrote nothing: on JDK 21 a stall with the lock held did exactly that,
+     * and the single-writer run, correctly quiet, failed the twin without saying why.
+     */
+    private static AtomicityValidator.AtomicityReport driveTwin(BooleanSupplier work) throws Exception {
         AtomicityValidator validator = new AtomicityValidator();
         Set<Long> workerThreadIds = ConcurrentHashMap.newKeySet();
         CountDownLatch done = new CountDownLatch(2);
+        AtomicInteger winners = new AtomicInteger();
         try (TelemetryBridge bridge =
                      TelemetryBridge.activateWithFilter(validator, workerThreadIds::contains)) {
             for (int t = 0; t < 2; t++) {
                 new Thread(() -> {
                     workerThreadIds.add(Thread.currentThread().threadId());
-                    for (int i = 0; i < 200; i++) {
-                        work.run();
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    boolean won = false;
+                    for (int i = 0; i < 200 || !won && System.nanoTime() < deadline; i++) {
+                        won |= work.getAsBoolean();
+                    }
+                    if (won) {
+                        winners.incrementAndGet();
                     }
                     done.countDown();
                 }, "spin-lock-worker-" + t).start();
             }
             assertTrue(done.await(10, TimeUnit.SECONDS), "worker threads did not finish");
+            assertEquals(2, winners.get(), "both workers must take the spinlock at least once, "
+                    + "or the run cannot show two threads writing");
             TelemetryRegistry.flush();
         }
         return validator.analyzeAtomicity();
@@ -203,7 +227,7 @@ class SpinLockWeavingTest {
     void varHandleSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         SpinLockTableBean bean = new SpinLockTableBean();
         AtomicityValidator.AtomicityReport report =
-                drive(bean::growThenWriteAfterUnobservedRelease);
+                driveTwin(bean::growThenWriteAfterUnobservedRelease);
 
         assertUnobservedReleaseReported(report);
     }
@@ -235,7 +259,7 @@ class SpinLockWeavingTest {
     @DisplayName("an updater spinlock released by getAndSet guards nothing after it")
     void updaterSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new UpdaterSpinLockTableBean()::growThenWriteAfterUnobservedRelease));
+                driveTwin(new UpdaterSpinLockTableBean()::growThenWriteAfterUnobservedRelease));
     }
 
     // ---- AtomicBoolean / AtomicInteger used as the lock (#558) ----------------------------------
@@ -279,14 +303,14 @@ class SpinLockWeavingTest {
     @DisplayName("an AtomicBoolean spinlock released by compareAndExchange guards nothing after it")
     void atomicBooleanSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new AtomicSpinLockTableBean()::growBooleanThenWriteAfterUnobservedRelease));
+                driveTwin(new AtomicSpinLockTableBean()::growBooleanThenWriteAfterUnobservedRelease));
     }
 
     @Test
     @DisplayName("an AtomicInteger spinlock released by decrementAndGet guards nothing after it")
     void atomicIntegerSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new AtomicSpinLockTableBean()::growIntegerThenWriteAfterUnobservedRelease));
+                driveTwin(new AtomicSpinLockTableBean()::growIntegerThenWriteAfterUnobservedRelease));
     }
 
     // ---- A VarHandle bound before the agent attached (#558) -------------------------------------
@@ -311,7 +335,7 @@ class SpinLockWeavingTest {
     @DisplayName("a pre-attach updater spinlock released by getAndSet guards nothing after it (#619)")
     void preAttachUpdaterSpinLockWithUnobservedReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterUnobservedRelease));
+                driveTwin(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterUnobservedRelease));
     }
 
     @Test
@@ -458,35 +482,35 @@ class SpinLockWeavingTest {
     @DisplayName("an AtomicBoolean spinlock released by setPlain guards nothing after it")
     void atomicBooleanSpinLockReleasedBySetPlainDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new AtomicSpinLockTableBean()::growBooleanThenWriteAfterSetPlain));
+                driveTwin(new AtomicSpinLockTableBean()::growBooleanThenWriteAfterSetPlain));
     }
 
     @Test
     @DisplayName("an AtomicInteger spinlock released by updateAndGet guards nothing after it")
     void atomicIntegerSpinLockReleasedByUpdateAndGetDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new AtomicSpinLockTableBean()::growIntegerThenWriteAfterUpdateAndGet));
+                driveTwin(new AtomicSpinLockTableBean()::growIntegerThenWriteAfterUpdateAndGet));
     }
 
     @Test
     @DisplayName("an updater spinlock released by getAndUpdate guards nothing after it")
     void updaterSpinLockReleasedByGetAndUpdateDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new UpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
+                driveTwin(new UpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
     }
 
     @Test
     @DisplayName("a VarHandle spinlock released by getAndSetRelease guards nothing after it")
     void varHandleSpinLockReleasedByGetAndSetReleaseDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new SpinLockTableBean()::growThenWriteAfterGetAndSetRelease));
+                driveTwin(new SpinLockTableBean()::growThenWriteAfterGetAndSetRelease));
     }
 
     @Test
     @DisplayName("a pre-attach updater spinlock released by getAndUpdate guards nothing after it")
     void preAttachUpdaterSpinLockReleasedByGetAndUpdateDoesNotExcuseLaterWrites() throws Exception {
         assertUnobservedReleaseReported(
-                drive(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
+                driveTwin(new PreAttachUpdaterSpinLockTableBean()::growThenWriteAfterGetAndUpdate));
     }
 
     // ---- A woven release between a contender's check and its swap (#658) -----------------------

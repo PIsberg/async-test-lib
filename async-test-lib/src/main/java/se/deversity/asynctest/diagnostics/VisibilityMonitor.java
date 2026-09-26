@@ -11,9 +11,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Monitors field access patterns to detect visibility issues (stale memory).
- * A visibility issue occurs when a field is updated by one thread but other threads
- * don't see the update because it's not marked volatile and synchronization is missing.
+ * Reports fields whose recorded values diverged between threads within one round.
+ *
+ * <p>A visibility defect is a stale read: a read returning a value older than a write that had
+ * already completed before it. Establishing that needs to know which access was a write, what it
+ * stored, and whether it was ordered before the read. {@link #recordFieldAccess} carries a field
+ * name and a value and nothing else, so this detector cannot establish it, and it does not claim
+ * to. What it reports is the observation those inputs do support: two threads recorded different
+ * values for one field in one round. A stale flag produces that, and so does a correct
+ * {@code AtomicInteger} counter whose readers see it moving, which is why its findings carry the
+ * {@link TrustTier#FACT} tier rather than a verdict.
  *
  * <p>Each recorded access carries the observing thread and the current invocation round.
  * A field is reported only when two threads observed different values <em>within the same
@@ -185,7 +192,7 @@ public class VisibilityMonitor {
             }
             
             StringBuilder sb = new StringBuilder();
-            sb.append("POTENTIAL VISIBILITY ISSUES DETECTED:\n");
+            sb.append("FIELD VALUES DIVERGED ACROSS THREADS WITHIN A ROUND:\n");
             for (String field : suspectedFields) {
                 sb.append("  - ").append(field).append("\n");
                 Map<Long, Set<Object>> variations = fieldValueVariations.get(field);
@@ -202,11 +209,12 @@ public class VisibilityMonitor {
             // that is not. "Missing 'volatile'" asserted a cause it has no way to establish, and
             // a shared field that legitimately changes during a round — an AtomicInteger being
             // incremented, say — produces exactly this signature while being perfectly correct.
-            sb.append("\nWhat this means: two threads recorded different values for the field "
-                    + "within one round. That is expected if the field is meant to change and is "
-                    + "correctly synchronised; it is a visibility bug only if the writes were "
-                    + "supposed to be ordered or atomic. This detector sees values, not locks, so "
-                    + "it cannot tell the two apart — check how the field is published.\n");
+            sb.append("\nWhat was observed: two or more threads recorded different values for the "
+                    + "field within one round. That is what a stale read looks like, and also what "
+                    + "a correctly synchronised field that is meant to change looks like, an "
+                    + "AtomicInteger counter for one. This detector records values only, not "
+                    + "writes, locks or ordering, so it cannot tell the two apart: if the readers "
+                    + "were supposed to see one settled value, check how the field is published.\n");
             return sb.toString();
         }
     }

@@ -43,7 +43,7 @@ derives the type→flag mapping empirically and pins it.
 
 ## DetectorType and Preset
 
-`DetectorType` is the enum of all detector identities (127 constants) used in `includes` / `excludes`.
+`DetectorType` is the enum of all detector identities (one constant per detector) used in `includes` / `excludes`.
 It is `@AILocked`: adding a constant requires the synchronized five-file change in
 [adding-a-detector.md](adding-a-detector.md).
 

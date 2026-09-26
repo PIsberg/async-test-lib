@@ -57,10 +57,7 @@ class DetectorStateIsKeyedByIdentityTest {
      */
     private static final Map<String, String> PENDING = Map.of(
             "ExecutorShutdownDetector.java", "#573 keys it by identity itself",
-            "ThreadLocalMonitor.java", "#574 keys it by identity itself",
-            "LockUpgradeDeadlockDetector.java", "#572 rewrites its read-hold map",
-            "LockDowngradeDetector.java", "#572 rewrites its write-acquire forwarding",
-            "ReadWriteLockMonitor.java", "#577 edits its report class");
+            "ThreadLocalMonitor.java", "#574 keys it by identity itself");
 
     @Test
     @DisplayName("no detector state is keyed by a bare identity hash")

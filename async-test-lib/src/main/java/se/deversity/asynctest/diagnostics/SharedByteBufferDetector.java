@@ -137,7 +137,7 @@ public final class SharedByteBufferDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.positionalThreadIds.size() <= 1 || !s.sawUnguardedAccess()) continue;
+            if (s.positionalThreadIds.size() <= 1 || !s.sawUnguardedSharing()) continue;
             StringBuilder msg = new StringBuilder(String.format(
                     "%s '%s' had position-mutating operations (%s) performed by %d threads (%s) — "
                             + "java.nio.Buffer instances carry mutable position/limit/mark state that is not "

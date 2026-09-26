@@ -7,6 +7,7 @@ import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
 
+import se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
@@ -59,6 +60,39 @@ class PerFindingTierGateTest {
                         + "Failures seen: " + messages);
     }
 
+    /**
+     * A grade above its detector's evidence cap must not reach the gate at that grade.
+     *
+     * <p>{@code ConfinedArenaThreadEscapeDetector} grades every CRITICAL finding VERDICT, including
+     * an access after a close the body recorded, which is the test's own statement rather than
+     * anything the JVM answered. Its evidence class is therefore ASSERTED, capped at FACT, and the
+     * report path lowers the grade before {@code failOn} reads it.
+     */
+    @Test
+    @DisplayName("a grade above its detector's evidence cap is clamped before the VERDICT-only gate")
+    void aGradeAboveTheEvidenceCapDoesNotTripAVerdictOnlyGate() {
+        assertEquals(TrustTier.FACT, DetectorTrust.evidenceOf(DetectorType.CONFINED_ARENA_THREAD_ESCAPE).cap(),
+                "the fixture below needs a graded detector whose cap is below VERDICT");
+        run(RecordedCloseUnderVerdictFloorDummy.class).assertStatistics(s -> s.started(1).succeeded(1).failed(0));
+    }
+
+    @Test
+    @DisplayName("the clamped finding still fails a gate at the tier its evidence carries")
+    void theClampedFindingStillTripsAFactFloor() {
+        Events tests = run(RecordedCloseUnderFactFloorDummy.class);
+        tests.assertStatistics(s -> s.started(1).failed(1));
+
+        List<String> messages = tests.failed().stream()
+                .map(event -> event.getRequiredPayload(TestExecutionResult.class))
+                .map(result -> result.getThrowable().map(Throwable::getMessage).orElse(""))
+                .filter(Objects::nonNull)
+                .toList();
+        assertTrue(messages.stream().anyMatch(m -> m.contains("at or above failOn=")
+                        && m.contains("ConfinedArenaThreadEscapeDetector")),
+                "the finding must still be reported and gated, only at FACT; without this the "
+                        + "clamp test above would pass on a detector that never fired: " + messages);
+    }
+
     @Test
     @DisplayName("a structural-risk-only finding still does not fail a VERDICT-only gate")
     void structuralRiskAloneDoesNotTripAVerdictOnlyGate() {
@@ -108,6 +142,38 @@ class PerFindingTierGateTest {
                     .recordShared(order, "order", Thread.currentThread());
             order.id();
         }
+    }
+
+    /** An access after a close the body recorded, under a gate that admits only VERDICT. */
+    public static class RecordedCloseUnderVerdictFloorDummy {
+        @AsyncTest(threads = 1, invocations = 1, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
+                   detectAll = false, detectConfinedArenaThreadEscape = true)
+        void accessAfterARecordedClose() {
+            recordAccessAfterClose();
+        }
+    }
+
+    /** The same finding under a gate that admits FACT. */
+    public static class RecordedCloseUnderFactFloorDummy {
+        @AsyncTest(threads = 1, invocations = 1, failOn = FailOn.HIGH, minTrust = TrustTier.FACT,
+                   detectAll = false, detectConfinedArenaThreadEscape = true)
+        void accessAfterARecordedClose() {
+            recordAccessAfterClose();
+        }
+    }
+
+    /**
+     * Plain objects stand in for the arena and the segment, so the JVM has nothing to answer and
+     * the close the body records is the only evidence the finding has.
+     */
+    private static void recordAccessAfterClose() {
+        Object arena = new Object();
+        Object segment = new Object();
+        ConfinedArenaThreadEscapeDetector detector = AsyncTestContext.confinedArenaThreadEscapeDetector();
+        detector.recordArena(arena, "arena", Thread.currentThread());
+        detector.recordAllocation(segment, arena, "segment", 16);
+        detector.recordClose(arena, Thread.currentThread());
+        detector.recordAccess(segment, "segment", Thread.currentThread(), false);
     }
 
     /** Shallowly immutable: the list reference is final, the list is not. */

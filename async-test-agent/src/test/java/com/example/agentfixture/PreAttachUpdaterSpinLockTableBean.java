@@ -44,8 +44,10 @@ public final class PreAttachUpdaterSpinLockTableBean {
      * {@link #afterRelease} is replaced with nothing held. A resolved pre-attach updater must not
      * make that look guarded.
      */
-    public int growThenWriteAfterUnobservedRelease() {
+    public boolean growThenWriteAfterUnobservedRelease() {
+        boolean won = false;
         if (BUSY.compareAndSet(this, 0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -53,8 +55,7 @@ public final class PreAttachUpdaterSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        Object[] seen = afterRelease;
-        return seen == null ? 0 : seen.length;
+        return afterRelease != null && won;
     }
 
     /** Replaces the table under the spinlock, released by {@code getAndUpdate} (#667). */
@@ -74,8 +75,10 @@ public final class PreAttachUpdaterSpinLockTableBean {
      * The twin: {@code getAndUpdate} releases (woven since #667), and {@link #afterRelease} is
      * replaced with nothing held.
      */
-    public int growThenWriteAfterGetAndUpdate() {
+    public boolean growThenWriteAfterGetAndUpdate() {
+        boolean won = false;
         if (BUSY.compareAndSet(this, 0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -83,8 +86,7 @@ public final class PreAttachUpdaterSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        Object[] seen = afterRelease;
-        return seen == null ? 0 : seen.length;
+        return afterRelease != null && won;
     }
 
     private static Object[] next(Object[] current) {

@@ -7,6 +7,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -26,17 +27,26 @@ import java.util.concurrent.ThreadLocalRandom;
  * private final Random rng = ThreadLocalRandom.current();
  * }</pre>
  *
- * <p>Sharing the instance defeats the per-thread isolation: multiple threads then
- * advance the same generator concurrently, reintroducing exactly the contention
- * and (because {@code ThreadLocalRandom} omits the synchronization that
- * {@code java.util.Random} has) the state-corruption / biased-output hazards the
- * class was designed to avoid. Distinct from {@link SharedRandomDetector}
+ * <p>What actually goes wrong, from the JDK source (JDK 8 onwards, read in 21 and 26):
+ * {@code current()} returns one JVM-wide instance ({@code private static final
+ * ThreadLocalRandom instance}), and before returning it calls {@code localInit()} when the
+ * calling thread's probe is zero, which seeds that thread. The generator methods keep no state
+ * in the object: {@code nextSeed()} reads and writes {@code Thread.currentThread()}'s own seed
+ * field. So a captured reference used on another thread does not share a generator; it draws
+ * from the using thread's seed, which nobody initialized unless that thread called
+ * {@code current()} itself, and its sequence is then set by the thread id rather than seeded.
+ * The javadoc of {@code current()} states the rule: its methods "should be called only by the
+ * current thread, not by other threads". Distinct from {@link SharedRandomDetector}
  * ({@code java.util.Random}) and {@link SharedSecureRandomDetector}.
+ *
+ * <p>Because every thread gets the same object, identity cannot tell a correct per-thread
+ * {@code current()} from a captured one. The model is therefore per thread: a use is misuse when
+ * the using thread never recorded an obtain of its own.
  *
  * <p>Cooperative API: report where the reference was obtained via
  * {@link #recordObtain} and each subsequent use via {@link #recordUse}. A
- * violation is flagged when a use occurs on a thread other than the one that
- * obtained the cached reference.
+ * violation is flagged when a use occurs on a thread that never recorded obtaining the
+ * reference itself.
  *
  * <p>Usage:
  * <pre>{@code
@@ -59,13 +69,14 @@ public final class ThreadLocalRandomMisuseDetector {
 
     private static final class State {
         final String label;
-        final long obtainingThreadId;
+        /** The first thread to obtain the reference, named in the report. */
         final String obtainingThreadName;
+        /** Every thread that called current() itself; a use on any of them is the idiom. */
+        final java.util.Set<Long> obtainingThreadIds = ConcurrentHashMap.newKeySet();
         final java.util.Set<String> misusingThreads = ConcurrentHashMap.newKeySet();
 
-        State(String label, long obtainingThreadId, String obtainingThreadName) {
+        State(String label, String obtainingThreadName) {
             this.label = label;
-            this.obtainingThreadId = obtainingThreadId;
             this.obtainingThreadName = obtainingThreadName;
         }
     }
@@ -85,12 +96,13 @@ public final class ThreadLocalRandomMisuseDetector {
         IdentityKey key = new IdentityKey(rng);
         int id = key.hashCode();
         final String label = (name != null) ? name : "ThreadLocalRandom@" + id;
-        instances.computeIfAbsent(key, k -> new State(label, thread.threadId(), thread.getName()));
+        instances.computeIfAbsent(key, k -> new State(label, thread.getName()))
+                .obtainingThreadIds.add(thread.threadId());
     }
 
     /**
      * Record a use of a previously-obtained {@link ThreadLocalRandom} reference.
-     * If {@code thread} differs from the obtaining thread, it is recorded as misuse.
+     * If {@code thread} never recorded an obtain of its own, it is recorded as misuse.
      *
      * @param rng    the instance being used (null-safe)
      * @param thread the thread using it
@@ -99,7 +111,7 @@ public final class ThreadLocalRandomMisuseDetector {
         if (rng == null || thread == null) return;
         State s = instances.get(new IdentityKey(rng));
         if (s == null) return; // never recorded as obtained — nothing to correlate
-        if (thread.threadId() != s.obtainingThreadId) {
+        if (!s.obtainingThreadIds.contains(thread.threadId())) {
             s.misusingThreads.add(thread.getName());
         }
     }
@@ -112,10 +124,11 @@ public final class ThreadLocalRandomMisuseDetector {
         Report r = new Report();
         for (State s : instances.values()) {
             if (s.misusingThreads.isEmpty()) continue;
-            String msg = String.format(
-                    "ThreadLocalRandom '%s' obtained by thread '%s' but used by %d other thread(s) (%s) — "
-                            + "the current() reference is per-thread and must not be cached and shared; "
-                            + "doing so corrupts its state and biases output.",
+            String msg = String.format(Locale.ROOT,
+                    "ThreadLocalRandom '%s' obtained by thread '%s' but used by %d thread(s) that "
+                            + "never called current() themselves (%s). The reference is per-thread: "
+                            + "current() seeds the calling thread, and on a thread that skipped it "
+                            + "the sequence is set by the thread id instead of seeded.",
                     s.label,
                     s.obtainingThreadName,
                     s.misusingThreads.size(),
@@ -149,7 +162,8 @@ public final class ThreadLocalRandomMisuseDetector {
         @Override
         public String toString() {
             if (violations.isEmpty()) return "THREADLOCALRANDOM MISUSE — clean";
-            StringBuilder sb = new StringBuilder("THREADLOCALRANDOM MISUSE DETECTED:\n");
+            StringBuilder sb = new StringBuilder("THREADLOCALRANDOM MISUSE DETECTED (")
+                    .append(IssueSeverity.MEDIUM.getLabel()).append("):\n");
             for (String v : violations) sb.append("  - ").append(v).append('\n');
             sb.append("  Fix:\n")
               .append("    - Never store ThreadLocalRandom.current() in a field.\n")

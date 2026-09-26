@@ -124,6 +124,7 @@ import se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector;
 import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.HighContentionAtomicDetector;
 import se.deversity.asynctest.diagnostics.HeldLocks;
+import se.deversity.asynctest.diagnostics.SelfGuard;
 import se.deversity.asynctest.diagnostics.WorkerSlot;
 import se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector;
 import se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector;
@@ -202,6 +203,14 @@ public final class AsyncTestContext {
 
     /** Holds detector instances; extracted to keep this class small. */
     private final DetectorRegistry registry;
+
+    /**
+     * The round clock the lock-aware detectors judge sharing within. Bound to each worker in
+     * {@link #install}, unbound in {@link #uninstall()}, advanced by {@link #markInvocationStart()}.
+     * Thread-safe on its own (an atomic counter), so sharing it across the workers needs nothing
+     * here.
+     */
+    private final SelfGuard.Scope sharingScope = new SelfGuard.Scope();
 
     /**
      * Third-party detectors contributed through the public {@link se.deversity.asynctest.spi.Detector}
@@ -700,12 +709,14 @@ public final class AsyncTestContext {
      */
     @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx) {
+        SelfGuard.Scope.bind(ctx.sharingScope);
         CURRENT.set(ctx);
     }
 
     /**
      * Installs {@code ctx} and the runner's {@link WorkerSlot} for this body execution. Both are
-     * cleared by {@link #uninstall()}, under the same symmetry rule.
+     * cleared by {@link #uninstall()}, under the same symmetry rule, as is the context's sharing
+     * scope, which either {@code install} binds.
      *
      * @param ctx        the context to bind to the calling thread
      * @param workerSlot the worker's index within its round, not negative
@@ -714,6 +725,7 @@ public final class AsyncTestContext {
     @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx, int workerSlot) {
         WorkerSlot.set(workerSlot);
+        SelfGuard.Scope.bind(ctx.sharingScope);
         CURRENT.set(ctx);
     }
 
@@ -724,9 +736,11 @@ public final class AsyncTestContext {
     public static void uninstall() {
         // Both ThreadLocals go together. A declared lock that outlived its invocation would be
         // intersected into the next round's lockset and could silence a real finding there, so
-        // the symmetry rule covers this one exactly as it covers CURRENT.
+        // the symmetry rule covers this one exactly as it covers CURRENT. The same holds for the
+        // sharing scope: one left bound would file this thread's next records under a finished run.
         HeldLocks.clear();
         WorkerSlot.clear();
+        SelfGuard.Scope.unbind();
         CURRENT.remove();
     }
 
@@ -768,6 +782,39 @@ public final class AsyncTestContext {
      */
     public static HeldLocks.Guard holdingLock(@Nullable Object lock) {
         return HeldLocks.holding(lock);
+    }
+
+    /**
+     * Declares that the calling thread has just taken sole ownership of {@code instance}, so that
+     * detectors judge the accesses before and after as a hand-off rather than as sharing.
+     *
+     * <p>A pool of non-thread-safe instances is correct when each checkout gives one thread the
+     * instance alone, and a {@code Shared*} detector otherwise sees only that several threads
+     * touched it. With the agent attached ({@code collections = true}) a take out of a woven
+     * {@code BlockingQueue} or {@code Queue}, or a swap out of an atomic slot, is recognised on
+     * its own. A checkout the weaver never sees (a pool library's own code, a hand-written
+     * semaphore) is declared here, right after the checkout returns:
+     *
+     * <pre>{@code
+     * MessageDigest md = pool.checkout();
+     * AsyncTestContext.ownershipTaken(md);
+     * try {
+     *     md.update(data);
+     * } finally {
+     *     pool.release(md);
+     * }
+     * }</pre>
+     *
+     * <p>Only the declaring thread's later accesses start a new owner. An access by the previous
+     * owner after the declaration is still reported, because the instance then has two owners at
+     * once. Safe outside a run, where it does nothing.
+     *
+     * @param instance the instance the calling thread now owns; {@code null} is ignored
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.3")
+    public static void ownershipTaken(@Nullable Object instance) {
+        SelfGuard.Scope.ownershipTaken(instance);
     }
 
     /**
@@ -819,6 +866,9 @@ public final class AsyncTestContext {
      * @since 1.9.8
      */
     public void markInvocationStart() {
+        // Every lock-aware detector (the Shared* family and the others built on SelfGuard) judges
+        // sharing within one round; this is the round boundary they read.
+        sharingScope.markInvocationStart();
         if (sharedCollectionDetector != null) {
             sharedCollectionDetector.markInvocationStart();
         }
@@ -874,6 +924,27 @@ public final class AsyncTestContext {
         // pooled worker's wait in the next round is a fresh body execution, not that re-check (#590).
         if (wakeupDetector != null) {
             wakeupDetector.markInvocationStart();
+        }
+        // Two threads count as sharing a subject only inside one round: with virtual threads each
+        // body execution has a fresh thread id, so ids gathered across rounds that never overlap
+        // would read as sharing, and the same body on one pooled platform thread would not.
+        if (sharedSecureRandomDetector != null) {
+            sharedSecureRandomDetector.markInvocationStart();
+        }
+        if (highContentionAtomicDetector != null) {
+            highContentionAtomicDetector.markInvocationStart();
+        }
+        if (recordMutableComponentLeakDetector != null) {
+            recordMutableComponentLeakDetector.markInvocationStart();
+        }
+        if (finalFieldMutationDetector != null) {
+            finalFieldMutationDetector.markInvocationStart();
+        }
+        if (lambdaLostUpdateDetector != null) {
+            lambdaLostUpdateDetector.markInvocationStart();
+        }
+        if (lazyInitRaceDetector != null) {
+            lazyInitRaceDetector.markInvocationStart();
         }
     }
 
@@ -949,7 +1020,9 @@ public final class AsyncTestContext {
      * to judge a detector's findings individually rather than as one block, which is what lets a
      * verdict-grade finding fail a build even though the same detector can also produce a
      * prompt-grade one. Callers that find no entry fall back to the detector's own tier and
-     * severity.
+     * severity. Each tier is already clamped to the detector's evidence cap
+     * ({@link se.deversity.asynctest.diagnostics.DetectorTrust#clampToCap}), so a grade here never
+     * claims more than the detector decides from.
      *
      * <p>Call after {@link #analyzeAllNamed()}; on its own this returns the previous pass's
      * grades, or empty when no pass has run.
@@ -958,6 +1031,22 @@ public final class AsyncTestContext {
      */
     public Map<String, List<se.deversity.asynctest.diagnostics.GradedFindings.Grade>> findingGrades() {
         return registry.lastGrades();
+    }
+
+    /**
+     * {@return the most severe structured severity per detector from the most recent
+     * {@link #analyzeAllNamed()} pass}
+     *
+     * <p>Present only for detectors whose report keeps its findings as {@link Violation}s beside
+     * the text. The {@code failOn} gate prefers this over the severity it can read from the text
+     * ({@link se.deversity.asynctest.diagnostics.DetectorDefaultSeverity#of(String, String,
+     * se.deversity.asynctest.diagnostics.IssueSeverity)}). Call after {@link #analyzeAllNamed()}.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public Map<String, se.deversity.asynctest.diagnostics.IssueSeverity> findingSeverities() {
+        return registry.lastSeverities();
     }
 
     /**

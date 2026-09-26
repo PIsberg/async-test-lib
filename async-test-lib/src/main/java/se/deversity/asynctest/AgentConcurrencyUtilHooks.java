@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.CountDownLatchDetector;
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
@@ -37,6 +38,11 @@ import se.deversity.vibetags.annotations.AIContract;
  * and before releasing, so the recorded interval is contained by the real one. A call that throws
  * records nothing, because nothing happened.
  *
+ * <p>The same rule feeds {@link HappensBefore}: a {@code release} and a {@code countDown} release
+ * the primitive before the call, an acquire that took a permit and an {@code await} that reached
+ * zero acquire it after, which are the edges the {@code java.util.concurrent} memory consistency
+ * effects name. The queue hand-offs reach the model through the ownership events.
+ *
  * @since 1.10.0
  */
 @AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws. offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it. offerResultDiscarded is not an operation: the weaver substitutes it for the POP that follows an offer whose boolean the caller never read, so it is always the instruction after one of the offer hooks on the same thread, and it must stay that way - the detector correlates it to the offer recorded immediately before, and that correlation is exact only because the weaver emits it in place of the POP and nowhere else.")
@@ -53,6 +59,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void acquire(Semaphore receiver) throws InterruptedException {
         receiver.acquire();
+        HappensBefore.acquire(receiver);
         SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
         if (detector != null) {
             detector.recordAcquire(receiver, receiver.getClass().getName());
@@ -68,6 +75,7 @@ public final class AgentConcurrencyUtilHooks {
     public static boolean tryAcquire(Semaphore receiver) {
         boolean acquired = receiver.tryAcquire();
         if (acquired) {
+            HappensBefore.acquire(receiver);
             SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
             if (detector != null) {
                 detector.recordAcquire(receiver, receiver.getClass().getName());
@@ -86,6 +94,7 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.recordRelease(receiver, receiver.getClass().getName());
         }
+        HappensBefore.release(receiver);
         receiver.release();
     }
 
@@ -173,10 +182,12 @@ public final class AgentConcurrencyUtilHooks {
                 detector.recordRelease(receiver, receiver.getClass().getName());
             }
         }
+        HappensBefore.release(receiver);
         receiver.release(permits);
     }
 
     private static void recordAcquired(Semaphore receiver, int permits) {
+        HappensBefore.acquire(receiver);
         SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
         if (detector != null) {
             for (int i = 0; i < permits; i++) {
@@ -199,6 +210,7 @@ public final class AgentConcurrencyUtilHooks {
         if (misuse != null) {
             misuse.observeLatch(receiver);
         }
+        HappensBefore.release(receiver);
         receiver.countDown();
         CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
         if (counts != null) {
@@ -222,6 +234,7 @@ public final class AgentConcurrencyUtilHooks {
             misuse.recordAwait(receiver);
         }
         receiver.await();
+        HappensBefore.acquire(receiver);
         // Reached only at zero, which is what tells LatchMisuseDetector that countdowns it never
         // saw happened in unwoven code rather than not at all (#499).
         if (misuse != null) {
@@ -253,6 +266,9 @@ public final class AgentConcurrencyUtilHooks {
             misuse.recordAwait(receiver);
         }
         boolean reachedZero = receiver.await(timeout, unit);
+        if (reachedZero) {
+            HappensBefore.acquire(receiver);
+        }
         // Only the true branch: a timed-out await proves nothing about the latch reaching zero.
         if (misuse != null && reachedZero) {
             misuse.recordAwaitReturned(receiver);

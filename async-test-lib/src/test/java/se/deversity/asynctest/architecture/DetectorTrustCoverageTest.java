@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.GradedFindings;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
 import java.io.IOException;
@@ -15,9 +16,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -28,6 +31,7 @@ import static java.util.Map.entry;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -75,27 +79,9 @@ class DetectorTrustCoverageTest {
             entry(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorFiresOnGetThenSet",
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorStaysSilentOnCas")),
-            entry(DetectorType.LOCK_LEAKS, List.of(
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockLeakDetectorFiresOnAnUnreleasedLock",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockLeakDetectorStaysSilentWhenEveryAcquireIsReleased")),
-            entry(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, List.of(
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completableFutureExceptionDetectorFiresOnAnUnhandledFailure",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completableFutureExceptionDetectorStaysSilentWhenTheFailureIsHandled")),
-            entry(DetectorType.RESOURCE_LEAKS, List.of(
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#resourceLeakDetectorFiresOnAnUnclosedResource",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#resourceLeakDetectorStaysSilentWhenEveryOpenIsClosed")),
-            entry(DetectorType.INTERRUPT_MISHANDLING, List.of(
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#interruptMonitorFiresWhenTheFlagIsNeverRestored",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#interruptMonitorStaysSilentWhenTheFlagIsRestored")),
-            entry(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, List.of(
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#uncaughtExceptionHandlerDetectorFiresWhenNoHandlerIsInstalled",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#uncaughtExceptionHandlerDetectorStaysSilentWhenAHandlerIsInstalled")),
             entry(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorFiresOnAFutureThatIsNeverCompleted",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorStaysSilentWhenTheFutureIsCompleted")),
-            entry(DetectorType.THREAD_LEAKS, List.of(
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#threadLeakDetectorFiresOnAThreadStillAlive",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#threadLeakDetectorStaysSilentWhenTheThreadTerminated"))
+                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorStaysSilentWhenTheFutureIsCompleted"))
     );
     /**
      * The one {@link DetectorType} with no row in {@code LegacyDetectorFactories}.
@@ -151,6 +137,87 @@ class DetectorTrustCoverageTest {
                 assertTestMethodExists(reference);
             }
         }
+    }
+
+    /**
+     * A tier is capped by what the detector decides from, so a pair cannot promote past it.
+     *
+     * <p>The both-directions rule above is necessary and was never sufficient. A detector whose
+     * finding is the author's own {@code record*} call fires on the body that makes the call and
+     * stays silent on the one that does not, and so does one that counts threads or compares a
+     * number with a threshold, given a pair on the right side of it. Such a pair is real evidence
+     * that the detector separates two bodies, and no evidence that a finding means the code is
+     * wrong. {@link DetectorTrust.Evidence} names what a detector decides from, and this is the
+     * check that a row does not claim more than that can carry.
+     */
+    @Test
+    @DisplayName("no row claims a tier its evidence class cannot carry")
+    void everyTierIsWithinTheCapOfItsEvidence() {
+        List<String> over = new ArrayList<>();
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            DetectorTrust.Evidence evidence = DetectorTrust.evidenceOf(row.type());
+            if (row.tier().compareTo(evidence.cap()) > 0) {
+                over.add(row.type() + " is " + row.tier() + " on " + evidence
+                        + " evidence, capped at " + evidence.cap());
+            }
+        }
+        assertTrue(over.isEmpty(),
+                "VERDICT needs OBSERVED or CONTEXTUAL evidence, ASSERTED evidence caps at FACT, and "
+                        + "CONTEXT_FREE or HEURISTIC evidence at PROMPT. A pair that separates a "
+                        + "recorded bug from an unrecorded one does not lift the cap; changing what "
+                        + "the detector decides from does. Over the cap: " + over);
+    }
+
+    /**
+     * The catalog states how many detectors sit at each tier, and nothing compared that sentence
+     * with the table, and it is exactly the kind of number a tier change moves: the evidence caps
+     * took 32 of its 69 VERDICT rows down in one change.
+     */
+    @Test
+    @DisplayName("the catalog's tier split is the one the table gives")
+    void catalogTierSplitMatchesTheTable() {
+        Map<TrustTier, Integer> counts = new EnumMap<>(TrustTier.class);
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            counts.merge(row.tier(), 1, Integer::sum);
+        }
+        String expected = String.format(Locale.ROOT, "The split is %d VERDICT, %d PROMPT, %d FACT and %d ADVISORY",
+                counts.getOrDefault(TrustTier.VERDICT, 0), counts.getOrDefault(TrustTier.PROMPT, 0),
+                counts.getOrDefault(TrustTier.FACT, 0), counts.getOrDefault(TrustTier.ADVISORY, 0));
+        String catalog = read(repoRoot().resolve("docs/DETECTOR_CATALOG.md")).replaceAll("\\s+", " ");
+        assertTrue(catalog.contains(expected),
+                "docs/DETECTOR_CATALOG.md must say \"" + expected + "\", which is what DetectorTrust holds");
+    }
+
+    @Test
+    @DisplayName("the evidence caps are the ones the tier definitions state")
+    void evidenceCapsMatchTheTierDefinitions() {
+        assertEquals(TrustTier.VERDICT, DetectorTrust.Evidence.OBSERVED.cap());
+        assertEquals(TrustTier.VERDICT, DetectorTrust.Evidence.CONTEXTUAL.cap());
+        assertEquals(TrustTier.FACT, DetectorTrust.Evidence.ASSERTED.cap());
+        assertEquals(TrustTier.PROMPT, DetectorTrust.Evidence.CONTEXT_FREE.cap());
+        assertEquals(TrustTier.PROMPT, DetectorTrust.Evidence.HEURISTIC.cap());
+        assertEquals(DetectorTrust.Evidence.HEURISTIC, DetectorTrust.evidenceOf(null),
+                "an unknown detector gets the weakest class, whose cap is the PROMPT tierOf gives it");
+        assertEquals(TrustTier.PROMPT, DetectorTrust.capOfDetector("SomeThirdPartyDetector"));
+    }
+
+    @Test
+    @DisplayName("a grade above its detector's cap is lowered to the cap, and nothing else changes")
+    void clampLowersOnlyTheGradesAboveTheCap() {
+        GradedFindings.Grade verdict = new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.VERDICT, "closed");
+        GradedFindings.Grade prompt = new GradedFindings.Grade(IssueSeverity.MEDIUM, TrustTier.PROMPT, "owner");
+
+        List<GradedFindings.Grade> clamped =
+                DetectorTrust.clampToCap("ConfinedArenaThreadEscapeDetector", List.of(verdict, prompt));
+        assertEquals(List.of(new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.FACT, "closed"), prompt),
+                clamped, "an ASSERTED detector's VERDICT grade becomes FACT; severity and summary stay");
+
+        List<GradedFindings.Grade> within = List.of(verdict, prompt);
+        assertSame(within, DetectorTrust.clampToCap("RecordMutableComponentLeakDetector", within),
+                "an OBSERVED detector's grades are within its cap and pass through untouched");
+        assertEquals(TrustTier.PROMPT,
+                DetectorTrust.clampToCap("SomeThirdPartyDetector", List.of(verdict)).get(0).tier(),
+                "a detector the table does not know is capped at the PROMPT it resolves to");
     }
 
     @Test

@@ -5,10 +5,12 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.regex.Pattern;
 
 /**
  * Detects the <em>nested monitor lockout</em> anti-pattern: performing a blocking operation
@@ -38,8 +40,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *     }
  * }
  * }</pre>
+ *
+ * <p>A guarded wait on the monitor that is held is not this pattern: {@code wait()} releases the
+ * monitor it is called on. Record it with {@link #recordWaitAttempted(Object)}, which reports only
+ * when another monitor stays held.
  */
 public class NestedMonitorLockoutDetector {
+
+    /** An operation named as a call to {@code wait(}, and not {@code await(}. */
+    private static final Pattern OBJECT_WAIT = Pattern.compile("(^|[^A-Za-z0-9_$])wait\\s*\\(");
 
     /** Per-thread stack of currently held monitors, compared by identity. */
     private final Map<Long, Deque<IdentityKey>> heldMonitors = new ConcurrentHashMap<>();
@@ -76,16 +85,58 @@ public class NestedMonitorLockoutDetector {
      * Record that the current thread is about to perform a blocking operation.
      * If the thread currently holds one or more monitors, a lockout risk is recorded.
      *
+     * <p>An {@code Object.wait()} is the exception, recognised by an operation named like a call to
+     * {@code wait(} (so {@code "wait()"} and {@code "obj.wait(100)"}, not {@code "await()"}). A
+     * thread can only wait on a monitor it holds, and waiting releases that one, so a wait is a
+     * lockout only when some <em>other</em> monitor stays held: the canonical
+     * {@code synchronized (m) { while (!ready) m.wait(); }} holds one monitor and is silent. Which
+     * monitor is waited on cannot be read from a string, so the recorded monitors other than one
+     * are counted; {@link #recordWaitAttempted(Object)} names it and is exact.
+     *
      * @param operation human-readable name of the blocking operation (e.g. {@code "future.get()"})
      */
     public void recordBlockingOperationAttempted(String operation) {
         Thread t = Thread.currentThread();
         Deque<IdentityKey> held = heldMonitors.get(t.threadId());
         if (held == null || held.isEmpty()) return;
+        if (operation != null && OBJECT_WAIT.matcher(operation).find()) {
+            recordWait(t, operation, held.size() - 1);
+            return;
+        }
 
-        issues.add(String.format(
+        issues.add(String.format(Locale.ROOT,
             "Thread '%s' attempted blocking operation '%s' while holding %d monitor(s) — nested monitor lockout risk",
             t.getName(), operation, held.size()));
+    }
+
+    /**
+     * Record that the current thread is about to call {@code waitedOn.wait()}.
+     *
+     * <p>{@code wait()} releases the monitor of {@code waitedOn} and only that one, so this records
+     * a lockout risk only when the thread holds some other recorded monitor while it waits.
+     *
+     * @param waitedOn the object whose {@code wait()} is called (null-safe)
+     * @since 1.12.3
+     */
+    public void recordWaitAttempted(Object waitedOn) {
+        if (waitedOn == null) return;
+        Thread t = Thread.currentThread();
+        Deque<IdentityKey> held = heldMonitors.get(t.threadId());
+        if (held == null) return;
+        IdentityKey released = new IdentityKey(waitedOn);
+        int others = 0;
+        for (IdentityKey monitor : held) {
+            if (!monitor.equals(released)) others++;
+        }
+        recordWait(t, "wait()", others);
+    }
+
+    private void recordWait(Thread t, String operation, int otherMonitorsHeld) {
+        if (otherMonitorsHeld <= 0) return;
+        issues.add(String.format(Locale.ROOT,
+            "Thread '%s' called '%s' while holding %d monitor(s) besides the one it waits on. wait() "
+                + "releases only that one, so the rest stay held: nested monitor lockout risk",
+            t.getName(), operation, otherMonitorsHeld));
     }
 
     /**

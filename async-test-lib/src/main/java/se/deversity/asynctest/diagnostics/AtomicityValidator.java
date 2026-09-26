@@ -13,6 +13,14 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Tracks compound operations that should behave atomically.
+ *
+ * <p>Besides its lockset and idiom rules, a per-round, per-instance group of accesses is excused
+ * when the shared {@link HappensBefore} model orders every conflicting pair in it: a lock-free
+ * single writer publishing through a volatile flag, an object built and handed over through a
+ * concurrent map in the same round. Each access carries the accessing thread's clock, stamped on
+ * that thread (by {@code TelemetryRegistry} for the agent's stream, or here when the recording
+ * thread is the accessing one); an access without a stamp orders nothing, so the excuse only ever
+ * removes a finding.
  */
 public class AtomicityValidator {
 
@@ -32,11 +40,14 @@ public class AtomicityValidator {
      *
      * <p>A record rather than a packed key because packing an epoch and an identity hash into one
      * long collides, and a collision here merges the histories of two unrelated objects, which is
-     * the same false positive this split exists to remove.
+     * the same false positive this split exists to remove. For the same reason the identity hash
+     * alone is not the instance: two live objects share one routinely once tens of thousands are
+     * tracked, so an access whose receiver was handed over is grouped by {@code instance}, which
+     * names the object itself, and the hash only separates accesses that came without one.
      */
-    private record AccessGroup(long epoch, int identity) { }
+    private record AccessGroup(long epoch, int identity, int instance) { }
 
-    private static class FieldAccessRecord {
+    private static class FieldAccessRecord implements HappensBefore.Access {
         final long threadId;
         final boolean write;
         /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
@@ -85,9 +96,34 @@ public class AtomicityValidator {
          */
         final int generation;
 
+        /**
+         * The receiver's instance number from {@link #instanceOf}, unique per object for the run,
+         * or 0 when the access came without a receiver.
+         */
+        final int instance;
+
+        /**
+         * What the per-instance analysis groups by: the instance when it is known, else the
+         * identity hash. The two live in different halves of the long so an instance number can
+         * never equal a hash.
+         */
+        final long instanceKey;
+
+        /** The accessing thread's ordering clock at the access, {@code null} when none was taken. */
+        final HappensBefore.@Nullable Stamp stamp;
+
+        /**
+         * The locks an owner-aware access held, the owner's own monitor included, {@code null}
+         * for an access that named no owner. What lets the analysis intersect one round's
+         * owner-aware accesses on their own, as {@link #fingerprint} does for the agent's.
+         */
+        final int @Nullable [] ownerLocks;
+
         FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown,
                           int identity, long fingerprint, int ownMonitor, int methodMonitor,
-                          boolean exclusivePhase, int storedIdentity, int generation) {
+                          boolean exclusivePhase, int storedIdentity, int generation,
+                          int instance, HappensBefore.@Nullable Stamp stamp,
+                          int @Nullable [] ownerLocks) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
@@ -99,6 +135,27 @@ public class AtomicityValidator {
             this.exclusivePhase = exclusivePhase;
             this.storedIdentity = storedIdentity;
             this.generation = generation;
+            this.instance = instance;
+            this.instanceKey = instance != 0
+                    ? (1L << 32) | (instance & 0xFFFF_FFFFL)
+                    : identity & 0xFFFF_FFFFL;
+            this.stamp = stamp;
+            this.ownerLocks = ownerLocks;
+        }
+
+        @Override
+        public long orderThread() {
+            return threadId;
+        }
+
+        @Override
+        public boolean orderWrite() {
+            return write;
+        }
+
+        @Override
+        public HappensBefore.@Nullable Stamp orderStamp() {
+            return stamp;
         }
     }
 
@@ -136,6 +193,9 @@ public class AtomicityValidator {
 
         /** Whether the field is declared {@code volatile}, as resolved at weave time. */
         private volatile boolean volatileField;
+
+        /** Whether a write carried the volatile bit; see {@link #hasVolatileWrites()}. */
+        private volatile boolean volatileWrite;
 
         /**
          * The one constant every write stored, {@link #UNSET} before the first write, and
@@ -183,6 +243,22 @@ public class AtomicityValidator {
 
         void noteVolatile() {
             volatileField = true;
+        }
+
+        void noteVolatileWrite() {
+            volatileWrite = true;
+        }
+
+        /**
+         * {@return whether a write to this field carried the volatile bit}
+         *
+         * <p>The one reading of the bit that means "declared {@code volatile}". The bridge also
+         * sets it on a read of a plain field that follows a volatile read of the same object, its
+         * safely-published mark, which {@link #isVolatileField()} cannot tell apart; that mark only
+         * ever rides on a read.
+         */
+        boolean hasVolatileWrites() {
+            return volatileWrite;
         }
 
         void noteWriteFingerprint(long observed) {
@@ -271,6 +347,45 @@ public class AtomicityValidator {
             this.firstThread = firstThread;
             this.generation = generation;
         }
+    }
+
+    /**
+     * Instance numbers by receiver identity, weakly held; see {@link #instanceOf}.
+     *
+     * <p>Everything else in this class is keyed by identity hash, where a collision merges two
+     * objects and can only withhold an excuse. The grouping into per-instance histories is the one
+     * place a merge invents a finding, so it is keyed by the object itself.
+     */
+    private final Map<IdentityKey.Weak, Integer> instances = new ConcurrentHashMap<>();
+
+    /** Where {@link #instances} keys arrive once their receiver is collected. */
+    private final java.lang.ref.ReferenceQueue<Object> collectedInstances =
+            new java.lang.ref.ReferenceQueue<>();
+
+    /** The last instance number handed out; 0 is reserved for "no receiver". */
+    private final java.util.concurrent.atomic.AtomicInteger lastInstance =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * {@return a number unique to {@code receiver} for this run, 0 for {@code null}}
+     *
+     * <p>Allocates a lookup key per call and one entry per new object, on the drain thread for the
+     * agent path, never on the worker that made the access.
+     */
+    private int instanceOf(@Nullable Object receiver) {
+        if (receiver == null) {
+            return 0;
+        }
+        for (java.lang.ref.Reference<?> gone = collectedInstances.poll(); gone != null;
+                gone = collectedInstances.poll()) {
+            instances.remove(gone);
+        }
+        Integer known = instances.get(new IdentityKey.Weak(receiver, null));
+        if (known != null) {
+            return known;
+        }
+        return instances.computeIfAbsent(new IdentityKey.Weak(receiver, collectedInstances),
+                ignored -> lastInstance.incrementAndGet());
     }
 
     /** Publication state per receiver identity; identity 0 (unknown or static) is not tracked. */
@@ -381,6 +496,21 @@ public class AtomicityValidator {
      */
     private final java.util.concurrent.atomic.AtomicLong invocationEpoch =
             new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * The {@link HappensBefore#round()} token each of this validator's rounds started with:
+     * element {@code k - 1} started round {@code k}. Replaced, never mutated, by the runner thread.
+     *
+     * <p>What lets an agent event carry its round rather than acquire one on arrival. The runner
+     * flushes the ring before each round start, but the flush waits one second at most; a drain
+     * slower than that delivered the round's remaining events after the next round had started,
+     * and they were paired with it.
+     */
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = "VO_VOLATILE_REFERENCE_TO_ARRAY",
+            justification = "copy-on-write: a published array is never written again, so the "
+                    + "volatile reference is the only publication its elements need")
+    private volatile long[] roundTokens = new long[0];
+
     private volatile boolean enabled = true;
 
     /**
@@ -394,7 +524,28 @@ public class AtomicityValidator {
      * @since 1.7.3
      */
     public void markInvocationStart() {
+        long[] started = roundTokens;
+        long[] next = java.util.Arrays.copyOf(started, started.length + 1);
+        next[started.length] = HappensBefore.nextRound();
+        roundTokens = next;
         invocationEpoch.incrementAndGet();
+    }
+
+    /**
+     * {@return this validator's round for an access published under {@code round}}
+     *
+     * <p>The number of this validator's round starts at or before the token. Tokens only grow and a
+     * worker reads its token after the start of its round and before the start of the next, so
+     * tokens other runs started in between still count as this validator's current round. A token
+     * of 0 is an access that carried none, which keeps the round current now, as always.
+     */
+    private long epochOf(long round) {
+        if (round <= 0L) {
+            return invocationEpoch.get();
+        }
+        long[] started = roundTokens;
+        int at = java.util.Arrays.binarySearch(started, round);
+        return at >= 0 ? at + 1L : -(at + 1L);
     }
     /**
      * Records compound operation start so it can be analysed at the end of the run.
@@ -541,6 +692,9 @@ public class AtomicityValidator {
         if (volatileField && fieldName != null && !fieldName.isBlank()) {
             FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
             guard.noteVolatile();
+            if (isWrite) {
+                guard.noteVolatileWrite();
+            }
         }
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint);
     }
@@ -651,6 +805,9 @@ public class AtomicityValidator {
                 ignored -> new FieldGuard());
         if (volatileField) {
             guard.noteVolatile();
+            if (isWrite) {
+                guard.noteVolatileWrite();
+            }
         }
         if (isWrite) {
             guard.noteWriteConstant(constantTag);
@@ -687,22 +844,70 @@ public class AtomicityValidator {
                                             int ownMonitor, int methodMonitor,
                                             boolean volatileField, int constantTag, int identity,
                                             int storedIdentity) {
+        recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint,
+                ownMonitor, methodMonitor, volatileField, constantTag, identity, storedIdentity,
+                null, null, 0L);
+    }
+
+    /**
+     * Records an agent-fed access together with the object its field belongs to.
+     *
+     * @param fieldName       the field, as it should appear in the report
+     * @param value           the value read or written, may be {@code null}
+     * @param isWrite         {@code true} for a write
+     * @param threadId        the thread that made the access
+     * @param lockFingerprint the locks that thread held at the access, 0 for none
+     * @param ownMonitor      identity hash of the receiver when its monitor was held, else 0
+     * @param methodMonitor   identity hash of the enclosing synchronized method's monitor, else 0
+     * @param volatileField   whether the field is declared {@code volatile}
+     * @param constantTag     the constant this write stored, {@code Integer.MIN_VALUE} for none
+     * @param identity        {@code System.identityHashCode} of the owner, 0 for statics
+     * @param storedIdentity  {@code System.identityHashCode} of the reference this write stored,
+     *                        0 when it stored no reference or the weaver could not reach it
+     * @param receiver        the owner itself, {@code null} for a static field or when unknown
+     * @param stamp           the accessing thread's {@link HappensBefore} clock at the access,
+     *                        {@code null} when none was taken; when {@code threadId} is the
+     *                        calling thread's own, its clock is taken here instead
+     * @param round           {@link HappensBefore#round()} when the access happened, 0 when
+     *                        unknown; it decides the access's round, which is otherwise the round
+     *                        current when this call is made
+     * @since 1.12.3
+     */
+    public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
+                                            boolean isWrite, long threadId, long lockFingerprint,
+                                            int ownMonitor, int methodMonitor,
+                                            boolean volatileField, int constantTag, int identity,
+                                            int storedIdentity, @Nullable Object receiver,
+                                            HappensBefore.@Nullable Stamp stamp, long round) {
         boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
                 methodMonitor, volatileField, constantTag, identity, threadId);
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
-                ownMonitor, methodMonitor, exclusive, storedIdentity, generationOf(identity));
+                ownMonitor, methodMonitor, exclusive, storedIdentity, generationOf(identity),
+                identity == 0 ? 0 : instanceOf(receiver),
+                stamp != null ? stamp : stampIfOwn(threadId), epochOf(round));
+    }
+
+    /**
+     * {@return the calling thread's clock when {@code threadId} is its own, else {@code null}}
+     *
+     * <p>A caller recording on another thread's behalf, the telemetry drain replaying a worker's
+     * access, holds a clock that says nothing about that worker, so it contributes none.
+     */
+    private static HappensBefore.@Nullable Stamp stampIfOwn(long threadId) {
+        return threadId == Thread.currentThread().threadId() ? HappensBefore.current() : null;
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0,
-                false, 0, 0);
+                false, 0, 0, 0, stampIfOwn(threadId), invocationEpoch.get());
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
                         int identity, int ownMonitor, int methodMonitor, boolean exclusivePhase,
-                        int storedIdentity, int generation) {
+                        int storedIdentity, int generation, int instance,
+                        HappensBefore.@Nullable Stamp stamp, long epoch) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -710,8 +915,11 @@ public class AtomicityValidator {
         // Record what is known about locks before the bookkeeping below: the question is only
         // meaningful while the caller is still inside whatever region it is being asked about.
         FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+        int[] ownerLocks = null;
         if (ownerKnown) {
             guard.noteOwner(owner);
+            // The same probe the streamed intersection just took, kept for the per-round one.
+            ownerLocks = owner == null ? HeldLocks.NONE : HeldLocks.intersect(null, owner, true);
         } else if (lockFingerprint != UNMODELLED) {
             if (identity == 0) {
                 // This is the guard the analysis consults for this access; with an identity the
@@ -726,13 +934,14 @@ public class AtomicityValidator {
 
         List<FieldAccessRecord> history = fieldHistory.computeIfAbsent(fieldName, ignored -> new ArrayList<>());
         synchronized (history) {
-            history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
+            history.add(new FieldAccessRecord(threadId, isWrite, epoch,
                     ownerKnown, identity, lockFingerprint, ownMonitor, methodMonitor,
-                    exclusivePhase, isWrite ? storedIdentity : 0, generation));
+                    exclusivePhase, isWrite ? storedIdentity : 0, generation, instance, stamp,
+                    ownerLocks));
             // Index the owner's own writes as they arrive, so asking "did this published object
             // then go quiet" later costs a map lookup rather than a scan of every history.
             if (isWrite && identity != 0) {
-                lastOwnWriteEpoch.merge(identity, invocationEpoch.get(), Math::max);
+                lastOwnWriteEpoch.merge(identity, epoch, Math::max);
             }
         }
 
@@ -970,7 +1179,8 @@ public class AtomicityValidator {
             if (access.exclusivePhase && contestedGens != null && contestedGens.contains(access.generation)) {
                 judged.add(new FieldAccessRecord(access.threadId, access.write, access.epoch,
                         access.ownerKnown, access.identity, access.fingerprint, access.ownMonitor,
-                        access.methodMonitor, false, access.storedIdentity, access.generation));
+                        access.methodMonitor, false, access.storedIdentity, access.generation,
+                        access.instance, access.stamp, access.ownerLocks));
             } else {
                 judged.add(access);
             }
@@ -1008,27 +1218,28 @@ public class AtomicityValidator {
             // all inside one round, is exactly what a two-thread race over an inconsistent
             // lockset looks like, and it keeps reporting; a receiver built once and then read
             // round after round is the hand-off the rule exists for.
-            Map<Integer, Boolean> corroborated = new HashMap<>();
+            Map<Long, Boolean> corroborated = new HashMap<>();
             for (FieldAccessRecord access : copy) {
                 if (access.exclusivePhase) {
-                    corroborated.computeIfAbsent(access.identity,
-                            identity -> spansLaterRounds(copy, identity));
+                    corroborated.computeIfAbsent(access.instanceKey,
+                            instance -> spansLaterRounds(copy, instance));
                 }
             }
             Map<AccessGroup, List<FieldAccessRecord>> byEpoch = new HashMap<>();
             for (FieldAccessRecord access : copy) {
                 if (access.exclusivePhase
-                        && Boolean.TRUE.equals(corroborated.get(access.identity))) {
+                        && Boolean.TRUE.equals(corroborated.get(access.instanceKey))) {
                     continue;
                 }
-                byEpoch.computeIfAbsent(new AccessGroup(access.epoch, access.identity),
+                byEpoch.computeIfAbsent(
+                        new AccessGroup(access.epoch, access.identity, access.instance),
                         ignored -> new ArrayList<>()).add(access);
             }
 
-            // Per-instance excuses (#311, #312, #313), computed at most once per identity and
+            // Per-instance excuses (#311, #312, #313), computed at most once per instance and
             // only when the lockset alone would have reported. All need ordered history, which
             // the per-round groups no longer carry.
-            Map<Integer, Boolean> excusedIdentities = new HashMap<>();
+            Map<Long, Boolean> excusedInstances = new HashMap<>();
 
             for (List<FieldAccessRecord> roundAccesses : byEpoch.values()) {
                 Set<Long> threads = new HashSet<>();
@@ -1041,12 +1252,15 @@ public class AtomicityValidator {
                     hasWrite |= access.write;
                     anyOwnerKnown |= access.ownerKnown;
                 }
-                // The lockset is per field rather than per round, and deliberately so: a field
-                // guarded consistently in one round and raced in another has an empty
-                // intersection overall, and the round that raced is a real finding. Accesses
-                // recorded without an owner collapse it, so every caller that predates
+                // The streamed lockset spans the field's whole run, which makes it a cheap first
+                // answer and a wrong last one: a different lock in each round empties it, although
+                // the harness orders the rounds and each one was consistently locked. So once it
+                // has collapsed, this round's own accesses decide. A round that raced still has an
+                // empty intersection of its own and still reports. Accesses recorded without an
+                // owner or a fingerprint collapse both, so every caller that predates
                 // recordFieldAccessOn keeps the behaviour it had.
                 int groupIdentity = roundAccesses.isEmpty() ? 0 : roundAccesses.get(0).identity;
+                long groupInstance = roundAccesses.isEmpty() ? 0L : roundAccesses.get(0).instanceKey;
                 FieldGuard locks = fieldLocks.get(guardKey(entry.getKey(), groupIdentity));
                 // Safe publication is not an unguarded access. A volatile field whose every write
                 // held the same lock is double-checked locking, where the reads take no lock on
@@ -1055,6 +1269,7 @@ public class AtomicityValidator {
                 // commons-lang's LazyInitializer and Guava's memoizing supplier both are.
                 boolean sawUnguarded = locks == null
                         || (locks.sawUnguardedAccess()
+                            && noLockCoveredTheRound(roundAccesses)
                             && !locks.isSafePublication()
                             && !locks.writesOnlyOneConstant());
                 // The per-instance excuses need a group that is one object's accesses. Identity 0
@@ -1071,14 +1286,32 @@ public class AtomicityValidator {
                 if (sawUnguarded && locks != null
                         && (groupIdentity != 0 || carriesPublishedValueEvidence(copy))) {
                     FieldGuard guard = locks;
-                    boolean handOff = Boolean.TRUE.equals(corroborated.get(groupIdentity));
-                    boolean excused = excusedIdentities.computeIfAbsent(groupIdentity,
-                            identity -> (handOff && postShareAccessesShareALock(copy, identity))
-                                    || hintReadsConfirmedUnderTheWriteLock(copy, identity, guard,
+                    boolean handOff = Boolean.TRUE.equals(corroborated.get(groupInstance));
+                    boolean excused = excusedInstances.computeIfAbsent(groupInstance,
+                            instance -> (handOff && postShareAccessesShareALock(copy, instance))
+                                    || hintReadsConfirmedUnderTheWriteLock(copy, instance, guard,
                                             handOff)
-                                    || settledSingleCheckCache(copy, identity, guard, handOff)
-                                    || everyOwnershipGenerationAgreesOnALock(copy, identity));
+                                    || settledSingleCheckCache(copy, instance, guard, handOff)
+                                    || everyOwnershipGenerationAgreesOnALock(copy, instance));
                     sawUnguarded = !excused;
+                }
+                // Ordered by the shared happens-before model: every conflicting pair in this group
+                // has an edge the lockset cannot see, a queue or map hand-off, a volatile
+                // publication, a start or a join. Like the lock rule this judges each pair, not
+                // the interleaving of a compound operation, and like every excuse here it only
+                // ever removes a finding: a group whose accesses carry no stamps is not ordered.
+                if (sawUnguarded && threads.size() > 1
+                        && HappensBefore.everyConflictOrdered(roundAccesses, true)) {
+                    sawUnguarded = false;
+                }
+                // A volatile field written by one thread in the round: that thread's
+                // read-then-write cannot lose an update, and the other threads' reads of a
+                // volatile are synchronization rather than data races, which is how
+                // RaceConditionDetector judges the same field. Two writers keep the finding,
+                // which is what keeps volatile count++ reportable.
+                if (sawUnguarded && locks != null && locks.hasVolatileWrites()
+                        && writerThreads(roundAccesses) == 1) {
+                    sawUnguarded = false;
                 }
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
@@ -1105,8 +1338,19 @@ public class AtomicityValidator {
         return report;
     }
 
+    /** {@return how many distinct threads wrote in {@code accesses}} */
+    private static int writerThreads(List<FieldAccessRecord> accesses) {
+        Set<Long> writers = new HashSet<>();
+        for (FieldAccessRecord access : accesses) {
+            if (access.write) {
+                writers.add(access.threadId);
+            }
+        }
+        return writers.size();
+    }
+
     /**
-     * {@return whether {@code identity}'s post-publication accesses span more than one round}
+     * {@return whether {@code instance}'s post-publication accesses span more than one round}
      *
      * <p>The corroboration the construction excuse (#312) needs before it may touch anything.
      * Rounds are ordered by the harness, so a receiver that keeps being accessed in rounds after
@@ -1114,10 +1358,10 @@ public class AtomicityValidator {
      * round could equally be two threads racing over an inconsistent lockset, and stays judged
      * exactly as it always was.
      */
-    private static boolean spansLaterRounds(List<FieldAccessRecord> history, int identity) {
+    private static boolean spansLaterRounds(List<FieldAccessRecord> history, long instance) {
         long firstEpoch = Long.MIN_VALUE;
         for (FieldAccessRecord access : history) {
-            if (access.identity != identity || access.exclusivePhase) {
+            if (access.instanceKey != instance || access.exclusivePhase) {
                 continue;
             }
             if (firstEpoch == Long.MIN_VALUE) {
@@ -1130,7 +1374,7 @@ public class AtomicityValidator {
     }
 
     /**
-     * {@return whether some lock was held at every post-publication access to {@code identity}}
+     * {@return whether some lock was held at every post-publication access to {@code instance}}
      *
      * <p>The streamed intersection cannot answer this: it folded the construction accesses in as
      * they arrived. Recomputed here from the records, with the same resolution the streamed set
@@ -1140,10 +1384,10 @@ public class AtomicityValidator {
      * itself.
      */
     private static boolean postShareAccessesShareALock(List<FieldAccessRecord> history,
-                                                       int identity) {
+                                                       long instance) {
         int[] common = null;
         for (FieldAccessRecord access : history) {
-            if (access.identity != identity || access.exclusivePhase) {
+            if (access.instanceKey != instance || access.exclusivePhase) {
                 continue;
             }
             if (access.fingerprint == UNMODELLED) {
@@ -1178,10 +1422,10 @@ public class AtomicityValidator {
      * that follows them corroborates the hand-off the construction phase assumed.
      */
     private static boolean everyOwnershipGenerationAgreesOnALock(List<FieldAccessRecord> history,
-                                                                 int identity) {
+                                                                 long instance) {
         boolean taken = false;
         for (FieldAccessRecord access : history) {
-            if (access.identity == identity && access.generation > 0) {
+            if (access.instanceKey == instance && access.generation > 0) {
                 taken = true;
                 break;
             }
@@ -1191,7 +1435,7 @@ public class AtomicityValidator {
         }
         Map<Integer, int[]> commonPerGeneration = new HashMap<>();
         for (FieldAccessRecord access : history) {
-            if (access.identity != identity) {
+            if (access.instanceKey != instance) {
                 continue;
             }
             // Exclusive accesses need no lock. A taker's are exclusive by the take; the builder's
@@ -1215,6 +1459,39 @@ public class AtomicityValidator {
             commonPerGeneration.put(access.generation, common);
         }
         return true;
+    }
+
+    /**
+     * {@return whether no lock was held at every access of one round's group, in either model}
+     *
+     * <p>The per-round counterpart of {@link FieldGuard#sawUnguardedAccess()}, recomputed from the
+     * records: owner-aware accesses intersect the locks probed at the access, agent-fed ones the
+     * locks their fingerprint and carried monitors resolve to, each model apart as the streamed
+     * sets keep them. An access that carried no lock information at all is unguarded.
+     */
+    private static boolean noLockCoveredTheRound(List<FieldAccessRecord> round) {
+        int[] ownerCommon = null;
+        int[] fingerprintCommon = null;
+        for (FieldAccessRecord access : round) {
+            if (access.ownerKnown) {
+                int[] held = access.ownerLocks != null ? access.ownerLocks : HeldLocks.NONE;
+                ownerCommon = ownerCommon == null ? held : Lockset.intersect(ownerCommon, held);
+                if (ownerCommon.length == 0) {
+                    return true;
+                }
+            } else if (access.fingerprint == UNMODELLED) {
+                return true;
+            } else {
+                int[] held = heldLocksOf(access);
+                fingerprintCommon = fingerprintCommon == null
+                        ? held
+                        : Lockset.intersect(fingerprintCommon, held);
+                if (fingerprintCommon.length == 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** {@return the resolved lock ids this access held, the carried monitors included} */
@@ -1254,7 +1531,7 @@ public class AtomicityValidator {
      * mutually excluded.
      */
     private static boolean hintReadsConfirmedUnderTheWriteLock(List<FieldAccessRecord> history,
-                                                               int identity, FieldGuard locks,
+                                                               long instance, FieldGuard locks,
                                                                boolean constructionExcused) {
         int[] writeLocks = locks.writeLockSurvivors();
         if (writeLocks.length == 0) {
@@ -1263,7 +1540,7 @@ public class AtomicityValidator {
         List<Integer> uncoveredReads = new ArrayList<>();
         for (int i = 0; i < history.size(); i++) {
             FieldAccessRecord access = history.get(i);
-            if (access.identity != identity
+            if (access.instanceKey != instance
                     || (access.exclusivePhase && constructionExcused)) {
                 continue;
             }
@@ -1281,7 +1558,7 @@ public class AtomicityValidator {
             return true;
         }
         for (int at : uncoveredReads) {
-            if (confirmedLater(history, at, identity, writeLocks, constructionExcused)) {
+            if (confirmedLater(history, at, instance, writeLocks, constructionExcused)) {
                 return true;
             }
         }
@@ -1289,12 +1566,12 @@ public class AtomicityValidator {
     }
 
     /** {@return whether a later read on the same thread and round held one of the write locks} */
-    private static boolean confirmedLater(List<FieldAccessRecord> history, int at, int identity,
+    private static boolean confirmedLater(List<FieldAccessRecord> history, int at, long instance,
                                           int[] writeLocks, boolean constructionExcused) {
         FieldAccessRecord hint = history.get(at);
         for (int i = at + 1; i < history.size(); i++) {
             FieldAccessRecord later = history.get(i);
-            if (later.identity != identity || later.write
+            if (later.instanceKey != instance || later.write
                     || (later.exclusivePhase && constructionExcused)
                     || later.threadId != hint.threadId || later.epoch != hint.epoch) {
                 continue;
@@ -1363,7 +1640,7 @@ public class AtomicityValidator {
      * unsafely. A torn or stale value is visibility, not atomicity, and stays
      * {@code ConstructorSafetyValidator} and {@code VisibilityMonitor} business.
      */
-    private boolean settledSingleCheckCache(List<FieldAccessRecord> history, int identity,
+    private boolean settledSingleCheckCache(List<FieldAccessRecord> history, long instance,
                                             FieldGuard locks,
                                             boolean constructionExcused) {
         if (locks.isVolatileField()) {
@@ -1373,7 +1650,7 @@ public class AtomicityValidator {
         Set<Long> warmingRounds = new HashSet<>();
         Set<Long> writers = new HashSet<>();
         for (FieldAccessRecord access : history) {
-            if (access.identity != identity
+            if (access.instanceKey != instance
                     || (access.exclusivePhase && constructionExcused)) {
                 continue;
             }
@@ -1402,7 +1679,7 @@ public class AtomicityValidator {
         Set<Long> settledReaders = new HashSet<>();
         Set<Long> readBeforeWriting = new HashSet<>();
         for (FieldAccessRecord access : history) {
-            if (access.identity != identity) {
+            if (access.instanceKey != instance) {
                 continue;
             }
             if (access.exclusivePhase && constructionExcused) {
@@ -1443,7 +1720,7 @@ public class AtomicityValidator {
                 || invocationEpoch.get() - lastWriteEpoch >= quietRoundsNeeded;
         // Convergence alone is not enough (#326): it is a property of the field, and a
         // double-submit's defect is a property of what was stored.
-        return settled && everyPublishedValueWentQuiet(history, identity);
+        return settled && everyPublishedValueWentQuiet(history, instance);
     }
     /**
      * The value-level half of the settle rule (#326).
@@ -1470,11 +1747,11 @@ public class AtomicityValidator {
      * is something to narrow with.
      *
      * @param history  every access recorded for the field
-     * @param identity the instance being judged
+     * @param instance the instance being judged, as {@link FieldAccessRecord#instanceKey}
      */
-    private boolean everyPublishedValueWentQuiet(List<FieldAccessRecord> history, int identity) {
+    private boolean everyPublishedValueWentQuiet(List<FieldAccessRecord> history, long instance) {
         for (FieldAccessRecord access : history) {
-            if (!access.write || access.identity != identity || access.storedIdentity == 0) {
+            if (!access.write || access.instanceKey != instance || access.storedIdentity == 0) {
                 continue;
             }
             Long lastWrite = lastOwnWriteEpoch.get(access.storedIdentity);
@@ -1537,6 +1814,8 @@ public class AtomicityValidator {
         receiverStates.clear();
         generationTakers.clear();
         offers.clear();
+        instances.clear();
+        roundTokens = new long[0];
         invocationEpoch.set(0);
     }
     /**

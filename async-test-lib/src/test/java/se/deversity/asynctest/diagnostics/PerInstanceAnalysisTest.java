@@ -52,6 +52,44 @@ class PerInstanceAnalysisTest {
     }
 
     @Test
+    @DisplayName("two confined objects whose identity hashes collide are not one shared object")
+    void collidingIdentityHashesAreStillTwoObjects() {
+        AtomicityValidator validator = new AtomicityValidator();
+        // Two per-thread accumulators that happen to share an identity hash, which the birthday
+        // bound makes routine once tens of thousands of objects are tracked. Each thread reads and
+        // writes its own; nothing is shared.
+        Object first = new Object();
+        Object second = new Object();
+        recordReadThenWrite(validator, "Acc.sum", 1, ONE_INSTANCE, first);
+        recordReadThenWrite(validator, "Acc.sum", 2, ONE_INSTANCE, second);
+
+        assertTrue(validator.analyzeAtomicity().unsafeFieldAccesses.isEmpty(),
+                "grouping by identity hash merged two confined objects into one contended one; "
+                        + "the receiver the agent hands over is what tells them apart");
+    }
+
+    @Test
+    @DisplayName("one object seen with its receiver is still one object")
+    void theSameReceiverFromTwoThreadsIsStillShared() {
+        AtomicityValidator validator = new AtomicityValidator();
+        Object shared = new Object();
+        recordReadThenWrite(validator, "Acc.sum", 1, ONE_INSTANCE, shared);
+        recordReadThenWrite(validator, "Acc.sum", 2, ONE_INSTANCE, shared);
+
+        assertFalse(validator.analyzeAtomicity().unsafeFieldAccesses.isEmpty(),
+                "two threads reading and writing one object with no lock is the race; splitting "
+                        + "by receiver must not split one object from itself");
+    }
+
+    private static void recordReadThenWrite(AtomicityValidator validator, String field,
+                                            long thread, int identity, Object receiver) {
+        validator.recordFieldAccessUnderLocks(field, null, false, thread, 0L, 0, 0, false,
+                Integer.MIN_VALUE, identity, 0, receiver, null, 0L);
+        validator.recordFieldAccessUnderLocks(field, null, true, thread, 0L, 0, 0, false,
+                Integer.MIN_VALUE, identity, 0, receiver, null, 0L);
+    }
+
+    @Test
     @DisplayName("an unknown instance keeps the old behaviour of one group per field")
     void identityZeroBehavesAsBefore() {
         AtomicityValidator validator = new AtomicityValidator();

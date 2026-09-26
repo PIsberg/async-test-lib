@@ -140,6 +140,75 @@ public class VolatileArrayDetectorTest {
             + "share a name, which turns the standard per-thread-buffer pattern into a finding.");
     }
 
+    @Test
+    void elementAccessesAllUnderTheArraysOwnMonitorAreNotReported() throws Exception {
+        VolatileArrayDetector detector = new VolatileArrayDetector();
+        int[] shared = new int[1];
+        detector.registerArray(shared, "guarded", int.class);
+        Runnable worker = () -> {
+            synchronized (shared) {
+                detector.recordElementWrite(shared, 0, "guarded");
+                shared[0]++;
+                detector.recordElementRead(shared, 0, "guarded");
+            }
+        };
+        onTwoThreads(worker, worker);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "Every element write and read held one monitor, whose release and acquire order the "
+            + "writes for every later reader; the volatile keyword being useless here does not "
+            + "make the code wrong, and this detector is VERDICT tier: " + detector.analyze());
+    }
+
+    @Test
+    void elementWritesUnderADeclaredLockAreNotReported() throws Exception {
+        VolatileArrayDetector detector = new VolatileArrayDetector();
+        int[] shared = new int[1];
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        detector.registerArray(shared, "declared", int.class);
+        Runnable worker = () -> {
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+                lock.lock();
+                try {
+                    detector.recordElementWrite(shared, 0, "declared");
+                    shared[0]++;
+                } finally {
+                    lock.unlock();
+                }
+            }
+        };
+        onTwoThreads(worker, worker);
+
+        assertFalse(detector.analyze().hasIssues(), "one declared lock covered every write");
+    }
+
+    @Test
+    void lockedWritesReadWithoutTheLockAreStillReported() throws Exception {
+        VolatileArrayDetector detector = new VolatileArrayDetector();
+        int[] shared = new int[1];
+        detector.registerArray(shared, "half-guarded", int.class);
+        Runnable worker = () -> {
+            synchronized (shared) {
+                detector.recordElementWrite(shared, 0, "half-guarded");
+                shared[0]++;
+            }
+            detector.recordElementRead(shared, 0, "half-guarded");
+        };
+        onTwoThreads(worker, worker);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "the reads took no lock, so nothing orders them after the other thread's write");
+    }
+
+    private static void onTwoThreads(Runnable first, Runnable second) throws InterruptedException {
+        Thread a = new Thread(first, "worker-a");
+        Thread b = new Thread(second, "worker-b");
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+    }
+
     @org.junit.jupiter.api.Test
     @org.junit.jupiter.api.DisplayName("one array under one label is still reported")
     void oneSharedArrayUnderOneLabelStillFires() throws Exception {

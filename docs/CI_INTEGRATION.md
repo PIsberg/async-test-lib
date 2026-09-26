@@ -148,12 +148,16 @@ mvn test -Dasync-test.baseline=async-test-baseline.txt \
          -Dasync-test.baseline.update=true
 ```
 
-The file is plain text, one `testId | DetectorName` pair per line, sorted and de-duplicated:
+The file is plain text, one `testId | DetectorName | finding` entry per line, sorted and
+de-duplicated. The finding is a fingerprint of the report: its summary for a detector that grades
+its findings, otherwise each line of the report, with counts, thread numbers, timings, identity hash
+codes and colour codes replaced by `#` or dropped so that the same finding reads the same on every
+run (lines abridged here; the file holds each in full):
 
 ```
-com.example.OrderServiceTest#concurrentCheckout | RaceConditionDetector
-com.example.OrderServiceTest#concurrentCheckout | AtomicityValidator
-com.example.CacheTest#parallelWarmup | SharedCollectionDetector
+com.example.OrderServiceTest#checksum | SharedMessageDigestDetector | SHARED MESSAGE DIGEST / CRYPTOGRAPHY DETECTED:
+com.example.OrderServiceTest#checksum | SharedMessageDigestDetector | - 'order-checksum' accessed from # threads (async-test-worker-#, async-test-worker-#) ...
+com.example.OrderServiceTest#checksum | SharedMessageDigestDetector | Why & Fix Guide:
 ```
 
 Commit it. Reviewing it in the pull request is the point: each line is a known problem the team has
@@ -171,6 +175,21 @@ Suppressed findings are announced at `INFO` (`N baselined finding(s) suppressed 
 baseline that has quietly grown to cover the whole suite is visible in the build log rather than
 invisible.
 
+A detector's report is suppressed only when every one of its findings is in the file. When the
+same detector reports something new in the same test, the whole report prints and the new findings
+are gated; the findings the file already accepts do not fail the run on their own.
+
+Files written before 1.12.3 hold two-field `testId | DetectorName` entries. Those still accept
+everything that detector reports in that test, so an upgrade does not change what an existing file
+accepts. When such an entry hides a finding the file does not name, the runner says so at `INFO`:
+
+```
+baseline.detector-wide.suppressed test=com.example.CacheTest#parallelWarmup detector=SharedCollectionDetector uncovered=3 hint="..."
+```
+
+To narrow the entry, delete the line and run once in update mode: the findings of that run are
+recorded one by one.
+
 ### Shrinking it
 
 The file is the backlog. Delete a line, run the test, fix what it reports. A line that no longer
@@ -181,8 +200,12 @@ to find entries that have become stale.
 ### What a baseline does not do
 
 - It suppresses findings, not failures from your own assertions.
-- It is keyed on test id plus detector name, not on the specific object or line, so a second
-  instance of the same detector firing in the same test is also suppressed.
+- It is keyed on the text of a finding, not on the object or source line behind it. Two findings
+  whose reports differ only in counts, thread numbers or hash codes are the same entry, and a
+  detector that rewords its report in a new release produces entries the old file does not hold:
+  those findings print and fail until the baseline is re-recorded.
+- A two-field entry from an older file still accepts every finding of its detector in that test,
+  new ones included; the `baseline.detector-wide.suppressed` event is the only sign.
 - A missing baseline file is a warning, not an error, and suppresses nothing. A typo in the path
   therefore makes the build stricter rather than looser, which is the safe direction.
 
@@ -200,20 +223,29 @@ Two independent questions, two settings. `failOn` asks how bad a finding would b
 
 A finding's trust tier is a property of the detector that raised it, published in `DetectorTrust`
 and measured rather than asserted: `VERDICT` requires a case that fires on the bug and a case that
-stays silent on its correctly synchronized twin, and a gate refuses the tier without both. Ten
-detectors carry it today, nine of them in the `ESSENTIALS` preset. Most of the rest are `PROMPT`, meaning the detector saw a pattern it
-cannot fully model, so a finding is a reason to look rather than proof of a bug.
+stays silent on its correctly synchronized twin, and a detector that decides from the JVM's own
+state or from synchronization it can see; a gate refuses the tier without both. A detector whose
+finding is the test's own record call is at most `FACT`, and one decided by a thread count or a
+threshold at most `PROMPT` ([DETECTOR_CATALOG.md](DETECTOR_CATALOG.md#trust-tiers) lists which).
+Only `DEADLOCKS` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` of the `ESSENTIALS` preset carry
+`VERDICT`, so on that preset the second stage below is where most of the gate's coverage comes
+from. `PROMPT` means the detector saw a pattern it cannot fully model, so a finding is a reason to
+look rather than proof of a bug.
 
 Findings below the floor are still printed and still reach every listener, the JSON and the SARIF
 output. They just cannot fail the build, which is the difference between a report a team reads and
-one it learns to ignore.
+one it learns to ignore. On a passing run a PROMPT or ADVISORY report prints as one line (detector,
+tier, finding count, first finding) unless you pass `-Dasync-test.report.full=true`; listeners and
+the report files always get the full text.
 
 Severity is now worth gating on, which it was not before 1.9.7. Until then 86 of the 142
 detectors set no severity at all and `IssueSeverity.fromReport` returned `HIGH` for every one of
 them, so `failOn = HIGH` was close to "fail on anything". Every detector now states a severity,
-either in its own report or in `DetectorDefaultSeverity`, and `DetectorSeverityMarkerTest` fails
-the build if one does not. If you are upgrading and your gate suddenly passes, read the changelog:
-nineteen of them that used to arrive as `HIGH` now declare `MEDIUM` or `LOW`.
+in its structured findings, in its report text or in `DetectorDefaultSeverity`, and
+`DetectorSeverityMarkerTest` fails the build if one does not. If you are upgrading and your gate
+suddenly passes, read the changelog: nineteen of them that used to arrive as `HIGH` now declare
+`MEDIUM` or `LOW`, and since 1.12.3 the gate reads the severity a detector put in its structured
+findings instead of falling back to `HIGH` when its text carried no marker.
 
 ---
 

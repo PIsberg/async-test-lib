@@ -185,10 +185,13 @@ them. Now part of `detectAll` like every other detector.
   d.recordTaskSubmitted(pool);
   d.recordTaskStarted(pool);
   d.recordWaitingOnSibling(pool);   // pool saturated + waiting → flagged
+  d.recordSiblingWaitEnded(pool);   // the wait is over (or: this thread's recordTaskCompleted)
   ```
+  Only waits open at the same moment count against the pool, so waits that took turns never add
+  up to a full pool.
 
 ### 120. Future Blocking Detector
-* **Severity**: `HIGH`
+* **Severity**: `CRITICAL`
 * **Description**: A task blocks on `Future.get()` (or similar) from inside the same
   bounded pool that owns the future, consuming a worker thread while it waits — thread
   starvation that degrades into deadlock as the pool saturates.
@@ -198,4 +201,6 @@ them. Now part of `detectAll` like every other detector.
   d.registerExecutor(pool, "worker-pool", 2);
   d.recordTaskStarted(pool);
   d.recordBlockingWait(pool);
+  d.recordBlockingWaitEnded(pool);  // the future completed (or: this thread's recordTaskCompleted)
   ```
+  Reported when every worker is blocked at the same moment while tasks are still queued.

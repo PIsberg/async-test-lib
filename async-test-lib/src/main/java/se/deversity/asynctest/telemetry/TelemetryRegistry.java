@@ -1,6 +1,8 @@
 package se.deversity.asynctest.telemetry;
 
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.HeldLocks;
+import se.deversity.asynctest.diagnostics.SelfGuard;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.invoke.VarHandle;
@@ -198,8 +200,11 @@ public final class TelemetryRegistry {
         // Reading it is a walk over a small per-thread array, allocation-free and lock-free, which
         // is what the producer path requires - a heavier capture here would change the scheduling
         // this whole buffer exists to leave alone.
+        // The ordering clock is read here for the same reason: only the accessing thread's
+        // clock says what this access is ordered after. A thread-local read; no allocation.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(),
-                volatileField, constantTag, identity, afterVolatileRead);
+                volatileField, constantTag, identity, afterVolatileRead, 0, 0, 0, null,
+                HappensBefore.current(), HappensBefore.round());
     }
 
     /**
@@ -212,7 +217,9 @@ public final class TelemetryRegistry {
      * every such field read as unguarded. {@link Thread#holdsLock(Object)} answers for the
      * receiver, and the weaver passes the monitor of an enclosing {@code synchronized} method
      * outright, since holding it is what being inside that method means. Both travel with the
-     * event as identity hashes; the receiver itself is never retained.
+     * event as identity hashes. The receiver travels too, so that two objects sharing an identity
+     * hash stay apart, but only as far as the drain: the ring clears the slot once the event has
+     * been delivered, and nothing here retains it.
      *
      * <p>For a write the fingerprint leaves out locks held in shared mode, because a read lock
      * guards no write. The question is asked here, on the accessing thread, for the same reason
@@ -242,8 +249,37 @@ public final class TelemetryRegistry {
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
+        acquireIfAfterVolatileRead(receiver, afterVolatileRead);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
-                volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method);
+                volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
+                identity == 0 ? null : receiver, HappensBefore.current(), HappensBefore.round());
+        releaseIfVolatileWrite(receiver, isWrite, volatileField);
+    }
+
+    /**
+     * Orders this access after the volatile read the weaver saw before it in the same method.
+     *
+     * <p>The acquire half of volatile publication, for {@code HappensBefore}. Taken here rather
+     * than at the volatile read itself, because that hook runs before the read instruction and an
+     * acquire made before the value is seen could order what the program does not. Per object,
+     * not per field: see {@code HappensBefore}'s limits.
+     */
+    private static void acquireIfAfterVolatileRead(@Nullable Object receiver,
+                                                   boolean afterVolatileRead) {
+        if (afterVolatileRead && receiver != null) {
+            HappensBefore.acquire(receiver);
+        }
+    }
+
+    /**
+     * The release half: a volatile write publishes what this thread did before it. The hook runs
+     * before the write instruction, so the release precedes every read that can see the value.
+     */
+    private static void releaseIfVolatileWrite(@Nullable Object receiver, boolean isWrite,
+                                               boolean volatileField) {
+        if (volatileField && isWrite && receiver != null) {
+            HappensBefore.release(receiver);
+        }
     }
     /**
      * Records a field access, with the reference the write stored in hand.
@@ -255,7 +291,7 @@ public final class TelemetryRegistry {
      * Given the stored reference's identity, the analysis can ask whether the published object
      * then went quiet, which is what an idempotent value does and a live job does not.
      *
-     * <p>Only its identity hash travels; like the receiver, the value itself is never retained.
+     * <p>Only its identity hash travels; the value itself is never retained.
      * {@code stored} is {@code null} for a read, for a primitive write, and wherever the weaver
      * could not reach the value without disturbing the operand stack, and a 0 identity means "not
      * known" rather than "not immutable" - the analysis keeps its previous answer there, because
@@ -293,9 +329,14 @@ public final class TelemetryRegistry {
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
         int storedIdentity = stored == null ? 0 : System.identityHashCode(stored);
+        acquireIfAfterVolatileRead(receiver, afterVolatileRead);
+        // The receiver rides along so the drain side can tell apart two objects whose identity
+        // hashes collide; the ring lends it for one callback and then clears the slot.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
-                storedIdentity);
+                storedIdentity, identity == 0 ? null : receiver, HappensBefore.current(),
+                HappensBefore.round());
+        releaseIfVolatileWrite(receiver, isWrite, volatileField);
     }
 
     /**
@@ -1786,8 +1827,20 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static void ownershipTaken(@Nullable Object taken, @Nullable Object container) {
-        if (taken == null || STOPPED.get()) {
+        if (taken == null) {
             return;
+        }
+        // Synchronous, on the taking thread, ahead of the buffer: the lock-aware detectors record
+        // on the accessing thread as it runs, so the take must be visible to them before this
+        // thread's next access rather than whenever the ring drains. Allocation-free unless the
+        // run tracks some instance; see SelfGuard.Scope.ownershipTaken.
+        SelfGuard.Scope.ownershipTaken(taken);
+        if (STOPPED.get()) {
+            return;
+        }
+        // The acquire half of a hand-off, where the container's contract makes one (HappensBefore).
+        if (HappensBefore.publishesElements(container)) {
+            HappensBefore.acquire(taken);
         }
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
@@ -1818,6 +1871,11 @@ public final class TelemetryRegistry {
     public static void ownershipOffered(@Nullable Object offered, @Nullable Object container) {
         if (offered == null || container == null || STOPPED.get()) {
             return;
+        }
+        // The release half: published before the container accepts the element, so every take
+        // that can return it finds the release.
+        if (HappensBefore.publishesElements(container)) {
+            HappensBefore.release(offered);
         }
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, false, 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,

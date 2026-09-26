@@ -311,4 +311,88 @@ class ReentrantLockOwnerAndStarvationTest {
         assertTrue(report.toString().contains("worker-1") && report.toString().contains("worker-2"),
                 "both recorded waits are printed as context: " + report);
     }
+
+    // ---- the holder is a thread, not a name ----
+
+    @Test
+    @DisplayName("a hold leaked by a finished unnamed virtual thread fires while another unnamed one is still working")
+    void aLeakByOneUnnamedVirtualThreadIsNotExcusedByAnother() throws InterruptedException {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "unnamed-leak-lock");
+
+        Thread leaker = Thread.ofVirtual().start(() -> {
+            lock.lock(); // taken and never given back
+            detector.recordLockAcquired(lock, "leaker");
+        });
+        leaker.join(10_000);
+        assertFalse(leaker.isAlive(), "the premise: the holder has finished");
+
+        CountDownLatch registered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread bystander = Thread.ofVirtual().start(() -> {
+            detector.registerLock(lock, "unnamed-leak-lock");
+            registered.countDown();
+            try {
+                release.await(10, TimeUnit.SECONDS); // alive and working, and also named ""
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            assertTrue(registered.await(10, TimeUnit.SECONDS));
+            assertTrue(leaker.getName().isEmpty() && bystander.getName().isEmpty(),
+                    "the premise: virtual threads are unnamed by default, so both are \"\"");
+
+            ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
+            assertTrue(report.hasIssues(),
+                    "the thread that took the lock has finished; a different thread that shares its "
+                            + "empty name is still running, and it is not the holder. Report:\n" + report);
+        } finally {
+            release.countDown();
+            bystander.join(10_000);
+        }
+    }
+
+    @Test
+    @DisplayName("a lock held by a working unnamed virtual thread is not a leak because another unnamed one finished")
+    void aWorkingUnnamedHolderIsNotReportedBecauseAnotherUnnamedThreadFinished() throws InterruptedException {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        ReentrantLock lock = new ReentrantLock();
+
+        Thread finished = Thread.ofVirtual().start(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "finished");
+            detector.recordLockReleased(lock, "finished");
+            lock.unlock();
+        });
+        finished.join(10_000);
+        assertFalse(finished.isAlive());
+
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = Thread.ofVirtual().start(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "holder");
+            try {
+                held.countDown();
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                detector.recordLockReleased(lock, "holder");
+                lock.unlock();
+            }
+        });
+        try {
+            assertTrue(held.await(10, TimeUnit.SECONDS));
+            ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
+            assertFalse(report.hasIssues(),
+                    "the holder is alive and working; the finished thread gave its hold back. Report:\n"
+                            + report);
+        } finally {
+            release.countDown();
+            holder.join(10_000);
+        }
+    }
 }

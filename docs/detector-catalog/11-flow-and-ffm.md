@@ -48,7 +48,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 128. Confined Arena Thread Escape
 * **Severity**: `CRITICAL` (JVM-confirmed) / `MEDIUM` (fallback)
-* **Trust tier**: **verdict** when the JDK supplies `MemorySegment.isAccessibleBy`
+* **Trust tier**: **fact** at most. The wrong-thread finding is the JVM's answer when the JDK supplies `MemorySegment.isAccessibleBy`, but an access after a close the test recorded is graded the same, so the evidence class is `ASSERTED` and the report path clamps both to FACT until the grade follows the path
 * **Description**: Detects a `MemorySegment` allocated from `Arena.ofConfined()` (FFM API, final in JDK 22) being touched by a thread that does not own the arena, and access to a segment whose arena has already been closed. Confinement is a hard JVM rule rather than a synchronization question: the detector asks the JVM directly instead of inferring from the observed thread set, so a finding is a defect no lock can fix.
 * **Buggy Code**:
   ```java
@@ -76,7 +76,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 129. Shared Memory Segment Race
 * **Severity**: `HIGH` (conflicting locks) / `MEDIUM` (no lock recorded) / `CRITICAL` (use after close)
-* **Trust tier**: **verdict** when guards are recorded, **prompt** when they are not
+* **Trust tier**: **fact** at most: an access after a recorded close is graded VERDICT and clamped to FACT, because the close is the test's own record (`ASSERTED`); overlapping accesses are **prompt** whether or not guards are recorded
 * **Description**: Detects overlapping byte ranges of a shared `MemorySegment` touched concurrently by different threads with at least one write. `Arena.ofShared()` removes the confinement check but not the data race: plain segment `get`/`set` carries no memory-model guarantee. Pass a `guard` label naming the monitor held during an access and overlapping accesses that agree on it are treated as synchronized, which is what separates this detector's HIGH findings from a bare "two threads touched it".
 * **Buggy Code**:
   ```java
@@ -103,7 +103,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 ### 130. VarHandle Non-Atomic Update
 * **Severity**: `HIGH` (lost update) / `MEDIUM` (plain-mode sharing)
 * **Trust tier**: **verdict** for the lost update, **prompt** for plain-mode sharing
-* **Description**: The `VarHandle` counterpart of `ATOMIC_NON_ATOMIC_UPDATE`. Detects a `get` followed by a `set` where `compareAndExchange` was needed, and separately, plain-mode access to a location several threads share. The access mode never rescues the compound operation: `getVolatile` then `setVolatile` loses updates exactly as readily as the plain pair, because volatile buys ordering, not atomicity across two calls. The plain-mode rule catches the mistake unique to `VarHandle` — `vh.get(o)` has no ordering even when the field is declared `volatile`.
+* **Description**: The `VarHandle` counterpart of `ATOMIC_NON_ATOMIC_UPDATE`. Detects a `get` followed by a `set` where `compareAndExchange` was needed, and separately, plain-mode access to a location several threads share. The access mode never rescues the compound operation: `getVolatile` then `setVolatile` loses updates exactly as readily as the plain pair, because volatile buys ordering, not atomicity across two calls. The plain-mode rule catches the mistake unique to `VarHandle` — `vh.get(o)` has no ordering even when the field is declared `volatile`. Both findings need the location touched by more than one thread and no lock common to every access: a get-then-set one thread keeps to itself, or one done inside `synchronized (holder)` (or under a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove) by every thread, is not reported.
 * **Buggy Code**:
   ```java
   int v = (int) COUNT.getVolatile(holder);
@@ -127,7 +127,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 ### 131. Record Mutable Component Leak
 * **Severity**: `HIGH` (observed mutation) / `MEDIUM` (structural risk)
 * **Trust tier**: **verdict** for the observed mutation, **prompt** for the structural risk
-* **Description**: Detects records shared across threads whose components hold mutable state. A record is only shallowly immutable: the language freezes the reference, not the `ArrayList` behind it. The detector fingerprints every component on first sight and re-reads it at analysis time, so a component whose contents changed during the run is reported as a fact rather than an inference. Components holding `java.util.concurrent` types are deliberately not reported.
+* **Description**: Detects records shared across threads (two threads touching one record inside one invocation round) whose components hold mutable state. A record is only shallowly immutable: the language freezes the reference, not the `ArrayList` behind it. The detector fingerprints every component on first sight and re-reads it at analysis time, so a component whose contents changed during the run is reported as a fact rather than an inference. Components holding `java.util.concurrent` types are deliberately not reported.
 * **Buggy Code**:
   ```java
   record Order(String id, List<Item> items) { }
@@ -151,7 +151,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 132. Static Init Deadlock
 * **Severity**: `CRITICAL` (recorded cycle) / `HIGH` (live-thread sample)
-* **Trust tier**: **verdict** for the recorded cycle, **corroborating** for the sample
+* **Trust tier**: **fact** for the recorded cycle, which is a walk over init requests the test recorded (`ASSERTED`, clamped from VERDICT), and **fact** for the live sample
 * **Description**: Detects deadlocks between class initializers, where the lock each thread waits on is the JVM's per-class initialization lock. `ThreadMXBean.findDeadlockedThreads()` walks monitors and ownable synchronizers; a class init lock is neither, so the platform's own deadlock finder returns `null` while the JVM is fully wedged. That blind spot is why this detector exists separately from `DEADLOCKS`. With no instrumentation it still samples live threads for `<clinit>` frames.
 * **Buggy Code**:
   ```java
@@ -177,7 +177,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 133. Virtual Thread Pooling
 * **Severity**: `HIGH`
-* **Trust tier**: **verdict** for the pooled-executor finding — the factory probe distinguishes a virtual-thread factory from a platform one by construction, and a per-task or platform-pooled executor stays silent. The reuse finding is as good as its instrumentation contract: call `recordTaskExecution` once per task.
+* **Trust tier**: **fact** at most, clamped from **verdict**: the reuse finding counts `recordTaskExecution` calls on one thread, so the evidence class is `ASSERTED`. The pooled-executor finding would carry VERDICT on its own — the factory probe distinguishes a virtual-thread factory from a platform one by construction, and a per-task or platform-pooled executor stays silent. The reuse finding is as good as its instrumentation contract: call `recordTaskExecution` once per task.
 * **Description**: Detects virtual threads being pooled or reused across tasks — the central anti-pattern JEP 444 warns about. A `ThreadPoolExecutor` (including `ScheduledThreadPoolExecutor` and the `Executors.newFixedThreadPool` family) built over `Thread.ofVirtual().factory()` caps concurrency at the pool size and keeps every pooled worker and its `ThreadLocal`s alive indefinitely. Registering an executor probes its factory with one unstarted, discarded thread; separately, a virtual thread observed executing more than one recorded task is flagged as reuse.
 * **Buggy Code**:
   ```java

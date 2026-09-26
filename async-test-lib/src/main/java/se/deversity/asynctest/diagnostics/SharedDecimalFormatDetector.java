@@ -52,8 +52,7 @@ public class SharedDecimalFormatDetector {
         FormatState s = formats.computeIfAbsent(
                 new IdentityKey(format), id -> new FormatState(name != null ? name
                         : format.getClass().getSimpleName() + "@" + System.identityHashCode(format)));
-        s.noteAccess(format);
-        s.noteThread(thread);
+        s.noteAccess(format, thread);
     }
 
     /**

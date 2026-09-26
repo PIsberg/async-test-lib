@@ -26,16 +26,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * }
  * }</pre>
  *
- * <p>This detector tracks the identity hash codes of objects used for a given
- * named lock slot across invocations.  If more than one distinct identity hash
- * code is observed, the reference was reassigned and is flagged.
+ * <p>This detector tracks the objects used as the monitor for a given lock slot on a given
+ * instance. If one instance is seen synchronizing on more than one object, the reference was
+ * reassigned and is flagged.
+ *
+ * <p>The instance matters. Recorded without it, a slot is only a class and a field name, and a
+ * reassigned field looks exactly like several instances each holding their own final lock, which
+ * is correct code: a holder per thread or per invocation does it every time. Those recordings
+ * are listed in the report text as undecided and are not findings; pass the owner to
+ * {@link #recordLockObject(Object, String, Class, Object)} to have them decided.
  *
  * <p>Usage:
  * <pre>{@code
  * @AsyncTest(threads = 4, detectSynchronizedNonFinal = true)
  * void testReassignableLock() {
  *     AsyncTestContext.synchronizedNonFinalDetector()
- *         .recordLockObject(lock, "MyClass.lock", MyClass.class);
+ *         .recordLockObject(lock, "MyClass.lock", MyClass.class, this);
  *     synchronized (lock) {
  *         // critical section
  *     }
@@ -57,13 +63,22 @@ public class SynchronizedNonFinalDetector {
     }
 
     /**
-     * Keyed by the field id alone, or by the field id and its owner compared by identity. The owner
-     * used to be folded into a string as its identity hash, so two owners whose hashes collided
-     * shared a slot and each one's single monitor read as the field changing its lock (#564).
+     * Keyed by the declaring class and field id, or by the field id and its owner compared by
+     * identity. The owner used to be folded into a string as its identity hash, so two owners
+     * whose hashes collided shared a slot and each one's single monitor read as the field
+     * changing its lock (#564).
      */
     private final Map<Object, LockSlot> slots = new ConcurrentHashMap<>();
 
     private record OwnedSlot(String fieldId, IdentityKey owner) {
+    }
+
+    /**
+     * A slot recorded without its owner, keyed by the declaring class itself rather than its
+     * simple name, so two classes that share a simple name in different packages or enclosing
+     * types are two slots.
+     */
+    private record ClassSlot(@Nullable Class<?> ownerClass, String fieldId) {
     }
 
     // ---- Public API --------------------------------------------------------
@@ -73,6 +88,9 @@ public class SynchronizedNonFinalDetector {
      * slot identified by {@code fieldId}.
      *
      * <p>Call this immediately before each {@code synchronized (lockObject)} block.
+     *
+     * <p>Without the owner a monitor that changes is undecidable, so it is listed as a note and
+     * never reported; prefer {@link #recordLockObject(Object, String, Class, Object)}.
      *
      * @param lockObject the object used as the monitor
      * @param fieldId    a stable identifier for the field, e.g. {@code "MyService.lock"}
@@ -104,7 +122,8 @@ public class SynchronizedNonFinalDetector {
         if (lockObject == null || fieldId == null) return;
         String key = (ownerClass != null) ? ownerClass.getSimpleName() + "." + fieldId : fieldId;
         boolean ownerKnown = owner != null;
-        Object slotKey = owner != null ? new OwnedSlot(key, new IdentityKey(owner)) : key;
+        Object slotKey = owner != null ? new OwnedSlot(key, new IdentityKey(owner))
+                : new ClassSlot(ownerClass, fieldId);
         LockSlot slot = slots.computeIfAbsent(slotKey, k -> new LockSlot(key, ownerKnown));
         slot.identityHashes.add(new IdentityKey(lockObject));
     }
@@ -121,13 +140,18 @@ public class SynchronizedNonFinalDetector {
         SynchronizedNonFinalReport report = new SynchronizedNonFinalReport();
 
         for (LockSlot slot : slots.values()) {
-            if (slot.identityHashes.size() > 1) {
-                report.violations.add(slot.ownerKnown
-                    ? String.format(
+            if (slot.identityHashes.size() <= 1) {
+                continue;
+            }
+            if (slot.ownerKnown) {
+                report.violations.add(String.format(
                         "%s: one instance synchronized on %d different objects — lock reference is "
                             + "NOT FINAL, mutual exclusion is broken!",
-                        slot.fieldId, slot.identityHashes.size())
-                    : String.format(
+                        slot.fieldId, slot.identityHashes.size()));
+            } else {
+                // Not a finding. Without the owner a reassigned field and N instances each with
+                // their own final lock record the same thing, and one of those is correct code.
+                report.unattributed.add(String.format(
                         "%s: synchronized on %d different objects. Either the field was reassigned, "
                             + "in which case mutual exclusion is broken, or each of %d instances "
                             + "has its own final lock, which is correct. This recording did not say "
@@ -148,6 +172,8 @@ public class SynchronizedNonFinalDetector {
     public static class SynchronizedNonFinalReport {
 
         final List<String> violations = new ArrayList<>();
+        /** Monitor changes recorded without an owner: undecidable, so notes rather than findings. */
+        final List<String> unattributed = new ArrayList<>();
 
         /**
          * Returns {@code true} when any reassignable-lock violation was detected.
@@ -169,6 +195,12 @@ public class SynchronizedNonFinalDetector {
                 }
             } else {
                 sb.append("  No violations detected.\n");
+            }
+            if (!unattributed.isEmpty()) {
+                sb.append("  Undecided without an owner (not reported as findings):\n");
+                for (String note : unattributed) {
+                    sb.append("    - ").append(note).append("\n");
+                }
             }
 
             sb.append("  Fix: declare the lock field as 'final', or replace with a dedicated")

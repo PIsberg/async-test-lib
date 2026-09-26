@@ -46,7 +46,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 11. Constructor Safety Detector
 * **Severity**: `HIGH`
-* **Description**: Tracks object construction start/end and cross-thread field access to catch unsafe publication — objects shared with other threads before their constructor completes can expose partially initialized fields due to compiler/CPU reordering.
+* **Description**: Tracks object construction start/end and cross-thread field access to catch unsafe publication — objects shared with other threads before their constructor completes can expose partially initialized fields due to compiler/CPU reordering. Record `recordConstructionStart(this)` and `recordConstructionEnd(this)` from inside the constructor: the validator checks the stack, so a start recorded outside any constructor of the object's class is ignored (the object is already built), and a read by another thread before the end is recorded counts only while the constructor is still on the constructing thread's stack. An end recorded late, after the finished object was published through a volatile, a concurrent collection or a lock, or never recorded at all, therefore reports nothing.
 * **Buggy Code**:
   ```java
   class Publisher {
@@ -69,8 +69,8 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
   ```
 
 ### 12. ABA Problem Detector
-* **Severity**: `CRITICAL`
-* **Description**: Detects the ABA problem in lock-free CAS-based code, where a value changes from A to B and back to A between a thread's read and its `compareAndSet`, causing the CAS to spuriously succeed and corrupt the data structure.
+* **Severity**: `HIGH`
+* **Description**: Detects the ABA problem in lock-free CAS-based code, where a value changes from A to B and back to A between a thread's read and its `compareAndSet`, causing the CAS to spuriously succeed and corrupt the data structure. The finding is that interleaving, in record order: the thread records the read its CAS expects (`recordRead(name, value)`), other threads record a change away from the value and a change back to it, and the first thread then records a successful `recordCASAttempt` expecting the value it read. A value that goes A to B to A with no such CAS, or one toggled by the CAS thread itself, is counted as a cycle in the report's context and is not a finding; a CAS with no recorded read draws no verdict.
 * **Buggy Code**:
   ```java
   Node head = stack.get();
@@ -142,7 +142,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 16. Memory Ordering Detector
 * **Severity**: `HIGH`
-* **Description**: Logs reads and writes per memory location and thread to detect visibility violations — reads that observe stale values after a write from another thread, or writes that appear reordered due to missing happens-before edges.
+* **Description**: Logs reads and writes per memory location and thread to prompt a check for visibility violations: a read that returned a different value than the write another thread recorded just before it. The log is in record order, not memory order, so the finding says only that the two records disagree (the read may have run before the write, or not seen it) and asks for a happens-before edge; it is PROMPT-tier, not a verdict. A read whose value a later-recorded write produced is not reported, since that is the log lagging behind a write the read did see.
 * **Buggy Code**:
   ```java
   class Holder {
@@ -279,14 +279,14 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
   ```
 
 ### 23. Shared Random Detector
-* **Severity**: `MEDIUM`
-* **Description**: Tracks concurrent access to a single `Random` instance across threads, flagging contention on its internal atomic seed that degrades throughput even though `java.util.Random` itself remains thread-safe.
-* **Buggy Code**:
+* **Severity**: `LOW` (tier `ADVISORY`)
+* **Description**: Notes a single `Random` instance used from more than one thread. `java.util.Random` is thread-safe, so this is a performance note and never a bug: the threads contend on its one atomic seed, and `ThreadLocalRandom` is faster.
+* **Contended Code** (correct, but slower):
   ```java
   static final Random random = new Random();
   int roll() { return random.nextInt(6); } // all threads contend on one seed's CAS loop
   ```
-* **Fixed Code**:
+* **Faster Code**:
   ```java
   int roll() { return ThreadLocalRandom.current().nextInt(6); } // per-thread generator, no contention
   ```

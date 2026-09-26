@@ -8,9 +8,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects non-atomic check-then-act compound operations on a {@link ConcurrentMap}.
@@ -42,7 +43,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * detector is cooperative: the code under test reports each non-atomic
  * check-then-act it performs via {@link #recordCheckThenAct}. The detector flags
  * a violation when two or more threads perform such a sequence against the same
- * map and key — the exact precondition for a lost update.
+ * map and key — the exact precondition for a lost update — and no one lock covered
+ * every one of them. A compound operation inside a critical section every caller enters
+ * is atomic in effect, so it is not reported. The map's own monitor counts with no
+ * declaration ({@code synchronized (map)}); any other lock is seen only when declared
+ * through {@code AsyncTestContext.holdingLock(...)} or woven by the agent, and a lock
+ * the library never saw leaves the finding standing.
  *
  * <p>Usage:
  * <pre>{@code
@@ -61,12 +67,10 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class NonAtomicConcurrentMapUpdateDetector {
 
-    private static final class State {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String mapLabel;
         final String key;
         final String operation;
-        final Set<Long>   threadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> threadNames = ConcurrentHashMap.newKeySet();
 
         State(String mapLabel, String key, String operation) {
             this.mapLabel = mapLabel;
@@ -75,8 +79,16 @@ public final class NonAtomicConcurrentMapUpdateDetector {
         }
     }
 
-    // Keyed by (identityHashCode(map), String.valueOf(key)).
-    private final Map<String, State> sites = new ConcurrentHashMap<>();
+    /**
+     * One check-then-act site: the map by identity, the key by the key's own equality, which is
+     * how the map itself tells keys apart. Both used to be folded into a string, the map as its
+     * identity hash and the key as {@code String.valueOf(key)}, so two maps whose hashes collided
+     * shared sites, and {@code 1} and {@code "1"} - two keys of one map - read as one key reached
+     * by two threads.
+     */
+    private record Site(IdentityKey map, @Nullable Object key) { }
+
+    private final Map<Site, State> sites = new ConcurrentHashMap<>();
 
     /**
      * Record that the calling thread performed a non-atomic check-then-act
@@ -90,17 +102,17 @@ public final class NonAtomicConcurrentMapUpdateDetector {
      */
     public void recordCheckThenAct(ConcurrentMap<?, ?> map, Object key, String operation, Thread thread) {
         if (map == null || thread == null) return;
-        String mapId = Integer.toHexString(System.identityHashCode(map));
-        String keyStr = String.valueOf(key);
-        String compositeKey = mapId + '#' + keyStr;
-        State s = sites.get(compositeKey);
+        Site site = new Site(new IdentityKey(map), key);
+        State s = sites.get(site);
         if (s == null) {
-            final String label = map.getClass().getSimpleName() + "@" + mapId;
+            final String label = map.getClass().getSimpleName() + "@"
+                    + Integer.toHexString(System.identityHashCode(map));
             final String op = (operation != null) ? operation : "check-then-act";
-            s = sites.computeIfAbsent(compositeKey, k -> new State(label, keyStr, op));
+            s = sites.computeIfAbsent(site, k -> new State(label, String.valueOf(key), op));
         }
-        s.threadIds.add(thread.threadId());
-        s.threadNames.add(thread.getName());
+        // Probed on the calling thread while it is still inside the compound operation; the
+        // explicit thread parameter is attribution only.
+        s.noteAccess(map, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -110,16 +122,17 @@ public final class NonAtomicConcurrentMapUpdateDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : sites.values()) {
-            if (s.threadIds.size() <= 1) continue;
+            if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "Non-atomic '%s' on %s for key '%s' performed by %d threads (%s) — "
                             + "check-then-act on a ConcurrentMap is not atomic; concurrent callers "
-                            + "lose updates. Use putIfAbsent/computeIfAbsent/compute/merge.",
+                            + "lose updates. Use putIfAbsent/computeIfAbsent/compute/merge"
+                            + SelfGuard.REPORT_NOTE + ".",
                     s.operation,
                     s.mapLabel,
                     s.key,
-                    s.threadIds.size(),
-                    String.join(", ", s.threadNames));
+                    s.threadCount(),
+                    String.join(", ", s.threadNames()));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "NonAtomicConcurrentMapUpdate",
@@ -130,7 +143,7 @@ public final class NonAtomicConcurrentMapUpdateDetector {
                             "map", s.mapLabel,
                             "key", s.key,
                             "operation", s.operation,
-                            "threadCount", s.threadIds.size()),
+                            "threadCount", s.threadCount()),
                     Instant.now()));
         }
         return r;

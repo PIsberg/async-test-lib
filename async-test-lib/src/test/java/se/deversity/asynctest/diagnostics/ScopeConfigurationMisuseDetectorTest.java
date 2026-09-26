@@ -216,4 +216,26 @@ class ScopeConfigurationMisuseDetectorTest {
             "five forks per scope is bounded; the count was summed over four scopes that "
                 + "reused one id: " + d.analyze());
     }
+
+    /**
+     * Two thread factories whose identity hashes collide are two factories. Keyed by the bare
+     * hash, two overlapping scopes that each had their own factory read as sharing one.
+     */
+    @Test
+    void factoriesSharingAnIdentityHashAreNotOneSharedFactory() {
+        var d = new ScopeConfigurationMisuseDetector();
+        java.util.List<ThreadFactory> colliding =
+                IdentityCollisions.pair(() -> new ThreadFactory() {
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        return new Thread(r, "scoped");
+                    }
+                });
+        d.recordScopeOpened("scope-1", "a", 1000L, colliding.get(0), Thread.currentThread());
+        d.recordScopeOpened("scope-2", "b", 1000L, colliding.get(1), Thread.currentThread());
+
+        assertTrue(d.analyze().violations.stream()
+                        .noneMatch(v -> v.contains("One ThreadFactory")),
+                "each scope had its own factory: " + d.analyze().violations);
+    }
 }

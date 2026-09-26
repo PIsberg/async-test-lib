@@ -1,8 +1,18 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -44,7 +54,14 @@ public class HttpClientConcurrencyDetector {
         final AtomicInteger pendingRequests = new AtomicInteger(0);
         final AtomicInteger maxConcurrentRequests = new AtomicInteger(0);
         final Set<Long> activeThreads = ConcurrentHashMap.newKeySet();
-        final Map<String, RequestState> requests = new ConcurrentHashMap<>();
+        /**
+         * The sends not yet answered, one entry per send. Not keyed by the request: an
+         * {@code HttpRequest} is immutable and made to be sent again, and filing sends by the
+         * request's identity let a second send of one request overwrite the first, so its
+         * response found nothing left to answer and a fully answered run reported a request that
+         * never got its response.
+         */
+        final Queue<RequestState> requests = new ConcurrentLinkedQueue<>();
 
         ClientState(String name) {
             this.name = name;
@@ -53,18 +70,25 @@ public class HttpClientConcurrencyDetector {
 
     private static class RequestState {
         final String name;
-        volatile boolean completed;
-        volatile boolean responseRecorded;
+        /** Claimed by exactly one response; a check-then-set let two responses answer one send. */
+        final AtomicBoolean answered = new AtomicBoolean();
 
         RequestState(String name) {
             this.name = name;
         }
     }
 
-    /** Key the client state is filed under when a request arrives before any client was registered. */
-    private static final String UNKNOWN_CLIENT = "unknown";
+    /** How the report names the sends that no client can be tied to. */
+    private static final String UNATTRIBUTED_CLIENT = "(no client named)";
 
-    private final Map<String, ClientState> clients = new ConcurrentHashMap<>();
+    /** Registered clients, by identity. */
+    private final Map<IdentityKey, ClientState> clients = new ConcurrentHashMap<>();
+    /**
+     * Sends recorded without a client while none, or more than one, is registered. They used to
+     * be filed under whichever client the map returned first, so with two clients registered the
+     * report blamed one that may never have sent anything.
+     */
+    private final ClientState unattributed = new ClientState(UNATTRIBUTED_CLIENT);
     private volatile boolean enabled = true;
 
     /**
@@ -91,12 +115,16 @@ public class HttpClientConcurrencyDetector {
         if (!enabled || client == null) {
             return;
         }
-        clients.computeIfAbsent(String.valueOf(System.identityHashCode(client)),
-            k -> new ClientState(name));
+        clients.computeIfAbsent(new IdentityKey(client), k -> new ClientState(name));
     }
 
     /**
-     * Record an HTTP request being sent.
+     * Record an HTTP request being sent, without saying which client sent it.
+     *
+     * <p>With exactly one client registered the request is that client's. With none, or more
+     * than one, nothing here says which client sent it, so it is reported under
+     * {@code (no client named)}; use {@link #recordRequestSent(Object, Object, String)} to
+     * name the client.
      *
      * @param request the request instance
      * @param name a descriptive name for tracking
@@ -105,29 +133,43 @@ public class HttpClientConcurrencyDetector {
         if (!enabled || request == null) {
             return;
         }
-        String key = String.valueOf(System.identityHashCode(request));
-        RequestState requestState = new RequestState(name);
-        
-        // Find or create client state. computeIfAbsent, not the get-then-put this used to be:
-        // when no client has been registered, racing threads all found the map empty, each built
-        // its own ClientState and each put discarded the one before it. Every thread but the last
-        // then counted into an object no longer reachable from the map, so analyze() read one
-        // request where four were recorded and one thread where four had been at work. Both feed
-        // the report, and a request count that low stops requests > responses tripping at all:
-        // the detector went quiet on exactly the contention it exists to observe.
-        ClientState client = clients.values().stream().findFirst()
-            .orElseGet(() -> clients.computeIfAbsent(UNKNOWN_CLIENT, k -> new ClientState(name)));
-        
+        Iterator<ClientState> registered = clients.values().iterator();
+        ClientState only = registered.hasNext() ? registered.next() : null;
+        send(only != null && !registered.hasNext() ? only : unattributed, name);
+    }
+
+    /**
+     * Record an HTTP request being sent by {@code client}.
+     *
+     * <p>The request is reported under that client, registering it under {@code name} if
+     * {@link #recordClientCreated} was never called for it.
+     *
+     * @param client the client sending the request, tracked by identity
+     * @param request the request instance
+     * @param name a descriptive name for tracking
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordRequestSent(Object client, Object request, String name) {
+        if (!enabled || client == null || request == null) {
+            return;
+        }
+        send(clients.computeIfAbsent(new IdentityKey(client), k -> new ClientState(name)), name);
+    }
+
+    private static void send(ClientState client, String name) {
         client.requestCount.incrementAndGet();
-        client.pendingRequests.incrementAndGet();
+        int current = client.pendingRequests.incrementAndGet();
         client.activeThreads.add(Thread.currentThread().threadId());
-        int current = client.pendingRequests.get();
-        client.maxConcurrentRequests.updateAndGet(max -> Math.max(max, current));
-        client.requests.put(key, requestState);
+        client.maxConcurrentRequests.accumulateAndGet(current, Math::max);
+        client.requests.add(new RequestState(name));
     }
 
     /**
      * Record an HTTP response being received.
+     *
+     * <p>Answers one unanswered send of that name, from a registered client first. It used to
+     * answer one on every client that had one, so a single response completed several sends.
      *
      * @param response the response instance
      * @param name should match the request name
@@ -137,21 +179,24 @@ public class HttpClientConcurrencyDetector {
             return;
         }
         for (ClientState client : clients.values()) {
-            RequestState matchedRequest = null;
-            for (RequestState requestState : client.requests.values()) {
-                if (!requestState.responseRecorded &&
-                    (name == null || name.equals(requestState.name))) {
-                    matchedRequest = requestState;
-                    break;
-                }
-            }
-            if (matchedRequest != null) {
-                matchedRequest.responseRecorded = true;
-                matchedRequest.completed = true;
-                client.responseCount.incrementAndGet();
-                client.pendingRequests.updateAndGet(current -> Math.max(0, current - 1));
+            if (answer(client, name)) {
+                return;
             }
         }
+        answer(unattributed, name);
+    }
+
+    private static boolean answer(ClientState client, @Nullable String name) {
+        for (Iterator<RequestState> it = client.requests.iterator(); it.hasNext(); ) {
+            RequestState request = it.next();
+            if ((name == null || name.equals(request.name)) && request.answered.compareAndSet(false, true)) {
+                it.remove();
+                client.responseCount.incrementAndGet();
+                client.pendingRequests.updateAndGet(current -> Math.max(0, current - 1));
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -163,15 +208,19 @@ public class HttpClientConcurrencyDetector {
         HttpClientConcurrencyReport report = new HttpClientConcurrencyReport();
         report.enabled = enabled;
 
-        for (ClientState client : clients.values()) {
+        List<ClientState> all = new ArrayList<>(clients.values());
+        if (unattributed.requestCount.get() > 0) {
+            all.add(unattributed);
+        }
+        for (ClientState client : all) {
             int requests = client.requestCount.get();
             int responses = client.responseCount.get();
             int pending = client.pendingRequests.get();
 
             // Check for unclosed/uncompleted requests
             if (pending > 0) {
-                for (RequestState requestState : client.requests.values()) {
-                    if (!requestState.completed) {
+                for (RequestState requestState : client.requests) {
+                    if (!requestState.answered.get()) {
                         report.pendingRequests.add(String.format(
                             "%s: request '%s' sent but not completed",
                             client.name, requestState.name));
@@ -209,9 +258,9 @@ public class HttpClientConcurrencyDetector {
      */
     public static class HttpClientConcurrencyReport {
         private boolean enabled = true;
-        final java.util.List<String> pendingRequests = new java.util.ArrayList<>();
-        final java.util.List<String> uncompletedRequests = new java.util.ArrayList<>();
-        final java.util.List<String> poolExhaustionRisk = new java.util.ArrayList<>();
+        final List<String> pendingRequests = new ArrayList<>();
+        final List<String> uncompletedRequests = new ArrayList<>();
+        final List<String> poolExhaustionRisk = new ArrayList<>();
         final Map<String, String> threadActivity = new ConcurrentHashMap<>();
 
         /**

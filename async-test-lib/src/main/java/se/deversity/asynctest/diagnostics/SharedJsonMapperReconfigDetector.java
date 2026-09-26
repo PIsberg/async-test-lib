@@ -150,7 +150,7 @@ public final class SharedJsonMapperReconfigDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            if (s.violatingMutations.isEmpty() || !s.sawUnguardedAccess()) continue;
+            if (s.violatingMutations.isEmpty() || !s.sawUnguardedSharing()) continue;
             List<String> descriptions = new ArrayList<>();
             List<String> mutatingThreads = new ArrayList<>();
             for (MutationRecord m : s.violatingMutations) {

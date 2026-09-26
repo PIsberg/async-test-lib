@@ -156,7 +156,7 @@ public class CalendarDetector {
 
             report.totalCalendars++;
 
-            if (threads > 1 && state.sawUnguardedAccess()) {
+            if (threads > 1 && state.sawUnguardedSharing()) {
                 report.sharedCalendars.add(String.format(
                         "%s: accessed by %d threads (get: %d, set: %d, add: %d) — NOT THREAD SAFE!" + SelfGuard.REPORT_NOTE,
                         state.name, threads,

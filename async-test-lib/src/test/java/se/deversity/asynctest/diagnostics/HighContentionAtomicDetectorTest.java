@@ -212,4 +212,29 @@ class HighContentionAtomicDetectorTest {
         assertEquals(IssueSeverity.LOW, DetectorDefaultSeverity.of("HighContentionAtomicDetector", rendered),
             "the header carried the bare word HIGH, which the gate read as the severity of an advisory");
     }
+
+    /**
+     * Failed CAS attempts from two threads in different invocation rounds are not contention:
+     * the runner joins one round before the next, so the threads never ran at once.
+     */
+    @Test
+    void failuresFromThreadsInDifferentRoundsAreNotContention() throws InterruptedException {
+        var d = new HighContentionAtomicDetector(100L);
+        var counter = new AtomicLong();
+        hammer(d, counter, 100, 90);
+        d.markInvocationStart();
+        hammer(d, counter, 100, 90);
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
+
+    /** The same failures from two threads inside one round are reported. */
+    @Test
+    void failuresFromTwoThreadsInOneRoundAreContention() throws InterruptedException {
+        var d = new HighContentionAtomicDetector(100L);
+        var counter = new AtomicLong();
+        d.markInvocationStart();
+        hammer(d, counter, 100, 90);
+        hammer(d, counter, 100, 90);
+        assertTrue(d.analyze().hasIssues());
+    }
 }

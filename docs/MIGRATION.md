@@ -78,6 +78,8 @@ handful of cases where the obvious rewrite is wrong.
 All 146 `detect*` / `validate*` / `monitor*` boolean attributes are deprecated in favour of
 `preset`, `includes` and `excludes`. The rewrite is mechanical: an attribute set to `true` becomes
 its `DetectorType` in `includes`, and one set to `false` becomes its `DetectorType` in `excludes`.
+Under `detectAll = true`, the default, a flag set to `false` never opted its detector out, so that
+rewrite turns off a detector that was running; drop the attribute instead if you want to keep it.
 
 ```java
 // 1.x, deprecated

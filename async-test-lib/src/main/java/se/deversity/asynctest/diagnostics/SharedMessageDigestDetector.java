@@ -97,8 +97,7 @@ public class SharedMessageDigestDetector {
                 return new DigestState(label, type);
             });
         }
-        s.noteAccess(digest);
-        s.noteThread(thread);
+        s.noteAccess(digest, thread);
         // Capture the user-code site once per distinct call site. The Set's hashing
         // gives us per-(class, line) dedupe so a tight loop doesn't accumulate frames.
         SiteCapture.capture().ifPresent(s.accessSites::add);

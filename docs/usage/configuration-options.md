@@ -13,7 +13,7 @@ Part of the [Usage guide](../USAGE.md).
 | `timeoutMs` | long | 5000 | Test timeout in milliseconds |
 | `useVirtualThreads` | boolean | true | Use Java 21+ virtual threads |
 | `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
-| `detectAll` | boolean | false | **Enable ALL detectors in one shot (Recommended)** |
+| `detectAll` | boolean | true | **Enable ALL detectors in one shot (Recommended)**. An individual flag set to `false` does not opt out while this is `true`; use `excludes` |
 | `excludes` | DetectorType[] | {} | Detectors to skip when `detectAll = true` |
 
 ### Phase 1 Detectors (Enabled by default if detectAll=true)

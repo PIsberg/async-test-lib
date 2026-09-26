@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,6 +11,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Detects self-deadlock patterns in single-thread or bounded executors.
+ *
+ * <p>The finding is that every worker of the pool was waiting on a sibling task <em>at the same
+ * moment</em> while work was still queued: nothing left to run the queue, so nothing the workers
+ * wait for can start. Waits that took turns never add up to that, however many there were, so a
+ * wait is counted only while it lasts. It ends at {@link #recordSiblingWaitEnded(Object)}, or when
+ * the thread that recorded it records its task completed. A worker that never ends its wait, the
+ * deadlock itself, keeps counting.
  *
  * <p>Reachable from a test via {@code AsyncTestContext.executorDeadlockDetector()} when
  * {@link se.deversity.asynctest.DetectorType#EXECUTOR_DEADLOCK} is enabled.
@@ -21,12 +29,50 @@ public class ExecutorDeadlockDetector {
         final int maxThreads;
         final AtomicInteger submitted = new AtomicInteger();
         final AtomicInteger running = new AtomicInteger();
-        final AtomicInteger waitingOnSibling = new AtomicInteger();
         final AtomicInteger completed = new AtomicInteger();
+        /** Workers waiting on a sibling right now, not waits ever recorded. */
+        final AtomicInteger waitingNow = new AtomicInteger();
+        /**
+         * Open waits per thread, so a completion ends only a wait its own thread recorded. Only the
+         * thread a key names ever changes its entry.
+         */
+        final Map<Thread, Integer> openWaits = new ConcurrentHashMap<>();
+        /** The most workers seen waiting at once while work was queued; 0 until the pool saturates. */
+        final AtomicInteger saturatedWaiters = new AtomicInteger();
+        /** The queue depth at that moment, for the report. */
+        volatile int queuedWhenSaturated;
 
         ExecutorState(String name, int maxThreads) {
             this.name = name;
             this.maxThreads = maxThreads;
+        }
+
+        int queued() {
+            // Submitted minus running counted every completed task as still queued, so after the
+            // first completion the finding degenerated to a lifetime count of sibling waits.
+            return Math.max(0, submitted.get() - running.get() - completed.get());
+        }
+
+        /** Keeps the moment every worker was waiting with work queued, if this is one. */
+        void noteIfSaturated() {
+            int waiting = waitingNow.get();
+            int queued = queued();
+            if (waiting >= maxThreads && queued > 0
+                    && saturatedWaiters.getAndAccumulate(waiting, Math::max) < waiting) {
+                queuedWhenSaturated = queued;
+            }
+        }
+
+        boolean endWaitOf(Thread thread) {
+            boolean[] ended = {false};
+            openWaits.computeIfPresent(thread, (waiter, open) -> {
+                ended[0] = true;
+                return open == 1 ? null : open - 1;
+            });
+            if (ended[0]) {
+                waitingNow.decrementAndGet();
+            }
+            return ended[0];
         }
     }
 
@@ -54,6 +100,7 @@ public class ExecutorDeadlockDetector {
         ExecutorState state = stateFor(executor);
         if (state != null) {
             state.submitted.incrementAndGet();
+            state.noteIfSaturated();
         }
     }
     /**
@@ -68,24 +115,45 @@ public class ExecutorDeadlockDetector {
         }
     }
     /**
-     * Records waiting on sibling so it can be analysed at the end of the run.
+     * Records that the calling thread, a worker of {@code executor}, now waits on a sibling task
+     * submitted to the same executor. The wait counts until the same thread calls
+     * {@link #recordSiblingWaitEnded(Object)} or {@link #recordTaskCompleted(Object)}.
      *
      * @param executor the executor being recorded, tracked by identity
      */
     public void recordWaitingOnSibling(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
-            state.waitingOnSibling.incrementAndGet();
+            state.openWaits.merge(Thread.currentThread(), 1, Integer::sum);
+            state.waitingNow.incrementAndGet();
+            state.noteIfSaturated();
         }
     }
     /**
-     * Records task completed so it can be analysed at the end of the run.
+     * Records that the wait the calling thread recorded with
+     * {@link #recordWaitingOnSibling(Object)} is over: the sibling finished, or the wait gave up.
+     * Without it the wait lasts until this thread records its task completed. Does nothing when the
+     * calling thread has no open wait on {@code executor}.
+     *
+     * @param executor the executor being recorded, tracked by identity
+     * @since 1.12.3
+     */
+    public void recordSiblingWaitEnded(Object executor) {
+        ExecutorState state = stateFor(executor);
+        if (state != null) {
+            state.endWaitOf(Thread.currentThread());
+        }
+    }
+    /**
+     * Records task completed so it can be analysed at the end of the run. A task that completes is
+     * no longer waiting, so this also ends a sibling wait the calling thread left open.
      *
      * @param executor the executor being recorded, tracked by identity
      */
     public void recordTaskCompleted(Object executor) {
         ExecutorState state = stateFor(executor);
         if (state != null) {
+            state.endWaitOf(Thread.currentThread());
             state.running.updateAndGet(current -> Math.max(0, current - 1));
             state.completed.incrementAndGet();
         }
@@ -103,15 +171,14 @@ public class ExecutorDeadlockDetector {
         ExecutorDeadlockReport report = new ExecutorDeadlockReport();
 
         for (ExecutorState state : executors.values()) {
-            // Submitted minus running counted every completed task as still queued, so after the
-            // first completion the finding degenerated to a lifetime count of sibling waits.
-            int queued = Math.max(0, state.submitted.get() - state.running.get() - state.completed.get());
-            if (state.waitingOnSibling.get() >= state.maxThreads && queued > 0) {
-                report.selfDeadlocks.add(String.format(
+            // The state at analysis counts too: waits still open now are waits that never ended.
+            state.noteIfSaturated();
+            if (state.saturatedWaiters.get() > 0) {
+                report.selfDeadlocks.add(String.format(Locale.ROOT,
                     "%s: all %d worker(s) are waiting on sibling tasks while %d task(s) remain queued",
                     state.name,
                     state.maxThreads,
-                    queued
+                    state.queuedWhenSaturated
                 ));
             }
         }

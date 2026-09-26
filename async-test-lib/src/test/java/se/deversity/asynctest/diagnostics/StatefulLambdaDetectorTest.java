@@ -52,6 +52,90 @@ public class StatefulLambdaDetectorTest {
     }
 
     @Test
+    void lambdaBumpingACapturedLongAdderIsNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        java.util.concurrent.atomic.LongAdder hits = new java.util.concurrent.atomic.LongAdder();
+        java.util.concurrent.atomic.AtomicLong total = new java.util.concurrent.atomic.AtomicLong();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            hits.increment();
+            d.recordCapturedMutation(task[0], "hits", hits, Thread.currentThread());
+            total.addAndGet(2);
+            d.recordCapturedMutation(task[0], "total", total, Thread.currentThread());
+        };
+        onTwoThreads(task[0]);
+
+        assertFalse(d.analyze().hasIssues(),
+                "LongAdder and AtomicLong are the thread-safe state the report's own Fix section "
+                        + "recommends; a lambda sharing them across threads is correct code: "
+                        + d.analyze().violations);
+    }
+
+    @Test
+    void lambdaMutatingItsCaptureUnderADeclaredLockIsNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Object lock = new Object();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+                synchronized (lock) {
+                    counter[0]++;
+                    d.recordCapturedMutation(task[0], "counter", Thread.currentThread());
+                }
+            }
+        };
+        onTwoThreads(task[0]);
+
+        assertFalse(d.analyze().hasIssues(),
+                "every mutation of the capture held one lock: " + d.analyze().violations);
+    }
+
+    @Test
+    void lambdaMutatingACapturedArrayUnderItsOwnMonitorIsNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            synchronized (counter) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+            }
+        };
+        onTwoThreads(task[0]);
+
+        assertFalse(d.analyze().hasIssues(), "synchronized (counter) guarded every mutation");
+    }
+
+    @Test
+    void lambdaMutatingACapturedArrayWithNoLockIsReportedThroughTheStateOverload() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            counter[0]++;
+            d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+        };
+        onTwoThreads(task[0]);
+
+        assertTrue(d.analyze().hasIssues(), "an int[] is not thread-safe state");
+        assertTrue(d.analyze().violations.get(0).contains("counter"));
+    }
+
+    private static void onTwoThreads(Runnable body) throws InterruptedException {
+        Thread a = new Thread(body);
+        Thread b = new Thread(body);
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+    }
+
+    @Test
     void testSeparateLambdaInstancesNoIssue() throws Exception {
         var d = new StatefulLambdaDetector();
         int[] c1 = {0};

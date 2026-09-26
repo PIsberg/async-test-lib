@@ -217,10 +217,11 @@ final class PairEvidence {
                 + "creations and joins without inspecting real CompletableFuture dependency graphs "
                 + "or completion states, taking declarations at their word; needs runtime "
                 + "introspection of CompletableFuture completion and dependent stages");
-        HELD_ON_MODEL.put(DetectorType.CONSTRUCTOR_SAFETY, "relies on manual recordConstructionEnd "
-                + "calls to mark safe publication, unable to observe actual JVM bytecode <init> "
-                + "boundaries or field access ordering; needs agent or bytecode tracking of "
-                + "constructor exit and reference publication");
+        HELD_ON_MODEL.put(DetectorType.CONSTRUCTOR_SAFETY, "relies on manual construction and "
+                + "field-access records; it checks them against <init> frames on the stack, but "
+                + "sees neither the publication itself nor accesses nobody recorded, and a pooled "
+                + "thread inside another instance's constructor reads as still constructing; "
+                + "needs agent or bytecode tracking of constructor exit and reference publication");
         HELD_ON_MODEL.put(DetectorType.COPY_ON_WRITE_COLLECTIONS, "flags CopyOnWrite collections "
                 + "when caller-recorded writes exceed a 20% write-ratio heuristic, even though the "
                 + "collection is fully thread-safe by contract; throughput heuristic rather than a "
@@ -385,7 +386,13 @@ final class PairEvidence {
                         // is - FACT reports something observed and leaves the judgement to the
                         // reader - so a pair does not make either of them a verdict, and VERDICT
                         // is already gated.
-                        || DetectorTrust.tierOf(detector) != TrustTier.PROMPT) {
+                        || DetectorTrust.tierOf(detector) != TrustTier.PROMPT
+                        // A pair cannot lift a detector past what it decides from. One whose
+                        // finding is its body's own record call, a thread count or a threshold is
+                        // capped below VERDICT by its evidence class, so no reading of its pair is
+                        // a promotion and demanding one would ask for a registration the library's
+                        // gate refuses.
+                        || !cappedAtVerdict(detector)) {
                     continue;
                 }
                 // Only the lane that actually holds the pair can answer. Asking a lane where
@@ -436,6 +443,19 @@ final class PairEvidence {
         return false;
     }
 
+    /**
+     * {@return whether {@code detector}'s evidence class lets it reach VERDICT at all}
+     *
+     * <p>{@code DetectorTrust.Evidence} caps the tier by what the detector decides from, and the
+     * library's own gate refuses a row above its cap. A pair for a detector capped lower is still
+     * measured and still gated here; it is just not a promotion candidate.
+     *
+     * @param detector the detector to look up
+     */
+    static boolean cappedAtVerdict(DetectorType detector) {
+        return DetectorTrust.evidenceOf(detector).cap() == TrustTier.VERDICT;
+    }
+
     /** {@return whether {@code lane} holds both directions for {@code detector}} */
     private static boolean hasPairIn(CorpusLane lane, DetectorType detector) {
         Set<RecordingSubject.Expectation> directions =
@@ -478,6 +498,7 @@ final class PairEvidence {
         for (DetectorType detector : Corpus.pairedDetectors(CorpusLane.RECORDING)) {
             if (!already.contains(detector)
                     && DetectorTrust.tierOf(detector) == TrustTier.PROMPT
+                    && cappedAtVerdict(detector)
                     && hasPairIn(CorpusLane.RECORDING, detector)
                     && heldBack(CorpusLane.RECORDING, detector) == HeldBack.CALL_SHAPE) {
                 unreviewed.add(detector);

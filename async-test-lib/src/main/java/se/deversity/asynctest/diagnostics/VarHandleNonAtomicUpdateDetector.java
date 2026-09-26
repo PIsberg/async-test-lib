@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -36,11 +35,18 @@ import java.util.concurrent.atomic.LongAdder;
  * of habit and loses the ordering it thought the {@code volatile} keyword gave it.
  *
  * <p><strong>Trust tier.</strong> The lost-update finding is a verdict, not a prompt: a
- * get-then-set on the same location by the same thread with no intervening atomic operation is
- * wrong under concurrency no matter how the surrounding code is synchronized — if a lock did
- * make it safe, the {@code VarHandle} is doing nothing the field access could not. The
- * plain-mode finding is a prompt at MEDIUM: external synchronization can supply the missing
- * ordering, and the report says so.
+ * get-then-set on a location more than one thread touches, with no intervening atomic operation
+ * and no lock common to every access, loses the write that lands between the two. Neither half
+ * of that condition is decoration. A get-then-set one thread keeps to itself has no write to
+ * lose, and one every thread performs inside the same critical section is atomic in effect: the
+ * {@code VarHandle} then buys nothing, which is worth a refactor and is not a bug. The
+ * plain-mode finding is a prompt at MEDIUM: external synchronization the detector cannot see can
+ * supply the missing ordering, and the report says so.
+ *
+ * <p>The lock the detector can see is the receiver's own monitor ({@code synchronized (holder)};
+ * for a static field there is no receiver to probe), a lock declared with
+ * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove. A lock it never saw leaves
+ * the finding standing.
  *
  * <p>The {@code varHandle} parameter is typed {@link Object} to match the rest of the detector
  * set, which keeps recording calls uniform and avoids a hard dependency on the handle's identity
@@ -89,13 +95,16 @@ public final class VarHandleNonAtomicUpdateDetector {
         VOLATILE
     }
 
-    private record Location(int handleId, int receiverId) { }
+    /**
+     * The handle and the receiver, both by identity. They used to be two identity hashes, so two
+     * receivers whose hashes collided shared one location, and one's reads paired with the
+     * other's writes.
+     */
+    private record Location(IdentityKey handle, @Nullable IdentityKey receiver) { }
 
-    private static final class State {
+    private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final Map<Long, String> pendingReadByThread = new ConcurrentHashMap<>();
-        final Set<String> threadNames = ConcurrentHashMap.newKeySet();
-        final Set<Long>   threadIds   = ConcurrentHashMap.newKeySet();
         final LongAdder lostUpdates = new LongAdder();
         final List<String> details  = new CopyOnWriteArrayList<>();
         final AtomicBoolean sawPlainAccess    = new AtomicBoolean();
@@ -121,7 +130,7 @@ public final class VarHandleNonAtomicUpdateDetector {
                           @Nullable String label, @Nullable Mode mode, @Nullable Thread thread) {
         State s = stateFor(varHandle, receiver, label);
         if (s == null || thread == null) return;
-        note(s, mode, thread, false);
+        note(s, guardOf(varHandle, receiver), mode, thread, false);
         s.pendingReadByThread.put(thread.threadId(), mode == null ? "PLAIN" : mode.name());
     }
 
@@ -139,7 +148,7 @@ public final class VarHandleNonAtomicUpdateDetector {
                           @Nullable String label, @Nullable Mode mode, @Nullable Thread thread) {
         State s = stateFor(varHandle, receiver, label);
         if (s == null || thread == null) return;
-        note(s, mode, thread, true);
+        note(s, guardOf(varHandle, receiver), mode, thread, true);
         String readMode = s.pendingReadByThread.remove(thread.threadId());
         if (readMode != null) {
             s.lostUpdates.increment();
@@ -165,13 +174,23 @@ public final class VarHandleNonAtomicUpdateDetector {
                                    @Nullable String label, @Nullable Thread thread) {
         State s = stateFor(varHandle, receiver, label);
         if (s == null || thread == null) return;
-        note(s, Mode.VOLATILE, thread, true);
+        note(s, guardOf(varHandle, receiver), Mode.VOLATILE, thread, true);
         s.pendingReadByThread.remove(thread.threadId());
     }
 
-    private static void note(State s, @Nullable Mode mode, Thread thread, boolean write) {
-        s.threadIds.add(thread.threadId());
-        s.threadNames.add(thread.getName());
+    /**
+     * {@return the object whose own monitor counts as guarding the location}: the receiver, so
+     * {@code synchronized (holder)} is recognised, or the handle itself for a static field, which
+     * nobody locks but which keeps declared and woven locks in play.
+     */
+    private static @Nullable Object guardOf(@Nullable Object varHandle, @Nullable Object receiver) {
+        return receiver != null ? receiver : varHandle;
+    }
+
+    private static void note(State s, @Nullable Object guard, @Nullable Mode mode, Thread thread,
+                             boolean write) {
+        // Probed on the calling thread; the explicit thread parameter is attribution only.
+        s.noteAccess(guard, write, thread);
         if (mode == null || mode == Mode.PLAIN) {
             s.sawPlainAccess.set(true);
             if (write) s.sawPlainWrite.set(true);
@@ -183,11 +202,12 @@ public final class VarHandleNonAtomicUpdateDetector {
     private @Nullable State stateFor(@Nullable Object varHandle, @Nullable Object receiver,
                                      @Nullable String label) {
         if (varHandle == null) return null;
-        Location key = new Location(System.identityHashCode(varHandle),
-                                    receiver == null ? 0 : System.identityHashCode(receiver));
+        Location key = new Location(new IdentityKey(varHandle),
+                                    receiver == null ? null : new IdentityKey(receiver));
         State s = locations.get(key);
         if (s == null) {
-            final String lbl = label != null ? label : "VarHandle@" + key.handleId();
+            final String lbl = label != null ? label
+                    : "VarHandle@" + System.identityHashCode(varHandle);
             s = locations.computeIfAbsent(key, k -> new State(lbl));
         }
         return s;
@@ -202,26 +222,31 @@ public final class VarHandleNonAtomicUpdateDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : locations.values()) {
+            // Both rules need the location shared and no one lock common to every access. A
+            // get-then-set one thread keeps to itself, or one every thread performs under the
+            // same monitor, has no write to lose and nothing to reorder.
+            if (!s.sharedAndUnguarded()) continue;
             long lost = s.lostUpdates.sum();
             if (lost > 0) {
                 StringBuilder msg = new StringBuilder(String.format(
                     "HIGH: '%s' was updated by %d non-atomic get-then-set sequence(s) through a "
                     + "VarHandle. A read and a write are two operations: a concurrent write "
                     + "landing between them is overwritten and lost. The access mode does not "
-                    + "help — setVolatile still publishes a value computed from a stale read.",
+                    + "help — setVolatile still publishes a value computed from a stale read"
+                    + SelfGuard.REPORT_NOTE + ".",
                     s.label, lost));
                 for (String d : s.details) msg.append("\n      * ").append(d);
                 add(r, s, IssueSeverity.HIGH, msg.toString());
             }
 
-            if (s.threadIds.size() > 1 && s.sawPlainAccess.get() && s.sawPlainWrite.get()) {
+            if (s.sawPlainAccess.get() && s.sawPlainWrite.get()) {
                 add(r, s, IssueSeverity.MEDIUM, String.format(
                     "MEDIUM: '%s' was accessed by %d threads (%s) using the plain VarHandle access "
                     + "mode, including at least one write.%s Plain get/set carries no ordering or "
                     + "visibility guarantee even when the underlying field is declared volatile, "
                     + "so a reader may never observe the write. Verify the accesses are ordered "
                     + "by something the detector cannot see before dismissing this.",
-                    s.label, s.threadIds.size(), String.join(", ", s.threadNames),
+                    s.label, s.threadCount(), String.join(", ", s.threadNames()),
                     s.sawOrderedAccess.get()
                         ? " Some accesses to the same location did use an ordered mode, which is"
                           + " the mixed-mode case: the guarantee is only as strong as the weakest"
@@ -239,7 +264,7 @@ public final class VarHandleNonAtomicUpdateDetector {
                 severity,
                 msg,
                 List.of(),
-                Map.of("label", s.label, "threadCount", s.threadIds.size()),
+                Map.of("label", s.label, "threadCount", s.threadCount()),
                 Instant.now()));
     }
 

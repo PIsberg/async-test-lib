@@ -59,7 +59,7 @@ public class SharedTimeZoneDetector {
         if (timeZone == null || thread == null) return;
         TzState s = timezones.computeIfAbsent(new IdentityKey(timeZone),
                 k -> new TzState());
-        s.noteAccess(timeZone);
+        s.noteAccess(timeZone, true, thread.threadId());
         if (s.firstOperation == null) s.firstOperation = operation != null ? operation : "mutate";
         s.mutatingThreadIds.add(thread.threadId());
         s.mutatingThreadNames.add(thread.getName());
@@ -71,7 +71,7 @@ public class SharedTimeZoneDetector {
     public SharedTimeZoneReport analyze() {
         SharedTimeZoneReport r = new SharedTimeZoneReport();
         for (TzState s : timezones.values()) {
-            if (s.mutatingThreadIds.size() > 1 && s.sawUnguardedAccess()) {
+            if (s.mutatingThreadIds.size() > 1 && s.sawUnguardedSharing()) {
                 r.violations.add(String.format(
                         "TimeZone instance mutated from %d threads (%s) via '%s' — "
                                 + "unsynchronized concurrent mutations corrupt date/time arithmetic"

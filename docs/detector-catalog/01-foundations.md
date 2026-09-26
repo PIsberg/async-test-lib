@@ -36,7 +36,7 @@ These detectors run automatically on every `@AsyncTest` without configuration.
 
 ### 2. Visibility & Memory Model Detector
 * **Severity**: `HIGH`
-* **Description**: Identifies fields updated across threads without a happens-before relationship (missing `volatile` or memory barrier).
+* **Description**: Reports a field whose recorded values diverged between threads within one round, which is what a stale read of a field published without a happens-before edge (missing `volatile` or memory barrier) looks like. It records values only, so a field that is meant to change, a correct `AtomicInteger` counter for one, looks the same; the finding is an observation, tier FACT since 1.12.3, not a verdict.
 * **Buggy Code**:
   ```java
   class FlagHolder {

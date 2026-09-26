@@ -49,10 +49,13 @@ locale is `sv-SE`, where `%f` produces comma decimals and breaks assertions.
 
 ## Severity
 
-Findings carry `diagnostics/IssueSeverity` markers embedded in report text, and
-`IssueSeverity.fromReport()` infers severity — **defaulting untagged reports to HIGH**. A report that
-should gate at a specific level must tag itself; a deadlock report says CRITICAL in its own text.
-Severity feeds the `failOn` gate.
+The `failOn` gate resolves a finding's severity in `DetectorDefaultSeverity.of(name, report,
+structured)`, in this order: per-finding grades (`GradedFindings`), the most severe severity in the
+report's public `structuredViolations` list, a `diagnostics/IssueSeverity` marker in the report
+text, the detector's entry in `DetectorDefaultSeverity`, and last **HIGH for anything else**. A
+detector that keeps `Violation`s states its severity there; one that does not must tag its text (a
+deadlock report says CRITICAL in its own text) or declare a default. `DetectorSeverityMarkerTest`
+fails the build for a detector that reaches the HIGH fallback.
 
 ## Tests are part of the change
 

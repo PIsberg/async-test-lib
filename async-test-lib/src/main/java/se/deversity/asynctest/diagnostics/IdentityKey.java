@@ -57,4 +57,46 @@ final class IdentityKey {
     public String toString() {
         return referent.getClass().getSimpleName() + "@" + Integer.toHexString(identityHash);
     }
+
+    /**
+     * The same identity comparison, holding its referent weakly.
+     *
+     * <p>For state that must not keep what it describes alive: an object the agent saw once and the
+     * code under test then dropped should not survive the run because a detector remembered it.
+     * Once the referent is collected the key equals only itself, which is what lets a map remove it
+     * after its {@link java.lang.ref.ReferenceQueue} reports it.
+     */
+    static final class Weak extends java.lang.ref.WeakReference<Object> {
+
+        private final int identityHash;
+
+        /**
+         * @param referent the tracked instance
+         * @param queue    where the key is enqueued once the referent is collected, or {@code null}
+         *                 for a lookup key that is never stored
+         */
+        Weak(Object referent,
+             java.lang.ref.@org.jspecify.annotations.Nullable ReferenceQueue<Object> queue) {
+            super(Objects.requireNonNull(referent, "referent"), queue);
+            this.identityHash = System.identityHashCode(referent);
+        }
+
+        @Override
+        @SuppressWarnings("ReferenceEquality") // referent identity is the point; see IdentityKey
+        public boolean equals(Object other) {
+            if (other == this) {
+                return true;
+            }
+            if (!(other instanceof Weak that)) {
+                return false;
+            }
+            Object mine = get();
+            return mine != null && mine == that.get();
+        }
+
+        @Override
+        public int hashCode() {
+            return identityHash;
+        }
+    }
 }

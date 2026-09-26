@@ -132,7 +132,7 @@ class InventoryServiceTest {
      * To see the detection:
      * 1. Remove @Disabled
      * 2. Run this test — it fails with a RaceConditionDetector finding naming the stock entry
-     *    as a write hotspot: "8 writes observed across 8 threads"
+     *    as a write hotspot: "written by 8 threads, 8 writes in all"
      * 3. Fix: replace reserveItem() with reserveItemFixed(), whose CAS loop makes the check and
      *    the update indivisible
      */

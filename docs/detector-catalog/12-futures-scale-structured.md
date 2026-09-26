@@ -77,7 +77,7 @@ Each stays silent on the correctly written twin — see [examples 139–142](../
 ### 139. Lambda Captured-State Lost Update
 * **Severity**: `HIGH`
 * **Trust tier**: **fact** — fires only where two threads were observed reading the same pre-value *and* the recorded updates admit no serial order at all; stays silent when every recorded update held one monitor.
-* **Description**: Detects proven lost updates to a lambda's captured state. A lambda captures the container, not a copy, so the `int[] counter = {0}` workaround for effectively-final leaves the contents as shared as any field. Where `STATEFUL_LAMBDA` reports the shape — ran on several threads, mutated a capture — and therefore fires identically on a correctly locked counter, this one compares the values the threads observed, and needs two things: two threads read the same value before writing back, and the recorded updates cannot be laid end to end as one serial chain (a value read twice more than it was written back was read after it had already been replaced). The second condition is what keeps a value that merely came round again from being reported: a flag toggled under a `ReentrantLock`, or a wrapping counter on `updateAndGet`, shows the same pre-value on two threads, and a same pre-value alone is not proof. The count it reports is the minimum number of lost writes consistent with the recorded values ("lost at least N"), never a sum over collision groups, which would assume an order the detector never saw. `incrementAndGet()` gives each thread a distinct pre-value and is silent; so is a consistently held monitor, sampled with `Thread.holdsLock`. Inconsistent guarding, or two different monitors, is still reported, and the message says which.
+* **Description**: Detects proven lost updates to a lambda's captured state. A lambda captures the container, not a copy, so the `int[] counter = {0}` workaround for effectively-final leaves the contents as shared as any field. Where `STATEFUL_LAMBDA` reports the shape — ran on several threads, mutated a capture — and therefore fires identically on a correctly locked counter, this one compares the values the threads observed, and needs two things inside one invocation round: two threads read the same value before writing back, and the recorded updates cannot be laid end to end as one serial chain (a value read twice more than it was written back was read after it had already been replaced). The second condition is what keeps a value that merely came round again from being reported: a flag toggled under a `ReentrantLock`, or a wrapping counter on `updateAndGet`, shows the same pre-value on two threads, and a same pre-value alone is not proof. The count it reports is the minimum number of lost writes consistent with the recorded values ("lost at least N"), never a sum over collision groups, which would assume an order the detector never saw. `incrementAndGet()` gives each thread a distinct pre-value and is silent; so is a consistently held monitor, sampled with `Thread.holdsLock`. Inconsistent guarding, or two different monitors, is still reported, and the message says which.
 * **Buggy Code**:
   ```java
   int[] hits = {0};
@@ -130,8 +130,8 @@ detectors cannot see because they were written when the thread count was the poo
   ```
 
 ### 141. Virtual Thread Monitor Serialization
-* **Severity**: `HIGH`
-* **Trust tier**: **fact** — peak number of *virtual* threads queued at once and the number of distinct virtual waiters, both counts; a critical section nobody queues on is silent, and so is a queue that platform threads made.
+* **Severity**: `MEDIUM`
+* **Trust tier**: **advisory** — peak number of *virtual* threads queued at once and the number of distinct virtual waiters, both counts; a critical section nobody queues on is silent, and so is a queue that platform threads made. Correct `synchronized` code under contention, which `@AsyncTest` creates on purpose, queues the same way, so the finding is a throughput note and the report says it is not a correctness finding.
 * **Description**: Detects a monitor serialising a large virtual-thread fan-out — the hazard JEP 491 left behind. Before JDK 24 a blocking `synchronized` pinned its virtual thread to a carrier and `VIRTUAL_THREAD_PINNING` reported it; that detector now correctly marks monitor events obsolete from JDK 24 on. The throughput limit did not go with the pinning: `synchronized` still admits one thread at a time, and with the pool gone nothing bounds how many arrive. It is easy to miss precisely because the fix landed, since a JDK 24 upgrade reads as "the pinning warnings went away". The report states which side of JDK 24 it is on and points at the pinning detector below it. The count compared against the threshold is the peak number of virtual threads queued at once, so a queue that platform threads made, with a virtual thread or two passing through at other moments, is `LOCK_CONTENTION`'s finding and not this one. `LOCK_CONTENTION` cannot make this call the other way — it has no notion of a virtual thread.
 * **Buggy Code**:
   ```java
@@ -150,7 +150,7 @@ detectors cannot see because they were written when the thread count was the poo
 
 ### 142. ThreadLocal Cache Degradation
 * **Severity**: `MEDIUM`
-* **Trust tier**: **fact** — distinct instances counted by identity; a shared value, a pooled helper and platform-only usage are all silent.
+* **Trust tier**: **prompt** — distinct instances are counted by identity, and a shared value, a pooled helper and platform-only usage are all silent, but the finding is a threshold of four instances, so its evidence class is `HEURISTIC`.
 * **Description**: Detects a `ThreadLocal` that was a cache under a pool and became an allocator under virtual threads. `ThreadLocal<SimpleDateFormat>` is the standard answer to a helper that is not thread-safe, and on a pool it is a good one: eight workers means eight formatters for the life of the process, bounded by the pool, which is why nobody counts them. A thread per task means an instance per task, retained for that thread's life. Nothing fails — the object is still confined to one thread — so the code reads exactly as it did when it was a cache. Distinct from `VIRTUAL_THREAD_CONTEXT_LEAKS`, which counts distinct ThreadLocal *keys* per thread; here there is one key and the question is how many *instances* it produced.
 * **Buggy Code**:
   ```java
@@ -181,7 +181,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 
 ### 143. Scope Joiner Misuse
 * **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` by finding
-* **Trust tier**: **fact** — every finding is a recorded count: scopes bound, threads overlapping in `onComplete`, calls seen off the owner thread.
+* **Trust tier**: **prompt** — every finding is a recorded count: scopes bound, threads overlapping in `onComplete`, calls seen off the owner thread. The overlapping `onComplete` finding counts writer threads with no lock context, so a joiner guarded by its own lock draws it too: `CONTEXT_FREE`.
 * **Description**: Detects misuse of the `StructuredTaskScope.Joiner` contract. A joiner is called from two directions at once: `onComplete` runs on whichever subtask thread finished, concurrently with its peers, while `result()` and the JDK 26 `onTimeout()` run on the owner. A joiner accumulating into a plain `ArrayList` is a data race no amount of correct scope usage removes. JEP 525's `onTimeout()` makes it worse by design — returning a partial result is now the recommended pattern, so an accumulator that used to be discarded on timeout is now read while cancelled subtasks are still writing to it. Also flags a joiner reused across scopes (it carries the previous run's state), and forking after `onComplete` asked for the short-circuit.
 * **Buggy Code**:
   ```java
@@ -210,7 +210,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 
 ### 144. Scope Configuration Misuse
 * **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` by finding
-* **Trust tier**: **fact** — requested settings are compared against effective ones, and scope lifetimes are ordered by a sequence counter rather than the clock.
+* **Trust tier**: **prompt** — requested settings are compared against effective ones, and scope lifetimes are ordered by a sequence counter rather than the clock, but the unbounded fan-out finding is a threshold of 16 forks, so its evidence class is `HEURISTIC`.
 * **Description**: Detects misuse of the `UnaryOperator<Configuration>` lambda JEP 525 introduced in place of the scope constructors. `Configuration` is immutable and every `withX` returns a new instance, so a lambda that does not hand back the value it derived from its own parameter applies nothing — the scope silently has no deadline, and one hung subtask hangs the test forever. Also flags a non-positive timeout (the timeout path becomes the only path), a wide fan-out with no deadline at all, a scope whose every `join()` expired, one `ThreadFactory` configured on scopes that are alive at the same time, and duplicate `withName` values among live scopes.
 * **Buggy Code**:
   ```java
@@ -264,7 +264,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 
 ### 146. Lazy Collection Misuse
 * **Severity**: `CRITICAL` / `HIGH` / `LOW` by finding
-* **Trust tier**: **fact** — computations, values and dependency edges are all recorded; the cycle finding is a walk over edges that were actually observed.
+* **Trust tier**: **prompt** — computations, values and dependency edges are all recorded, and the cycle finding is a walk over edges that were actually observed, but the convoy finding is a threshold of four waiters, so its evidence class is `HEURISTIC`.
 * **Description**: Detects misuse of `List.ofLazy(size, fn)` and `Map.ofLazy(keys, fn)`, the lazy collections JEP 526 added beside `LazyConstant`. Where `LAZY_CONSTANT_MISUSE` covers one holder with one supplier, a lazy collection is *n* independent at-most-once computations sharing one mapping function, each running on whichever thread asked for that element first. That makes possible a failure a single constant cannot have: a mapping function that reaches back into its own collection couples two elements, and if the dependency runs both ways, two threads each hold one element and wait for the other — a deadlock the JDK breaks with `IllegalStateException` when the cycle is on one thread, and does not break when it is spread across two. Also flags a mapping function that ran twice, disagreed with itself, or returned `null` (which JDK 26 rejects), plus warnings for nested computation and for many readers queueing on one slow element.
 * **Buggy Code**:
   ```java

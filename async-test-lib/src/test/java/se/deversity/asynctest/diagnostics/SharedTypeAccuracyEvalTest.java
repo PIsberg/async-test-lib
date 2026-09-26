@@ -202,7 +202,7 @@ class SharedTypeAccuracyEvalTest {
                         + "\n\nDecide which they are. If the finding claims that unsynchronized "
                         + "access corrupts the instance, extend SelfGuard.TrackedInstance in the "
                         + "detector's state class, call noteAccess(instance) on the record path, "
-                        + "gate analyze() on sawUnguardedAccess(), and add the detector here to "
+                        + "gate analyze() on sawUnguardedSharing(), and add the detector here to "
                         + "GUARD_ON_SELF_AWARE. If the type is thread-safe and the finding is "
                         + "about contention, add it to CONTENTION_NOTE_BY_DESIGN with the reason. "
                         + "Update docs/analysis/detector-accuracy-eval.md either way, so the "
@@ -301,7 +301,77 @@ class SharedTypeAccuracyEvalTest {
                         + "the same something.");
     }
 
+    @Test
+    @DisplayName("one thread per round, a fresh thread each round, is not sharing")
+    void oneThreadPerRoundIsNotSharing() {
+        List<String> stillFires = new ArrayList<>();
+        List<String> wronglySilent = new ArrayList<>();
+
+        cases().forEach((name, factory) -> {
+            if (!GUARD_ON_SELF_AWARE.contains(name)) {
+                return;
+            }
+            // Rounds are what the runner orders: every worker of one has finished before the
+            // next starts. With virtual threads each body execution is a fresh thread, so this
+            // is the default shape of a run that never shares the instance within a round.
+            Probe apart = factory.get();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            for (int round = 0; round < 3; round++) {
+                scope.markInvocationStart();
+                onOneThread(inScope(scope, () -> apart.access().accept(false)));
+            }
+            if (apart.hasIssues().getAsBoolean()) {
+                stillFires.add(name);
+            }
+
+            // The other direction, in the same kind of scope: two threads in one round.
+            Probe together = factory.get();
+            SelfGuard.Scope shared = new SelfGuard.Scope();
+            shared.markInvocationStart();
+            onTwoThreads(inScope(shared, () -> together.access().accept(false)));
+            if (!together.hasIssues().getAsBoolean()) {
+                wronglySilent.add(name);
+            }
+        });
+
+        assertTrue(stillFires.isEmpty(),
+                "One thread per round used the instance, a different thread each round, and the "
+                        + "runner orders rounds, so no two accesses overlapped. These detectors "
+                        + "reported sharing anyway:\n  "
+                        + String.join("\n  ", stillFires)
+                        + "\n\nA detector here is deciding on a thread set or a lockset carried "
+                        + "across rounds. Gate analyze() on sawUnguardedSharing().");
+        assertTrue(wronglySilent.isEmpty(),
+                "Two threads shared the instance within one round, unguarded, and these went "
+                        + "silent:\n  "
+                        + String.join("\n  ", wronglySilent));
+    }
+
     // ---- harness ----
+
+    /** {@return {@code body} with {@code scope} bound around it, as a run's worker has it} */
+    private static Runnable inScope(SelfGuard.Scope scope, Runnable body) {
+        return () -> {
+            SelfGuard.Scope.bind(scope);
+            try {
+                body.run();
+            } finally {
+                SelfGuard.Scope.unbind();
+            }
+        };
+    }
+
+    /** Runs {@code body} on one freshly started thread and waits for it. */
+    private static void onOneThread(Runnable body) {
+        Thread t = new Thread(body, "shared-eval-round");
+        t.start();
+        try {
+            t.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
 
     /** Runs {@code body} on two freshly started threads released together by a barrier. */
     private static void onTwoThreads(Runnable body) {

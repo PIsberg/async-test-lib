@@ -3,6 +3,7 @@ package se.deversity.asynctest.example.service;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * A lock-free stack implemented with a linked list, CAS operations and a node free list.
@@ -27,9 +28,10 @@ import java.util.function.BiConsumer;
  * Or stop recycling nodes and let the garbage collector do what it is for.
  *
  * <p>INSTRUMENTATION: ABAProblemDetector is recording-fed and reasons about a history of
- * values, so it has to be told what the head was and what it became, at each successful CAS.
- * The two hooks below are plain BiConsumers that default to no-ops, so the production path
- * never touches the test library. This is the seam, not the bug.
+ * values, so it has to be told what the head was and what it became, at each successful CAS,
+ * and which head each pop read before its CAS. The hooks below are plain functional
+ * interfaces that default to no-ops, so the production path never touches the test library.
+ * This is the seam, not the bug.
  *
  * @param <T> the element type
  */
@@ -48,6 +50,8 @@ public class LockFreeStack<T> {
     private volatile BiConsumer<Object, Object> onHeadChange = (from, to) -> { };
 
     private volatile BiConsumer<Object, Object> onPopCas = (expected, updated) -> { };
+
+    private volatile Consumer<Object> onPopRead = observed -> { };
 
     /**
      * Push a value onto the stack, reusing a recycled node when one is available.
@@ -88,6 +92,7 @@ public class LockFreeStack<T> {
             if (observed == null) {
                 return null;
             }
+            onPopRead.accept(observed);
             next = observed.next;
             // ABA window: another thread can swing head away and back between here and the CAS.
         } while (!head.compareAndSet(observed, next));
@@ -118,5 +123,15 @@ public class LockFreeStack<T> {
     public void observeHead(BiConsumer<Object, Object> onChange, BiConsumer<Object, Object> onPop) {
         this.onHeadChange = onChange;
         this.onPopCas = onPop;
+    }
+
+    /**
+     * Installs the hook that reports the head a pop has just read and will expect in its CAS:
+     * the start of the ABA window. No-op by default.
+     *
+     * @param onRead called in pop() right after the head is read, on the popping thread
+     */
+    public void observePopReads(Consumer<Object> onRead) {
+        this.onPopRead = onRead;
     }
 }

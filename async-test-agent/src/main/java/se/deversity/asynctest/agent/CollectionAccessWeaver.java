@@ -552,10 +552,19 @@ final class CollectionAccessWeaver {
             Entry.staticCall(System.class, "gc", "gc"));
 
     /**
-     * The thread table: {@link Thread#start()} and {@link Thread#setDaemon(boolean)}.
+     * The thread table: {@link Thread#start()}, {@link Thread#join()} and
+     * {@link Thread#setDaemon(boolean)}.
+     *
+     * <p>Every {@code join} overload is {@code final} on {@code Thread}, so the call site names the
+     * method whatever type it was compiled against. The joins exist for the happens-before model:
+     * a returned join orders the finished thread before the joiner.
      */
     private static final List<Entry> THREAD_ENTRIES = List.of(
             Entry.call(Thread.class, "start", "threadStart"),
+            Entry.call(Thread.class, "join", "threadJoin"),
+            Entry.call(Thread.class, "join", "threadJoin", long.class),
+            Entry.call(Thread.class, "join", "threadJoin", long.class, int.class),
+            Entry.call(Thread.class, "join", "threadJoin", Duration.class),
             Entry.call(Thread.class, "setDaemon", "threadSetDaemon", boolean.class));
 
     /**

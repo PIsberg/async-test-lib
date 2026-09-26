@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
+import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
@@ -13,6 +14,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,17 +36,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * A new detector that writes no marker fails here, and every detector that gains one lets the
  * baseline drop.
  *
- * <p><strong>This is a heuristic over source text, and says so.</strong> It cannot see a severity
- * set through a helper or a base class, so a detector counted as unmarked may in fact set one.
- * That direction is safe: it makes the baseline larger than the true figure, and the ratchet still
- * only ever moves down. The authoritative measurement would drive every detector to a report and
- * check what {@code fromReport} returns, which needs the fixture coverage tracked in #293.
+ * <p><strong>What counts as stating a severity</strong> is what the gate reads, in the order
+ * {@code DetectorDefaultSeverity.of(String, String, IssueSeverity)} reads it: per-finding grades
+ * ({@code GradedFindings}), then the severities in the report's structured findings (a public
+ * {@code structuredViolations} field, read by {@code DetectorDefaultSeverity.structuredIn}), then a
+ * marker in the report text. The first two are checked on the report type by reflection. Only the
+ * text marker is a heuristic over source.
+ *
+ * <p>The marker heuristic used to accept any occurrence of {@code IssueSeverity.} in the source.
+ * That string also appears where a detector builds its structured {@code Violation}, which the gate
+ * did not read at the time, so {@code ThreadLocalCacheDegradationDetector}, whose only severity was
+ * {@code MEDIUM} inside a {@code Violation}, passed here while the gate ranked it {@code HIGH}. The
+ * text markers below are now only the ones that end up in the report: a label or format call, a
+ * bracketed or {@code Severity:} token, or an emoji.
+ *
+ * <p>The text heuristic still cannot see a severity set through a helper or a base class, so a
+ * detector counted as unmarked may in fact set one. That direction is safe: the ratchet only ever
+ * moves down. The authoritative measurement would drive every detector to a report and check what
+ * the gate resolves, which needs the fixture coverage tracked in #293.
  */
 class DetectorSeverityMarkerTest {
 
-    /** The ways this codebase's detectors render a severity that {@code fromReport} recognises. */
+    /** The ways this codebase's detectors render a severity into report text that the gate recognises. */
     private static final List<String> MARKERS = List.of(
-            "IssueSeverity.", "getLabel()", "[CRITICAL]", "[HIGH]", "[MEDIUM]", "[LOW]",
+            "getLabel()", ".format()", "[CRITICAL]", "[HIGH]", "[MEDIUM]", "[LOW]",
             "Severity: ", "🔴", "🟠", "🟡", "🟢");
 
     @Test
@@ -52,7 +67,7 @@ class DetectorSeverityMarkerTest {
     void noDetectorFallsThroughToTheDefault() {
         List<String> silent = new ArrayList<>();
         for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            if (!hasMarker(row.detectorClass()) && DetectorDefaultSeverity.of(row.type()).isEmpty()) {
+            if (!statesItsOwnSeverity(row.detectorClass()) && DetectorDefaultSeverity.of(row.type()).isEmpty()) {
                 silent.add(row.detectorClass());
             }
         }
@@ -62,7 +77,8 @@ class DetectorSeverityMarkerTest {
                         + "failOn = HIGH merge gate as though it proved data corruption. That was "
                         + "true of 86 of the 142 detectors of the day, and is the defect "
                         + "DetectorDefaultSeverity closed. "
-                        + "Either open the report with IssueSeverity.<LEVEL>.getLabel() or add an "
+                        + "Either keep the findings as Violations in a public structuredViolations "
+                        + "field, open the report with IssueSeverity.<LEVEL>.getLabel(), or add an "
                         + "entry to DetectorDefaultSeverity. Silent: " + silent);
     }
 
@@ -71,7 +87,7 @@ class DetectorSeverityMarkerTest {
     void declaredDefaultsDoNotShadowADetectorsOwnSeverity() {
         List<String> redundant = new ArrayList<>();
         for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            if (hasMarker(row.detectorClass()) && DetectorDefaultSeverity.of(row.type()).isPresent()) {
+            if (statesItsOwnSeverity(row.detectorClass()) && DetectorDefaultSeverity.of(row.type()).isPresent()) {
                 redundant.add(row.detectorClass());
             }
         }
@@ -96,6 +112,44 @@ class DetectorSeverityMarkerTest {
                 "An ADVISORY-tier detector makes a performance or hygiene note. Declaring it "
                         + "CRITICAL or HIGH would put a finding that says nothing about correctness "
                         + "into the same bucket as a lost update: " + overclaiming);
+    }
+
+    /** Whether the gate can learn this detector's severity from the detector, without the table. */
+    private static boolean statesItsOwnSeverity(String detectorClass) {
+        return reportTypes(detectorClass).stream().anyMatch(type ->
+                GradedFindings.class.isAssignableFrom(type) || hasStructuredViolations(type))
+                || hasMarker(detectorClass);
+    }
+
+    /** The types the detector's public no-argument methods return that answer {@code hasIssues()}. */
+    private static List<Class<?>> reportTypes(String detectorClass) {
+        Class<?> detector;
+        try {
+            detector = Class.forName("se.deversity.asynctest.diagnostics." + detectorClass);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("DetectorTrust names " + detectorClass
+                    + ", which is not a class in the diagnostics package", e);
+        }
+        List<Class<?>> types = new ArrayList<>();
+        for (Method method : detector.getMethods()) {
+            if (method.getParameterCount() != 0) continue;
+            try {
+                method.getReturnType().getMethod("hasIssues");
+                types.add(method.getReturnType());
+            } catch (NoSuchMethodException notAReport) {
+                // any other accessor
+            }
+        }
+        return types;
+    }
+
+    private static boolean hasStructuredViolations(Class<?> reportType) {
+        try {
+            return List.class.isAssignableFrom(
+                    reportType.getField(DetectorDefaultSeverity.STRUCTURED_FIELD).getType());
+        } catch (NoSuchFieldException absent) {
+            return false;
+        }
     }
 
     private static boolean hasMarker(String detectorClass) {

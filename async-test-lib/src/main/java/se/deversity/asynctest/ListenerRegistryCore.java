@@ -125,6 +125,10 @@ final class ListenerRegistryCore {
     }
 
     void fireDetectorReport(String detectorName, String report) {
+        fireDetectorReport(detectorName, report, null);
+    }
+
+    void fireDetectorReport(String detectorName, String report, @Nullable IssueSeverity structuredSeverity) {
         // One read of the field, used for the emptiness check and the walk both: reading it twice
         // could skip the work for an empty set and then iterate a non-empty one, or the reverse.
         List<AsyncTestListener> current = listeners;
@@ -133,7 +137,7 @@ final class ListenerRegistryCore {
         if (current.isEmpty()) {
             return;
         }
-        IssueSeverity severity = DetectorDefaultSeverity.of(detectorName, report);
+        IssueSeverity severity = DetectorDefaultSeverity.of(detectorName, report, structuredSeverity);
         Violation violation = toViolation(detectorName, severity, report);
         for (AsyncTestListener listener : current) {
             guarded("onDetectorReport", () -> listener.onDetectorReport(detectorName, report));

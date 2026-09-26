@@ -83,8 +83,10 @@ public final class AtomicSpinLockTableBean {
     }
 
     /** The twin: an observed acquire, a {@code compareAndExchange} release, then an unguarded write. */
-    public int growBooleanThenWriteAfterUnobservedRelease() {
+    public boolean growBooleanThenWriteAfterUnobservedRelease() {
+        boolean won = false;
         if (busy.compareAndSet(false, true)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -92,12 +94,14 @@ public final class AtomicSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        return length(afterRelease);
+        return afterRelease != null && won;
     }
 
     /** The twin: an observed acquire, a {@code decrementAndGet} release, then an unguarded write. */
-    public int growIntegerThenWriteAfterUnobservedRelease() {
+    public boolean growIntegerThenWriteAfterUnobservedRelease() {
+        boolean won = false;
         if (intBusy.compareAndSet(0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -105,7 +109,7 @@ public final class AtomicSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        return length(afterRelease);
+        return afterRelease != null && won;
     }
 
     /** {@code compareAndSet(0, 1)} on an {@code AtomicInteger}, released by {@code decrementAndGet()} (#658). */
@@ -157,8 +161,10 @@ public final class AtomicSpinLockTableBean {
     }
 
     /** The twin: a {@code setPlain(false)} release (woven since #667), then an unguarded write. */
-    public int growBooleanThenWriteAfterSetPlain() {
+    public boolean growBooleanThenWriteAfterSetPlain() {
+        boolean won = false;
         if (busy.compareAndSet(false, true)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -166,12 +172,14 @@ public final class AtomicSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        return length(afterRelease);
+        return afterRelease != null && won;
     }
 
     /** The twin: an {@code updateAndGet} release (woven since #667), then an unguarded write. */
-    public int growIntegerThenWriteAfterUpdateAndGet() {
+    public boolean growIntegerThenWriteAfterUpdateAndGet() {
+        boolean won = false;
         if (intBusy.compareAndSet(0, 1)) {
+            won = true;
             try {
                 table = next(table);
             } finally {
@@ -179,7 +187,7 @@ public final class AtomicSpinLockTableBean {
             }
             afterRelease = next(afterRelease);
         }
-        return length(afterRelease);
+        return afterRelease != null && won;
     }
 
     private static int length(Object[] seen) {

@@ -392,4 +392,76 @@ class LambdaLostUpdateDetectorTest {
         assertTrue(rendered.contains("counter"));
         assertTrue(rendered.contains("Fix:"));
     }
+
+    /**
+     * Two lambdas whose identity hashes collide are two lambdas. Keyed by the bare hash plus the
+     * captured name, each one's single update landed in one capture, where two threads reading
+     * the same pre-value read as a lost write that no single lambda ever made.
+     */
+    @Test
+    void lambdasSharingAnIdentityHashAreNotMergedIntoALostUpdate() {
+        var d = new LambdaLostUpdateDetector();
+        java.util.List<Object> colliding = IdentityCollisions.pair(Object::new);
+        Thread one = new Thread(() -> { }, "one");
+        Thread two = new Thread(() -> { }, "two");
+
+        d.recordReadModifyWrite(colliding.get(0), "counter", 0, 1, one);
+        d.recordReadModifyWrite(colliding.get(1), "counter", 0, 1, two);
+
+        assertFalse(d.analyze().hasIssues(),
+                "each lambda made one update from its own starting value: " + d.analyze());
+    }
+
+    /**
+     * Two monitors whose identity hashes collide are two monitors. Keyed by the bare hash, updates
+     * that each held a different one read as consistently guarded by one lock, and a lost update
+     * that no lock prevented went unreported.
+     */
+    @Test
+    void updatesUnderTwoMonitorsSharingAnIdentityHashAreNotConsistentlyGuarded() {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+        java.util.List<Object> guards = IdentityCollisions.pair(Object::new);
+        Thread one = new Thread(() -> { }, "one");
+        Thread two = new Thread(() -> { }, "two");
+
+        synchronized (guards.get(0)) {
+            d.recordReadModifyWrite(task, "counter", 0, 1, guards.get(0), one);
+        }
+        synchronized (guards.get(1)) {
+            d.recordReadModifyWrite(task, "counter", 0, 1, guards.get(1), two);
+        }
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "two different monitors serialise nothing between them");
+        assertTrue(report.toString().contains("2 different monitors"), report.toString());
+    }
+
+    /**
+     * A body that resets the captured value and updates it once reads the same pre-value in every
+     * round, on a different thread each time. The runner joins one round before the next, so
+     * those updates are a serial history, not a lost write.
+     */
+    @Test
+    void theSamePreValueReadInDifferentRoundsIsNotALostUpdate() {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "round-1"));
+        d.markInvocationStart();
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "round-2"));
+
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
+
+    /** The same two updates inside one round lost a write. */
+    @Test
+    void theSamePreValueReadByTwoThreadsInOneRoundIsALostUpdate() {
+        var d = new LambdaLostUpdateDetector();
+        var task = lambda();
+        d.markInvocationStart();
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "worker-1"));
+        d.recordReadModifyWrite(task, "counter", 0, 1, new Thread(() -> { }, "worker-2"));
+
+        assertTrue(d.analyze().hasIssues());
+    }
 }
