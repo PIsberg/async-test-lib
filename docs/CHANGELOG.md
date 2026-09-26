@@ -197,6 +197,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were read under: the failed optimistic stamp reports, once per read; the read-lock stamp of a
   re-read, or a stamp that validated, stays silent. A use with no `validate()` at all is still the
   one never-validated finding.
+- **`OptimisticReadValidationDetector` judges a use against the latest `validate()` of its stamp
+  (#795).** A read that validated was dropped at once, so when a revalidation of the same stamp
+  failed after a writer landed, and the caller used the values anyway, nothing was reported. The
+  read is now kept with its latest outcome: validate-ok, validate-fail, use reports once, while a
+  revalidation that still passes, and a re-read under the read lock after the failure, stay
+  silent. A `true` recorded after a `false` for the same stamp now counts as the latest outcome
+  and silences a later use; a real `StampedLock` never returns that, since a failed stamp stays
+  failed.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
