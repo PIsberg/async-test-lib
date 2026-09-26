@@ -239,9 +239,9 @@ public class StringBuilderDetector {
                         state.name, errors, touchingThreads));
             }
 
-            report.builderActivity.put(state.name, String.format(
-                    "writes: %d from %d thread(s), reads: %d, errors: %d",
-                    writes, mutators, reads, errors));
+            report.builderActivity.add(String.format(
+                    "%s: writes: %d from %d thread(s), reads: %d, errors: %d",
+                    state.name, writes, mutators, reads, errors));
         }
 
         return report;
@@ -257,7 +257,11 @@ public class StringBuilderDetector {
         int totalBuilders = 0;
         final java.util.List<String> sharedBuilderViolations = new java.util.ArrayList<>();
         final java.util.List<String> builderErrors           = new java.util.ArrayList<>();
-        final Map<String, String>    builderActivity         = new ConcurrentHashMap<>();
+        /**
+         * One line per builder object, named but not keyed by the name: two builders may share
+         * a name, and filed under it the second one's line overwrote the first's (#789).
+         */
+        final java.util.List<String> builderActivity         = new java.util.ArrayList<>();
 
         /**
          * Returns {@code true} when shared-mutation or errors were detected.
@@ -289,8 +293,8 @@ public class StringBuilderDetector {
 
             if (!builderActivity.isEmpty()) {
                 sb.append("  Builder Activity:\n");
-                for (Map.Entry<String, String> e : builderActivity.entrySet()) {
-                    sb.append("    - ").append(e.getKey()).append(": ").append(e.getValue()).append("\n");
+                for (String activity : builderActivity) {
+                    sb.append("    - ").append(activity).append("\n");
                 }
             }
 

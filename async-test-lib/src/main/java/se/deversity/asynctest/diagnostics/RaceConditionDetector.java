@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +17,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.report.Violation;
 
 /**
  * Detects potential race conditions by tracking cross-thread field accesses.
@@ -34,7 +36,8 @@ import org.jspecify.annotations.Nullable;
  * child ordered by {@code Thread.start} and {@code join}. The edges come from the agent's woven
  * calls or from the test declaring them through {@link HappensBefore}; this detector adds one of
  * its own, for a field the tracked object's class declares {@code volatile}: a recorded write
- * releases the object, a recorded read acquires it, and two reads or a read and a write of that
+ * releases that field of the object, a recorded read of the same field acquires it (a read of
+ * another volatile field acquires nothing, #742), and two reads or a read and a write of that
  * field are never a race, since volatile accesses are synchronization. Two threads writing it
  * still are, which is what keeps {@code volatile count++} a finding. Record a volatile write
  * before making it and a volatile read after making it, so that the release precedes every read
@@ -250,16 +253,17 @@ public class RaceConditionDetector {
             field.firstWrite = SiteCapture.capture().orElse(null);
         }
         if (field.volatileField && !write) {
-            // A volatile read receives what the writes before it published. Recorded after the
-            // read it describes, so the acquire comes after the value was actually seen.
-            HappensBefore.acquire(object);
+            // A volatile read receives what the writes of the same field before it published,
+            // and nothing another volatile field's write did (#742). Recorded after the read it
+            // describes, so the acquire comes after the value was actually seen.
+            HappensBefore.acquireVolatile(object, fieldName);
         }
         // Stamp before enqueueing and before any release below: the record order is what the
         // analysis replays, and it must agree with the order the clocks describe.
         field.accesses.add(new FieldAccess(Thread.currentThread().threadId(), write,
                 invocationEpoch.get(), locks, HappensBefore.current()));
         if (field.volatileField && write) {
-            HappensBefore.release(object);
+            HappensBefore.releaseVolatile(object, fieldName);
         }
     }
     /**
@@ -375,7 +379,7 @@ public class RaceConditionDetector {
 
         if (writers.size() > 1 && !allWritesGuarded
                 && !HappensBefore.everyConflictOrdered(accesses, false)) {
-            report.potentialRaces.add(String.format(Locale.ROOT,
+            report.add(report.potentialRaces, "concurrentWrites", site, String.format(Locale.ROOT,
                 "%s: written by %d threads, %d writes in all%s",
                 fieldRef, writers.size(), writeCount,
                 site == null ? "" : ", first at " + site.render()
@@ -384,7 +388,7 @@ public class RaceConditionDetector {
 
         FieldAccess[] pair = firstRacingPair(accesses, readsConflict);
         if (pair.length == 2) {
-            report.unsafeAccesses.add(String.format(Locale.ROOT,
+            report.add(report.unsafeAccesses, "unsynchronizedSequence", site, String.format(Locale.ROOT,
                 "%s: thread %d %s followed by thread %d %s",
                 fieldRef,
                 pair[0].threadId,
@@ -523,6 +527,19 @@ public class RaceConditionDetector {
         public final Set<String> unsafeAccesses = new HashSet<>();
         /** Fields accessed from more than one thread without synchronization. */
         public final Set<String> potentialRaces = new HashSet<>();
+        /**
+         * The same findings as {@link Violation}s, each {@code HIGH}: the severity the text has
+         * always marked, stated where the {@code failOn} gate reads first.
+         */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a finding to its text set and, when it is new there, as a structured finding. */
+        void add(Set<String> section, String kind, SiteCapture.@Nullable Site site, String message) {
+            if (section.add(message)) {
+                structuredViolations.add(new Violation("RaceConditions", IssueSeverity.HIGH, message,
+                        site == null ? List.of() : List.of(site), Map.of("kind", kind), Instant.now()));
+            }
+        }
 
         /**
          * {@return whether there are issues}

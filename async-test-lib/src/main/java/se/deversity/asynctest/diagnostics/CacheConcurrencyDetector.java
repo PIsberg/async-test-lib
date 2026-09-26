@@ -253,8 +253,9 @@ public class CacheConcurrencyDetector {
 
             // Track thread activity
             if (!state.readerThreads.isEmpty() || !state.writerThreads.isEmpty()) {
-                report.threadActivity.put(state.name, String.format(
-                    "%d reader threads, %d writer threads",
+                report.threadActivity.add(String.format(
+                    "%s: %d reader threads, %d writer threads",
+                    state.name,
                     state.readerThreads.size(),
                     state.writerThreads.size()));
             }
@@ -296,7 +297,11 @@ public class CacheConcurrencyDetector {
         final java.util.List<String> concurrentReadWrite = new java.util.ArrayList<>();
         final java.util.List<String> iterationDuringModification = new java.util.ArrayList<>();
         final java.util.List<String> cacheStampede = new java.util.ArrayList<>();
-        final Map<String, String> threadActivity = new ConcurrentHashMap<>();
+        /**
+         * One line per cache object, named but not keyed by the name: two caches may
+         * share a name, and filed under it the second one's line overwrote the first's (#789).
+         */
+        final java.util.List<String> threadActivity = new java.util.ArrayList<>();
 
         /**
          * Check if any issues were detected.
@@ -341,8 +346,8 @@ public class CacheConcurrencyDetector {
 
             if (!threadActivity.isEmpty()) {
                 sb.append("  Thread Activity:\n");
-                for (Map.Entry<String, String> entry : threadActivity.entrySet()) {
-                    sb.append("    - ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+                for (String activity : threadActivity) {
+                    sb.append("    - ").append(activity).append("\n");
                 }
             }
 

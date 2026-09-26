@@ -140,7 +140,7 @@ public class ConcurrentMapComputeRecursionDetector {
                 "Thread '%s': recursive compute*()/merge() on %s for key '%s' - the nested "
                 + "mapping function was entered, so the outer call's return value overwrites "
                 + "what it stored and that update is lost with nothing thrown",
-                thread.getName(), label, key));
+                ReportSections.threadLabel(thread), label, key));
         } else if (!active.isEmpty()) {
             crossKeyRecursions.add(String.format(
                 "Thread '%s': compute*()/merge() on %s for key '%s' entered while key(s) %s on "
@@ -149,7 +149,7 @@ public class ConcurrentMapComputeRecursionDetector {
                 + "which is why it survives review; it throws IllegalStateException on the runs "
                 + "where the two keys land in the same bin, and either way the map is updated in "
                 + "an order the caller did not intend",
-                thread.getName(), label, key, active.values()));
+                ReportSections.threadLabel(thread), label, key, active.values()));
         }
 
         active.put(keyIdentity, String.valueOf(key));

@@ -805,6 +805,17 @@ public final class AsyncTestContext {
      * }
      * }</pre>
      *
+     * <p>A pool that hands out a wrapper around the instance needs the declaration even with the
+     * agent attached, unless its take is also a happens-before edge, as a woven
+     * {@code BlockingQueue}'s is. The woven take names the wrapper, while the detector tracks the
+     * instance inside it, so behind a plain collection and the pool's own lock nothing hands the
+     * instance over (#747). Declare the instance the detector tracks, not the wrapper:
+     *
+     * <pre>{@code
+     * DigestHolder holder = pool.checkout(); // an ArrayDeque behind the pool's monitor
+     * AsyncTestContext.ownershipTaken(holder.digest());
+     * }</pre>
+     *
      * <p>Only the declaring thread's later accesses start a new owner. An access by the previous
      * owner after the declaration is still reported, because the instance then has two owners at
      * once. Safe outside a run, where it does nothing.

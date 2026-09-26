@@ -4574,6 +4574,41 @@ final class Corpus {
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same publication through a plain field, which orders nothing",
+                    IssueSeverity.HIGH),
+
+            // --- A pool that hands out holders (#747): the first pair is a known gap, the second
+            //     the declaration that closes it for a user today.
+
+            new RecordingSubject("idiom_digestHolderPool_checkedOutUnderALock", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one holder in an ArrayDeque behind the pool's monitor, taken with a guarded "
+                            + "wait, used and put back. The digest inside reaches every thread "
+                            + "of a round and only ever one at a time"),
+
+            new RecordingSubject("idiom_digestHolderPool_peekedByEveryThread", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same pool with peek() for poll(): every thread updates and drains the "
+                            + "one holder's digest at once",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_digestHolderPool_checkoutDeclared", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same checkout, with the taker declaring the digest it now owns through "
+                            + "AsyncTestContext.ownershipTaken right after the take"),
+
+            new RecordingSubject("idiom_digestHolderPool_declaredButPeeked", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same declaration over peek(): every thread declares the one digest its "
+                            + "own and uses it at once, and a declaration cannot make that a "
+                            + "hand-off",
                     IssueSeverity.HIGH)
     );
 
@@ -4585,33 +4620,42 @@ final class Corpus {
      * idiom, so the body has to say what it did, the way a user following
      * {@code AsyncTestContext} would.
      */
-    private static final Map<String, String> IDIOM_MANUAL_API_ROWS = Map.of(
-            "idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
-            "no agent-fed detector models a check-then-act: SharedCollectionDetector sees two "
-                    + "atomic calls on a concurrent map and rightly says nothing, so "
-                    + "NonAtomicConcurrentMapUpdateDetector is told the pair happened",
-            "idiom_synchronizedCheckThenAct_withoutTheMonitor",
-            "the twin of the row above, recording the same pair the same way",
-            "idiom_threadLocalRandom_currentOnEveryThread",
-            "the agent does not weave ThreadLocalRandom.current(), so the obtain and the use "
-                    + "are reported by the body",
-            "idiom_threadLocalRandom_capturedByOneThread",
-            "the twin of the row above, recording the same obtain and use",
-            "idiom_sharedRandom_drawnByEveryThread",
-            "the agent does not weave java.util.Random, so the draw is reported by the body",
-            "idiom_sharedRandom_splittableDrawnByEveryThread",
-            "the twin of the row above, on the SplittableRandom recording API",
-            "idiom_threadStartJoin_ordersTheChildsWrite",
-            "the agent drops accesses on a thread the runner did not start (#500), so the "
-                    + "child's half of the idiom is invisible to it; the body records both "
-                    + "halves to RaceConditionDetector, and the woven start and join are the edges",
-            "idiom_threadStartJoin_readsBeforeTheJoin",
-            "the twin of the row above, recording the same accesses the same way",
-            "idiom_executorSubmit_futureGetOrdersTheTask",
-            "the pool thread is not a runner worker, so the agent drops the task's accesses "
-                    + "(#500); the body records both halves to RaceConditionDetector",
-            "idiom_executorSubmit_readsBeforeTheGet",
-            "the twin of the row above, recording the same accesses the same way"
+    private static final Map<String, String> IDIOM_MANUAL_API_ROWS = Map.ofEntries(
+            Map.entry("idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
+                    "no agent-fed detector models a check-then-act: SharedCollectionDetector sees "
+                            + "two atomic calls on a concurrent map and rightly says nothing, so "
+                            + "NonAtomicConcurrentMapUpdateDetector is told the pair happened"),
+            Map.entry("idiom_synchronizedCheckThenAct_withoutTheMonitor",
+                    "the twin of the row above, recording the same pair the same way"),
+            Map.entry("idiom_threadLocalRandom_currentOnEveryThread",
+                    "the agent does not weave ThreadLocalRandom.current(), so the obtain and the "
+                            + "use are reported by the body"),
+            Map.entry("idiom_threadLocalRandom_capturedByOneThread",
+                    "the twin of the row above, recording the same obtain and use"),
+            Map.entry("idiom_sharedRandom_drawnByEveryThread",
+                    "the agent does not weave java.util.Random, so the draw is reported by the "
+                            + "body"),
+            Map.entry("idiom_sharedRandom_splittableDrawnByEveryThread",
+                    "the twin of the row above, on the SplittableRandom recording API"),
+            Map.entry("idiom_threadStartJoin_ordersTheChildsWrite",
+                    "the agent drops accesses on a thread the runner did not start (#500), so the "
+                            + "child's half of the idiom is invisible to it; the body records both "
+                            + "halves to RaceConditionDetector, and the woven start and join are "
+                            + "the edges"),
+            Map.entry("idiom_threadStartJoin_readsBeforeTheJoin",
+                    "the twin of the row above, recording the same accesses the same way"),
+            Map.entry("idiom_executorSubmit_futureGetOrdersTheTask",
+                    "the pool thread is not a runner worker, so the agent drops the task's "
+                            + "accesses (#500); the body records both halves to "
+                            + "RaceConditionDetector"),
+            Map.entry("idiom_executorSubmit_readsBeforeTheGet",
+                    "the twin of the row above, recording the same accesses the same way"),
+            Map.entry("idiom_digestHolderPool_checkoutDeclared",
+                    "the woven take names the holder, not the digest the detector tracks, and a "
+                            + "monitor is no edge (#747), so the taker declares the checkout with "
+                            + "AsyncTestContext.ownershipTaken, as the API documents for this shape"),
+            Map.entry("idiom_digestHolderPool_declaredButPeeked",
+                    "the twin of the row above, making the same declaration")
     );
 
     /**
@@ -4634,7 +4678,12 @@ final class Corpus {
             "Exchanger.exchange is not woven, so the swap orders nothing in HappensBefore",
             "idiom_atomicReference_publishesAFreshlyBuiltObject",
             "AtomicReference.set and get are substituted for the spinlock detectors only; "
-                    + "HappensBefore takes no release from the set or acquire from the get"
+                    + "HappensBefore takes no release from the set or acquire from the get",
+            "idiom_digestHolderPool_checkedOutUnderALock",
+            "the woven take names the holder while the detector tracks the digest inside it, "
+                    + "and a monitor is no edge in HappensBefore, so nothing hands the digest "
+                    + "over (#747); idiom_digestHolderPool_checkoutDeclared is the declaration "
+                    + "that silences it today"
     );
 
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()

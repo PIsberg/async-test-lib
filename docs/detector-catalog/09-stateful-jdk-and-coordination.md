@@ -134,7 +134,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 117. Shared JSON Mapper Reconfiguration Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a serializer/mapper (Jackson `ObjectMapper`, a Gson built via `GsonBuilder`, or similar) being reconfigured (`configure`, `registerModule`, builder-style setters) after it has already been used concurrently. Read/write operations are typically safe once configured, but a configuration mutation racing with an in-flight (de)serialization can corrupt output intermittently or throw out of an internal cache. The correct "configure fully, then publish" pattern is never flagged.
+* **Description**: Detects a serializer/mapper (Jackson `ObjectMapper`, a Gson built via `GsonBuilder`, or similar) being reconfigured (`configure`, `registerModule`, builder-style setters) while another thread uses it. Read/write operations are typically safe once configured, but a configuration mutation racing with an in-flight (de)serialization can corrupt output intermittently or throw out of an internal cache. Inside an `@AsyncTest` a reconfiguration is reported when any other thread uses the mapper in the same invocation round, before or after it, since the round's workers run together; outside a run only a use recorded before it counts. The correct "configure fully, then publish" pattern is never flagged.
 * **Buggy Code**:
   ```java
   static final ObjectMapper MAPPER = new ObjectMapper();

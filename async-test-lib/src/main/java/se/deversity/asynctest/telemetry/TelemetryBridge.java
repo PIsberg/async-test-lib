@@ -446,14 +446,26 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (qualifiedName == null) return;
         if (TelemetryRegistry.OWNERSHIP_TAKEN.equals(qualifiedName)) {
             // Not a field access: a worker took the object with this identity out of a queue or
-            // an atomic slot, which starts a new ownership generation for it (#555).
-            atomicityValidator.recordOwnershipTaken(identity, storedIdentity, threadId);
+            // an atomic slot, which starts a new ownership generation for it (#555). The write
+            // slot flags a container that orders nothing, whose take counts only under a lock the
+            // offer shared; the lock fingerprint rides with it (#751).
+            if (isWrite) {
+                atomicityValidator.recordOwnershipTakenUnderLocks(identity, storedIdentity,
+                        threadId, lockFingerprint);
+            } else {
+                atomicityValidator.recordOwnershipTaken(identity, storedIdentity, threadId);
+            }
             return;
         }
         if (TelemetryRegistry.OWNERSHIP_OFFERED.equals(qualifiedName)) {
             // Not a field access either: a worker is handing the object to the queue whose
-            // identity rides in the stored-identity slot (#630).
-            atomicityValidator.recordOwnershipOffered(identity, storedIdentity, threadId);
+            // identity rides in the stored-identity slot (#630), flagged like a take (#751).
+            if (isWrite) {
+                atomicityValidator.recordOwnershipOfferedUnderLocks(identity, storedIdentity,
+                        threadId, lockFingerprint);
+            } else {
+                atomicityValidator.recordOwnershipOffered(identity, storedIdentity, threadId);
+            }
             return;
         }
         if (TelemetryRegistry.OWNERSHIP_DRAINED.equals(qualifiedName)) {

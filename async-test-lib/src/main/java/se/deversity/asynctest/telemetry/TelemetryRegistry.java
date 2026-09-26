@@ -249,36 +249,49 @@ public final class TelemetryRegistry {
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
-        acquireIfAfterVolatileRead(receiver, afterVolatileRead);
+        acquireIfAfterVolatileRead(receiver, qualifiedName, isWrite, volatileField,
+                afterVolatileRead);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
                 identity == 0 ? null : receiver, HappensBefore.current(), HappensBefore.round());
-        releaseIfVolatileWrite(receiver, isWrite, volatileField);
+        releaseIfVolatileWrite(receiver, qualifiedName, isWrite, volatileField);
     }
 
     /**
-     * Orders this access after the volatile read the weaver saw before it in the same method.
+     * Orders this access after the volatile reads the weaver saw before it in the same method,
+     * and remembers this access when it is a volatile read.
      *
-     * <p>The acquire half of volatile publication, for {@code HappensBefore}. Taken here rather
-     * than at the volatile read itself, because that hook runs before the read instruction and an
-     * acquire made before the value is seen could order what the program does not. Per object,
-     * not per field: see {@code HappensBefore}'s limits.
+     * <p>The acquire half of volatile publication, for {@code HappensBefore}. Taken at the marked
+     * access rather than at the volatile read itself, because that hook runs before the read
+     * instruction and an acquire made before the value is seen could order what the program does
+     * not. The weaver marks the access without naming the field it read, so the read is noted
+     * here, per object and field, and the marked access acquires only the fields of its object
+     * this thread read: a write of another volatile field of the same object orders nothing
+     * (#742). See {@code HappensBefore}'s limits for what remains approximate.
      */
-    private static void acquireIfAfterVolatileRead(@Nullable Object receiver,
+    private static void acquireIfAfterVolatileRead(@Nullable Object receiver, String qualifiedName,
+                                                   boolean isWrite, boolean volatileField,
                                                    boolean afterVolatileRead) {
-        if (afterVolatileRead && receiver != null) {
-            HappensBefore.acquire(receiver);
+        if (receiver == null) {
+            return;
+        }
+        if (afterVolatileRead) {
+            HappensBefore.acquireVolatileReads(receiver);
+        }
+        if (volatileField && !isWrite) {
+            HappensBefore.volatileRead(receiver, qualifiedName);
         }
     }
 
     /**
-     * The release half: a volatile write publishes what this thread did before it. The hook runs
-     * before the write instruction, so the release precedes every read that can see the value.
+     * The release half: a volatile write publishes what this thread did before it, to readers of
+     * the same field (#742). The hook runs before the write instruction, so the release precedes
+     * every read that can see the value.
      */
-    private static void releaseIfVolatileWrite(@Nullable Object receiver, boolean isWrite,
-                                               boolean volatileField) {
+    private static void releaseIfVolatileWrite(@Nullable Object receiver, String qualifiedName,
+                                               boolean isWrite, boolean volatileField) {
         if (volatileField && isWrite && receiver != null) {
-            HappensBefore.release(receiver);
+            HappensBefore.releaseVolatile(receiver, qualifiedName);
         }
     }
     /**
@@ -329,14 +342,15 @@ public final class TelemetryRegistry {
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
         int storedIdentity = stored == null ? 0 : System.identityHashCode(stored);
-        acquireIfAfterVolatileRead(receiver, afterVolatileRead);
+        acquireIfAfterVolatileRead(receiver, qualifiedName, isWrite, volatileField,
+                afterVolatileRead);
         // The receiver rides along so the drain side can tell apart two objects whose identity
         // hashes collide; the ring lends it for one callback and then clears the slot.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
                 storedIdentity, identity == 0 ? null : receiver, HappensBefore.current(),
                 HappensBefore.round());
-        releaseIfVolatileWrite(receiver, isWrite, volatileField);
+        releaseIfVolatileWrite(receiver, qualifiedName, isWrite, volatileField);
     }
 
     /**
@@ -1822,6 +1836,11 @@ public final class TelemetryRegistry {
      * JCTools {@code poll}/{@code relaxedPoll} passes its queue (#664); only a {@code VarHandle}
      * {@code getAndSet} on a static field or an array element passes none.
      *
+     * <p>A container that orders nothing itself, an {@code ArrayDeque} (see {@link #ordersNothing}),
+     * hands an element over only under a lock its callers share, so its take is flagged in the
+     * event's write slot and carries the locks this thread holds; the validator drops the edge when
+     * those and the matching offer's locks are both non-empty and share no member (#751).
+     *
      * @param taken     the object that left the queue, or {@code null}
      * @param container the queue it left, or {@code null} when unknown
      * @since 1.12.1
@@ -1842,7 +1861,9 @@ public final class TelemetryRegistry {
         if (HappensBefore.publishesElements(container)) {
             HappensBefore.acquire(taken);
         }
-        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,
+        boolean ordersNothing = ordersNothing(container);
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, ordersNothing,
+                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
                 container == null ? 0 : System.identityHashCode(container));
     }
@@ -1860,7 +1881,11 @@ public final class TelemetryRegistry {
      * after: the slot this claims in the buffer is then ahead of any take that removes the element,
      * so the drain always sees the offer first. That order is what lets a take that is the first
      * event recorded for an object name the thread that handed it over (#630). An offer the queue
-     * rejects still records, and is harmless: nothing takes that element out of that queue.
+     * rejects still records, and is harmless: nothing takes that element out of that queue. An offer
+     * to a container that orders nothing is flagged and carries this thread's locks, like the
+     * {@link #ownershipTaken(Object, Object) take} it has to be matched with (#751).
+     * A rejected offer's happens-before release is not harmless, and the hook withdraws it with
+     * {@link #ownershipRefused} (#742).
      *
      * <p>Allocation-free and non-throwing like every other hook on this path.
      *
@@ -1877,9 +1902,50 @@ public final class TelemetryRegistry {
         if (HappensBefore.publishesElements(container)) {
             HappensBefore.release(offered);
         }
-        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, false, 0L, false,
+        boolean ordersNothing = ordersNothing(container);
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, ordersNothing,
+                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
                 System.identityHashCode(container));
+    }
+
+    /**
+     * {@return whether {@code container} is a {@code java.util} collection that promises no thread
+     * safety, so passing an element through it is a hand-off only under a lock} (#751)
+     *
+     * <p>A take is an ownership edge because the structure hands the element to the taker and to
+     * no other. An {@code ArrayDeque}, a {@code LinkedList} or a {@code PriorityQueue} promises that
+     * only while its callers serialise it: shared with no lock, two threads can poll the same
+     * element. Only the JDK's own unsynchronized collections are known to be such; a
+     * {@code java.util.concurrent} type, a synchronized wrapper, and anything outside
+     * {@code java.util}, a JCTools queue or a reference slot, keep their unconditional edge. The
+     * JDK types are listed as {@code java.util} types that {@link HappensBefore#publishesElements}
+     * rejects. {@link Class#getName()} is cached, so this allocates nothing.
+     */
+    private static boolean ordersNothing(@Nullable Object container) {
+        return container != null
+                && container.getClass().getName().startsWith("java.util.")
+                && !HappensBefore.publishesElements(container);
+    }
+
+    /**
+     * Records that {@code container} refused {@code offered}, right after the offer
+     * {@link #ownershipOffered} announced: a bounded queue was full, a {@code compareAndSet} found
+     * another value, a blocking offer was interrupted.
+     *
+     * <p>The offered event stays, as harmless as it always was. What goes is the happens-before
+     * release published ahead of the offer: a refused offer hands nothing over, and leaving the
+     * release in place would order whoever later acquires the element after this thread, hiding a
+     * race (#742). Call it on the offering thread, before it records anything else.
+     *
+     * @param offered   the element that was refused, or {@code null}
+     * @param container the container that refused it
+     * @since 1.12.3
+     */
+    public static void ownershipRefused(@Nullable Object offered, @Nullable Object container) {
+        if (offered != null && container != null && HappensBefore.publishesElements(container)) {
+            HappensBefore.retract(offered);
+        }
     }
 
     // ---- Reference slots: offers and takes with their container (#664) -------------------------
@@ -1962,7 +2028,8 @@ public final class TelemetryRegistry {
 
     /**
      * Weaves {@code AtomicReference.compareAndSet}: an offer of {@code update} to {@code slot}
-     * (#664), published before the swap like every offer, and harmless when the swap fails.
+     * (#664), published before the swap like every offer. A failed swap withdraws the offer's
+     * happens-before release (#742).
      *
      * @param slot     the atomic the call site invoked
      * @param expected the reference the slot must hold
@@ -1974,7 +2041,11 @@ public final class TelemetryRegistry {
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
         ownershipOffered(update, slot);
-        return slot.compareAndSet(expected, update);
+        boolean swapped = slot.compareAndSet(expected, update);
+        if (!swapped) {
+            ownershipRefused(update, slot);
+        }
+        return swapped;
     }
 
     /**

@@ -231,7 +231,7 @@ public class LockDowngradeDetector {
                     state.observedGaps.incrementAndGet();
                     if (state.firstObservedGapThread.get() == null) {
                         state.firstObservedGapThread.compareAndSet(null,
-                            LockUpgradeDeadlockDetector.threadLabel(Thread.currentThread()));
+                            ReportSections.threadLabel(Thread.currentThread()));
                     }
                 }
             }
@@ -294,7 +294,7 @@ public class LockDowngradeDetector {
                 // execution would otherwise allocate one per execution just to discard it.
                 if (state.firstUpgradeThread.get() == null) {
                     state.firstUpgradeThread.compareAndSet(null,
-                        LockUpgradeDeadlockDetector.threadLabel(Thread.currentThread()));
+                        ReportSections.threadLabel(Thread.currentThread()));
                 }
             }
             h.gapOpen = false;

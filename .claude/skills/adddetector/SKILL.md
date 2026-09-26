@@ -225,7 +225,7 @@ The wiring tests are the safety net — they fail loudly on any missed step:
 
 ```bash
 mvn -q -Dlicense.mock.mode=true \
-  -Dtest='AllDetectorsSpiCoverageTest,DetectorRegistrySpiTest,AsyncTestConfigBuildResolutionTest,{{CLASS}}Test' \
+  -Dtest='AllDetectorsSpiCoverageTest,DetectorRegistrySpiTest,AsyncTestConfigBuildResolutionTest,StructuredViolationCoverageTest,{{CLASS}}Test' \
   test
 ```
 
@@ -234,6 +234,9 @@ mvn -q -Dlicense.mock.mode=true \
 - `DetectorRegistrySpiTest` / SPI instantiation → catches enum↔factory gaps.
 - `AsyncTestConfigBuildResolutionTest` → catches a missing config flag / build-block line.
 - `{{CLASS}}Test` → the new detector's own tests.
+- `StructuredViolationCoverageTest` → the report must keep `structuredViolations` (the template
+  does) and the detector needs one driver in that test's `PATHS` per place its report writes a
+  finding. It fails until the TODO detection rule can actually fire.
 
 Then a full compile to be sure nothing else drifted:
 ```bash

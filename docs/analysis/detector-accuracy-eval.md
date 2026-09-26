@@ -118,8 +118,9 @@ authority on which row is which - each outcome above is one assertion in it.
   thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
   than one thread touched this field and at least one wrote". On the agent-fed path an object
-  that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`) is judged per
-  ownership generation, so each owner may bring its own lock, or none while the object is exclusive
+  that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`; out of an
+  `ArrayDeque` or another unsynchronized `java.util` queue, not a poll whose recorded locks and the
+  offer's are both non-empty and share none, #751) is judged per ownership generation, so each owner may bring its own lock, or none while the object is exclusive
   to it (#555); a lock that changes inside one round with no take, a thread that uses an object
   it did not take, and two locks inside one generation still fire, and each direction is a case in
   `DetectorAccuracyEvalTest`. The report only mentions locks when
@@ -221,6 +222,10 @@ where no round is marked. Pinned in each detector's own test and in
 `SharedMessageDigestDetectorTest` for the family's printed count. `StringBuilderDetector`'s
 exception finding followed (#783): it counts the users of the busiest round an exception came
 from, so one thread per round, each failing alone, is not concurrent access.
+`SharedJsonMapperReconfigDetector`'s condition then widened within the round (#784): it had asked
+only about users recorded before the reconfiguration, so one recorded first in its round was
+never reported. A reconfiguration inside a run now races with any other user of its round,
+judged once the round's users are complete.
 
 `FalseSharingDetector`, off unless its experimental property is set, followed in #765. Its pair
 predicate (two or more threads on one field, a different set on the adjacent one) and its
@@ -240,8 +245,12 @@ queue takes and atomic-slot swaps (`collections=true`) reach it synchronously fr
 declared with `AsyncTestContext.ownershipTaken(instance)`. An old owner that keeps using the
 instance after handing it back joins the new owner's window and is still reported. Pinned in
 `SharedMessageDigestDetectorTest`, through the woven hook methods called directly rather than a
-real agent attach. What it does not see: a pool of wrapper objects, where the take names the
-wrapper and the access names the digest inside it.
+real agent attach. A pool of wrapper objects, where the take names the wrapper and the access
+names the digest inside it, moves no take counter. It is still handed over when the take is also a
+happens-before edge (a woven `BlockingQueue`), but not behind a plain deque and the pool's monitor,
+which the model takes no edge from (#747). There the taker declares the wrapped instance,
+`AsyncTestContext.ownershipTaken(holder.digest)`; the corpus idiom lane pins both the undeclared
+row, as a known gap, and the declared one.
 
 Within an owner's window the verdict also follows the shared `HappensBefore` model (1.12.3). Two
 threads in one round that the program ordered, one using a `MessageDigest` and counting a latch

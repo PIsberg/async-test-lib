@@ -201,6 +201,59 @@ public class StatefulLambdaDetectorTest {
         assertTrue(d.analyze().violations.get(0).contains("counter"));
     }
 
+    // #785: a mutation recorded without its captured object has no capture identity, so it is
+    // judged against the lambda, and all of a lambda's unnamed captures share one lockset. This
+    // pins that documented limit, and beside it the named form that judges each capture alone.
+    @Test
+    void twoUnnamedCapturesEachGuardedByItsOwnLockAreReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertTrue(runTwoCapturesUnderTheirOwnDeclaredLocks(d, false),
+                "unnamed captures share the lambda's lockset, so lock H for one capture and lock M "
+                        + "for the other leave no lock common to every mutation");
+        assertTrue(d.analyze().violations.get(0).contains("hits"));
+    }
+
+    @Test
+    void twoNamedCapturesEachGuardedByItsOwnDeclaredLockAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertFalse(runTwoCapturesUnderTheirOwnDeclaredLocks(d, true),
+                "each named capture held its own lock at every mutation: " + d.analyze().violations);
+    }
+
+    private static boolean runTwoCapturesUnderTheirOwnDeclaredLocks(
+            StatefulLambdaDetector d, boolean named) throws InterruptedException {
+        int[] hits = {0};
+        int[] misses = {0};
+        Object hitsLock = new Object();
+        Object missesLock = new Object();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(hitsLock)) {
+                synchronized (hitsLock) {
+                    hits[0]++;
+                    if (named) {
+                        d.recordCapturedMutation(task[0], "hits", hits, Thread.currentThread());
+                    } else {
+                        d.recordCapturedMutation(task[0], "hits", Thread.currentThread());
+                    }
+                }
+            }
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(missesLock)) {
+                synchronized (missesLock) {
+                    misses[0]++;
+                    if (named) {
+                        d.recordCapturedMutation(task[0], "misses", misses, Thread.currentThread());
+                    } else {
+                        d.recordCapturedMutation(task[0], "misses", Thread.currentThread());
+                    }
+                }
+            }
+        };
+        onTwoThreads(task[0]);
+        return d.analyze().hasIssues();
+    }
+
     // #770: only a mutation was recorded, so one mutating thread beside threads that only read
     // the capture put a single thread in the round and read as unshared.
     @Test
@@ -297,6 +350,146 @@ public class StatefulLambdaDetectorTest {
         assertFalse(d.analyze().hasIssues(), "concurrent reads of state nobody writes are no race");
     }
 
+    // #787: the round verdict did not tell reads from writes, so two unguarded readers in one
+    // round and a mutation in a different round, which never overlapped them, read as a race.
+    @Test
+    void readersInOneRoundAndAWriterInAnotherAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if (Thread.currentThread().getName().startsWith("writer")) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+            } else {
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+            }
+        };
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, task[0], "reader-1", "reader-2");
+        round(scope, task[0], "writer");
+
+        assertFalse(d.analyze().hasIssues(),
+                "the only round with two threads only read; the write ran alone in the next round: "
+                        + d.analyze().violations);
+    }
+
+    @Test
+    void aWriterAndAnUnguardedReaderInOneRoundAreReportedAfterAReadOnlyRound() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if (Thread.currentThread().getName().startsWith("writer")) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+            } else {
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+            }
+        };
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, task[0], "reader-1", "reader-2");
+        round(scope, task[0], "writer", "reader-3");
+
+        assertTrue(d.analyze().hasIssues(),
+                "round two had a write and an unguarded read by another thread");
+        assertTrue(d.analyze().violations.get(0).contains("counter"));
+    }
+
+    // A write the readers are ordered after cannot overlap them, so it does not make their
+    // concurrent, unguarded reads a race; a reader nothing orders after it still can.
+
+    /**
+     * The writer mutates the capture with no lock and publishes it through {@code handedOver};
+     * a reader waits for it, acquires it when {@code acquires} says so, and reads with no lock.
+     */
+    private static Runnable publishThenRead(StatefulLambdaDetector d, Runnable[] task, int[] counter,
+                                            java.util.concurrent.CountDownLatch handedOver,
+                                            java.util.function.Predicate<String> acquires) {
+        return () -> {
+            String name = Thread.currentThread().getName();
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if (name.startsWith("writer")) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+                HappensBefore.release(handedOver);
+                handedOver.countDown();
+            } else {
+                try {
+                    handedOver.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
+                }
+                if (acquires.test(name)) {
+                    HappensBefore.acquire(handedOver);
+                }
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+            }
+        };
+    }
+
+    @Test
+    void readersOrderedAfterTheOnlyWriteAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        task[0] = publishThenRead(d, task, counter, handedOver, name -> true);
+
+        round(new SelfGuard.Scope(), task[0], "writer", "reader-1", "reader-2");
+
+        assertFalse(d.analyze().hasIssues(),
+                "both readers are ordered after the write, and reads do not race reads: "
+                        + d.analyze().violations);
+    }
+
+    @Test
+    void aReaderNotOrderedAfterTheWriteIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        task[0] = publishThenRead(d, task, counter, handedOver, "reader-1"::equals);
+
+        round(new SelfGuard.Scope(), task[0], "writer", "reader-1", "reader-2");
+
+        assertTrue(d.analyze().hasIssues(),
+                "reader-2 never acquired the hand-off, so its read may overlap the write");
+    }
+
+    /**
+     * Starts the next round of {@code scope} and runs {@code body} once on a fresh thread per
+     * name, with the scope bound and all of them released together, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable body, String... names)
+            throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(names.length);
+        Thread[] threads = new Thread[names.length];
+        for (int i = 0; i < names.length; i++) {
+            threads[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, names[i]);
+            threads[i].start();
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+    }
+
     private static void onThreadsNamed(Runnable body, String... names) throws InterruptedException {
         Thread[] threads = new Thread[names.length];
         for (int i = 0; i < names.length; i++) {
@@ -366,5 +559,30 @@ public class StatefulLambdaDetectorTest {
         String s = d.analyze().toString();
         assertTrue(s.contains("STATEFUL LAMBDA"));
         assertTrue(s.contains("Fix"));
+    }
+
+    /**
+     * Default virtual threads have no name, so the executing threads printed as one empty entry
+     * and every mutation event as " -> counter" (#790). Each thread is named by its id.
+     */
+    @Test
+    void unnamedVirtualThreadsAreReportedByIdNotByAnEmptyName() {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable task = () -> counter[0]++;
+        Thread first = Thread.ofVirtual().unstarted(() -> { });
+        Thread second = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", first.getName(), "precondition: a default virtual thread has no name");
+        for (Thread t : java.util.List.of(first, second)) {
+            d.recordExecution(task, "task", t);
+            d.recordCapturedMutation(task, "counter", counter, t);
+        }
+        String msg = d.analyze().violations.get(0);
+        String one = "#" + first.threadId();
+        String two = "#" + second.threadId();
+        assertTrue(msg.contains("(" + one + ", " + two + ")") || msg.contains("(" + two + ", " + one + ")"),
+                "both executing threads must be listed by id: " + msg);
+        assertTrue(msg.contains(one + " \u2192 counter") && msg.contains(two + " \u2192 counter"),
+                "each mutation must name its thread by id: " + msg);
     }
 }

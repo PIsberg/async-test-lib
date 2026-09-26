@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -10,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.report.Violation;
 
 /**
  * Tracks compound operations that should behave atomically.
@@ -406,6 +408,16 @@ public class AtomicityValidator {
 
     /** Maps receiver identity to its most recent {@link Offer}; see {@link #recordOwnershipOffered}. */
     private final Map<Integer, Offer> offers = new ConcurrentHashMap<>();
+
+    /** An offer into a container that orders nothing, with the locks it held (#751). */
+    private record LockedOffer(int container, long lockFingerprint) {
+    }
+
+    /**
+     * Maps element identity to its most recent {@link LockedOffer}; see
+     * {@link #recordOwnershipOfferedUnderLocks}. Consumed by the next take of the element.
+     */
+    private final Map<Integer, LockedOffer> lockedOffers = new ConcurrentHashMap<>();
 
     private void recordTaker(int identity, int generation, long threadId) {
         generationTakers.computeIfAbsent(identity, ignored -> new ConcurrentHashMap<>())
@@ -1133,6 +1145,94 @@ public class AtomicityValidator {
         offers.values().removeIf(offer -> offer.container == container);
     }
 
+    /**
+     * Records that {@code threadId} offered the object with identity {@code identity} to a
+     * container that orders nothing itself, holding the locks {@code lockFingerprint} names.
+     *
+     * <p>The offer half of {@link #recordOwnershipTakenUnderLocks}. An {@code ArrayDeque} hands an
+     * element to one thread only while its callers serialise it, so its take loses the ownership
+     * edge when the offer and the take held visible locks with none in common (#751). Beyond that
+     * the offer is an ordinary one: it can name generation 0's owner exactly as
+     * {@link #recordOwnershipOffered} does. Identity or container 0 records nothing.
+     *
+     * @param identity        {@code System.identityHashCode} of the object offered
+     * @param container       {@code System.identityHashCode} of the container it was offered to
+     * @param threadId        the thread that offered it
+     * @param lockFingerprint the locks that thread held, from {@code HeldLocks.lockFingerprint(true)},
+     *                        0 for none
+     * @since 1.12.3
+     */
+    public void recordOwnershipOfferedUnderLocks(int identity, int container, long threadId,
+                                                 long lockFingerprint) {
+        if (!enabled || identity == 0 || container == 0) {
+            return;
+        }
+        lockedOffers.put(identity, new LockedOffer(container, lockFingerprint));
+        recordOwnershipOffered(identity, container, threadId);
+    }
+
+    /**
+     * Records that {@code threadId} took the object with identity {@code identity} out of a
+     * container that orders nothing itself, holding the locks {@code lockFingerprint} names.
+     *
+     * <p>A {@link #recordOwnershipTaken(int, int, long) take} unless the locks prove the offer and
+     * the take were not serialised (#751). An {@code ArrayDeque} hands an element to one thread
+     * only while its callers serialise it, and two threads can poll one element out of an unguarded
+     * one; the exclusion a take grants would then excuse exactly the race that makes. Plain lock
+     * hand-offs are not {@link HappensBefore} edges, which is why the locks are asked for here.
+     *
+     * <p>The locks are the ones the agent records, and a {@code synchronized} method's monitor is
+     * not among them: it comes from the access flag, with no instruction to weave. A side with no
+     * visible lock may therefore hold the very monitor the other side shows, so the take opens no
+     * generation only when the element's latest offer went into this same container and both the
+     * offer and the take held visible locks with no member in common. A lock on one side only, none
+     * on either side, or no matching recorded offer keeps the edge, as every take did before. That
+     * leaves an unguarded deque, and one guarded on one side only, unreported here;
+     * {@code SharedCollectionDetector} reports the deque itself in both. Identity 0 is ignored.
+     *
+     * @param identity        {@code System.identityHashCode} of the object taken
+     * @param container       {@code System.identityHashCode} of the container it left
+     * @param threadId        the thread that took it
+     * @param lockFingerprint the locks that thread held, from {@code HeldLocks.lockFingerprint(true)},
+     *                        0 for none
+     * @since 1.12.3
+     */
+    public void recordOwnershipTakenUnderLocks(int identity, int container, long threadId,
+                                               long lockFingerprint) {
+        if (!enabled || identity == 0) {
+            return;
+        }
+        LockedOffer offer = lockedOffers.remove(identity);
+        if (offer != null && container != 0 && offer.container == container
+                && visiblyUnserialised(offer.lockFingerprint, lockFingerprint)) {
+            // No hand-off, but the element did leave the container, so the offer that named its
+            // previous owner is spent as it would be by a take.
+            offers.remove(identity);
+            return;
+        }
+        recordOwnershipTaken(identity, container, threadId);
+    }
+
+    /**
+     * {@return whether the visible locks at an offer and a take prove they were not serialised}
+     *
+     * <p>Only two non-empty sets with no member in common prove it. An empty side proves nothing,
+     * because a {@code synchronized} method's monitor is never visible: that side may hold the
+     * very lock the other side shows.
+     */
+    private static boolean visiblyUnserialised(long offerLocks, long takeLocks) {
+        if (offerLocks == 0L || takeLocks == 0L) {
+            return false;
+        }
+        return Lockset.intersect(membersOf(offerLocks), membersOf(takeLocks)).length == 0;
+    }
+
+    /** {@return the lock ids behind a non-zero fingerprint, one opaque id when unregistered} */
+    private static int[] membersOf(long fingerprint) {
+        int[] registered = HeldLocks.members(fingerprint);
+        return registered != null ? registered : new int[] {Lockset.opaque(fingerprint)};
+    }
+
     /** {@return the ownership generation {@code identity} is currently in, 0 before any take} */
     private int generationOf(int identity) {
         if (identity == 0) {
@@ -1207,7 +1307,9 @@ public class AtomicityValidator {
      */
     public AtomicityReport analyzeAtomicity() {
         AtomicityReport report = new AtomicityReport();
-        report.checkThenActViolations.addAll(atomicityViolations);
+        for (String violation : atomicityViolations) {
+            report.add(report.checkThenActViolations, "checkThenAct", violation);
+        }
 
         for (Map.Entry<String, List<FieldAccessRecord>> entry : fieldHistory.entrySet()) {
             // Copy under the list's lock, then analyze per invocation round: rounds are
@@ -1330,7 +1432,7 @@ public class AtomicityValidator {
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 
                 if (threads.size() > 1 && hasRead && hasWrite && sawUnguarded) {
-                    report.unsafeFieldAccesses.add(String.format(
+                    report.add(report.unsafeFieldAccesses, "unsafeCompoundAccess", String.format(
                         "%s: mixed read/write compound access across %d threads%s",
                         entry.getKey(),
                         threads.size(),
@@ -1338,7 +1440,7 @@ public class AtomicityValidator {
                     ));
                 }
                 if (threads.size() > 1 && hasWrite && sawUnguarded) {
-                    report.totcouRaces.add(String.format(
+                    report.add(report.totcouRaces, "toctouWindow", String.format(
                         "%s: state changed between check/use windows on %d threads%s",
                         entry.getKey(),
                         threads.size(),
@@ -1895,6 +1997,7 @@ public class AtomicityValidator {
         receiverStates.clear();
         generationTakers.clear();
         offers.clear();
+        lockedOffers.clear();
         instances.clear();
         roundTokens = new long[0];
         invocationEpoch.set(0);
@@ -1919,6 +2022,19 @@ public class AtomicityValidator {
         public final Set<String> unsafeFieldAccesses = new HashSet<>();
         /** Fields whose state changed between the check and the use (TOCTOU). The field name misspells the acronym; it is public API and kept as-is for compatibility. */
         public final Set<String> totcouRaces = new HashSet<>();
+        /**
+         * The same findings as {@link Violation}s, each {@code HIGH}: the severity the text has
+         * always resolved to, stated where the {@code failOn} gate reads first.
+         */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a finding to its text set and, when it is new there, as a structured finding. */
+        void add(Set<String> section, String kind, String message) {
+            if (section.add(message)) {
+                structuredViolations.add(new Violation("AtomicityViolations", IssueSeverity.HIGH, message,
+                        List.of(), Map.of("kind", kind), Instant.now()));
+            }
+        }
 
         /**
          * {@return whether there are issues}

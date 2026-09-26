@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
  * an unwoven call, a dropped event or an access recorded without a stamp, leaves the detector with
  * the answer it had before the model existed. An edge this class invents where the program has
  * none would hide a real race, which is why every source below is one the Java memory model
- * itself names, and why each approximation is in the direction of fewer edges, with the two
+ * itself names, and why each approximation is in the direction of fewer edges, with the
  * exceptions listed under Limits.
  *
  * <h2>Where edges come from</h2>
@@ -58,11 +58,15 @@ import org.jspecify.annotations.Nullable;
  *   <li>The four methods here, for tests that record by hand: {@link #release}, {@link #acquire},
  *       {@link #fork} and {@link #join}.
  *   <li>With the agent attached, from the calls it already substitutes: {@code Thread.start} and
- *       {@code Thread.join}; an element offered to, and taken from, a concurrent queue or map;
+ *       {@code Thread.join}; an element offered to, and taken from, a concurrent queue, map or
+ *       {@code AtomicReference}, where an offer the container refused or a failed
+ *       {@code compareAndSet} is withdrawn with {@link #retract} and publishes nothing;
  *       {@code CountDownLatch.countDown} and a successful {@code await};
  *       {@code Semaphore.release} and a successful acquire; and, with {@code fields=true}, a
- *       volatile write and a later access the weaver marks as following a volatile read of the
- *       same object.
+ *       volatile write of one field of an object and a later access to the same object that the
+ *       weaver marks as following a volatile read, when the accessing thread's recorded volatile
+ *       reads of that object include the same field. A volatile clock is kept per object and
+ *       field, the field compared by its simple name (#742).
  * </ul>
  *
  * <p>Plain lock and monitor hand-offs are deliberately not edges. The detectors judge lock
@@ -73,10 +77,18 @@ import org.jspecify.annotations.Nullable;
  * <h2>Limits</h2>
  *
  * <ul>
- *   <li>A volatile edge is per object, not per field: a write to one volatile field of an object
- *       orders later accesses that follow a read of another. The weaver only marks an access as
- *       following a volatile read, not which value the read returned, so an access after a read
- *       that returned an older value is ordered too.
+ *   <li>The weaver reports a volatile read before the read instruction and not the value it
+ *       returned, so the acquire is taken at the next access it marks, and it merges the field's
+ *       clock as it is then: an access after a read that returned an older value is ordered too,
+ *       as is one after a write another thread made between the read and that access. Each
+ *       thread remembers its last {@value #VOLATILE_READS} volatile fields read, so a read that
+ *       old is forgotten and orders nothing, and one of the remembered reads still orders an
+ *       access in a later method that the weaver marks for a read of another field of the object.
+ *       Two fields of one object sharing a simple name, a field and the one it shadows, share a
+ *       clock.
+ *   <li>A withdrawn release was visible for the length of the refused call, and one another
+ *       thread folded into its own release in that time stays. {@code addAll} into a queue,
+ *       which can accept some elements and refuse the rest, withdraws nothing.
  *   <li>A clock keeps at most 256 threads. Past that the entries of the lowest
  *       thread ids go, which loses edges and never adds one; a thread never loses its own.
  *   <li>Not yet observed: {@code CompletableFuture} completion, {@code Executor} submission and
@@ -99,6 +111,9 @@ public final class HappensBefore {
     /** Passed as the entry to keep when merging into a clock that belongs to no thread. */
     private static final long NO_OWNER = Long.MIN_VALUE;
 
+    /** How many volatile fields a thread remembers having read; see the class javadoc. */
+    static final int VOLATILE_READS = 8;
+
     /** Each thread's clock, created at its first synchronization event or stamp. */
     private static final ThreadLocal<ThreadClock> CLOCKS = ThreadLocal.withInitial(HappensBefore::start);
 
@@ -111,8 +126,7 @@ public final class HappensBefore {
             Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Clocks of synchronization objects, by identity and weakly held. */
-    private static final Map<IdentityKey.Weak, AtomicReference<Stamp>> SYNC =
-            new ConcurrentHashMap<>();
+    private static final Map<IdentityKey.Weak, SyncClock> SYNC = new ConcurrentHashMap<>();
 
     /** Where {@link #SYNC} keys arrive once their object is collected. */
     private static final ReferenceQueue<Object> COLLECTED = new ReferenceQueue<>();
@@ -139,18 +153,175 @@ public final class HappensBefore {
         if (sync == null) {
             return;
         }
-        ThreadClock me = CLOCKS.get();
+        releaseInto(CLOCKS.get(), syncClock(sync));
+    }
+
+    /** Merges {@code me} into {@code clock}, remembering the release for {@link #retract}. */
+    private static void releaseInto(ThreadClock me, Clock clock) {
         Stamp mine = me.current;
-        AtomicReference<Stamp> clock = syncClock(sync);
         for (;;) {
             Stamp seen = clock.get();
             Stamp merged = seen == null ? mine : seen.join(mine, NO_OWNER);
-            if (merged == seen || clock.compareAndSet(seen, merged)) { // NOPMD CompareObjectsWithEquals - join returns its receiver when nothing changed
+            if (merged == seen) { // NOPMD CompareObjectsWithEquals - join returns its receiver when nothing changed
+                me.forgetRelease();
+                break;
+            }
+            if (clock.compareAndSet(seen, merged)) {
+                me.lastRelease = clock;
+                me.beforeLastRelease = seen;
+                me.lastReleased = merged;
                 break;
             }
         }
         // The next access this thread stamps must not look published by this release.
         me.published = true;
+    }
+
+    /**
+     * The release half of a volatile field: everything the calling thread did so far is published
+     * to whoever later acquires the same field of the same object (#742).
+     *
+     * <p>Per field, where {@link #release} is per object: a read of one volatile field does not
+     * receive what a write of another published. The field is compared by its simple name, the
+     * part after the last dot, so {@code com.example.Holder.ready} and {@code ready} name one
+     * field; the agent qualifies a field with the class the instruction named, which for an
+     * inherited field depends on the static type at the call site.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field;
+     *              {@code null} is ignored
+     * @param field the field's name, qualified or simple
+     */
+    @API(status = Status.INTERNAL)
+    public static void releaseVolatile(@Nullable Object owner, String field) {
+        if (owner == null) {
+            return;
+        }
+        releaseInto(CLOCKS.get(), syncClock(owner).field(field));
+    }
+
+    /**
+     * The acquire half of a volatile field, for a caller that records a volatile read after it
+     * was made: the calling thread receives what earlier {@link #releaseVolatile} calls on the same
+     * field of the same object published, and nothing another field's write published.
+     *
+     * @param owner the object the field belongs to; {@code null} or one never released is ignored
+     * @param field the field's name, qualified or simple
+     */
+    @API(status = Status.INTERNAL)
+    public static void acquireVolatile(@Nullable Object owner, String field) {
+        if (owner == null) {
+            return;
+        }
+        SyncClock clock = SYNC.get(new IdentityKey.Weak(owner, null));
+        FieldClock fieldClock = clock == null ? null : clock.find(field);
+        if (fieldClock != null) {
+            acquireFrom(CLOCKS.get(), fieldClock);
+        }
+    }
+
+    /**
+     * Notes that the calling thread is about to read a volatile field, for a caller that learns of
+     * the read before it is made, as the agent's hook does.
+     *
+     * <p>Nothing is acquired here: the value has not been seen yet. The field is remembered, and
+     * {@link #acquireVolatileReads} takes the acquire at the access the weaver marks as following
+     * the read. The field's clock is created now, even when nobody has written the field yet, so
+     * that a write landing between this call and the read is still found. A field the thread
+     * already remembers costs a scan of {@value #VOLATILE_READS} entries and allocates nothing.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field;
+     *              {@code null} is ignored
+     * @param field the field's name, qualified or simple
+     */
+    @API(status = Status.INTERNAL)
+    public static void volatileRead(@Nullable Object owner, String field) {
+        if (owner == null) {
+            return;
+        }
+        ThreadClock me = CLOCKS.get();
+        FieldClock[] reads = me.volatileReads;
+        if (reads == null) {
+            reads = new FieldClock[VOLATILE_READS];
+            me.volatileReads = reads;
+        }
+        for (FieldClock read : reads) {
+            if (read != null && read.is(owner, field)) {
+                return;
+            }
+        }
+        reads[me.nextVolatileRead] = syncClock(owner).field(field);
+        me.nextVolatileRead = (me.nextVolatileRead + 1) % VOLATILE_READS;
+    }
+
+    /**
+     * Orders the calling thread after the writes of every volatile field of {@code owner} it has
+     * read, as far as {@link #volatileRead} remembers them.
+     *
+     * <p>For the access the weaver marks as following a volatile read of the same object. Fields
+     * of {@code owner} the thread has not read acquire nothing, which is the difference from an
+     * acquire of the whole object (#742).
+     *
+     * @param owner the object the marked access is on; {@code null} is ignored
+     */
+    @API(status = Status.INTERNAL)
+    public static void acquireVolatileReads(@Nullable Object owner) {
+        if (owner == null) {
+            return;
+        }
+        ThreadClock me = CLOCKS.get();
+        FieldClock[] reads = me.volatileReads;
+        if (reads == null) {
+            return;
+        }
+        for (FieldClock read : reads) {
+            if (read != null && read.belongsTo(owner)) {
+                acquireFrom(me, read);
+            }
+        }
+    }
+
+    /** Merges {@code clock} into {@code me}, when anything has been released to it. */
+    private static void acquireFrom(ThreadClock me, Clock clock) {
+        Stamp theirs = clock.get();
+        if (theirs != null) {
+            me.current = me.current.join(theirs, me.thread);
+        }
+    }
+
+    /**
+     * Withdraws the calling thread's last {@link #release} of {@code sync}, for a hand-off that
+     * turned out not to happen.
+     *
+     * <p>The hooks release before the operation, because the release must precede every take that
+     * can return the element, and learn only afterwards whether the queue refused the offer or the
+     * {@code compareAndSet} failed. A refused offer publishes nothing, so leaving its release in
+     * place would order whoever later acquires the element after this thread by a hand-off that
+     * never took place, and hide a race (#742).
+     *
+     * <p>The withdrawal is exact or it does nothing: it restores the clock {@code sync} had before
+     * the release only while the clock still holds what the release installed, and only when this
+     * thread has neither released again nor stamped an access since. A release another thread
+     * made in between has folded this one in, and it stays, which is the old answer. So does an
+     * acquire another thread made in the window between the release and the withdrawal, of an
+     * element it received some other way; the window is the length of one refused call.
+     *
+     * @param sync the object the refused hand-off went through; {@code null} is ignored
+     */
+    @API(status = Status.INTERNAL)
+    @SuppressWarnings("ReferenceEquality") // the same clock object, not an equal one
+    public static void retract(@Nullable Object sync) {
+        if (sync == null) {
+            return;
+        }
+        ThreadClock me = CLOCKS.get();
+        Clock clock = me.lastRelease;
+        Stamp before = me.beforeLastRelease;
+        Stamp released = me.lastReleased;
+        me.forgetRelease();
+        // Only an object's own clock matches here: a volatile field's release is never withdrawn.
+        if (clock != null && clock == SYNC.get(new IdentityKey.Weak(sync, null))) { // NOPMD CompareObjectsWithEquals - the same clock, not an equal one
+            clock.compareAndSet(released, before);
+        }
     }
 
     /**
@@ -169,13 +340,10 @@ public final class HappensBefore {
         if (sync == null) {
             return;
         }
-        AtomicReference<Stamp> clock = SYNC.get(new IdentityKey.Weak(sync, null));
-        Stamp theirs = clock == null ? null : clock.get();
-        if (theirs == null) {
-            return;
+        SyncClock clock = SYNC.get(new IdentityKey.Weak(sync, null));
+        if (clock != null) {
+            acquireFrom(CLOCKS.get(), clock);
         }
-        ThreadClock me = CLOCKS.get();
-        me.current = me.current.join(theirs, me.thread);
     }
 
     /**
@@ -230,6 +398,8 @@ public final class HappensBefore {
         if (me.published) {
             me.current = me.current.tick(me.thread);
             me.published = false;
+            // An access after the release: the release can no longer be withdrawn.
+            me.forgetRelease();
         }
         return me.current;
     }
@@ -360,16 +530,131 @@ public final class HappensBefore {
     }
 
     /** {@return the clock of {@code sync}, created empty on first use} */
-    private static AtomicReference<Stamp> syncClock(Object sync) {
+    private static SyncClock syncClock(Object sync) {
         for (Reference<?> gone = COLLECTED.poll(); gone != null; gone = COLLECTED.poll()) {
             SYNC.remove(gone);
         }
-        AtomicReference<Stamp> clock = SYNC.get(new IdentityKey.Weak(sync, null));
+        SyncClock clock = SYNC.get(new IdentityKey.Weak(sync, null));
         if (clock != null) {
             return clock;
         }
-        return SYNC.computeIfAbsent(new IdentityKey.Weak(sync, COLLECTED),
-                ignored -> new AtomicReference<>());
+        return SYNC.computeIfAbsent(new IdentityKey.Weak(sync, COLLECTED), SyncClock::new);
+    }
+
+    /**
+     * {@return whether two field names name the same field of one object}: equal simple names,
+     * the part after the last dot. Allocation-free.
+     */
+    static boolean sameField(String one, String other) {
+        if (one.equals(other)) {
+            return true;
+        }
+        int from = one.lastIndexOf('.') + 1;
+        int otherFrom = other.lastIndexOf('.') + 1;
+        int length = one.length() - from;
+        return length == other.length() - otherFrom
+                && one.regionMatches(from, other, otherFrom, length);
+    }
+
+    /** A vector clock that releases merge into and acquires read, replaced on every change. */
+    private abstract static class Clock {
+
+        private static final AtomicReferenceFieldUpdater<Clock, Stamp> STAMP =
+                AtomicReferenceFieldUpdater.newUpdater(Clock.class, Stamp.class, "stamp");
+
+        /** What has been released to this clock, {@code null} before the first release. */
+        private volatile @Nullable Stamp stamp;
+
+        final @Nullable Stamp get() {
+            return stamp;
+        }
+
+        final boolean compareAndSet(@Nullable Stamp expected, @Nullable Stamp update) {
+            return STAMP.compareAndSet(this, expected, update);
+        }
+    }
+
+    /**
+     * A synchronization object's clock, which {@link #release} and {@link #acquire} use, and the
+     * separate clocks of its volatile fields, which {@link #releaseVolatile} and the volatile
+     * acquires use (#742).
+     */
+    private static final class SyncClock extends Clock {
+
+        private static final AtomicReferenceFieldUpdater<SyncClock, FieldClock> FIELDS =
+                AtomicReferenceFieldUpdater.newUpdater(SyncClock.class, FieldClock.class, "fields");
+
+        /** The key this clock is stored under, which knows the object while it lives. */
+        final IdentityKey.Weak key;
+
+        /** The object's volatile fields used so far, newest first; only ever prepended to. */
+        private volatile @Nullable FieldClock fields;
+
+        SyncClock(IdentityKey.Weak key) {
+            this.key = key;
+        }
+
+        /** {@return the clock of {@code field}, or {@code null} while nobody has used it} */
+        @Nullable FieldClock find(String field) {
+            return find(fields, field);
+        }
+
+        private static @Nullable FieldClock find(@Nullable FieldClock from, String field) {
+            for (FieldClock clock = from; clock != null; clock = clock.next) {
+                if (sameField(clock.field, field)) {
+                    return clock;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * {@return the clock of {@code field}, created on first use}
+         *
+         * <p>Lock-free: the recording threads are the racing threads, and a monitor here would
+         * serialize them.
+         */
+        FieldClock field(String field) {
+            for (;;) {
+                FieldClock seen = fields;
+                FieldClock found = find(seen, field);
+                if (found != null) {
+                    return found;
+                }
+                FieldClock created = new FieldClock(this, field, seen);
+                if (FIELDS.compareAndSet(this, seen, created)) {
+                    return created;
+                }
+            }
+        }
+    }
+
+    /** The clock of one volatile field of one object. */
+    private static final class FieldClock extends Clock {
+
+        final SyncClock owner;
+
+        final String field;
+
+        /** The field its object had seen before this one, or {@code null}. */
+        final @Nullable FieldClock next;
+
+        FieldClock(SyncClock owner, String field, @Nullable FieldClock next) {
+            this.owner = owner;
+            this.field = field;
+            this.next = next;
+        }
+
+        /** {@return whether this is the clock of {@code object}'s field {@code name}} */
+        boolean is(Object object, String name) {
+            return belongsTo(object) && sameField(field, name);
+        }
+
+        /** {@return whether this clock is of a field of {@code object}, compared by identity} */
+        @SuppressWarnings("ReferenceEquality") // identity is the point
+        boolean belongsTo(Object object) {
+            return owner.key.get() == object; // NOPMD CompareObjectsWithEquals - identity is the point
+        }
     }
 
     /** Creates the calling thread's clock, taking up a clock forked to it if there is one. */
@@ -400,9 +685,35 @@ public final class HappensBefore {
          */
         boolean published;
 
+        /**
+         * The synchronization clock this thread's last {@link #release} changed, while
+         * {@link #retract} can still withdraw it, with the value it replaced and the value it
+         * installed. Read and written by the owning thread only.
+         */
+        @Nullable Clock lastRelease;
+
+        @Nullable Stamp beforeLastRelease;
+
+        @Nullable Stamp lastReleased;
+
+        /**
+         * The volatile fields this thread last read, oldest overwritten first, created at its first
+         * volatile read. Read and written by the owning thread only.
+         */
+        FieldClock @Nullable [] volatileReads;
+
+        /** Where the next volatile read goes in {@link #volatileReads}. */
+        int nextVolatileRead;
+
         ThreadClock(long thread, Stamp current) {
             this.thread = thread;
             this.current = current;
+        }
+
+        void forgetRelease() {
+            lastRelease = null;
+            beforeLastRelease = null;
+            lastReleased = null;
         }
     }
 

@@ -459,7 +459,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectFileChannelPositionRace` | `FILE_CHANNEL_POSITION_RACE` | `FileChannel` implicit-position reads/writes from multiple threads — interleaved seeks corrupt I/O |
 | `detectSharedIterator` | `SHARED_ITERATOR` | An `Iterator`/`ListIterator`/`Spliterator` consumed by more than one thread |
 | `detectHighContentionAtomic` | `HIGH_CONTENTION_ATOMIC` | CAS retry storms on hot `Atomic*` fields — advisory to switch to `LongAdder` |
-| `detectSharedJsonMapperReconfig` | `SHARED_JSON_MAPPER_RECONFIG` | Mapper (`ObjectMapper`, `Gson`) reconfigured after concurrent use began |
+| `detectSharedJsonMapperReconfig` | `SHARED_JSON_MAPPER_RECONFIG` | Mapper (`ObjectMapper`, `Gson`) reconfigured while another thread uses it in the same round |
 
 ### JDK 25/26 detectors — Phases 16 & 18 (1.7.0+ / 1.8.0+)
 

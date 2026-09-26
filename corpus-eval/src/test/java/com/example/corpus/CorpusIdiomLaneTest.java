@@ -876,6 +876,114 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- A MessageDigest pool that hands out holders (#747) -----------------------------------
+
+    /** What the holder pool hands out: a wrapper around one digest, never the digest itself. */
+    private static final class DigestHolder {
+        final MessageDigest digest;
+
+        DigestHolder(MessageDigest digest) {
+            this.digest = digest;
+        }
+    }
+
+    private static final Deque<DigestHolder> HOLDER_POOL = holderPool();
+    private static final Deque<DigestHolder> PEEKED_HOLDERS = holderPool();
+    private static final Deque<DigestHolder> DECLARED_HOLDER_POOL = holderPool();
+    private static final Deque<DigestHolder> DECLARED_PEEKED_HOLDERS = holderPool();
+
+    /**
+     * Take the one holder from a pool guarded by its own monitor, use its digest, put it back. The
+     * take names the holder, while the detector tracks the digest inside it, and the model takes
+     * no edge from a monitor, so nothing it sees hands the digest over.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_digestHolderPool_checkedOutUnderALock() {
+        correct(() -> {
+            DigestHolder holder = checkOut(HOLDER_POOL);
+            try {
+                holder.digest.update(PAYLOAD);
+                use(holder.digest.digest().length);
+            } finally {
+                checkIn(HOLDER_POOL, holder);
+            }
+        });
+    }
+
+    /** The same pool with peek() for poll(), so every thread uses the one holder's digest. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_digestHolderPool_peekedByEveryThread() {
+        broken(() -> {
+            DigestHolder holder;
+            synchronized (PEEKED_HOLDERS) {
+                holder = PEEKED_HOLDERS.peek();
+            }
+            holder.digest.update(PAYLOAD);
+            use(holder.digest.digest().length);
+        });
+    }
+
+    /** The checkout above, declared: the taker names the digest it now owns. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_digestHolderPool_checkoutDeclared() {
+        correct(() -> {
+            DigestHolder holder = checkOut(DECLARED_HOLDER_POOL);
+            AsyncTestContext.ownershipTaken(holder.digest);
+            try {
+                holder.digest.update(PAYLOAD);
+                use(holder.digest.digest().length);
+            } finally {
+                checkIn(DECLARED_HOLDER_POOL, holder);
+            }
+        });
+    }
+
+    /**
+     * The same declaration over peek(): every thread declares the one digest its own and uses it
+     * at once, so each declaration starts an owner while the last is still using it. The uses are
+     * repeated so the threads overlap after their declarations.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_digestHolderPool_declaredButPeeked() {
+        broken(() -> {
+            DigestHolder holder;
+            synchronized (DECLARED_PEEKED_HOLDERS) {
+                holder = DECLARED_PEEKED_HOLDERS.peek();
+            }
+            AsyncTestContext.ownershipTaken(holder.digest);
+            for (int i = 0; i < 50; i++) {
+                holder.digest.update(PAYLOAD);
+            }
+            use(holder.digest.digest().length);
+        });
+    }
+
+    private static DigestHolder checkOut(Deque<DigestHolder> pool) throws InterruptedException {
+        synchronized (pool) {
+            while (pool.isEmpty()) {
+                pool.wait();
+            }
+            return pool.poll();
+        }
+    }
+
+    private static void checkIn(Deque<DigestHolder> pool, DigestHolder holder) {
+        synchronized (pool) {
+            pool.offer(holder);
+            pool.notifyAll();
+        }
+    }
+
+    private static Deque<DigestHolder> holderPool() {
+        Deque<DigestHolder> pool = new ArrayDeque<>();
+        try {
+            pool.add(new DigestHolder(MessageDigest.getInstance("SHA-256")));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required of every JRE", e);
+        }
+        return pool;
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

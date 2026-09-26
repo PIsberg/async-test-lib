@@ -155,7 +155,7 @@ public final class VarHandleNonAtomicUpdateDetector {
             if (s.details.size() < MAX_DETAILS) {
                 s.details.add(String.format(
                     "thread '%s' read '%s' with %s then wrote it with %s, no compareAndSet between",
-                    thread.getName(), s.label, readMode, mode == null ? "PLAIN" : mode.name()));
+                    ReportSections.threadLabel(thread), s.label, readMode, mode == null ? "PLAIN" : mode.name()));
             }
         }
     }

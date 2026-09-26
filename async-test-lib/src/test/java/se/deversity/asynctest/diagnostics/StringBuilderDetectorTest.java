@@ -176,7 +176,7 @@ public class StringBuilderDetectorTest {
 
         StringBuilderDetector.StringBuilderReport report = detector.analyze();
         assertNotNull(report);
-        assertTrue(report.builderActivity.containsKey("auto-builder"), "Should auto-register on first access");
+        assertTrue(report.builderActivity.stream().anyMatch(a -> a.startsWith("auto-builder: ")), "Should auto-register on first access");
     }
 
     @Test
@@ -214,7 +214,7 @@ public class StringBuilderDetectorTest {
         detector.recordRead(sb, "all-ops-builder");
 
         StringBuilderDetector.StringBuilderReport report = detector.analyze();
-        String activity = report.builderActivity.get("all-ops-builder");
+        String activity = report.builderActivity.stream().filter(a -> a.startsWith("all-ops-builder: ")).findFirst().orElse("");
 
         assertNotNull(activity);
         // writes = 5 (2 appends + 1 insert + 1 delete + 1 replace)
@@ -351,5 +351,26 @@ public class StringBuilderDetectorTest {
         assertTrue(errors.get(0).contains("3 exception(s) while 2 threads used it"),
             "the thread count is round one's two users, not the four threads of the whole run: "
                 + errors.get(0));
+    }
+
+    /**
+     * Two builders may share a name. Each keeps its own activity line; filed under the name, the
+     * second builder's line overwrote the first's (#789).
+     */
+    @Test
+    void twoBuildersWithTheSameNameEachKeepTheirActivity() {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder written = new StringBuilder();
+        StringBuilder read = new StringBuilder();
+        detector.registerBuilder(written, "out");
+        detector.registerBuilder(read, "out");
+        detector.recordAppend(written, "out");
+        detector.recordRead(read, "out");
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("out: writes: 1 from 1 thread(s), reads: 0, errors: 0"),
+                "the written builder's line survives beside the read one's: " + report);
+        assertTrue(report.contains("out: writes: 0 from 0 thread(s), reads: 1, errors: 0"),
+                "the read builder's line survives beside the written one's: " + report);
     }
 }

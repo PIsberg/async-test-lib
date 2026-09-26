@@ -39,7 +39,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsContamination` an
 
 ```
 THREADLOCAL CONTAMINATION DETECTED:
-  - Thread 'async-test-worker-6' in 'process-62': read REQUEST_ID whose value was set in
+  - Thread 'async-test-worker-6 (id=36)' in 'process-62': read REQUEST_ID whose value was set in
     task 1 — not cleared between tasks
 ```
 

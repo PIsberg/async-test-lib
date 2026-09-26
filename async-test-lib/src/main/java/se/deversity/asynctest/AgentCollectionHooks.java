@@ -196,6 +196,15 @@ public final class AgentCollectionHooks {
         if (receiver instanceof Queue) {
             // Queue.add is an offer that throws instead of returning false (#630).
             TelemetryRegistry.ownershipOffered(element, receiver);
+            boolean added = false;
+            try {
+                added = receiver.add(element);
+            } finally {
+                if (!added) { // refused, or the call threw: nothing was handed over (#742)
+                    TelemetryRegistry.ownershipRefused(element, receiver);
+                }
+            }
+            return added;
         }
         return receiver.add(element);
     }
@@ -288,7 +297,11 @@ public final class AgentCollectionHooks {
         record(receiver, "offer", true);
         // Before the offer, so the take that removes the element drains after it (#630).
         TelemetryRegistry.ownershipOffered(element, receiver);
-        return receiver.offer(element);
+        boolean accepted = receiver.offer(element);
+        if (!accepted) {
+            TelemetryRegistry.ownershipRefused(element, receiver);
+        }
+        return accepted;
     }
 
     /** Weaves {@code Queue.poll}. @param receiver the queue @return the head, or null */
@@ -313,35 +326,67 @@ public final class AgentCollectionHooks {
     public static boolean dequeOfferFirst(Deque<Object> receiver, Object element) {
         record(receiver, "offerFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        return receiver.offerFirst(element);
+        boolean accepted = receiver.offerFirst(element);
+        if (!accepted) {
+            TelemetryRegistry.ownershipRefused(element, receiver);
+        }
+        return accepted;
     }
 
     /** Weaves {@code Deque.offerLast}, an offer at one end (#692). @param receiver the deque @param element the element @return whether it was accepted */
     public static boolean dequeOfferLast(Deque<Object> receiver, Object element) {
         record(receiver, "offerLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        return receiver.offerLast(element);
+        boolean accepted = receiver.offerLast(element);
+        if (!accepted) {
+            TelemetryRegistry.ownershipRefused(element, receiver);
+        }
+        return accepted;
     }
 
     /** Weaves {@code Deque.addFirst}, an offer at one end (#692). @param receiver the deque @param element the element */
     public static void dequeAddFirst(Deque<Object> receiver, Object element) {
         record(receiver, "addFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        receiver.addFirst(element);
+        boolean accepted = false;
+        try {
+            receiver.addFirst(element);
+            accepted = true;
+        } finally {
+            if (!accepted) { // the call threw: nothing was handed over (#742)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
+        }
     }
 
     /** Weaves {@code Deque.addLast}, an offer at one end (#692). @param receiver the deque @param element the element */
     public static void dequeAddLast(Deque<Object> receiver, Object element) {
         record(receiver, "addLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        receiver.addLast(element);
+        boolean accepted = false;
+        try {
+            receiver.addLast(element);
+            accepted = true;
+        } finally {
+            if (!accepted) { // the call threw: nothing was handed over (#742)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
+        }
     }
 
     /** Weaves {@code Deque.push}, an offer at one end (#692). @param receiver the deque @param element the element */
     public static void dequePush(Deque<Object> receiver, Object element) {
         record(receiver, "push", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        receiver.push(element);
+        boolean accepted = false;
+        try {
+            receiver.push(element);
+            accepted = true;
+        } finally {
+            if (!accepted) { // the call threw: nothing was handed over (#742)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
+        }
     }
 
     /** Weaves {@code Deque.pollFirst}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
@@ -397,7 +442,15 @@ public final class AgentCollectionHooks {
             throws InterruptedException {
         record(receiver, "putFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        receiver.putFirst(element);
+        boolean accepted = false;
+        try {
+            receiver.putFirst(element);
+            accepted = true;
+        } finally {
+            if (!accepted) { // the call threw: nothing was handed over (#742)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
+        }
     }
 
     /** Weaves {@code BlockingDeque.putLast}, a blocking offer at one end (#692). @param receiver the deque @param element the element @throws InterruptedException if interrupted while waiting */
@@ -405,7 +458,15 @@ public final class AgentCollectionHooks {
             throws InterruptedException {
         record(receiver, "putLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        receiver.putLast(element);
+        boolean accepted = false;
+        try {
+            receiver.putLast(element);
+            accepted = true;
+        } finally {
+            if (!accepted) { // the call threw: nothing was handed over (#742)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
+        }
     }
 
     /** Weaves {@code BlockingDeque.offerFirst(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
@@ -413,7 +474,15 @@ public final class AgentCollectionHooks {
                                    TimeUnit unit) throws InterruptedException {
         record(receiver, "offerFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        return receiver.offerFirst(element, timeout, unit);
+        boolean accepted = false;
+        try {
+            accepted = receiver.offerFirst(element, timeout, unit);
+        } finally {
+            if (!accepted) { // refused, or the call threw: nothing was handed over (#742)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
+        }
+        return accepted;
     }
 
     /** Weaves {@code BlockingDeque.offerLast(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
@@ -421,7 +490,15 @@ public final class AgentCollectionHooks {
                                    TimeUnit unit) throws InterruptedException {
         record(receiver, "offerLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
-        return receiver.offerLast(element, timeout, unit);
+        boolean accepted = false;
+        try {
+            accepted = receiver.offerLast(element, timeout, unit);
+        } finally {
+            if (!accepted) { // refused, or the call threw: nothing was handed over (#742)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
+        }
+        return accepted;
     }
 
     /** Weaves {@code BlockingDeque.takeFirst}, a blocking take at one end (#692). @param receiver the deque @return the element taken @throws InterruptedException if interrupted while waiting */

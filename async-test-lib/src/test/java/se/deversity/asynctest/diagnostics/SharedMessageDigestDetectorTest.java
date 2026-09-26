@@ -551,6 +551,143 @@ public class SharedMessageDigestDetectorTest {
         assertTrue(report.violations.get(0).contains("'shared'"), report.violations.get(0));
     }
 
+    // ---- A pool of holders (#747) --------------------------------------------------------------
+    //
+    // The pool hands out a wrapper around the digest. The woven take names the wrapper, while the
+    // detector tracks the digest inside it, so the digest's take counter never moves. A queue
+    // whose take is also a happens-before edge (a BlockingQueue) still orders one owner's uses
+    // after the last one's; a plain deque under the pool's own lock does not, because the model
+    // takes no edge from a monitor. For that shape the taker declares the checkout of what it
+    // uses, AsyncTestContext.ownershipTaken(holder.md), right after the take.
+
+    /** A pooled wrapper around one digest, the shape the pool hands out. */
+    private static final class DigestHolder {
+        final MessageDigest md;
+
+        DigestHolder(MessageDigest md) {
+            this.md = md;
+        }
+    }
+
+    /** Takes a holder out of {@code pool} through the woven hook, under the pool's monitor. */
+    private static DigestHolder pollHolder(java.util.ArrayDeque<Object> pool) {
+        synchronized (pool) {
+            return (DigestHolder) se.deversity.asynctest.AgentCollectionHooks.queuePoll(pool);
+        }
+    }
+
+    private static void returnHolder(java.util.ArrayDeque<Object> pool, DigestHolder holder) {
+        synchronized (pool) {
+            se.deversity.asynctest.AgentCollectionHooks.queueOffer(pool, holder);
+        }
+    }
+
+    /**
+     * Checks a holder out of {@code pool} {@code times} times, uses its digest and puts it back,
+     * spinning while the pool is empty, and declares each checkout when {@code declare} says so.
+     */
+    private static void checkOutHolder(java.util.ArrayDeque<Object> pool, int times, boolean declare) {
+        for (int i = 0; i < times; i++) {
+            DigestHolder holder;
+            while ((holder = pollHolder(pool)) == null) {
+                Thread.onSpinWait();
+            }
+            if (declare) {
+                AsyncTestContext.ownershipTaken(holder.md);
+            }
+            use(holder.md);
+            returnHolder(pool, holder);
+        }
+    }
+
+    @Test
+    void aPoolOfHoldersThroughAWovenBlockingQueueIsNotSharing() throws Exception {
+        // The take is a happens-before edge, so each owner's uses are ordered after the last's.
+        AsyncTestContext ctx = digestContext();
+        var pool = new java.util.concurrent.LinkedBlockingQueue<Object>();
+        pool.put(new DigestHolder(sha256()));
+        Runnable body = () -> {
+            try {
+                for (int i = 0; i < 50; i++) {
+                    DigestHolder holder =
+                            (DigestHolder) se.deversity.asynctest.AgentConcurrencyUtilHooks.take(pool);
+                    use(holder.md);
+                    se.deversity.asynctest.AgentConcurrencyUtilHooks.put(pool, holder);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+        };
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        runWorkers(ctx, together(barrier, body), together(barrier, body));
+
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(),
+                "the queue ordered each take after the previous put; got " + report.violations);
+    }
+
+    @Test
+    void anUndeclaredPoolOfHoldersBehindALockIsStillReported() throws Exception {
+        // The open half of #747: correct pool use, reported, because nothing the detector sees
+        // hands the digest over. Propagating a take to the tracked instances a holder reaches
+        // would silence it; until then this pins the gap, and the test below is the way out.
+        AsyncTestContext ctx = digestContext();
+        var pool = new java.util.ArrayDeque<Object>();
+        pool.add(new DigestHolder(sha256()));
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        runWorkers(ctx, together(barrier, () -> checkOutHolder(pool, 50, false)),
+                together(barrier, () -> checkOutHolder(pool, 50, false)));
+
+        assertTrue(detectorOf(ctx).analyze().hasIssues(),
+                "the take named the holder and the model takes no edge from the pool's monitor");
+    }
+
+    @Test
+    void aPoolOfHoldersBehindALockIsNotSharingOnceTheTakerDeclaresTheDigest() throws Exception {
+        AsyncTestContext ctx = digestContext();
+        var pool = new java.util.ArrayDeque<Object>();
+        pool.add(new DigestHolder(sha256()));
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        runWorkers(ctx, together(barrier, () -> checkOutHolder(pool, 50, true)),
+                together(barrier, () -> checkOutHolder(pool, 50, true)));
+
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(),
+                "each taker declared the digest its holder wraps; got " + report.violations);
+    }
+
+    @Test
+    void aDeclaredCheckoutDoesNotHideTwoHoldersWrappingOneDigest() throws Exception {
+        // Each thread takes its own holder and declares its digest, but both holders wrap the
+        // same one, so both threads own it at once: the second declaration starts a new owner
+        // while the first thread is still using it.
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var pool = new java.util.ArrayDeque<Object>();
+        pool.add(new DigestHolder(md));
+        pool.add(new DigestHolder(md));
+        var bothDeclared = new java.util.concurrent.CyclicBarrier(2);
+        Runnable body = () -> {
+            DigestHolder holder = pollHolder(pool);
+            AsyncTestContext.ownershipTaken(holder.md);
+            together(bothDeclared, () -> {
+                for (int i = 0; i < 20; i++) {
+                    use(holder.md);
+                }
+            }).run();
+            returnHolder(pool, holder);
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, body, body);
+
+        assertTrue(detectorOf(ctx).analyze().hasIssues(),
+                "two holders handed the same digest to two threads at once");
+    }
+
     // ---- An ordering the happens-before model sees is not sharing -----------------------------
     //
     // Two threads in one round that never overlapped because the program ordered them: one used

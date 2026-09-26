@@ -6,7 +6,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 53. Calendar Sharing Detector
 * **Severity**: `MEDIUM`
-* **Description**: `Calendar` is not thread-safe; concurrent `get()`/`set()`/`add()`/`getTime()` calls on a shared instance can interleave and silently corrupt the represented date with no exception thrown. The detector tracks shared registrations and flags mutation-during-read contention.
+* **Description**: `Calendar` is not thread-safe; concurrent `get()`/`set()`/`add()`/`getTime()` calls on a shared instance can interleave and silently corrupt the represented date with no exception thrown. The detector tracks shared registrations and flags mutation-during-read contention. A round of `get()` calls alone still counts as sharing, because after a `set()` the next `get()` recomputes the fields into the instance, so concurrent `get()` calls race; a read lock held over every `get()` still guards them.
 * **Buggy Code**:
   ```java
   private static final Calendar SHARED_CAL = Calendar.getInstance();

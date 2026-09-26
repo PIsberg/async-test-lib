@@ -118,4 +118,29 @@ class ThreadLocalRandomMisuseDetectorTest {
         d.recordUse(null, Thread.currentThread());
         assertFalse(d.analyze().hasIssues());
     }
+
+    /**
+     * Default virtual threads have no name, so the obtaining thread printed as '' and every
+     * misusing thread collapsed into one '' entry, counted once (#790). Each is named by its id.
+     */
+    @Test
+    void unnamedVirtualThreadsAreReportedByIdAndCountedApart() {
+        var d = new ThreadLocalRandomMisuseDetector();
+        ThreadLocalRandom shared = ThreadLocalRandom.current();
+        Thread obtainer = Thread.ofVirtual().unstarted(() -> { });
+        Thread first = Thread.ofVirtual().unstarted(() -> { });
+        Thread second = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", first.getName(), "precondition: a default virtual thread has no name");
+        d.recordObtain(shared, "cached-rng", obtainer);
+        d.recordUse(shared, first);
+        d.recordUse(shared, second);
+        var report = d.analyze();
+        String msg = report.violations.get(0);
+        assertTrue(msg.contains("obtained by thread '#" + obtainer.threadId() + "'"),
+                "the unnamed obtaining thread must be named by its id: " + msg);
+        assertTrue(msg.contains("#" + first.threadId()) && msg.contains("#" + second.threadId()),
+                "each unnamed misusing thread must be told apart by its id: " + msg);
+        assertTrue(msg.contains("used by 2 thread(s)"), "two threads misused it: " + msg);
+        assertEquals(2, report.structuredViolations.get(0).attributes().get("misusingThreadCount"));
+    }
 }

@@ -262,6 +262,118 @@ class SharedJsonMapperReconfigDetectorTest {
         assertEquals(2, report.structuredViolations.get(0).attributes().get("usingThreadCount"));
     }
 
+    // ---- A reconfiguration races with any other user of its round, before or after it (#784) ----
+    //
+    // The workers of one round are released together, so a use recorded after a reconfiguration in
+    // the same round is as concurrent with it as one recorded before. Judging only the users seen
+    // so far missed every reconfiguration that happened to be recorded first in its round.
+
+    @Test
+    void aReconfigurationFollowedByAnotherThreadsUseInTheSameRoundFires() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        var reconfigured = new java.util.concurrent.CountDownLatch(1);
+
+        round(scope, () -> {
+            d.recordConfigMutation(mapper, "registerModule(JavaTimeModule)");
+            reconfigured.countDown();
+        }, () -> {
+            awaitLatch(reconfigured);
+            d.recordUse(mapper);
+        });
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(),
+                "another thread used the mapper in the round it was reconfigured in, after the "
+                        + "reconfiguration was recorded");
+        assertTrue(report.violations.get(0).contains("registerModule(JavaTimeModule)"),
+                report.violations.get(0));
+        assertTrue(report.violations.get(0).contains("used by 1 thread(s) (round-worker-1)"),
+                report.violations.get(0));
+        assertEquals(1, report.structuredViolations.get(0).attributes().get("mutationCount"));
+    }
+
+    @Test
+    void aUseFollowedByAnotherThreadsReconfigurationInTheSameRoundStillFires() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        var used = new java.util.concurrent.CountDownLatch(1);
+
+        round(scope, () -> {
+            d.recordUse(mapper);
+            used.countDown();
+        }, () -> {
+            awaitLatch(used);
+            d.recordConfigMutation(mapper, "configure(FAIL_ON_UNKNOWN, false)");
+        });
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "the mapper was reconfigured by a thread other than its user");
+        assertEquals(1, report.structuredViolations.get(0).attributes().get("mutationCount"));
+    }
+
+    @Test
+    void aSingleThreadThatReconfiguresAndThenUsesItsMapperIsSilent() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> {
+            d.recordConfigMutation(mapper, "registerModule(JavaTimeModule)");
+            d.recordUse(mapper);
+            d.recordConfigMutation(mapper, "setSerializationInclusion(NON_NULL)");
+            d.recordUse(mapper);
+        });
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(), "nobody else touched the mapper: " + report.violations);
+    }
+
+    @Test
+    void aReconfigurationInOneRoundAndAUseInTheNextAreNotARace() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> d.recordConfigMutation(mapper, "registerModule(JavaTimeModule)"));
+        round(scope, () -> d.recordUse(mapper), () -> d.recordUse(mapper));
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                "the reconfiguration's round had finished before anyone used the mapper: "
+                        + report.violations);
+    }
+
+    @Test
+    void configurationBeforeSharingOutsideARunStaysSilent() throws Exception {
+        // With no round bound, the detector cannot tell a use racing a reconfiguration from one
+        // that follows it by a thread start, so a configuration before the first use keeps
+        // reading as config-then-publish.
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+
+        d.recordConfigMutation(mapper, "registerModule(JavaTimeModule)");
+        Thread a = new Thread(() -> d.recordUse(mapper));
+        Thread b = new Thread(() -> d.recordUse(mapper));
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    private static void awaitLatch(java.util.concurrent.CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static void await(java.util.concurrent.CyclicBarrier barrier) {
         try {
             barrier.await();

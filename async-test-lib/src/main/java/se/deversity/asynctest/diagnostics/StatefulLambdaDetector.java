@@ -24,8 +24,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Two kinds of mutation are not the race and are not reported. Mutation of state that is
  * thread-safe by type, when the caller names the captured object through
  * {@link #recordCapturedMutation(Object, String, Object, Thread)}, and mutation that one lock
- * covered every time. The lock is judged per captured object, so two captures each guarded by
- * its own lock are both covered. The lock the detector can see is the captured object's own
+ * covered every time. The lock is judged per captured object, so two named captures each guarded
+ * by its own lock are both covered; mutations recorded without their object are all judged
+ * against the lambda, as one capture. The lock the detector can see is the captured object's own
  * monitor (or the lambda's, when no object is named), a lock declared with
  * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
  * the finding standing.
@@ -91,8 +92,10 @@ public class StatefulLambdaDetector {
         LambdaState s = lambdas.computeIfAbsent(
                 new IdentityKey(lambda), id -> new LambdaState(name != null ? name
                         : lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda)));
-        s.executingThreadIds.add(thread.threadId());
-        s.executingThreadNames.add(thread.getName());
+        // The label is built once per thread, and carries the id, so unnamed threads stay apart.
+        if (s.executingThreadIds.add(thread.threadId())) {
+            s.executingThreadNames.add(ReportSections.threadLabel(thread));
+        }
     }
 
     /**
@@ -100,7 +103,12 @@ public class StatefulLambdaDetector {
      * Call this whenever the lambda writes to a captured mutable container.
      *
      * <p>Without the captured object the detector cannot tell thread-safe state from a plain
-     * container; prefer {@link #recordCapturedMutation(Object, String, Object, Thread)}.
+     * container, and it has no capture to judge the lock against: the mutation is judged against
+     * the lambda, so all of one lambda's mutations recorded through this overload share one
+     * lockset, whatever {@code capturedName} says. Two such captures each guarded by its own lock
+     * are therefore reported, because no one lock covered both. Prefer
+     * {@link #recordCapturedMutation(Object, String, Object, Thread)}, which judges each captured
+     * object on its own.
      *
      * @param lambda        the lambda, Runnable, or Callable instance
      * @param capturedName  name of the captured variable being mutated
@@ -135,7 +143,7 @@ public class StatefulLambdaDetector {
         if (capturedState != null && isThreadSafeByType(capturedState)) return;
         String label = capturedName != null ? capturedName : "capturedState";
         LambdaState s = noteCaptureAccess(lambda, capturedState, true, thread);
-        s.mutationEvents.add(thread.getName() + " → " + label);
+        s.mutationEvents.add(ReportSections.threadLabel(thread) + " → " + label);
     }
 
     /**
@@ -146,9 +154,9 @@ public class StatefulLambdaDetector {
      * the reads puts the readers in the same round as the writer. A read is judged like a write:
      * it counts as a second thread, and the lock probe runs on the reading thread, so a writer
      * and readers all under one lock stay unreported, and a read outside the writer's lock is
-     * reported. Reads alone never report; the finding still needs a recorded mutation. The round
-     * verdict does not tell reads from writes, though, so two unguarded readers in one round and
-     * a mutation in another round still report. Call it
+     * reported. Reads alone never report; the finding needs a recorded mutation in the same round
+     * as the reads, so two unguarded readers in one round and a mutation in another round, which
+     * never overlapped them, do not report (#787). Call it
      * where the lambda reads the capture, inside whatever region guards that read, not at the top
      * of the body with {@link #recordExecution(Object, String, Thread)}.
      *

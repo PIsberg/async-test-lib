@@ -132,7 +132,7 @@ public class LockLeakDetectorTest {
         
         assertNotNull(report);
         assertFalse(report.threadActivity.isEmpty(), "Should track thread activity");
-        assertTrue(report.threadActivity.get("multi-thread-lock").contains("2 threads"),
+        assertTrue(report.threadActivity.stream().filter(a -> a.startsWith("multi-thread-lock: ")).findFirst().orElse("").contains("2 threads"),
                    "Should report 2 threads participated");
     }
 
@@ -229,5 +229,27 @@ public class LockLeakDetectorTest {
         
         assertNotNull(report);
         assertFalse(report.hasIssues(), "Should not report issues for balanced acquire/release");
+    }
+
+    /**
+     * Two locks may share a name. Each keeps its own thread-activity line; filed under the name,
+     * the second lock's line overwrote the first's (#789).
+     */
+    @Test
+    void twoLocksWithTheSameNameEachKeepTheirThreadActivity() {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock released = new ReentrantLock();
+        ReentrantLock kept = new ReentrantLock();
+        detector.registerLock(released, "db");
+        detector.registerLock(kept, "db");
+        detector.recordLockAcquired(released, "db");
+        detector.recordLockReleased(released, "db");
+        detector.recordLockAcquired(kept, "db");
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("db: 1 threads acquired, 1 threads released"),
+                "the released lock's line survives beside the kept lock's: " + report);
+        assertTrue(report.contains("db: 1 threads acquired, 0 threads released"),
+                "the kept lock's line survives beside the released lock's: " + report);
     }
 }

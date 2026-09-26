@@ -94,7 +94,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.THREAD_FACTORY, IssueSeverity.HIGH),
             entry(DetectorType.THREAD_LOCAL_LEAKS, IssueSeverity.MEDIUM),
             entry(DetectorType.BUSY_WAITING, IssueSeverity.MEDIUM),
-            entry(DetectorType.ATOMICITY_VIOLATIONS, IssueSeverity.HIGH),
             entry(DetectorType.INTERRUPT_MISHANDLING, IssueSeverity.HIGH),
             entry(DetectorType.THREAD_LEAKS, IssueSeverity.MEDIUM),
             entry(DetectorType.SLEEP_IN_LOCK, IssueSeverity.MEDIUM),

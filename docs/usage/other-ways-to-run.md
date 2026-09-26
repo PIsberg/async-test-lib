@@ -104,10 +104,11 @@ not have hides a real race, so declare an acquire only once the value it depends
 observed. `join` of a thread that is still alive is ignored.
 
 `RaceConditionDetector` needs no declaration for a field the tracked object's class declares
-`volatile`: it treats a recorded write of it as a release and a recorded read as an acquire, and
-never pairs two reads or a read and a write of it, though two writers still race. Record the
-volatile write before making it and the read after it, so a reader that sees the value always
-finds the release.
+`volatile`: it treats a recorded write of it as a release of that field and a recorded read as an
+acquire of the same field only, so a read of one volatile field receives nothing a write of another
+published (#742). It never pairs two reads or a read and a write of it, though two writers still
+race. Record the volatile write before making it and the read after it, so a reader that sees the
+value always finds the release.
 
 ## Manual Legacy Diagnostics
 

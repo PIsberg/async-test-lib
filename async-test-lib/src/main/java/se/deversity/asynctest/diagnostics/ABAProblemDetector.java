@@ -60,7 +60,7 @@ public class ABAProblemDetector {
         private final Object changesLock = new Object();
         /** Guarded by {@link #changesLock} — never touch it outside that monitor. */
         final List<ValueChange> changes = new ArrayList<>();
-        final Map<Long, CASAttempt> casAttempts = new ConcurrentHashMap<>();
+        final Map<IdentityKey, CASAttempt> casAttempts = new ConcurrentHashMap<>();
         final AtomicLong cycleCount = new AtomicLong(0);
         
         AtomicValueHistory(String name) {
@@ -188,7 +188,7 @@ public class ABAProblemDetector {
             attempt.wasABA = true;
         }
         
-        history.casAttempts.put((long) System.identityHashCode(attempt), attempt);
+        history.casAttempts.put(new IdentityKey(attempt), attempt);
     }
     
     /**

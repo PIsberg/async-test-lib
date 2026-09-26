@@ -1867,7 +1867,7 @@ public @interface AsyncTest {
 
     /**
      * Enable shared JSON/serializer mapper reconfiguration detection. Flags mapper instances
-     * (e.g. {@code ObjectMapper}, {@code Gson}) reconfigured after concurrent use has begun.
+     * (e.g. {@code ObjectMapper}, {@code Gson}) reconfigured while another thread uses them in the same round.
      * See {@link se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector}.
      * @since 1.7.0
      *

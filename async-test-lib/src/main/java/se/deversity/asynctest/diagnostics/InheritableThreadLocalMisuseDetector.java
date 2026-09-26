@@ -55,8 +55,21 @@ public class InheritableThreadLocalMisuseDetector {
     private final List<String> pooledGetIssues = new CopyOnWriteArrayList<>();
     private final List<String> pooledSetIssues = new CopyOnWriteArrayList<>();
 
-    /** Per-variable name → set of thread IDs that accessed it. */
-    private final Map<String, Set<Long>> accessingThreads = new ConcurrentHashMap<>();
+    /**
+     * Per variable object, the threads that accessed it. Keyed by identity: two variables may
+     * share a name, and keyed by the name one line counted both variables' threads (#789).
+     */
+    private final Map<IdentityKey, Accesses> accessingThreads = new ConcurrentHashMap<>();
+
+    /** The name one variable is reported under, and the IDs of the threads that accessed it. */
+    private static final class Accesses {
+        final String name;
+        final Set<Long> threads = ConcurrentHashMap.newKeySet();
+
+        Accesses(String name) {
+            this.name = name;
+        }
+    }
 
     /**
      * Register a thread as belonging to a thread pool.
@@ -79,7 +92,8 @@ public class InheritableThreadLocalMisuseDetector {
         if (itl == null) return;
         Thread t = Thread.currentThread();
         String name = resolved(variableName, itl);
-        accessingThreads.computeIfAbsent(name, k -> ConcurrentHashMap.newKeySet()).add(t.threadId());
+        accessingThreads.computeIfAbsent(new IdentityKey(itl), k -> new Accesses(name))
+            .threads.add(t.threadId());
 
         if (knownPoolThreadIds.contains(t.threadId())) {
             pooledGetIssues.add(String.format(
@@ -102,7 +116,8 @@ public class InheritableThreadLocalMisuseDetector {
         if (itl == null) return;
         Thread t = Thread.currentThread();
         String name = resolved(variableName, itl);
-        accessingThreads.computeIfAbsent(name, k -> ConcurrentHashMap.newKeySet()).add(t.threadId());
+        accessingThreads.computeIfAbsent(new IdentityKey(itl), k -> new Accesses(name))
+            .threads.add(t.threadId());
 
         if (knownPoolThreadIds.contains(t.threadId())) {
             pooledSetIssues.add(String.format(
@@ -128,10 +143,10 @@ public class InheritableThreadLocalMisuseDetector {
         // holder, it was true in every run. The two findings above are the grounded ones: both
         // need the caller to have declared which threads are pooled, which is the situation this
         // detector's javadoc is actually about (#517).
-        for (Map.Entry<String, Set<Long>> entry : accessingThreads.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                report.threadActivity.put(entry.getKey(), String.format(
-                    "accessed by %d threads", entry.getValue().size()));
+        for (Accesses accesses : accessingThreads.values()) {
+            if (accesses.threads.size() > 1) {
+                report.threadActivity.add(String.format(
+                    "%s: accessed by %d threads", accesses.name, accesses.threads.size()));
             }
         }
         return report;
@@ -148,9 +163,10 @@ public class InheritableThreadLocalMisuseDetector {
         /**
          * How many threads touched each variable. Reported for context and deliberately not part
          * of {@link #hasIssues()}: inheritance across threads is what an
-         * {@code InheritableThreadLocal} is for (#517).
+         * {@code InheritableThreadLocal} is for (#517). One line per variable object, named but
+         * not keyed by the name, since two variables may share one (#789).
          */
-        final Map<String, String> threadActivity = new java.util.LinkedHashMap<>();
+        final List<String> threadActivity = new ArrayList<>();
 
         /**
          * {@return whether there are issues}
@@ -165,9 +181,8 @@ public class InheritableThreadLocalMisuseDetector {
             StringBuilder sb = new StringBuilder("INHERITABLE THREAD LOCAL MISUSE DETECTED:\n");
             for (String issue : pooledGetIssues)   sb.append("  - ").append(issue).append("\n");
             for (String issue : pooledSetIssues)   sb.append("  - ").append(issue).append("\n");
-            for (Map.Entry<String, String> a : threadActivity.entrySet()) {
-                sb.append("  . ").append(a.getKey())
-                  .append(": ").append(a.getValue()).append(System.lineSeparator());
+            for (String activity : threadActivity) {
+                sb.append("  . ").append(activity).append(System.lineSeparator());
             }
             sb.append("""
   Why: InheritableThreadLocal copies values at thread-creation time, not at task-submission time.

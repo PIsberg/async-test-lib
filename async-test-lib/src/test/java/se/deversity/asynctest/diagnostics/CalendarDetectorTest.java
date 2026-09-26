@@ -189,4 +189,82 @@ public class CalendarDetectorTest {
             "every access held the calendar's monitor; the synchronized twin must stay silent: "
                 + detector.analyze());
     }
+
+    // #787 made a round with no write unshared. Calendar.get() is not a read in that sense: after
+    // a set() it recomputes the time and the whole field set into the instance, so two threads
+    // calling get() together after a set() in an earlier round write the same fields at once.
+    @Test
+    void twoUnguardedGetsInOneRoundAfterASetInAnEarlierRoundAreReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable get = () -> {
+            cal.get(Calendar.DAY_OF_MONTH);
+            detector.recordGet(cal, "lazy-calendar");
+        };
+
+        round(scope, () -> {
+            cal.set(Calendar.DAY_OF_MONTH, 3);
+            detector.recordSet(cal, "lazy-calendar");
+        });
+        round(scope, get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "the first get() after a set() recomputes the fields, so concurrent gets race");
+    }
+
+    // The other direction: counting get() as a write for the round verdict must not also stop a
+    // read lock from guarding it. Gets under one read-write lock's read view, with no set() in the
+    // run, only read fields computed when the calendar was built, and were not reported before.
+    @Test
+    void getsUnderOneReadLockAreNotReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable get = () -> {
+            lock.readLock().lock();
+            HeldLocks.acquired(lock, true);
+            try {
+                cal.get(Calendar.DAY_OF_MONTH);
+                detector.recordGet(cal, "read-locked-calendar");
+            } finally {
+                HeldLocks.released(lock, true);
+                lock.readLock().unlock();
+            }
+        };
+
+        round(new SelfGuard.Scope(), get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "both gets held the read lock and nothing set the calendar: " + detector.analyze());
+    }
+
+    /**
+     * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
+     * bound, released together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable... bodies) throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
 }

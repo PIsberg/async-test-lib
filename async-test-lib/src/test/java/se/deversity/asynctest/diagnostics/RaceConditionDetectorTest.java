@@ -321,6 +321,13 @@ public class RaceConditionDetectorTest {
         volatile boolean ready;
     }
 
+    /** A plain field, the volatile flag that publishes it, and a second volatile field. */
+    static final class TwoFlags {
+        int data;
+        volatile boolean ready;
+        volatile boolean other;
+    }
+
     /** The same holder with the flag not volatile, which publishes nothing. */
     static final class PlainPub {
         int data;
@@ -417,6 +424,44 @@ public class RaceConditionDetectorTest {
         RaceConditionDetector.RaceConditionReport report = detector.analyzeRaceConditions();
         assertFalse(report.hasIssues(), "the reader saw the volatile write, which publishes "
                 + "the plain write before it, and a volatile read is never a data race: " + report);
+    }
+
+    /**
+     * The writer publishes {@code data} through {@code ready}; the reader waits on the flag
+     * unrecorded, then records a volatile read of {@code readField} and a read of {@code data}.
+     */
+    private static RaceConditionDetector.RaceConditionReport twoFlagsReport(String readField)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        TwoFlags pub = new TwoFlags();
+        Thread writer = new Thread(() -> {
+            pub.data = 42;
+            detector.recordFieldWrite(pub, "data");
+            detector.recordFieldWrite(pub, "ready");
+            pub.ready = true;
+        });
+        Thread reader = new Thread(() -> {
+            while (!pub.ready) {
+                Thread.onSpinWait();
+            }
+            detector.recordFieldRead(pub, readField);
+            detector.recordFieldRead(pub, "data");
+        });
+        reader.start();
+        writer.start();
+        writer.join();
+        reader.join();
+        return detector.analyzeRaceConditions();
+    }
+
+    @Test
+    void aVolatileReadOfAnotherFieldDoesNotReceiveTheFlagsWrite() throws InterruptedException {
+        RaceConditionDetector.RaceConditionReport report = twoFlagsReport("other");
+        assertTrue(report.unsafeAccesses.stream().anyMatch(line -> line.contains(".data:")),
+                "the recorded volatile read was of other, which nobody wrote: the write of ready "
+                        + "must not order data for it (#742): " + report);
+        assertFalse(twoFlagsReport("ready").hasIssues(),
+                "the twin records the read of ready, which publishes data");
     }
 
     @Test

@@ -52,6 +52,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link Scope} the running context binds to its workers. A detector used with no context
  * installed sees one round, the whole run, which is what it saw before.
  *
+ * <p>A round in which every access only read is not sharing either, however many threads made
+ * the reads and whatever locks they held: reads race only with a write (#787). The write has to
+ * be in the same window as the reads, so unguarded readers in one round and a writer in another,
+ * which never overlapped them, are no finding. A detector that cannot tell a read from a write
+ * records every access as a write, which keeps the verdict it had. Some reads write: a
+ * {@code get} on an access-ordered {@link java.util.LinkedHashMap} relinks the entry, one on a
+ * {@link java.util.WeakHashMap} expunges cleared entries, and one on a {@link java.util.Calendar}
+ * after a {@code set} recomputes its fields. Those count as writes for this rule
+ * ({@code TrackedInstance.readWrites}), while the lockset still judges them as reads.
+ *
  * <p>Within a round the verdict is also per owner. A pool that hands an instance out through a
  * queue gives it to one thread at a time, and a take is the edge between one owner's accesses
  * and the next's; {@link Scope#ownershipTaken(Object)} records it, from the agent's woven queue
@@ -262,9 +272,19 @@ public final class SelfGuard {
          */
         final HappensBefore.@Nullable Stamp handOffStamp;
 
+        /**
+         * Whether one of the accesses {@code locks} covers was a write. Accesses that only read
+         * cannot race one another however many threads make them, so a window is shared only
+         * once one of them wrote (#787).
+         */
+        final boolean wrote;
+
+        /** Whether any access in this window was a write, hand-offs or not. */
+        final boolean windowWrote;
+
         Window(long key, long owner, HappensBefore.@Nullable Stamp ownerStamp, boolean shared,
                int[] locks, int[] windowLocks, long handOffOwner,
-               HappensBefore.@Nullable Stamp handOffStamp) {
+               HappensBefore.@Nullable Stamp handOffStamp, boolean wrote, boolean windowWrote) {
             this.key = key;
             this.owner = owner;
             this.ownerStamp = ownerStamp;
@@ -273,6 +293,8 @@ public final class SelfGuard {
             this.windowLocks = windowLocks;
             this.handOffOwner = handOffOwner;
             this.handOffStamp = handOffStamp;
+            this.wrote = wrote;
+            this.windowWrote = windowWrote;
         }
     }
 
@@ -333,9 +355,10 @@ public final class SelfGuard {
          *
          * <p>The distinction exists for locks held in shared mode: the read view of a
          * {@link java.util.concurrent.locks.ReentrantReadWriteLock} guards a read and nothing
-         * else, so it stays in the set for a read and drops out for a write. A caller that does
-         * not know treats the access as a write, which is the direction that can only add a
-         * finding.
+         * else, so it stays in the set for a read and drops out for a write. A read also never
+         * makes a window shared on its own: the window needs a write as well
+         * ({@link #sawUnguardedSharing()}). A caller that does not know treats the access as a
+         * write, which is the direction that can only add a finding.
          *
          * @param instance the shared instance being accessed
          * @param forWrite whether the access mutates the instance
@@ -356,7 +379,28 @@ public final class SelfGuard {
          */
         final void noteAccess(@Nullable Object instance, boolean forWrite, long threadId) {
             noteRunLockset(instance, forWrite);
-            noteRound(instance, forWrite, threadId);
+            noteRound(instance, forWrite, forWrite || readWrites(instance), threadId);
+        }
+
+        /**
+         * {@return whether a read of {@code instance} may write it, so that it counts as a write
+         * for the rule that a window whose accesses all read is not shared (#787)}
+         *
+         * <p>A {@code get} on an access-ordered {@link java.util.LinkedHashMap} moves the entry to
+         * the end of the list, a read of a {@link java.util.WeakHashMap} expunges cleared
+         * entries, and a {@code get} on a {@link java.util.Calendar} after a {@code set}
+         * recomputes the fields into the instance, so readers alone race one another. Whether a
+         * {@code LinkedHashMap} is access-ordered is private to {@code java.util}, so every one
+         * counts, which keeps the verdict an insertion-ordered one had before #787. Only the
+         * round rule reads this: the lockset still judges the access as a read, so a read lock
+         * held over it guards it as it did before.
+         *
+         * @param instance the instance being read
+         */
+        static boolean readWrites(@Nullable Object instance) {
+            return instance instanceof java.util.LinkedHashMap
+                    || instance instanceof java.util.WeakHashMap
+                    || instance instanceof java.util.Calendar;
         }
 
         private void noteRunLockset(@Nullable Object instance, boolean forWrite) {
@@ -384,7 +428,8 @@ public final class SelfGuard {
             }
         }
 
-        private void noteRound(@Nullable Object instance, boolean forWrite, long threadId) {
+        private void noteRound(@Nullable Object instance, boolean forWrite, boolean writes,
+                               long threadId) {
             // Once one round has raced, the verdict cannot change back, so nothing to compute.
             if (unguardedSharing) {
                 return;
@@ -398,14 +443,14 @@ public final class SelfGuard {
                     : null;
             Window current = window.get();
             while (true) {
-                Window next = advance(current, key, instance, forWrite, threadId, stamp);
+                Window next = advance(current, key, instance, forWrite, writes, threadId, stamp);
                 if (next == current // NOPMD CompareObjectsWithEquals - unchanged window, nothing to publish
                         || window.compareAndSet(current, next)) {
                     if (next.locks.length == 0) {
                         if (!unguardedRound) {
                             unguardedRound = true;
                         }
-                        if (next.shared) {
+                        if (next.shared && next.wrote) {
                             unguardedSharing = true;
                         }
                     }
@@ -442,12 +487,13 @@ public final class SelfGuard {
 
         @SuppressWarnings("ReferenceEquality") // intersect returns its input array when nothing dropped
         private static Window advance(@Nullable Window current, long key, @Nullable Object instance,
-                                      boolean forWrite, long threadId,
+                                      boolean forWrite, boolean writes, long threadId,
                                       HappensBefore.@Nullable Stamp stamp) {
             if (current == null || key > current.key) {
                 // The first access of a round: nothing recorded earlier in the run overlapped it.
                 int[] locks = probe(null, instance, forWrite);
-                return new Window(key, threadId, stamp, false, locks, locks, 0L, null);
+                return new Window(key, threadId, stamp, false, locks, locks, 0L, null,
+                        writes, writes);
             }
             // The same window, or an access still in flight from an older round or owner while a
             // newer one has started. The latter joins the newer window, the direction that can
@@ -472,39 +518,48 @@ public final class SelfGuard {
             int[] windowLocks = current.windowLocks.length == 0
                     ? current.windowLocks
                     : probe(current.windowLocks, instance, forWrite);
+            boolean windowWrote = current.windowWrote || writes;
             long handOffOwner = current.handOffOwner;
             HappensBefore.@Nullable Stamp handOffStamp = current.handOffStamp;
             int[] locks;
+            boolean wrote;
             if (handedOff) {
                 // Every earlier access of the window happens before this one, so none of them can
                 // overlap it or anything ordered after it: the lockset starts again here (#746),
                 // for as long as every later access is ordered after the previous owner's last.
+                // So do the writes: one made before the hand-off cannot race a read after it.
                 handOffOwner = current.owner;
                 handOffStamp = current.ownerStamp;
                 locks = probe(null, instance, forWrite);
+                wrote = writes;
             } else if (handOffStamp != null
                     && !HappensBefore.ordered(handOffOwner, handOffStamp, threadId, stamp)) {
                 // Not ordered after the hand-off, so it may overlap the accesses before it, which
-                // count again: the lockset is the whole window's from here on.
+                // count again: the lockset and the writes are the whole window's from here on.
                 handOffStamp = null;
                 locks = windowLocks;
+                wrote = windowWrote;
             } else if (handOffStamp == null) {
                 locks = windowLocks;
+                wrote = windowWrote;
             } else {
                 locks = current.locks.length == 0
                         ? current.locks
                         : probe(current.locks, instance, forWrite);
+                wrote = current.wrote || writes;
             }
             if (shared == current.shared
                     && owner == current.owner
                     && ownerStamp == current.ownerStamp // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
                     && locks == current.locks // NOPMD CompareObjectsWithEquals - intersect returns its input when nothing dropped
                     && windowLocks == current.windowLocks // NOPMD CompareObjectsWithEquals - as above
-                    && handOffStamp == current.handOffStamp) { // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
+                    && handOffStamp == current.handOffStamp // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
+                    && wrote == current.wrote
+                    && windowWrote == current.windowWrote) {
                 return current;
             }
             return new Window(current.key, owner, ownerStamp, shared, locks, windowLocks,
-                    handOffOwner, handOffStamp);
+                    handOffOwner, handOffStamp, wrote, windowWrote);
         }
 
         private static int[] probe(int @Nullable [] candidate, @Nullable Object instance,
@@ -513,8 +568,8 @@ public final class SelfGuard {
         }
 
         /**
-         * {@return whether one round saw this instance accessed by more than one thread, with no
-         * lock held at every one of that round's accesses}
+         * {@return whether one round saw this instance accessed by more than one thread, at least
+         * once for a write, with no lock held at every one of that round's accesses}
          *
          * <p>This is the family's verdict. Two threads in different rounds never overlapped,
          * because the runner finishes one round before it starts the next, so neither the thread
@@ -523,7 +578,9 @@ public final class SelfGuard {
          * after it are judged apart. A thread whose access the {@link HappensBefore} model orders
          * after every earlier access of its window is not a second thread either; it took the
          * instance over, and the lockset starts again at its access for as long as every later
-         * access is ordered after the hand-off. Once true it stays true.
+         * access is ordered after the hand-off. A window whose accesses all read is not shared
+         * (#787), and a write before a hand-off does not count against reads ordered after it.
+         * Once true it stays true.
          */
         final boolean sawUnguardedSharing() {
             return unguardedSharing;
@@ -650,6 +707,18 @@ public final class SelfGuard {
         @Nullable Round inCurrentRound() {
             Round round = current.get();
             return round != null && round.number >= roundNow() ? round : null;
+        }
+
+        /**
+         * {@return the calling thread's round, started without recording a thread when none has
+         * been recorded in it yet}
+         *
+         * <p>For an event a detector judges against the threads of its round without counting its
+         * own thread among them: the threads recorded later in the round join the same
+         * {@link Round}, and its sets are complete once the round is over (#784).
+         */
+        Round current() {
+            return roundFor(roundNow());
         }
 
         /**

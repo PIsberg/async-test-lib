@@ -28,7 +28,7 @@ public class ConditionVariableDetectorTest {
         
         assertNotNull(report);
         assertFalse(report.hasIssues(), "the await was woken by the signal recorded while it waited");
-        assertTrue(report.threadActivity.containsKey("normal-condition"), "Should track activity");
+        assertTrue(report.threadActivity.stream().anyMatch(a -> a.startsWith("normal-condition: ")), "Should track activity");
     }
 
     @Test
@@ -107,7 +107,7 @@ public class ConditionVariableDetectorTest {
         ConditionVariableDetector.ConditionVariableReport report = detector.analyze();
         
         assertNotNull(report);
-        String activity = report.threadActivity.get("signalall-condition");
+        String activity = report.threadActivity.stream().filter(a -> a.startsWith("signalall-condition: ")).findFirst().orElse("");
         assertTrue(activity != null && activity.contains("signalAll"),
                    "Should track signalAll calls");
     }
@@ -178,5 +178,29 @@ public class ConditionVariableDetectorTest {
         assertTrue(reportStr.contains("not a finding") && reportStr.contains("still waiting at analysis"),
                 "Report should show the unconfirmed waiter as a note: " + reportStr);
         assertFalse(reportStr.contains("Stuck Waiters"), reportStr);
+    }
+
+    /**
+     * Two conditions may share a name. Each keeps its own thread-activity line; filed under the
+     * name, the second condition's line overwrote the first's (#789).
+     */
+    @Test
+    void twoConditionsWithTheSameNameEachKeepTheirThreadActivity() {
+        ConditionVariableDetector detector = new ConditionVariableDetector();
+        ReentrantLock lock = new ReentrantLock();
+        Condition signalled = lock.newCondition();
+        Condition broadcast = lock.newCondition();
+        detector.registerCondition(signalled, "ready");
+        detector.registerCondition(broadcast, "ready");
+        detector.recordSignal(signalled, "ready", false);
+        detector.recordSignal(broadcast, "ready", true);
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("ready: 0 awaits (0 timed out, 0 abandoned in an earlier round), "
+                        + "1 signalling threads, 1 signals, 0 signalAll"),
+                "the signalled condition's line survives beside the broadcast one's: " + report);
+        assertTrue(report.contains("ready: 0 awaits (0 timed out, 0 abandoned in an earlier round), "
+                        + "1 signalling threads, 0 signals, 1 signalAll"),
+                "the broadcast condition's line survives beside the signalled one's: " + report);
     }
 }

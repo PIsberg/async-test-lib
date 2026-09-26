@@ -306,7 +306,7 @@ public enum DetectorType {
     SHARED_ITERATOR,
     /** Advisory detector for hot compare-and-swap loops on shared AtomicLong/AtomicInteger/AtomicReference instances that would perform better as LongAdder/LongAccumul. */
     HIGH_CONTENTION_ATOMIC,
-    /** Detects serializer/mapper instances (Jackson ObjectMapper, a Gson built via GsonBuilder, or similar) that are reconfigured after concurrent use has begun. */
+    /** Detects serializer/mapper instances (Jackson ObjectMapper, a Gson built via GsonBuilder, or similar) that are reconfigured while another thread uses them in the same round. */
     SHARED_JSON_MAPPER_RECONFIG,
 
     // Phase 18: JDK 25/26 GA-era concurrency detectors (1.8.0+)

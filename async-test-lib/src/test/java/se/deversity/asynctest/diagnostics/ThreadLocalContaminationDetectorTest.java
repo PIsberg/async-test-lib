@@ -100,4 +100,23 @@ public class ThreadLocalContaminationDetectorTest {
         assertTrue(s.contains("THREADLOCAL CONTAMINATION"));
         assertTrue(s.contains("Fix"));
     }
+
+    /**
+     * A default virtual thread has no name, so the contaminated thread printed as "Thread ''"
+     * (#790). It is named by its id instead.
+     */
+    @Test
+    void anUnnamedVirtualThreadIsReportedByIdNotByAnEmptyName() {
+        var d = new ThreadLocalContaminationDetector();
+        Thread vt = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", vt.getName(), "precondition: a default virtual thread has no name");
+        d.recordNewTask(vt, "task-1");
+        d.recordSet(vt, TL, "TL");
+        d.recordNewTask(vt, "task-2");
+        d.recordGet(vt, TL, "TL", true);
+        String msg = d.analyze().contaminations.get(0);
+        assertFalse(msg.contains("Thread ''"), "the thread must not print as '': " + msg);
+        assertTrue(msg.contains("Thread '#" + vt.threadId() + "'"),
+                "the unnamed thread must be named by its id: " + msg);
+    }
 }

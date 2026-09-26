@@ -4,6 +4,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MonitorInfo;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -13,6 +14,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import se.deversity.asynctest.report.Violation;
 
 /**
  * Enhanced deadlock detector that analyzes thread dumps and identifies
@@ -379,6 +382,11 @@ public class DeadlockDetector {
         private final boolean deadlocked;
         private final List<String> virtualThreadCycles;
         /**
+         * The same findings as {@link Violation}s, one per deadlock, each {@code CRITICAL}: the
+         * severity the text has always marked, stated where the {@code failOn} gate reads first.
+         */
+        public final List<Violation> structuredViolations;
+        /**
          * Creates a DeadlockReport.
          *
          * @param deadlocked the {@code deadlocked} flag
@@ -396,6 +404,20 @@ public class DeadlockDetector {
         public DeadlockReport(boolean deadlocked, List<String> virtualThreadCycles) {
             this.deadlocked = deadlocked;
             this.virtualThreadCycles = List.copyOf(virtualThreadCycles);
+            List<Violation> findings = new ArrayList<>();
+            if (deadlocked) {
+                findings.add(critical("Circular lock dependency found between JVM threads", "jmx"));
+            }
+            for (String cycle : this.virtualThreadCycles) {
+                findings.add(critical("Circular lock dependency found between virtual threads: " + cycle,
+                        "virtualThreadDump"));
+            }
+            this.structuredViolations = List.copyOf(findings);
+        }
+
+        private static Violation critical(String message, String source) {
+            return new Violation("Deadlocks", IssueSeverity.CRITICAL, message, List.of(),
+                    Map.of("source", source), Instant.now());
         }
 
         /**
