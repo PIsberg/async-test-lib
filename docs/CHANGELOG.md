@@ -221,6 +221,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operation name cannot tell `position()` from `position(long)`, and reading it that way would
   report a fresh seek under the lock before each read, which is correct. So `write(buffer)` then
   `position()` to learn where it landed is still not reported, and a test pins that choice.
+- **`FILE_CHANNEL_POSITION_RACE`: only a read or a write relies on a seek (#831).** Operation names
+  are free-form, and any call after a seek was taken as the I/O relying on it, so a `truncate`
+  there was judged as a read or write at an offset the thread chose. Only a name starting with
+  `read` or `write` relies on a seek now; any other leaves the seek open and relies on nothing,
+  while another thread's `truncate`, which can move the cursor, still counts as a call that can
+  land inside a sequence. No caller, example or corpus row records `transferTo` or
+  `transferFrom`, which #819 dropped from the implicit-position list because they neither use nor
+  move the position; the record method's javadoc now says so.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

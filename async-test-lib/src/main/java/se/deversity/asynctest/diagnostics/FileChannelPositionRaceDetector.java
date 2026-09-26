@@ -44,27 +44,27 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code AsynchronousFileChannel}, whose read/write methods always take an explicit position.
  *
  * <p><strong>What is judged.</strong> A {@code position} call a thread records opens a seek, and
- * every other implicit-position call that thread makes on the same channel after it, in the same
- * invocation round and until its next seek, is I/O relying on it: each starts where the seek and
- * the calls since left the cursor, so a second read after one seek relies on it as much as the
- * first (#831). The verdict is {@link SelfGuard}'s, taken per invocation round, with each
- * sequence's I/O as the write and every other implicit-position call as a read: a round is reported
- * when a thread completed a sequence and another thread made an implicit-position call that no lock
- * common to both and no happens-before edge keeps out of it. The channel's own monitor counts as a
- * lock, as does one declared through {@link HeldLocks}; a read lock guards the self-contained calls
- * and not a sequence, since it admits other readers. A lock guards a sequence only if its thread
- * held it without a break from the seek to the I/O: one released and taken again between them lets
- * another thread's call in, and is not counted for the I/O (#831). That is decided from
- * {@link HeldLocks}, so it covers declared locks and, with the agent attached, woven
- * {@code synchronized} blocks and {@code Lock} calls; the channel's own monitor left and entered
- * again in code the agent does not weave still reads as held across, since nothing reports its
- * release. A {@code position} call is always a seek, never I/O relying on the call before it: the
- * operation name cannot tell {@code position()} from {@code position(long)}, and even a
- * {@code position()} after a write starts the next sequence as often as it asks where the write
- * landed. So a self-contained call relying on where an earlier one left the cursor, such as a
- * {@code write(buffer)} followed by {@code position()} to learn where it landed, is not a sequence;
- * reading it as one would report every thread that seeks afresh under its lock after an earlier
- * call.
+ * every read or write that thread makes on the same channel after it, in the same invocation round
+ * and until its next seek, is I/O relying on it: each starts where the seek and the calls since
+ * left the cursor, so a second read after one seek relies on it as much as the first. Any other
+ * call, such as a {@code truncate}, relies on nothing and leaves the seek open (#831). The verdict
+ * is {@link SelfGuard}'s, taken per invocation round, with each sequence's I/O as the write and
+ * every other implicit-position call as a read: a round is reported when a thread completed a
+ * sequence and another thread made an implicit-position call that no lock common to both and no
+ * happens-before edge keeps out of it. The channel's own monitor counts as a lock, as does one
+ * declared through {@link HeldLocks}; a read lock guards the self-contained calls and not a
+ * sequence, since it admits other readers. A lock guards a sequence only if its thread held it
+ * without a break from the seek to the I/O: one released and taken again between them lets another
+ * thread's call in, and is not counted for the I/O (#831). That is decided from {@link HeldLocks},
+ * so it covers declared locks and, with the agent attached, woven {@code synchronized} blocks and
+ * {@code Lock} calls; the channel's own monitor left and entered again in code the agent does not
+ * weave still reads as held across, since nothing reports its release. A {@code position} call is
+ * always a seek, never I/O relying on the call before it: the operation name cannot tell
+ * {@code position()} from {@code position(long)}, and even a {@code position()} after a write
+ * starts the next sequence as often as it asks where the write landed. So a self-contained call
+ * relying on where an earlier one left the cursor, such as a {@code write(buffer)} followed by
+ * {@code position()} to learn where it landed, is not a sequence; reading it as one would report
+ * every thread that seeks afresh under its lock after an earlier call.
  *
  * <p>Usage:
  * <pre>{@code
@@ -116,14 +116,16 @@ public final class FileChannelPositionRaceDetector {
     /**
      * Record an implicit-position operation: one of {@code read}, {@code write},
      * {@code position}, or {@code truncate}. These operations use or move the
-     * channel's shared cursor.
+     * channel's shared cursor. {@code transferTo} and {@code transferFrom} do neither, by the
+     * {@code FileChannel} javadoc, so they are not recorded here.
      *
      * <p>An operation whose name starts with {@code position}, for {@code position(long)} or
-     * {@code position()}, is a seek: every other implicit-position call the calling thread makes
-     * on the same channel after it, in the same invocation round and until its next seek, is a
-     * read or write relying on it. Only such a sequence can be reported, and only when another
-     * thread's implicit-position call can land inside it; a self-contained call is recorded so
-     * that it can be that other call.
+     * {@code position()}, is a seek. One whose name starts with {@code read} or {@code write},
+     * made by the calling thread on the same channel after a seek, in the same invocation round
+     * and until its next seek, is I/O relying on that seek. Any other name, {@code truncate}
+     * among them, relies on nothing and leaves an open seek open. Only a seek with I/O relying on
+     * it can be reported, and only when another thread's implicit-position call can land inside
+     * it; every call is recorded so that it can be that other call.
      *
      * @param channel   the channel instance (null-safe)
      * @param operation short name of the operation, e.g. {@code "read"}
@@ -138,7 +140,8 @@ public final class FileChannelPositionRaceDetector {
         Seek reliedOn = null;
         if (operation != null && operation.startsWith("position")) {
             openSeek(channel);
-        } else {
+        } else if (operation != null
+                && (operation.startsWith("read") || operation.startsWith("write"))) {
             reliedOn = seekReliedOn(channel);
         }
         if (reliedOn == null) {

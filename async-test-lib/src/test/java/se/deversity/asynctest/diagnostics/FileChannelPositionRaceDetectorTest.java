@@ -497,6 +497,46 @@ class FileChannelPositionRaceDetectorTest {
                 + "next sequence's seek: " + d.analyze());
     }
 
+    /**
+     * #831: operation names are free-form, and any call after a seek used to be taken as the I/O
+     * relying on it, so a {@code truncate} there was judged as a read or write at an offset the
+     * thread chose.
+     */
+    @Test
+    void aTruncateAfterASeekIsNotIoRelyingOnIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.recordImplicitPositionAccess(channel, "truncate");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "truncate(size) acts on the size whatever the cursor says, so nothing relied on the "
+                + "seek: " + d.analyze());
+    }
+
+    @Test
+    void aReadAfterASeekAndATruncateStillReliesOnTheSeek() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position(n)");
+        d.recordImplicitPositionAccess(channel, "truncate(size)");
+        d.recordImplicitPositionAccess(channel, "read(buf)");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read(buf)"));
+        assertTrue(d.analyze().hasIssues(),
+            "the truncate in between leaves the seek open, and the read relies on it");
+    }
+
+    @Test
+    void anotherThreadsTruncateCanLandInsideASequence() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "truncate"));
+        assertTrue(d.analyze().hasIssues(),
+            "a truncate below the cursor moves it, so another thread's truncate is a call that "
+                + "can land between the seek and the read");
+    }
+
     @Test
     void seekThenReadUnderDifferentLocksIsFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
