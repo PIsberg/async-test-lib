@@ -166,4 +166,82 @@ class ThreadLeakDetectorTest {
         assertTrue(reportStr.contains("Total tracked: 2"));
         assertTrue(reportStr.contains("Terminated: 1"));
     }
+
+    // ---- grades follow the path, not one tier for the detector (#754) ---------------------------
+
+    /** {@return the report's per-finding grades, failing if the report does not grade} */
+    private static java.util.List<GradedFindings.Grade> gradesOf(Object report) {
+        return assertInstanceOf(GradedFindings.class, report,
+                "the report must grade each finding by the path behind it: " + report).grades();
+    }
+
+    @Test
+    void aTrackedThreadStillAliveIsAVerdict() throws InterruptedException {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread leaked = new Thread(() -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "leaked-worker");
+        leaked.setDaemon(true);
+        leaked.start();
+        try {
+            detector.recordThreadStart(leaked, "leaked-worker");
+            ThreadLeakDetector.ThreadLeakReport report = detector.analyzeLeaks();
+
+            var grades = DetectorTrust.clampToCap("ThreadLeakDetector", gradesOf(report));
+            assertEquals(1, grades.size(), grades.toString());
+            assertEquals(TrustTier.VERDICT, grades.get(0).tier(),
+                    "Thread.isAlive() answered for a thread the test started and never ended: " + grades);
+            assertEquals(DetectorTrust.Evidence.OBSERVED, grades.get(0).evidence(), grades.toString());
+            assertEquals(DetectorDefaultSeverity.of("ThreadLeakDetector", report.toString()),
+                    grades.get(0).severity(), "the severity is the one the gate always read for this report");
+        } finally {
+            release.countDown();
+            leaked.join(2_000);
+        }
+    }
+
+    @Test
+    void theAutoModeThreadCountStaysAPrompt() throws InterruptedException {
+        detector.enableAutoMode();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread[] untracked = new Thread[6];
+        for (int i = 0; i < untracked.length; i++) {
+            untracked[i] = new Thread(() -> {
+                try {
+                    release.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "untracked-" + i);
+            untracked[i].setDaemon(true);
+            untracked[i].start();
+        }
+        try {
+            var grades = DetectorTrust.clampToCap("ThreadLeakDetector", gradesOf(detector.analyzeLeaks()));
+            assertEquals(1, grades.size(), "six more live threads than at the start: " + grades);
+            assertEquals(TrustTier.PROMPT, grades.get(0).tier(),
+                    "Thread.activeCount() growth is a count over every thread in the JVM: " + grades);
+            assertEquals(DetectorTrust.Evidence.HEURISTIC, grades.get(0).evidence(), grades.toString());
+        } finally {
+            release.countDown();
+            for (Thread t : untracked) {
+                t.join(2_000);
+            }
+        }
+    }
+
+    @Test
+    void aJoinedThreadCarriesNoGrade() throws InterruptedException {
+        Thread worker = new Thread(() -> { }, "joined-worker");
+        worker.start();
+        detector.recordThreadStart(worker, "joined-worker");
+        worker.join();
+
+        assertEquals(java.util.List.of(), gradesOf(detector.analyzeLeaks()),
+                "a thread that terminated is the correct twin and grades nothing");
+    }
 }

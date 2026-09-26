@@ -75,8 +75,6 @@ class DetectorEvidenceMatchesCodeTest {
      * or loses the weaker path; the gate refuses an entry that no longer disagrees.
      */
     private static final Map<DetectorType, String> WEAKER_PATH = Map.ofEntries(
-            entry(DetectorType.CALENDAR, "the shared-calendar finding reads the lockset; the "
-                    + "calendar-errors finding is any recorded error, on one thread or many"),
             entry(DetectorType.CONCURRENT_MODIFICATIONS, "the iteration and mutation findings read the "
                     + "lockset; a recordModificationDuringIteration call is reported whatever the "
                     + "collection type or lock, on the caller's word"),
@@ -85,19 +83,14 @@ class DetectorEvidenceMatchesCodeTest {
                     + "another, and detectCheckThenActViolation, compare values the caller passed"),
             entry(DetectorType.CACHE_CONCURRENCY, "the read/write finding reads the lockset; the "
                     + "stampede finding counts threads that wrote one key in one round, so a HashMap "
-                    + "guarded by the caller's own lock draws it"),
-            entry(DetectorType.SIMPLE_DATE_FORMAT, "the shared-formatter finding reads the lockset; the "
-                    + "formatting-errors finding needs only a recorded error and more than one thread"),
-            entry(DetectorType.STRING_BUILDER, "the shared-builder finding reads the lockset; the "
-                    + "builder-errors finding needs only a recorded exception and more than one thread "
-                    + "in one round"));
+                    + "guarded by the caller's own lock draws it"));
 
     /**
      * How many entries {@link #WEAKER_PATH} may hold. Lower it when an entry leaves; raising it
      * means a detector gained a lockset and kept a weaker class, which is what this gate exists to
      * question.
      */
-    private static final int WEAKER_PATH_CEILING = 6;
+    private static final int WEAKER_PATH_CEILING = 3;
 
     @Test
     @DisplayName("every declared evidence class agrees with what the detector's code consults")

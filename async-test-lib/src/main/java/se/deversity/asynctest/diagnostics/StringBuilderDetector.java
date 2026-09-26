@@ -346,7 +346,7 @@ public class StringBuilderDetector {
     /**
      * Report produced by {@link #analyze()}.
      */
-    public static class StringBuilderReport {
+    public static class StringBuilderReport implements GradedFindings {
 
         int totalBuilders = 0;
         final java.util.List<String> sharedBuilderViolations = new java.util.ArrayList<>();
@@ -364,6 +364,34 @@ public class StringBuilderDetector {
          */
         public boolean hasIssues() {
             return !sharedBuilderViolations.isEmpty() || !builderErrors.isEmpty();
+        }
+
+        /**
+         * One grade per finding, set by the path that produced it (#754).
+         *
+         * <p>A shared builder is reported only when more than one writer in one round found no
+         * lock in common in the lockset {@link SelfGuard} keeps, so the
+         * {@code synchronized (builder)} twin, a declared lock and a woven monitor all stay silent:
+         * a {@link TrustTier#VERDICT} on {@link DetectorTrust.Evidence#CONTEXTUAL} evidence. An
+         * exception is blamed on sharing because several threads used the builder in its round,
+         * whatever they held, which is {@link DetectorTrust.Evidence#CONTEXT_FREE} and stays a
+         * {@link TrustTier#PROMPT}; before this the whole detector was rated by it. Every grade
+         * keeps the severity the gate has always read for this report.
+         */
+        @Override
+        public java.util.List<GradedFindings.Grade> grades() {
+            if (!hasIssues()) {
+                return java.util.List.of();
+            }
+            IssueSeverity severity = DetectorDefaultSeverity.of(StringBuilderDetector.class.getSimpleName(), toString());
+            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            for (String shared : sharedBuilderViolations) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.VERDICT, shared, DetectorTrust.Evidence.CONTEXTUAL));
+            }
+            for (String error : builderErrors) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, error, DetectorTrust.Evidence.CONTEXT_FREE));
+            }
+            return java.util.List.copyOf(out);
         }
 
         @Override

@@ -223,6 +223,12 @@ FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_f
 # paths that make a finding: CONTEXT_FREE or HEURISTIC, capped at PROMPT. Each line is kept here
 # with the class that capped it, so a detector whose model changes can be re-registered from it.
 #
+# Since #754, BLOCKING_QUEUE, SIMPLE_DATE_FORMAT, CALENDAR and STRING_BUILDER grade each finding by
+# its path, so the finding their pair exercises carries its own grade: VERDICT for the shared
+# formatter, calendar or builder, still PROMPT for the saturated queue. The class in brackets is
+# the weaker path that still caps the detector-wide tier, and a graded detector is not promoted on
+# a pair, so the lines stay.
+#
 #   CONCURRENT_MAP_COMPUTE_RECURSION = recorded_caffeineAsMap_recursiveMerge, recorded_caffeineAsMap_selfContainedMerge    [ASSERTED]
 #   SYNCHRONIZED_COLLECTION_ITERATION = recorded_synchronizedCollection_iteratedWithoutLock, recorded_synchronizedCollection_iteratedHoldingLock    [ASSERTED]
 #   MUTABLE_MAP_KEY = recorded_mutableIntKey_mutatedAfterInsertion, recorded_mutableIntKey_neverMutated    [ASSERTED]

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
-import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
@@ -36,12 +35,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * A new detector that writes no marker fails here, and every detector that gains one lets the
  * baseline drop.
  *
- * <p><strong>What counts as stating a severity</strong> is what the gate reads, in the order
- * {@code DetectorDefaultSeverity.of(String, String, IssueSeverity)} reads it: per-finding grades
- * ({@code GradedFindings}), then the severities in the report's structured findings (a public
- * {@code structuredViolations} field, read by {@code DetectorDefaultSeverity.structuredIn}), then a
- * marker in the report text. The first two are checked on the report type by reflection. Only the
- * text marker is a heuristic over source.
+ * <p><strong>What counts as stating a severity</strong> is what every consumer reads, in the order
+ * {@code DetectorDefaultSeverity.of(String, String, IssueSeverity)} reads it: the severities in the
+ * report's structured findings (a public {@code structuredViolations} field, read by
+ * {@code DetectorDefaultSeverity.structuredIn}), then a marker in the report text. The first is
+ * checked on the report type by reflection. Only the text marker is a heuristic over source.
+ * Per-finding grades ({@code GradedFindings}) do not count: the {@code failOn} gate reads them, but
+ * a listener, and through it the JSON and SARIF output, gets its severity from the structured list,
+ * the text or the table ({@code ListenerRegistryCore}), so a graded report with no structured list
+ * still needs its table entry, and grades its findings at the severity that entry gives (#754).
  *
  * <p>The marker heuristic used to accept any occurrence of {@code IssueSeverity.} in the source.
  * That string also appears where a detector builds its structured {@code Violation}, which the gate
@@ -116,8 +118,7 @@ class DetectorSeverityMarkerTest {
 
     /** Whether the gate can learn this detector's severity from the detector, without the table. */
     private static boolean statesItsOwnSeverity(String detectorClass) {
-        return reportTypes(detectorClass).stream().anyMatch(type ->
-                GradedFindings.class.isAssignableFrom(type) || hasStructuredViolations(type))
+        return reportTypes(detectorClass).stream().anyMatch(DetectorSeverityMarkerTest::hasStructuredViolations)
                 || hasMarker(detectorClass);
     }
 

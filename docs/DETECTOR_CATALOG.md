@@ -127,9 +127,8 @@ The class is declared by hand, so `DetectorEvidenceMatchesCodeTest` checks it ag
 detector's source: a `CONTEXTUAL` row whose detector reads no lockset, monitor probe or
 happens-before edge fails, and so does a row other than `CONTEXTUAL` or `OBSERVED` whose detector
 reads one, unless the test names the finding path that decides without it. It names these rows
-that way today, each with that path: `CALENDAR`, `CONCURRENT_MODIFICATIONS`,
-`ATOMICITY_VIOLATIONS`, `CACHE_CONCURRENCY`, `SIMPLE_DATE_FORMAT` and `STRING_BUILDER`. The check
-does not tell `OBSERVED`, `ASSERTED` and `HEURISTIC` apart.
+that way today, each with that path: `CONCURRENT_MODIFICATIONS`, `ATOMICITY_VIOLATIONS` and
+`CACHE_CONCURRENCY`. The check does not tell `OBSERVED`, `ASSERTED` and `HEURISTIC` apart.
 
 | Evidence | The detector decides from | Highest tier |
 |---|---|---|
@@ -161,11 +160,20 @@ woven feed, which delivers the same events its record methods take. The caps mov
   `THREAD_LOCAL_CACHE_DEGRADATION`, `SCOPE_JOINER_MISUSE`, `SCOPE_CONFIGURATION_MISUSE` and
   `LAZY_COLLECTION_MISUSE`, each on a count threshold or a thread count.
 
-Several of those lost VERDICT to one secondary path beside a primary one that could carry it:
-`LOCK_LEAKS`, `BLOCKING_QUEUE`, `THREAD_LEAKS`, `CALENDAR`, `SIMPLE_DATE_FORMAT` and
-`STRING_BUILDER`. Grading those reports per finding, as the split-tier
-detectors below do, is how their primary finding gets VERDICT back. Their pairs still run and
-still gate the corpus; the evidence file keeps each removed line with the class that capped it.
+Six of those lost their tier to one secondary path beside a primary one: `LOCK_LEAKS`,
+`BLOCKING_QUEUE`, `THREAD_LEAKS`, `CALENDAR`, `SIMPLE_DATE_FORMAT` and `STRING_BUILDER`. Since
+#754 their reports grade each finding by its path, as the split-tier detectors below do, and the
+primary finding carries what its own evidence allows. Three get VERDICT back: a tracked thread
+`Thread.isAlive()` still answers for (`THREAD_LEAKS`, `OBSERVED`), and a shared calendar,
+formatter or builder with no common lock in the per-round lockset (`CALENDAR`,
+`SIMPLE_DATE_FORMAT`, `STRING_BUILDER`, `CONTEXTUAL`). Two get FACT, because their primary finding
+is arithmetic over recorded calls: an acquire with no release or a lock left held (`LOCK_LEAKS`),
+and an offer whose `false` was discarded (`BLOCKING_QUEUE`), which may also be a lossy queue by
+design. The secondary paths keep their grade: the 5 s hold, 90% of capacity and the auto mode's
+thread count stay PROMPT, the error findings of `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` stay
+PROMPT, and `CALENDAR`'s recorded error stays FACT. The detector-wide tiers do not move, since each
+still carries its weakest grade. Their pairs still run and still gate the corpus; the evidence file
+keeps each removed line with the class of the path that still caps the detector's tier.
 
 One detector the corpus measures in both directions stays `PROMPT`, and the reason is the
 detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
@@ -189,12 +197,12 @@ pair seeks and reads one shared channel on every thread and differs only in
 
 **Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
-`SHARED_MEMORY_SEGMENT_RACE`, `VIRTUAL_THREAD_POOLING` and `PLATFORM_THREAD_PER_TASK` each produce
-a verdict-grade finding on one path and a prompt-grade or advisory one on another. Their detector
-tier is still the weakest of those, because that is what a detector-level rating has to mean, but
-their reports implement `GradedFindings` and carry a tier on each finding, so `minTrust = VERDICT`
-acts on the recorded cycle, the lost update or the observed mutation without being held back by
-the note beside it. Before that, a verdict-only gate stayed green on every one of them.
+`SHARED_MEMORY_SEGMENT_RACE`, `VIRTUAL_THREAD_POOLING` and `PLATFORM_THREAD_PER_TASK`, and since
+#754 the six above, each produce a higher-grade finding on one path and a prompt-grade or advisory
+one on another. Their detector tier is still the weakest of those, because that is what a
+detector-level rating has to mean, but their reports implement `GradedFindings` and carry a tier
+on each finding, so `minTrust = VERDICT` acts on the lost update, the observed mutation or the
+refused thread without being held back by the note beside it. Before that, a verdict-only gate stayed green on every one of them.
 
 A finding becomes VERDICT only where its claim is something observed rather than inferred, such as
 the JVM refusing a thread access to a segment, or a probe reporting the thread kind a task actually

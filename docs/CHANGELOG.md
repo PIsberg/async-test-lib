@@ -92,6 +92,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     to FACT, and the live init sample stays FACT.
   `CONFINED_ARENA_THREAD_ESCAPE` and `VIRTUAL_THREAD_POOLING` are classified `OBSERVED` (was
   `ASSERTED`); both detector-wide tiers stay PROMPT.
+- **Six more reports grade each finding by its path, so the primary finding is no longer rated by
+  a threshold or a recorded error beside it (#754).** Every grade keeps the severity the gate
+  already read for the report, and each detector-wide tier stays where it was. What changed tier:
+  - `THREAD_LEAKS`: a tracked thread `Thread.isAlive()` still answers for goes from PROMPT to
+    VERDICT (`OBSERVED`); the auto mode's `Thread.activeCount()` growth stays PROMPT.
+  - `CALENDAR`: a shared calendar with no common lock in the per-round lockset goes from FACT to
+    VERDICT (`CONTEXTUAL`); a recorded error stays FACT.
+  - `SIMPLE_DATE_FORMAT` and `STRING_BUILDER`: the shared formatter or builder goes from PROMPT to
+    VERDICT (`CONTEXTUAL`); the error findings stay PROMPT.
+  - `LOCK_LEAKS`: an acquire with no release and a lock left held go from PROMPT to FACT
+    (`ASSERTED`, since both count recorded calls); a hold over 5 s stays PROMPT.
+  - `BLOCKING_QUEUE`: an offer whose `false` was discarded goes from PROMPT to FACT (`ASSERTED`,
+    and a lossy queue may drop by design); saturation stays PROMPT.
+  A block holding one of the raised findings now prints in full in a passing run instead of
+  folding to one line, a `minTrust` gate at the new tier now fails on it, and a baseline accepts
+  these detectors' findings by their graded lines rather than by every line of the report. The
+  evidence classes follow the strongest path (`THREAD_LEAKS` `OBSERVED`, `CALENDAR`,
+  `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` `CONTEXTUAL`, `LOCK_LEAKS` and `BLOCKING_QUEUE`
+  `ASSERTED`), which takes the last three out of `DetectorEvidenceMatchesCodeTest`'s exemptions
+  (six to three).
 - **The trust banner no longer claims more than its weakest finding.** A block mixing a VERDICT and
   a PROMPT finding was headed "a finding means the code is wrong"; it now reads
   `trust=PROMPT..VERDICT` and lists each finding's tier.

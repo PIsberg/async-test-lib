@@ -54,8 +54,10 @@ structured)`, in this order: per-finding grades (`GradedFindings`), the most sev
 report's public `structuredViolations` list, a `diagnostics/IssueSeverity` marker in the report
 text, the detector's entry in `DetectorDefaultSeverity`, and last **HIGH for anything else**. A
 detector that keeps `Violation`s states its severity there; one that does not must tag its text (a
-deadlock report says CRITICAL in its own text) or declare a default. `DetectorSeverityMarkerTest`
-fails the build for a detector that reaches the HIGH fallback.
+deadlock report says CRITICAL in its own text) or declare a default. Grades do not replace either:
+listeners, and the JSON and SARIF output, read the list, the text and the table, never the grades,
+so a graded report without a list keeps its table entry and grades at the severity it gives.
+`DetectorSeverityMarkerTest` fails the build for a detector that reaches the HIGH fallback.
 
 Keep the list, and fill it wherever the text gains a line. `StructuredViolationCoverageTest` fails
 on a detector whose report has no `structuredViolations` field unless it is pinned in that test's

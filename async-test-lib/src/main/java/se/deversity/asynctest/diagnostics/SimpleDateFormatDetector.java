@@ -214,7 +214,7 @@ public class SimpleDateFormatDetector {
     /**
      * Report class for SimpleDateFormat analysis.
      */
-    public static class SimpleDateFormatReport {
+    public static class SimpleDateFormatReport implements GradedFindings {
         private boolean enabled = true;
         final java.util.List<String> sharedFormatters = new java.util.ArrayList<>();
         final java.util.List<String> formattingErrors = new java.util.ArrayList<>();
@@ -228,6 +228,34 @@ public class SimpleDateFormatDetector {
          */
         public boolean hasIssues() {
             return !sharedFormatters.isEmpty() || !formattingErrors.isEmpty();
+        }
+
+        /**
+         * One grade per finding, set by the path that produced it (#754).
+         *
+         * <p>A shared formatter is reported only when the per-round lockset {@link SelfGuard} keeps
+         * found no common lock, so the {@code synchronized (formatter)} twin, a declared lock and a
+         * woven monitor all stay silent: a {@link TrustTier#VERDICT} on
+         * {@link DetectorTrust.Evidence#CONTEXTUAL} evidence. An error is blamed on sharing because
+         * more than one thread used the formatter at some point in the run, guarded or not, which is
+         * {@link DetectorTrust.Evidence#CONTEXT_FREE} and stays a {@link TrustTier#PROMPT}; before
+         * this the whole detector was rated by it. Every grade keeps the severity the gate has
+         * always read for this report.
+         */
+        @Override
+        public java.util.List<GradedFindings.Grade> grades() {
+            if (!hasIssues()) {
+                return java.util.List.of();
+            }
+            IssueSeverity severity = DetectorDefaultSeverity.of(SimpleDateFormatDetector.class.getSimpleName(), toString());
+            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            for (String shared : sharedFormatters) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.VERDICT, shared, DetectorTrust.Evidence.CONTEXTUAL));
+            }
+            for (String error : formattingErrors) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, error, DetectorTrust.Evidence.CONTEXT_FREE));
+            }
+            return java.util.List.copyOf(out);
         }
 
         @Override

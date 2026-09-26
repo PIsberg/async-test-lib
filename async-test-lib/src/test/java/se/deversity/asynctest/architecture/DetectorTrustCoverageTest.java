@@ -333,9 +333,9 @@ class DetectorTrustCoverageTest {
     /**
      * The detectors that produce findings of different grades, and therefore have to grade them.
      *
-     * <p>Each is documented in {@code docs/DETECTOR_CATALOG.md} as verdict-grade on one path and
-     * weaker on another. A per-detector tier carries the weakest, so before per-finding grades a
-     * gate on {@code minTrust = VERDICT} missed their verdict-grade findings entirely. Dropping the
+     * <p>Each is documented in {@code docs/DETECTOR_CATALOG.md} as graded higher on one path than
+     * on another. A per-detector tier carries the weakest, so before per-finding grades a
+     * gate on {@code minTrust = VERDICT} or {@code FACT} missed their stronger findings entirely. Dropping the
      * interface from one of these would restore that false negative silently, which is what this
      * list is here to prevent.
      */
@@ -346,27 +346,36 @@ class DetectorTrustCoverageTest {
             "StaticInitDeadlockDetector",
             "VarHandleNonAtomicUpdateDetector",
             "SharedMemorySegmentRaceDetector",
-            "ConfinedArenaThreadEscapeDetector");
+            "ConfinedArenaThreadEscapeDetector",
+            // #754: a primary finding beside a threshold, a recorded error or an opt-in count.
+            "LockLeakDetector",
+            "BlockingQueueDetector",
+            "ThreadLeakDetector",
+            "CalendarDetector",
+            "SimpleDateFormatDetector",
+            "StringBuilderDetector");
 
     @Test
     @DisplayName("every split-tier detector grades its findings individually")
     void splitTierDetectorsGradeTheirFindings() {
         List<String> ungraded = new ArrayList<>();
         for (String detector : GRADED_DETECTORS) {
-            String reportClass = "se.deversity.asynctest.diagnostics." + detector + "$Report";
+            String detectorClass = "se.deversity.asynctest.diagnostics." + detector;
             try {
-                if (!GradedFindings.class.isAssignableFrom(Class.forName(reportClass))) {
+                // The report is whatever analyze() returns, which is not always a class named Report.
+                Class<?> report = Class.forName(detectorClass).getMethod("analyze").getReturnType();
+                if (!GradedFindings.class.isAssignableFrom(report)) {
                     ungraded.add(detector);
                 }
-            } catch (ClassNotFoundException e) {
-                fail("No report class " + reportClass + ". If the report was renamed, this list and "
-                        + "the catalog's trust-tier section both need to follow: " + e);
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                fail("No analyze() on " + detectorClass + ". If the detector or its report was "
+                        + "renamed, this list and the catalog's trust-tier section both need to follow: " + e);
             }
         }
         assertTrue(ungraded.isEmpty(),
-                "These detectors produce a verdict-grade finding and a weaker one, so their reports "
+                "These detectors produce a stronger finding and a weaker one, so their reports "
                         + "must implement GradedFindings. Without it the whole detector is judged at "
-                        + "its weakest tier and a minTrust = VERDICT gate stays green on findings the "
+                        + "its weakest tier and a minTrust gate stays green on findings the "
                         + "library can stand behind: " + ungraded);
     }
 

@@ -176,7 +176,10 @@ public final class DetectorTrust {
      * escape, shared memory segment race, VarHandle non-atomic update, record mutable component
      * leak, static-init deadlock and virtual-thread pooling produce a higher-grade finding on one
      * path and a prompt-grade one on another. Platform thread-per-task pairs a verdict-grade
-     * executor finding with an advisory churn threshold.
+     * executor finding with an advisory churn threshold. Since #754 lock leak, blocking queue,
+     * thread leak, calendar, simple date format and string builder grade too: each has a primary
+     * finding beside a threshold, a recorded error or an opt-in count, and is classified by the
+     * primary path while its row keeps the weaker path's tier.
      *
      * <p>The last column is the {@link Evidence} class, read from each detector's record path and
      * {@code analyze()} on 2026-09-26. A graded detector is classified by the path behind its
@@ -214,11 +217,11 @@ public final class DetectorTrust {
             row(DetectorType.VIRTUAL_THREAD_PINNING, "VirtualThreadPinningDetector", "VirtualThreadPinning", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.THREAD_POOL_DEADLOCK, "ThreadPoolDeadlockDetector", "ThreadPoolDeadlock", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.FACT, Evidence.ASSERTED),
-            row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.ADVISORY, Evidence.HEURISTIC),
-            row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.VERDICT, Evidence.OBSERVED),
-            row(DetectorType.SIMPLE_DATE_FORMAT, "SimpleDateFormatDetector", "SimpleDateFormat", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.SIMPLE_DATE_FORMAT, "SimpleDateFormatDetector", "SimpleDateFormat", TrustTier.PROMPT, Evidence.CONTEXTUAL),
             row(DetectorType.PARALLEL_STREAMS, "ParallelStreamDetector", "ParallelStreams", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.RESOURCE_LEAKS, "ResourceLeakDetector", "ResourceLeaks", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.COUNTDOWN_LATCH, "CountDownLatchDetector", "CountDownLatch", TrustTier.VERDICT, Evidence.OBSERVED),
@@ -242,15 +245,15 @@ public final class DetectorTrust {
             row(DetectorType.BUSY_WAITING, "BusyWaitDetector", "BusyWaiting", TrustTier.PROMPT, Evidence.HEURISTIC),
             row(DetectorType.ATOMICITY_VIOLATIONS, "AtomicityValidator", "AtomicityViolations", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.INTERRUPT_MISHANDLING, "InterruptMonitor", "InterruptMishandling", TrustTier.FACT, Evidence.ASSERTED),
-            row(DetectorType.THREAD_LEAKS, "ThreadLeakDetector", "ThreadLeaks", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.THREAD_LEAKS, "ThreadLeakDetector", "ThreadLeaks", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.SLEEP_IN_LOCK, "SleepInLockDetector", "SleepInLock", TrustTier.VERDICT, Evidence.OBSERVED),
             row(DetectorType.UNBOUNDED_QUEUE, "UnboundedQueueDetector", "UnboundedQueue", TrustTier.PROMPT, Evidence.HEURISTIC),
             row(DetectorType.THREAD_STARVATION, "ThreadStarvationDetector", "ThreadStarvation", TrustTier.PROMPT, Evidence.HEURISTIC),
-            row(DetectorType.CALENDAR, "CalendarDetector", "Calendar", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.CALENDAR, "CalendarDetector", "Calendar", TrustTier.FACT, Evidence.CONTEXTUAL),
             row(DetectorType.SHARED_COLLECTIONS, "SharedCollectionDetector", "SharedCollections", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.TIMER, "TimerDetector", "Timer", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.COPY_ON_WRITE_COLLECTIONS, "CopyOnWriteCollectionDetector", "CopyOnWriteCollections", TrustTier.PROMPT, Evidence.HEURISTIC),
-            row(DetectorType.STRING_BUILDER, "StringBuilderDetector", "StringBuilder", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
+            row(DetectorType.STRING_BUILDER, "StringBuilderDetector", "StringBuilder", TrustTier.PROMPT, Evidence.CONTEXTUAL),
             row(DetectorType.STRUCTURED_CONCURRENCY, "StructuredConcurrencyMisuseDetector", "StructuredConcurrency", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, "VirtualThreadContextLeakDetector", "VirtualThreadContextLeaks", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.SCOPED_VALUE, "ScopedValueMisuseDetector", "ScopedValue", TrustTier.PROMPT, Evidence.ASSERTED),

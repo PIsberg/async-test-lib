@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.SynchronousQueue;
@@ -618,5 +619,50 @@ public class BlockingQueueDetectorTest {
             }
             return super.size();
         }
+    }
+
+    // ---- grades follow the path, not one tier for the detector (#754) ---------------------------
+
+    /** {@return the report's per-finding grades, failing if the report does not grade} */
+    private static List<GradedFindings.Grade> gradesOf(Object report) {
+        return assertInstanceOf(GradedFindings.class, report,
+                "the report must grade each finding by the path behind it: " + report).grades();
+    }
+
+    @Test
+    void aDroppedElementIsAFactAndSaturationAPrompt() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> queue = new ArrayBlockingQueue<>(2);
+        detector.registerQueue(queue, "bounded", 2);
+        for (int i = 0; i < 3; i++) {
+            boolean added = queue.offer("item" + i);
+            detector.recordOffer(queue, "bounded", added);
+            // The third offer is rejected and nobody reads the false: what the agent emits there.
+            detector.recordOfferResultDiscarded(added);
+        }
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+        List<GradedFindings.Grade> grades = DetectorTrust.clampToCap("BlockingQueueDetector", gradesOf(report));
+        assertEquals(List.of(TrustTier.FACT, TrustTier.PROMPT),
+                grades.stream().map(GradedFindings.Grade::tier).toList(),
+                "the dropped element first, then saturation: " + grades);
+        assertEquals(List.of(DetectorTrust.Evidence.ASSERTED, DetectorTrust.Evidence.HEURISTIC),
+                grades.stream().map(GradedFindings.Grade::evidence).toList(),
+                "a discarded false is true as recorded, and may be lossy by design; 90% of capacity "
+                        + "is a threshold, and a full bounded queue is backpressure working: " + grades);
+        assertTrue(grades.stream().allMatch(g -> g.severity()
+                        == DetectorDefaultSeverity.of("BlockingQueueDetector", report.toString())),
+                "the severity is the one the gate always read for this report: " + grades);
+    }
+
+    @Test
+    void aCheckedRejectionOnAnUnfilledQueueCarriesNoGrade() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        BlockingQueue<String> handoff = new SynchronousQueue<>();
+        detector.observeQueue(handoff);
+        detector.recordOffer(handoff, "handoff", handoff.offer("item"));
+
+        assertEquals(List.of(), gradesOf(detector.analyze()),
+                "a rejected offer whose false the caller read is the correct twin and grades nothing");
     }
 }
