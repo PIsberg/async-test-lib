@@ -327,4 +327,54 @@ public class AtomicityValidatorTest {
                         + "field was mutated unserialised, which is not safe publication. If this "
                         + "goes silent the per-round write lockset is excusing without looking.");
     }
+
+    /** One agent-fed access to a plain field of instance 91, as the telemetry drain replays it. */
+    private static void thresholdAccess(AtomicityValidator validator, boolean write, long thread,
+                                        long fingerprint) {
+        validator.recordFieldAccessUnderLocks("Segment.resizeThreshold", null, write, thread,
+                fingerprint, 0, 0, false, Integer.MIN_VALUE, 91);
+    }
+
+    /**
+     * One round of the confirmed-hint idiom (#311) on a plain field: each thread reads with no
+     * lock, re-reads under its write lock, then writes under it, thread 101 under
+     * {@code firstWriteLock} and thread 202 under {@code secondWriteLock}.
+     */
+    private static void confirmedHintRound(AtomicityValidator validator, long firstWriteLock,
+                                           long secondWriteLock) {
+        validator.markInvocationStart();
+        for (long[] step : new long[][] {{101L, firstWriteLock}, {202L, secondWriteLock}}) {
+            thresholdAccess(validator, false, step[0], 0L);
+            thresholdAccess(validator, false, step[0], step[1]);
+            thresholdAccess(validator, true, step[0], step[1]);
+        }
+    }
+
+    @Test
+    void confirmedHintWithADifferentWriteLockEachRoundIsExcused() {
+        AtomicityValidator validator = new AtomicityValidator();
+        confirmedHintRound(validator, 4242L, 4242L);
+        confirmedHintRound(validator, 4343L, 4343L);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(report.unsafeFieldAccesses.isEmpty(),
+                "every write of each round held that round's lock and every unlocked read was "
+                        + "re-read under it before the write, so each round is the confirmed-hint "
+                        + "idiom; a run-wide write intersection empties only because the "
+                        + "harness-ordered rounds used different locks (#781). Got "
+                        + report.unsafeFieldAccesses);
+    }
+
+    @Test
+    void confirmedHintWithTwoWriteLocksInOneRoundStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        confirmedHintRound(validator, 4242L, 4242L);
+        confirmedHintRound(validator, 4242L, 4343L);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.unsafeFieldAccesses.isEmpty(),
+                "two writes in one round under two different locks exclude nothing, so a re-read "
+                        + "under either confirms nothing. If this goes silent the per-round write "
+                        + "lockset is excusing without looking.");
+    }
 }
