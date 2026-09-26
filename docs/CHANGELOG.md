@@ -89,6 +89,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TelemetryRegistry`, and its cost beyond the empty body is held under 110,000 bytes per
   execution: 84,297 to 91,227 measured on JDK 21, 24 and 26, and 123,804 with one `new Object[4]`
   kept per `SelfGuard.noteAccess`, which the empty body's 80,000-byte ceiling let through.
+- **`FILE_CHANNEL_POSITION_RACE` stays PROMPT for the reason it has now (#755).** Its hold in
+  corpus-eval's `PairEvidence`, the `verdict-evidence-corpus` argument and the catalog said it
+  had no lockset, which stopped being true when it joined the `Shared*` family's: a
+  `synchronized (channel)` or `HeldLocks` guard is silent. Re-read against the detector, the pair
+  is still held: the detector judges single accesses, and `FileChannel` serializes each implicit
+  `read(buffer)` or `write(buffer)`, so threads making one such call each lose nothing and still
+  draw the finding. A probe of 8 threads on JDK 21 and 26 bore that out, with 40,000 16-byte
+  records written by `write(buffer)` all whole and none lost, against 1,450 to 1,693 wrong reads
+  of 40,000 for an unguarded `position(n)` then `read(buffer)`, and none under
+  `synchronized (channel)`. `FileChannelPositionRaceDetectorTest` pins a declared lock staying
+  silent, two different locks firing, and the self-contained case the hold rests on.
 
 ### Fixed
 

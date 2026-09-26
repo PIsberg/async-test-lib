@@ -43,6 +43,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * thread, or switch to {@code AsynchronousFileChannel}, whose read/write
  * methods always take an explicit position.
  *
+ * <p><strong>What counts as guarded.</strong> The verdict is {@link SelfGuard}'s, taken per
+ * invocation round: implicit-position accesses from two threads are reported unless a lock was
+ * held at all of them, the channel's own monitor or one declared through {@link HeldLocks}, or a
+ * happens-before edge orders them. The unit is the access, not the seek-then-I/O sequence the
+ * race is made of. {@code FileChannel} runs one operation involving the position at a time, so
+ * threads that each make one self-contained {@code read(buffer)} or {@code write(buffer)} lose
+ * no bytes, and they are reported as well.
+ *
  * <p>Usage:
  * <pre>{@code
  * var d = new FileChannelPositionRaceDetector();

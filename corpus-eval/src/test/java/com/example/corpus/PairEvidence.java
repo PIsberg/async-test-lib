@@ -200,11 +200,17 @@ final class PairEvidence {
                 + "return, or a give-up recorded before acting on the condition anyway, hides one. "
                 + "Asking a real monitor cannot close it, since Object exposes no waiter or notify "
                 + "state; re-read once the silent twin includes a recorded deadline give-up");
-        // Read before this map existed; the full argument is in verdict-evidence-corpus.
-        HELD_ON_MODEL.put(DetectorType.FILE_CHANNEL_POSITION_RACE, "reports whenever more than "
-                + "one thread accessed the channel and carries no representation of a lock, so a "
-                + "caller that wraps position(n) and read(buffer) in synchronized(channel) draws "
-                + "the identical finding; needs the lockset the Shared* family already has");
+        // Read before this map existed and re-read 2026-09-26 (#755), once the detector had the
+        // Shared* family's lockset; the full argument is in verdict-evidence-corpus.
+        HELD_ON_MODEL.put(DetectorType.FILE_CHANNEL_POSITION_RACE, "keeps SelfGuard's per-round "
+                + "lockset, so position(n) and read(buffer) wrapped in synchronized(channel) or a "
+                + "lock declared through HeldLocks are silent, but it judges accesses, not the "
+                + "seek-then-I/O sequence the race is. FileChannel runs one operation involving "
+                + "the position at a time, so threads that each make one self-contained "
+                + "read(buffer) or write(buffer) lose nothing and still draw the finding, and the "
+                + "firing row is that shape: every read whole, at an offset no caller chose; "
+                + "needs a finding only when another thread's call can land between a thread's "
+                + "position(n) and the read or write that relies on it");
 
         // Third reading, 2026-09-16 (#571). In all twenty-one the body declares what the finding says
         // or asserts arbitrary thresholds, and the detector never inspects the underlying JVM objects
