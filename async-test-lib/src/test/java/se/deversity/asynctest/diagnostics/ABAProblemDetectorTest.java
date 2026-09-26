@@ -230,6 +230,76 @@ class ABAProblemDetectorTest {
     }
 
     @Test
+    void aToggleRecordedAfterTheReadCountsAsAfterItWhenItRanBefore() throws InterruptedException {
+        // A known limit, pinned (#810). Two threads swing A -> B -> A wholly before this thread
+        // reads A, then record the swing after it has recorded the read. Nothing an ABA could hurt
+        // happened, and it is reported, because its records are the records of a real ABA: this
+        // thread reads A and records it, one thread moves A to B and records it, another moves B
+        // back to A and records it. The values cannot tell them apart either, since A is what the
+        // read sees whether the toggle ran before it or after it. Reporting both is the choice;
+        // a change that silences the first silences the second with it, and this test goes red.
+        ABAProblemDetector ranBefore = new ABAProblemDetector();
+        AtomicReference<String> head = new AtomicReference<>("A");
+        CountDownLatch movedAway = new CountDownLatch(1);
+        CountDownLatch movedBack = new CountDownLatch(1);
+        CountDownLatch readRecorded = new CountDownLatch(1);
+        CountDownLatch awayRecorded = new CountDownLatch(1);
+        Thread away = new Thread(() -> {
+            head.set("B");
+            movedAway.countDown();
+            awaitQuietly(readRecorded);
+            ranBefore.recordValueChange("head", "A", "B");
+            awayRecorded.countDown();
+        }, "aba-away");
+        Thread back = new Thread(() -> {
+            awaitQuietly(movedAway);
+            head.set("A");
+            movedBack.countDown();
+            awaitQuietly(awayRecorded);
+            ranBefore.recordValueChange("head", "B", "A");
+        }, "aba-back");
+        away.start();
+        back.start();
+        movedBack.await();                                // the whole toggle ran ...
+        String seen = head.get();                         // ... before this read
+        ranBefore.recordRead("head", seen);
+        readRecorded.countDown();
+        away.join();
+        back.join();
+        boolean swapped = head.compareAndSet(seen, "C");
+        ranBefore.recordCASAttempt("head", seen, "C", swapped, head.get());
+        assertTrue(swapped);
+
+        ABAProblemDetector ranAfter = new ABAProblemDetector();
+        AtomicReference<String> head2 = new AtomicReference<>("A");
+        String seen2 = head2.get();                       // this read ...
+        ranAfter.recordRead("head", seen2);
+        onAnotherThread(() -> {                           // ... then the whole toggle
+            head2.set("B");
+            ranAfter.recordValueChange("head", "A", "B");
+        });
+        onAnotherThread(() -> {
+            head2.set("A");
+            ranAfter.recordValueChange("head", "B", "A");
+        });
+        boolean swapped2 = head2.compareAndSet(seen2, "C");
+        ranAfter.recordCASAttempt("head", seen2, "C", swapped2, head2.get());
+        assertTrue(swapped2);
+
+        assertTrue(ranAfter.analyzeABA().hasIssues(), "the real ABA: " + ranAfter.analyzeABA());
+        assertEquals(ranAfter.analyzeABA().successfulABACases,
+            ranBefore.analyzeABA().successfulABACases, "the same records draw the same verdict");
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
     void everyStaleCasIsReportedHoweverManyThereAre() throws InterruptedException {
         // Well past the birthday bound for a 31-bit identity hash (about 54,000 objects), so
         // some twenty pairs of these attempts share a hash. An attempt keyed by its bare hash

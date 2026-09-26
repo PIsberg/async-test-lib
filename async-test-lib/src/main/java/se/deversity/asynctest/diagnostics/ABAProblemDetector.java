@@ -50,6 +50,17 @@ import java.util.concurrent.atomic.AtomicLong;
  * it, and it is not. The window ends at the next round start ({@link #markInvocationStart()}),
  * because the harness orders its rounds.
  *
+ * <p><strong>Limits.</strong> The verdict assumes every change to the variable is recorded. An
+ * unrecorded write that takes the variable off the value a compare-and-set wrote hides the one
+ * witness that a toggle recorded after it really followed it, so that toggle is reported. The
+ * read side has no such witness: a read changes nothing, and it sees A whether an A-B-A ran just
+ * before it or just after it. A change recorded after the read is therefore taken as after it
+ * (#810). That is wrong only when the toggle ran wholly before the read and both of its records
+ * landed after the read's, which needs two threads, one moving the value away and another moving
+ * it back, or one thread that makes both changes before recording the first: a thread that
+ * records each change right after making it cannot. Those records are the records of a real ABA,
+ * so it is reported as one.
+ *
  * <p>A value going A to B and back to A is not a finding on its own. One thread pushing and
  * then popping, a flag set and cleared, a counter incremented and decremented: each is an
  * A-B-A history, and none of them hurts a compare-and-set whose premise was read after the

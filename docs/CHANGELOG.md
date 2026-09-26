@@ -121,7 +121,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compare-and-set in the next round recorded no read of its own was judged against last round's
   read and last round's changes, all finished before the round began, and could be reported as an
   ABA that could not have happened. A round start now drops every read no compare-and-set
-  consumed; such a compare-and-set draws no verdict, like any other with no recorded read.
+  consumed; such a compare-and-set draws no verdict, like any other with no recorded read. The
+  class javadoc now states two limits. The verdict assumes every change is recorded. And a toggle
+  that ran wholly before the read, with both records landing after the read's, is reported: its
+  records are those of a real ABA, and a read, which changes nothing, leaves no value to tell them
+  apart. That takes two threads toggling, or one recording both changes late.
 - **A volatile edge in the happens-before model is per field, not per object (#742).** A volatile
   write released its whole object and a later access the weaver marked as following a volatile
   read acquired it, so reading one volatile field ordered a plain access after a write of another
