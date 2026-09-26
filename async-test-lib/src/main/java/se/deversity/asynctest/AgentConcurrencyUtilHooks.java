@@ -723,7 +723,8 @@ public final class AgentConcurrencyUtilHooks {
     /**
      * Weaves {@code CompletableFuture.runAsync(Runnable)}, as {@link #supplyAsync(Supplier)}.
      *
-     * @param task the task
+     * @param task the work to run asynchronously, not null; it is wrapped, so its start is ordered
+     *             after this call
      * @return the new future
      * @since 1.12.3
      */
@@ -737,7 +738,8 @@ public final class AgentConcurrencyUtilHooks {
      * Weaves {@code CompletableFuture.runAsync(Runnable, Executor)}, as
      * {@link #supplyAsync(Supplier)}.
      *
-     * @param task     the task
+     * @param task     the work to run on {@code executor}, not null; it is wrapped, so its start is
+     *                 ordered after this call
      * @param executor the executor to run it on
      * @return the new future
      * @since 1.12.3
@@ -759,7 +761,8 @@ public final class AgentConcurrencyUtilHooks {
      * {@code ForkJoinTask} is run differently from any other, so both keep the task as it was.
      *
      * @param receiver the executor
-     * @param task     the task
+     * @param task     the work submitted, not null; on a JDK executor it is wrapped, so its run is
+     *                 ordered after this call and a get after its end
      * @return the task's future
      * @since 1.12.3
      */
@@ -775,7 +778,8 @@ public final class AgentConcurrencyUtilHooks {
      * Weaves {@code ExecutorService.submit(Runnable)}, as {@link #submit(ExecutorService, Callable)}.
      *
      * @param receiver the executor
-     * @param task     the task
+     * @param task     the work submitted, not null; on a JDK executor it is wrapped, as in the
+     *                 {@code Callable} form
      * @return the task's future
      * @since 1.12.3
      */
@@ -792,7 +796,8 @@ public final class AgentConcurrencyUtilHooks {
      * {@link #submit(ExecutorService, Callable)}.
      *
      * @param receiver the executor
-     * @param task     the task
+     * @param task     the work submitted, not null; on a JDK executor it is wrapped, as in the
+     *                 {@code Callable} form
      * @param result   what the future returns
      * @return the task's future
      * @since 1.12.3
