@@ -63,12 +63,17 @@ public class SynchronizedOnLiteralDetector {
         if (context != null) u.contexts.add(context);
     }
 
-    @SuppressFBWarnings("ES_COMPARING_STRINGS_WITH_EQ")
-    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "PMD.UseEqualsToCompareStrings", "ReferenceEquality"}) // intentional: s == s.intern() detects literal/interned strings via identity
+    @SuppressFBWarnings(value = {"ES_COMPARING_STRINGS_WITH_EQ", "DM_STRING_CTOR"},
+            justification = "the copy is the probe: interning a copy answers whether the receiver was "
+                    + "already pooled without inserting the receiver itself")
+    @SuppressWarnings({"PMD.CompareObjectsWithEquals", "PMD.UseEqualsToCompareStrings", "ReferenceEquality"}) // intentional: identity with the pooled instance detects literal/interned strings
     private static @Nullable String describeIfLiteral(Object obj) {
         if (obj instanceof String s) {
-            // Intentional reference comparison: s == s.intern() is true only for interned (literal) strings
-            if (s == s.intern()) return "String literal \"" + s + "\"";
+            // intern() on a copy: if s was already pooled the copy interns to s and the identity
+            // test holds; if not, the pool now holds the collectable copy and s stays untouched.
+            // s == s.intern() inserted s itself and returned it, so every runtime-built string
+            // read as a literal and was pinned in the pool as a side effect (#759).
+            if (new String(s).intern() == s) return "String literal \"" + s + "\"";
         } else if (obj instanceof Integer i) {
             int v = i;
             if (v >= -128 && v <= 127) return "Integer.valueOf(" + v + ") [JVM cached]";

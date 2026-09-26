@@ -71,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no handler of its own was reported even when `Thread.setDefaultUncaughtExceptionHandler` had set
   the handler its exception is dispatched to, which is the fix the report itself suggests. The
   default is sampled when the exception is recorded.
+- **`SynchronizedOnLiteralDetector` no longer reports a runtime-built lock string (#759).** Its
+  `s == s.intern()` test is true for any string not yet pooled, because `intern()` inserts the
+  receiver and returns it, so a private `StringBuilder`-built lock read as a literal and was pinned
+  in the pool as a side effect. It now interns a copy, the fix `BoxedPrimitiveLock` already had. A
+  literal, and a string the code interned itself, still report.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through

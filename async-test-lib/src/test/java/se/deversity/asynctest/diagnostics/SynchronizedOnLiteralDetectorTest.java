@@ -29,6 +29,35 @@ public class SynchronizedOnLiteralDetectorTest {
     }
 
     @Test
+    void testNoIssueForRuntimeBuiltStringThatWasNeverInterned() {
+        // #759: a fresh string whose content is in no pool is a private monitor. s == s.intern()
+        // read it as a literal, because intern() inserted s itself and returned it.
+        var d = new SynchronizedOnLiteralDetector();
+        String lock = new StringBuilder("private-lock-").append(System.nanoTime()).toString();
+        d.recordMonitorAcquired(lock, Thread.currentThread(), "MyClass.method");
+        assertFalse(d.analyze().hasIssues());
+        assertNotSame(lock, lock.intern(),
+                "recording must not have pooled the user's own instance as a side effect");
+    }
+
+    @Test
+    void testDetectsRuntimeBuiltStringThatWasExplicitlyInterned() {
+        // An interned string is the JVM-wide instance whatever built it, so it is the same hazard.
+        var d = new SynchronizedOnLiteralDetector();
+        String lock = new StringBuilder("interned-lock-").append(System.nanoTime()).toString().intern();
+        d.recordMonitorAcquired(lock, Thread.currentThread(), "MyClass.method");
+        assertTrue(d.analyze().hasIssues());
+    }
+
+    @Test
+    void testNoIssueForCopyOfALiteral() {
+        var d = new SynchronizedOnLiteralDetector();
+        String lock = new String("lock"); // distinct instance with a literal's content
+        d.recordMonitorAcquired(lock, Thread.currentThread(), "MyClass.method");
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    @Test
     void testDetectsCachedInteger() {
         var d = new SynchronizedOnLiteralDetector();
         Integer cached = 42; // autoboxed, within [-128, 127]
