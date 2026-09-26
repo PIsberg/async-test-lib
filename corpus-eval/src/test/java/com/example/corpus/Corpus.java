@@ -3650,9 +3650,11 @@ final class Corpus {
                     DetectorType.VISIBILITY, Contract.NOT_THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "one field identifier is recorded with a different value from every thread. "
-                            + "Threads disagreeing about what a field holds is the definition of "
-                            + "a visibility failure, and without a happens-before edge nothing "
-                            + "obliges one thread's write to become visible to another",
+                            + "Threads disagreeing about what a field holds is what a visibility "
+                            + "failure looks like from the outside, and without a happens-before "
+                            + "edge nothing obliges one thread's write to become visible to "
+                            + "another. A counter that is meant to change looks the same, which "
+                            + "is why the detector reports the observation at FACT",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("recorded_field_readConsistentlyAcrossThreads", JDK,

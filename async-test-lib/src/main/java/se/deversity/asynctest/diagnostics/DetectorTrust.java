@@ -88,7 +88,7 @@ public final class DetectorTrust {
      */
     private static final List<Row> ROWS = List.of(
             row(DetectorType.DEADLOCKS, "DeadlockDetector", "Deadlocks", TrustTier.VERDICT),
-            row(DetectorType.VISIBILITY, "VisibilityMonitor", "Visibility", TrustTier.VERDICT),
+            row(DetectorType.VISIBILITY, "VisibilityMonitor", "Visibility", TrustTier.FACT),
             row(DetectorType.LIVELOCKS, "LivelockDetector", "Livelocks", TrustTier.PROMPT),
             row(DetectorType.FALSE_SHARING, "FalseSharingDetector", "FalseSharing", TrustTier.ADVISORY),
             row(DetectorType.WAKEUP_ISSUES, "WakeupDetector", "WakeupIssues", TrustTier.PROMPT),

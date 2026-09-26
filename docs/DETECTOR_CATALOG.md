@@ -177,7 +177,7 @@ queue or a swap out of an atomic slot, woven by the agent with `collections=true
 pool that checks an instance out to one thread at a time is not reported.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 70 VERDICT, 59 PROMPT, 10 FACT and 7
+tier is one a reader has to rank alone. The split is 69 VERDICT, 59 PROMPT, 11 FACT and 7
 ADVISORY. PROMPT is the honest default rather than a result: it says nobody has measured that
 detector's silent-on-correct-code direction, not that the detector is wrong. FACT and ADVISORY are
 statements about the kind of claim a finding makes rather than about missing evidence - a FACT

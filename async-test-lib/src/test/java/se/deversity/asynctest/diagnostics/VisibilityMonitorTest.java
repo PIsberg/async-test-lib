@@ -161,6 +161,29 @@ public class VisibilityMonitorTest {
     }
 
     @Test
+    void aCorrectAtomicCounterIsReportedAsAnObservationNotADefect() throws InterruptedException {
+        VisibilityMonitor monitor = new VisibilityMonitor();
+        java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger();
+
+        // Nothing is wrong here: every increment is atomic and every read sees a value some
+        // increment published. Readers of a live counter legitimately see different values.
+        monitor.markInvocationStart();
+        monitor.recordFieldAccess("Counter.c", counter.incrementAndGet());
+        recordOnNewThread(monitor, "Counter.c", counter.incrementAndGet());
+
+        VisibilityMonitor.VisibilityReport report = monitor.analyzeVisibility();
+        String text = report.toString();
+
+        assertTrue(report.hasIssues(), "the divergence was observed, and the report may say so");
+        assertFalse(text.contains("VISIBILITY ISSUES"),
+                "a value divergence is not a stale read; naming it a visibility issue is the claim "
+                        + "this detector's inputs cannot support: " + text);
+        assertEquals(TrustTier.FACT, DetectorTrust.tierOf(se.deversity.asynctest.DetectorType.VISIBILITY),
+                "the finding states what was observed, which is the FACT tier, not a verdict "
+                        + "that fails a minTrust=VERDICT build on a correct counter");
+    }
+
+    @Test
     void reportToStringContainsIssues() throws InterruptedException {
         VisibilityMonitor monitor = new VisibilityMonitor();
 
@@ -172,8 +195,8 @@ public class VisibilityMonitorTest {
 
         String text = report.toString();
         assertNotNull(text);
-        assertTrue(text.contains("POTENTIAL VISIBILITY ISSUES"),
-                "toString() for a report with issues should contain POTENTIAL VISIBILITY ISSUES");
+        assertTrue(text.contains("FIELD VALUES DIVERGED ACROSS THREADS"),
+                "toString() for a report with issues states the divergence it observed: " + text);
         assertTrue(text.contains("Service.cache"),
                 "toString() should name the suspected field");
     }

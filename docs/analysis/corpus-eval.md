@@ -1346,7 +1346,9 @@ initialisation ran. The pairs therefore vary a number or a flag rather than an i
 
 - `VISIBILITY` records one field identifier with a per-thread value against one every thread
   agrees on, which is what a visibility failure and a properly published value each look like
-  from the outside.
+  from the outside. It is also what a correct `AtomicInteger` counter looks like, so since
+  1.12.3 the pair backs the detector's FACT tier (the divergence was observed) rather than
+  VERDICT (the code is wrong), and it is no longer registered as verdict evidence.
 - `SYNCHRONIZERS` sizes a barrier to a thousand parties and gives it six. The party count is a
   construction-time constant, so the stall is structural and not a schedule.
 - `THREAD_POOL` records a rejection from a pool of one against a completed task on a pool sized

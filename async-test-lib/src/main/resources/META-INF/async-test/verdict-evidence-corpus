@@ -68,7 +68,11 @@ WEAK_HASH_MAP_SHARED = recorded_weakHashMap_sharedAcrossThreads, recorded_weakHa
 # both reach the detector through the same record*/register* methods, so what separates them
 # is the state the calls carry. Agent-lane bodies make no such calls; AgentRowPremise holds
 # them to the same property instead.
-VISIBILITY = recorded_field_readInconsistentlyAcrossThreads, recorded_field_readConsistentlyAcrossThreads
+# VISIBILITY was registered here until 1.12.3 and is FACT now. Its pair varies whether threads
+# recorded different values for one field, and a correct AtomicInteger counter does exactly that:
+# the detector records a name and a value, no write, lock or ordering, so no pair of its can tell a
+# stale read from a value that is meant to change. The pair still runs; it measures the
+# observation, which is what the FACT tier claims.
 ABA_PROBLEM = recorded_aba_premiseReadBeforeAnotherThreadsToggle, recorded_aba_premiseReadAfterAnotherThreadsToggle
 SEMAPHORE = agent_semaphore_permitNeverReturned, agent_semaphore_permitReturnedInFinally
 BLOCKING_QUEUE = agent_blockingQueue_filledToCapacity, agent_blockingQueue_drainedAsItFilled
