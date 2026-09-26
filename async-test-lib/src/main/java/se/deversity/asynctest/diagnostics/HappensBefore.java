@@ -89,8 +89,11 @@ import org.jspecify.annotations.Nullable;
  *       constructor is not woven, so it publishes nothing. Two fields of one object sharing a
  *       simple name, a field and the one it shadows, share a clock.
  *   <li>A withdrawn release was visible for the length of the refused call, and one another
- *       thread folded into its own release in that time stays. {@code addAll} into a queue,
- *       which can accept some elements and refuse the rest, withdraws nothing.
+ *       thread folded into its own release in that time stays. An {@code addAll} into a queue
+ *       that implements it itself, a {@code LinkedBlockingDeque} or a
+ *       {@code ConcurrentLinkedQueue}, and throws part way withdraws nothing; one that inherits
+ *       {@code AbstractQueue}'s is offered element by element and withdraws the refused one
+ *       (#806).
  *   <li>A clock keeps at most 256 threads. Past that the entries of the lowest
  *       thread ids go, which loses edges and never adds one; a thread never loses its own.
  *   <li>Not yet observed: {@code CompletableFuture} completion, {@code Executor} submission and

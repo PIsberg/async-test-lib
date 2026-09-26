@@ -2,10 +2,12 @@ package se.deversity.asynctest;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.AbstractQueue;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.TimeUnit;
@@ -77,6 +79,26 @@ public final class AgentCollectionHooks {
                 }
             }
             return Boolean.FALSE;
+        }
+    };
+
+    /**
+     * Whether a queue's {@code addAll} is the one {@link AbstractQueue} declares, a loop over its
+     * own {@code add}, which {@link #addEach} can run in its place with the same calls (#806).
+     *
+     * <p>A queue that implements {@code addAll} itself, {@code ConcurrentLinkedQueue} or
+     * {@code LinkedBlockingDeque}, may insert the batch in a way no loop here reproduces, so it
+     * keeps its own call. Reflection is asked once per class; a failure to ask answers no.
+     */
+    private static final ClassValue<Boolean> ADDS_ONE_BY_ONE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            try {
+                return type.getMethod("addAll", Collection.class).getDeclaringClass()
+                        == AbstractQueue.class;
+            } catch (NoSuchMethodException | SecurityException e) {
+                return Boolean.FALSE;
+            }
         }
     };
 
@@ -241,6 +263,12 @@ public final class AgentCollectionHooks {
      * the take that removes one has to drain after it. Reading them is the recording path, so
      * whatever it throws is dropped and the call itself decides what the caller sees.
      *
+     * <p>A queue whose {@code addAll} is {@code AbstractQueue}'s, every bounded
+     * {@code BlockingQueue} in the JDK among them, is filled here one {@code add} at a time, which
+     * is what its own {@code addAll} does, so an element it refuses withdraws its release and the
+     * ones after it are never offered (#806). A queue with an {@code addAll} of its own keeps it,
+     * and an exception out of that withdraws nothing.
+     *
      * @param receiver the collection
      * @param elements the elements to add
      * @return whether the collection changed
@@ -267,6 +295,9 @@ public final class AgentCollectionHooks {
                                            Collection<? extends Object> elements,
                                            @Nullable Object monitor) {
         record(receiver, "addAll", true);
+        if (receiver instanceof Queue && Boolean.TRUE.equals(ADDS_ONE_BY_ONE.get(receiver.getClass()))) {
+            return addEach(receiver, elements, monitor);
+        }
         if (receiver instanceof Queue && elements != null) {
             try {
                 for (Object element : elements) {
@@ -277,6 +308,40 @@ public final class AgentCollectionHooks {
             }
         }
         return receiver.addAll(elements);
+    }
+
+    /**
+     * {@code AbstractQueue.addAll}, run here so each element is offered on its own (#806).
+     *
+     * <p>A queue that inherits {@code addAll} from {@code AbstractQueue} does exactly this: it
+     * checks the source, then calls its own {@code add} once per element, and a bounded queue's
+     * {@code add} throws at the first element that does not fit, with the earlier ones already in.
+     * Running the same calls here puts each element's release right before its {@code add}, and
+     * a refused element withdraws its release before the exception leaves, as a refused
+     * {@code add} does. The elements after it were never offered and released nothing.
+     */
+    @SuppressWarnings("ReferenceEquality") // the source being the queue itself, as AbstractQueue asks
+    private static boolean addEach(Collection<Object> receiver,
+                                   Collection<? extends Object> elements,
+                                   @Nullable Object monitor) {
+        Objects.requireNonNull(elements); // AbstractQueue's own check, before anything is offered
+        if (elements == receiver) { // NOPMD CompareObjectsWithEquals - AbstractQueue's own check
+            throw new IllegalArgumentException();
+        }
+        boolean modified = false;
+        for (Object element : elements) {
+            TelemetryRegistry.ownershipOffered(element, receiver, monitor);
+            boolean added = false;
+            try {
+                added = receiver.add(element);
+            } finally {
+                if (!added) { // refused, or the call threw: nothing was handed over (#742)
+                    TelemetryRegistry.ownershipRefused(element, receiver);
+                }
+            }
+            modified |= added;
+        }
+        return modified;
     }
 
     /**

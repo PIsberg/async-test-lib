@@ -225,6 +225,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that never happened, and a race between them went unreported. The hooks now withdraw the release
   when the call fails (`HappensBefore.retract`, `TelemetryRegistry.ownershipRefused`); an accepted
   offer and a successful swap still order the take.
+- **An `addAll` a bounded queue takes only part of publishes only that part (#806).** The woven
+  `addAll` released every element before the call and withdrew nothing, so an element the queue
+  refused still read as handed over, and whoever reached it another way was ordered after the
+  producer by a hand-off that never happened. A queue whose `addAll` is `AbstractQueue`'s, which
+  includes `ArrayBlockingQueue`, `LinkedBlockingQueue` and the other bounded JDK queues, is now
+  filled one `add` at a time, the calls its own `addAll` makes, so a refused element withdraws its
+  release and the elements after it are never offered. A queue that implements `addAll` itself,
+  `LinkedBlockingDeque` among them, keeps its own call and still withdraws nothing when it throws.
 - **`LockUpgradeDeadlockDetector` and `LockDowngradeDetector` name unnamed threads by id (#766).**
   Both printed a thread by name alone, so a finding on default virtual threads, which have no
   name, printed an empty name for every thread, and the upgrade report collapsed them into one.

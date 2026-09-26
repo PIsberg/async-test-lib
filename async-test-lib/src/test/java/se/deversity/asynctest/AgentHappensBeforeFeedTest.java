@@ -1,6 +1,7 @@
 package se.deversity.asynctest;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -401,5 +402,71 @@ class AgentHappensBeforeFeedTest {
                         + "the compareAndSet must not have released it");
         assertFalse(handOffAfterOfferReported(slot(true), true),
                 "the swap stored the token and the consumer's getAndSet took it: that orders them");
+    }
+
+    /**
+     * A producer writes two boxes and adds both to a bounded queue with room for one, through the
+     * woven {@code addAll}; the queue takes the first and refuses the second. The consumer then
+     * reads one of them: the accepted box taken out of the queue, or the refused box through a
+     * concurrent map the main thread published it through before either thread ran, which orders
+     * nothing between the two of them (#806).
+     */
+    private static boolean batchElementReported(boolean readTheAcceptedOne)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        BlockingQueue<Object> queue = new ArrayBlockingQueue<>(1);
+        Box accepted = new Box();
+        Box refused = new Box();
+        Map<Object, Object> registry = new ConcurrentHashMap<>();
+        AgentCollectionHooks.mapPut(registry, "refused", refused);
+        CountDownLatch handed = new CountDownLatch(1);
+        AtomicReference<String> setUpWrong = new AtomicReference<>();
+        Thread producer = new Thread(() -> {
+            accepted.value = 1;
+            detector.recordFieldWrite(accepted, "value");
+            refused.value = 1;
+            detector.recordFieldWrite(refused, "value");
+            try {
+                AgentCollectionHooks.collectionAddAll(queue, List.of(accepted, refused));
+                setUpWrong.set("the queue took the whole batch");
+            } catch (IllegalStateException full) {
+                // The second element did not fit, which is the point.
+            }
+            handed.countDown(); // unwoven, so it orders nothing as far as the model knows
+        });
+        Thread consumer = new Thread(() -> {
+            Object received;
+            try {
+                handed.await();
+                received = readTheAcceptedOne ? AgentConcurrencyUtilHooks.take(queue)
+                        : AgentCollectionHooks.mapGet(registry, "refused");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            Box box = readTheAcceptedOne ? accepted : refused;
+            if (received != box) {
+                setUpWrong.set("the consumer did not receive the box it reads");
+            }
+            detector.recordFieldRead(box, "value");
+            box.value++;
+            detector.recordFieldWrite(box, "value");
+        });
+        producer.start();
+        consumer.start();
+        producer.join();
+        consumer.join();
+        assertNull(setUpWrong.get());
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("an addAll that the queue takes only part of publishes only that part (#806)")
+    void aPartlyRefusedAddAllPublishesOnlyWhatWentIn() throws InterruptedException {
+        assertTrue(batchElementReported(false),
+                "the queue refused the second box, so the producer's write of it reached the "
+                        + "consumer through nothing: the addAll must not have released it");
+        assertFalse(batchElementReported(true),
+                "the queue took the first box and the consumer took it out: the hand-off orders them");
     }
 }
