@@ -228,4 +228,78 @@ public class SharedCollectionDetectorTest {
         r2.join();
         assertFalse(spread.analyze().hasIssues(), "the same accesses in three ordered rounds never overlapped");
     }
+
+    // #787: the round verdict did not tell reads from writes. Two unguarded readers in one round
+    // latched it, so two writers in a later round were reported although every write held the
+    // list's monitor and nothing ever wrote while the unguarded readers ran.
+    @Test
+    void unguardedReadersInOneRoundDoNotConvictGuardedWritersInAnother() throws InterruptedException {
+        SharedCollectionDetector detector = new SharedCollectionDetector();
+        List<Object> list = new ArrayList<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable read = () -> detector.recordRead(list, "list", "get");
+        Runnable guardedWrite = () -> {
+            synchronized (list) {
+                detector.recordWrite(list, "list", "add");
+            }
+        };
+
+        round(detector, scope, read, read);
+        round(detector, scope, guardedWrite, guardedWrite);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "round one only read, and every write in round two held synchronized (list): "
+                        + detector.analyze().concurrentWriteViolations);
+    }
+
+    @Test
+    void aWriterBesideUnguardedReadersInOneRoundIsReportedAfterAReadOnlyRound() throws InterruptedException {
+        SharedCollectionDetector detector = new SharedCollectionDetector();
+        List<Object> list = new ArrayList<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable read = () -> detector.recordRead(list, "list", "get");
+        Runnable guardedWrite = () -> {
+            synchronized (list) {
+                detector.recordWrite(list, "list", "add");
+            }
+        };
+
+        round(detector, scope, read, read);
+        round(detector, scope, guardedWrite, read, read);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "round two's readers held no lock while another thread wrote");
+        assertEquals(1, detector.analyze().mixedAccessViolations.size());
+    }
+
+    /**
+     * Starts the next round on both clocks, the detector's own and the {@link SelfGuard.Scope}
+     * its verdict reads, and runs each body on a fresh thread with the scope bound, released
+     * together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SharedCollectionDetector detector, SelfGuard.Scope scope,
+                              Runnable... bodies) throws InterruptedException {
+        detector.markInvocationStart();
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
 }

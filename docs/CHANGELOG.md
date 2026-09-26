@@ -152,6 +152,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   may overlap the unlocked ones and brings them back. Pinned both ways in
   `SharedMessageDigestDetectorTest`: a guarded use reached through an unseen edge, and an unguarded
   use after the hand-off, still fire.
+- **The lock-aware detectors no longer count a read-only round as sharing (#787).** `SelfGuard`'s
+  per-round verdict did not tell reads from writes, so two threads reading with no lock in one round
+  latched it, and a mutation in a different round, which never overlapped the reads, completed a
+  finding: `StatefulLambdaDetector` reported a lambda whose readers and writer ran in different
+  rounds, and `SharedCollectionDetector` reported two writers that both held the list's monitor. A
+  window is now shared only once one of its accesses wrote, and a write before an ordered hand-off
+  does not count against reads after it. A writer and an unguarded reader in the same round still
+  report. The detectors that record every access as a write keep their verdict. A read that writes
+  still counts as a write for this rule: a `get` on a `LinkedHashMap` (which may be access-ordered,
+  relinking the entry on every `get`), any read of a `WeakHashMap` (which expunges cleared entries)
+  and a `Calendar.get()` (which recomputes the fields after a `set()`), so gets alone in one round
+  on an LRU cache or a shared calendar still report. The lockset still judges those reads as reads,
+  so a read lock held over them guards them as before.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`

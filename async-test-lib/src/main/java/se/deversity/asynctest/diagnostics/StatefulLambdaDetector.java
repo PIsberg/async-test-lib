@@ -154,9 +154,9 @@ public class StatefulLambdaDetector {
      * the reads puts the readers in the same round as the writer. A read is judged like a write:
      * it counts as a second thread, and the lock probe runs on the reading thread, so a writer
      * and readers all under one lock stay unreported, and a read outside the writer's lock is
-     * reported. Reads alone never report; the finding still needs a recorded mutation. The round
-     * verdict does not tell reads from writes, though, so two unguarded readers in one round and
-     * a mutation in another round still report. Call it
+     * reported. Reads alone never report; the finding needs a recorded mutation in the same round
+     * as the reads, so two unguarded readers in one round and a mutation in another round, which
+     * never overlapped them, do not report (#787). Call it
      * where the lambda reads the capture, inside whatever region guards that read, not at the top
      * of the body with {@link #recordExecution(Object, String, Thread)}.
      *

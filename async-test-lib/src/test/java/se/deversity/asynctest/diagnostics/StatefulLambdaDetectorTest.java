@@ -350,6 +350,146 @@ public class StatefulLambdaDetectorTest {
         assertFalse(d.analyze().hasIssues(), "concurrent reads of state nobody writes are no race");
     }
 
+    // #787: the round verdict did not tell reads from writes, so two unguarded readers in one
+    // round and a mutation in a different round, which never overlapped them, read as a race.
+    @Test
+    void readersInOneRoundAndAWriterInAnotherAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if (Thread.currentThread().getName().startsWith("writer")) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+            } else {
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+            }
+        };
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, task[0], "reader-1", "reader-2");
+        round(scope, task[0], "writer");
+
+        assertFalse(d.analyze().hasIssues(),
+                "the only round with two threads only read; the write ran alone in the next round: "
+                        + d.analyze().violations);
+    }
+
+    @Test
+    void aWriterAndAnUnguardedReaderInOneRoundAreReportedAfterAReadOnlyRound() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if (Thread.currentThread().getName().startsWith("writer")) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+            } else {
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+            }
+        };
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, task[0], "reader-1", "reader-2");
+        round(scope, task[0], "writer", "reader-3");
+
+        assertTrue(d.analyze().hasIssues(),
+                "round two had a write and an unguarded read by another thread");
+        assertTrue(d.analyze().violations.get(0).contains("counter"));
+    }
+
+    // A write the readers are ordered after cannot overlap them, so it does not make their
+    // concurrent, unguarded reads a race; a reader nothing orders after it still can.
+
+    /**
+     * The writer mutates the capture with no lock and publishes it through {@code handedOver};
+     * a reader waits for it, acquires it when {@code acquires} says so, and reads with no lock.
+     */
+    private static Runnable publishThenRead(StatefulLambdaDetector d, Runnable[] task, int[] counter,
+                                            java.util.concurrent.CountDownLatch handedOver,
+                                            java.util.function.Predicate<String> acquires) {
+        return () -> {
+            String name = Thread.currentThread().getName();
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if (name.startsWith("writer")) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+                HappensBefore.release(handedOver);
+                handedOver.countDown();
+            } else {
+                try {
+                    handedOver.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
+                }
+                if (acquires.test(name)) {
+                    HappensBefore.acquire(handedOver);
+                }
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+            }
+        };
+    }
+
+    @Test
+    void readersOrderedAfterTheOnlyWriteAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        task[0] = publishThenRead(d, task, counter, handedOver, name -> true);
+
+        round(new SelfGuard.Scope(), task[0], "writer", "reader-1", "reader-2");
+
+        assertFalse(d.analyze().hasIssues(),
+                "both readers are ordered after the write, and reads do not race reads: "
+                        + d.analyze().violations);
+    }
+
+    @Test
+    void aReaderNotOrderedAfterTheWriteIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        task[0] = publishThenRead(d, task, counter, handedOver, "reader-1"::equals);
+
+        round(new SelfGuard.Scope(), task[0], "writer", "reader-1", "reader-2");
+
+        assertTrue(d.analyze().hasIssues(),
+                "reader-2 never acquired the hand-off, so its read may overlap the write");
+    }
+
+    /**
+     * Starts the next round of {@code scope} and runs {@code body} once on a fresh thread per
+     * name, with the scope bound and all of them released together, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable body, String... names)
+            throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(names.length);
+        Thread[] threads = new Thread[names.length];
+        for (int i = 0; i < names.length; i++) {
+            threads[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, names[i]);
+            threads[i].start();
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+    }
+
     private static void onThreadsNamed(Runnable body, String... names) throws InterruptedException {
         Thread[] threads = new Thread[names.length];
         for (int i = 0; i < names.length; i++) {

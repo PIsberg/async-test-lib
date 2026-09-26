@@ -362,4 +362,79 @@ class CacheConcurrencyDetectorTest {
         assertTrue(report.contains("users: 0 reader threads, 1 writer threads"),
                 "the written cache's line survives beside the read cache's: " + report);
     }
+
+    // #787: a round in which every access only read is no sharing, so gets alone in one round and
+    // a put alone in another never overlapped. That holds for a HashMap, whose get() reads. An
+    // access-ordered LinkedHashMap, the usual LRU cache, relinks the entry on every get(), so
+    // gets alone in one round still write the map at once, and must still be reported.
+
+    @Test
+    void getsAloneInOneRoundOnAHashMapAreNotReportedBesideAPutInAnother() throws InterruptedException {
+        Map<String, String> cache = new HashMap<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable get = () -> detector.recordGet(cache, "warm-cache", "k");
+
+        round(scope, () -> detector.recordPut(cache, "warm-cache", "k", "v"));
+        round(scope, get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "round two only read a HashMap, and the put ran alone in round one: "
+                        + detector.analyze());
+    }
+
+    @Test
+    void getsAloneInOneRoundOnAnAccessOrderedMapAreReportedBesideAPutInAnother()
+            throws InterruptedException {
+        Map<String, String> cache = new java.util.LinkedHashMap<>(16, 0.75f, true);
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable get = () -> detector.recordGet(cache, "lru-cache", "k");
+
+        round(scope, () -> detector.recordPut(cache, "lru-cache", "k", "v"));
+        round(scope, get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "every get() on an access-ordered LinkedHashMap moves the entry, so two unguarded"
+                        + " gets in one round write the map at once");
+    }
+
+    @Test
+    void getsAloneInOneRoundOnAWeakHashMapAreReportedBesideAPutInAnother() throws InterruptedException {
+        Map<String, String> cache = new java.util.WeakHashMap<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable get = () -> detector.recordGet(cache, "weak-cache", "k");
+
+        round(scope, () -> detector.recordPut(cache, "weak-cache", "k", "v"));
+        round(scope, get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "a WeakHashMap get() expunges cleared entries, so two unguarded gets write the map");
+    }
+
+    /**
+     * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
+     * bound, released together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable... bodies) throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
 }
