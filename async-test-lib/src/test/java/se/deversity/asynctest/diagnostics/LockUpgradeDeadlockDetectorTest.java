@@ -118,4 +118,45 @@ class LockUpgradeDeadlockDetectorTest {
 
         assertTrue(detector.analyze().hasIssues());
     }
+
+    /**
+     * Virtual threads are unnamed by default, so a report that names threads by name printed ""
+     * for every one of them and could not tell two apart (#766). Each is now named by its id.
+     */
+    @Test
+    void unnamedVirtualThreadsAreReportedByIdNotByAnEmptyName() {
+        LockUpgradeDeadlockDetector detector = new LockUpgradeDeadlockDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        Thread first = Thread.ofVirtual().unstarted(() -> { });
+        Thread second = Thread.ofVirtual().unstarted(() -> { });
+        assertEquals("", first.getName(), "precondition: a default virtual thread has no name");
+
+        for (Thread t : java.util.List.of(first, second)) {
+            detector.recordReadLockAcquired(lock, "my-lock", t);
+            detector.recordWriteLockAcquisitionAttempt(lock, "my-lock", t);
+        }
+
+        LockUpgradeDeadlockDetector.Report report = detector.analyze();
+        String msg = report.violations.get(0);
+        assertTrue(msg.contains("#" + first.threadId()) && msg.contains("#" + second.threadId()),
+                "each unnamed thread must be told apart by its id: " + msg);
+        assertEquals(2,
+                ((java.util.List<?>) report.structuredViolations.get(0).attributes()
+                        .get("deadlockedThreads")).size(),
+                "two threads, two entries: " + report.structuredViolations.get(0).attributes());
+    }
+
+    /** A named thread is still reported by its name. */
+    @Test
+    void namedThreadsAreStillReportedByName() {
+        LockUpgradeDeadlockDetector detector = new LockUpgradeDeadlockDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        Thread worker = new Thread(() -> { }, "worker-1");
+
+        detector.recordReadLockAcquired(lock, "my-lock", worker);
+        detector.recordWriteLockAcquisitionAttempt(lock, "my-lock", worker);
+
+        String msg = detector.analyze().violations.get(0);
+        assertTrue(msg.contains("worker-1"), "a named thread keeps its name: " + msg);
+    }
 }

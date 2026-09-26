@@ -390,4 +390,74 @@ public class LockDowngradeDetectorTest {
 
         assertTrue(detector.analyze().hasIssues());
     }
+
+    /**
+     * Virtual threads are unnamed by default, so the upgrade line read "Thread ''" (#766). It now
+     * names the thread by its id.
+     */
+    @Test
+    void anUpgradeOnAnUnnamedVirtualThreadNamesTheThreadById() throws Exception {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+        Thread worker = Thread.ofVirtual().start(() -> {
+            detector.recordReadLockAcquired(lock, "vlock");
+            detector.recordWriteLockAcquired(lock, "vlock");
+        });
+        worker.join(5_000);
+        assertEquals("", worker.getName(), "precondition: a default virtual thread has no name");
+
+        String line = detector.analyze().upgradeAttempts.get(0);
+        assertTrue(line.contains("'#" + worker.threadId() + "'"),
+                "the unnamed thread must be named by its id: " + line);
+    }
+
+    /** The unsafe-downgrade line names its first thread the same way. */
+    @Test
+    void anUnsafeDowngradeOnAnUnnamedVirtualThreadNamesTheThreadById() throws Exception {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        java.util.concurrent.CountDownLatch gapOpen = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch interloperDone = new java.util.concurrent.CountDownLatch(1);
+
+        Thread worker = Thread.ofVirtual().start(() -> {
+            detector.recordWriteLockAcquired(lock, "vstore");
+            detector.recordWriteLockReleased(lock, "vstore");    // gap opens here
+            gapOpen.countDown();
+            try {
+                interloperDone.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            detector.recordReadLockAcquired(lock, "vstore");     // gap closes
+            detector.recordReadLockReleased(lock, "vstore");
+        });
+        assertTrue(gapOpen.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        detector.recordWriteLockAcquired(lock, "vstore");        // a writer inside the gap
+        detector.recordWriteLockReleased(lock, "vstore");
+        interloperDone.countDown();
+        worker.join(5_000);
+
+        String line = detector.analyze().unsafeDowngrades.get(0);
+        assertTrue(line.contains("'#" + worker.threadId() + "'"),
+                "the unnamed thread must be named by its id: " + line);
+    }
+
+    /** A named thread is still reported by its name. */
+    @Test
+    void anUpgradeOnANamedThreadStillNamesTheThread() throws Exception {
+        LockDowngradeDetector detector = new LockDowngradeDetector();
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+        Thread worker = new Thread(() -> {
+            detector.recordReadLockAcquired(lock, "nlock");
+            detector.recordWriteLockAcquired(lock, "nlock");
+        }, "worker-1");
+        worker.start();
+        worker.join(5_000);
+
+        String line = detector.analyze().upgradeAttempts.get(0);
+        assertTrue(line.contains("worker-1"), "a named thread keeps its name: " + line);
+    }
 }

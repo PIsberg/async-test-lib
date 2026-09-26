@@ -229,7 +229,10 @@ public class LockDowngradeDetector {
                 state.downgradeShapes.incrementAndGet();
                 if (state.writeAcquireGeneration.get() > h.gapOpenedAtGeneration) {
                     state.observedGaps.incrementAndGet();
-                    state.firstObservedGapThread.compareAndSet(null, Thread.currentThread().getName());
+                    if (state.firstObservedGapThread.get() == null) {
+                        state.firstObservedGapThread.compareAndSet(null,
+                            LockUpgradeDeadlockDetector.threadLabel(Thread.currentThread()));
+                    }
                 }
             }
             h.gapOpen = false;
@@ -287,7 +290,12 @@ public class LockDowngradeDetector {
             // write too (mid-downgrade) makes this a legal reentrant acquire.
             if (h.read > 0 && h.write == 0) {
                 state.upgradeAttempts.incrementAndGet();
-                state.firstUpgradeThread.compareAndSet(null, Thread.currentThread().getName());
+                // Labelled only while unset: the label is built, so an upgrade on every body
+                // execution would otherwise allocate one per execution just to discard it.
+                if (state.firstUpgradeThread.get() == null) {
+                    state.firstUpgradeThread.compareAndSet(null,
+                        LockUpgradeDeadlockDetector.threadLabel(Thread.currentThread()));
+                }
             }
             h.gapOpen = false;
             h.write++;

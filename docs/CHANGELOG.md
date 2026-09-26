@@ -63,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LockUpgradeDeadlockDetector` and `LockDowngradeDetector` name unnamed threads by id (#766).**
+  Both printed a thread by name alone, so a finding on default virtual threads, which have no
+  name, printed an empty name for every thread, and the upgrade report collapsed them into one.
+  A thread now prints as `name (id=N)`, or `#N` when it has no name, in the report line and in
+  the `deadlockedThreads` attribute.
 - **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
   failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
   was judged by it. A blocking acquire through the agent now clears it
