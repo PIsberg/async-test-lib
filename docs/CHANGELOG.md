@@ -337,6 +337,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `recordAdd(calendar, name, field)` record them: after either, the next `get` only reads, except
   after an `add` to the era, the year or the month, which sets that field and leaves the rest to
   recompute, as a `set()` does.
+- **`CalendarDetector` sees fields left to compute before a calendar's first recorded access
+  (#820).** A calendar started out as complete, which is what `Calendar.getInstance()` returns, but
+  `new GregorianCalendar(year, month, day)` only sets the fields it is given, so the first `get` on
+  it computes the time and every other field. Gets under one read lock on such a calendar were not
+  reported. The detector now reads the calendar when it first sees it: a field that is not set
+  means the fields are pending, through public API. A `set()` on a calendar whose fields were all
+  computed leaves every field set, and is seen only when the test JVM opens `java.util` to the
+  library, the same condition as a `LinkedHashMap`'s order; otherwise it keeps the old verdict. The
+  agent still weaves only `get(int)` and the `set` overloads, so a woven `add`, `roll`, `clear` or
+  `setTimeZone` is not recorded.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`

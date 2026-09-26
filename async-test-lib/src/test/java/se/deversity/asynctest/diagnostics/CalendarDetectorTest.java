@@ -370,6 +370,51 @@ public class CalendarDetectorTest {
                 + "first get() to recompute");
     }
 
+    // #820: a calendar can have fields to compute before its first recorded access. The JDK's
+    // GregorianCalendar(year, month, dayOfMonth) only set()s the fields it is given and computes
+    // nothing, so the first get() on it writes the time and every other field.
+
+    @Test
+    void getsUnderOneReadLockOnACalendarBuiltFromFieldsAreReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = new java.util.GregorianCalendar(2024, Calendar.JANUARY, 15);
+        detector.registerCalendar(cal, "built-calendar");
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable get = () -> underLock(lock, true, () -> {
+            detector.recordGet(cal, "built-calendar");
+            cal.get(Calendar.DAY_OF_WEEK);
+        });
+
+        round(new SelfGuard.Scope(), get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "the first get() computes the fields the constructor left, which a read lock does not "
+                + "make exclusive");
+    }
+
+    @Test
+    void getsUnderOneReadLockOnACalendarCompletedBeforeItsFirstRecordAreNotReported()
+            throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = new java.util.GregorianCalendar(2024, Calendar.JANUARY, 15);
+        cal.getTime();
+        cal.get(Calendar.DAY_OF_WEEK);
+        detector.registerCalendar(cal, "built-calendar");
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable get = () -> underLock(lock, true, () -> {
+            detector.recordGet(cal, "built-calendar");
+            cal.get(Calendar.DAY_OF_WEEK);
+        });
+
+        round(new SelfGuard.Scope(), get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "the building thread computed every field before sharing the calendar, so the gets "
+                + "only read: " + detector.analyze());
+    }
+
     /** Runs {@code body} holding {@code lock}'s read view if {@code shared}, else its write view. */
     private static void underLock(java.util.concurrent.locks.ReentrantReadWriteLock lock,
                                   boolean shared, Runnable body) {
