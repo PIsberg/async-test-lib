@@ -57,6 +57,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * and the next's; {@link Scope#ownershipTaken(Object)} records it, from the agent's woven queue
  * takes and slot swaps or from {@code AsyncTestContext.ownershipTaken} by hand.
  *
+ * <p>And within a window the verdict follows the {@link HappensBefore} model. Two threads whose
+ * accesses the program orders never overlapped, however the scheduler ran them: one used the
+ * instance and counted a latch down and the other used it once its {@code await} returned, or a
+ * parent used it, started a child that used it and joined the child. Each access carries its
+ * thread's clock, and a thread whose access is ordered after the window's latest one takes the
+ * instance over instead of sharing it. An access the model does not order, because nothing
+ * ordered it or because the edge was made in unwoven code and never declared, shares the
+ * instance exactly as before: an edge only ever removes a finding, so two threads using the
+ * instance at once still report.
+ *
  * <p>Public only so that {@code AsyncTestContext} can own and bind the {@link Scope}; everything
  * else here is package-private and belongs to the detectors.
  *
@@ -74,7 +84,8 @@ public final class SelfGuard {
             + " lock declared with AsyncTestContext.holdingLock(...); a lock that was never"
             + " declared is not observed - verify external synchronization or use a per-thread"
             + " instance; a pool checkout the agent did not weave can be declared with"
-            + " AsyncTestContext.ownershipTaken(...))";
+            + " AsyncTestContext.ownershipTaken(...), and any other hand-off with"
+            + " HappensBefore.release(...) and acquire(...))";
 
     private SelfGuard() {
     }
@@ -202,26 +213,37 @@ public final class SelfGuard {
      * What one round's accesses to an instance amount to.
      *
      * <p>Immutable and replaced by compare-and-set, so the record path takes no lock. An access
-     * that changes nothing (the same thread again, under the same locks) replaces nothing and
-     * allocates nothing; a new window costs one object per instance per round.
+     * that changes nothing (the same thread again, with the same clock, under the same locks)
+     * replaces nothing and allocates nothing; a new window costs one object per instance per
+     * round, and so does an owner's access after a synchronization event changed its clock.
      */
     private static final class Window {
 
         /** The round and the ownership these accesses belong to; see {@code windowKey}. */
         final long key;
 
-        /** The first thread seen in this window. */
-        final long firstThread;
+        /**
+         * The thread that made this window's latest access in happens-before order: the first
+         * thread seen, until an access by another thread that the {@link HappensBefore} model
+         * orders after it hands the instance on. Every earlier access of an unshared window
+         * happens before this owner's latest one.
+         */
+        final long owner;
 
-        /** Whether a thread other than the first has been seen in this window. */
+        /** The owner's clock at its latest access, {@code null} when that access had none. */
+        final HappensBefore.@Nullable Stamp ownerStamp;
+
+        /** Whether an access no ordering explains, by another thread, was seen in this window. */
         final boolean shared;
 
         /** The locks held at every access in this window; empty once one held none of them. */
         final int[] locks;
 
-        Window(long key, long firstThread, boolean shared, int[] locks) {
+        Window(long key, long owner, HappensBefore.@Nullable Stamp ownerStamp, boolean shared,
+               int[] locks) {
             this.key = key;
-            this.firstThread = firstThread;
+            this.owner = owner;
+            this.ownerStamp = ownerStamp;
             this.shared = shared;
             this.locks = locks;
         }
@@ -338,9 +360,15 @@ public final class SelfGuard {
                 return;
             }
             long key = windowKey(instance);
+            // The caller's clock, and only for an access it makes itself: a clock says nothing
+            // about the thread an access is attributed to on its behalf, so such an access carries
+            // none and orders nothing. The snapshot changes only at a synchronization event.
+            HappensBefore.@Nullable Stamp stamp = threadId == Thread.currentThread().threadId()
+                    ? HappensBefore.current()
+                    : null;
             Window current = window.get();
             while (true) {
-                Window next = advance(current, key, instance, forWrite, threadId);
+                Window next = advance(current, key, instance, forWrite, threadId, stamp);
                 if (next == current // NOPMD CompareObjectsWithEquals - unchanged window, nothing to publish
                         || window.compareAndSet(current, next)) {
                     if (next.shared && next.locks.length == 0) {
@@ -379,23 +407,40 @@ public final class SelfGuard {
 
         @SuppressWarnings("ReferenceEquality") // intersect returns its input array when nothing dropped
         private static Window advance(@Nullable Window current, long key, @Nullable Object instance,
-                                      boolean forWrite, long threadId) {
+                                      boolean forWrite, long threadId,
+                                      HappensBefore.@Nullable Stamp stamp) {
             if (current == null || key > current.key) {
                 // The first access of a round: nothing recorded earlier in the run overlapped it.
-                return new Window(key, threadId, false, probe(null, instance, forWrite));
+                return new Window(key, threadId, stamp, false, probe(null, instance, forWrite));
             }
             // The same window, or an access still in flight from an older round or owner while a
             // newer one has started. The latter joins the newer window, the direction that can
             // only add a finding: it is an old owner still using what it handed on.
-            boolean shared = current.shared || threadId != current.firstThread;
+            boolean shared = current.shared;
+            long owner = current.owner;
+            HappensBefore.@Nullable Stamp ownerStamp = current.ownerStamp;
+            if (!shared) {
+                if (threadId == owner) {
+                    ownerStamp = stamp;
+                } else if (HappensBefore.ordered(owner, ownerStamp, threadId, stamp)) {
+                    // Ordered after the owner's latest access, and so, by transitivity, after
+                    // every access of this window: a hand-off, not an overlap.
+                    owner = threadId;
+                    ownerStamp = stamp;
+                } else {
+                    shared = true;
+                }
+            }
             int[] locks = current.locks.length == 0
                     ? current.locks
                     : probe(current.locks, instance, forWrite);
             if (shared == current.shared
+                    && owner == current.owner
+                    && ownerStamp == current.ownerStamp // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
                     && locks == current.locks) { // NOPMD CompareObjectsWithEquals - intersect returns its input when nothing dropped
                 return current;
             }
-            return new Window(current.key, current.firstThread, shared, locks);
+            return new Window(current.key, owner, ownerStamp, shared, locks);
         }
 
         private static int[] probe(int @Nullable [] candidate, @Nullable Object instance,
@@ -411,7 +456,9 @@ public final class SelfGuard {
          * because the runner finishes one round before it starts the next, so neither the thread
          * count nor the lockset is carried across a round boundary. The same goes for a take of
          * the instance ({@link Scope#ownershipTaken(Object)}): the owner before it and the owner
-         * after it are judged apart. Once true it stays true.
+         * after it are judged apart. A thread whose access the {@link HappensBefore} model orders
+         * after every earlier access of its window is not a second thread either; it took the
+         * instance over. Once true it stays true.
          */
         final boolean sawUnguardedSharing() {
             return unguardedSharing;

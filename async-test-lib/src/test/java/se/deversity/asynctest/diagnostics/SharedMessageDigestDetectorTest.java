@@ -531,6 +531,162 @@ public class SharedMessageDigestDetectorTest {
         assertTrue(report.violations.get(0).contains("'shared'"), report.violations.get(0));
     }
 
+    // ---- An ordering the happens-before model sees is not sharing -----------------------------
+    //
+    // Two threads in one round that never overlapped because the program ordered them: one used
+    // the digest and counted a latch down, the other awaited it and then used the digest; or a
+    // parent used it, started a child that used it, and joined the child before using it again.
+    // The model learns those edges from the manual HappensBefore calls or from the agent's hook
+    // methods, which these call directly the way a woven call site does. Each case has a twin
+    // whose edge the model never saw, which must keep its finding, and genuinely concurrent use
+    // next to an edge still reports.
+
+    /** A uses the digest and hands over through a latch; B waits for it and uses the digest. */
+    private static boolean latchHandOffReported(boolean declared, boolean woven) throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        Runnable first = () -> {
+            use(md);
+            if (woven) {
+                se.deversity.asynctest.AgentConcurrencyUtilHooks.countDown(handedOver);
+                return;
+            }
+            if (declared) {
+                HappensBefore.release(handedOver);
+            }
+            handedOver.countDown();
+        };
+        Runnable second = () -> {
+            try {
+                if (woven) {
+                    se.deversity.asynctest.AgentConcurrencyUtilHooks.await(handedOver);
+                } else {
+                    handedOver.await();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            if (declared) {
+                HappensBefore.acquire(handedOver);
+            }
+            use(md);
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, first, second);
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void aHandOffDeclaredToTheOrderingModelIsNotSharing() throws Exception {
+        assertFalse(latchHandOffReported(true, false),
+                "release before the countDown, acquire after the await: the second use is ordered"
+                        + " after the first");
+        assertTrue(latchHandOffReported(false, false),
+                "the same hand-off with nothing told to the model keeps its finding");
+    }
+
+    @Test
+    void aWovenLatchHandOffIsNotSharing() throws Exception {
+        assertFalse(latchHandOffReported(false, true),
+                "the woven countDown and await are the edge; nothing is declared by hand");
+    }
+
+    /** The parent uses the digest, starts a child that uses it, joins it, and uses it again. */
+    private static boolean startJoinReported(boolean woven) throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        ctx.markInvocationStart();
+        Thread child = new Thread(() -> {
+            AsyncTestContext.install(ctx);
+            try {
+                use(md);
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        }, "child");
+        AsyncTestContext.install(ctx);
+        try {
+            use(md);
+            if (woven) {
+                se.deversity.asynctest.AgentThreadHooks.threadStart(child);
+                se.deversity.asynctest.AgentThreadHooks.threadJoin(child);
+            } else {
+                child.start();
+                child.join();
+            }
+            use(md);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void aWovenStartAndJoinOrderTheChildBetweenTheParentsUses() throws Exception {
+        assertFalse(startJoinReported(true), "start and join are the lifecycle's two edges");
+        assertTrue(startJoinReported(false), "the unwoven twin: nothing told the model");
+    }
+
+    @Test
+    void siblingsStartedByOneParentStillShare() throws Exception {
+        // Both children are ordered after the parent, and neither after the other.
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        ctx.markInvocationStart();
+        Thread[] children = new Thread[2];
+        for (int i = 0; i < children.length; i++) {
+            children[i] = new Thread(() -> {
+                AsyncTestContext.install(ctx);
+                try {
+                    together(barrier, () -> use(md)).run();
+                } finally {
+                    AsyncTestContext.uninstall();
+                }
+            }, "sibling-" + i);
+        }
+        for (Thread child : children) {
+            se.deversity.asynctest.AgentThreadHooks.threadStart(child);
+        }
+        for (Thread child : children) {
+            se.deversity.asynctest.AgentThreadHooks.threadJoin(child);
+        }
+
+        assertTrue(detectorOf(ctx).analyze().hasIssues(),
+                "two siblings used the digest at once; a common parent orders neither");
+    }
+
+    @Test
+    void concurrentUseAfterAHandOffStillFires() throws Exception {
+        // The hand-off orders B's first use after A's first, and then both use the digest at once.
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        Runnable first = () -> {
+            use(md);
+            se.deversity.asynctest.AgentConcurrencyUtilHooks.countDown(handedOver);
+            together(barrier, () -> use(md)).run();
+        };
+        Runnable second = () -> {
+            try {
+                se.deversity.asynctest.AgentConcurrencyUtilHooks.await(handedOver);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            use(md);
+            together(barrier, () -> use(md)).run();
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, first, second);
+
+        assertTrue(detectorOf(ctx).analyze().hasIssues(),
+                "an edge orders the accesses before it, not the concurrent ones after it");
+    }
+
     private static void await(java.util.concurrent.CountDownLatch latch) {
         try {
             latch.await();
