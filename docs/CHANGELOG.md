@@ -152,8 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `position(n)` then `read(buffer)`, beside the same body under `synchronized (channel)`, and that
   pair is registered in `verdict-evidence-corpus`. Example 123 said one record lands on top of
   another and quoted a sentence the `FileChannel` javadoc does not contain; it now quotes the
-  javadoc and demonstrates a seek-then-read returning the wrong record. Not seen: a lock released
-  and taken again between the seek and the I/O, which reads as held across, and a self-contained
+  javadoc and demonstrates a seek-then-read returning the wrong record. Not seen: a self-contained
   call relying on where an earlier one left the cursor, such as `write(buffer)` then `position()`.
 - **The corpus measures the lock direction for `VAR_HANDLE_NON_ATOMIC_UPDATE` and
   `SYSTEM_PROPERTY_MUTATION` (#771).** Both detectors stay silent when one lock covers every
@@ -169,6 +168,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same two calls: a `current()` captured while the test class initialised and used by every worker
   fires, and each worker calling `current()` itself stays silent. The pair is measured, not a
   promotion: the detector decides from the body's own records, which caps it below `VERDICT`.
+  A lock released and taken again between the seek and the I/O read as held across until #831.
 
 ### Fixed
 
@@ -201,6 +201,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `start`/`join` and executor submit/get rows run on the woven path instead of the manual API.
   Still dropped: a thread started in unwoven code or through a `Thread.Builder`, a task given to
   `Executor.execute`, and a pool thread's work outside a wrapped task.
+- **`FILE_CHANNEL_POSITION_RACE` no longer counts a lock released and taken again between a seek
+  and its I/O as guarding them (#831).** The locks were probed at the seek and at the I/O, so a
+  thread that sought under a lock, let it go and took it again to read looked exactly like one
+  that held it across, and another thread's call under the same lock, which can run in the gap,
+  went unreported at `VERDICT`. `HeldLocks` now stamps every acquisition, the seek keeps the
+  thread's mark, and the I/O counts only the locks held without a break since it. That covers
+  declared locks and, with the agent attached, woven `synchronized` blocks and `Lock` calls; the
+  channel's own monitor left and entered again in code the agent does not weave still reads as
+  held across, since nothing reports its release. A lock held across the whole sequence still
+  guards it, with another lock released and taken again inside it or the same lock taken again
+  reentrantly around the read.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

@@ -207,9 +207,9 @@ CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition
 # recordPositionalAccess and decides nothing; PairEvidence.REVIEWED_DESPITE_SHAPE records that
 # reading. FileChannelPositionRaceDetectorTest pins both directions.
 #
-# What the pair does not reach: a lock released and taken again between the seek and the I/O,
-# which reads as held across and is not reported, and a self-contained call that relies on where
-# an earlier one left the cursor, such as write(buffer) then position(), which is no sequence.
+# What the pair does not reach: a self-contained call that relies on where an earlier one left
+# the cursor, such as write(buffer) then position(), which is no sequence. A lock released and
+# taken again between the seek and the I/O read as held across until #831; the unit test pins it.
 FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_fileChannel_seekThenReadUnderItsOwnMonitor
 
 # --- 2026-09-26: a pair is necessary, not sufficient.

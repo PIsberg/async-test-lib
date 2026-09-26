@@ -51,9 +51,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * another thread made an implicit-position call that no lock common to both and no
  * happens-before edge keeps out of it. The channel's own monitor counts as a lock, as does one
  * declared through {@link HeldLocks}; a read lock guards the self-contained calls and not a
- * sequence, since it admits other readers. The locks are probed at the seek and at the I/O, so a
- * lock released and taken again between them reads as held across, and that interleaving is not
- * reported. A self-contained call relying on where an earlier one left the cursor, such as a
+ * sequence, since it admits other readers. A lock guards a sequence only if its thread held it
+ * without a break from the seek to the I/O: one released and taken again between them lets
+ * another thread's call in, and is not counted for the I/O (#831). That is decided from
+ * {@link HeldLocks}, so it covers declared locks and, with the agent attached, woven
+ * {@code synchronized} blocks and {@code Lock} calls; the channel's own monitor left and entered
+ * again in code the agent does not weave still reads as held across, since nothing reports its
+ * release. A self-contained call relying on where an earlier one left the cursor, such as a
  * {@code write(buffer)} followed by {@code position()} to learn where it landed, is not a
  * sequence either.
  *
@@ -84,10 +88,16 @@ public final class FileChannelPositionRaceDetector {
         }
     }
 
-    /** The channel a thread's latest recorded seek set, and the round it was recorded in. */
+    /**
+     * The channel a thread's latest recorded seek set, the round it was recorded in, and where
+     * the thread's lock acquisitions stood at it.
+     */
     private static final class Seek {
         @Nullable Object channel;
         int round;
+
+        /** {@link HeldLocks#acquisitionMark()} at the seek; only locks held since guard the I/O. */
+        long locksMark;
     }
 
     private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
@@ -119,17 +129,27 @@ public final class FileChannelPositionRaceDetector {
         if (operation != null) {
             s.operations.add(operation);
         }
-        boolean closesSeek;
+        Thread caller = Thread.currentThread();
+        Seek closed = null;
         if (operation != null && operation.startsWith("position")) {
             openSeek(channel);
-            closesSeek = false;
         } else {
-            closesSeek = closeSeek(channel);
+            closed = closeSeek(channel);
         }
-        // The I/O closing a seek is the write in SelfGuard's terms: it needs a lock that excludes
-        // every other implicit-position call. Everything else is a read, which a round of reads
-        // alone never reports and a read lock guards.
-        s.noteAccess(channel, closesSeek, Thread.currentThread());
+        if (closed == null) {
+            // Everything but the I/O closing a seek is a read in SelfGuard's terms, which a round
+            // of reads alone never reports and a read lock guards.
+            s.noteAccess(channel, false, caller);
+            return;
+        }
+        // The I/O closing a seek is the write: it needs a lock that excludes every other
+        // implicit-position call, and one released and taken again since the seek did not (#831).
+        long previous = HeldLocks.countOnlyHeldSince(closed.locksMark);
+        try {
+            s.noteAccess(channel, true, caller);
+        } finally {
+            HeldLocks.countOnlyHeldSince(previous);
+        }
     }
 
     private void openSeek(Object channel) {
@@ -140,18 +160,22 @@ public final class FileChannelPositionRaceDetector {
         }
         seek.channel = channel;
         seek.round = SelfGuard.RoundThreads.roundNow();
+        seek.locksMark = HeldLocks.acquisitionMark();
     }
 
-    /** {@return whether the calling thread's open seek is on {@code channel}, closing it if so} */
+    /**
+     * {@return the calling thread's open seek when it is on {@code channel} and from this round,
+     * closing it, or {@code null} when the call relies on no seek}
+     */
     @SuppressWarnings("ReferenceEquality") // channels are tracked by identity, as instances is
-    private boolean closeSeek(Object channel) {
+    private @Nullable Seek closeSeek(Object channel) {
         Seek seek = seeks.get();
         if (seek == null || seek.channel != channel) { // NOPMD CompareObjectsWithEquals - channels by identity
-            return false;
+            return null;
         }
         seek.channel = null;
         // A seek left open by an earlier round's body says nothing about this round's I/O.
-        return seek.round == SelfGuard.RoundThreads.roundNow();
+        return seek.round == SelfGuard.RoundThreads.roundNow() ? seek : null;
     }
 
     /**

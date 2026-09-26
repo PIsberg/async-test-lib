@@ -289,6 +289,122 @@ class FileChannelPositionRaceDetectorTest {
                 + d.analyze());
     }
 
+    /**
+     * #831: the lock is held at the seek and at the read, but not in between. Probing it at both
+     * ends read that as held across, so the one interleaving the lock was meant to rule out went
+     * unreported.
+     */
+    @Test
+    void aLockReleasedAndTakenAgainBetweenTheSeekAndTheReadDoesNotGuardIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        try (var held = HeldLocks.holding(lock)) {
+            d.recordImplicitPositionAccess(channel, "position");
+        }
+        try (var held = HeldLocks.holding(lock)) {
+            d.recordImplicitPositionAccess(channel, "read");
+        }
+        inAnotherThread(() -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        });
+        assertTrue(d.analyze().hasIssues(),
+            "the other thread's read, under the same lock, can run while the lock is released "
+                + "between this thread's seek and its read");
+    }
+
+    @Test
+    void aLockHeldAcrossTheSequenceGuardsItWhileAnotherIsReleasedAndTakenAgain() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object outer = new Object();
+        Object inner = new Object();
+        Runnable guarded = () -> {
+            try (var across = HeldLocks.holding(outer)) {
+                try (var held = HeldLocks.holding(inner)) {
+                    d.recordImplicitPositionAccess(channel, "position");
+                }
+                try (var held = HeldLocks.holding(inner)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "the outer lock was held from the seek to the read on both threads, so nothing lands "
+                + "between them: " + d.analyze());
+    }
+
+    @Test
+    void aLockTakenAgainInsideTheOneHeldAcrossTheSequenceStillGuardsIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var across = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "position");
+                try (var reentered = HeldLocks.holding(lock)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "a reentrant acquisition around the read leaves the outer hold in place: " + d.analyze());
+    }
+
+    /**
+     * With the agent attached, a woven {@code synchronized (channel)} enters and exits
+     * {@link HeldLocks} as well as the monitor, so a monitor left and entered again between the
+     * seek and the read is visible, although {@link Thread#holdsLock} answers true at both.
+     */
+    @Test
+    void theChannelsMonitorLeftAndEnteredAgainWhereTheAgentSeesItDoesNotGuardTheSequence()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        synchronized (channel) {
+            try (var woven = HeldLocks.holding(channel)) {
+                d.recordImplicitPositionAccess(channel, "position");
+            }
+        }
+        synchronized (channel) {
+            try (var woven = HeldLocks.holding(channel)) {
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        }
+        inAnotherThread(() -> {
+            synchronized (channel) {
+                try (var woven = HeldLocks.holding(channel)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        });
+        assertTrue(d.analyze().hasIssues(),
+            "the monitor was free between the seek and the read, and the agent saw it released");
+    }
+
+    @Test
+    void theChannelsMonitorHeldAcrossTheSequenceWhereTheAgentSeesItGuardsIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Runnable guarded = () -> {
+            synchronized (channel) {
+                try (var woven = HeldLocks.holding(channel)) {
+                    seekThenRead(d, channel);
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "one woven synchronized block around the seek and the read guards them: " + d.analyze());
+    }
+
     @Test
     void seekThenReadUnderDifferentLocksIsFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
