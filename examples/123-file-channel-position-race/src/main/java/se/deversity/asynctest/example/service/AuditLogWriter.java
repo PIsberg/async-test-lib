@@ -6,74 +6,76 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.Arrays;
 
 /**
- * Appends audit records to a file that several request threads write to.
+ * Appends fixed-size audit records to a file and reads them back by index, from several
+ * request threads sharing one channel.
  *
- * <p>{@link FileChannel} is thread-safe in the sense the javadoc means: concurrent calls
- * will not corrupt the channel object itself. That is a much weaker guarantee than it
- * sounds, and the same javadoc says the rest out loud:
+ * <p>{@link FileChannel} is documented as safe for use by multiple concurrent threads, and it
+ * says how: "Only one operation that involves the channel's position or can change its file's
+ * size may be in progress at any given time". So a single {@code write(ByteBuffer)} or
+ * {@code read(ByteBuffer)} completes whole, at the offset the shared cursor held when it
+ * started. {@link #append} relies on nothing more than that, and every record lands whole.
  *
- * <blockquote>The view of a file provided by an instance of this class [...] Where the
- * {@code position} is affected, [operations] are not safe for use by multiple concurrent
- * threads.</blockquote>
+ * <p>What the channel cannot make atomic is two calls. {@link #readRecord} sets the position and
+ * then reads, and another thread's call can land between the two and move the cursor. The read
+ * then returns some other record.
  *
- * <p>Concretely: {@code write(ByteBuffer)} and {@code read(ByteBuffer)} use the channel's
- * <em>implicit</em> position and advance it. One cursor, every thread. Two appends racing on
- * it land at unpredictable offsets — one record overwrites another, or a record is split
- * across two others' bytes.
- *
- * <p>The positional overloads {@code write(ByteBuffer, long)} and {@code read(ByteBuffer,
- * long)} take an explicit offset and do not touch the shared cursor. Those are the safe
- * ones, and they are the fix.
+ * <p>The positional overload {@code read(ByteBuffer, long)} takes the offset as an argument and
+ * neither reads nor moves the cursor: {@link #readRecordAt} is the fix.
  */
 public final class AuditLogWriter implements AutoCloseable {
 
+    /** Every record is padded to this many bytes, so record {@code i} starts at {@code i * RECORD_SIZE}. */
+    public static final int RECORD_SIZE = 16;
+
     private final FileChannel channel;
 
-    /** Where the next positional write goes. Explicit, so no shared cursor is needed. */
-    private final AtomicLong nextOffset = new AtomicLong();
-
     public AuditLogWriter(Path file) throws IOException {
-        this.channel = FileChannel.open(file,
-                StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+        this(FileChannel.open(file,
+                StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE));
+    }
+
+    /** Over a channel the caller opened; the writer closes it. */
+    public AuditLogWriter(FileChannel channel) {
+        this.channel = channel;
     }
 
     /**
-     * BUG: implicit-position write. Every caller advances the one shared cursor, so two
-     * concurrent appends interleave at offsets neither of them chose.
+     * Appends one record with the implicit-position {@code write(ByteBuffer)}. Self-contained:
+     * the channel runs one such call at a time, so concurrent appends each land whole, in an
+     * order nobody chose, and none is lost.
      */
     public void append(String record) throws IOException {
-        byte[] bytes = (record + "\n").getBytes(StandardCharsets.UTF_8);
-        channel.write(ByteBuffer.wrap(bytes));
-    }
-
-    /**
-     * The fix: positional write. The offset is reserved atomically and passed explicitly, so
-     * the channel's cursor is never consulted and never moved.
-     */
-    public void appendSafely(String record) throws IOException {
-        byte[] bytes = (record + "\n").getBytes(StandardCharsets.UTF_8);
-        long offset = nextOffset.getAndAdd(bytes.length);
-        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        ByteBuffer buffer = ByteBuffer.wrap(pad(record));
         while (buffer.hasRemaining()) {
-            offset += channel.write(buffer, offset);
+            channel.write(buffer);
         }
     }
 
-    /** BUG: implicit-position read — same shared cursor, same race. */
-    public String readFrom() throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(256);
-        int read = channel.read(buffer);
-        return read <= 0 ? "" : new String(buffer.array(), 0, read, StandardCharsets.UTF_8);
+    /**
+     * BUG: seek, then read relying on the seek. Another thread's call between the two moves the
+     * cursor, and this returns a record other than {@code index}.
+     */
+    public String readRecord(int index) throws IOException {
+        channel.position((long) index * RECORD_SIZE);
+        ByteBuffer buffer = ByteBuffer.allocate(RECORD_SIZE);
+        channel.read(buffer);
+        return decode(buffer);
     }
 
-    /** The fix, reading: an explicit offset. */
-    public String readAt(long offset, int length) throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(length);
-        int read = channel.read(buffer, offset);
-        return read <= 0 ? "" : new String(buffer.array(), 0, read, StandardCharsets.UTF_8);
+    /** The fix: the offset is an argument, and the shared cursor is neither read nor moved. */
+    public String readRecordAt(int index) throws IOException {
+        ByteBuffer buffer = ByteBuffer.allocate(RECORD_SIZE);
+        long offset = (long) index * RECORD_SIZE;
+        while (buffer.hasRemaining()) {
+            int read = channel.read(buffer, offset + buffer.position());
+            if (read < 0) {
+                break;
+            }
+        }
+        return decode(buffer);
     }
 
     public long size() throws IOException {
@@ -83,5 +85,20 @@ public final class AuditLogWriter implements AutoCloseable {
     @Override
     public void close() throws IOException {
         channel.close();
+    }
+
+    private static byte[] pad(String record) {
+        byte[] bytes = record.getBytes(StandardCharsets.US_ASCII);
+        if (bytes.length > RECORD_SIZE) {
+            throw new IllegalArgumentException("record longer than " + RECORD_SIZE + " bytes: " + record);
+        }
+        byte[] padded = new byte[RECORD_SIZE];
+        Arrays.fill(padded, (byte) ' ');
+        System.arraycopy(bytes, 0, padded, 0, bytes.length);
+        return padded;
+    }
+
+    private static String decode(ByteBuffer buffer) {
+        return new String(buffer.array(), 0, buffer.position(), StandardCharsets.US_ASCII).trim();
     }
 }

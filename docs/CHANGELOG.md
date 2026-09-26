@@ -115,6 +115,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hold fails it with `CONCURRENT_MAP_CHECK_THEN_ACT is held on its model and also registered`.
   Known limits, unchanged: a lock the library never saw leaves the finding standing, and callers
   that all put the same value lose nothing and are still reported.
+- **`FILE_CHANNEL_POSITION_RACE` judges the seek-then-I/O sequence, and reaches `VERDICT`
+  (#819).** It reported any two threads making implicit-position calls on one channel, so threads
+  that each made one self-contained `read(buffer)` or `write(buffer)`, which `FileChannel` runs one
+  at a time and which lose nothing, drew a finding saying they corrupted the file or lost writes.
+  An operation recorded as `position` now opens a seek, and the same thread's next implicit call on
+  that channel in the same round is the I/O relying on it. A finding needs such a sequence and
+  another thread's implicit-position call that no lock common to both and no happens-before edge
+  keeps out of it, which is `SelfGuard`'s verdict with the sequence's I/O as the write and every
+  other call as a read: self-contained calls alone are silent, and a read lock guards them but not
+  a sequence. The report says what is true of that shape (the I/O runs at an offset its thread did
+  not choose) and adds holding one lock across the seek and the I/O to the fixes. The corpus
+  firing row, one self-contained read per body, is now a silent row; the new firing row is a
+  `position(n)` then `read(buffer)`, beside the same body under `synchronized (channel)`, and that
+  pair is registered in `verdict-evidence-corpus`. Example 123 said one record lands on top of
+  another and quoted a sentence the `FileChannel` javadoc does not contain; it now quotes the
+  javadoc and demonstrates a seek-then-read returning the wrong record. Not seen: a lock released
+  and taken again between the seek and the I/O, which reads as held across, and a self-contained
+  call relying on where an earlier one left the cursor, such as `write(buffer)` then `position()`.
 
 ### Fixed
 

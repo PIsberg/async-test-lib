@@ -331,7 +331,13 @@ class CorpusRecordingLaneTest {
     /** The twin instance, shared just as widely and touched only at absolute indices. */
     private final ByteBuffer absoluteBuffer = ByteBuffer.allocate(256);
 
-    /** One channel for the implicit-read row; every thread advances its shared cursor. */
+    /** One channel for the seek-then-read row; every thread seeks its shared cursor. */
+    private static FileChannel seekChannel;
+
+    /** The twin channel, sought and read only inside synchronized (guardedChannel). */
+    private static FileChannel guardedChannel;
+
+    /** One channel for the self-contained-read row; every thread advances its shared cursor. */
     private static FileChannel implicitChannel;
 
     /** The twin channel, read only through the positional overload. */
@@ -944,6 +950,8 @@ class CorpusRecordingLaneTest {
 
         channelFile = Files.createTempFile("corpus-channel", ".bin");
         Files.write(channelFile, new byte[4096]);
+        seekChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
+        guardedChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
         implicitChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
         positionalChannel = FileChannel.open(channelFile, StandardOpenOption.READ);
 
@@ -1036,6 +1044,8 @@ class CorpusRecordingLaneTest {
         theIllegalNotifyReallyThrew();
         pool.close();
         hoistedPool.close();
+        seekChannel.close();
+        guardedChannel.close();
         implicitChannel.close();
         positionalChannel.close();
         // Real cleanup, deliberately unrecorded: the loud executor row's claim is that no
@@ -2021,16 +2031,59 @@ class CorpusRecordingLaneTest {
 
     // --- FileChannelPositionRace -------------------------------------------------------------
 
+    /** Where the seek-then-read rows seek to, and where the positional row reads. */
+    private static final long CHANNEL_OFFSET = 64L;
+
     /**
-     * Every thread reads the shared channel through the overload that advances its cursor.
+     * Every thread seeks the shared channel and then reads, relying on the seek, holding nothing.
      *
-     * <p>The detector fires once implicit-position operations reach one channel from more than
-     * one thread. Reads rather than writes, so nothing depends on what the interleaving did to
-     * the file: 240 reads of 8 bytes stay inside the 4096-byte file, and a read that starts at
-     * an offset another thread's read moved is exactly the hazard being recorded.
+     * <p>The detector fires once a thread's position(n) and the read after it can have another
+     * thread's call land between them: two threads, one of them completing the sequence, and no
+     * lock common to their calls. Reads rather than writes, so nothing depends on what the
+     * interleaving did to the file: every read of 8 bytes at offset 64 stays inside the 4096-byte
+     * file wherever another thread's read left the cursor.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
-    void recorded_fileChannel_implicitReadsShared() throws IOException {
+    void recorded_fileChannel_seekThenReadShared() throws IOException {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.fileChannelPositionRaceDetector()
+                .recordImplicitPositionAccess(seekChannel, "position");
+        seekChannel.position(CHANNEL_OFFSET);
+        AsyncTestContext.fileChannelPositionRaceDetector()
+                .recordImplicitPositionAccess(seekChannel, "read");
+        seekChannel.read(ByteBuffer.allocate(8));
+    }
+
+    /**
+     * The same seek-then-read, inside synchronized (guardedChannel).
+     *
+     * <p>Every thread holds the channel's monitor across both calls and records while it holds
+     * it, which is when the guard probe answers truthfully, so no other call can land between a
+     * seek and its read.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_fileChannel_seekThenReadUnderItsOwnMonitor() throws IOException {
+        CorpusRecorder.countBodyExecution();
+        synchronized (guardedChannel) {
+            AsyncTestContext.fileChannelPositionRaceDetector()
+                    .recordImplicitPositionAccess(guardedChannel, "position");
+            guardedChannel.position(CHANNEL_OFFSET);
+            AsyncTestContext.fileChannelPositionRaceDetector()
+                    .recordImplicitPositionAccess(guardedChannel, "read");
+            guardedChannel.read(ByteBuffer.allocate(8));
+        }
+    }
+
+    /**
+     * Every thread reads the shared channel through the overload that advances its cursor, and
+     * seeks nothing.
+     *
+     * <p>FileChannel runs one operation involving the position at a time, so each read is whole
+     * and no thread relied on where the cursor was: the detector records the calls and has no
+     * sequence to report. 240 reads of 8 bytes stay inside the 4096-byte file.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_fileChannel_selfContainedReadsShared() throws IOException {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.fileChannelPositionRaceDetector()
                 .recordImplicitPositionAccess(implicitChannel, "read");
@@ -2038,7 +2091,8 @@ class CorpusRecordingLaneTest {
     }
 
     /**
-     * The same shared channel usage, through the positional overload.
+     * The same shared channel usage, through the positional overload, at the offset the
+     * seek-then-read rows seek to.
      *
      * <p>read(ByteBuffer, position) takes an explicit offset and never consults the implicit
      * cursor, which is why it is the fix the detector's own message recommends. The detector
@@ -2050,7 +2104,7 @@ class CorpusRecordingLaneTest {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.fileChannelPositionRaceDetector()
                 .recordPositionalAccess(positionalChannel, "read");
-        positionalChannel.read(ByteBuffer.allocate(8), 0L);
+        positionalChannel.read(ByteBuffer.allocate(8), CHANNEL_OFFSET);
     }
 
     // --- WeakHashMapShared -------------------------------------------------------------------

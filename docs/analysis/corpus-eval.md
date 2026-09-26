@@ -1042,7 +1042,10 @@ not reach now have pairs, taking the lane from twelve detectors to fifteen:
   implicit position. Both rows read the same temp file through a shared channel; the
   cursor-advancing `read(ByteBuffer)` fires and the self-contained `read(ByteBuffer, long)` -
   the overload the detector's own message recommends - stays silent. This joins the
-  check-then-act and iterator pairs in the thread-safe-class, wrong-caller family.
+  check-then-act and iterator pairs in the thread-safe-class, wrong-caller family. (#819 later
+  found the firing row was correct code: `FileChannel` runs one position operation at a time, so
+  one self-contained read per body loses nothing. That row is silent now, and the firing row is a
+  `position(n)` then `read(ByteBuffer)` beside the same sequence under `synchronized (channel)`.)
 - **`WEAK_HASH_MAP_SHARED`.** The `instanceof`-gated detector the ceiling names as its example
   takes the JDK map itself as the subject, and writing the pair found a defect that had been
   shipping. The guarded twin - every access inside `synchronized (map)`, the external

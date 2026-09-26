@@ -456,7 +456,7 @@ All detector flags below default to `true` and are gated by `detectAll`. Set `de
 | `detectSharedByteBuffer` | `SHARED_BYTE_BUFFER` | A `ByteBuffer` (position/limit/mark are mutable state) accessed from multiple threads |
 | `detectSharedCharsetCoder` | `SHARED_CHARSET_CODER` | `CharsetEncoder`/`CharsetDecoder` shared across threads — internal coding state garbles output |
 | `detectSharedChecksum` | `SHARED_CHECKSUM` | `CRC32`/`CRC32C`/`Adler32` shared across threads — silently wrong checksums |
-| `detectFileChannelPositionRace` | `FILE_CHANNEL_POSITION_RACE` | `FileChannel` implicit-position reads/writes from multiple threads — interleaved seeks corrupt I/O |
+| `detectFileChannelPositionRace` | `FILE_CHANNEL_POSITION_RACE` | `FileChannel` `position(n)` then `read`/`write` relying on it, with another thread's call able to land between them |
 | `detectSharedIterator` | `SHARED_ITERATOR` | An `Iterator`/`ListIterator`/`Spliterator` consumed by more than one thread |
 | `detectHighContentionAtomic` | `HIGH_CONTENTION_ATOMIC` | CAS retry storms on hot `Atomic*` fields — advisory to switch to `LongAdder` |
 | `detectSharedJsonMapperReconfig` | `SHARED_JSON_MAPPER_RECONFIG` | Mapper (`ObjectMapper`, `Gson`) reconfigured while another thread uses it in the same round |

@@ -31,18 +31,9 @@
 #   also consults no lock at all, so a HashMap correctly guarded by the caller's own lock draws the
 #   same finding as a raced one. That is the definition of PROMPT.
 #
-# held: FILE_CHANNEL_POSITION_RACE
-#   FILE_CHANNEL_POSITION_RACE has a same-class pair in the corpus and it is a good one: the two
-#   rows share one channel and differ only in the read overload, so the silence is the operation
-#   model deciding. What it cannot show is the other half of what VERDICT means. This entry used
-#   to name the missing lockset; the detector now keeps SelfGuard's per-round lockset, so a caller
-#   that wraps position(n) and read(buffer) in synchronized(channel), or in a lock declared through
-#   HeldLocks, stays silent. Re-asked on 2026-09-26 (#755) and still held, on the unit it judges:
-#   an access, not the seek-then-I/O sequence the race is. FileChannel runs one operation involving
-#   the position at a time, so threads that each make one self-contained read(buffer) or
-#   write(buffer) lose nothing, and they draw the same finding as a thread whose position(n)
-#   another thread's call lands behind. The firing row is that self-contained shape. Re-ask once a
-#   finding needs a call landing between a thread's position(n) and the I/O that relies on it.
+# FILE_CHANNEL_POSITION_RACE was held here from #755 until 2026-09-26, when #819 made the detector
+# judge the seek-then-I/O sequence rather than single accesses; it is registered below, and its
+# line says how.
 #
 #   CONCURRENT_MAP_CHECK_THEN_ACT was held here from 2026-08-29 because its only decision was
 #   whether more than one thread reached the same (map, key): recordCheckThenAct is the body saying
@@ -200,6 +191,25 @@ CYCLIC_BARRIER = recorded_cyclicBarrier_awaitedWhileBroken, recorded_cyclicBarri
 # which is noted rather than reported (#657), and a predicate that is wrong about what the waiter
 # waits for, which the detector evaluates but cannot check.
 CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition_consumerIdleOnAnEmptyQueue
+
+# --- 2026-09-26, #819: held on its model since #755, promoted once the model changed.
+#
+# FILE_CHANNEL_POSITION_RACE judged single accesses, so threads that each made one self-contained
+# read(buffer) or write(buffer) drew the finding, and FileChannel runs one operation involving the
+# position at a time, so those lose nothing: a probe (8 threads, 5,000 operations each, JDK 21 and
+# 26) read every chunk once and wrote every record whole. The finding is now a position(n)-then-I/O
+# sequence on one thread with another thread's implicit-position call that no common lock and no
+# happens-before edge keeps out of it, the shape the same probe read wrong about 1,500 times in
+# 40,000. Both halves below seek and read the same shared channel through the same calls and
+# differ only in synchronized (channel). The lane also holds the self-contained reads that were the
+# firing row until #819, now silent, and the positional-read twin, which calls
+# recordPositionalAccess and decides nothing; PairEvidence.REVIEWED_DESPITE_SHAPE records that
+# reading. FileChannelPositionRaceDetectorTest pins both directions.
+#
+# What the pair does not reach: a lock released and taken again between the seek and the I/O,
+# which reads as held across and is not reported, and a self-contained call that relies on where
+# an earlier one left the cursor, such as write(buffer) then position(), which is no sequence.
+FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_fileChannel_seekThenReadUnderItsOwnMonitor
 
 # --- 2026-09-26: a pair is necessary, not sufficient.
 #

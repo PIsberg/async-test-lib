@@ -2167,22 +2167,44 @@ final class Corpus {
                             + "silence is its operation model deciding rather than an absence "
                             + "of input"),
 
-            // --- FileChannelPositionRace: the class is documented thread-safe and the hazard
-            //     is the one stateful thing that guarantee does not cover, the implicit
-            //     position. Both rows read the same temp file through a channel shared by every
-            //     thread and differ only in which read overload the body uses - the
-            //     cursor-advancing read(ByteBuffer) or the self-contained read(ByteBuffer, long).
+            // --- FileChannelPositionRace: the class is documented thread-safe and runs one
+            //     operation involving the position at a time, so a single read(ByteBuffer) is
+            //     whole. The hazard is the one thing that guarantee cannot cover, two calls: a
+            //     position(n) and the read(ByteBuffer) relying on it (#819). Every row shares one
+            //     channel across every thread. The firing row and its guarded twin make the same
+            //     calls and differ only in synchronized (channel); the other two silent rows make
+            //     the self-contained calls that lose nothing.
 
-            new RecordingSubject("recorded_fileChannel_implicitReadsShared", JDK,
+            new RecordingSubject("recorded_fileChannel_seekThenReadShared", JDK,
                     "java.nio.channels.FileChannel",
                     DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "every thread records a cursor-advancing read(ByteBuffer) on one shared "
-                            + "channel. FileChannel serializes each call internally, but the "
-                            + "offset a read starts from depends on every other thread's "
-                            + "progress, so the I/O lands at positions no caller chose - the "
-                            + "class is thread-safe and the caller is still wrong",
+                    "every thread seeks the shared channel with position(n) and then reads "
+                            + "through read(ByteBuffer), relying on the seek, with nothing held. "
+                            + "FileChannel serializes each call, not the pair, so another "
+                            + "thread's call can land between them and the read starts where "
+                            + "that call left the cursor - a probe read the wrong bytes about "
+                            + "1,500 times in 40,000 this way",
                     IssueSeverity.HIGH),
+
+            new RecordingSubject("recorded_fileChannel_seekThenReadUnderItsOwnMonitor", JDK,
+                    "java.nio.channels.FileChannel",
+                    DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same seek-then-read on the same six threads, inside synchronized "
+                            + "(channel). Every thread holds the monitor across both calls, so "
+                            + "no other call can land between them; the same probe read nothing "
+                            + "wrong this way. A finding here would report the fix as the bug"),
+
+            new RecordingSubject("recorded_fileChannel_selfContainedReadsShared", JDK,
+                    "java.nio.channels.FileChannel",
+                    DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread makes one cursor-advancing read(ByteBuffer) and seeks "
+                            + "nothing. The channel runs one such call at a time, so each read is "
+                            + "whole and each chunk is read once, and no thread relied on where "
+                            + "the cursor was; the probe read 40,000 chunks this way, each "
+                            + "exactly once. This was the firing row until #819"),
 
             new RecordingSubject("recorded_fileChannel_positionalReadsShared", JDK,
                     "java.nio.channels.FileChannel",

@@ -290,10 +290,13 @@ class StructuredViolationCoverageTest {
                     t.join();
                 }
             }),
-            new Path("FileChannelPositionRaceDetector", "implicit position shared across threads", () -> {
+            new Path("FileChannelPositionRaceDetector", "another thread's call inside a seek-then-read", () -> {
                 var d = new FileChannelPositionRaceDetector();
                 Object channel = new Object();
-                onTwoThreads(() -> d.recordImplicitPositionAccess(channel, "read"),
+                onTwoThreads(() -> {
+                            d.recordImplicitPositionAccess(channel, "position");
+                            d.recordImplicitPositionAccess(channel, "read");
+                        },
                         () -> d.recordImplicitPositionAccess(channel, "write"));
                 return d.analyze();
             }),

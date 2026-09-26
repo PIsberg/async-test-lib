@@ -159,22 +159,22 @@ Several of those lost VERDICT to one secondary path beside a primary one that co
 detectors below do, is how their primary finding gets VERDICT back. Their pairs still run and
 still gate the corpus; the evidence file keeps each removed line with the class that capped it.
 
-Two detectors the corpus measures in both directions stay `PROMPT`, and the reason in each case
-is the detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
+One detector the corpus measures in both directions stays `PROMPT`, and the reason is the
+detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
 synchronizes itself, so given one class both halves of a pair get the same answer by construction,
 and it consults no lock at all: a `HashMap` correctly guarded by the caller's own lock draws the
-same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the third, held because
+same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the second, held because
 `recordCheckThenAct` is the body saying a check-then-act happened and the detector only counted
 threads on the `(map, key)` site. Since 2026-09-25 it also asks whether one lock covered every
 call and whether the happens-before model orders them, so the `synchronized` twin of the firing
 body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818).
-`FILE_CHANNEL_POSITION_RACE` has the better pair of the two - one shared channel, differing only
-in the read overload - and now carries the per-round lockset the `Shared*` family has, so a caller
-who wraps `position(n)` and `read(buffer)` in `synchronized (channel)`, or in a lock declared
-through `HeldLocks`, is silent. It stays `PROMPT` because it judges accesses, not the seek-then-I/O
-sequence the race is (#755): `FileChannel` runs one operation involving the position at a time, so
-threads that each make one self-contained `read(buffer)` or `write(buffer)` lose nothing and still
-draw the finding, and the pair's firing row is that shape.
+`FILE_CHANNEL_POSITION_RACE` used to be the third. It judged single accesses, so threads that each
+made one self-contained `read(buffer)` or `write(buffer)` drew the finding, and `FileChannel` runs
+one operation involving the position at a time, so those lose nothing (#755). Since #819 the
+finding is a thread's `position(n)` and the read or write relying on it, with another thread's
+implicit-position call that no common lock and no happens-before edge keeps out of the two. Its
+pair seeks and reads one shared channel on every thread and differs only in
+`synchronized (channel)`, and it is `VERDICT`.
 
 **Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
@@ -249,7 +249,7 @@ not brings back the accesses since the latest earlier hand-off it is ordered aft
 access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 37 VERDICT, 73 PROMPT, 29 FACT and 7
+tier is one a reader has to rank alone. The split is 38 VERDICT, 72 PROMPT, 29 FACT and 7
 ADVISORY. PROMPT is the honest default: it says nobody has measured that detector's
 silent-on-correct-code direction, or that what it decides from is a thread count or a threshold,
 not that the detector is wrong. FACT and ADVISORY are statements about the kind of claim a finding

@@ -2,6 +2,8 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -11,8 +13,27 @@ import static org.junit.jupiter.api.Assertions.*;
  * plain {@code Object} stand-ins are used here instead of a real
  * {@code FileChannel} — no file I/O is needed to exercise the bookkeeping and
  * violation logic.
+ *
+ * <p>The unit it judges is the seek-then-I/O sequence (#819): a thread's {@code position}
+ * call and the implicit read or write after it that relies on where the cursor was left.
+ * A probe on JDK 21 and 26 (8 threads, 5,000 operations each) lost nothing with unguarded
+ * self-contained {@code read(buffer)} and {@code write(buffer)} calls, and read the wrong
+ * bytes about 1,500 times in 40,000 with unguarded {@code position(n)} then
+ * {@code read(buffer)}.
  */
 class FileChannelPositionRaceDetectorTest {
+
+    /** A thread's {@code position(n)} and the {@code read(buffer)} that relies on it. */
+    private static void seekThenRead(FileChannelPositionRaceDetector d, Object channel) {
+        d.recordImplicitPositionAccess(channel, "position");
+        d.recordImplicitPositionAccess(channel, "read");
+    }
+
+    private static void inAnotherThread(Runnable action) throws InterruptedException {
+        Thread t = new Thread(action);
+        t.start();
+        t.join();
+    }
 
     @Test
     void cleanWhenNoAccess() {
@@ -26,27 +47,25 @@ class FileChannelPositionRaceDetectorTest {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
         for (int i = 0; i < 5; i++) {
-            d.recordImplicitPositionAccess(channel, "read");
+            seekThenRead(d, channel);
             d.recordImplicitPositionAccess(channel, "write");
         }
         assertFalse(d.analyze().hasIssues());
     }
 
     @Test
-    void sharedImplicitPositionAccessAcrossThreadsIsFlagged() throws Exception {
+    void seekThenReadRacingAnotherThreadsSeekThenReadIsFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
-        d.recordImplicitPositionAccess(channel, "read");
-        Thread t = new Thread(() -> d.recordImplicitPositionAccess(channel, "write"));
-        t.start();
-        t.join();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> seekThenRead(d, channel));
 
         var report = d.analyze();
         assertTrue(report.hasIssues());
         String msg = report.violations.get(0);
         assertTrue(msg.contains("2 threads"), "Message should count threads: " + msg);
+        assertTrue(msg.contains("position"), "Message should mention observed operation: " + msg);
         assertTrue(msg.contains("read"), "Message should mention observed operation: " + msg);
-        assertTrue(msg.contains("write"), "Message should mention observed operation: " + msg);
 
         assertEquals(1, report.structuredViolations.size());
         var v = report.structuredViolations.get(0);
@@ -56,13 +75,99 @@ class FileChannelPositionRaceDetectorTest {
     }
 
     @Test
+    void anotherThreadsSelfContainedReadCanLandBetweenASeekAndItsRead() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertTrue(d.analyze().hasIssues(),
+            "the other thread's read advances the cursor the first thread's seek set, and nothing "
+                + "keeps it out from between that seek and the read relying on it");
+    }
+
+    /**
+     * The limit #755 held the detector at PROMPT for, now closed (#819).
+     *
+     * <p>A lone {@code read(ByteBuffer)} or {@code write(ByteBuffer)} per thread is not a race
+     * on a real {@code FileChannel}: the channel lets one operation involving the position run
+     * at a time, so each call reads or writes whole, at an offset nobody chose and nobody relied
+     * on. No thread set the position and then depended on it.
+     */
+    @Test
+    void selfContainedImplicitCallsFromManyThreadsAreNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "write");
+        d.recordImplicitPositionAccess(channel, "read");
+        inAnotherThread(() -> {
+            d.recordImplicitPositionAccess(channel, "write");
+            d.recordImplicitPositionAccess(channel, "read");
+        });
+        assertFalse(d.analyze().hasIssues(),
+            "self-contained implicit calls lose no bytes, so two threads making them unguarded "
+                + "are no finding: " + d.analyze());
+    }
+
+    @Test
+    void aSeekNoIoReliesOnIsNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "a seek with no read or write after it on the same thread relies on nothing: "
+                + d.analyze());
+    }
+
+    @Test
+    void aSeekOnOneChannelIsNotReliedOnByIoOnAnother() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object seeked = new Object();
+        Object other = new Object();
+        d.recordImplicitPositionAccess(seeked, "position");
+        d.recordImplicitPositionAccess(other, "read");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(other, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "the read is on a channel whose position this thread never set: " + d.analyze());
+    }
+
+    @Test
+    void aSeekLeftOpenByAnEarlierRoundIsNotReliedOnByThisRoundsRead() throws Exception {
+        var scope = new SelfGuard.Scope();
+        SelfGuard.Scope.bind(scope);
+        try {
+            var d = new FileChannelPositionRaceDetector();
+            Object channel = new Object();
+            d.recordImplicitPositionAccess(channel, "position");
+            scope.markInvocationStart();
+            d.recordImplicitPositionAccess(channel, "read");
+            inAnotherThread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    d.recordImplicitPositionAccess(channel, "read");
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            });
+            assertFalse(d.analyze().hasIssues(),
+                "the body that sought ended with the earlier round, so this round's reads are "
+                    + "self-contained: " + d.analyze());
+
+            d.recordImplicitPositionAccess(channel, "position");
+            d.recordImplicitPositionAccess(channel, "read");
+            assertTrue(d.analyze().hasIssues(),
+                "a seek and its read in the round the other thread read in are a sequence");
+        } finally {
+            SelfGuard.Scope.unbind();
+        }
+    }
+
+    @Test
     void positionalOnlyAccessAcrossThreadsIsNotFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
         d.recordPositionalAccess(channel, "read");
-        Thread t = new Thread(() -> d.recordPositionalAccess(channel, "write"));
-        t.start();
-        t.join();
+        inAnotherThread(() -> d.recordPositionalAccess(channel, "write"));
 
         assertFalse(d.analyze().hasIssues(),
                 "Positional read(buf, pos)/write(buf, pos) never touch the shared cursor and must not be flagged");
@@ -72,13 +177,11 @@ class FileChannelPositionRaceDetectorTest {
     void positionalAccessDoesNotContributeToImplicitViolationThreadCount() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
-        d.recordImplicitPositionAccess(channel, "read");
-        Thread t = new Thread(() -> d.recordPositionalAccess(channel, "write"));
-        t.start();
-        t.join();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> d.recordPositionalAccess(channel, "write"));
 
         assertFalse(d.analyze().hasIssues(),
-                "A single implicit-position thread plus a positional-only thread is not a race");
+                "A seek-then-read on one thread plus a positional-only thread is not a race");
     }
 
     @Test
@@ -86,11 +189,9 @@ class FileChannelPositionRaceDetectorTest {
         var d = new FileChannelPositionRaceDetector();
         Object a = new Object();
         Object b = new Object();
-        d.recordImplicitPositionAccess(a, "read");
-        d.recordImplicitPositionAccess(b, "read");
-        Thread t = new Thread(() -> d.recordImplicitPositionAccess(a, "read"));
-        t.start();
-        t.join();
+        seekThenRead(d, a);
+        seekThenRead(d, b);
+        inAnotherThread(() -> seekThenRead(d, a));
 
         var report = d.analyze();
         assertEquals(1, report.violations.size());
@@ -110,28 +211,29 @@ class FileChannelPositionRaceDetectorTest {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
         d.recordImplicitPositionAccess(channel, "position");
-        Thread t = new Thread(() -> d.recordImplicitPositionAccess(channel, "transferFrom"));
-        t.start();
-        t.join();
+        d.recordImplicitPositionAccess(channel, "write");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "position"));
 
         String reportText = d.analyze().toString();
-        assertTrue(reportText.contains("interleaves I/O"), "Should describe the hazard: " + reportText);
+        assertTrue(reportText.contains("can land between"), "Should describe the hazard: " + reportText);
+        assertFalse(reportText.contains("losing writes"),
+                "self-contained writes lose nothing, and the report must not say they do: " + reportText);
         assertTrue(reportText.contains("read(buffer, position) / write(buffer, position)"),
                 "Fix hint should mention the positional overloads: " + reportText);
         assertTrue(reportText.contains("AsynchronousFileChannel"),
                 "Fix hint should mention AsynchronousFileChannel: " + reportText);
         assertTrue(reportText.contains("one FileChannel per thread"),
                 "Fix hint should mention per-thread channels: " + reportText);
+        assertTrue(reportText.contains("one lock across the seek and the I/O"),
+                "Fix hint should mention holding one lock over the sequence: " + reportText);
     }
 
     @Test
     void analyzeIsIdempotent() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
-        d.recordImplicitPositionAccess(channel, "read");
-        Thread t = new Thread(() -> d.recordImplicitPositionAccess(channel, "write"));
-        t.start();
-        t.join();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> seekThenRead(d, channel));
 
         var first = d.analyze();
         var second = d.analyze();
@@ -141,39 +243,46 @@ class FileChannelPositionRaceDetectorTest {
     }
 
     @Test
-    void implicitPositionAccessUnderTheChannelsMonitorIsNotFlagged() throws Exception {
+    void seekThenReadUnderTheChannelsMonitorOnEveryThreadIsNotFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
-        synchronized (channel) {
-            d.recordImplicitPositionAccess(channel, "read");
-        }
-        Thread t = new Thread(() -> {
+        Runnable guarded = () -> {
             synchronized (channel) {
-                d.recordImplicitPositionAccess(channel, "write");
+                seekThenRead(d, channel);
             }
-        });
-        t.start();
-        t.join();
+        };
+        guarded.run();
+        inAnotherThread(guarded);
         assertFalse(d.analyze().hasIssues(),
-            "both threads held the channel's monitor around the cursor-moving call, so the "
-                + "cursor cannot interleave: " + d.analyze());
+            "both threads held the channel's monitor across the seek and the read, so no other "
+                + "call can land between them: " + d.analyze());
     }
 
     @Test
-    void implicitPositionAccessUnderADeclaredLockIsNotFlagged() throws Exception {
+    void seekThenReadUnderTheMonitorIsFlaggedWhenAnotherThreadReadsUnguarded() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        synchronized (channel) {
+            seekThenRead(d, channel);
+        }
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertTrue(d.analyze().hasIssues(),
+            "the other thread's read never takes the monitor, so it can still land between the "
+                + "guarded seek and its read");
+    }
+
+    @Test
+    void seekThenReadUnderADeclaredLockIsNotFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
         Object lock = new Object();
         Runnable guarded = () -> {
             try (var held = HeldLocks.holding(lock)) {
-                d.recordImplicitPositionAccess(channel, "position");
-                d.recordImplicitPositionAccess(channel, "read");
+                seekThenRead(d, channel);
             }
         };
         guarded.run();
-        Thread t = new Thread(guarded);
-        t.start();
-        t.join();
+        inAnotherThread(guarded);
         assertFalse(d.analyze().hasIssues(),
             "a private lock declared through HeldLocks is in the lockset like the channel's own "
                 + "monitor, so a seek-then-read held under it on every thread is guarded: "
@@ -181,46 +290,71 @@ class FileChannelPositionRaceDetectorTest {
     }
 
     @Test
-    void implicitPositionAccessUnderDifferentLocksIsFlagged() throws Exception {
+    void seekThenReadUnderDifferentLocksIsFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
         Object lockA = new Object();
         Object lockB = new Object();
         try (var held = HeldLocks.holding(lockA)) {
-            d.recordImplicitPositionAccess(channel, "read");
+            seekThenRead(d, channel);
         }
-        Thread t = new Thread(() -> {
+        inAnotherThread(() -> {
             try (var held = HeldLocks.holding(lockB)) {
-                d.recordImplicitPositionAccess(channel, "read");
+                seekThenRead(d, channel);
             }
         });
-        t.start();
-        t.join();
         assertTrue(d.analyze().hasIssues(),
-            "each thread held a lock, but no lock was common to both accesses, so nothing "
-                + "orders the two cursor moves");
+            "each thread held a lock, but no lock was common to both sequences, so nothing "
+                + "keeps one thread's seek out from between the other's seek and read");
     }
 
-    /**
-     * Pins the limit {@code PairEvidence.HELD_ON_MODEL} holds this detector at PROMPT for.
-     *
-     * <p>A lone {@code write(ByteBuffer)} per thread is not a race on a real {@code FileChannel}:
-     * the channel lets one position-changing operation run at a time, so each record lands whole
-     * and none is lost, only in an order nobody chose. The hazard is a thread's
-     * {@code position(n)} and the read or write that relies on it with another thread's call in
-     * between, and the detector keeps no sequence to tell the two apart. When it learns to, this
-     * test goes red and the hold should be re-read.
-     */
     @Test
-    void selfContainedImplicitCallsAreReportedLikeASeekThenWrite() throws Exception {
+    void seekThenReadUnderASharedReadLockIsFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
         Object channel = new Object();
-        d.recordImplicitPositionAccess(channel, "write");
-        Thread t = new Thread(() -> d.recordImplicitPositionAccess(channel, "write"));
-        t.start();
-        t.join();
+        ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+        Runnable underReadLock = () -> {
+            rw.readLock().lock();
+            HeldLocks.acquired(rw, true);
+            try {
+                seekThenRead(d, channel);
+            } finally {
+                HeldLocks.released(rw, true);
+                rw.readLock().unlock();
+            }
+        };
+        underReadLock.run();
+        inAnotherThread(underReadLock);
         assertTrue(d.analyze().hasIssues(),
-            "two threads with one unguarded write each are reported, whether or not either "
-                + "relied on where the cursor was");
+            "a read lock admits every other reader, so two sequences under it still interleave");
+    }
+
+    @Test
+    void selfContainedReadsUnderAReadLockBesideASequenceUnderTheWriteLockAreNotFlagged()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+        rw.writeLock().lock();
+        HeldLocks.acquired(rw, false);
+        try {
+            seekThenRead(d, channel);
+        } finally {
+            HeldLocks.released(rw, false);
+            rw.writeLock().unlock();
+        }
+        inAnotherThread(() -> {
+            rw.readLock().lock();
+            HeldLocks.acquired(rw, true);
+            try {
+                d.recordImplicitPositionAccess(channel, "read");
+            } finally {
+                HeldLocks.released(rw, true);
+                rw.readLock().unlock();
+            }
+        });
+        assertFalse(d.analyze().hasIssues(),
+            "the write lock excludes the reader for the whole sequence, and self-contained reads "
+                + "need not exclude each other: " + d.analyze());
     }
 }
