@@ -291,6 +291,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   races with any other thread that uses the mapper in its round, before or after it. A single
   thread that reconfigures and uses its mapper, a use in another round, and configuration before
   the first use outside a run (the documented config-then-publish pattern) stay silent.
+- **`SharedJsonMapperReconfigDetector` no longer keeps a record per reconfiguration (#799).** Every
+  flagged reconfiguration, and every one waiting for its round's users (#784), was held until the
+  report, so a body that reconfigures a mapper on every execution grew the detector by one record
+  per call for the whole run. A waiting round is now judged and dropped once a later round
+  reconfigures the mapper, and a finding names at most five mutations followed by "and N more"; the
+  `mutationCount` attribute still counts every one, while `mutationDescriptions` and the "mutated
+  by" threads cover the named ones. What fires is unchanged.
 - **`StringBuilderDetector`'s exception finding counts one round's threads (#783).** "N
   exception(s) while N threads used it" counted every thread of the run, so one thread per round,
   each failing alone, read as concurrent access. It now counts the users of the busiest round an

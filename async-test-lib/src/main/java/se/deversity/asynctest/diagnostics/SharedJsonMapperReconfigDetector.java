@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -10,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Detects serializer/mapper instances (Jackson {@code ObjectMapper}, a Gson built via
@@ -39,6 +42,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Uses in other rounds never count: the runner finishes one round's workers before it starts the
  * next, so a use in another round cannot be in flight during the mutation, and with virtual
  * threads every round runs on fresh threads.
+ *
+ * <p>A finding counts every flagged mutation but names at most {@value #MAX_REPORTED_MUTATIONS}
+ * of them, and the detector keeps no more than it names plus the latest round's mutations still
+ * waiting for that round's users, so a body that reconfigures a mapper on every execution does not
+ * grow its memory with the run (#799).
  *
  * <p>Synchronization awareness is partial. A use or a mutation recorded while the accessing
  * thread holds the mapper's own monitor - the {@code synchronized (mapper)} idiom - counts as
@@ -70,27 +78,78 @@ import java.util.concurrent.CopyOnWriteArrayList;
 )
 public final class SharedJsonMapperReconfigDetector {
 
+    /**
+     * How many flagged mutations a finding names; the count it prints covers all of them. A body
+     * that reconfigures a mapper on every execution would otherwise keep one record per call for
+     * the whole run (#799).
+     */
+    static final int MAX_REPORTED_MUTATIONS = 5;
+
+    /** {@return the busier of two rounds by threads, the first on a tie; either may be {@code null}} */
+    private static SelfGuard.RoundThreads.@Nullable Round busier(
+            SelfGuard.RoundThreads.@Nullable Round a, SelfGuard.RoundThreads.@Nullable Round b) {
+        return a == null || (b != null && b.size() > a.size()) ? b : a;
+    }
+
     private static final class MutationRecord {
         final String description;
         final String threadName;
-        final long threadId;
-        /** The users of the round the mutation was made in. */
-        final SelfGuard.RoundThreads.Round users;
 
-        MutationRecord(String description, Thread thread, SelfGuard.RoundThreads.Round users) {
+        MutationRecord(String description, Thread thread) {
             this.description = description;
             this.threadName = thread.getName();
-            this.threadId = thread.threadId();
-            this.users = users;
-        }
-
-        /** {@return whether a thread other than the mutating one used the mapper in its round} */
-        boolean usedByAnotherThread() {
-            return usedByAnotherThread(users, threadId);
         }
 
         static boolean usedByAnotherThread(SelfGuard.RoundThreads.Round users, long threadId) {
             return users.size() >= 2 || (users.size() == 1 && !users.contains(threadId));
+        }
+    }
+
+    /**
+     * The mutations one thread made in a round before another thread had used the mapper in it.
+     * They share the thread and the round, so one verdict covers them all once the round's users
+     * are complete; only the first few are kept to be named.
+     */
+    private static final class PendingMutations {
+        final long threadId;
+        final AtomicInteger count = new AtomicInteger();
+        final List<MutationRecord> examples = new CopyOnWriteArrayList<>();
+
+        PendingMutations(Thread thread) {
+            this.threadId = thread.threadId();
+        }
+
+        void add(String description, Thread thread) {
+            if (count.getAndIncrement() < MAX_REPORTED_MUTATIONS) {
+                examples.add(new MutationRecord(description, thread));
+            }
+        }
+    }
+
+    /** One round's mutations of one mapper, judged once the round is over (#784, #799). */
+    private static final class RoundMutations {
+        /** The users of the round, complete once the next round has started. */
+        final SelfGuard.RoundThreads.Round users;
+        /** Pending mutations by mutating thread, by identity. */
+        final Map<Thread, PendingMutations> pending = new ConcurrentHashMap<>();
+        /** Whether a mutation was flagged in this round when it was recorded. */
+        volatile boolean flagged;
+
+        RoundMutations(SelfGuard.RoundThreads.Round users) {
+            this.users = users;
+        }
+
+        PendingMutations pendingFor(Thread thread) {
+            PendingMutations p = pending.get(thread);
+            if (p == null) {
+                p = pending.computeIfAbsent(thread, PendingMutations::new);
+            }
+            return p;
+        }
+
+        /** {@return whether a thread other than the one that made {@code p} used the mapper this round} */
+        boolean raced(PendingMutations p) {
+            return MutationRecord.usedByAnotherThread(users, p.threadId);
         }
     }
 
@@ -102,16 +161,68 @@ public final class SharedJsonMapperReconfigDetector {
          * across a round boundary (#748).
          */
         final SelfGuard.RoundThreads users = new SelfGuard.RoundThreads();
-        final List<MutationRecord> violatingMutations = new CopyOnWriteArrayList<>();
+        /** Flagged mutations of the rounds judged so far; the first few are kept in {@link #examples}. */
+        final AtomicInteger flaggedCount = new AtomicInteger();
+        final List<MutationRecord> examples = new CopyOnWriteArrayList<>();
+        /** The busiest round a flagged mutation of an already judged round was made in. */
+        final AtomicReference<SelfGuard.RoundThreads.@Nullable Round> busiest = new AtomicReference<>();
         /**
-         * Mutations made in a run's round before another thread had used the mapper in it. Each is
-         * judged in {@link #analyze()}, once its round's users are complete: a use later in the
-         * same round overlapped it as much as one before it would have (#784).
+         * The latest round with a mutation. A mutation made in a run's round before another thread
+         * had used the mapper in it waits here until the round's users are complete: a use later in
+         * the same round overlapped it as much as one before it would have (#784). The runner
+         * finishes a round's workers before it starts the next, so the round is judged, and
+         * dropped, when a mutation of a later round replaces it, or read in {@link #analyze()}.
          */
-        final List<MutationRecord> pendingMutations = new CopyOnWriteArrayList<>();
+        final AtomicReference<@Nullable RoundMutations> open = new AtomicReference<>();
 
         State(String className) {
             this.className = className;
+        }
+
+        /** Counts a flagged mutation, keeping it as an example while fewer than the cap are kept. */
+        void flag(String description, Thread thread) {
+            if (flaggedCount.getAndIncrement() < MAX_REPORTED_MUTATIONS) {
+                examples.add(new MutationRecord(description, thread));
+            }
+        }
+
+        /**
+         * {@return the mutations of {@code round}'s round}, first judging and dropping an earlier
+         * round's. A thread still recording from an older round joins the newer one, as
+         * {@link SelfGuard.RoundThreads} does.
+         */
+        RoundMutations mutationsOf(SelfGuard.RoundThreads.Round round) {
+            RoundMutations current = open.get();
+            while (current == null || current.users.number < round.number) {
+                RoundMutations next = new RoundMutations(round);
+                if (open.compareAndSet(current, next)) {
+                    if (current != null) {
+                        judge(current);
+                    }
+                    return next;
+                }
+                current = open.get();
+            }
+            return current;
+        }
+
+        private void judge(RoundMutations round) {
+            boolean flagged = round.flagged;
+            for (PendingMutations p : round.pending.values()) {
+                if (!round.raced(p)) {
+                    continue;
+                }
+                flagged = true;
+                for (MutationRecord m : p.examples) {
+                    if (flaggedCount.getAndIncrement() < MAX_REPORTED_MUTATIONS) {
+                        examples.add(m);
+                    }
+                }
+                flaggedCount.addAndGet(p.count.get() - p.examples.size());
+            }
+            if (flagged) {
+                busiest.accumulateAndGet(round.users, SharedJsonMapperReconfigDetector::busier);
+            }
         }
     }
 
@@ -155,15 +266,34 @@ public final class SharedJsonMapperReconfigDetector {
         Thread thread = Thread.currentThread();
         String desc = (mutationDescription != null) ? mutationDescription : "configuration change";
         if (users != null && MutationRecord.usedByAnotherThread(users, thread.threadId())) {
-            s.violatingMutations.add(new MutationRecord(desc, thread, users));
+            s.mutationsOf(users).flagged = true;
+            s.flag(desc, thread);
             return;
         }
         // Nobody else has used it in this round yet. In a run's round somebody still may, and that
         // use overlaps this mutation too (#784); outside a run a later use cannot be told from one
         // that followed the configuration by a thread start, so it stays config-then-use.
         if (SelfGuard.Scope.current() != null) {
-            s.pendingMutations.add(new MutationRecord(desc, thread, s.users.current()));
+            s.mutationsOf(s.users.current()).pendingFor(thread).add(desc, thread);
         }
+    }
+
+    /**
+     * {@return how many mutation records are kept across every mapper}: the examples a report
+     * names and those of each mapper's latest round, however many mutations were recorded (#799)
+     */
+    int retainedMutationRecords() {
+        int n = 0;
+        for (State s : instances.values()) {
+            n += s.examples.size();
+            RoundMutations round = s.open.get();
+            if (round != null) {
+                for (PendingMutations p : round.pending.values()) {
+                    n += p.examples.size();
+                }
+            }
+        }
+        return n;
     }
 
     private State stateFor(Object mapper) {
@@ -182,25 +312,45 @@ public final class SharedJsonMapperReconfigDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : instances.values()) {
-            List<MutationRecord> flagged = new ArrayList<>(s.violatingMutations);
-            for (MutationRecord m : s.pendingMutations) {
-                if (m.usedByAnotherThread()) {
-                    flagged.add(m);
+            // The judged rounds plus the latest one, judged here without changing any state, so
+            // analyze() stays idempotent.
+            int flaggedCount = s.flaggedCount.get();
+            List<MutationRecord> examples = new ArrayList<>(s.examples);
+            // The users printed are one round's: the busiest round a flagged mutation was made in.
+            SelfGuard.RoundThreads.@Nullable Round users = s.busiest.get();
+            RoundMutations latest = s.open.get();
+            if (latest != null) {
+                boolean flagged = latest.flagged;
+                for (PendingMutations p : latest.pending.values()) {
+                    if (!latest.raced(p)) {
+                        continue;
+                    }
+                    flagged = true;
+                    flaggedCount += p.count.get();
+                    for (MutationRecord m : p.examples) {
+                        if (examples.size() < MAX_REPORTED_MUTATIONS) {
+                            examples.add(m);
+                        }
+                    }
+                }
+                if (flagged) {
+                    users = busier(users, latest.users);
                 }
             }
-            if (flagged.isEmpty() || !s.sawUnguardedSharing()) continue;
+            if (flaggedCount == 0 || users == null || !s.sawUnguardedSharing()) continue;
             List<String> descriptions = new ArrayList<>();
             List<String> mutatingThreads = new ArrayList<>();
-            // The users printed are one round's: the busiest round a flagged mutation was made in.
-            SelfGuard.RoundThreads.Round users = flagged.get(0).users;
-            for (MutationRecord m : flagged) {
+            for (MutationRecord m : examples) {
                 descriptions.add(m.description);
                 if (!mutatingThreads.contains(m.threadName)) {
                     mutatingThreads.add(m.threadName);
                 }
-                if (m.users.size() > users.size()) {
-                    users = m.users;
-                }
+            }
+            // Past the cap the count stays exact and only the naming stops, as with
+            // SharedMemorySegmentRaceDetector's reported pairs.
+            String named = String.join(", ", descriptions);
+            if (flaggedCount > descriptions.size()) {
+                named += String.format(", and %d more", flaggedCount - descriptions.size());
             }
             String msg = String.format(
                     "%s reconfigured during concurrent use: %s (mutated by %s) while "
@@ -210,7 +360,7 @@ public final class SharedJsonMapperReconfigDetector {
                             + "ConcurrentModificationException in internal caches"
                             + SelfGuard.REPORT_NOTE + ".",
                     s.className,
-                    String.join(", ", descriptions),
+                    named,
                     String.join(", ", mutatingThreads),
                     users.size(),
                     String.join(", ", users.names()));
@@ -222,7 +372,7 @@ public final class SharedJsonMapperReconfigDetector {
                     List.of(),
                     Map.of(
                             "className", s.className,
-                            "mutationCount", flagged.size(),
+                            "mutationCount", flaggedCount,
                             "mutationDescriptions", List.copyOf(descriptions),
                             "usingThreadCount", users.size()),
                     Instant.now()));

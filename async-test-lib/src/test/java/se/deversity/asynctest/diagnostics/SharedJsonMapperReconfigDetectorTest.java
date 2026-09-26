@@ -365,6 +365,82 @@ class SharedJsonMapperReconfigDetectorTest {
         assertFalse(d.analyze().hasIssues());
     }
 
+    // ---- What is retained does not grow with the reconfigurations (#799) ------------------------
+    //
+    // Every flagged or pending reconfiguration used to be kept until analyze(), so a body that
+    // reconfigures a mapper on every execution held one record per call for the whole run. Only
+    // what the report prints may be kept: a few example mutations and the total count.
+
+    @Test
+    void manyReconfigurationsKeepTheRetainedRecordsBoundedAndCountEveryOne() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        int rounds = 40;
+        int perSide = 25;
+
+        for (int r = 0; r < rounds; r++) {
+            var reconfigured = new java.util.concurrent.CountDownLatch(1);
+            var used = new java.util.concurrent.CountDownLatch(1);
+            round(scope, () -> {
+                // Before the other thread's use: kept pending until the round's users are known.
+                for (int i = 0; i < perSide; i++) {
+                    d.recordConfigMutation(mapper, "configure(F" + i + ")");
+                }
+                reconfigured.countDown();
+                awaitLatch(used);
+                // After it: flagged when recorded.
+                for (int i = 0; i < perSide; i++) {
+                    d.recordConfigMutation(mapper, "registerModule(M" + i + ")");
+                }
+            }, () -> {
+                awaitLatch(reconfigured);
+                d.recordUse(mapper);
+                used.countDown();
+            });
+        }
+
+        int total = rounds * perSide * 2;
+        int cap = SharedJsonMapperReconfigDetector.MAX_REPORTED_MUTATIONS;
+        assertTrue(d.retainedMutationRecords() <= 2 * cap,
+                "at most the printed examples and one round's pending examples are kept, not one "
+                        + "record per reconfiguration: " + d.retainedMutationRecords());
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "every round reconfigured the mapper around another thread's use");
+        var attributes = report.structuredViolations.get(0).attributes();
+        assertEquals(total, attributes.get("mutationCount"), "the count covers every flagged mutation");
+        assertEquals(cap, ((java.util.List<?>) attributes.get("mutationDescriptions")).size());
+        assertTrue(report.violations.get(0).contains("and " + (total - cap) + " more"),
+                report.violations.get(0));
+        assertTrue(report.violations.get(0).contains("used by 1 thread(s) (round-worker-1)"),
+                report.violations.get(0));
+    }
+
+    @Test
+    void aThreadReconfiguringItsMapperAloneInManyRoundsStaysSilent() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        // Round one shares the mapper, so only the per-round judgement keeps the later rounds quiet.
+        round(scope, () -> d.recordUse(mapper), () -> d.recordUse(mapper));
+        for (int r = 0; r < 20; r++) {
+            round(scope, () -> {
+                for (int i = 0; i < 10; i++) {
+                    d.recordConfigMutation(mapper, "registerModule(JavaTimeModule)");
+                    d.recordUse(mapper);
+                }
+            });
+        }
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(), "each round had one thread, reconfiguring its own use: "
+                + report.violations);
+        assertTrue(d.retainedMutationRecords() <= SharedJsonMapperReconfigDetector.MAX_REPORTED_MUTATIONS,
+                "rounds judged silent are dropped: " + d.retainedMutationRecords());
+    }
+
     private static void awaitLatch(java.util.concurrent.CountDownLatch latch) {
         try {
             latch.await();
