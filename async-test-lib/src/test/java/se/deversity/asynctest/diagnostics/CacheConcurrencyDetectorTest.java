@@ -447,6 +447,45 @@ class CacheConcurrencyDetectorTest {
                 "a put races a get in the same round with no lock held");
     }
 
+    // #820: the runner finishes one round before it starts the next, so the same key written by one
+    // thread in each of two rounds was computed twice in sequence, never by two threads at once.
+
+    @Test
+    void theSameKeyWrittenByOneThreadInEachOfTwoRoundsIsNotACacheStampede() throws InterruptedException {
+        Map<String, String> cache = new HashMap<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable missAndRecompute = () -> {
+            detector.recordGet(cache, "hot-key-cache", "hot");
+            detector.recordPut(cache, "hot-key-cache", "hot", "value");
+        };
+
+        round(scope, missAndRecompute);
+        round(scope, missAndRecompute);
+
+        assertTrue(detector.analyze().cacheStampede.isEmpty(),
+                "each round had one thread computing the key, and the rounds never overlapped: "
+                        + detector.analyze());
+    }
+
+    @Test
+    void twoThreadsRecomputingTheSameKeyInOneRoundIsStillACacheStampede() throws InterruptedException {
+        Map<String, String> cache = new HashMap<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable missAndRecompute = () -> {
+            detector.recordGet(cache, "hot-key-cache", "hot");
+            detector.recordPut(cache, "hot-key-cache", "hot", "value");
+        };
+
+        round(scope, missAndRecompute);
+        round(scope, missAndRecompute, missAndRecompute);
+        round(scope, missAndRecompute);
+
+        var report = detector.analyze();
+        assertEquals(1, report.cacheStampede.size(), report.toString());
+        assertTrue(report.cacheStampede.get(0).contains("recomputed by 2 threads"),
+                "the count is the busiest round's two threads, not the four the run saw: " + report);
+    }
+
     /** Runs {@code body} holding {@code lock}'s read view if {@code shared}, else its write view. */
     private static void underLock(java.util.concurrent.locks.ReentrantReadWriteLock lock,
                                   boolean shared, Runnable body) {

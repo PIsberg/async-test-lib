@@ -19,9 +19,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * scheduled. The read/write finding needs a non-thread-safe cache, a read, a write, more than one
  * thread, and no lock held across every access; one thread using its own {@code HashMap}, or two
  * threads that both go through {@code synchronized (cache)}, is correct code and stays silent.
- * The stampede finding needs the same key written by more than one thread, which is duplicated
- * computation of one value - not a count of how many threads happened to be inside the record
- * methods at once, which under {@code @AsyncTest} measures the runner's barrier.
+ * The stampede finding needs the same key written by more than one thread in one round, which is
+ * duplicated computation of one value - not a count of how many threads happened to be inside the
+ * record methods at once, which under {@code @AsyncTest} measures the runner's barrier, and not
+ * one thread per round across rounds that never overlapped.
  *
  * Usage:
  * <pre>{@code
@@ -59,12 +60,14 @@ public class CacheConcurrencyDetector {
         final Set<Long> readerThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> writerThreads = ConcurrentHashMap.newKeySet();
         /**
-         * Threads that wrote each key. A cache stampede is several threads recomputing the same
-         * value at once, so the same key written by more than one thread is the shape - and,
-         * unlike a count of threads simultaneously inside the record methods, it is a property of
-         * the caller's cache rather than of the runner's barrier (#497).
+         * Threads that wrote each key, one round at a time. A cache stampede is several threads
+         * recomputing the same value at once, so the same key written by more than one thread is
+         * the shape - and, unlike a count of threads simultaneously inside the record methods, it
+         * is a property of the caller's cache rather than of the runner's barrier (#497). Counted
+         * across the run, one thread writing the key in each of two rounds read as two threads
+         * recomputing it, though the runner finishes one round before it starts the next (#820).
          */
-        final Map<Object, Set<Long>> writerThreadsByKey = new ConcurrentHashMap<>();
+        final Map<Object, SelfGuard.RoundThreads> writerThreadsByKey = new ConcurrentHashMap<>();
         volatile boolean iterationDetected = false;
 
         CacheState(Map<Object, Object> cache, String name) {
@@ -77,9 +80,11 @@ public class CacheConcurrencyDetector {
                     && !writerThreadsByKey.containsKey(key)) {
                 return;
             }
-            writerThreadsByKey
-                .computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet())
-                .add(Thread.currentThread().threadId());
+            SelfGuard.RoundThreads writers = writerThreadsByKey.get(key);
+            if (writers == null) {
+                writers = writerThreadsByKey.computeIfAbsent(key, k -> new SelfGuard.RoundThreads());
+            }
+            writers.add(Thread.currentThread());
         }
 
         /** {@return how many distinct threads touched this cache at all} */
@@ -232,7 +237,8 @@ public class CacheConcurrencyDetector {
                     state.name, writes));
             }
 
-            // Check for cache stampede: the same key recomputed by more than one thread.
+            // Check for cache stampede: the same key recomputed by more than one thread in one
+            // round, counted in the round that saw the most (#820).
             // This used to count how many threads were inside recordGet/recordPut at once, which
             // under @AsyncTest measures the runner's barrier - it engineers exactly that overlap -
             // rather than anything about the cache. A key written by several threads is duplicated
@@ -241,10 +247,10 @@ public class CacheConcurrencyDetector {
             // that directly: recorded_lruMap_getAndPut and recorded_caffeineAsMap_getAndPut hand
             // the detector identical evidence and differ only in the receiver, so a finding on the
             // ConcurrentMap view is noise on correct code whichever rule produces it.
-            for (Map.Entry<Object, Set<Long>> entry :
-                    (isConcurrentMap ? Map.<Object, Set<Long>>of() : state.writerThreadsByKey)
-                        .entrySet()) {
-                int recomputingThreads = entry.getValue().size();
+            for (Map.Entry<Object, SelfGuard.RoundThreads> entry :
+                    (isConcurrentMap ? Map.<Object, SelfGuard.RoundThreads>of()
+                        : state.writerThreadsByKey).entrySet()) {
+                int recomputingThreads = entry.getValue().reportedSize();
                 if (recomputingThreads > 1) {
                     report.cacheStampede.add(String.format(
                         "%s: key '%s' was recomputed by %d threads (cache stampede: each miss "

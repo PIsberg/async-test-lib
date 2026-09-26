@@ -324,6 +324,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round, and gets under one read lock beside puts under the write lock, are no finding; a put and
   an unguarded get in one round still are. `WeakHashMapSharedDetector` records every access as a
   write and keeps its verdict.
+- **`CacheConcurrencyDetector` counts a stampede within one round (#820).** The threads that wrote
+  a key were counted across the run, so one thread computing the key in each of two rounds was
+  reported as a key "recomputed by 2 threads", though the runner finishes one round before it
+  starts the next and the two computations never overlapped. The writers of a key are now kept per
+  round, and the report counts the round that saw the most: two threads recomputing one key in the
+  same round still report.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`
