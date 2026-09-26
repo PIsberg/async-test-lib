@@ -92,9 +92,9 @@ public class InheritableThreadLocalMisuseDetectorTest {
         assertFalse(report.hasIssues(),
                 "two threads reading an InheritableThreadLocal is inheritance doing its job, so "
                         + "it is shown but not counted as misuse (#517): " + report);
-        assertTrue(report.threadActivity.containsKey("SHARED_VAR"),
+        assertTrue(report.threadActivity.stream().anyMatch(a -> a.startsWith("SHARED_VAR: ")),
                 "the count is still reported, as context: " + report.threadActivity);
-        assertTrue(report.threadActivity.get("SHARED_VAR").contains("2 threads"));
+        assertTrue(report.threadActivity.stream().filter(a -> a.startsWith("SHARED_VAR: ")).findFirst().orElse("").contains("2 threads"));
     }
 
     @Test
@@ -153,5 +153,34 @@ public class InheritableThreadLocalMisuseDetectorTest {
         assertTrue(str.contains("INHERITABLE THREAD LOCAL MISUSE DETECTED"));
         assertTrue(str.contains("Fix"));
         assertTrue(str.contains("ScopedValue"));
+    }
+
+    /**
+     * Two variables may share a name. Each keeps its own thread-activity line, counting only the
+     * threads that touched it; keyed by the name, both variables' threads were pooled into one
+     * line (#789).
+     */
+    @Test
+    void twoVariablesWithTheSameNameEachKeepTheirThreadActivity() throws InterruptedException {
+        InheritableThreadLocalMisuseDetector detector = new InheritableThreadLocalMisuseDetector();
+        InheritableThreadLocal<String> two = new InheritableThreadLocal<>();
+        InheritableThreadLocal<String> three = new InheritableThreadLocal<>();
+        detector.recordGet(two, "USER");
+        detector.recordGet(three, "USER");
+        Thread first = new Thread(() -> {
+            detector.recordGet(two, "USER");
+            detector.recordGet(three, "USER");
+        });
+        first.start();
+        first.join();
+        Thread second = new Thread(() -> detector.recordGet(three, "USER"));
+        second.start();
+        second.join();
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("USER: accessed by 2 threads"),
+                "the first variable's line counts its own two threads: " + report);
+        assertTrue(report.contains("USER: accessed by 3 threads"),
+                "the second variable's line counts its own three threads: " + report);
     }
 }

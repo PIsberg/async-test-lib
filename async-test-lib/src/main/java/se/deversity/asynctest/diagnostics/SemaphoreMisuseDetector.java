@@ -155,8 +155,9 @@ public class SemaphoreMisuseDetector {
 
             // Track thread participation
             if (!state.acquiringThreads.isEmpty()) {
-                report.threadActivity.put(state.name, String.format(
-                    "%d threads acquired, %d threads released, max concurrent: %d",
+                report.threadActivity.add(String.format(
+                    "%s: %d threads acquired, %d threads released, max concurrent: %d",
+                    state.name,
                     state.acquiringThreads.size(),
                     state.releasingThreads.size(),
                     state.maxConcurrentAcquires.get()));
@@ -174,7 +175,11 @@ public class SemaphoreMisuseDetector {
         final java.util.List<String> permitLeaks = new java.util.ArrayList<>();
         final java.util.List<String> overReleases = new java.util.ArrayList<>();
         final java.util.List<String> unreleasedPermits = new java.util.ArrayList<>();
-        final Map<String, String> threadActivity = new ConcurrentHashMap<>();
+        /**
+         * One line per semaphore object, named but not keyed by the name: two semaphores may
+         * share a name, and filed under it the second one's line overwrote the first's (#789).
+         */
+        final java.util.List<String> threadActivity = new java.util.ArrayList<>();
 
         /**
          * Check if any issues were detected.
@@ -217,8 +222,8 @@ public class SemaphoreMisuseDetector {
 
             if (!threadActivity.isEmpty()) {
                 sb.append("  Thread Activity:\n");
-                for (Map.Entry<String, String> entry : threadActivity.entrySet()) {
-                    sb.append("    - ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+                for (String activity : threadActivity) {
+                    sb.append("    - ").append(activity).append("\n");
                 }
             }
 

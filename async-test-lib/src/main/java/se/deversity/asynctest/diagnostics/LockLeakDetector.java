@@ -168,8 +168,9 @@ public class LockLeakDetector {
 
             // Track thread participation
             if (!state.acquiringThreads.isEmpty()) {
-                report.threadActivity.put(state.name, String.format(
-                    "%d threads acquired, %d threads released, max hold: %dms",
+                report.threadActivity.add(String.format(
+                    "%s: %d threads acquired, %d threads released, max hold: %dms",
+                    state.name,
                     state.acquiringThreads.size(),
                     state.releasingThreads.size(),
                     state.maxHoldTimeMs.get()));
@@ -187,7 +188,11 @@ public class LockLeakDetector {
         final java.util.List<String> lockLeaks = new java.util.ArrayList<>();
         final java.util.List<String> heldLocks = new java.util.ArrayList<>();
         final java.util.List<String> excessiveHoldTimes = new java.util.ArrayList<>();
-        final Map<String, String> threadActivity = new ConcurrentHashMap<>();
+        /**
+         * One line per lock object, named but not keyed by the name: two locks may
+         * share a name, and filed under it the second one's line overwrote the first's (#789).
+         */
+        final java.util.List<String> threadActivity = new java.util.ArrayList<>();
 
         /**
          * Check if any issues were detected.
@@ -230,8 +235,8 @@ public class LockLeakDetector {
 
             if (!threadActivity.isEmpty()) {
                 sb.append("  Thread Activity:\n");
-                for (Map.Entry<String, String> entry : threadActivity.entrySet()) {
-                    sb.append("    - ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+                for (String activity : threadActivity) {
+                    sb.append("    - ").append(activity).append("\n");
                 }
             }
 

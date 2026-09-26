@@ -283,7 +283,7 @@ class CacheConcurrencyDetectorTest {
 
         assertNotNull(report);
         assertFalse(report.threadActivity.isEmpty());
-        assertTrue(report.threadActivity.get("threaded-cache").contains("reader"));
+        assertTrue(report.threadActivity.stream().filter(a -> a.startsWith("threaded-cache: ")).findFirst().orElse("").contains("reader"));
     }
 
     /**
@@ -341,5 +341,25 @@ class CacheConcurrencyDetectorTest {
         assertTrue(detector.analyze().hasIssues(),
                 "a HashMap read and written as a cache is the read/write race this detector "
                         + "exists for, and widening the thread-safe set must not cover it");
+    }
+
+    /**
+     * Two caches may share a name. Each keeps its own thread-activity line; filed under the name,
+     * the second cache's line overwrote the first's (#789).
+     */
+    @Test
+    void twoCachesWithTheSameNameEachKeepTheirThreadActivity() {
+        Map<String, String> read = new HashMap<>();
+        Map<String, String> written = new HashMap<>();
+        detector.registerCache(read, "users");
+        detector.registerCache(written, "users");
+        detector.recordGet(read, "users", "k");
+        detector.recordPut(written, "users", "k", "v");
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("users: 1 reader threads, 0 writer threads"),
+                "the read cache's line survives beside the written cache's: " + report);
+        assertTrue(report.contains("users: 0 reader threads, 1 writer threads"),
+                "the written cache's line survives beside the read cache's: " + report);
     }
 }

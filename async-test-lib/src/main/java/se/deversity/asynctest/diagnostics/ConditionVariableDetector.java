@@ -614,10 +614,10 @@ public class ConditionVariableDetector {
         }
 
         if (state.awaitCount > 0 || !state.signallingThreads.isEmpty()) {
-            report.threadActivity.put(state.name, String.format(
-                "%d awaits (%d timed out, %d abandoned in an earlier round), %d signalling threads, "
-                    + "%d signals, %d signalAll",
-                state.awaitCount, state.timedOutAwaits, state.abandonedAwaits,
+            report.threadActivity.add(String.format(
+                "%s: %d awaits (%d timed out, %d abandoned in an earlier round), "
+                    + "%d signalling threads, %d signals, %d signalAll",
+                state.name, state.awaitCount, state.timedOutAwaits, state.abandonedAwaits,
                 state.signallingThreads.size(),
                 state.signalCount,
                 state.signalAllCount));
@@ -645,7 +645,11 @@ public class ConditionVariableDetector {
          * awaits abandoned in an earlier round (#666).
          */
         final java.util.List<String> unconfirmedWaits = new java.util.ArrayList<>();
-        final Map<String, String> threadActivity = new ConcurrentHashMap<>();
+        /**
+         * One line per condition object, named but not keyed by the name: two conditions may
+         * share a name, and filed under it the second one's line overwrote the first's (#789).
+         */
+        final java.util.List<String> threadActivity = new java.util.ArrayList<>();
 
         /**
          * Check if any issues were detected.
@@ -700,8 +704,8 @@ public class ConditionVariableDetector {
 
             if (!threadActivity.isEmpty()) {
                 sb.append("  Thread Activity:\n");
-                for (Map.Entry<String, String> entry : threadActivity.entrySet()) {
-                    sb.append("    - ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+                for (String activity : threadActivity) {
+                    sb.append("    - ").append(activity).append("\n");
                 }
             }
 

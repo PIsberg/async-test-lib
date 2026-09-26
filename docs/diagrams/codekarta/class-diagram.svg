@@ -1994,7 +1994,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3256.0" y="1005.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">knownPoolThreadIds: Set&lt;Lo…</text>
   <text x="3256.0" y="1020.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pooledGetIssues: List&lt;Stri…</text>
   <text x="3256.0" y="1035.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pooledSetIssues: List&lt;Stri…</text>
-  <text x="3256.0" y="1050.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">accessingThreads: Map&lt;Stri…</text>
+  <text x="3256.0" y="1050.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">accessingThreads: Map&lt;Iden…</text>
   <line x1="3248.0" y1="1064.0" x2="3428.0" y2="1064.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3256.0" y="1077.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerPoolThread(Thread)…</text>
   <text x="3256.0" y="1092.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordGet(InheritableThrea…</text>

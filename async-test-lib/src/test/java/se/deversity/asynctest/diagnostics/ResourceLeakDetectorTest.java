@@ -106,7 +106,7 @@ public class ResourceLeakDetectorTest {
         
         assertNotNull(report);
         assertFalse(report.threadActivity.isEmpty(), "Should track thread activity");
-        assertTrue(report.threadActivity.get("multi-thread-resource").contains("2 threads"),
+        assertTrue(report.threadActivity.stream().filter(a -> a.startsWith("multi-thread-resource: ")).findFirst().orElse("").contains("2 threads"),
                    "Should report 2 threads");
     }
 
@@ -167,5 +167,27 @@ public class ResourceLeakDetectorTest {
         public void close() throws Exception {
             // Mock implementation
         }
+    }
+
+    /**
+     * Two resources may share a name. Each keeps its own thread-activity line; filed under the
+     * name, the second resource's line overwrote the first's (#789).
+     */
+    @Test
+    void twoResourcesWithTheSameNameEachKeepTheirThreadActivity() {
+        ResourceLeakDetector detector = new ResourceLeakDetector();
+        Object closed = new Object();
+        Object leaked = new Object();
+        detector.registerResource(closed, "conn", "Connection");
+        detector.registerResource(leaked, "conn", "Connection");
+        detector.recordResourceOpened(closed, "conn");
+        detector.recordResourceClosed(closed, "conn");
+        detector.recordResourceOpened(leaked, "conn");
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("conn: Connection: 1 threads opened, 1 threads closed, opens: 1, closes: 1"),
+                "the closed resource's line survives beside the leaked one's: " + report);
+        assertTrue(report.contains("conn: Connection: 1 threads opened, 0 threads closed, opens: 1, closes: 0"),
+                "the leaked resource's line survives beside the closed one's: " + report);
     }
 }

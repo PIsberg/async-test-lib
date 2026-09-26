@@ -151,6 +151,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were filed under the client's name, so two clients registered under one name overwrote each
   other's and the report showed only one. Each client object now gets its own line, still printed
   under its name.
+- **Seven more detectors keep one activity line per tracked object (#789).** CacheConcurrency,
+  ConditionVariable, LockLeak, ResourceLeak, SemaphoreMisuse and StringBuilder tracked each object
+  by identity but filed its activity line under the object's name, so two objects sharing a name
+  overwrote each other's line. InheritableThreadLocalMisuse keyed its thread count itself by name,
+  so two variables sharing a name were counted as one. Each object now gets its own line, still
+  printed under its name.
 - **`FalseSharingDetector` compares thread sets within one round (#765).** Behind its experimental
   flag it compared each field's threads over the whole run, so with virtual threads two threads on
   one field in one round and two others on the adjacent field in a later round were reported as a

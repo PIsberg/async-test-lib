@@ -118,7 +118,7 @@ public class SemaphoreMisuseDetectorTest {
         
         assertNotNull(report);
         assertFalse(report.threadActivity.isEmpty(), "Should track thread activity");
-        assertTrue(report.threadActivity.get("multi-thread-pool").contains("3 threads"),
+        assertTrue(report.threadActivity.stream().filter(a -> a.startsWith("multi-thread-pool: ")).findFirst().orElse("").contains("3 threads"),
                    "Should report 3 threads participated");
     }
 
@@ -165,5 +165,28 @@ public class SemaphoreMisuseDetectorTest {
         assertNotNull(reportStr);
         assertTrue(reportStr.contains("SEMAPHORE MISUSE DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Permit Leaks"), "Report should mention permit leaks");
+    }
+
+    /**
+     * Two semaphores may share a name. Each keeps its own thread-activity line; filed under the
+     * name, the second semaphore's line overwrote the first's (#789).
+     */
+    @Test
+    void twoSemaphoresWithTheSameNameEachKeepTheirThreadActivity() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore balanced = new Semaphore(2);
+        Semaphore held = new Semaphore(2);
+        detector.registerSemaphore(balanced, "pool", 2);
+        detector.registerSemaphore(held, "pool", 2);
+        detector.recordAcquire(balanced, "pool");
+        detector.recordRelease(balanced, "pool");
+        detector.recordAcquire(held, "pool");
+        detector.recordAcquire(held, "pool");
+
+        String report = detector.analyze().toString();
+        assertTrue(report.contains("pool: 1 threads acquired, 1 threads released, max concurrent: 1"),
+                "the balanced semaphore's line survives beside the held one's: " + report);
+        assertTrue(report.contains("pool: 1 threads acquired, 0 threads released, max concurrent: 2"),
+                "the held semaphore's line survives beside the balanced one's: " + report);
     }
 }
