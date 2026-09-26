@@ -74,7 +74,7 @@ class HttpClientRecordPathDogfoodTest {
                 shortRounds++;
             }
             requests += seen;
-            threads += sum(report.threadActivity.values(), THREADS_ACTIVE);
+            threads += sum(report.threadActivity, THREADS_ACTIVE);
         }
 
         assertEquals(EXPECTED_REQUESTS, requests,

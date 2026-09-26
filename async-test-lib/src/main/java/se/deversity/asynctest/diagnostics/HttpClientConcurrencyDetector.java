@@ -244,9 +244,9 @@ public class HttpClientConcurrencyDetector {
 
             // Track thread activity
             if (!client.activeThreads.isEmpty()) {
-                report.threadActivity.put(client.name, String.format(
-                    "%d threads made HTTP requests",
-                    client.activeThreads.size()));
+                report.threadActivity.add(String.format(
+                    "%s: %d threads made HTTP requests",
+                    client.name, client.activeThreads.size()));
             }
         }
 
@@ -261,7 +261,11 @@ public class HttpClientConcurrencyDetector {
         final List<String> pendingRequests = new ArrayList<>();
         final List<String> uncompletedRequests = new ArrayList<>();
         final List<String> poolExhaustionRisk = new ArrayList<>();
-        final Map<String, String> threadActivity = new ConcurrentHashMap<>();
+        /**
+         * One line per client object, named but not keyed by the name: two clients may share a
+         * name, and filed under it the second client's line overwrote the first's (#767).
+         */
+        final List<String> threadActivity = new ArrayList<>();
 
         /**
          * Check if any issues were detected.
@@ -306,8 +310,8 @@ public class HttpClientConcurrencyDetector {
 
             if (!threadActivity.isEmpty()) {
                 sb.append("  Thread Activity:\n");
-                for (Map.Entry<String, String> entry : threadActivity.entrySet()) {
-                    sb.append("    - ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+                for (String activity : threadActivity) {
+                    sb.append("    - ").append(activity).append("\n");
                 }
             }
 
