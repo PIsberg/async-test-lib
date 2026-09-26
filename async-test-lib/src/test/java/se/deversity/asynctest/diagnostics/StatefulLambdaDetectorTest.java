@@ -126,6 +126,81 @@ public class StatefulLambdaDetectorTest {
         assertTrue(d.analyze().violations.get(0).contains("counter"));
     }
 
+    // #769: the lockset was kept per lambda, so two captures each guarded by its own lock
+    // intersected to nothing and read as a race.
+    @Test
+    void twoCapturesEachGuardedByItsOwnLockAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] hits = {0};
+        int[] misses = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            synchronized (hits) {
+                hits[0]++;
+                d.recordCapturedMutation(task[0], "hits", hits, Thread.currentThread());
+            }
+            synchronized (misses) {
+                misses[0]++;
+                d.recordCapturedMutation(task[0], "misses", misses, Thread.currentThread());
+            }
+        };
+        onTwoThreads(task[0]);
+
+        assertFalse(d.analyze().hasIssues(),
+                "each capture held its own lock at every mutation: " + d.analyze().violations);
+    }
+
+    @Test
+    void oneGuardedAndOneUnguardedCaptureIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] hits = {0};
+        int[] misses = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            synchronized (hits) {
+                hits[0]++;
+                d.recordCapturedMutation(task[0], "hits", hits, Thread.currentThread());
+            }
+            misses[0]++;
+            d.recordCapturedMutation(task[0], "misses", misses, Thread.currentThread());
+        };
+        onTwoThreads(task[0]);
+
+        assertTrue(d.analyze().hasIssues(), "misses was mutated with no lock held");
+        assertTrue(d.analyze().violations.get(0).contains("misses"));
+    }
+
+    @Test
+    void oneCaptureGuardedByADifferentLockOnEachThreadIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Object lockA = new Object();
+        Object lockB = new Object();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            Object lock = "A".equals(Thread.currentThread().getName()) ? lockA : lockB;
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+                synchronized (lock) {
+                    counter[0]++;
+                    d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+                }
+            }
+        };
+        Thread a = new Thread(task[0], "A");
+        Thread b = new Thread(task[0], "B");
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+
+        assertTrue(d.analyze().hasIssues(),
+                "lock A on one thread and lock B on the other serialise nothing");
+        assertTrue(d.analyze().violations.get(0).contains("counter"));
+    }
+
     private static void onTwoThreads(Runnable body) throws InterruptedException {
         Thread a = new Thread(body);
         Thread b = new Thread(body);

@@ -24,8 +24,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Two kinds of mutation are not the race and are not reported. Mutation of state that is
  * thread-safe by type, when the caller names the captured object through
  * {@link #recordCapturedMutation(Object, String, Object, Thread)}, and mutation that one lock
- * covered every time. The lock the detector can see is the captured object's own monitor (or
- * the lambda's, when no object is named), a lock declared with
+ * covered every time. The lock is judged per captured object, so two captures each guarded by
+ * its own lock are both covered. The lock the detector can see is the captured object's own
+ * monitor (or the lambda's, when no object is named), a lock declared with
  * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
  * the finding standing.
  *
@@ -45,17 +46,30 @@ import org.jspecify.annotations.Nullable;
 public class StatefulLambdaDetector {
 
     /**
-     * Per-lambda bookkeeping. The inherited lockset covers every mutation of state that is not
-     * thread-safe by type, across all of the lambda's captures together.
+     * Per-lambda bookkeeping. The lockset is kept per captured object rather than per lambda, so
+     * two captures each guarded by a different lock are two consistently locked captures, not one
+     * capture with no common lock (#769). A mutation that names no object is tracked against the
+     * lambda itself, so all of a lambda's unnamed captures still share one lockset.
      */
-    private static class LambdaState extends SelfGuard.TrackedInstance {
+    private static class LambdaState {
         final String      name;
         final Set<Long>   executingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> executingThreadNames = ConcurrentHashMap.newKeySet();
         final List<String> mutationEvents      = new CopyOnWriteArrayList<>();
+        final Map<IdentityKey, CaptureGuard> captures = new ConcurrentHashMap<>();
 
         LambdaState(String name) { this.name = name; }
+
+        boolean sawUnguardedSharing() {
+            for (CaptureGuard c : captures.values()) {
+                if (c.sawUnguardedSharing()) return true;
+            }
+            return false;
+        }
     }
+
+    /** The lockset and round verdict for one captured object of one lambda. */
+    private static final class CaptureGuard extends SelfGuard.TrackedInstance { }
 
     private final Map<IdentityKey, LambdaState> lambdas = new ConcurrentHashMap<>();
 
@@ -120,8 +134,11 @@ public class StatefulLambdaDetector {
                 new IdentityKey(lambda),
                 id -> new LambdaState(lambda.getClass().getSimpleName()
                         + "@" + System.identityHashCode(lambda)));
+        Object tracked = capturedState != null ? capturedState : lambda;
+        CaptureGuard guard = s.captures.computeIfAbsent(
+                new IdentityKey(tracked), k -> new CaptureGuard());
         // Probed on the mutating thread while it is still inside whatever region guards it.
-        s.noteAccess(capturedState != null ? capturedState : lambda, true, thread.threadId());
+        guard.noteAccess(tracked, true, thread.threadId());
         s.mutationEvents.add(thread.getName() + " → " + label);
     }
 

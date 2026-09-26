@@ -81,6 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to every recorded access. The map detector keys sites by map identity and key equality instead of
   strings, LazyInitRace keys a field by its owner, and SynchronizedNonFinal reports a changing
   monitor only when the owner is recorded.
+- **`StatefulLambdaDetector` judges the lock per captured object** (#769). The lockset was kept per
+  lambda, so a lambda mutating two captures, each under its own lock, intersected the two locks to
+  nothing and was reported. A capture mutated with no lock, or under a different lock on each
+  thread, is still reported.
 - **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
   LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
   OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by
