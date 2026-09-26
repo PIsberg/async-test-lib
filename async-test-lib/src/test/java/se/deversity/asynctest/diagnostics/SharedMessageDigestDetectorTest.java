@@ -943,6 +943,127 @@ public class SharedMessageDigestDetectorTest {
                 "the lockset restarts at the hand-off, and an unguarded use after it empties it again");
     }
 
+    // ---- A late use falls back one hand-off at a time (#792) -----------------------------------
+    //
+    // Owner 0 sets the digest up unlocked and hands it on through a woven latch; owners 1 to n
+    // take it in turn the same way. A late thread is ordered after one owner's hand-off only,
+    // through that owner's latch, and runs once the last owner is done, through a latch the model
+    // never sees. It may overlap the owners after the one it is ordered after, and nothing before
+    // them, so only their locks count against it. Falling back to the whole window instead
+    // reported owner 0's unlocked set-up, which every access after it is ordered after.
+
+    /**
+     * {@return whether the chain of owners reports}
+     *
+     * @param owners      how many owners follow the unlocked one
+     * @param unguarded   the owner, 1 to {@code owners}, that uses the digest unlocked, 0 for none
+     * @param after       the owner whose hand-off the late thread is ordered after
+     * @param lateGuarded whether the late thread holds the digest's monitor
+     */
+    private static boolean chainReported(int owners, int unguarded, int after, boolean lateGuarded)
+            throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch[owners + 1];
+        for (int i = 0; i <= owners; i++) {
+            handedOver[i] = new java.util.concurrent.CountDownLatch(1);
+        }
+        var lastDone = new java.util.concurrent.CountDownLatch(1);
+        Runnable[] bodies = new Runnable[owners + 2];
+        bodies[0] = setUpAndHandOver(md, handedOver[0]);
+        for (int i = 1; i <= owners; i++) {
+            int owner = i;
+            bodies[owner] = () -> {
+                awaitWoven(handedOver[owner - 1]);
+                if (owner == unguarded) {
+                    use(md);
+                } else {
+                    useGuarded(md);
+                }
+                se.deversity.asynctest.AgentConcurrencyUtilHooks.countDown(handedOver[owner]);
+                if (owner == owners) {
+                    lastDone.countDown();
+                }
+            };
+        }
+        bodies[owners + 1] = () -> {
+            awaitWoven(handedOver[after]);
+            await(lastDone);
+            if (lateGuarded) {
+                useGuarded(md);
+            } else {
+                use(md);
+            }
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, bodies);
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void aGuardedUseOrderedAfterAnEarlierHandOffOnlyIsNotSharing() throws Exception {
+        assertFalse(chainReported(2, 0, 0, true),
+                "the late use is ordered after the unlocked set-up and may overlap only guarded uses");
+    }
+
+    @Test
+    void aGuardedUseThatMayOverlapAnUnguardedOwnerInTheChainStillFires() throws Exception {
+        assertTrue(chainReported(2, 1, 0, true),
+                "the late use is not ordered after owner 1, which used the digest unlocked");
+    }
+
+    @Test
+    void anUnguardedUseOrderedAfterAnEarlierHandOffOnlyStillFires() throws Exception {
+        assertTrue(chainReported(2, 0, 0, false),
+                "the late use holds no lock and may overlap owners 1 and 2");
+    }
+
+    @Test
+    void aChainLongerThanTheHandOffsKeptFallsBackSoundly() throws Exception {
+        // More hand-offs than one window keeps apart. The first is kept, so a late use ordered
+        // after it alone is still judged precisely; the later ones merge, which may only widen
+        // what a late use falls back to, never drop an owner it may overlap.
+        assertFalse(chainReported(12, 0, 0, true),
+                "the late use is ordered after the unlocked set-up and may overlap only guarded uses");
+        assertTrue(chainReported(12, 10, 8, true),
+                "the late use is not ordered after owner 10, which used the digest unlocked");
+    }
+
+    // ---- A use recorded for another thread carries no clock (#792) -----------------------------
+    //
+    // The recording API names the thread an access is attributed to, and the caller need not be
+    // that thread. The caller's clock says nothing about the attributed thread, and that thread's
+    // clock at the access is not available: read later, it may already know an edge made after
+    // the access, which would order the access after something it raced with. So such an access
+    // carries no clock, never takes the digest over, and the unlocked set-up before it still
+    // counts. The same use recorded for the caller itself takes over.
+
+    private static boolean attributedHandOffReported(boolean attributedToCaller) throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        Thread elsewhere = new Thread(() -> { }, "attributed");
+        Runnable successor = () -> {
+            awaitWoven(handedOver);
+            synchronized (md) {
+                AsyncTestContext.sharedMessageDigestDetector().recordAccess(md, "sha256",
+                        attributedToCaller ? Thread.currentThread() : elsewhere);
+                md.update((byte) 1);
+            }
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, setUpAndHandOver(md, handedOver), successor);
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void aUseRecordedForAnotherThreadNeverTakesTheDigestOver() throws Exception {
+        assertTrue(attributedHandOffReported(false),
+                "a use recorded for another thread has no clock, so the hand-off is not seen");
+        assertFalse(attributedHandOffReported(true),
+                "the same use recorded for the caller is ordered after the set-up and takes over");
+    }
+
     private static void await(java.util.concurrent.CountDownLatch latch) {
         try {
             latch.await();

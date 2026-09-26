@@ -245,7 +245,8 @@ model orders after the previous thread's, through a latch, a queue or map hand-o
 instead of sharing it. Two threads using it at once still report, edge or no edge. A take-over
 also starts the lockset again, so unlocked set-up before the hand-off does not count against
 locked use after it, as long as every later access is ordered after the hand-off; one that is
-not brings the earlier accesses back into the lockset.
+not brings back the accesses since the latest earlier hand-off it is ordered after, or every
+access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
 tier is one a reader has to rank alone. The split is 37 VERDICT, 73 PROMPT, 29 FACT and 7

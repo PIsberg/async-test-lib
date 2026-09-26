@@ -233,6 +233,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   may overlap the unlocked ones and brings them back. Pinned both ways in
   `SharedMessageDigestDetectorTest`: a guarded use reached through an unseen edge, and an unguarded
   use after the hand-off, still fire.
+- **A late access after two ordered hand-offs no longer brings back the whole window (#792).** When
+  an instance went from A to B to D through edges the model sees, an access ordered after A's
+  hand-off but not after B's fell back to every access of the round, so A's unlocked set-up, which
+  that access is ordered after, reported it beside guarded uses by B and D. `SelfGuard` now keeps
+  the hand-offs of a window, at most eight, and such an access falls back to the latest one it is
+  ordered after; past eight a new hand-off absorbs the one before it, which can only add a
+  finding. A late access that may overlap an unguarded owner still reports. Also pinned: the same
+  lockset answers `AtomicNonAtomicUpdateDetector`, so one lock before an ordered hand-off and
+  another after it are not a lost update, while the same two locks with no edge still report;
+  and an access recorded for a thread other than the caller carries no clock and never takes an
+  instance over, because that thread's clock read at the record may already know an edge made
+  after the access.
 - **The lock-aware detectors no longer count a read-only round as sharing (#787).** `SelfGuard`'s
   per-round verdict did not tell reads from writes, so two threads reading with no lock in one round
   latched it, and a mutation in a different round, which never overlapped the reads, completed a

@@ -204,4 +204,60 @@ public class AtomicNonAtomicUpdateDetectorTest {
         assertTrue(detectorOf(ctx).analyze().hasIssues(),
             "two locks in one round exclude nothing from each other");
     }
+
+    // ---- An ordered hand-off inside one round (#792) -------------------------------------------
+    //
+    // SelfGuard starts its lockset again where the happens-before model orders a thread's access
+    // after the previous owner's (#746), and sawUnguardedRound() reads that lockset. The edge
+    // orders every get and set before it ahead of every one after it, so no set can land between
+    // a get and its set on the other side: one lock before the hand-off and another after it lose
+    // no update. With no edge the model sees, the same two locks are two locks in one round.
+
+    /**
+     * {@return whether a get+set under one lock, then a get+set under another after a latch,
+     * reports}
+     *
+     * @param ordered whether the latch goes through the woven hooks, the edge the model sees
+     */
+    private static boolean handOffBetweenTwoLocksReported(boolean ordered) throws Exception {
+        var ctx = updateContext();
+        AtomicInteger counter = new AtomicInteger();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        Runnable first = getThenSetUnder(new Object(), counter);
+        Runnable second = getThenSetUnder(new Object(), counter);
+        ctx.markInvocationStart();
+        runWorkers(ctx, () -> {
+            first.run();
+            if (ordered) {
+                se.deversity.asynctest.AgentConcurrencyUtilHooks.countDown(handedOver);
+            } else {
+                handedOver.countDown();
+            }
+        }, () -> {
+            try {
+                if (ordered) {
+                    se.deversity.asynctest.AgentConcurrencyUtilHooks.await(handedOver);
+                } else {
+                    handedOver.await();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            second.run();
+        });
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void aDifferentLockOnEachSideOfAnOrderedHandOffIsNotALostUpdate() throws Exception {
+        assertFalse(handOffBetweenTwoLocksReported(true),
+            "every get+set before the hand-off happens before every one after it");
+    }
+
+    @Test
+    void aDifferentLockOnEachSideOfAHandOffTheModelNeverSawStillFires() throws Exception {
+        assertTrue(handOffBetweenTwoLocksReported(false),
+            "nothing orders the second get+set after the first, and their locks differ");
+    }
 }
