@@ -76,6 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receiver and returns it, so a private `StringBuilder`-built lock read as a literal and was pinned
   in the pool as a side effect. It now interns a copy, the fix `BoxedPrimitiveLock` already had. A
   literal, and a string the code interned itself, still report.
+- **`DaemonThreadHygieneDetector` reads the daemon flag when it analyses (#760).** It judged a
+  hand-recorded thread by the flag it had at `recordThread`, but `setDaemon` may run between the
+  recording and `start()`, the order the detector's own usage example shows. A thread made daemon
+  after recording was reported as non-daemon, and one made non-daemon after recording was missed.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
