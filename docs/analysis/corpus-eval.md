@@ -1878,6 +1878,100 @@ library declares - so a mismatched pair fails by *substituting nothing*, with no
 Same defect as a stale library, arriving from the other side. Verified the same way, by touching a
 class under `async-test-agent/target/classes`.
 
+## The idiom lane: correct user code, with every detector on
+
+Every lane above measures either a library class or a pair written around one detector. None of
+them measures a body shaped like a user's own test, and that is where the false positives fixed for
+1.12.3 were found: a throwaway probe wrote the common correct idioms with `detectAll = true` and the
+agent attached, and detectors reported on an object handed through a `BlockingQueue`, on data
+published by a volatile flag, on a guarded `wait` loop, on a `synchronized` check-then-act. The
+probe was not kept, so nothing would have noticed any of them coming back. The `idioms` lane
+(`CorpusIdiomLaneTest`) is that probe, kept and gated.
+
+**How a row works.** Each correct idiom is written the way a user writes it, and is followed by its
+broken twin: the same code with the synchronization removed or put in the wrong place. The agent is
+attached as `fields=true,collections=true` with Surefire's own classes excluded, as in lane one,
+and bodies record nothing, except in the rows `Corpus.idiomManualApiRows()` names with a reason:
+the idiom is invisible to every woven call site there, because the thread doing half of it is one
+the runner did not start and the agent drops (#500), or because `ThreadLocalRandom` and
+`java.util.Random` are not woven. `IdiomRowPremise` fails the lane if any other body touches
+`AsyncTestContext`, and fails a named row whose body no longer does.
+
+**The bar on a correct row** is stricter than either pair lane's:
+
+- nothing at `FACT` tier or above from any detector. A graded detector's finding is read at its
+  evidence cap, the most the runner's clamp lets it claim, because a listener sees no grade;
+- nothing at any tier from the detector the row names. The seed false positives were mostly
+  `PROMPT`-tier `AtomicityValidator` findings, which the tier bar alone would let back in;
+- a row that pins a severity expects a note instead: the shared `java.util.Random` row must draw
+  exactly the `ADVISORY`/`LOW` contention note from `SharedRandomDetector`, and nothing else.
+
+A twin must wake its named detector at its pinned severity. What other detectors say below `FACT` on
+a correct row is printed in the lane report rather than asserted.
+
+**What it found on its first run.** One seed row still drew a finding on the integration branch:
+a single writer bumping a volatile with a read-then-write while the other threads read it drew a
+`PROMPT`/`HIGH` "mixed read/write compound access" from `AtomicityValidator`.
+`RaceConditionDetector` already skips a volatile with one writer, so the two detectors that claim
+one model disagreed about the same field. The fix is its own commit, with
+`OrderedPublicationTest.aSingleWriterVolatileIsNotAFinding` as the failing-first test; two writers
+still report, which keeps `volatile count++` a finding.
+
+Two first drafts of rows measured nothing and were rewritten before they were pinned, which is the
+reason every row now writes non-constant values and builds its shared object per round. An
+`Exchanger` row whose parcels all held the constant `7` was silent through the one-constant-store
+excuse rather than through any ordering. A queue hand-off twin over one `ArrayDeque` shared by the
+whole run was silent on `AtomicityValidator`, because orders left in the deque were read in later
+rounds and excused as corroborated constructions. With a deque per round it still reports the
+orders in some runs and not others, depending on whether a poll caught an offer, so that twin pins
+`SharedCollectionDetector`, which reports the unguarded deque in every run.
+
+Run L (JDK 26, Windows 11, 16 cores), threads=6, invocations=40:
+
+| Row | Expected | Named detector | Named detector said | FACT or above, any detector |
+|---|---|---|---|---|
+| `idiom_blockingQueue_handsOffAMutableObject` | correct: silent | `AtomicityValidator` | silent | - |
+| `idiom_blockingQueue_handsOffThroughAPlainDeque` | twin: fires | `SharedCollectionDetector` | PROMPT/HIGH | - |
+| `idiom_volatileFlag_publishesPlainData` | correct: silent | `AtomicityValidator` | silent | - |
+| `idiom_volatileFlag_plainFlagPublishesNothing` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_threadStartJoin_ordersTheChildsWrite` | correct: silent | `RaceConditionDetector` | silent | - |
+| `idiom_threadStartJoin_readsBeforeTheJoin` | twin: fires | `RaceConditionDetector` | PROMPT/HIGH | - |
+| `idiom_atomicInteger_sharedCounter` | correct: silent | `AtomicityValidator` | silent | - |
+| `idiom_atomicInteger_plainCounterLosesUpdates` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_singleWriter_publishesThroughAVolatile` | correct: silent | `AtomicityValidator` | silent | - |
+| `idiom_singleWriter_everyThreadWrites` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_concurrentHashMap_publishesAFreshlyBuiltObject` | correct: silent | `AtomicityValidator` | silent | - |
+| `idiom_concurrentHashMap_mutatedAfterThePut` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_threadConfined_twoObjectsPerThread` | correct: silent | `AtomicityValidator` | silent | - |
+| `idiom_threadConfined_twoObjectsSharedByEveryThread` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_messageDigestPool_checkedOutThroughAQueue` | correct: silent | `SharedMessageDigestDetector` | silent | - |
+| `idiom_messageDigestPool_peekedByEveryThread` | twin: fires | `SharedMessageDigestDetector` | VERDICT/HIGH | `SharedMessageDigestDetector` VERDICT/HIGH |
+| `idiom_synchronizedList_iterateAndAdd` | correct: silent | `SharedCollectionDetector` | silent | - |
+| `idiom_synchronizedList_iterateAndAddUnguarded` | twin: fires | `SharedCollectionDetector` | PROMPT/HIGH | - |
+| `idiom_synchronizedCheckThenAct_onAConcurrentHashMap` | correct: silent | `NonAtomicConcurrentMapUpdateDetector` | silent | - |
+| `idiom_synchronizedCheckThenAct_withoutTheMonitor` | twin: fires | `NonAtomicConcurrentMapUpdateDetector` | VERDICT/HIGH | `NonAtomicConcurrentMapUpdateDetector` VERDICT/HIGH |
+| `idiom_threadLocalRandom_currentOnEveryThread` | correct: silent | `ThreadLocalRandomMisuseDetector` | silent | - |
+| `idiom_threadLocalRandom_capturedByOneThread` | twin: fires | `ThreadLocalRandomMisuseDetector` | PROMPT/MEDIUM | - |
+| `idiom_guardedWait_loopsOnTheCondition` | correct: silent | `MissedSignalDetector` | silent | - |
+| `idiom_guardedWait_waitsWithNoCondition` | twin: fires | `MissedSignalDetector` | PROMPT/CRITICAL | - |
+| `idiom_countDownLatch_publishesBeforeTheCountDown` | correct: silent | `AtomicityValidator` | silent | - |
+| `idiom_countDownLatch_readersSkipTheAwait` | twin: fires | `AtomicityValidator` | PROMPT/HIGH | - |
+| `idiom_sharedRandom_drawnByEveryThread` | correct: LOW note | `SharedRandomDetector` | ADVISORY/LOW | - |
+| `idiom_sharedRandom_splittableDrawnByEveryThread` | twin: fires | `SharedSplittableRandomDetector` | VERDICT/HIGH | `SharedSplittableRandomDetector` VERDICT/HIGH |
+
+The "FACT or above" column is empty on every correct row. The only findings at that tier are on
+twins, from the `VERDICT` detectors whose twin they are. Below `FACT`, no detector other than a
+row's named one spoke on any row in this run, correct or twin. In other runs `AtomicityValidator`
+also reports on two twins, the deque hand-off and the captured `ThreadLocalRandom`, both of which
+share an object with no ordering; neither is a correct row, so neither moves a gate.
+
+**What it does not measure.** A correct row that other detectors question below `FACT` passes, and
+only the report says so. The idioms are the ones the probe and the model's documented limits named,
+not a survey of user code, so a clean lane is a floor under those shapes and no statement about any
+other. Rows whose idiom runs half on a thread the runner did not start are measured through the
+manual API, which tests the model and not the agent: until the agent can attribute such a thread's
+accesses to a round (#500), the woven path cannot see those idioms at all.
+
 ## Reproducing it
 
 ```bash

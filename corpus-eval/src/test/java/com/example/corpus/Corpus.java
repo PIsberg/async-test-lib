@@ -4271,6 +4271,243 @@ final class Corpus {
      * not a defect.
      */
     private static final List<RecordingSubject> IDIOM_SUBJECTS = List.of(
+            // --- Seed rows: the idioms the 1.12.3 false positives were found in, each fixed on
+            //     the way to this lane and each now held there.
+
+            new RecordingSubject("idiom_blockingQueue_handsOffAMutableObject", JDK,
+                    "java.util.concurrent.LinkedBlockingQueue",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the producer writes the order before put() and the consumer writes it after "
+                            + "take(). A BlockingQueue's javadoc names that as a happens-before "
+                            + "edge, so the two threads' writes to one object are ordered and the "
+                            + "consumer owns what it took"),
+
+            new RecordingSubject("idiom_blockingQueue_handsOffThroughAPlainDeque", JDK,
+                    "java.util.ArrayDeque",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same hand-off through an ArrayDeque, offered to and polled from by six "
+                            + "threads with no lock. The deque is the synchronization that was "
+                            + "removed, so the collection detector is the one it must wake. "
+                            + "AtomicityValidator also reports the orders in some runs and not in "
+                            + "others, depending on whether a poll ever caught an offer, so it is "
+                            + "not what this row pins",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_volatileFlag_publishesPlainData", JDK,
+                    IDIOM_LANE + "Mailbox",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one writer per round writes plain data and then a volatile flag, and every "
+                            + "reader reads the flag before the data. The volatile write and the "
+                            + "read that sees it order the data write before every data read"),
+
+            new RecordingSubject("idiom_volatileFlag_plainFlagPublishesNothing", JDK,
+                    IDIOM_LANE + "PlainMailbox",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same code with the flag declared without volatile. Nothing orders the "
+                            + "writer's two writes before any reader's reads, and the flag itself "
+                            + "is written and read by different threads with nothing between",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_threadStartJoin_ordersTheChildsWrite", JDK,
+                    "java.lang.Thread",
+                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the parent writes the input before start() and reads the output after "
+                            + "join(). Thread.start orders the first and Thread.join the second, "
+                            + "which the Java memory model states in so many words"),
+
+            new RecordingSubject("idiom_threadStartJoin_readsBeforeTheJoin", JDK,
+                    "java.lang.Thread",
+                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same child with the parent reading its output before join(). Nothing "
+                            + "orders the child's write against that read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_atomicInteger_sharedCounter", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread calls incrementAndGet on one AtomicInteger, which is the "
+                            + "class's whole purpose. The counter's field is final and its update "
+                            + "is one atomic call"),
+
+            new RecordingSubject("idiom_atomicInteger_plainCounterLosesUpdates", JDK,
+                    IDIOM_LANE + "Hits",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread increments one plain int field: a read and a write from six "
+                            + "threads with no lock, the lost update the detector exists for",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_singleWriter_publishesThroughAVolatile", JDK,
+                    IDIOM_LANE + "Gauge",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread per round bumps a volatile with a read-then-write and the rest "
+                            + "only read it. With a single writer the read-then-write cannot lose "
+                            + "an update, and the volatile publishes each value it writes"),
+
+            new RecordingSubject("idiom_singleWriter_everyThreadWrites", JDK,
+                    IDIOM_LANE + "Gauge",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same read-then-write from every thread. Volatile makes each access "
+                            + "visible and the pair still is not atomic, so two writers lose one "
+                            + "of their updates",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_concurrentHashMap_publishesAFreshlyBuiltObject", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread finishes its object with setters, then puts it, and the next "
+                            + "ticket's thread gets it and reads it. ConcurrentMap's javadoc "
+                            + "orders the put before the get that returns the value"),
+
+            new RecordingSubject("idiom_concurrentHashMap_mutatedAfterThePut", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same object with the setters run after the put that published it. The "
+                            + "map orders only what came before the put, so the reader's reads and "
+                            + "the late writes are unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_threadConfined_twoObjectsPerThread", JDK,
+                    IDIOM_LANE + "Account",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread builds two accounts, moves money between them and drops them. "
+                            + "Two objects of one class on every thread of every round, and none "
+                            + "of them ever reaches a second thread"),
+
+            new RecordingSubject("idiom_threadConfined_twoObjectsSharedByEveryThread", JDK,
+                    IDIOM_LANE + "Account",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same transfer between two accounts every thread shares, with no lock: "
+                            + "two read-then-writes per call from six threads",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_messageDigestPool_checkedOutThroughAQueue", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "six digests in a BlockingQueue, each taken, used and put back. Every digest "
+                            + "reaches many threads over the run and only ever one at a time, "
+                            + "handed over by the queue each time"),
+
+            new RecordingSubject("idiom_messageDigestPool_peekedByEveryThread", JDK,
+                    "java.security.MessageDigest",
+                    DetectorType.SHARED_MESSAGE_DIGEST, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same pool with peek() for take(): every thread updates and drains the "
+                            + "head digest at once, so each hash covers an interleaving of inputs",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_synchronizedList_iterateAndAdd", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every walk and every append of one ArrayList happen inside synchronized on "
+                            + "the list itself, which is the idiom the Collections javadoc "
+                            + "prescribes for iterating a shared list"),
+
+            new RecordingSubject("idiom_synchronizedList_iterateAndAddUnguarded", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same walk and append with no monitor, so an append lands in the middle "
+                            + "of another thread's iteration",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_synchronizedCheckThenAct_onAConcurrentHashMap", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "six threads of a round each run containsKey-then-put on the round's key, "
+                            + "every one inside synchronized on the map. The monitor makes the "
+                            + "pair atomic, so exactly one put wins"),
+
+            new RecordingSubject("idiom_synchronizedCheckThenAct_withoutTheMonitor", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same containsKey-then-put with no monitor. Each call is atomic and the "
+                            + "pair is not, so two threads can both find the key absent",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_threadLocalRandom_currentOnEveryThread", JDK,
+                    "java.util.concurrent.ThreadLocalRandom",
+                    DetectorType.THREAD_LOCAL_RANDOM_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread calls current() and uses what it got on that thread. current() "
+                            + "returns one JVM-wide object, so this is correct even though six "
+                            + "threads hold the same reference"),
+
+            new RecordingSubject("idiom_threadLocalRandom_capturedByOneThread", JDK,
+                    "java.util.concurrent.ThreadLocalRandom",
+                    DetectorType.THREAD_LOCAL_RANDOM_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one thread per round calls current() and the others use its capture. A "
+                            + "thread that never called current() draws from an unseeded state",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("idiom_guardedWait_loopsOnTheCondition", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the notifier sets the condition and calls notifyAll under the monitor, and "
+                            + "every waiter re-tests the condition in a loop around wait(). That "
+                            + "is the form Object.wait's javadoc says a wait must take"),
+
+            new RecordingSubject("idiom_guardedWait_waitsWithNoCondition", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same monitor with the condition taken out: the notifier only notifies "
+                            + "and each waiter waits once, timed. A notify that lands before a "
+                            + "waiter arrives is lost, and that waiter waits unsignalled until "
+                            + "its timeout, which is the missed signal the detector exists for",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("idiom_countDownLatch_publishesBeforeTheCountDown", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the writer writes and then counts down; every reader awaits and then reads. "
+                            + "CountDownLatch's javadoc orders actions before countDown before "
+                            + "actions after a successful await"),
+
+            new RecordingSubject("idiom_countDownLatch_readersSkipTheAwait", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same write and count-down with the readers not awaiting, so nothing "
+                            + "orders the write before their reads",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_sharedRandom_drawnByEveryThread", JDK,
+                    "java.util.Random",
+                    DetectorType.SHARED_RANDOM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread draws from one java.util.Random. Random is thread-safe, so "
+                            + "the only thing worth saying is that its CAS loop is contended, and "
+                            + "the detector says exactly that as a LOW advisory and nothing more",
+                    IssueSeverity.LOW),
+
+            new RecordingSubject("idiom_sharedRandom_splittableDrawnByEveryThread", JDK,
+                    "java.util.SplittableRandom",
+                    DetectorType.SHARED_SPLITTABLE_RANDOM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same draw from one SplittableRandom, whose javadoc says instances are "
+                            + "not thread-safe: the thread-safety Random has is what is missing",
+                    IssueSeverity.HIGH)
     );
 
     /**
@@ -4282,6 +4519,27 @@ final class Corpus {
      * {@code AsyncTestContext} would.
      */
     private static final Map<String, String> IDIOM_MANUAL_API_ROWS = Map.of(
+            "idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
+            "no agent-fed detector models a check-then-act: SharedCollectionDetector sees two "
+                    + "atomic calls on a concurrent map and rightly says nothing, so "
+                    + "NonAtomicConcurrentMapUpdateDetector is told the pair happened",
+            "idiom_synchronizedCheckThenAct_withoutTheMonitor",
+            "the twin of the row above, recording the same pair the same way",
+            "idiom_threadLocalRandom_currentOnEveryThread",
+            "the agent does not weave ThreadLocalRandom.current(), so the obtain and the use "
+                    + "are reported by the body",
+            "idiom_threadLocalRandom_capturedByOneThread",
+            "the twin of the row above, recording the same obtain and use",
+            "idiom_sharedRandom_drawnByEveryThread",
+            "the agent does not weave java.util.Random, so the draw is reported by the body",
+            "idiom_sharedRandom_splittableDrawnByEveryThread",
+            "the twin of the row above, on the SplittableRandom recording API",
+            "idiom_threadStartJoin_ordersTheChildsWrite",
+            "the agent drops accesses on a thread the runner did not start (#500), so the "
+                    + "child's half of the idiom is invisible to it; the body records both "
+                    + "halves to RaceConditionDetector, and the woven start and join are the edges",
+            "idiom_threadStartJoin_readsBeforeTheJoin",
+            "the twin of the row above, recording the same accesses the same way"
     );
 
     /**

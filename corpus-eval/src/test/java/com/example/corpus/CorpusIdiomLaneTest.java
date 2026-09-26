@@ -88,6 +88,602 @@ class CorpusIdiomLaneTest {
         CorpusGates.checkIdiomLane(CorpusRecorder.findings(), lane, CorpusIdiomLaneTest.class);
     }
 
+    // --- 1. A mutable object handed off through a BlockingQueue ------------------------------
+
+    private static final class Order {
+        String item;
+        int quantity;
+    }
+
+    /**
+     * A queue per round, so an order never outlives the round that built it: one left over for a
+     * later round would be read as a construction that later rounds corroborate, and excused.
+     */
+    private static final Rounds<BlockingQueue<Order>> ORDERS = new Rounds<>(LinkedBlockingQueue::new);
+    private static final Rounds<Deque<Order>> UNSAFE_ORDERS = new Rounds<>(ArrayDeque::new);
+
+    /**
+     * Half the threads build an order and put it on the queue, the other half take one and
+     * update it. The taker owns what it took: the put and the take are the hand-off.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_blockingQueue_handsOffAMutableObject() {
+        correct(() -> {
+            Turn<BlockingQueue<Order>> turn = ORDERS.next();
+            BlockingQueue<Order> orders = turn.shared();
+            if (turn.ticket() % 2 == 0) {
+                Order order = new Order();
+                order.item = "widget";
+                order.quantity = turn.ticket();
+                orders.put(order);
+            } else {
+                Order order = orders.take();
+                order.quantity++;
+                use(order.item.length() + order.quantity);
+            }
+        });
+    }
+
+    /** The same hand-off through an ArrayDeque, which orders nothing and is not thread-safe. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_blockingQueue_handsOffThroughAPlainDeque() {
+        broken(() -> {
+            Turn<Deque<Order>> turn = UNSAFE_ORDERS.next();
+            Deque<Order> orders = turn.shared();
+            if (turn.ticket() % 2 == 0) {
+                Order order = new Order();
+                order.item = "widget";
+                order.quantity = turn.ticket();
+                orders.offer(order);
+            } else {
+                Order order = null;
+                for (int spins = 0; order == null && spins < SPIN_LIMIT; spins++) {
+                    order = orders.poll();
+                }
+                if (order != null) {
+                    order.quantity++;
+                    use(order.item.length() + order.quantity);
+                }
+            }
+        });
+    }
+
+    // --- 2. Plain data published by a volatile flag -------------------------------------------
+
+    private static final class Mailbox {
+        int data;
+        volatile boolean ready;
+    }
+
+    private static final class PlainMailbox {
+        int data;
+        boolean ready;
+    }
+
+    private static final Rounds<Mailbox> MAILBOXES = new Rounds<>(Mailbox::new);
+    private static final Rounds<PlainMailbox> PLAIN_MAILBOXES = new Rounds<>(PlainMailbox::new);
+
+    /**
+     * The round's first thread writes plain {@code data} and then the volatile {@code ready};
+     * every other thread waits for {@code ready} and then reads {@code data}. The volatile write
+     * and the read that sees it are the whole ordering.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_volatileFlag_publishesPlainData() {
+        correct(() -> {
+            Turn<Mailbox> turn = MAILBOXES.next();
+            Mailbox box = turn.shared();
+            if (turn.opensTheRound()) {
+                box.data = 42 + turn.ticket();
+                box.ready = true;
+            } else {
+                for (int spins = 0; !box.ready && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                }
+                if (box.ready) {
+                    use(box.data);
+                }
+            }
+        });
+    }
+
+    /** The same code with {@code ready} declared without {@code volatile}. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_volatileFlag_plainFlagPublishesNothing() {
+        broken(() -> {
+            Turn<PlainMailbox> turn = PLAIN_MAILBOXES.next();
+            PlainMailbox box = turn.shared();
+            if (turn.opensTheRound()) {
+                box.data = 42 + turn.ticket();
+                box.ready = true;
+            } else {
+                for (int spins = 0; !box.ready && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                }
+                if (box.ready) {
+                    use(box.data);
+                }
+            }
+        });
+    }
+
+    // --- 3. A child thread's write, ordered by Thread.start and Thread.join -----------------
+
+    private static final class Result {
+        int input;
+        int output;
+    }
+
+    /**
+     * The parent writes the input, starts a child that computes, joins it, reads the output.
+     * Manual API: the agent drops a thread the runner did not start (#500), so the child's half
+     * is reported by the body; the detector is fetched on the worker, where the context lives.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_threadStartJoin_ordersTheChildsWrite() {
+        correct(() -> {
+            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
+            Result result = new Result();
+            races.recordFieldWrite(result, "input");
+            result.input = (int) Thread.currentThread().threadId();
+            Thread child = new Thread(() -> {
+                races.recordFieldRead(result, "input");
+                int input = result.input;
+                races.recordFieldWrite(result, "output");
+                result.output = input * 2;
+            });
+            child.start();
+            child.join();
+            races.recordFieldRead(result, "output");
+            use(result.output);
+        });
+    }
+
+    /** The same child, with the output read before the join instead of after it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_threadStartJoin_readsBeforeTheJoin() {
+        broken(() -> {
+            RaceConditionDetector races = AsyncTestContext.raceConditionDetector();
+            Result result = new Result();
+            races.recordFieldWrite(result, "input");
+            result.input = (int) Thread.currentThread().threadId();
+            Thread child = new Thread(() -> {
+                races.recordFieldRead(result, "input");
+                int input = result.input;
+                races.recordFieldWrite(result, "output");
+                result.output = input * 2;
+            });
+            child.start();
+            races.recordFieldRead(result, "output");
+            use(result.output);
+            child.join();
+        });
+    }
+    // --- 4. An AtomicInteger counter shared by every thread ----------------------------------
+
+    private static final class Hits {
+        final AtomicInteger atomic = new AtomicInteger();
+        int plain;
+    }
+
+    private static final Hits HITS = new Hits();
+
+    /** Every thread counts into one AtomicInteger. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_atomicInteger_sharedCounter() {
+        correct(() -> use(HITS.atomic.incrementAndGet()));
+    }
+
+    /** Every thread counts into one plain int, which loses updates. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_atomicInteger_plainCounterLosesUpdates() {
+        broken(() -> {
+            HITS.plain++;
+            use(HITS.plain);
+        });
+    }
+
+    // --- 5. A single lock-free writer publishing through a volatile --------------------------
+
+    private static final class Gauge {
+        volatile long latest;
+    }
+
+    private static final Rounds<Object> GAUGE_TURNS = new Rounds<>(Object::new);
+    private static final Gauge GAUGE = new Gauge();
+    private static final Gauge CONTENDED_GAUGE = new Gauge();
+
+    /**
+     * One writer per round bumps a volatile with a read-then-write; every other thread reads it.
+     * With one writer the read-then-write cannot lose an update, and the volatile publishes it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_singleWriter_publishesThroughAVolatile() {
+        correct(() -> {
+            if (GAUGE_TURNS.next().opensTheRound()) {
+                GAUGE.latest = GAUGE.latest + 1;
+            } else {
+                use(GAUGE.latest);
+            }
+        });
+    }
+
+    /** The same read-then-write on the same kind of volatile, from every thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_singleWriter_everyThreadWrites() {
+        broken(() -> {
+            CONTENDED_GAUGE.latest = CONTENDED_GAUGE.latest + 1;
+            use(CONTENDED_GAUGE.latest);
+        });
+    }
+
+    // --- 6. A fresh object built with setters, published through a ConcurrentHashMap --------
+
+    private static final class Profile {
+        private String name;
+        private int visits;
+
+        String getName() {
+            return name;
+        }
+
+        void setName(String name) {
+            this.name = name;
+        }
+
+        int getVisits() {
+            return visits;
+        }
+
+        void setVisits(int visits) {
+            this.visits = visits;
+        }
+    }
+
+    private static final Rounds<Object> PROFILE_TURNS = new Rounds<>(Object::new);
+    private static final Rounds<Object> LATE_PROFILE_TURNS = new Rounds<>(Object::new);
+    private static final ConcurrentMap<Integer, Profile> PROFILES = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Integer, Profile> LATE_PROFILES = new ConcurrentHashMap<>();
+
+    /** Each thread builds a profile, puts it, and reads the one the previous ticket put. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentHashMap_publishesAFreshlyBuiltObject() {
+        correct(() -> {
+            int ticket = PROFILE_TURNS.next().ticket();
+            Profile mine = new Profile();
+            mine.setName("user-" + ticket);
+            mine.setVisits(ticket);
+            PROFILES.put(ticket, mine);
+            Profile previous = PROFILES.get(ticket - 1);
+            if (previous != null) {
+                use(previous.getName().length() + previous.getVisits());
+            }
+        });
+    }
+
+    /** The same object, with the setters run after the put that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentHashMap_mutatedAfterThePut() {
+        broken(() -> {
+            int ticket = LATE_PROFILE_TURNS.next().ticket();
+            Profile mine = new Profile();
+            LATE_PROFILES.put(ticket, mine);
+            mine.setName("user-" + ticket);
+            mine.setVisits(ticket);
+            Profile previous = LATE_PROFILES.get(ticket - 1);
+            if (previous != null && previous.getName() != null) {
+                use(previous.getName().length() + previous.getVisits());
+            }
+        });
+    }
+
+    // --- 7. Two thread-confined objects per thread --------------------------------------------
+
+    private static final class Account {
+        int balance;
+
+        void transferTo(Account other, int amount) {
+            balance -= amount;
+            other.balance += amount;
+        }
+    }
+
+    private static final Account SHARED_FROM = new Account();
+    private static final Account SHARED_TO = new Account();
+
+    /** Each thread opens two accounts of its own and moves money between them. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_threadConfined_twoObjectsPerThread() {
+        correct(() -> {
+            Account from = new Account();
+            Account to = new Account();
+            from.balance = 100;
+            to.balance = 50;
+            from.transferTo(to, 30);
+            use(from.balance + to.balance);
+        });
+    }
+
+    /** The same transfer between two accounts every thread shares, with no lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_threadConfined_twoObjectsSharedByEveryThread() {
+        broken(() -> {
+            SHARED_FROM.transferTo(SHARED_TO, 30);
+            use(SHARED_FROM.balance + SHARED_TO.balance);
+        });
+    }
+
+    // --- 8. A MessageDigest pool checked out through a BlockingQueue -------------------------
+
+    private static final BlockingQueue<MessageDigest> DIGEST_POOL = digestPool();
+    private static final BlockingQueue<MessageDigest> PEEKED_POOL = digestPool();
+
+    /** Take a digest from the pool, use it, put it back: the pool hands each to one thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_messageDigestPool_checkedOutThroughAQueue() {
+        correct(() -> {
+            MessageDigest digest = DIGEST_POOL.take();
+            try {
+                digest.update(PAYLOAD);
+                use(digest.digest().length);
+            } finally {
+                DIGEST_POOL.put(digest);
+            }
+        });
+    }
+
+    /** The same pool, with peek() instead of take(), so every thread uses the head digest. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_messageDigestPool_peekedByEveryThread() {
+        broken(() -> {
+            MessageDigest digest = PEEKED_POOL.peek();
+            digest.update(PAYLOAD);
+            use(digest.digest().length);
+        });
+    }
+
+    // --- 9. synchronized (list) around an iterate-and-add ------------------------------------
+
+    private static final List<Integer> SEEN = new ArrayList<>();
+    private static final List<Integer> UNGUARDED_SEEN = new ArrayList<>();
+
+    /** Walk the list and append to it, both inside the list's own monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedList_iterateAndAdd() {
+        correct(() -> {
+            synchronized (SEEN) {
+                int sum = 0;
+                for (Integer value : SEEN) {
+                    sum += value;
+                }
+                SEEN.add(sum % 7);
+                if (SEEN.size() > 32) {
+                    SEEN.clear();
+                }
+            }
+        });
+    }
+
+    /** The same walk and append with no monitor around them. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedList_iterateAndAddUnguarded() {
+        broken(() -> {
+            int sum = 0;
+            for (Integer value : UNGUARDED_SEEN) {
+                sum += value;
+            }
+            UNGUARDED_SEEN.add(sum % 7);
+            if (UNGUARDED_SEEN.size() > 32) {
+                UNGUARDED_SEEN.clear();
+            }
+        });
+    }
+
+    // --- 10. A check-then-act on a ConcurrentHashMap, inside synchronized --------------------
+
+    private static final Rounds<Object> CACHE_TURNS = new Rounds<>(Object::new);
+    private static final Rounds<Object> RACED_CACHE_TURNS = new Rounds<>(Object::new);
+    private static final ConcurrentMap<String, Integer> CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, Integer> RACED_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Every thread of a round tries to fill the round's key once, under the map's own monitor.
+     * Manual API: no agent-fed detector models a check-then-act, so the body says it made one.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedCheckThenAct_onAConcurrentHashMap() {
+        correct(() -> {
+            Turn<Object> turn = CACHE_TURNS.next();
+            String key = "round-" + turn.round();
+            synchronized (CACHE) {
+                AsyncTestContext.nonAtomicConcurrentMapUpdateDetector().recordCheckThenAct(
+                        CACHE, key, "containsKey-then-put", Thread.currentThread());
+                if (!CACHE.containsKey(key)) {
+                    CACHE.put(key, turn.ticket());
+                }
+            }
+        });
+    }
+
+    /** The same containsKey-then-put with no monitor, so two threads can both see it absent. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedCheckThenAct_withoutTheMonitor() {
+        broken(() -> {
+            Turn<Object> turn = RACED_CACHE_TURNS.next();
+            String key = "round-" + turn.round();
+            AsyncTestContext.nonAtomicConcurrentMapUpdateDetector().recordCheckThenAct(
+                    RACED_CACHE, key, "containsKey-then-put", Thread.currentThread());
+            if (!RACED_CACHE.containsKey(key)) {
+                RACED_CACHE.put(key, turn.ticket());
+            }
+        });
+    }
+    // --- 11. ThreadLocalRandom.current() on every thread -------------------------------------
+
+    private static final class Captured {
+        volatile ThreadLocalRandom random;
+    }
+
+    private static final Rounds<Captured> CAPTURES = new Rounds<>(Captured::new);
+
+    /**
+     * Every thread asks for its own generator. Manual API: ThreadLocalRandom is not woven, so the
+     * body reports the obtain and the use itself.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_threadLocalRandom_currentOnEveryThread() {
+        correct(() -> {
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            AsyncTestContext.threadLocalRandomMisuseDetector()
+                    .recordObtain(random, "per-thread", Thread.currentThread());
+            AsyncTestContext.threadLocalRandomMisuseDetector()
+                    .recordUse(random, Thread.currentThread());
+            use(random.nextInt(100));
+        });
+    }
+
+    /** The round's first thread captures current() and every other thread uses its capture. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_threadLocalRandom_capturedByOneThread() {
+        broken(() -> {
+            Turn<Captured> turn = CAPTURES.next();
+            Captured captured = turn.shared();
+            if (turn.opensTheRound()) {
+                ThreadLocalRandom mine = ThreadLocalRandom.current();
+                AsyncTestContext.threadLocalRandomMisuseDetector()
+                        .recordObtain(mine, "captured", Thread.currentThread());
+                captured.random = mine;
+            }
+            ThreadLocalRandom random = captured.random;
+            for (int spins = 0; random == null && spins < SPIN_LIMIT; spins++) {
+                Thread.onSpinWait();
+                random = captured.random;
+            }
+            if (random != null) {
+                AsyncTestContext.threadLocalRandomMisuseDetector()
+                        .recordUse(random, Thread.currentThread());
+                use(random.nextInt(100));
+            }
+        });
+    }
+
+    // --- 12. A guarded wait loop with a notifier ----------------------------------------------
+
+    private static final class Gate {
+        boolean open;
+    }
+
+    private static final Rounds<Gate> GATES = new Rounds<>(Gate::new);
+    private static final Rounds<Gate> IF_GATES = new Rounds<>(Gate::new);
+
+    /** The round's first thread opens the gate and notifies; the others wait in a loop for it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedWait_loopsOnTheCondition() {
+        correct(() -> {
+            Turn<Gate> turn = GATES.next();
+            Gate gate = turn.shared();
+            synchronized (gate) {
+                if (turn.opensTheRound()) {
+                    gate.open = true;
+                    gate.notifyAll();
+                } else {
+                    while (!gate.open) {
+                        gate.wait();
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * The same monitor with the condition taken out: the notifier only notifies, and each waiter
+     * waits once with nothing to re-test. A notify that lands before a waiter arrives is lost, and
+     * that waiter waits out its timeout. The timeout is the only change beyond the missing
+     * condition, and it is there so the bug cannot hang the run.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedWait_waitsWithNoCondition() {
+        broken(() -> {
+            Turn<Gate> turn = IF_GATES.next();
+            Gate gate = turn.shared();
+            synchronized (gate) {
+                if (turn.opensTheRound()) {
+                    gate.notifyAll();
+                } else {
+                    gate.wait(20);
+                }
+            }
+        });
+    }
+
+    // --- 13. A CountDownLatch publication -----------------------------------------------------
+
+    private static final class Delivery {
+        int data;
+        final CountDownLatch delivered = new CountDownLatch(1);
+    }
+
+    private static final Rounds<Delivery> DELIVERIES = new Rounds<>(Delivery::new);
+    private static final Rounds<Delivery> UNAWAITED_DELIVERIES = new Rounds<>(Delivery::new);
+
+    /** The round's first thread writes and counts down; the others await and then read. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_countDownLatch_publishesBeforeTheCountDown() {
+        correct(() -> {
+            Turn<Delivery> turn = DELIVERIES.next();
+            Delivery delivery = turn.shared();
+            if (turn.opensTheRound()) {
+                delivery.data = 42 + turn.ticket();
+                delivery.delivered.countDown();
+            } else {
+                delivery.delivered.await();
+                use(delivery.data);
+            }
+        });
+    }
+
+    /** The same write and count-down, with the readers not waiting for it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_countDownLatch_readersSkipTheAwait() {
+        broken(() -> {
+            Turn<Delivery> turn = UNAWAITED_DELIVERIES.next();
+            Delivery delivery = turn.shared();
+            if (turn.opensTheRound()) {
+                delivery.data = 42 + turn.ticket();
+                delivery.delivered.countDown();
+            } else {
+                use(delivery.data);
+            }
+        });
+    }
+
+    // --- 14. A shared java.util.Random ----------------------------------------------------------
+
+    private static final Random SHARED_RANDOM = new Random(42);
+    private static final SplittableRandom SHARED_SPLITTABLE = new SplittableRandom(42);
+
+    /**
+     * Every thread draws from one Random, which is thread-safe and contended. Manual API: Random
+     * is not woven, so the body reports the draw itself.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedRandom_drawnByEveryThread() {
+        correct(() -> {
+            AsyncTestContext.sharedRandomDetector()
+                    .recordRandomAccess(SHARED_RANDOM, "shared-random", "nextInt");
+            use(SHARED_RANDOM.nextInt(100));
+        });
+    }
+
+    /** The same draw from one SplittableRandom, whose javadoc says it is not thread-safe. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedRandom_splittableDrawnByEveryThread() {
+        broken(() -> {
+            AsyncTestContext.sharedSplittableRandomDetector()
+                    .recordAccess(SHARED_SPLITTABLE, "shared-splittable", "nextInt");
+            use(SHARED_SPLITTABLE.nextInt(100));
+        });
+    }
     // --- Harness -----------------------------------------------------------------------------
 
     /**
