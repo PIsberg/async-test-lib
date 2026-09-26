@@ -685,7 +685,7 @@ class CorpusIdiomLaneTest {
             use(SHARED_SPLITTABLE.nextInt(100));
         });
     }
-    // --- Known gaps: correct idioms the happens-before model does not see yet ------------------
+    // --- Hand-offs the happens-before model learned in #741: completion, submission, exchange --
 
     private static final class Promise {
         int data;

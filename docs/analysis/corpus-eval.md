@@ -1934,6 +1934,16 @@ failed one covered are dropped. The pair is a row since, `idiom_stampedLock_vali
 silent and `idiom_stampedLock_usesAnOptimisticReadUnvalidated` firing, and it held in three
 consecutive full runs.
 
+**Four gaps closed by #741.** The `CompletableFuture`, executor submit/get, `Exchanger` and
+`AtomicReference` rows were known gaps in run L below, because none of those calls fed the model.
+The agent now weaves them: a completion releases the future and a join or get that observed it
+acquires it, a task submitted to a JDK executor runs wrapped so it receives its submitter's clock
+and leaves its own for the get, an exchange releases what it hands over and acquires what it gets,
+and an `AtomicReference` get acquires the store whose value it returned. In the first full run
+after (JDK 26, Windows 11), all four correct rows were silent with nothing at `FACT` or above, and
+their twins still drew `PROMPT`/`HIGH` from the detector they name; only the holder pool is left in
+`Corpus.idiomKnownGaps()`.
+
 **What it found on its first run.** One seed row still drew a finding on the integration branch:
 a single writer bumping a volatile with a read-then-write while the other threads read it drew a
 `PROMPT`/`HIGH` "mixed read/write compound access" from `AtomicityValidator`.

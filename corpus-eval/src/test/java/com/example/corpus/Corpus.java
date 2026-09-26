@@ -4531,9 +4531,9 @@ final class Corpus {
                             + "not thread-safe: the thread-safety Random has is what is missing",
                     IssueSeverity.HIGH),
 
-            // --- Known gaps: correct idioms whose ordering the happens-before model does not
-            //     observe yet. Each is in Corpus.idiomKnownGaps() with the reason, and each still
-            //     has its twin, so the day the gap closes the pair is already written.
+            // --- Hand-offs the happens-before model learned in #741: a completion, an executor
+            //     submission and its get, an exchange, an AtomicReference set and get. Each correct
+            //     row was a known gap until then, and each twin reaches the value another way.
 
             new RecordingSubject("idiom_completableFuture_publishesThroughCompletion", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -4710,17 +4710,6 @@ final class Corpus {
      * fails until the entry is deleted, so a closed gap cannot stay listed as open.
      */
     private static final Map<String, String> IDIOM_KNOWN_GAPS = Map.of(
-            "idiom_completableFuture_publishesThroughCompletion",
-            "CompletableFuture.complete and join are not woven, so HappensBefore sees no edge "
-                    + "from the completing thread to the joining ones",
-            "idiom_executorSubmit_futureGetOrdersTheTask",
-            "ExecutorService.submit and Future.get are not woven, and the pool thread is "
-                    + "started inside the JDK, so neither the submission nor the get is an edge",
-            "idiom_exchanger_swapsFilledParcels",
-            "Exchanger.exchange is not woven, so the swap orders nothing in HappensBefore",
-            "idiom_atomicReference_publishesAFreshlyBuiltObject",
-            "AtomicReference.set and get are substituted for the spinlock detectors only; "
-                    + "HappensBefore takes no release from the set or acquire from the get",
             "idiom_digestHolderPool_checkedOutUnderALock",
             "the woven take names the holder while the detector tracks the digest inside it, "
                     + "and a monitor is no edge in HappensBefore, so nothing hands the digest "

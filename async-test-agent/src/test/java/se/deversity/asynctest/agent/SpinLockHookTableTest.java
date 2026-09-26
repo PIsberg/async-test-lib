@@ -167,13 +167,14 @@ class SpinLockHookTableTest {
         }
         for (String form : List.of("AtomicReference.set", "AtomicReference.lazySet",
                 "AtomicReference.setRelease", "AtomicReference.compareAndSet",
-                "AtomicReference.getAndSet", "AtomicReferenceFieldUpdater.set",
+                "AtomicReference.getAndSet", "AtomicReference.get", "AtomicReference.getAcquire",
+                "AtomicReferenceFieldUpdater.set",
                 "AtomicReferenceFieldUpdater.lazySet", "AtomicReferenceFieldUpdater.compareAndSet",
                 "AtomicReferenceFieldUpdater.getAndSet", "AtomicReferenceArray.set",
                 "AtomicReferenceArray.lazySet", "AtomicReferenceArray.setRelease",
                 "AtomicReferenceArray.compareAndSet", "AtomicReferenceArray.getAndSet")) {
-            assertTrue(substituted.contains(form), form + " is an offer or take the weaver observes "
-                    + "since #664; substituted: " + substituted);
+            assertTrue(substituted.contains(form), form + " is an offer, take or acquire the weaver observes "
+                    + "since #664 (the gets since #741); substituted: " + substituted);
         }
     }
 

@@ -23,9 +23,16 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Exchanger;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -523,7 +530,32 @@ final class CollectionAccessWeaver {
             Entry.call(BlockingQueue.class, "take", "take"),
             Entry.call(BlockingQueue.class, "drainTo", "drainTo", Collection.class),
             Entry.call(BlockingQueue.class, "drainTo", "drainTo", Collection.class,
-                    int.class));
+                    int.class),
+            // The hand-offs the happens-before model names and nothing else observed (#741): a
+            // completion before the join or get that sees it, a submission before its task and
+            // the task before its get, each side of an exchange before its partner's return. The
+            // Future.get rows match a CompletableFuture.get too, which is the same method.
+            Entry.call(CompletableFuture.class, "complete", "complete", Object.class),
+            Entry.call(CompletableFuture.class, "completeExceptionally", "completeExceptionally",
+                    Throwable.class),
+            Entry.call(CompletableFuture.class, "obtrudeValue", "obtrudeValue", Object.class),
+            Entry.call(CompletableFuture.class, "obtrudeException", "obtrudeException",
+                    Throwable.class),
+            Entry.call(CompletableFuture.class, "join", "join"),
+            Entry.call(Future.class, "get", "get"),
+            Entry.call(Future.class, "get", "get", long.class, TimeUnit.class),
+            Entry.staticCall(CompletableFuture.class, "supplyAsync", "supplyAsync", Supplier.class),
+            Entry.staticCall(CompletableFuture.class, "supplyAsync", "supplyAsync", Supplier.class,
+                    Executor.class),
+            Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class),
+            Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class,
+                    Executor.class),
+            Entry.call(ExecutorService.class, "submit", "submit", Callable.class),
+            Entry.call(ExecutorService.class, "submit", "submit", Runnable.class),
+            Entry.call(ExecutorService.class, "submit", "submit", Runnable.class, Object.class),
+            Entry.call(Exchanger.class, "exchange", "exchange", Object.class),
+            Entry.call(Exchanger.class, "exchange", "exchange", Object.class, long.class,
+                    TimeUnit.class));
 
     /**
      * The monitor table: {@code Object.wait}, {@code notify} and {@code notifyAll} (#694).

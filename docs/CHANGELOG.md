@@ -30,9 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **corpus-eval gains an `idioms` lane.** Correct user-code concurrency (a queue hand-off, volatile
   publication, `start`/`join`, an `AtomicInteger` counter, a latch, a pool checkout, guarded waits and
   more) runs with the agent attached and every detector on, each idiom beside its broken twin. A
-  correct idiom fails the run on any finding at FACT or above, and the idioms the happens-before
-  model does not see yet (`CompletableFuture`, executor submit/get, `Exchanger`, `AtomicReference`)
-  are pinned rows that flip visibly when fixed. The false positives fixed here were all found this
+  correct idiom fails the run on any finding at FACT or above, and an idiom the happens-before
+  model does not see yet is a pinned row that flips visibly when fixed, as the `CompletableFuture`,
+  executor submit/get, `Exchanger` and `AtomicReference` rows did (#741). The false positives fixed here were all found this
   way, by a throwaway probe; the lane keeps them from coming back.
 
 ### Changed
@@ -225,6 +225,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that never happened, and a race between them went unreported. The hooks now withdraw the release
   when the call fails (`HappensBefore.retract`, `TelemetryRegistry.ownershipRefused`); an accepted
   offer and a successful swap still order the take.
+- **A `CompletableFuture` completion, an executor submission and its get, an `Exchanger` swap and
+  an `AtomicReference` set and get order what they hand over (#741).** None of these calls fed the
+  happens-before model, so correct code publishing through them still drew a `RaceConditionDetector`
+  or `AtomicityValidator` finding, and the corpus idiom lane pinned all four as known gaps. With
+  `collections=true` the agent now substitutes `CompletableFuture.complete`,
+  `completeExceptionally`, the two `obtrude` calls, `join`, `supplyAsync` and `runAsync`,
+  `Future.get`, `ExecutorService.submit` and `Exchanger.exchange`: a completion releases the future
+  and a `join` or `get` that observed it acquires it; a task submitted to a JDK executor or through
+  `supplyAsync`/`runAsync` runs wrapped, receiving its submitter's clock before it starts and leaving
+  its own for a `get` or `join` on the submitting thread; an exchange releases the object handed
+  over and acquires the one received. A `complete` the future refused and an exchange that failed
+  withdraw their release. With `fields=true`, `AtomicReference.get` and `getAcquire` are
+  substituted too, and a store into the slot is modelled as the volatile write it is: a get acquires
+  what the store of the value it returned published, and the same object read out of another slot
+  receives nothing. The four idiom rows are silent now and their twins still fire. Limits: a get on
+  a thread other than the submitter's, `Executor.execute`, a user-defined executor and a dependent
+  stage's function (`thenApply`) are not edges. Measured cost: 24 bytes per submission (the
+  wrapper), nothing for an `AtomicReference.get`, and about 190 bytes per future completed and
+  joined through the hooks.
 - **An `addAll` a bounded queue takes only part of publishes only that part (#806).** The woven
   `addAll` released every element before the call and withdrew nothing, so an element the queue
   refused still read as handed over, and whoever reached it another way was ordered after the

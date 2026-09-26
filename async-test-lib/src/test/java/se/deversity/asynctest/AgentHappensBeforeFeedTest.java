@@ -5,8 +5,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Exchanger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -468,5 +473,298 @@ class AgentHappensBeforeFeedTest {
                         + "consumer through nothing: the addAll must not have released it");
         assertFalse(batchElementReported(true),
                 "the queue took the first box and the consumer took it out: the hand-off orders them");
+    }
+
+    /** How the reader below reaches the box a writer completed a future with. */
+    private enum Completion {
+        /** The writer completes the future; the reader joins it. */
+        JOINED,
+        /** The same, with the reader calling get instead of join. */
+        GOT,
+        /** The writer completes the future; the reader skips it and reads the box directly. */
+        SKIPPED,
+        /** The main thread completed the future first, so the writer's complete is refused. */
+        REFUSED
+    }
+
+    /**
+     * A writer writes a box and completes a future with it; a reader then reads and writes the
+     * box. The two threads are otherwise coordinated only through an unwoven latch, so the only
+     * edge the model can know is the one the future makes (#741).
+     */
+    private static boolean completionReported(Completion shape) throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        CompletableFuture<Object> future = new CompletableFuture<>();
+        Box box = new Box();
+        if (shape == Completion.REFUSED) {
+            future.complete(box); // unwoven: publishes nothing
+        }
+        CountDownLatch completed = new CountDownLatch(1);
+        AtomicReference<String> setUpWrong = new AtomicReference<>();
+        Thread writer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            if (AgentConcurrencyUtilHooks.complete(future, box) == (shape == Completion.REFUSED)) {
+                setUpWrong.set("the complete call did not answer what the case needs");
+            }
+            completed.countDown(); // unwoven, so it orders nothing as far as the model knows
+        });
+        Thread reader = new Thread(() -> {
+            try {
+                completed.await();
+                Object received = switch (shape) {
+                    case GOT -> AgentConcurrencyUtilHooks.get(future);
+                    case SKIPPED -> box;
+                    default -> AgentConcurrencyUtilHooks.join(future);
+                };
+                if (received != box) {
+                    setUpWrong.set("the reader did not receive the box");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (java.util.concurrent.ExecutionException e) {
+                setUpWrong.set("the future failed: " + e);
+                return;
+            }
+            detector.recordFieldRead(box, "value");
+            box.value++;
+            detector.recordFieldWrite(box, "value");
+        });
+        writer.start();
+        reader.start();
+        writer.join();
+        reader.join();
+        assertNull(setUpWrong.get());
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven complete orders the writer before a woven join or get of the future (#741)")
+    void completionPublishes() throws InterruptedException {
+        assertFalse(completionReported(Completion.JOINED),
+                "the writer completed the future after writing the box, and the reader's join "
+                        + "returned it: CompletableFuture orders the two");
+        assertFalse(completionReported(Completion.GOT), "the same through Future.get");
+        assertTrue(completionReported(Completion.SKIPPED),
+                "the reader never joined, so nothing orders the writer's write before its read");
+        assertTrue(completionReported(Completion.REFUSED),
+                "the future was already complete, so the writer's complete published nothing and "
+                        + "the join observed a completion the writer did not make");
+    }
+
+    /** Where the submitter below breaks the order an executor makes, if it does. */
+    private enum Submission {
+        /** Input written before submit, output read after get. */
+        ORDERED,
+        /** The input is written after the submit, where the task may already be reading it. */
+        INPUT_AFTER_SUBMIT,
+        /** The output is read before the get. */
+        OUTPUT_BEFORE_GET,
+        /** Both calls made on the executor directly, which the model cannot see. */
+        UNWOVEN
+    }
+
+    /**
+     * The calling thread writes an input, submits a task that reads it and writes an output, gets
+     * the task's future and reads the output: the idiom the {@code java.util.concurrent} package
+     * javadoc orders at both ends (#741). The task's accesses are recorded on the pool thread.
+     */
+    private static boolean submissionReported(Submission shape) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box input = new Box();
+        Box output = new Box();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            if (shape != Submission.INPUT_AFTER_SUBMIT) {
+                input.value = 1;
+                detector.recordFieldWrite(input, "value");
+            }
+            CountDownLatch inputWritten = new CountDownLatch(1);
+            Runnable task = () -> {
+                try {
+                    inputWritten.await(); // unwoven: only holds the task until the input is written
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                detector.recordFieldRead(input, "value");
+                output.value = input.value * 2;
+                detector.recordFieldWrite(output, "value");
+            };
+            Future<?> result = shape == Submission.UNWOVEN ? executor.submit(task)
+                    : AgentConcurrencyUtilHooks.submit(executor, task);
+            if (shape == Submission.INPUT_AFTER_SUBMIT) {
+                input.value = 1;
+                detector.recordFieldWrite(input, "value");
+            }
+            inputWritten.countDown();
+            if (shape == Submission.OUTPUT_BEFORE_GET) {
+                detector.recordFieldRead(output, "value");
+            }
+            @SuppressWarnings("unchecked")
+            Future<Object> future = (Future<Object>) result;
+            Object ignored = shape == Submission.UNWOVEN ? future.get()
+                    : AgentConcurrencyUtilHooks.get(future);
+            if (shape != Submission.OUTPUT_BEFORE_GET) {
+                detector.recordFieldRead(output, "value");
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven submit orders the submitter before the task, and a woven get the task before the getter (#741)")
+    void submissionPublishes() throws Exception {
+        assertFalse(submissionReported(Submission.ORDERED),
+                "the input was written before the submit and the output read after the get: "
+                        + "the executor orders both");
+        assertTrue(submissionReported(Submission.INPUT_AFTER_SUBMIT),
+                "the input was written after the submit, which orders nothing before the task");
+        assertTrue(submissionReported(Submission.OUTPUT_BEFORE_GET),
+                "the output was read before the get, which orders nothing after the task");
+        assertTrue(submissionReported(Submission.UNWOVEN),
+                "the unwoven twin: nothing told the model");
+    }
+
+    /**
+     * Two threads each write a box of their own, exchange it and read the one they got. With
+     * {@code lateWrite} each also writes its own box again after the exchange, where the partner
+     * is already reading it (#741).
+     */
+    private static boolean exchangeReported(boolean woven, boolean lateWrite)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Exchanger<Object> exchanger = new Exchanger<>();
+        AtomicReference<String> setUpWrong = new AtomicReference<>();
+        Runnable side = () -> {
+            Box mine = new Box();
+            mine.value = 1;
+            detector.recordFieldWrite(mine, "value");
+            Object theirs;
+            try {
+                theirs = woven ? AgentConcurrencyUtilHooks.exchange(exchanger, mine)
+                        : exchanger.exchange(mine);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (!(theirs instanceof Box) || theirs == mine) {
+                setUpWrong.set("the exchange did not hand over the partner's box");
+                return;
+            }
+            if (lateWrite) {
+                mine.value++;
+                detector.recordFieldWrite(mine, "value");
+            }
+            detector.recordFieldRead(theirs, "value");
+        };
+        Thread left = new Thread(side);
+        Thread right = new Thread(side);
+        left.start();
+        right.start();
+        left.join();
+        right.join();
+        assertNull(setUpWrong.get());
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven exchange orders each side's writes before its partner's reads (#741)")
+    void exchangePublishes() throws InterruptedException {
+        assertFalse(exchangeReported(true, false),
+                "each thread wrote its box before exchange and read the partner's after it: the "
+                        + "Exchanger orders them");
+        assertTrue(exchangeReported(true, true),
+                "each thread wrote its box again after the exchange, which orders nothing before "
+                        + "the partner's read");
+        assertTrue(exchangeReported(false, false), "the unwoven twin: nothing told the model");
+    }
+
+    /** What the reader below reads out of an atomic slot, and how the writer filled it. */
+    private enum SlotShape {
+        /** The writer writes the box, then sets it; the reader gets it. */
+        SET_THEN_GET,
+        /** The writer sets the box and writes it after. */
+        WRITTEN_AFTER_THE_SET,
+        /**
+         * The writer writes the box and sets a shared token into one slot; the reader gets the
+         * same token out of another slot the main thread filled, and reaches the box through a map.
+         */
+        SAME_VALUE_OTHER_SLOT
+    }
+
+    /**
+     * {@code AtomicReference.set} is a volatile write and {@code get} a volatile read, so a get
+     * that returned what a set stored is ordered after it (#741). The edge is the slot's, found by
+     * the value the get returned, as for a volatile field: the same object read out of another
+     * slot orders nothing.
+     */
+    private static boolean slotReported(SlotShape shape) throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        AtomicReference<Object> slot = new AtomicReference<>();
+        AtomicReference<Object> otherSlot = new AtomicReference<>();
+        Object token = new Object();
+        Box box = new Box();
+        Map<Object, Object> registry = new ConcurrentHashMap<>();
+        AgentCollectionHooks.mapPut(registry, "box", box);
+        TelemetryRegistry.setAtomicReference(otherSlot, token);
+        CountDownLatch set = new CountDownLatch(1);
+        AtomicReference<String> setUpWrong = new AtomicReference<>();
+        Thread writer = new Thread(() -> {
+            if (shape != SlotShape.WRITTEN_AFTER_THE_SET) {
+                box.value = 1;
+                detector.recordFieldWrite(box, "value");
+            }
+            TelemetryRegistry.setAtomicReference(slot,
+                    shape == SlotShape.SAME_VALUE_OTHER_SLOT ? token : box);
+            if (shape == SlotShape.WRITTEN_AFTER_THE_SET) {
+                box.value = 1;
+                detector.recordFieldWrite(box, "value");
+            }
+            set.countDown(); // unwoven, so it orders nothing as far as the model knows
+        });
+        Thread reader = new Thread(() -> {
+            try {
+                set.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            Object got = TelemetryRegistry.getAtomicReference(
+                    shape == SlotShape.SAME_VALUE_OTHER_SLOT ? otherSlot : slot);
+            Object expected = shape == SlotShape.SAME_VALUE_OTHER_SLOT ? token : box;
+            if (got != expected) {
+                setUpWrong.set("the reader's get did not return what the case needs");
+            }
+            // Only the case that reads another slot needs the map; a get that returned the box
+            // must be the only thing that hands it over.
+            Box read = (Box) (shape == SlotShape.SAME_VALUE_OTHER_SLOT
+                    ? AgentCollectionHooks.mapGet(registry, "box") : got);
+            detector.recordFieldRead(read, "value");
+            read.value++;
+            detector.recordFieldWrite(read, "value");
+        });
+        writer.start();
+        reader.start();
+        writer.join();
+        reader.join();
+        assertNull(setUpWrong.get());
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven AtomicReference get receives what the set that stored its value published (#741)")
+    void atomicReferencePublishes() throws InterruptedException {
+        assertFalse(slotReported(SlotShape.SET_THEN_GET),
+                "the writer wrote the box and set it; the reader's get returned it: the volatile "
+                        + "semantics of set and get order the write before the read");
+        assertTrue(slotReported(SlotShape.WRITTEN_AFTER_THE_SET),
+                "the writer wrote the box after the set, which orders nothing before the read");
+        assertTrue(slotReported(SlotShape.SAME_VALUE_OTHER_SLOT),
+                "the reader read the token out of a slot the writer never set, so it received "
+                        + "nothing the writer published through its own slot");
     }
 }
