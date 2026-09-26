@@ -285,8 +285,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded through `recordCapturedMutation(lambda, name, thread)` names no captured object, so it is
   judged against the lambda, and two such captures each under its own lock are still reported. The
   overload's javadoc now says so and points to `recordCapturedMutation(lambda, name, state, thread)`,
-  and a test pins both forms. The overload is not deprecated: its replacement is experimental, and
-  the limit only adds findings, never hides one.
+  and a test pins both forms. The overload is not deprecated: its replacement is experimental. Used
+  alone, the limit only adds findings; mixed with the object-taking overload it could hide one,
+  which #800 fixes.
 - **`StatefulLambdaDetector` no longer lets an unnamed capture hide a race on a named one** (#800).
   A mutation recorded without its object was judged apart from the named captures, so one object
   recorded with `recordCapturedMutation(lambda, name, state, thread)` under one lock and through the
