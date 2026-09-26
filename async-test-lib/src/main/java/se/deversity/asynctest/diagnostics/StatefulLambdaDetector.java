@@ -30,6 +30,10 @@ import org.jspecify.annotations.Nullable;
  * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
  * the finding standing.
  *
+ * <p>A thread that only reads a capture is seen only when the read is recorded with
+ * {@link #recordCapturedRead(Object, Object, Thread)}; {@link #recordExecution(Object, String, Thread)}
+ * names no captured object and probes no lock, so it does not count as a read.
+ *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
  * int[] counter = {0};
@@ -130,6 +134,40 @@ public class StatefulLambdaDetector {
         if (lambda == null || thread == null) return;
         if (capturedState != null && isThreadSafeByType(capturedState)) return;
         String label = capturedName != null ? capturedName : "capturedState";
+        LambdaState s = noteCaptureAccess(lambda, capturedState, true, thread);
+        s.mutationEvents.add(thread.getName() + " → " + label);
+    }
+
+    /**
+     * Record that the lambda is reading a captured variable, naming the captured object.
+     *
+     * <p>A mutation alone puts only the mutating thread on the capture, so a lambda that one
+     * thread writes through while others only read what it wrote looks unshared (#770). Recording
+     * the reads puts the readers in the same round as the writer. A read is judged like a write:
+     * it counts as a second thread, and the lock probe runs on the reading thread, so a writer
+     * and readers all under one lock stay unreported, and a read outside the writer's lock is
+     * reported. Reads alone never report; the finding still needs a recorded mutation. The round
+     * verdict does not tell reads from writes, though, so two unguarded readers in one round and
+     * a mutation in another round still report. Call it
+     * where the lambda reads the capture, inside whatever region guards that read, not at the top
+     * of the body with {@link #recordExecution(Object, String, Thread)}.
+     *
+     * @param lambda        the lambda, Runnable, or Callable instance
+     * @param capturedState the captured object being read, or {@code null} when not known, in
+     *                      which case the read is judged against the lambda, like an unnamed
+     *                      mutation
+     * @param thread        the reading thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordCapturedRead(Object lambda, @Nullable Object capturedState, Thread thread) {
+        if (lambda == null || thread == null) return;
+        if (capturedState != null && isThreadSafeByType(capturedState)) return;
+        noteCaptureAccess(lambda, capturedState, false, thread);
+    }
+
+    private LambdaState noteCaptureAccess(Object lambda, @Nullable Object capturedState,
+                                          boolean forWrite, Thread thread) {
         LambdaState s = lambdas.computeIfAbsent(
                 new IdentityKey(lambda),
                 id -> new LambdaState(lambda.getClass().getSimpleName()
@@ -137,9 +175,9 @@ public class StatefulLambdaDetector {
         Object tracked = capturedState != null ? capturedState : lambda;
         CaptureGuard guard = s.captures.computeIfAbsent(
                 new IdentityKey(tracked), k -> new CaptureGuard());
-        // Probed on the mutating thread while it is still inside whatever region guards it.
-        guard.noteAccess(tracked, true, thread.threadId());
-        s.mutationEvents.add(thread.getName() + " → " + label);
+        // Probed on the accessing thread while it is still inside whatever region guards it.
+        guard.noteAccess(tracked, forWrite, thread.threadId());
+        return s;
     }
 
     private static boolean isThreadSafeByType(Object state) {

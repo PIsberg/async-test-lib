@@ -18,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AsyncTestContext.ownershipTaken(instance)` declares a pool checkout the agent cannot see.
 - Record methods that let detectors see what they could not: `recordSiblingWaitEnded`,
   `recordBlockingWaitEnded`, `recordWaitAttempted(Object)`, `recordCapturedMutation(lambda, name,
-  state, thread)`, owner-keyed `LazyInitRace` overloads, `recordIntegrate(name, state, thread)`,
-  `ABAProblemDetector.recordRead(name, value)`, `recordRequestSent(client, request, name)`.
+  state, thread)`, `recordCapturedRead(lambda, state, thread)`, owner-keyed `LazyInitRace` overloads,
+  `recordIntegrate(name, state, thread)`, `ABAProblemDetector.recordRead(name, value)`,
+  `recordRequestSent(client, request, name)`.
 - **corpus-eval gains an `idioms` lane.** Correct user-code concurrency (a queue hand-off, volatile
   publication, `start`/`join`, an `AtomicInteger` counter, a latch, a pool checkout, guarded waits and
   more) runs with the agent attached and every detector on, each idiom beside its broken twin. A
@@ -110,6 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lambda, so a lambda mutating two captures, each under its own lock, intersected the two locks to
   nothing and was reported. A capture mutated with no lock, or under a different lock on each
   thread, is still reported.
+- **`StatefulLambdaDetector` sees a thread that only reads a capture** (#770). Only a mutation was
+  recorded, so a lambda that one thread wrote through while other threads read the capture put one
+  thread in the round and was not reported. `recordCapturedRead(lambda, state, thread)` records the
+  read, with the lock probe taken on the reading thread: a writer and its readers all under one lock
+  are not reported, and a read outside the writer's lock is. Reads with no mutation are not reported.
+  `recordExecution` still names no capture and does not count as a read.
 - **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
   LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
   OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by

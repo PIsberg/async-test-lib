@@ -201,6 +201,113 @@ public class StatefulLambdaDetectorTest {
         assertTrue(d.analyze().violations.get(0).contains("counter"));
     }
 
+    // #770: only a mutation was recorded, so one mutating thread beside threads that only read
+    // the capture put a single thread in the round and read as unshared.
+    @Test
+    void oneWriterBesideReadersWithNoLockIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if ("writer".equals(Thread.currentThread().getName())) {
+                counter[0]++;
+                d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+            } else {
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+                assertTrue(counter[0] >= 0);
+            }
+        };
+        onThreadsNamed(task[0], "writer", "reader-1", "reader-2");
+
+        assertTrue(d.analyze().hasIssues(),
+                "one thread wrote the capture while two others read it with no lock held");
+        assertTrue(d.analyze().violations.get(0).contains("counter"));
+    }
+
+    @Test
+    void oneWriterBesideReadersAllUnderTheCapturesMonitorIsNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            synchronized (counter) {
+                if ("writer".equals(Thread.currentThread().getName())) {
+                    counter[0]++;
+                    d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+                } else {
+                    d.recordCapturedRead(task[0], counter, Thread.currentThread());
+                    assertTrue(counter[0] >= 0);
+                }
+            }
+        };
+        onThreadsNamed(task[0], "writer", "reader-1", "reader-2");
+
+        assertFalse(d.analyze().hasIssues(),
+                "every read and every write held synchronized (counter): " + d.analyze().violations);
+    }
+
+    @Test
+    void aGuardedWriterBesideAnUnguardedReaderIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            if ("writer".equals(Thread.currentThread().getName())) {
+                synchronized (counter) {
+                    counter[0]++;
+                    d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+                }
+            } else {
+                d.recordCapturedRead(task[0], counter, Thread.currentThread());
+                assertTrue(counter[0] >= 0);
+            }
+        };
+        onThreadsNamed(task[0], "writer", "reader");
+
+        assertTrue(d.analyze().hasIssues(), "the read held no lock, so the writer's lock orders nothing");
+    }
+
+    @Test
+    void oneThreadMutatingAndReadingItsCaptureIsNotReported() {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable task = () -> counter[0]++;
+        d.recordExecution(task, "task", Thread.currentThread());
+        counter[0]++;
+        d.recordCapturedMutation(task, "counter", counter, Thread.currentThread());
+        d.recordCapturedRead(task, counter, Thread.currentThread());
+
+        assertFalse(d.analyze().hasIssues(), "one thread cannot race itself");
+    }
+
+    @Test
+    void readersWithNoWriterAreNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] counter = {0};
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            d.recordCapturedRead(task[0], counter, Thread.currentThread());
+        };
+        onThreadsNamed(task[0], "reader-1", "reader-2");
+
+        assertFalse(d.analyze().hasIssues(), "concurrent reads of state nobody writes are no race");
+    }
+
+    private static void onThreadsNamed(Runnable body, String... names) throws InterruptedException {
+        Thread[] threads = new Thread[names.length];
+        for (int i = 0; i < names.length; i++) {
+            threads[i] = new Thread(body, names[i]);
+            threads[i].start();
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+    }
+
     private static void onTwoThreads(Runnable body) throws InterruptedException {
         Thread a = new Thread(body);
         Thread b = new Thread(body);
@@ -237,6 +344,8 @@ public class StatefulLambdaDetectorTest {
             d.recordExecution(r, "x", null);
             d.recordCapturedMutation(null, "x", Thread.currentThread());
             d.recordCapturedMutation(r, "x", null);
+            d.recordCapturedRead(null, new int[1], Thread.currentThread());
+            d.recordCapturedRead(r, new int[1], null);
         });
         assertFalse(d.analyze().hasIssues());
     }
