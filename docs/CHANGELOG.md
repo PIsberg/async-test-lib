@@ -321,8 +321,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unlinks each entry inside `synchronized (queue)`, keeps the unlinked entry's `next` for a
   traversal standing on it, and a `get` never returns a cleared entry's value. Gets alone in a
   round, and gets under one read lock beside puts under the write lock, are no finding; a put and
-  an unguarded get in one round still are. `WeakHashMapSharedDetector` records every access as a
-  write and keeps its verdict.
+  an unguarded get in one round still are. `WeakHashMapSharedDetector` gained a way to record a
+  read in #820.
 - **`CacheConcurrencyDetector` counts a stampede within one round (#820).** The threads that wrote
   a key were counted across the run, so one thread computing the key in each of two rounds was
   reported as a key "recomputed by 2 threads", though the runner finishes one round before it
@@ -353,6 +353,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round on an LRU cache reported nothing. Such a `get` now counts as a write in the tally too. Gets
   inside `synchronized (map)`, gets on an insertion-ordered map, and gets on a map whose order is
   unknown (`java.util` not open to the library) are unchanged.
+- **`WeakHashMapSharedDetector` can record a read (#820).** `recordAccess` counts every access as a
+  write, so gets under one read lock beside puts under the write lock were reported, though #807
+  settled from the JDK source that a `WeakHashMap` read is a read: its cleanup is serialized among
+  readers on the reference queue. The new `recordRead(map, name, thread)` records a `get`,
+  `containsKey`, `size` or iteration of a `WeakHashMap` or `IdentityHashMap`; reads alone in a
+  round, and reads under a read lock whose writes hold the write lock, are no finding, while an
+  unguarded write beside them still is. `recordAccess` keeps its meaning. The detector is fed only
+  by hand, so no woven path changes.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`

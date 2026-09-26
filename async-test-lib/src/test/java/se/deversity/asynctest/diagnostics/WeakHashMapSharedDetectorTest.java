@@ -133,4 +133,109 @@ class WeakHashMapSharedDetectorTest {
                 "one unguarded access empties the candidate lock set; a guard that does not "
                         + "cover every access is no guard");
     }
+
+    // #820: recordAccess counts every access as a write. A WeakHashMap read expunges cleared
+    // entries, but the JDK does that inside synchronized (queue), so readers take turns and a read
+    // is a read (#807); an IdentityHashMap read writes nothing. recordRead says so.
+
+    @Test
+    void readsUnderOneReadLockBesideWritesUnderTheWriteLockStaySilent() throws Exception {
+        var d = new WeakHashMapSharedDetector();
+        var m = new WeakHashMap<String, String>();
+        var lock = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable read = () -> underLock(lock, true,
+                () -> d.recordRead(m, "rw-cache", Thread.currentThread()));
+        Runnable write = () -> underLock(lock, false,
+                () -> d.recordAccess(m, "rw-cache", Thread.currentThread()));
+
+        round(scope, write);
+        round(scope, read, read);
+        round(scope, write, read, read);
+
+        assertFalse(d.analyze().hasIssues(),
+                "puts under the write lock and gets under the read lock is the read-write idiom: "
+                        + d.analyze());
+    }
+
+    @Test
+    void readsAloneInOneRoundBesideAWriteInAnotherStaySilent() throws Exception {
+        var d = new WeakHashMapSharedDetector();
+        var m = new IdentityHashMap<Object, Object>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable read = () -> d.recordRead(m, "warm-map", Thread.currentThread());
+
+        round(scope, () -> d.recordAccess(m, "warm-map", Thread.currentThread()));
+        round(scope, read, read);
+
+        assertFalse(d.analyze().hasIssues(),
+                "round two only read, and the write ran alone in round one: " + d.analyze());
+    }
+
+    @Test
+    void anUnguardedReadBesideAWriteInOneRoundIsFlagged() throws Exception {
+        var d = new WeakHashMapSharedDetector();
+        var m = new WeakHashMap<String, String>();
+
+        round(new SelfGuard.Scope(), () -> d.recordAccess(m, "racy-cache", Thread.currentThread()),
+                () -> d.recordRead(m, "racy-cache", Thread.currentThread()));
+
+        assertTrue(d.analyze().hasIssues(), "a write races a read in the same round with no lock held");
+    }
+
+    @Test
+    void readsUnderOneReadLockBesideAnUnguardedWriteAreFlagged() throws Exception {
+        var d = new WeakHashMapSharedDetector();
+        var m = new WeakHashMap<String, String>();
+        var lock = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable read = () -> underLock(lock, true,
+                () -> d.recordRead(m, "half-locked", Thread.currentThread()));
+
+        round(new SelfGuard.Scope(), () -> d.recordAccess(m, "half-locked", Thread.currentThread()),
+                read, read);
+
+        assertTrue(d.analyze().hasIssues(), "the write held no lock, so the read lock guards nothing");
+    }
+
+    /** Runs {@code body} holding {@code lock}'s read view if {@code shared}, else its write view. */
+    private static void underLock(java.util.concurrent.locks.ReentrantReadWriteLock lock,
+                                  boolean shared, Runnable body) {
+        java.util.concurrent.locks.Lock view = shared ? lock.readLock() : lock.writeLock();
+        view.lock();
+        HeldLocks.acquired(lock, shared);
+        try {
+            body.run();
+        } finally {
+            HeldLocks.released(lock, shared);
+            view.unlock();
+        }
+    }
+
+    /**
+     * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
+     * bound, released together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable... bodies) throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
 }
