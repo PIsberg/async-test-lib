@@ -86,26 +86,25 @@ class VirtualThreadMonitorSerializationDetectorTest {
         var d = new VirtualThreadMonitorSerializationDetector();
         Object lock = new Object();
         int[] counter = {0};
-        CountDownLatch othersQueued = new CountDownLatch(5);
+        CountDownLatch allArrived = new CountDownLatch(6);
+        CountDownLatch release = new CountDownLatch(1);
         List<Thread> threads = new ArrayList<>();
-        threads.add(Thread.ofVirtual().start(() -> {
-            d.recordMonitorEnter(lock, "counter", Thread.currentThread());
-            synchronized (lock) {
-                d.recordMonitorAcquired(lock, Thread.currentThread());
-                awaitQuietly(othersQueued);       // the others arrive while this one holds it
-                counter[0]++;
-            }
-        }));
-        for (int i = 0; i < 5; i++) {
+        // Every caller arrives at the monitor before any takes it, and nobody waits while holding
+        // it: on JDK 21 a virtual thread blocked on a monitor pins its carrier, so a holder parked
+        // on a latch inside the block starved the arrivals on a small CI runner and never counted.
+        for (int i = 0; i < 6; i++) {
             threads.add(Thread.ofVirtual().start(() -> {
                 d.recordMonitorEnter(lock, "counter", Thread.currentThread());
-                othersQueued.countDown();
+                allArrived.countDown();
+                awaitQuietly(release);
                 synchronized (lock) {
                     d.recordMonitorAcquired(lock, Thread.currentThread());
                     counter[0]++;
                 }
             }));
         }
+        assertTrue(allArrived.await(5, TimeUnit.SECONDS));
+        release.countDown();
         for (Thread t : threads) t.join();
         synchronized (lock) {
             assertEquals(6, counter[0], "the code under test is correct");
