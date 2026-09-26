@@ -373,6 +373,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once and then worked alone for many rounds crossed it. Only accesses made in a round with more
   than one thread on the field now count. Steady contention every round keeps its verdict, since
   every access in it is contended.
+- **`FalseSharingDetector`'s high-contention line gives both thread models the same verdict (#811).**
+  Its threshold also needed more than 50 contended accesses from one thread over the run. A pooled
+  platform worker reaches that across rounds; a virtual thread lives one round, so under
+  `useVirtualThreads = true` it needed them inside one body execution, and the same workload
+  reported on platform threads and stayed silent on virtual threads. The threshold now counts the
+  field's contended traffic (100 accesses in rounds with more than one thread on it), whichever
+  threads made it, since cache-line traffic follows the field's accesses, not a thread's identity.
+  User-visible: with the experimental property set, many threads touching a field lightly in
+  shared rounds can now report on platform threads too, where no single worker made more than 50.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common
