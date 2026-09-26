@@ -188,7 +188,7 @@ Closed on 2026-09-16, completed on 2026-09-17. `CorpusGates` exposes parameteriz
 
 ## 6. The refusal list is reviewed by nothing but a build (Closed 2026-09-16)
 
-Closed on 2026-09-16. `DetectorRefusalThresholdsTest` pins the exact thresholds, experimental flags, and model assumptions cited across all fifteen entries in `DetectorCoverage.refused()`: the 100-access threshold and experimental property of `FALSE_SHARING`, the 1000ms threshold of `THREAD_STARVATION`, the 200ms probe deadline of `PLATFORM_THREAD_PER_TASK`, the 50ms segment threshold of `VIRTUAL_THREAD_CPU_BOUND`, the `availableProcessors` carrier count of `VIRTUAL_THREAD_CARRIER_EXHAUSTION`, the registry deferral of `LOCK_DOWNGRADE`, the virtual-thread inertia of `LIVELOCKS`, the adjacent-log requirement of `MEMORY_ORDERING`, and the no-innocent-twin rationale for all seven single-direction detectors.
+Closed on 2026-09-16. `DetectorRefusalThresholdsTest` pins the exact thresholds, experimental flags, and model assumptions cited across the entries in `DetectorCoverage.refused()`: the 100-access threshold and experimental property of `FALSE_SHARING`, the 1000ms threshold of `THREAD_STARVATION`, the 200ms probe deadline of `PLATFORM_THREAD_PER_TASK`, the 50ms segment threshold of `VIRTUAL_THREAD_CPU_BOUND`, the `availableProcessors` carrier count of `VIRTUAL_THREAD_CARRIER_EXHAUSTION`, the registry deferral of `LOCK_DOWNGRADE`, the virtual-thread inertia of `LIVELOCKS`, the adjacent-log requirement of `MEMORY_ORDERING`, and the no-innocent-twin rationale for every single-direction detector (seven then; six since `THREAD_LOCAL_RANDOM_MISUSE` was paired in #761).
 
 ## 7. Harness and build verification suites (Added 2026-09-17)
 

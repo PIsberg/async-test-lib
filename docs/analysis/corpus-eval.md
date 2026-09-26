@@ -1530,7 +1530,7 @@ shape to add back:
 | `VIRTUAL_THREAD_PINNING` | every recorded pinning event is a finding; the platform-thread variant records nothing |
 | `THREAD_POOL_DEADLOCK` | any `nestedSubmissionCount > 0` fires, whatever the pool size |
 | `THIS_ESCAPE` | reports every instance with a non-empty escape set; the correct twin's calls are no-ops |
-| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, and the detector keyed on the instance, so every thread's correct `current()` fired. It now asks which threads recorded an obtain, so a pair is possible; it is not written yet |
+| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, and the detector keyed on the instance, so every thread's correct `current()` fired. It now asks which threads recorded an obtain, and is paired further down (#761) |
 | `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` | `recordObtrude` is the only method and every entry is a violation |
 | `DEPRECATED_THREAD_API` | `recordApiUse` is the only method and every entry is a violation |
 
@@ -1553,7 +1553,8 @@ expectations are structural:
 agent-fed, 3 zero-config, leaving 125 recording-fed - and split into five refused for want of any
 documented contract plus the thirteen the triage rejected.
 
-The thirteen still stand and are tabulated above. The five did not. They were refused because no
+Twelve of the thirteen still stand and are tabulated above; `THREAD_LOCAL_RANDOM_MISUSE` was
+paired later (#761). The five did not. They were refused because no
 *corpus library* class documents a contract that reaches them, which is true and is the wrong
 question: `SHARED_CHECKSUM`, `SHARED_DEFLATER`, `SHARED_KDF`, `SHARED_TIMEZONE` and
 `SHARED_XML_PARSER` all key their state on instance identity, and the subject they want is the JDK
@@ -1814,7 +1815,7 @@ a confined one, which does not depend on the JDK's wording. But three of them ca
 is the same defect the netty `ByteBuf` note above refuses to leave unremarked. It is recorded in
 `Corpus`'s own comment and filed as #437.
 
-### Lock twins for two lockset detectors (#771)
+### Lock twins for two lockset detectors, and the `ThreadLocalRandom` refusal lifted (#771, #761)
 
 `VAR_HANDLE_NON_ATOMIC_UPDATE` and `SYSTEM_PROPERTY_MUTATION` stay silent when one lock covers
 every access, and until #771 only their unit tests said so. Each had a silent row, but it separated
@@ -1829,16 +1830,27 @@ Neither moves a tier: `SYSTEM_PROPERTY_MUTATION` is already registered on its ke
 and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades each finding, which `PairEvidence` holds back as
 `GRADED`.
 
+`THREAD_LOCAL_RANDOM_MISUSE` kept its refusal after its per-thread model landed and the idiom lane
+paired it, because `DetectorCoverage` counts the two pair lanes and lane one, not the idiom lane.
+The recording lane now pairs it on one class and the same two calls.
+`recorded_threadLocalRandom_capturedOnAnotherThread` uses the reference `current()` returned while
+the test class initialised, with the obtain recorded for the thread that made it;
+`recorded_threadLocalRandom_currentOnTheUsingThread` has each worker call `current()` first.
+`current()` returns one JVM-wide object, so both halves hand the detector the same instance and
+differ only in which thread obtained it, which is the defect. The refusal is deleted. The pair is
+measured but is not a promotion candidate: the detector decides from the body's own obtain and use
+records, so its evidence class caps it below `VERDICT`.
+
 ### Where the roster stands, derived rather than counted
 
 | | Detectors |
 |---|---|
-| Paired in the recording lane | 116 |
+| Paired in the recording lane | 117 |
 | Paired in the agent-pair lane | 16 |
 | ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
 | Paired by lane one over 139 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
-| **Total paired** | **131** |
-| Refused: every recorded event is a finding, so no silent twin can exist | 7 |
+| **Total paired** | **132** |
+| Refused: every recorded event is a finding, so no silent twin can exist | 6 |
 | Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
 | **Total** | **146** |
 
@@ -1856,15 +1868,15 @@ That is the property worth keeping, and it is no longer one this document assert
 detector that appears in no report and on no refusal list is a gap, and the build finds it - twice
 over, since a refusal that outlives its pair fails too.
 
-**What the fifteen refusals actually cost, which is less than the number suggests.** The library's
+**What the fourteen refusals actually cost, which is less than the number suggests.** The library's
 own `DetectorFiringContractTest` already requires every detector to have a test asserting a
 positive finding, so "can it fire" is gated for all 146 whether or not this corpus pairs them.
 What a corpus pair adds on top is the *other* direction: a case that goes through the same calls
 and must stay silent. That is the false-positive half, and it is the one no unit test tends to
 write, which is why it is worth a corpus at all.
 
-So the fifteen are not fifteen untested detectors. They are fifteen detectors whose
-false-positive half either provably cannot exist - seven whose every recorded event is a finding
+So the fourteen are not fourteen untested detectors. They are fourteen detectors whose
+false-positive half either provably cannot exist - six whose every recorded event is a finding
 by construction - or exists but cannot be asserted without the assertion resting on a clock, a
 core count or a GC pause. A row like that does not measure a detector; it measures the machine
 the build happened to run on, and it fails on somebody else's.

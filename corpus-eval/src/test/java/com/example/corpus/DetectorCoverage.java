@@ -64,10 +64,6 @@ final class DetectorCoverage {
         refuse(DetectorType.THIS_ESCAPE,
                 "reports every instance with a non-empty escape set; a correct constructor makes "
                         + "no recordable call");
-        refuse(DetectorType.THREAD_LOCAL_RANDOM_MISUSE,
-                "ThreadLocalRandom.current() is a JVM-wide singleton, so the pair cannot "
-                        + "differ by instance, only by which thread records the obtain; that "
-                        + "per-thread model is new and its pair is not written yet");
         refuse(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE,
                 "recordObtrude is the only record method and every entry is a violation");
         refuse(DetectorType.DEPRECATED_THREAD_API,

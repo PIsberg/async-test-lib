@@ -158,6 +158,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Both stay silent, and both fire with the `synchronized` removed. No tier moves:
   `SYSTEM_PROPERTY_MUTATION` is already registered, and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades its
   findings, which holds its pair back from promotion.
+- **`THREAD_LOCAL_RANDOM_MISUSE` is paired in the corpus recording lane, and its refusal is gone
+  (#761).** The idiom lane already paired it, but `DetectorCoverage` does not count that lane, so
+  the refusal written before the per-thread model still stood. The new pair uses one class and the
+  same two calls: a `current()` captured while the test class initialised and used by every worker
+  fires, and each worker calling `current()` itself stays silent. The pair is measured, not a
+  promotion: the detector decides from the body's own records, which caps it below `VERDICT`.
 
 ### Fixed
 

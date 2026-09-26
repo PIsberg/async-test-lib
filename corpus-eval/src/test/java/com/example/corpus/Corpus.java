@@ -3498,6 +3498,28 @@ final class Corpus {
                     "a generator per thread, which is what split() is for and what the javadoc "
                             + "prescribes. No instance is ever recorded from a second thread"),
 
+            // --- ThreadLocalRandomMisuse: current() returns one JVM-wide object, so the pair
+            //     cannot differ by instance. It differs by which thread called current().
+
+            new RecordingSubject("recorded_threadLocalRandom_capturedOnAnotherThread", JDK,
+                    "java.util.concurrent.ThreadLocalRandom",
+                    DetectorType.THREAD_LOCAL_RANDOM_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the reference current() returned while the test class initialised is used "
+                            + "by every worker thread, and none of them called current(). The "
+                            + "generator keeps its seed on the calling thread, and current() is "
+                            + "what seeds it, so each worker draws from a seed nobody set",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("recorded_threadLocalRandom_currentOnTheUsingThread", JDK,
+                    "java.util.concurrent.ThreadLocalRandom",
+                    DetectorType.THREAD_LOCAL_RANDOM_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same use, with each worker calling current() itself first. It gets "
+                            + "back the same object the capture holds, so the halves differ only "
+                            + "in which thread called current(), and here that is the thread "
+                            + "whose seed the draw uses"),
+
             // --- The CompletableFuture protocol family. Five detectors on the same class, each
             //     asking a different question about what the caller did with the pipeline: was
             //     it terminated, was the pool it blocks on the one running it, did two threads
