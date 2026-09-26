@@ -112,10 +112,18 @@ public class AtomicityValidator {
         /** The accessing thread's ordering clock at the access, {@code null} when none was taken. */
         final HappensBefore.@Nullable Stamp stamp;
 
+        /**
+         * The locks an owner-aware access held, the owner's own monitor included, {@code null}
+         * for an access that named no owner. What lets the analysis intersect one round's
+         * owner-aware accesses on their own, as {@link #fingerprint} does for the agent's.
+         */
+        final int @Nullable [] ownerLocks;
+
         FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown,
                           int identity, long fingerprint, int ownMonitor, int methodMonitor,
                           boolean exclusivePhase, int storedIdentity, int generation,
-                          int instance, HappensBefore.@Nullable Stamp stamp) {
+                          int instance, HappensBefore.@Nullable Stamp stamp,
+                          int @Nullable [] ownerLocks) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
@@ -132,6 +140,7 @@ public class AtomicityValidator {
                     ? (1L << 32) | (instance & 0xFFFF_FFFFL)
                     : identity & 0xFFFF_FFFFL;
             this.stamp = stamp;
+            this.ownerLocks = ownerLocks;
         }
 
         @Override
@@ -881,8 +890,11 @@ public class AtomicityValidator {
         // Record what is known about locks before the bookkeeping below: the question is only
         // meaningful while the caller is still inside whatever region it is being asked about.
         FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+        int[] ownerLocks = null;
         if (ownerKnown) {
             guard.noteOwner(owner);
+            // The same probe the streamed intersection just took, kept for the per-round one.
+            ownerLocks = owner == null ? HeldLocks.NONE : HeldLocks.intersect(null, owner, true);
         } else if (lockFingerprint != UNMODELLED) {
             if (identity == 0) {
                 // This is the guard the analysis consults for this access; with an identity the
@@ -899,7 +911,8 @@ public class AtomicityValidator {
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite, epoch,
                     ownerKnown, identity, lockFingerprint, ownMonitor, methodMonitor,
-                    exclusivePhase, isWrite ? storedIdentity : 0, generation, instance, stamp));
+                    exclusivePhase, isWrite ? storedIdentity : 0, generation, instance, stamp,
+                    ownerLocks));
             // Index the owner's own writes as they arrive, so asking "did this published object
             // then go quiet" later costs a map lookup rather than a scan of every history.
             if (isWrite && identity != 0) {
@@ -1142,7 +1155,7 @@ public class AtomicityValidator {
                 judged.add(new FieldAccessRecord(access.threadId, access.write, access.epoch,
                         access.ownerKnown, access.identity, access.fingerprint, access.ownMonitor,
                         access.methodMonitor, false, access.storedIdentity, access.generation,
-                        access.instance, access.stamp));
+                        access.instance, access.stamp, access.ownerLocks));
             } else {
                 judged.add(access);
             }
@@ -1214,10 +1227,12 @@ public class AtomicityValidator {
                     hasWrite |= access.write;
                     anyOwnerKnown |= access.ownerKnown;
                 }
-                // The lockset is per field rather than per round, and deliberately so: a field
-                // guarded consistently in one round and raced in another has an empty
-                // intersection overall, and the round that raced is a real finding. Accesses
-                // recorded without an owner collapse it, so every caller that predates
+                // The streamed lockset spans the field's whole run, which makes it a cheap first
+                // answer and a wrong last one: a different lock in each round empties it, although
+                // the harness orders the rounds and each one was consistently locked. So once it
+                // has collapsed, this round's own accesses decide. A round that raced still has an
+                // empty intersection of its own and still reports. Accesses recorded without an
+                // owner or a fingerprint collapse both, so every caller that predates
                 // recordFieldAccessOn keeps the behaviour it had.
                 int groupIdentity = roundAccesses.isEmpty() ? 0 : roundAccesses.get(0).identity;
                 long groupInstance = roundAccesses.isEmpty() ? 0L : roundAccesses.get(0).instanceKey;
@@ -1229,6 +1244,7 @@ public class AtomicityValidator {
                 // commons-lang's LazyInitializer and Guava's memoizing supplier both are.
                 boolean sawUnguarded = locks == null
                         || (locks.sawUnguardedAccess()
+                            && noLockCoveredTheRound(roundAccesses)
                             && !locks.isSafePublication()
                             && !locks.writesOnlyOneConstant());
                 // The per-instance excuses need a group that is one object's accesses. Identity 0
@@ -1398,6 +1414,39 @@ public class AtomicityValidator {
             commonPerGeneration.put(access.generation, common);
         }
         return true;
+    }
+
+    /**
+     * {@return whether no lock was held at every access of one round's group, in either model}
+     *
+     * <p>The per-round counterpart of {@link FieldGuard#sawUnguardedAccess()}, recomputed from the
+     * records: owner-aware accesses intersect the locks probed at the access, agent-fed ones the
+     * locks their fingerprint and carried monitors resolve to, each model apart as the streamed
+     * sets keep them. An access that carried no lock information at all is unguarded.
+     */
+    private static boolean noLockCoveredTheRound(List<FieldAccessRecord> round) {
+        int[] ownerCommon = null;
+        int[] fingerprintCommon = null;
+        for (FieldAccessRecord access : round) {
+            if (access.ownerKnown) {
+                int[] held = access.ownerLocks != null ? access.ownerLocks : HeldLocks.NONE;
+                ownerCommon = ownerCommon == null ? held : Lockset.intersect(ownerCommon, held);
+                if (ownerCommon.length == 0) {
+                    return true;
+                }
+            } else if (access.fingerprint == UNMODELLED) {
+                return true;
+            } else {
+                int[] held = heldLocksOf(access);
+                fingerprintCommon = fingerprintCommon == null
+                        ? held
+                        : Lockset.intersect(fingerprintCommon, held);
+                if (fingerprintCommon.length == 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** {@return the resolved lock ids this access held, the carried monitors included} */

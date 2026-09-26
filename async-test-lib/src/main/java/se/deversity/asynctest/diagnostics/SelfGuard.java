@@ -281,6 +281,9 @@ public final class SelfGuard {
         /** Latched once one round saw two threads and no lock common to all their accesses. */
         private volatile boolean unguardedSharing;
 
+        /** Latched once one round saw no lock common to all its accesses, however many threads. */
+        private volatile boolean unguardedRound;
+
         /** This instance's take counter, bound on its first access inside a run. */
         private volatile @Nullable Binding binding;
 
@@ -371,8 +374,13 @@ public final class SelfGuard {
                 Window next = advance(current, key, instance, forWrite, threadId, stamp);
                 if (next == current // NOPMD CompareObjectsWithEquals - unchanged window, nothing to publish
                         || window.compareAndSet(current, next)) {
-                    if (next.shared && next.locks.length == 0) {
-                        unguardedSharing = true;
+                    if (next.locks.length == 0) {
+                        if (!unguardedRound) {
+                            unguardedRound = true;
+                        }
+                        if (next.shared) {
+                            unguardedSharing = true;
+                        }
                     }
                     return;
                 }
@@ -465,6 +473,21 @@ public final class SelfGuard {
         }
 
         /**
+         * {@return whether one round's accesses to this instance had no lock common to all of
+         * them, however many threads made them}
+         *
+         * <p>For a detector whose finding does not need a second thread but whose lockset must
+         * not span rounds: the runner finishes one round before it starts the next, so a
+         * different lock in each round is consistent locking, and two locks inside one round
+         * are not. Rounds and takes split windows exactly as for
+         * {@link #sawUnguardedSharing()}. With no context installed the whole run is one round,
+         * and this answers what {@link #sawUnguardedAccess()} does. Once true it stays true.
+         */
+        final boolean sawUnguardedRound() {
+            return unguardedRound;
+        }
+
+        /**
          * {@return whether no single lock was held across every recorded access}
          *
          * <p>An instance that has never been accessed reads as guarded, which is correct: with
@@ -473,8 +496,9 @@ public final class SelfGuard {
          * question just got a better model behind it.
          *
          * <p>This intersection spans the whole run and says nothing about how many threads took
-         * part. A detector that reports sharing asks {@link #sawUnguardedSharing()} instead; this
-         * one is for callers whose finding does not need a second thread.
+         * part, or about rounds. A detector that reports sharing asks
+         * {@link #sawUnguardedSharing()} instead, and one whose finding does not need a second
+         * thread asks {@link #sawUnguardedRound()}.
          */
         final boolean sawUnguardedAccess() {
             int[] current = candidateLocks.get();

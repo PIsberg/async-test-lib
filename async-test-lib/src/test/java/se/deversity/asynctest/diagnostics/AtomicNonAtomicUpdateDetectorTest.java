@@ -126,4 +126,82 @@ public class AtomicNonAtomicUpdateDetectorTest {
         assertFalse(d.analyze().hasIssues(),
             "a pending get must not survive the round boundary on a reused pool thread");
     }
+
+    // ---- The lock is judged within one round ---------------------------------------------------
+    //
+    // The runner finishes one round before it starts the next, so a lock that guarded every
+    // get+set of one round says nothing about the next round's. These drive the detector through
+    // an installed context, the way a run does, so the rounds are the runner's.
+
+    private static se.deversity.asynctest.AsyncTestContext updateContext() {
+        return new se.deversity.asynctest.AsyncTestContext(
+            se.deversity.asynctest.AsyncTestConfig.builder().detectAtomicNonAtomicUpdates(true).build());
+    }
+
+    /** Starts one worker per body, each with {@code ctx} installed, and waits for all of them. */
+    private static void runWorkers(se.deversity.asynctest.AsyncTestContext ctx, Runnable... bodies)
+            throws InterruptedException {
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                se.deversity.asynctest.AsyncTestContext.install(ctx);
+                try {
+                    body.run();
+                } finally {
+                    se.deversity.asynctest.AsyncTestContext.uninstall();
+                }
+            }, "worker-" + i);
+        }
+        for (Thread worker : workers) worker.start();
+        for (Thread worker : workers) worker.join();
+    }
+
+    /** A get+set on {@code counter} inside {@code synchronized (lock)}, with the lock declared. */
+    private static Runnable getThenSetUnder(Object lock, AtomicInteger counter) {
+        return () -> {
+            synchronized (lock) {
+                try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+                    var d = se.deversity.asynctest.AsyncTestContext.atomicNonAtomicUpdateDetector();
+                    int v = counter.get();
+                    d.recordGet(counter, "counter", Thread.currentThread());
+                    counter.set(v + 1);
+                    d.recordSet(counter, "counter", Thread.currentThread());
+                }
+            }
+        };
+    }
+
+    private static AtomicNonAtomicUpdateDetector detectorOf(se.deversity.asynctest.AsyncTestContext ctx) {
+        se.deversity.asynctest.AsyncTestContext.install(ctx);
+        try {
+            return se.deversity.asynctest.AsyncTestContext.atomicNonAtomicUpdateDetector();
+        } finally {
+            se.deversity.asynctest.AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    void aDifferentLockInEachRoundIsNotInconsistentLocking() throws Exception {
+        var ctx = updateContext();
+        AtomicInteger counter = new AtomicInteger();
+        for (Object lock : new Object[] {new Object(), new Object()}) {
+            ctx.markInvocationStart();
+            runWorkers(ctx, getThenSetUnder(lock, counter), getThenSetUnder(lock, counter));
+        }
+        var report = detectorOf(ctx).analyze();
+        assertFalse(report.hasIssues(),
+            "each round guarded every get+set with one lock; nothing crosses the round boundary: "
+                + report);
+    }
+
+    @Test
+    void twoThreadsInOneRoundUnderDifferentLocksStillFire() throws Exception {
+        var ctx = updateContext();
+        AtomicInteger counter = new AtomicInteger();
+        ctx.markInvocationStart();
+        runWorkers(ctx, getThenSetUnder(new Object(), counter), getThenSetUnder(new Object(), counter));
+        assertTrue(detectorOf(ctx).analyze().hasIssues(),
+            "two locks in one round exclude nothing from each other");
+    }
 }
