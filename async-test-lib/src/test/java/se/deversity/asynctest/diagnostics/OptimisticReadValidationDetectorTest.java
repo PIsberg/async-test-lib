@@ -63,6 +63,137 @@ public class OptimisticReadValidationDetectorTest {
                         + "that was used: " + d.analyze().violations);
     }
 
+    /**
+     * The bug the retry idiom exists to prevent: the write lands, validate() says so, and the caller
+     * uses the optimistic values anyway. Reported once however many times the use is recorded.
+     */
+    @Test
+    void usingTheValuesAfterAFailedValidateIsReported() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        int[] shared = {1};
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        int x = shared[0];
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+
+        long write = lock.writeLock();                 // the concurrent writer
+        shared[0] = 2;
+        lock.unlockWrite(write);
+
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertFalse(valid, "premise: the write invalidated the optimistic stamp");
+        assertEquals(1, x, "premise: the value used is the torn one read before the write");
+        d.recordValuesUsed(lock, stamp, t);            // no retry: the torn value is used
+        d.recordValuesUsed(lock, stamp, t);
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(),
+                "using values whose validate() failed must be reported, once: " + report.violations);
+        assertTrue(report.violations.get(0).contains("sharedX"), report.violations.get(0));
+        assertTrue(report.violations.get(0).contains("validate() returned false"),
+                report.violations.get(0));
+    }
+
+    @Test
+    void usingTheValuesAfterASuccessfulValidateIsSilent() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertTrue(valid, "premise: no writer, so the stamp is still valid");
+        d.recordValuesUsed(lock, stamp, t);
+
+        assertFalse(d.analyze().hasIssues(), d.analyze().violations.toString());
+    }
+
+    /**
+     * The javadoc idiom with the use recorded: the validation fails, the values are re-read under the
+     * read lock, and the use names the read-lock stamp they were read under. Correct code.
+     */
+    @Test
+    void usingTheValuesReReadUnderTheReadLockAfterAFailedValidateIsSilent() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        int[] shared = {1};
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        int x = shared[0];
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+
+        long write = lock.writeLock();
+        shared[0] = 2;
+        lock.unlockWrite(write);
+
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertFalse(valid, "premise: the write invalidated the optimistic stamp");
+        long read = lock.readLock();
+        try {
+            x = shared[0];
+            d.recordValuesUsed(lock, read, t);
+        } finally {
+            lock.unlockRead(read);
+        }
+
+        assertEquals(2, x, "the value used is the one re-read under the lock");
+        assertFalse(d.analyze().hasIssues(),
+                "the values used were re-read under the read lock: " + d.analyze().violations);
+    }
+
+    /** The loop form of the idiom: a failed attempt, a fresh optimistic read that validates, then the use. */
+    @Test
+    void usingTheValuesOfARetriedOptimisticReadIsSilent() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long first = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, first, t);
+        d.recordDataAccessed(lock, first, t, "sharedX");
+        lock.unlockWrite(lock.writeLock());
+        d.recordValidateCalled(lock, first, lock.validate(first), t);
+
+        long second = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, second, t);
+        d.recordDataAccessed(lock, second, t, "sharedX");
+        d.recordValidateCalled(lock, second, lock.validate(second), t);
+        d.recordValuesUsed(lock, second, t);
+
+        assertFalse(d.analyze().hasIssues(), d.analyze().violations.toString());
+    }
+
+    /**
+     * A use with no validate() at all is the missing validation the detector already reports; the
+     * use adds no second finding for the same read.
+     */
+    @Test
+    void usingTheValuesWithNoValidateIsReportedOnceAsNeverValidated() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        d.recordValuesUsed(lock, stamp, t);
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        assertTrue(report.violations.get(0).contains("sharedX"), report.violations.get(0));
+        assertTrue(report.violations.get(0).contains("never called"), report.violations.get(0));
+    }
+
     /** Two locks read optimistically in turn, each validated: correct, even if their hashes collide. */
     @Test
     void twoLocksWhoseIdentityHashesCollideAreNotMerged() {
@@ -133,6 +264,8 @@ public class OptimisticReadValidationDetectorTest {
             d.recordOptimisticReadStarted(new StampedLock(), 0L, null);
             d.recordDataAccessed(null, 0L, Thread.currentThread(), "x");
             d.recordValidateCalled(null, 0L, false, Thread.currentThread());
+            d.recordValuesUsed(null, 0L, Thread.currentThread());
+            d.recordValuesUsed(new StampedLock(), 0L, null);
         });
         assertFalse(d.analyze().hasIssues());
     }

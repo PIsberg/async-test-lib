@@ -108,6 +108,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names on `ownerClass` now decides it: a static non-final field is reported, since a class has
   one value for it, and a final field is not, since its monitors can only be several instances. A
   non-final instance field stays a note, which now names the four-argument call that decides it.
+- **`OptimisticReadValidationDetector` can see torn values used after a failed `validate()`
+  (#762).** A failed validation closes the read like a successful one, so the retry idiom stays
+  silent, but nothing recorded what the caller did next, and using the optimistic values anyway
+  went unreported. The new `recordValuesUsed(lock, stamp, thread)` takes the stamp the used values
+  were read under: the failed optimistic stamp reports, once per read; the read-lock stamp of a
+  re-read, or a stamp that validated, stays silent. A use with no `validate()` at all is still the
+  one never-validated finding.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
