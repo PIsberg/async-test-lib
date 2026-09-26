@@ -87,6 +87,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their identity hash, so a later attempt sharing one replaced an earlier one, and a stale
   compare-and-set already judged an ABA dropped out of the report: of 300,000, two runs reported
   299,986 and 299,985. Attempts are now keyed by instance.
+- **A volatile edge in the happens-before model is per field, not per object (#742).** A volatile
+  write released its whole object and a later access the weaver marked as following a volatile
+  read acquired it, so reading one volatile field ordered a plain access after a write of another
+  field of the same object, which publishes nothing to that reader, and the race between them went
+  unreported. The clock is now kept per object and field: the agent's hook notes which volatile
+  fields a thread reads, and the marked access acquires only those; `RaceConditionDetector`'s own
+  volatile rule, for a test that records by hand, acquires only the field it recorded a read of.
+  Reading the field that was written still orders the access. Still approximate: the weaver
+  reports a volatile read before it happens and not the value it returned, so an access after a
+  read that saw an older value is still ordered.
+- **A refused offer or a failed `compareAndSet` no longer publishes (#742).** The agent's hooks
+  release the element to the happens-before model before the call, so the take that returns it
+  finds the release, and left that release in place when a bounded queue refused the element, a
+  blocking offer was interrupted or an `AtomicReference.compareAndSet` failed. Whoever later
+  received the element some other way was then ordered after the offering thread by a hand-off
+  that never happened, and a race between them went unreported. The hooks now withdraw the release
+  when the call fails (`HappensBefore.retract`, `TelemetryRegistry.ownershipRefused`); an accepted
+  offer and a successful swap still order the take.
 - **`LockUpgradeDeadlockDetector` and `LockDowngradeDetector` name unnamed threads by id (#766).**
   Both printed a thread by name alone, so a finding on default virtual threads, which have no
   name, printed an empty name for every thread, and the upgrade report collapsed them into one.

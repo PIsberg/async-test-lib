@@ -36,7 +36,8 @@ import se.deversity.asynctest.report.Violation;
  * child ordered by {@code Thread.start} and {@code join}. The edges come from the agent's woven
  * calls or from the test declaring them through {@link HappensBefore}; this detector adds one of
  * its own, for a field the tracked object's class declares {@code volatile}: a recorded write
- * releases the object, a recorded read acquires it, and two reads or a read and a write of that
+ * releases that field of the object, a recorded read of the same field acquires it (a read of
+ * another volatile field acquires nothing, #742), and two reads or a read and a write of that
  * field are never a race, since volatile accesses are synchronization. Two threads writing it
  * still are, which is what keeps {@code volatile count++} a finding. Record a volatile write
  * before making it and a volatile read after making it, so that the release precedes every read
@@ -252,16 +253,17 @@ public class RaceConditionDetector {
             field.firstWrite = SiteCapture.capture().orElse(null);
         }
         if (field.volatileField && !write) {
-            // A volatile read receives what the writes before it published. Recorded after the
-            // read it describes, so the acquire comes after the value was actually seen.
-            HappensBefore.acquire(object);
+            // A volatile read receives what the writes of the same field before it published,
+            // and nothing another volatile field's write did (#742). Recorded after the read it
+            // describes, so the acquire comes after the value was actually seen.
+            HappensBefore.acquireVolatile(object, fieldName);
         }
         // Stamp before enqueueing and before any release below: the record order is what the
         // analysis replays, and it must agree with the order the clocks describe.
         field.accesses.add(new FieldAccess(Thread.currentThread().threadId(), write,
                 invocationEpoch.get(), locks, HappensBefore.current()));
         if (field.volatileField && write) {
-            HappensBefore.release(object);
+            HappensBefore.releaseVolatile(object, fieldName);
         }
     }
     /**

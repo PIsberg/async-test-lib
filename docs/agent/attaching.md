@@ -186,15 +186,19 @@ too: a thread whose use of the instance the model orders after the previous thre
 over rather than sharing it, while two threads using it at once still report. For the field
 stream the accessing thread's clock is stamped at publish time and travels through the ring with
 the event, since the drain thread's own clock orders nothing. The edges are the ones the Java memory
-model names for the woven calls: an element offered to and taken from a `java.util.concurrent`
-queue (or any `BlockingQueue` or `ConcurrentMap`, and the synchronized wrappers), a value put into
-and read back from such a map, `CountDownLatch.countDown` and an `await` that reached zero,
-`Semaphore.release` and an acquire that took a permit, and `Thread.start` and a `Thread.join` that
-returned with the thread finished (every `join` overload is substituted for this). With
-`fields=true`, a volatile write releases its object and a later access the weaver marks as
-following a volatile read of the same object acquires it. An `ArrayDeque` or a `HashMap` promises
-nothing and gives no edge. A lock hand-off is deliberately not an edge: the lockset judges locking,
-and ordering it by the one schedule a run took would hide what another schedule exposes.
+model names for the woven calls: an element offered to and taken from a `java.util.concurrent` queue
+(or any `BlockingQueue` or `ConcurrentMap`, and the synchronized wrappers), where an offer the queue
+refused publishes nothing, a value put into and read back from such a map,
+`CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
+took a permit, and `Thread.start` and a `Thread.join` that returned with the thread finished (every
+`join` overload is substituted for this). With `fields=true`, a volatile write releases that field
+of its object, and a later access to the same object that the weaver marks as following a volatile
+read acquires the fields of that object the thread read, not the object as a whole: reading one
+volatile field receives nothing a write of another published. The acquire is taken at that access
+rather than at the read, so an access after a read that returned an older value is still ordered
+(#742). An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock hand-off is
+deliberately not an edge: the lockset judges locking, and ordering it by the one schedule a run took
+would hide what another schedule exposes.
 
 Three limits worth knowing before switching it on:
 

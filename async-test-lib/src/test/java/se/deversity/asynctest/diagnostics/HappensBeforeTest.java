@@ -100,6 +100,103 @@ class HappensBeforeTest {
     }
 
     @Test
+    @DisplayName("a volatile field's release reaches a read of that field and of no other (#742)")
+    void aVolatileClockIsPerField() throws InterruptedException {
+        Object holder = new Object();
+        Recorded writer = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "com.example.Holder.ready"));
+        Recorded sameField = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "ready"), false, () -> { });
+        Recorded otherField = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "com.example.Holder.other"), false, () -> { });
+        Recorded wholeObject = onNewThread(() -> HappensBefore.acquire(holder), false, () -> { });
+
+        assertTrue(ordered(writer, sameField),
+                "the same field by its simple name: the qualifier depends on the call site");
+        assertFalse(ordered(writer, otherField), "another volatile field published nothing");
+        assertFalse(ordered(writer, wholeObject), "nor does the object's own hand-off clock");
+    }
+
+    @Test
+    @DisplayName("a marked access acquires the fields its thread read, including one written after the read hook")
+    void aNotedVolatileReadIsAcquiredAtTheMarkedAccess() throws InterruptedException {
+        Object holder = new Object();
+        AtomicReference<Recorded> writer = new AtomicReference<>();
+        Recorded reader = onNewThread(() -> {
+            // The hook runs before the read instruction, and the write can land in between.
+            HappensBefore.volatileRead(holder, "Holder.ready");
+            try {
+                writer.set(onNewThread(() -> { }, true,
+                        () -> HappensBefore.releaseVolatile(holder, "Holder.ready")));
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            }
+            HappensBefore.acquireVolatileReads(holder);
+        }, false, () -> { });
+        Recorded otherReader = onNewThread(() -> {
+            HappensBefore.volatileRead(holder, "Holder.other");
+            HappensBefore.acquireVolatileReads(holder);
+        }, false, () -> { });
+        Recorded otherObject = onNewThread(() -> {
+            HappensBefore.volatileRead(holder, "Holder.ready");
+            HappensBefore.acquireVolatileReads(new Object());
+        }, false, () -> { });
+
+        assertTrue(ordered(writer.get(), reader), "the reader read the field the writer released");
+        assertFalse(ordered(writer.get(), otherReader), "a read of another field receives nothing");
+        assertFalse(ordered(writer.get(), otherObject),
+                "the marked access was on another object, whose fields this thread never read");
+    }
+
+    @Test
+    @DisplayName("a thread remembers its last volatile reads, and a read that old orders nothing")
+    void anEvictedVolatileReadOrdersNothing() throws InterruptedException {
+        Object holder = new Object();
+        Recorded writer = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.ready"));
+        Recorded reader = onNewThread(() -> {
+            HappensBefore.volatileRead(holder, "Holder.ready");
+            for (int i = 0; i < HappensBefore.VOLATILE_READS; i++) {
+                HappensBefore.volatileRead(holder, "Holder.field" + i);
+            }
+            HappensBefore.acquireVolatileReads(holder);
+        }, false, () -> { });
+
+        assertFalse(ordered(writer, reader),
+                "forgetting a read loses an edge, which is the direction the model may err in");
+    }
+
+    @Test
+    @DisplayName("a withdrawn release orders nothing, and leaves another thread's release in place (#742)")
+    void aRetractedReleaseOrdersNothing() throws InterruptedException {
+        Object box = new Object();
+        Recorded kept = onNewThread(() -> { }, true, () -> HappensBefore.release(box));
+        Recorded refused = onNewThread(() -> { }, true, () -> {
+            HappensBefore.release(box);
+            HappensBefore.retract(box); // the offer the release was made for was refused
+        });
+        Recorded reader = onNewThread(() -> HappensBefore.acquire(box), false, () -> { });
+
+        assertFalse(ordered(refused, reader), "the hand-off never happened, so it orders nothing");
+        assertTrue(ordered(kept, reader), "the earlier, accepted hand-off still orders its writer");
+    }
+
+    @Test
+    @DisplayName("a release the thread has stamped an access after can no longer be withdrawn")
+    void aReleaseFollowedByAnAccessStays() throws InterruptedException {
+        Object box = new Object();
+        Recorded writer = onNewThread(() -> { }, true, () -> {
+            HappensBefore.release(box);
+            HappensBefore.current();
+            HappensBefore.retract(box);
+        });
+        Recorded reader = onNewThread(() -> HappensBefore.acquire(box), false, () -> { });
+
+        assertTrue(ordered(writer, reader),
+                "a withdrawal is only for the refused call that immediately follows its release");
+    }
+
+    @Test
     @DisplayName("a fork orders the parent's earlier accesses before the child's, and only those")
     void forkOrdersWhatCameBefore() throws InterruptedException {
         Recorded beforeFork = stampHere(true);
