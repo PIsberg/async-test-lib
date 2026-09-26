@@ -286,9 +286,15 @@ public class AtomicityValidator {
          * {@code volatile count++} a finding. Guava's cache writes an entry under its segment
          * lock and, on the load path, under the entry's monitor as well: the intersection is the
          * segment lock, and that is enough.
+         *
+         * <p>The streamed write lockset spans the whole run, so a different lock in each round
+         * empties it although the harness orders the rounds; once it has, {@code round}'s own
+         * writes decide, as {@link #noLockCoveredTheRound} does for the reporting lockset (#749).
+         *
+         * @param round the accesses of the one round group being judged
          */
-        boolean isSafePublication() {
-            return volatileField && writes.guarded();
+        boolean isSafePublication(List<FieldAccessRecord> round) {
+            return volatileField && (writes.guarded() || everyWriteOfTheRoundSharedALock(round));
         }
 
         /** {@return the locks held at every recorded write; empty when none survived or none seen} */
@@ -1270,7 +1276,7 @@ public class AtomicityValidator {
                 boolean sawUnguarded = locks == null
                         || (locks.sawUnguardedAccess()
                             && noLockCoveredTheRound(roundAccesses)
-                            && !locks.isSafePublication()
+                            && !locks.isSafePublication(roundAccesses)
                             && !locks.writesOnlyOneConstant());
                 // The per-instance excuses need a group that is one object's accesses. Identity 0
                 // normally is not: it is the "not known" bucket, where every pre-agent caller's
@@ -1492,6 +1498,32 @@ public class AtomicityValidator {
             }
         }
         return false;
+    }
+
+    /**
+     * {@return whether some lock was held at every write of one round's group}
+     *
+     * <p>The per-round counterpart of the write lockset {@link FieldGuard#isSafePublication}
+     * streams, recomputed from the records with the same resolution. A write that carried no
+     * fingerprint, owner-aware or unmodelled, says nothing about the locks it held, so it ends
+     * the answer here rather than being skipped. A group with no write has nothing to publish.
+     */
+    private static boolean everyWriteOfTheRoundSharedALock(List<FieldAccessRecord> round) {
+        int[] common = null;
+        for (FieldAccessRecord access : round) {
+            if (!access.write) {
+                continue;
+            }
+            if (access.fingerprint == UNMODELLED) {
+                return false;
+            }
+            int[] held = heldLocksOf(access);
+            common = common == null ? held : Lockset.intersect(common, held);
+            if (common.length == 0) {
+                return false;
+            }
+        }
+        return common != null;
     }
 
     /** {@return the resolved lock ids this access held, the carried monitors included} */

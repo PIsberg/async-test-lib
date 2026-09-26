@@ -112,6 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`AtomicityValidator` no longer reports a volatile that one thread writes and others read.** One
   writer's read-then-write cannot lose an update and volatile reads are not data races;
   `RaceConditionDetector` already agreed. Two writers still report.
+- **`AtomicityValidator` judges double-checked locking per round (#749).** The safe-publication
+  excuse intersected write locks over the whole run, so a correct lazy initialiser that took a
+  different lock in each round was reported. Each round's own writes now decide once the run-wide
+  set is empty; two writes under two locks inside one round still report.
 
 - **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
   `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read
