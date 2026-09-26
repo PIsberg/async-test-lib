@@ -383,7 +383,7 @@ public class RaceConditionDetector {
         }
 
         FieldAccess[] pair = firstRacingPair(accesses, readsConflict);
-        if (pair != null) {
+        if (pair.length == 2) {
             report.unsafeAccesses.add(String.format(Locale.ROOT,
                 "%s: thread %d %s followed by thread %d %s",
                 fieldRef,
@@ -396,14 +396,15 @@ public class RaceConditionDetector {
     }
 
     /**
-     * {@return the first pair in time that conflicts, shares no lock and is not ordered, or null}
+     * {@return the first pair in time that conflicts, shares no lock and is not ordered, or an
+     * empty array}
      *
      * <p>Adjacent pairs first, which is what the sequence line has always described; when the
      * unordered pair is not adjacent (a read ordered after the write sits between them), the
      * earliest one further apart, so a reported round always names the pair that makes it one.
      */
-    private static FieldAccess @Nullable [] firstRacingPair(List<FieldAccess> accesses,
-                                                            boolean readsConflict) {
+    private static FieldAccess[] firstRacingPair(List<FieldAccess> accesses,
+                                                 boolean readsConflict) {
         List<FieldAccess> ordered = new ArrayList<>(accesses);
         ordered.sort((left, right) -> Long.compare(left.timestamp, right.timestamp));
         for (int i = 1; i < ordered.size(); i++) {
@@ -418,7 +419,7 @@ public class RaceConditionDetector {
                 }
             }
         }
-        return null;
+        return new FieldAccess[0];
     }
 
     private static boolean races(FieldAccess earlier, FieldAccess later, boolean readsConflict) {

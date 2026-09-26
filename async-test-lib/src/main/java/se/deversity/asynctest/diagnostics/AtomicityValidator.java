@@ -478,6 +478,9 @@ public class AtomicityValidator {
      * slower than that delivered the round's remaining events after the next round had started,
      * and they were paired with it.
      */
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = "VO_VOLATILE_REFERENCE_TO_ARRAY",
+            justification = "copy-on-write: a published array is never written again, so the "
+                    + "volatile reference is the only publication its elements need")
     private volatile long[] roundTokens = new long[0];
 
     private volatile boolean enabled = true;

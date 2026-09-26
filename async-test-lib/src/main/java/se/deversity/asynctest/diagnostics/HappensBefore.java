@@ -484,16 +484,21 @@ public final class HappensBefore {
                 if (right >= other.threads.length
                         || left < threads.length && threads[left] < other.threads[right]) {
                     next = threads[left];
-                    count = counts[left++];
+                    count = counts[left];
+                    left++;
                 } else if (left >= threads.length || other.threads[right] < threads[left]) {
                     next = other.threads[right];
-                    count = other.counts[right++];
+                    count = other.counts[right];
+                    right++;
                 } else {
                     next = threads[left];
-                    count = Math.max(counts[left++], other.counts[right++]);
+                    count = Math.max(counts[left], other.counts[right]);
+                    left++;
+                    right++;
                 }
                 mergedThreads[size] = next;
-                mergedCounts[size++] = count;
+                mergedCounts[size] = count;
+                size++;
             }
             int from = Math.max(0, size - MAX_ENTRIES);
             int keepAt = -1;
@@ -510,7 +515,8 @@ public final class HappensBefore {
             int out = 0;
             if (keepAt >= 0) {
                 resultThreads[out] = mergedThreads[keepAt];
-                resultCounts[out++] = mergedCounts[keepAt];
+                resultCounts[out] = mergedCounts[keepAt];
+                out++;
             }
             System.arraycopy(mergedThreads, from, resultThreads, out, size - from);
             System.arraycopy(mergedCounts, from, resultCounts, out, size - from);
