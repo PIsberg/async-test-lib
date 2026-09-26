@@ -179,8 +179,10 @@ captured lambdas it saves. It is not in the tree, and the measurement is recorde
 afternoon is not spent twice.
 
 **Ordering the lockset cannot see (1.12.3).** The same hooks feed the shared happens-before model,
-`HappensBefore`, which `RaceConditionDetector` consults before it reports a round: a round whose
-every conflicting pair the model orders is not reported. The edges are the ones the Java memory
+`HappensBefore`, which `RaceConditionDetector` and `AtomicityValidator` consult before they report
+a round: a round whose every conflicting pair the model orders is not reported. For the field
+stream the accessing thread's clock is stamped at publish time and travels through the ring with
+the event, since the drain thread's own clock orders nothing. The edges are the ones the Java memory
 model names for the woven calls: an element offered to and taken from a `java.util.concurrent`
 queue (or any `BlockingQueue` or `ConcurrentMap`, and the synchronized wrappers), a value put into
 and read back from such a map, `CountDownLatch.countDown` and an `await` that reached zero,

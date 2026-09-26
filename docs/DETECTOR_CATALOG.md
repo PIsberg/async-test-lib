@@ -149,7 +149,8 @@ a `LOW` advisory.
 model. `RACE_CONDITIONS` intersects the lock sets held at each access to a field in a round (#570),
 so a field one thread holds `{A, B}` for and another holds `{A}` for is guarded by `A` and not
 reported. `ATOMICITY_VIOLATIONS` is coarser on its agent-fed path, where it compares whole lock sets
-rather than intersecting them. Neither report grades its findings, so both detectors are rated
+rather than intersecting them. Both also excuse a round whose every conflicting pair the shared
+`HappensBefore` model orders (1.12.3). Neither report grades its findings, so both detectors are rated
 PROMPT as a whole. For `RACE_CONDITIONS` that is a decision rather than a gap: no finding it makes
 can tell an unguarded access from one under an undeclared lock, or a hand-off through a call that
 neither the agent nor the test described to the shared happens-before model, so no finding of it

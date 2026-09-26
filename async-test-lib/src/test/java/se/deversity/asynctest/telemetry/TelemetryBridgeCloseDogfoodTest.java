@@ -47,7 +47,8 @@ class TelemetryBridgeCloseDogfoodTest {
                                                 boolean isWrite, long threadId, long lockFingerprint,
                                                 int ownMonitor, int methodMonitor,
                                                 boolean volatileField, int constantTag, int identity,
-                                                int storedIdentity, @Nullable Object receiver) {
+                                                int storedIdentity, @Nullable Object receiver,
+                                                se.deversity.asynctest.diagnostics.HappensBefore.@Nullable Stamp stamp) {
             delivered.incrementAndGet();
         }
     }

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.diagnostics.HappensBefore;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
@@ -227,12 +228,15 @@ public final class TelemetryEventBuffer {
          * @param storedIdentity    identity hash of the reference this write stored, 0 when unknown
          * @param receiver          the object the field belongs to, {@code null} for a static
          *                          field or when the producer did not have it
+         * @param stamp             the producer's {@link HappensBefore} clock at the access,
+         *                          {@code null} when none was taken
          * @since 1.12.3
          */
         default void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
                              long lockFingerprint, boolean volatileField, int constantTag,
                              int identity, boolean afterVolatileRead, int ownMonitor,
-                             int methodMonitor, int storedIdentity, @Nullable Object receiver) {
+                             int methodMonitor, int storedIdentity, @Nullable Object receiver,
+                             HappensBefore.@Nullable Stamp stamp) {
             onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
                     identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity);
         }
@@ -257,6 +261,8 @@ public final class TelemetryEventBuffer {
         int storedIdentity;
         /** Lent to the consumer for one callback, then cleared so the ring keeps nothing alive. */
         @Nullable Object receiver;
+        /** The producer's ordering clock at the access; immutable, so sharing it is safe. */
+        HappensBefore.@Nullable Stamp stamp;
     }
 
     private static final VarHandle SEQ_VH;
@@ -474,7 +480,7 @@ public final class TelemetryEventBuffer {
                         boolean afterVolatileRead, int ownMonitor, int methodMonitor,
                         int storedIdentity) {
         publish(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
-                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null);
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null, null);
     }
 
     /**
@@ -496,12 +502,15 @@ public final class TelemetryEventBuffer {
      * @param methodMonitor     identity hash of the enclosing synchronized method's monitor, else 0
      * @param storedIdentity    identity hash of the reference this write stored, 0 when unknown
      * @param receiver          the object the field belongs to, {@code null} for a static field
+     * @param stamp             the producer's {@link HappensBefore} clock at the access, taken on
+     *                          the producer because the drain thread's own clock orders nothing
      * @since 1.12.3
      */
     public void publish(long threadId, String targetField, boolean isWrite, long lockFingerprint,
                         boolean volatileField, int constantTag, int identity,
                         boolean afterVolatileRead, int ownMonitor, int methodMonitor,
-                        int storedIdentity, @Nullable Object receiver) {
+                        int storedIdentity, @Nullable Object receiver,
+                        HappensBefore.@Nullable Stamp stamp) {
         long fullSinceNanos = 0L;
         int spins = 0;
         for (;;) {
@@ -547,6 +556,7 @@ public final class TelemetryEventBuffer {
                 event.methodMonitor = methodMonitor;
                 event.storedIdentity = storedIdentity;
                 event.receiver = receiver;
+                event.stamp = stamp;
                 // Release fence: consumer will not observe the event until this store completes.
                 SEQ_VH.setRelease(event, seq);
                 return;
@@ -590,7 +600,7 @@ public final class TelemetryEventBuffer {
                 callback.onEvent(event.threadId, event.targetField, event.isWrite,
                         event.lockFingerprint, event.volatileField, event.constantTag,
                         event.identity, event.afterVolatileRead, event.ownMonitor,
-                        event.methodMonitor, event.storedIdentity, event.receiver);
+                        event.methodMonitor, event.storedIdentity, event.receiver, event.stamp);
             } finally {
                 // Before the cursor moves past the slot, so no producer can be writing it yet.
                 event.receiver = null;

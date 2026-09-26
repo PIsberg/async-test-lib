@@ -13,6 +13,14 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Tracks compound operations that should behave atomically.
+ *
+ * <p>Besides its lockset and idiom rules, a per-round, per-instance group of accesses is excused
+ * when the shared {@link HappensBefore} model orders every conflicting pair in it: a lock-free
+ * single writer publishing through a volatile flag, an object built and handed over through a
+ * concurrent map in the same round. Each access carries the accessing thread's clock, stamped on
+ * that thread (by {@code TelemetryRegistry} for the agent's stream, or here when the recording
+ * thread is the accessing one); an access without a stamp orders nothing, so the excuse only ever
+ * removes a finding.
  */
 public class AtomicityValidator {
 
@@ -39,7 +47,7 @@ public class AtomicityValidator {
      */
     private record AccessGroup(long epoch, int identity, int instance) { }
 
-    private static class FieldAccessRecord {
+    private static class FieldAccessRecord implements HappensBefore.Access {
         final long threadId;
         final boolean write;
         /** Invocation round this access belongs to — see {@link #markInvocationStart()}. */
@@ -101,10 +109,13 @@ public class AtomicityValidator {
          */
         final long instanceKey;
 
+        /** The accessing thread's ordering clock at the access, {@code null} when none was taken. */
+        final HappensBefore.@Nullable Stamp stamp;
+
         FieldAccessRecord(long threadId, boolean write, long epoch, boolean ownerKnown,
                           int identity, long fingerprint, int ownMonitor, int methodMonitor,
                           boolean exclusivePhase, int storedIdentity, int generation,
-                          int instance) {
+                          int instance, HappensBefore.@Nullable Stamp stamp) {
             this.threadId = threadId;
             this.write = write;
             this.epoch = epoch;
@@ -120,6 +131,22 @@ public class AtomicityValidator {
             this.instanceKey = instance != 0
                     ? (1L << 32) | (instance & 0xFFFF_FFFFL)
                     : identity & 0xFFFF_FFFFL;
+            this.stamp = stamp;
+        }
+
+        @Override
+        public long orderThread() {
+            return threadId;
+        }
+
+        @Override
+        public boolean orderWrite() {
+            return write;
+        }
+
+        @Override
+        public HappensBefore.@Nullable Stamp orderStamp() {
+            return stamp;
         }
     }
 
@@ -749,7 +776,7 @@ public class AtomicityValidator {
                                             int storedIdentity) {
         recordFieldAccessUnderLocks(fieldName, value, isWrite, threadId, lockFingerprint,
                 ownMonitor, methodMonitor, volatileField, constantTag, identity, storedIdentity,
-                null);
+                null, null);
     }
 
     /**
@@ -768,30 +795,46 @@ public class AtomicityValidator {
      * @param storedIdentity  {@code System.identityHashCode} of the reference this write stored,
      *                        0 when it stored no reference or the weaver could not reach it
      * @param receiver        the owner itself, {@code null} for a static field or when unknown
+     * @param stamp           the accessing thread's {@link HappensBefore} clock at the access,
+     *                        {@code null} when none was taken; when {@code threadId} is the
+     *                        calling thread's own, its clock is taken here instead
      * @since 1.12.3
      */
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId, long lockFingerprint,
                                             int ownMonitor, int methodMonitor,
                                             boolean volatileField, int constantTag, int identity,
-                                            int storedIdentity, @Nullable Object receiver) {
+                                            int storedIdentity, @Nullable Object receiver,
+                                            HappensBefore.@Nullable Stamp stamp) {
         boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
                 methodMonitor, volatileField, constantTag, identity, threadId);
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
                 ownMonitor, methodMonitor, exclusive, storedIdentity, generationOf(identity),
-                identity == 0 ? 0 : instanceOf(receiver));
+                identity == 0 ? 0 : instanceOf(receiver),
+                stamp != null ? stamp : stampIfOwn(threadId));
+    }
+
+    /**
+     * {@return the calling thread's clock when {@code threadId} is its own, else {@code null}}
+     *
+     * <p>A caller recording on another thread's behalf, the telemetry drain replaying a worker's
+     * access, holds a clock that says nothing about that worker, so it contributes none.
+     */
+    private static HappensBefore.@Nullable Stamp stampIfOwn(long threadId) {
+        return threadId == Thread.currentThread().threadId() ? HappensBefore.current() : null;
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0,
-                false, 0, 0, 0);
+                false, 0, 0, 0, stampIfOwn(threadId));
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint,
                         int identity, int ownMonitor, int methodMonitor, boolean exclusivePhase,
-                        int storedIdentity, int generation, int instance) {
+                        int storedIdentity, int generation, int instance,
+                        HappensBefore.@Nullable Stamp stamp) {
         if (!enabled || fieldName == null || fieldName.isBlank()) {
             return;
         }
@@ -817,7 +860,7 @@ public class AtomicityValidator {
         synchronized (history) {
             history.add(new FieldAccessRecord(threadId, isWrite, invocationEpoch.get(),
                     ownerKnown, identity, lockFingerprint, ownMonitor, methodMonitor,
-                    exclusivePhase, isWrite ? storedIdentity : 0, generation, instance));
+                    exclusivePhase, isWrite ? storedIdentity : 0, generation, instance, stamp));
             // Index the owner's own writes as they arrive, so asking "did this published object
             // then go quiet" later costs a map lookup rather than a scan of every history.
             if (isWrite && identity != 0) {
@@ -1060,7 +1103,7 @@ public class AtomicityValidator {
                 judged.add(new FieldAccessRecord(access.threadId, access.write, access.epoch,
                         access.ownerKnown, access.identity, access.fingerprint, access.ownMonitor,
                         access.methodMonitor, false, access.storedIdentity, access.generation,
-                        access.instance));
+                        access.instance, access.stamp));
             } else {
                 judged.add(access);
             }
@@ -1171,6 +1214,15 @@ public class AtomicityValidator {
                                     || settledSingleCheckCache(copy, instance, guard, handOff)
                                     || everyOwnershipGenerationAgreesOnALock(copy, instance));
                     sawUnguarded = !excused;
+                }
+                // Ordered by the shared happens-before model: every conflicting pair in this group
+                // has an edge the lockset cannot see, a queue or map hand-off, a volatile
+                // publication, a start or a join. Like the lock rule this judges each pair, not
+                // the interleaving of a compound operation, and like every excuse here it only
+                // ever removes a finding: a group whose accesses carry no stamps is not ordered.
+                if (sawUnguarded && threads.size() > 1
+                        && HappensBefore.everyConflictOrdered(roundAccesses, true)) {
+                    sawUnguarded = false;
                 }
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";

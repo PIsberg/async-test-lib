@@ -84,9 +84,9 @@ class PerInstanceAnalysisTest {
     private static void recordReadThenWrite(AtomicityValidator validator, String field,
                                             long thread, int identity, Object receiver) {
         validator.recordFieldAccessUnderLocks(field, null, false, thread, 0L, 0, 0, false,
-                Integer.MIN_VALUE, identity, 0, receiver);
+                Integer.MIN_VALUE, identity, 0, receiver, null);
         validator.recordFieldAccessUnderLocks(field, null, true, thread, 0L, 0, 0, false,
-                Integer.MIN_VALUE, identity, 0, receiver);
+                Integer.MIN_VALUE, identity, 0, receiver, null);
     }
 
     @Test

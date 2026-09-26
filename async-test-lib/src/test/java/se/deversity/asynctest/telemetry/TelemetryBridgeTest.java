@@ -101,6 +101,55 @@ class TelemetryBridgeTest {
         }
     }
 
+    /** The weaver's view of a plain field published by a volatile flag. */
+    static final class Pub {
+        int data;
+        volatile boolean ready;
+    }
+
+    /**
+     * Replays the woven volatile-flag idiom through the real ring on two real threads.
+     *
+     * @param markedAfterVolatileRead whether the reader's data read carries the weaver's bit
+     */
+    private static boolean volatileFlagThroughTheRing(boolean markedAfterVolatileRead)
+            throws InterruptedException {
+        AtomicityValidator av = new AtomicityValidator();
+        Pub pub = new Pub();
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(() -> {
+                long me = Thread.currentThread().threadId();
+                TelemetryRegistry.recordAccess(pub, null, null, me, "Pub.data", true, false,
+                        Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.recordAccess(pub, null, null, me, "Pub.ready", true, true, 1,
+                        false, false);
+            });
+            writer.start();
+            writer.join();
+            Thread reader = new Thread(() -> {
+                long me = Thread.currentThread().threadId();
+                TelemetryRegistry.recordAccess(pub, null, null, me, "Pub.ready", false, true,
+                        Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.recordAccess(pub, null, null, me, "Pub.data", false, false,
+                        Integer.MIN_VALUE, markedAfterVolatileRead, false);
+            });
+            reader.start();
+            reader.join();
+            TelemetryRegistry.flush();
+            return av.analyzeAtomicity().unsafeFieldAccesses.stream()
+                    .anyMatch(line -> line.startsWith("Pub.data"));
+        }
+    }
+
+    @Test
+    void aVolatileFlagPublishedThroughTheRingIsOrdered() throws InterruptedException {
+        assertFalse(volatileFlagThroughTheRing(true),
+                "the stamps travel through the ring, so the drain sees the writer's release and "
+                        + "the reader's acquire and the lock-free single writer is not reported");
+        assertTrue(volatileFlagThroughTheRing(false),
+                "a read the weaver did not mark as following the volatile read acquires nothing");
+    }
+
     @Test
     void anOfferEventNamesTheOwnerBeforeATakeFirstGeneration() {
         // What the queue hooks publish (#630): the offer and the take carry the queue's identity

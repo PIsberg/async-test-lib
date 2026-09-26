@@ -200,8 +200,11 @@ public final class TelemetryRegistry {
         // Reading it is a walk over a small per-thread array, allocation-free and lock-free, which
         // is what the producer path requires - a heavier capture here would change the scheduling
         // this whole buffer exists to leave alone.
+        // The ordering clock is read here for the same reason: only the accessing thread's
+        // clock says what this access is ordered after. A thread-local read; no allocation.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(),
-                volatileField, constantTag, identity, afterVolatileRead);
+                volatileField, constantTag, identity, afterVolatileRead, 0, 0, 0, null,
+                HappensBefore.current());
     }
 
     /**
@@ -249,7 +252,7 @@ public final class TelemetryRegistry {
         acquireIfAfterVolatileRead(receiver, afterVolatileRead);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
-                identity == 0 ? null : receiver);
+                identity == 0 ? null : receiver, HappensBefore.current());
         releaseIfVolatileWrite(receiver, isWrite, volatileField);
     }
 
@@ -331,7 +334,7 @@ public final class TelemetryRegistry {
         // hashes collide; the ring lends it for one callback and then clears the slot.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
-                storedIdentity, identity == 0 ? null : receiver);
+                storedIdentity, identity == 0 ? null : receiver, HappensBefore.current());
         releaseIfVolatileWrite(receiver, isWrite, volatileField);
     }
 

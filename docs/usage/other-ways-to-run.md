@@ -67,12 +67,13 @@ annotated method, and the licence gate applies as it does there.
 
 ## Declaring ordering when you record by hand (1.12.3, experimental)
 
-`RaceConditionDetector` judges a pair of accesses from two threads by the locks held at each.
-Correct code whose ordering comes from somewhere else, an object handed through a queue, a
-`Thread.start` and `join`, read as racing. It also consults one shared happens-before model,
-`se.deversity.asynctest.diagnostics.HappensBefore`, and a round whose every conflicting pair that
-model orders is not reported. A test that records accesses by hand declares the edges itself, at
-the point the program makes them:
+`RaceConditionDetector` and `AtomicityValidator` judge a pair of accesses from two threads by the
+locks held at each. Correct code whose ordering comes from somewhere else, an object handed
+through a queue, a `Thread.start` and `join`, read as racing. They also consult one shared
+happens-before model, `se.deversity.asynctest.diagnostics.HappensBefore`, and a round whose every
+conflicting pair that model orders is not reported. With the agent attached the model is fed from
+the calls it already weaves (see [attaching.md](../agent/attaching.md)). A test that records
+accesses by hand declares the edges itself, at the point the program makes them:
 
 ```java
 // producer thread

@@ -6,6 +6,7 @@ import java.util.function.LongPredicate;
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.VisibilityMonitor;
 import se.deversity.vibetags.annotations.AIKeepInSync;
 
@@ -403,7 +404,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                         int identity, boolean afterVolatileRead, int ownMonitor,
                         int methodMonitor, int storedIdentity) {
         onEvent(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
-                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null);
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, null, null);
     }
 
     /**
@@ -424,13 +425,15 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * @param methodMonitor     identity hash of the enclosing synchronized method's monitor, else 0
      * @param storedIdentity    identity hash of the reference this write stored, 0 when unknown
      * @param receiver          the object the field belongs to, {@code null} when not known
+     * @param stamp             the worker's ordering clock at the access, {@code null} when none
      * @since 1.12.3
      */
     @Override
     public void onEvent(long threadId, @Nullable String qualifiedName, boolean isWrite,
                         long lockFingerprint, boolean volatileField, int constantTag,
                         int identity, boolean afterVolatileRead, int ownMonitor,
-                        int methodMonitor, int storedIdentity, @Nullable Object receiver) {
+                        int methodMonitor, int storedIdentity, @Nullable Object receiver,
+                        HappensBefore.@Nullable Stamp stamp) {
         if (!active) {
             return;
         }
@@ -482,7 +485,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                 && TelemetryRegistry.isPublishedByVolatile(qualifiedName);
         atomicityValidator.recordFieldAccessUnderLocks(field, null, isWrite, threadId,
                 lockFingerprint, ownMonitor, methodMonitor, volatileField || safelyPublished,
-                constantTag, identity, storedIdentity, receiver);
+                constantTag, identity, storedIdentity, receiver, stamp);
     }
 
     /**
