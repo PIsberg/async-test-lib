@@ -48,7 +48,9 @@ thread-pool health and ForkJoinTask blocking now say so. This is a real change t
 
 `DetectorSeverityMarkerTest` enforces that every detector states a severity somewhere, that the
 declaration table never shadows a detector that states its own, and that an `ADVISORY` tier
-detector cannot claim `CRITICAL` or `HIGH`.
+detector cannot claim `CRITICAL` or `HIGH`. `StructuredViolationCoverageTest` enforces that a
+report with issues carries at least one structured finding, for every detector outside its
+shrink-only list of reports that still state severity in text alone.
 
 ## Trust tiers
 

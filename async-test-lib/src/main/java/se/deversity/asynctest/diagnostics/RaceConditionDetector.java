@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +17,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.report.Violation;
 
 /**
  * Detects potential race conditions by tracking cross-thread field accesses.
@@ -375,7 +377,7 @@ public class RaceConditionDetector {
 
         if (writers.size() > 1 && !allWritesGuarded
                 && !HappensBefore.everyConflictOrdered(accesses, false)) {
-            report.potentialRaces.add(String.format(Locale.ROOT,
+            report.add(report.potentialRaces, "concurrentWrites", site, String.format(Locale.ROOT,
                 "%s: written by %d threads, %d writes in all%s",
                 fieldRef, writers.size(), writeCount,
                 site == null ? "" : ", first at " + site.render()
@@ -384,7 +386,7 @@ public class RaceConditionDetector {
 
         FieldAccess[] pair = firstRacingPair(accesses, readsConflict);
         if (pair.length == 2) {
-            report.unsafeAccesses.add(String.format(Locale.ROOT,
+            report.add(report.unsafeAccesses, "unsynchronizedSequence", site, String.format(Locale.ROOT,
                 "%s: thread %d %s followed by thread %d %s",
                 fieldRef,
                 pair[0].threadId,
@@ -523,6 +525,19 @@ public class RaceConditionDetector {
         public final Set<String> unsafeAccesses = new HashSet<>();
         /** Fields accessed from more than one thread without synchronization. */
         public final Set<String> potentialRaces = new HashSet<>();
+        /**
+         * The same findings as {@link Violation}s, each {@code HIGH}: the severity the text has
+         * always marked, stated where the {@code failOn} gate reads first.
+         */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a finding to its text set and, when it is new there, as a structured finding. */
+        void add(Set<String> section, String kind, SiteCapture.@Nullable Site site, String message) {
+            if (section.add(message)) {
+                structuredViolations.add(new Violation("RaceConditions", IssueSeverity.HIGH, message,
+                        site == null ? List.of() : List.of(site), Map.of("kind", kind), Instant.now()));
+            }
+        }
 
         /**
          * {@return whether there are issues}

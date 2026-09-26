@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -10,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.report.Violation;
 
 /**
  * Tracks compound operations that should behave atomically.
@@ -1305,7 +1307,9 @@ public class AtomicityValidator {
      */
     public AtomicityReport analyzeAtomicity() {
         AtomicityReport report = new AtomicityReport();
-        report.checkThenActViolations.addAll(atomicityViolations);
+        for (String violation : atomicityViolations) {
+            report.add(report.checkThenActViolations, "checkThenAct", violation);
+        }
 
         for (Map.Entry<String, List<FieldAccessRecord>> entry : fieldHistory.entrySet()) {
             // Copy under the list's lock, then analyze per invocation round: rounds are
@@ -1428,7 +1432,7 @@ public class AtomicityValidator {
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 
                 if (threads.size() > 1 && hasRead && hasWrite && sawUnguarded) {
-                    report.unsafeFieldAccesses.add(String.format(
+                    report.add(report.unsafeFieldAccesses, "unsafeCompoundAccess", String.format(
                         "%s: mixed read/write compound access across %d threads%s",
                         entry.getKey(),
                         threads.size(),
@@ -1436,7 +1440,7 @@ public class AtomicityValidator {
                     ));
                 }
                 if (threads.size() > 1 && hasWrite && sawUnguarded) {
-                    report.totcouRaces.add(String.format(
+                    report.add(report.totcouRaces, "toctouWindow", String.format(
                         "%s: state changed between check/use windows on %d threads%s",
                         entry.getKey(),
                         threads.size(),
@@ -2018,6 +2022,19 @@ public class AtomicityValidator {
         public final Set<String> unsafeFieldAccesses = new HashSet<>();
         /** Fields whose state changed between the check and the use (TOCTOU). The field name misspells the acronym; it is public API and kept as-is for compatibility. */
         public final Set<String> totcouRaces = new HashSet<>();
+        /**
+         * The same findings as {@link Violation}s, each {@code HIGH}: the severity the text has
+         * always resolved to, stated where the {@code failOn} gate reads first.
+         */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a finding to its text set and, when it is new there, as a structured finding. */
+        void add(Set<String> section, String kind, String message) {
+            if (section.add(message)) {
+                structuredViolations.add(new Violation("AtomicityViolations", IssueSeverity.HIGH, message,
+                        List.of(), Map.of("kind", kind), Instant.now()));
+            }
+        }
 
         /**
          * {@return whether there are issues}

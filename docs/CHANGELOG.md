@@ -63,6 +63,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A report with issues carries a structured finding, and a gate checks it (#774).** The `failOn`
+  gate reads a finding's severity from the report's `structuredViolations` list first and guesses
+  from the text only when the list is empty, but nothing checked that a report that fired had
+  filled it. `StructuredViolationCoverageTest` now drives every detector that keeps the list, once
+  per place its report writes a finding, and fails on a report with issues and an empty list. A
+  detector whose report has no list fails too, unless it is pinned in the test's text-only
+  allow-list, which can only shrink. `DeadlockDetector`, `RaceConditionDetector` and
+  `AtomicityValidator` were text-only and now keep their findings as `Violation`s at the
+  severity their text already resolved to: `CRITICAL` for a deadlock, `HIGH` for a race and for
+  an atomicity violation. No `failOn` outcome changes, and the test pins that agreement.
+  `AtomicityValidator`'s `DetectorDefaultSeverity` entry is removed as redundant; it declared the
+  same `HIGH` the fallback gives.
 - **`LockUpgradeDeadlockDetector` and `LockDowngradeDetector` name unnamed threads by id (#766).**
   Both printed a thread by name alone, so a finding on default virtual threads, which have no
   name, printed an empty name for every thread, and the upgrade report collapsed them into one.
@@ -251,8 +263,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   last caller that let the listener registry read severity from the report text, so a report whose
   structured findings said one severity and whose text marked another reached the JSON and SARIF
   output with the text's, where the `failOn` gate and the runner's own listener calls use the
-  structured one. It now passes the same severity the runner does. None of the seven detectors in the set keeps structured findings yet,
-  so their output is unchanged today.
+  structured one. It now passes the same severity the runner does. Two of the seven detectors in the set, `RaceConditionDetector`
+  and `AtomicityValidator`, keep structured findings since #774, at the severity their text already
+  resolved to, so their output is unchanged.
 
 - **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
   `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read

@@ -57,6 +57,12 @@ detector that keeps `Violation`s states its severity there; one that does not mu
 deadlock report says CRITICAL in its own text) or declare a default. `DetectorSeverityMarkerTest`
 fails the build for a detector that reaches the HIGH fallback.
 
+Keep the list, and fill it wherever the text gains a line. `StructuredViolationCoverageTest` fails
+on a detector whose report has no `structuredViolations` field unless it is pinned in that test's
+text-only allow-list, which only shrinks, so a new detector needs the field. It also drives every
+detector outside that list and fails when a report with issues comes back with an empty list, so
+add one entry to its `PATHS` per place the new report writes a finding.
+
 ## Tests are part of the change
 
 Every detector has a mandated JUnit 5 test at
