@@ -838,6 +838,154 @@ class CorpusGatesTest {
                 CorpusGates.theIllegalNotifyReallyThrew("IllegalMonitorStateException"));
     }
 
+    // --- The idiom lane ------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("a FACT finding from any detector on a correct idiom fails the idiom gate")
+    void aFactFindingOnACorrectIdiomFails() {
+        RecordingSubject correct = anIdiom(RecordingSubject.Expectation.MUST_STAY_SILENT, null);
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                        List.of(finding(correct.testMethod(),
+                                DetectorExposure.classOf(aDetectorOtherThan(correct.detector())),
+                                TrustTier.FACT, IssueSeverity.LOW)),
+                        List.of(correct), java.util.Map.of()));
+    }
+
+    @Test
+    @DisplayName("a PROMPT finding from another detector on a correct idiom passes: it is printed")
+    void aPromptFindingFromAnotherDetectorOnACorrectIdiomPasses() {
+        RecordingSubject correct = anIdiom(RecordingSubject.Expectation.MUST_STAY_SILENT, null);
+        assertDoesNotThrow(() -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                List.of(finding(correct.testMethod(),
+                        DetectorExposure.classOf(aDetectorOtherThan(correct.detector())),
+                        TrustTier.PROMPT, IssueSeverity.HIGH)),
+                List.of(correct), java.util.Map.of()));
+    }
+
+    @Test
+    @DisplayName("but a PROMPT finding from the detector a correct idiom names fails it")
+    void aPromptFindingFromTheNamedDetectorOnACorrectIdiomFails() {
+        RecordingSubject correct = anIdiom(RecordingSubject.Expectation.MUST_STAY_SILENT, null);
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                        List.of(finding(correct.testMethod(),
+                                DetectorExposure.classOf(correct.detector()),
+                                TrustTier.PROMPT, IssueSeverity.MEDIUM)),
+                        List.of(correct), java.util.Map.of()));
+    }
+
+    @Test
+    @DisplayName("a correct idiom expecting a note fails when the note is missing or moves")
+    void aCorrectIdiomExpectingANoteFailsWithoutIt() {
+        RecordingSubject noted = anIdiom(RecordingSubject.Expectation.MUST_STAY_SILENT,
+                IssueSeverity.LOW);
+        String own = DetectorExposure.classOf(noted.detector());
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                        List.of(), List.of(noted), java.util.Map.of()));
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                        List.of(finding(noted.testMethod(), own, TrustTier.ADVISORY,
+                                IssueSeverity.MEDIUM)),
+                        List.of(noted), java.util.Map.of()));
+        assertDoesNotThrow(() -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                List.of(finding(noted.testMethod(), own, TrustTier.ADVISORY, IssueSeverity.LOW)),
+                List.of(noted), java.util.Map.of()));
+    }
+
+    @Test
+    @DisplayName("a known gap passes while its detector reports, and fails the day it goes silent")
+    void aKnownGapIsHeldInBothDirections() {
+        RecordingSubject gap = anIdiom(RecordingSubject.Expectation.MUST_STAY_SILENT, null);
+        java.util.Map<String, String> gaps = java.util.Map.of(gap.testMethod(), "synthetic");
+        assertDoesNotThrow(() -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                List.of(finding(gap.testMethod(), DetectorExposure.classOf(gap.detector()),
+                        TrustTier.PROMPT, IssueSeverity.MEDIUM)),
+                List.of(gap), gaps));
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                        List.of(), List.of(gap), gaps));
+    }
+
+    @Test
+    @DisplayName("a known gap that names no correct row fails the idiom gate")
+    void aKnownGapNamingNoRowFails() {
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomDrewNothingWorthFailingOn(
+                        List.of(), List.of(), java.util.Map.of("idiom_noSuchRow", "synthetic")));
+    }
+
+    @Test
+    @DisplayName("a broken twin that woke nothing fails the idiom gate, and one that fired passes")
+    void aSilentBrokenTwinFailsTheIdiomGate() {
+        RecordingSubject twin = anIdiom(RecordingSubject.Expectation.MUST_FIRE, IssueSeverity.MEDIUM);
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyBrokenTwinWokeItsDetector(
+                        List.of(), CorpusLane.IDIOMS, List.of(twin)));
+        assertDoesNotThrow(() -> CorpusGates.everyBrokenTwinWokeItsDetector(
+                List.of(finding(twin.testMethod(), DetectorExposure.classOf(twin.detector()),
+                        TrustTier.PROMPT, IssueSeverity.MEDIUM)),
+                CorpusLane.IDIOMS, List.of(twin)));
+    }
+
+    @Test
+    @DisplayName("a correct idiom without a broken twin after it fails the pairing gate")
+    void aCorrectIdiomWithoutATwinFails() {
+        RecordingSubject correct = anIdiom(RecordingSubject.Expectation.MUST_STAY_SILENT, null);
+        RecordingSubject twin = anIdiom(RecordingSubject.Expectation.MUST_FIRE, IssueSeverity.MEDIUM);
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomHasABrokenTwin(List.of(correct)));
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyCorrectIdiomHasABrokenTwin(List.of(twin, correct)));
+        assertDoesNotThrow(() -> CorpusGates.everyCorrectIdiomHasABrokenTwin(List.of(correct, twin)));
+    }
+
+    @Test
+    @DisplayName("a graded detector's finding is read at its evidence cap, the most the runner allows")
+    void aGradedFindingIsReadAtItsCap() {
+        List<String> misread = new ArrayList<>();
+        for (DetectorType type : DetectorType.values()) {
+            if (!PairEvidence.carriesPerFindingGrades(type)) {
+                continue;
+            }
+            String name = DetectorExposure.classOf(type);
+            TrustTier read = CorpusGates.claimedTier(
+                    finding("idiom_any", name, TrustTier.ADVISORY, IssueSeverity.LOW));
+            if (read != se.deversity.asynctest.diagnostics.DetectorTrust.capOfDetector(name)) {
+                misread.add(name + " read as " + read);
+            }
+        }
+        assertTrue(misread.isEmpty(), "graded findings not read at their cap: " + misread);
+        assertTrue(CorpusGates.claimedTier(finding("idiom_any",
+                        DetectorExposure.classOf(DetectorType.ATOMICITY_VIOLATIONS),
+                        TrustTier.PROMPT, IssueSeverity.HIGH)) == TrustTier.PROMPT,
+                "an ungraded detector's finding keeps its row tier");
+    }
+
+    @Test
+    @DisplayName("a body that records outside the named manual-API rows fails the idiom premise")
+    void aBodyThatRecordsWithoutAReasonFails() {
+        String source = "    void idiom_a() {\n"
+                + "        AsyncTestContext.sharedRandomDetector();\n"
+                + "    }\n";
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyIdiomBodyRecordsOnlyWithAReason(source, java.util.Map.of()));
+        assertDoesNotThrow(() -> CorpusGates.everyIdiomBodyRecordsOnlyWithAReason(
+                source, java.util.Map.of("idiom_a", "synthetic")));
+    }
+
+    @Test
+    @DisplayName("a named manual-API row whose body records nothing fails the idiom premise")
+    void aManualApiRowThatRecordsNothingFails() {
+        String source = "    void idiom_a() {\n"
+                + "        use(1);\n"
+                + "    }\n";
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.everyIdiomBodyRecordsOnlyWithAReason(
+                        source, java.util.Map.of("idiom_a", "synthetic")));
+    }
+
     // --- Fixtures ----------------------------------------------------------------------------
 
     /** {@return every MUST_FIRE row of the recording lane, reporting from its own detector} */
@@ -903,6 +1051,23 @@ class CorpusGatesTest {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "the " + lane.propertyValue() + " lane has no " + expectation + " row"));
+    }
+
+    /**
+     * {@return a synthetic idiom row, so the idiom gates are shown to fail without a run}
+     *
+     * <p>Synthetic rather than drawn from the lane, because the gate's rules differ by what a row
+     * pins, and the lane need not hold every combination.
+     *
+     * @param expectation      the row's expectation
+     * @param expectedSeverity the severity it pins, or {@code null}
+     */
+    private static RecordingSubject anIdiom(RecordingSubject.Expectation expectation,
+                                            IssueSeverity expectedSeverity) {
+        return new RecordingSubject(
+                "idiom_synthetic_" + expectation + "_" + expectedSeverity, "jdk:synthetic",
+                "java.lang.Object", DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                expectation, "synthetic row built by CorpusGatesTest", expectedSeverity);
     }
 
     /** {@return any detector the trust table knows, where which one is beside the point} */

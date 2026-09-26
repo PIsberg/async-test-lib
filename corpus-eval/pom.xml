@@ -187,6 +187,8 @@
                                      fork with CorpusEvalTest would mix two subject sets into one
                                      static findings list. -->
                                 <exclude>**/CorpusAgentPairLaneTest.java</exclude>
+                                <!-- The idiom lane has its own execution for the same reason. -->
+                                <exclude>**/CorpusIdiomLaneTest.java</exclude>
                             </excludes>
                             <!-- The agent is attached at JVM startup rather than self-attached
                                  from the first @AsyncTest, and that is a measurement decision,
@@ -301,6 +303,34 @@
                                 <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-pairs-library-excluded</corpus.lane>
                                 <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy,fields=true,collections=true</asynctest.agent>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+
+                    <!-- Lane six: correct user-code concurrency idioms, each with its broken twin,
+                         every detector on and the agent attached. The other lanes measure library
+                         classes and pairs written around one detector; this one measures bodies
+                         shaped like a user's own test, which is where the false positives fixed
+                         for 1.12.3 were found. Its own fork, because it gates per row on a static
+                         findings list like lane four does. Surefire's own classes are excluded
+                         from weaving as in lane one: every detector is on here, and the forked
+                         JVM's command reader publishing into a row's window would be attributed
+                         to that row. -->
+                    <execution>
+                        <id>idioms</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes>
+                                <include>**/CorpusIdiomLaneTest.java</include>
+                            </includes>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire,fields=true,collections=true</argLine>
+                            <reportsDirectory>${project.build.directory}/surefire-reports-idioms</reportsDirectory>
+                            <systemPropertyVariables>
+                                <license.mock.mode>true</license.mock.mode>
+                                <async-test.strict-detectors>true</async-test.strict-detectors>
+                                <corpus.lane>idioms</corpus.lane>
+                                <asynctest.agent>excludes=org.apache.maven.surefire,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

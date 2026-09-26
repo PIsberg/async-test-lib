@@ -4252,6 +4252,50 @@ final class Corpus {
                             + "adds to the contention, and giving each thread its own removes it")
     );
 
+    /** The idiom lane's own test class, whose nested classes are the user code a row runs. */
+    private static final String IDIOM_LANE = "com.example.corpus.CorpusIdiomLaneTest.";
+
+    /**
+     * The idiom lane's rows: correct user-code concurrency, each with its broken twin.
+     *
+     * <p>Unlike the other two pair lanes, a row here is not written around one detector. The body
+     * is the idiom as a user writes it, every detector is on, and the detector a row names is the
+     * one the idiom is about: the one a broken twin must wake, and the one that must stay silent
+     * at every tier on the correct half. The correct half is held to more than that: no detector
+     * at all may report on it at {@code FACT} tier or above. {@link CorpusGates#checkIdiomLane}
+     * has the whole bar.
+     *
+     * <p>A correct row that sets {@code expectedSeverity} is expecting a note: its named detector
+     * must report at exactly that severity, below {@code FACT}. A shared {@code java.util.Random}
+     * is the one such row, because contention on a thread-safe generator is worth a word and is
+     * not a defect.
+     */
+    private static final List<RecordingSubject> IDIOM_SUBJECTS = List.of(
+    );
+
+    /**
+     * Idiom rows whose body calls the manual recording API, each with the reason.
+     *
+     * <p>Every other body in the lane records nothing, and {@link IdiomRowPremise} fails the lane
+     * if one does. A row belongs here only when no woven call site can show its detector the
+     * idiom, so the body has to say what it did, the way a user following
+     * {@code AsyncTestContext} would.
+     */
+    private static final Map<String, String> IDIOM_MANUAL_API_ROWS = Map.of(
+    );
+
+    /**
+     * Correct idioms that still draw a finding from the detector they name, each with the reason.
+     *
+     * <p>The mirror of {@link DetectorCoverage}'s refusals, for rows rather than detectors. A row
+     * here is correct code the happens-before model does not see yet, so its named detector still
+     * reports on it. {@link CorpusGates#checkIdiomLane} holds each entry to that in both
+     * directions: the row must still draw the finding, and the day a fix makes it silent the run
+     * fails until the entry is deleted, so a closed gap cannot stay listed as open.
+     */
+    private static final Map<String, String> IDIOM_KNOWN_GAPS = Map.of(
+    );
+
     private static final Map<String, Subject> BY_METHOD = SUBJECTS.stream()
             .collect(Collectors.toUnmodifiableMap(Subject::testMethod, Function.identity()));
 
@@ -4285,7 +4329,28 @@ final class Corpus {
                     .filter(Corpus::wovenCallSiteIsInsideTheLibrary)
                     .toList();
         }
+        if (lane == CorpusLane.IDIOMS) {
+            return IDIOM_SUBJECTS;
+        }
         return lane == CorpusLane.AGENT_PAIRS ? AGENT_SUBJECTS : RECORDING_SUBJECTS;
+    }
+
+    /** {@return the idiom rows that call the manual API, each with the reason it has to} */
+    static Map<String, String> idiomManualApiRows() {
+        return IDIOM_MANUAL_API_ROWS;
+    }
+
+    /** {@return the correct idiom rows still pinned as reporting, each with the reason} */
+    static Map<String, String> idiomKnownGaps() {
+        return IDIOM_KNOWN_GAPS;
+    }
+
+    /** {@return the detectors the idiom lane's manual-API rows record to} */
+    static Set<DetectorType> idiomRecordedDetectors() {
+        return IDIOM_SUBJECTS.stream()
+                .filter(subject -> IDIOM_MANUAL_API_ROWS.containsKey(subject.testMethod()))
+                .map(RecordingSubject::detector)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(DetectorType.class)));
     }
 
     /**

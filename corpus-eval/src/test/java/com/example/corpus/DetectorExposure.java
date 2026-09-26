@@ -51,13 +51,18 @@ final class DetectorExposure {
             case AGENT -> lane == CorpusLane.AGENT_ON
                     || lane == CorpusLane.AGENT_PAIRS
                     || lane == CorpusLane.AGENT_PAIRS_LIBRARY_EXCLUDED
+                    || lane == CorpusLane.IDIOMS
                     || (lane == CorpusLane.RECORDING
                             && Corpus.recordedDetectors().contains(type));
             // Exposure is what a lane actually feeds, not what it could feed in principle. The
             // recording lane records to a named handful, and the rest of the feed is as
             // unexposed there as it is in the other two.
-            case RECORDING -> lane == CorpusLane.RECORDING
-                    && Corpus.recordedDetectors().contains(type);
+            // The idiom lane records only in the rows it names as needing the manual API, and
+            // only to the detector each of those rows names.
+            case RECORDING -> (lane == CorpusLane.RECORDING
+                    && Corpus.recordedDetectors().contains(type))
+                    || (lane == CorpusLane.IDIOMS
+                    && Corpus.idiomRecordedDetectors().contains(type));
         };
     }
 
