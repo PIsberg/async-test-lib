@@ -6,7 +6,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 9. False Sharing Detector
 * **Severity**: `MEDIUM`
-* **Status**: **Experimental - findings off by default.** Cache-line effects are not observable from pure Java: the detector estimates offsets by summing nominal type sizes in declaration order, while the JVM reorders fields, compresses references, and honors `@Contended` padding, so the estimated offsets do not correspond to real memory layout. Its reports are therefore not evidence of false sharing. Enable with `-Dasync-test.experimental.false-sharing=true`; without the property, `analyze()` returns an empty report (recording is unaffected).
+* **Status**: **Experimental - findings off by default.** Cache-line effects are not observable from pure Java: the detector estimates offsets by summing nominal type sizes in declaration order, while the JVM reorders fields, compresses references, and honors `@Contended` padding, so the estimated offsets do not correspond to real memory layout. Its reports are therefore not evidence of false sharing. Enable with `-Dasync-test.experimental.false-sharing=true`; without the property, `analyze()` returns an empty report (recording is unaffected). Thread sets are compared within one invocation round, so fields touched by different threads in different rounds, which never overlapped, are not reported.
 * **Description**: Flags fields accessed by different threads whose estimated memory offsets fall within the same CPU cache line (64 bytes), which causes cache-coherency traffic and performance degradation even without a logical data race.
 * **Buggy Code**:
   ```java

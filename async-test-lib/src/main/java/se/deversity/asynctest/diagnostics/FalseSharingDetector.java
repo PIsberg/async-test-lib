@@ -20,7 +20,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * type sizes in declaration order, while the JVM reorders fields, compresses references,
  * and honors {@code @Contended} padding, so the estimated offsets do not correspond to
  * real memory layout. Keying is per class rather than per object, so thread-confined
- * instances of one class are indistinguishable from a genuinely shared instance. The
+ * instances of one class are indistinguishable from a genuinely shared instance. Thread
+ * sets are compared within one invocation round, so accesses from different rounds, which
+ * never overlapped, are not read as concurrent. The
  * findings are therefore not evidence of false sharing, and {@link #analyze()} returns
  * an empty report unless {@link #EXPERIMENTAL_PROPERTY} is set.
  * 
@@ -50,7 +52,6 @@ public class FalseSharingDetector {
         final String fieldName;
         final long memoryOffset;
         final AtomicLong accessCount = new AtomicLong(0);
-        final Set<Long> accessingThreadIds = ConcurrentHashMap.newKeySet();
 
         FieldAccessInfo(String name, long offset) {
             this.fieldName = name;
@@ -58,11 +59,20 @@ public class FalseSharingDetector {
         }
     }
 
+    /**
+     * One access, with the round it was made in. Thread sets are compared within a round: the
+     * runner finishes one round before it starts the next, so two threads that each touched a
+     * field in a different round never contended, and with virtual threads every body execution
+     * is a fresh thread (#765). The round comes from the same {@link SelfGuard.Scope} clock the
+     * sharing verdicts read; with none bound the whole run is one round, as before.
+     */
     private static class AccessEvent {
         final long threadId;
+        final int round;
 
-        AccessEvent(long threadId) {
+        AccessEvent(long threadId, int round) {
             this.threadId = threadId;
+            this.round = round;
         }
     }
     
@@ -84,11 +94,10 @@ public class FalseSharingDetector {
         );
 
         info.accessCount.incrementAndGet();
-        info.accessingThreadIds.add(Thread.currentThread().threadId());
 
-        // Record detailed access history for analysis
+        // Record detailed access history for analysis; the thread sets are derived from it per round
         accessHistory.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()))
-            .add(new AccessEvent(Thread.currentThread().threadId()));
+            .add(new AccessEvent(Thread.currentThread().threadId(), SelfGuard.RoundThreads.roundNow()));
     }
     
     /**
@@ -107,16 +116,19 @@ public class FalseSharingDetector {
             return report;
         }
 
-        List<FieldAccessInfo> fields = new ArrayList<>(fieldAccess.values());
-        
+        Map<String, Map<Integer, Set<Long>>> threadsByRound = threadsByRound();
+        List<Map.Entry<String, FieldAccessInfo>> fields = new ArrayList<>(fieldAccess.entrySet());
+
         // Find fields in same cache line accessed by different threads
         for (int i = 0; i < fields.size(); i++) {
-            FieldAccessInfo field1 = fields.get(i);
-            if (field1.accessingThreadIds.size() < 2) continue;
-            
+            FieldAccessInfo field1 = fields.get(i).getValue();
+            Map<Integer, Set<Long>> rounds1 = threadsByRound.getOrDefault(fields.get(i).getKey(), Map.of());
+            if (rounds1.values().stream().noneMatch(threads -> threads.size() >= 2)) continue;
+
             for (int j = i + 1; j < fields.size(); j++) {
-                FieldAccessInfo field2 = fields.get(j);
-                
+                FieldAccessInfo field2 = fields.get(j).getValue();
+                Map<Integer, Set<Long>> rounds2 = threadsByRound.getOrDefault(fields.get(j).getKey(), Map.of());
+
                 // Check if fields are in same cache line
                 long offset1 = field1.memoryOffset;
                 long offset2 = field2.memoryOffset;
@@ -125,8 +137,8 @@ public class FalseSharingDetector {
                     long distance = Math.abs(offset1 - offset2);
                     
                     if (distance < CACHE_LINE_SIZE && distance > 0) {
-                        // Different threads accessing adjacent fields
-                        if (!field1.accessingThreadIds.equals(field2.accessingThreadIds)) {
+                        // Different threads accessing adjacent fields, within one round
+                        if (differentThreadsInOneRound(rounds1, rounds2)) {
                             FalseSharingReport.ContentionPair pair = new FalseSharingReport.ContentionPair(
                                 field1.fieldName, field2.fieldName, distance,
                                 field1.accessCount.get(), field2.accessCount.get()
@@ -139,9 +151,47 @@ public class FalseSharingDetector {
         }
         
         // Analyze contention patterns from history
-        analyzeContentionPatterns(report);
+        analyzeContentionPatterns(report, threadsByRound);
 
         return report;
+    }
+
+    /**
+     * {@return whether some round saw at least two threads on the first field and a non-empty,
+     * different set of threads on the second}
+     *
+     * <p>The pair predicate the detector has always used (two or more threads on the first field,
+     * unequal thread sets), taken within one round rather than over the run. A round in which the
+     * second field was not accessed at all is no contention for the line, however the sets compare.
+     */
+    private static boolean differentThreadsInOneRound(Map<Integer, Set<Long>> first,
+                                                      Map<Integer, Set<Long>> second) {
+        for (Map.Entry<Integer, Set<Long>> round : first.entrySet()) {
+            Set<Long> other = second.get(round.getKey());
+            if (round.getValue().size() >= 2 && other != null && !round.getValue().equals(other)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** {@return each field's accessing threads, per round, from a snapshot of the access history} */
+    private Map<String, Map<Integer, Set<Long>>> threadsByRound() {
+        Map<String, Map<Integer, Set<Long>>> byField = new HashMap<>();
+        for (Map.Entry<String, List<AccessEvent>> entry : accessHistory.entrySet()) {
+            Map<Integer, Set<Long>> rounds = new HashMap<>();
+            for (AccessEvent event : snapshot(entry.getValue())) {
+                rounds.computeIfAbsent(event.round, r -> new HashSet<>()).add(event.threadId);
+            }
+            byField.put(entry.getKey(), rounds);
+        }
+        return byField;
+    }
+
+    private static List<AccessEvent> snapshot(List<AccessEvent> history) {
+        synchronized (history) {
+            return new ArrayList<>(history);
+        }
     }
 
     /**
@@ -153,22 +203,24 @@ public class FalseSharingDetector {
         return analyzeFalseSharing();
     }
 
-    private void analyzeContentionPatterns(FalseSharingReport report) {
+    private void analyzeContentionPatterns(FalseSharingReport report,
+                                           Map<String, Map<Integer, Set<Long>>> threadsByRound) {
         for (Map.Entry<String, List<AccessEvent>> entry : accessHistory.entrySet()) {
             List<AccessEvent> history = entry.getValue();
             if (history.size() < FIELD_ACCESS_THRESHOLD) continue;
-            
+
             // Check for high-frequency access to adjacent fields
-            List<AccessEvent> snapshot;
-            synchronized (history) {
-                snapshot = new ArrayList<>(history);
-            }
+            List<AccessEvent> snapshot = snapshot(history);
             Map<Long, Integer> threadAccessCounts = new HashMap<>();
             for (AccessEvent event : snapshot) {
                 threadAccessCounts.merge(event.threadId, 1, Integer::sum);
             }
-            
-            if (threadAccessCounts.size() > 1) {
+
+            // More than one thread has to be true of one round: threads in different rounds
+            // never contended (#765).
+            boolean sharedInOneRound = threadsByRound.getOrDefault(entry.getKey(), Map.of())
+                    .values().stream().anyMatch(threads -> threads.size() > 1);
+            if (sharedInOneRound) {
                 int maxAccesses = threadAccessCounts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
                 if (maxAccesses > FIELD_ACCESS_THRESHOLD / 2) {
                     report.highContentionFields.add(entry.getKey());

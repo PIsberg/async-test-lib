@@ -132,6 +132,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were filed under the client's name, so two clients registered under one name overwrote each
   other's and the report showed only one. Each client object now gets its own line, still printed
   under its name.
+- **`FalseSharingDetector` compares thread sets within one round (#765).** Behind its experimental
+  flag it compared each field's threads over the whole run, so with virtual threads two threads on
+  one field in one round and two others on the adjacent field in a later round were reported as a
+  pair, and one thread per round hammering a field read as a high-contention field. Both findings
+  now need their threads in the same round; the same accesses inside one round still report.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common

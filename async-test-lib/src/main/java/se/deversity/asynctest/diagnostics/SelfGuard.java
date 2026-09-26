@@ -691,7 +691,11 @@ public final class SelfGuard {
             return round;
         }
 
-        private static int roundNow() {
+        /**
+         * {@return the calling thread's round on the bound {@link Scope}'s clock, or 0 with none
+         * bound, so a detector driven without a context sees the whole run as one round}
+         */
+        static int roundNow() {
             Scope scope = Scope.current();
             return scope == null ? 0 : scope.round();
         }

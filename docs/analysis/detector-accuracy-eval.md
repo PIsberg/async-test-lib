@@ -222,6 +222,13 @@ where no round is marked. Pinned in each detector's own test and in
 exception finding followed (#783): it counts the users of the busiest round an exception came
 from, so one thread per round, each failing alone, is not concurrent access.
 
+`FalseSharingDetector`, off unless its experimental property is set, followed in #765. Its pair
+predicate (two or more threads on one field, a different set on the adjacent one) and its
+high-contention line compared thread sets over the run. It keeps no per-instance verdict, and a
+pair compares two fields, which the three rounds `RoundThreads` retains cannot answer, so the round
+is stamped on each recorded access instead, from the same `SelfGuard.Scope` clock, and both
+predicates are taken within one round. Pinned in `FalseSharingDetectorTest` in both directions.
+
 Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
 `BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched
 it in one round and no lock covered the use, so it read as sharing. A take is the hand-off edge:
