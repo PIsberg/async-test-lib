@@ -287,6 +287,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overload's javadoc now says so and points to `recordCapturedMutation(lambda, name, state, thread)`,
   and a test pins both forms. The overload is not deprecated: its replacement is experimental, and
   the limit only adds findings, never hides one.
+- **`StatefulLambdaDetector` no longer lets an unnamed capture hide a race on a named one** (#800).
+  A mutation recorded without its object was judged apart from the named captures, so one object
+  recorded with `recordCapturedMutation(lambda, name, state, thread)` under one lock and through the
+  object-less overload under another read as two guarded captures and was not reported. An unnamed
+  access may be of any capture, so a lambda with one is now judged as one capture, all its
+  accesses together: a lambda whose named captures each hold their own lock is reported once it
+  also records an unnamed mutation. Unnamed captures cannot be keyed more finely: the object-less
+  overload carries no object, and keying by name lets two names for one object hide a race. A test
+  now pins that one object under two names is still one capture.
 - **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
   LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
   OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by

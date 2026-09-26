@@ -25,9 +25,10 @@ import org.jspecify.annotations.Nullable;
  * thread-safe by type, when the caller names the captured object through
  * {@link #recordCapturedMutation(Object, String, Object, Thread)}, and mutation that one lock
  * covered every time. The lock is judged per captured object, so two named captures each guarded
- * by its own lock are both covered; mutations recorded without their object are all judged
- * against the lambda, as one capture. The lock the detector can see is the captured object's own
- * monitor (or the lambda's, when no object is named), a lock declared with
+ * by its own lock are both covered, and one object recorded under two names is one capture. A
+ * mutation recorded without its object may be of any capture, so a lambda with one is judged as
+ * one capture, all its mutations together, named or not. The lock the detector can see is the
+ * captured object's own monitor (or the lambda's, when no object is named), a lock declared with
  * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
  * the finding standing.
  *
@@ -53,8 +54,12 @@ public class StatefulLambdaDetector {
     /**
      * Per-lambda bookkeeping. The lockset is kept per captured object rather than per lambda, so
      * two captures each guarded by a different lock are two consistently locked captures, not one
-     * capture with no common lock (#769). A mutation that names no object is tracked against the
-     * lambda itself, so all of a lambda's unnamed captures still share one lockset.
+     * capture with no common lock (#769). It is keyed by the object, never by the name, so one
+     * object recorded under two names is still one capture. An access that names no object may
+     * be of any capture, so once the lambda has one, every access of the lambda is judged
+     * together in {@code allCaptures}: judged apart, one object recorded with its object at one
+     * site and without it at another, each under its own lock, read as two guarded captures
+     * (#800).
      */
     private static class LambdaState {
         final String      name;
@@ -62,10 +67,14 @@ public class StatefulLambdaDetector {
         final Set<String> executingThreadNames = ConcurrentHashMap.newKeySet();
         final List<String> mutationEvents      = new CopyOnWriteArrayList<>();
         final Map<IdentityKey, CaptureGuard> captures = new ConcurrentHashMap<>();
+        /** Every access of the lambda, named or not; judged once an unnamed one is seen. */
+        final CaptureGuard allCaptures = new CaptureGuard();
+        volatile boolean   sawUnnamedAccess;
 
         LambdaState(String name) { this.name = name; }
 
         boolean sawUnguardedSharing() {
+            if (sawUnnamedAccess && allCaptures.sawUnguardedSharing()) return true;
             for (CaptureGuard c : captures.values()) {
                 if (c.sawUnguardedSharing()) return true;
             }
@@ -103,10 +112,12 @@ public class StatefulLambdaDetector {
      * Call this whenever the lambda writes to a captured mutable container.
      *
      * <p>Without the captured object the detector cannot tell thread-safe state from a plain
-     * container, and it has no capture to judge the lock against: the mutation is judged against
-     * the lambda, so all of one lambda's mutations recorded through this overload share one
-     * lockset, whatever {@code capturedName} says. Two such captures each guarded by its own lock
-     * are therefore reported, because no one lock covered both. Prefer
+     * container, and it has no capture to judge the lock against: the mutation may be of any of
+     * the lambda's captures, so once one is recorded through this overload, all of that lambda's
+     * mutations share one lockset, whatever {@code capturedName} says and whether or not they name
+     * their object. Two captures each guarded by its own lock are therefore reported, because no
+     * one lock covered both. Keying by the name instead would let two names for one object hide
+     * a race. Prefer
      * {@link #recordCapturedMutation(Object, String, Object, Thread)}, which judges each captured
      * object on its own.
      *
@@ -162,8 +173,8 @@ public class StatefulLambdaDetector {
      *
      * @param lambda        the lambda, Runnable, or Callable instance
      * @param capturedState the captured object being read, or {@code null} when not known, in
-     *                      which case the read is judged against the lambda, like an unnamed
-     *                      mutation
+     *                      which case the read is judged like an unnamed mutation, together with
+     *                      every access of the lambda
      * @param thread        the reading thread
      * @since 1.12.3
      */
@@ -180,11 +191,19 @@ public class StatefulLambdaDetector {
                 new IdentityKey(lambda),
                 id -> new LambdaState(lambda.getClass().getSimpleName()
                         + "@" + System.identityHashCode(lambda)));
-        Object tracked = capturedState != null ? capturedState : lambda;
-        CaptureGuard guard = s.captures.computeIfAbsent(
-                new IdentityKey(tracked), k -> new CaptureGuard());
-        // Probed on the accessing thread while it is still inside whatever region guards it.
-        guard.noteAccess(tracked, forWrite, thread.threadId());
+        // Probed on the accessing thread while it is still inside whatever region guards it. Every
+        // access also feeds the lambda-wide guard, since an unnamed access recorded later in the
+        // round may be of this same object.
+        if (capturedState != null) {
+            s.captures.computeIfAbsent(new IdentityKey(capturedState), k -> new CaptureGuard())
+                    .noteAccess(capturedState, forWrite, thread.threadId());
+            s.allCaptures.noteAccess(capturedState, forWrite, thread.threadId());
+        } else {
+            if (!s.sawUnnamedAccess) {
+                s.sawUnnamedAccess = true;
+            }
+            s.allCaptures.noteAccess(lambda, forWrite, thread.threadId());
+        }
         return s;
     }
 
