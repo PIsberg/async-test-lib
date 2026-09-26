@@ -957,6 +957,11 @@ public final class AsyncTestContext {
         if (lazyInitRaceDetector != null) {
             lazyInitRaceDetector.markInvocationStart();
         }
+        // A change recorded after a compare-and-set can still be an A-B-A that it missed, until
+        // the round ends; a later round's changes came after it (#779).
+        if (abaProblemDetector != null) {
+            abaProblemDetector.markInvocationStart();
+        }
     }
 
     /**

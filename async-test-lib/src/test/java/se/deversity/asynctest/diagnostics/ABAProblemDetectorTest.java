@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
@@ -83,6 +84,117 @@ class ABAProblemDetectorTest {
         assertTrue(report.hasIssues(), report.toString());
         assertFalse(report.successfulABACases.isEmpty());
         assertTrue(report.toString().contains("HIGH"), report.toString());
+    }
+
+    @Test
+    void anAbaWhoseChangesAreRecordedAfterTheCasIsStillAnAba() throws InterruptedException {
+        // Recording is not atomic with the operation: the other thread really swings A -> B -> A
+        // between this thread's read and its compare-and-set, and only records it afterwards.
+        ABAProblemDetector detector = new ABAProblemDetector();
+        AtomicReference<String> head = new AtomicReference<>("A");
+        String seen = head.get();
+        detector.recordRead("head", seen);
+        CountDownLatch toggled = new CountDownLatch(1);
+        CountDownLatch casRecorded = new CountDownLatch(1);
+        Thread other = new Thread(() -> {
+            head.set("B");
+            head.set("A");
+            toggled.countDown();
+            try {
+                casRecorded.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;                                   // shows up as a missing finding
+            }
+            detector.recordValueChange("head", "A", "B");
+            detector.recordValueChange("head", "B", "A");
+        }, "aba-late-recorder");
+        other.start();
+        toggled.await();
+        boolean swapped = head.compareAndSet(seen, "C");
+        detector.recordCASAttempt("head", seen, "C", swapped, head.get());
+        casRecorded.countDown();
+        other.join();
+
+        assertTrue(swapped, "the stale compare-and-set must succeed for this to be an ABA");
+        ABAProblemDetector.ABAReport report = detector.analyzeABA();
+        assertTrue(report.hasIssues(),
+            "the A -> B -> A happened between the read and the CAS; its records landing after "
+                + "the CAS record does not move it: " + report);
+    }
+
+    @Test
+    void aToggleAfterTheCasHasMovedTheValueOnIsSilent() throws InterruptedException {
+        // The CAS left C. For another thread to swing A -> B -> A after it, something first has to
+        // take the value off C, and here something does.
+        ABAProblemDetector detector = new ABAProblemDetector();
+        AtomicReference<String> head = new AtomicReference<>("A");
+        String seen = head.get();
+        detector.recordRead("head", seen);
+        boolean swapped = head.compareAndSet(seen, "C");
+        detector.recordCASAttempt("head", seen, "C", swapped, head.get());
+        onAnotherThread(() -> {
+            if (head.compareAndSet("C", "A")) {
+                detector.recordValueChange("head", "C", "A");
+            }
+            if (head.compareAndSet("A", "B")) {
+                detector.recordValueChange("head", "A", "B");
+            }
+            if (head.compareAndSet("B", "A")) {
+                detector.recordValueChange("head", "B", "A");
+            }
+        });
+        assertTrue(swapped);
+        assertFalse(detector.analyzeABA().hasIssues(),
+            "the toggle came after the CAS; the change off C shows it could have");
+    }
+
+    @Test
+    void theChangeOffTheCasValueCountsWhateverOrderItIsRecordedIn() throws InterruptedException {
+        // The same history as above, with the change off C recorded last: record order says
+        // nothing about when an operation happened, so it cannot matter here either.
+        ABAProblemDetector detector = new ABAProblemDetector();
+        detector.recordRead("head", "A");
+        detector.recordCASAttempt("head", "A", "C", true, "C");
+        onAnotherThread(() -> {
+            detector.recordValueChange("head", "A", "B");
+            detector.recordValueChange("head", "B", "A");
+        });
+        onAnotherThread(() -> detector.recordValueChange("head", "C", "A"));
+        assertFalse(detector.analyzeABA().hasIssues());
+    }
+
+    @Test
+    void aCompareAndSetOffTheCasValueCountsAsMovingItOn() throws InterruptedException {
+        // A compare-and-set recorded only as an attempt, not as a change, still moved the value.
+        ABAProblemDetector detector = new ABAProblemDetector();
+        detector.recordRead("head", "A");
+        detector.recordCASAttempt("head", "A", "C", true, "C");
+        onAnotherThread(() -> {
+            detector.recordRead("head", "C");
+            detector.recordCASAttempt("head", "C", "A", true, "A");
+        });
+        onAnotherThread(() -> {
+            detector.recordValueChange("head", "A", "B");
+            detector.recordValueChange("head", "B", "A");
+        });
+        assertFalse(detector.analyzeABA().hasIssues(), detector.analyzeABA().toString());
+    }
+
+    @Test
+    void aToggleInALaterRoundIsSilent() throws InterruptedException {
+        // The harness orders its rounds, so a change recorded in the next round happened after
+        // every compare-and-set of this one, even with nothing recorded taking the value off C:
+        // a test building a fresh reference per round under the same name.
+        ABAProblemDetector detector = new ABAProblemDetector();
+        detector.recordRead("head", "A");
+        detector.recordCASAttempt("head", "A", "C", true, "C");
+        detector.markInvocationStart();
+        onAnotherThread(() -> {
+            detector.recordValueChange("head", "A", "B");
+            detector.recordValueChange("head", "B", "A");
+        });
+        assertFalse(detector.analyzeABA().hasIssues(), detector.analyzeABA().toString());
     }
 
     @Test

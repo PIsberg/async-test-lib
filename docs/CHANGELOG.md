@@ -93,6 +93,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their identity hash, so a later attempt sharing one replaced an earlier one, and a stale
   compare-and-set already judged an ABA dropped out of the report: of 300,000, two runs reported
   299,986 and 299,985. Attempts are now keyed by instance.
+- **`ABAProblemDetector` reports an A-B-A whose changes are recorded after the compare-and-set
+  (#779).** It only looked at changes already recorded when the compare-and-set was, so another
+  thread that swung A to B to A between the read and the compare-and-set, and recorded the swing a
+  moment later, went unreported. Such a late change back now counts when nothing recorded after
+  the read, neither a change nor a successful compare-and-set, took the variable off the value the
+  compare-and-set wrote before the next round started: a toggle that really followed the
+  compare-and-set would have needed that first. A timestamp would not have helped, since it orders
+  the records, not the operations. The runner now tells the detector where each round starts.
 - **A volatile edge in the happens-before model is per field, not per object (#742).** A volatile
   write released its whole object and a later access the weaver marked as following a volatile
   read acquired it, so reading one volatile field ordered a plain access after a write of another

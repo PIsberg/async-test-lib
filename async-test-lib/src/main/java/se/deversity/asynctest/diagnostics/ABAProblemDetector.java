@@ -4,11 +4,14 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -25,13 +28,27 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Lost updates
  * - Incorrect synchronization
  *
- * <p><strong>What is a finding.</strong> Only that interleaving, in the order the events were
- * recorded: a thread records the read its compare-and-set expects
- * ({@link #recordRead(String, Object)}), <em>other</em> threads record a change away from that
- * value and a change back to it, and then the first thread records a successful
- * compare-and-set expecting the value it read. Record each event where it happens, on the
- * thread doing it; the detector orders events by when they were recorded and has no other
- * clock.
+ * <p><strong>What is a finding.</strong> Only that interleaving: a thread records the read its
+ * compare-and-set expects ({@link #recordRead(String, Object)}), <em>other</em> threads record a
+ * change away from that value and a change back to it, and the first thread records a
+ * successful compare-and-set expecting the value it read. Record each event where it happens, on
+ * the thread doing it, and record every change: the detector sees records, not operations.
+ *
+ * <p><strong>How the change back is placed before the compare-and-set.</strong> A change recorded
+ * before the compare-and-set's record is taken as before it, and one recorded before the read as
+ * seen by it. A change recorded after the compare-and-set is not thereby after it: recording is
+ * not atomic with the operation, and another thread can swing A to B to A inside the window and
+ * record it late (#779). A timestamp does not settle that. A {@code nanoTime} taken in the record
+ * call orders the records, which the record sequence already does, and says nothing about when
+ * the operation ran. A {@link HappensBefore} stamp orders two events only where the program
+ * published an edge between them, which recording-fed code mostly has not, and in that model an
+ * edge only ever removes a finding. The values settle it. A successful compare-and-set leaves the
+ * variable at the value it wrote, so a change away from A that came after it needs the variable to
+ * leave that value first. When nothing recorded after the read, neither a change nor a successful
+ * compare-and-set, takes the variable off the value the compare-and-set wrote, the late A-B-A came
+ * before the compare-and-set and it is reported. When something does, the toggle may have followed
+ * it, and it is not. The window ends at the next round start ({@link #markInvocationStart()}),
+ * because the harness orders its rounds.
  *
  * <p>A value going A to B and back to A is not a finding on its own. One thread pushing and
  * then popping, a flag set and cleared, a counter incremented and decremented: each is an
@@ -41,8 +58,20 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class ABAProblemDetector {
 
-    /** Record order across all variables; the only clock the interleaving check has. */
+    /**
+     * Record order across all variables. It orders records, not the operations they describe;
+     * see the class documentation for how a change recorded after a compare-and-set is judged.
+     */
     private final AtomicLong sequence = new AtomicLong();
+
+    /**
+     * The {@link #sequence} value at each round start, ascending. A change recorded after a round
+     * start happened after every compare-and-set recorded before it: the harness orders rounds.
+     */
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = "VO_VOLATILE_REFERENCE_TO_ARRAY",
+            justification = "copy-on-write: a published array is never written again, so the "
+                    + "volatile reference is the only publication its elements need")
+    private volatile long[] roundStarts = new long[0];
 
     private static class AtomicValueHistory {
         final String varName;
@@ -94,11 +123,21 @@ public class ABAProblemDetector {
     private static class CASAttempt {
         final Object expectedValue;
         final Object newValue;
-        volatile boolean wasABA = false;
+        final long threadId;
+        /** When a successful attempt was recorded; 0 for a failed one, which moved nothing. */
+        final long seq;
+        /** The recorded read this attempt was judged against; 0 when it is not judged. */
+        final long premiseSeq;
+        /** An A-B-A recorded before this attempt; one recorded after it is judged at analysis. */
+        final boolean wasABA;
 
-        CASAttempt(Object expected, Object neu) {
+        CASAttempt(Object expected, Object neu, long threadId, long seq, long premiseSeq, boolean wasABA) {
             this.expectedValue = expected;
             this.newValue = neu;
+            this.threadId = threadId;
+            this.seq = seq;
+            this.premiseSeq = premiseSeq;
+            this.wasABA = wasABA;
         }
     }
     
@@ -177,17 +216,26 @@ public class ABAProblemDetector {
             AtomicValueHistory::new
         );
         
-        CASAttempt attempt = new CASAttempt(expectedValue, newValue);
         long tid = Thread.currentThread().threadId();
         // The attempt consumes its premise: a retry reads again before it tries again.
         ValueRead premise = history.reads.remove(tid);
 
-        // Detect ABA: the value moved away and came back while this thread held a stale read
-        if (succeeded && premise != null && sameValue(premise.value(), expectedValue)
-                && detectABA(history, attempt, premise.seq(), tid)) {
-            attempt.wasABA = true;
+        CASAttempt attempt;
+        if (succeeded && premise != null && sameValue(premise.value(), expectedValue)) {
+            long seq;
+            boolean aba;
+            synchronized (history.changesLock) {
+                // Sequence taken under the lock, so every change already recorded precedes it.
+                seq = sequence.incrementAndGet();
+                // Detect ABA: the value moved away and came back while this thread held a stale read
+                aba = abaReturn(history.changes, expectedValue, premise.seq(), tid) != 0;
+            }
+            attempt = new CASAttempt(expectedValue, newValue, tid, seq, premise.seq(), aba);
+        } else {
+            attempt = new CASAttempt(expectedValue, newValue, tid,
+                    succeeded ? sequence.incrementAndGet() : 0, 0, false);
         }
-        
+
         history.casAttempts.put(new IdentityKey(attempt), attempt);
     }
     
@@ -229,37 +277,83 @@ public class ABAProblemDetector {
     }
     
     /**
-     * Whether, after the attempting thread's read at {@code readSeq}, another thread recorded a
-     * change away from the expected value and a thread other than the attempting one then
-     * recorded a change back to it.
+     * The record position of the change back to {@code expected}, when after the attempting
+     * thread's read at {@code readSeq} another thread recorded a change away from it and a thread
+     * other than the attempting one then recorded a change back; 0 when none did.
      *
      * <p>The attempting thread's own changes do not count: a thread cannot be surprised by a
      * toggle it made itself, and its own compare-and-set is recorded as a change too.
+     *
+     * <p>Call it holding the history's changes lock: the list is appended to concurrently.
      */
-    private boolean detectABA(AtomicValueHistory history, CASAttempt attempt, long readSeq, long casThread) {
-        List<ValueChange> changes = history.changes;
+    private static long abaReturn(List<ValueChange> changes, Object expected, long readSeq, long casThread) {
         boolean movedAway = false;
-        // Walked under the lock: the list is appended to concurrently. Only the tail after the
-        // read is visited, newest first until the read's position is passed.
-        synchronized (history.changesLock) {
-            int start = changes.size();
-            while (start > 0 && changes.get(start - 1).seq > readSeq) {
-                start--;
+        for (int i = firstAfter(changes, readSeq); i < changes.size(); i++) {
+            ValueChange change = changes.get(i);
+            if (change.threadId == casThread) {
+                continue;
             }
-            for (int i = start; i < changes.size(); i++) {
-                ValueChange change = changes.get(i);
-                if (change.threadId == casThread) {
-                    continue;
-                }
-                if (!movedAway) {
-                    movedAway = sameValue(change.oldValue, attempt.expectedValue)
-                            && !sameValue(change.newValue, attempt.expectedValue);
-                } else if (sameValue(change.newValue, attempt.expectedValue)) {
-                    return true; // A -> B -> A behind this thread's back
-                }
+            if (!movedAway) {
+                movedAway = sameValue(change.oldValue, expected) && !sameValue(change.newValue, expected);
+            } else if (sameValue(change.newValue, expected)) {
+                return change.seq; // A -> B -> A behind this thread's back
             }
         }
-        return false;
+        return 0;
+    }
+
+    /** {@return the index of the first change recorded after {@code seq}; the list is in record order} */
+    private static int firstAfter(List<ValueChange> changes, long seq) {
+        int low = 0;
+        int high = changes.size();
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            if (changes.get(mid).seq <= seq) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        return low;
+    }
+
+    /**
+     * Whether a judged attempt that saw no A-B-A when it was recorded had one after all, recorded
+     * late: a change back to its expected value recorded after the attempt, before the next round
+     * start, with nothing recorded after its read taking the variable off the value the attempt
+     * wrote. The class documentation gives the reasoning.
+     *
+     * @param successfulBySeq every successful attempt on the variable, by record position
+     */
+    private boolean abaRecordedLate(AtomicValueHistory history, CASAttempt attempt,
+                                    NavigableMap<Long, CASAttempt> successfulBySeq) {
+        long windowEnd = windowEnd(attempt.seq);
+        // A compare-and-set that expected the value this one wrote took the variable off it.
+        for (CASAttempt other : successfulBySeq.subMap(attempt.premiseSeq, false, windowEnd, false).values()) {
+            if (sameValue(other.expectedValue, attempt.newValue)) {
+                return false;
+            }
+        }
+        synchronized (history.changesLock) {
+            List<ValueChange> changes = history.changes;
+            int end = firstAfter(changes, windowEnd - 1);
+            for (int i = firstAfter(changes, attempt.premiseSeq); i < end; i++) {
+                if (sameValue(changes.get(i).oldValue, attempt.newValue)) {
+                    return false; // so did this change, whoever made it
+                }
+            }
+            long back = abaReturn(changes.subList(0, end), attempt.expectedValue,
+                    attempt.premiseSeq, attempt.threadId);
+            return back > attempt.seq;
+        }
+    }
+
+    /** {@return the record position of the first round start after {@code seq}, or no bound} */
+    private long windowEnd(long seq) {
+        long[] starts = roundStarts;
+        // Positions are unique, so the search never finds seq itself and returns where it would go.
+        int insertion = -(Arrays.binarySearch(starts, seq) + 1);
+        return insertion < starts.length ? starts[insertion] : Long.MAX_VALUE;
     }
 
     @SuppressWarnings({"PMD.CompareObjectsWithEquals", "ReferenceEquality"}) // identity equality intentional for atomic value tracking
@@ -284,8 +378,16 @@ public class ABAProblemDetector {
             }
             
             // Check for CAS attempts that succeeded despite ABA
+            NavigableMap<Long, CASAttempt> successfulBySeq = null;
             for (CASAttempt attempt : history.casAttempts.values()) {
-                if (attempt.wasABA) {
+                boolean aba = attempt.wasABA;
+                if (!aba && attempt.premiseSeq != 0) {
+                    if (successfulBySeq == null) {
+                        successfulBySeq = successfulBySeq(history);
+                    }
+                    aba = abaRecordedLate(history, attempt, successfulBySeq);
+                }
+                if (aba) {
                     report.successfulABACases.add(String.format(
                         "%s: CAS succeeded despite ABA (expected %s, set to %s)",
                         history.varName, attempt.expectedValue, attempt.newValue
@@ -295,6 +397,16 @@ public class ABAProblemDetector {
         }
         
         return report;
+    }
+
+    private static NavigableMap<Long, CASAttempt> successfulBySeq(AtomicValueHistory history) {
+        NavigableMap<Long, CASAttempt> bySeq = new TreeMap<>();
+        for (CASAttempt attempt : history.casAttempts.values()) {
+            if (attempt.seq != 0) {
+                bySeq.put(attempt.seq, attempt);
+            }
+        }
+        return bySeq;
     }
 
     /**
@@ -310,6 +422,22 @@ public class ABAProblemDetector {
      */
     public void reset() {
         trackedVariables.clear();
+        roundStarts = new long[0];
+    }
+
+    /**
+     * Marks the start of a new invocation round. Called by {@code ConcurrencyRunner}, through
+     * {@code AsyncTestContext}, after the previous round's workers have all finished, so every
+     * change recorded from here on happened after every compare-and-set recorded before it and
+     * cannot be the late record of an A-B-A one of them missed.
+     *
+     * @since 1.12.3
+     */
+    public void markInvocationStart() {
+        long[] started = roundStarts;
+        long[] next = Arrays.copyOf(started, started.length + 1);
+        next[started.length] = sequence.incrementAndGet();
+        roundStarts = next;
     }
     /**
      * Disable.
