@@ -198,6 +198,38 @@ class ABAProblemDetectorTest {
     }
 
     @Test
+    void aReadFromAnEarlierRoundIsNotThePremiseOfALaterCas() throws InterruptedException {
+        // A pooled worker runs the body again next round on the same thread. The read it recorded
+        // in round 1 is not the premise of its round-2 compare-and-set, which recorded none, and
+        // round 1's toggle ended before round 2 began (#810).
+        ABAProblemDetector detector = new ABAProblemDetector();
+        detector.recordRead("head", "A");                 // round 1: a read no CAS consumed
+        onAnotherThread(() -> {
+            detector.recordValueChange("head", "A", "B");
+            detector.recordValueChange("head", "B", "A");
+        });
+        detector.markInvocationStart();                   // round 2, the same worker thread
+        detector.recordCASAttempt("head", "A", "C", true, "A");
+        assertFalse(detector.analyzeABA().hasIssues(), detector.analyzeABA().toString());
+    }
+
+    @Test
+    void aReadInTheRoundOfItsCasIsStillItsPremise() throws InterruptedException {
+        // The twin: the round start drops only reads from before it, so a stale premise read in
+        // round 2 and toggled behind in round 2 is still an ABA.
+        ABAProblemDetector detector = new ABAProblemDetector();
+        detector.recordRead("head", "A");                 // round 1: a read no CAS consumed
+        detector.markInvocationStart();
+        detector.recordRead("head", "A");                 // round 2: this CAS's premise
+        onAnotherThread(() -> {
+            detector.recordValueChange("head", "A", "B");
+            detector.recordValueChange("head", "B", "A");
+        });
+        detector.recordCASAttempt("head", "A", "C", true, "A");
+        assertTrue(detector.analyzeABA().hasIssues(), detector.analyzeABA().toString());
+    }
+
+    @Test
     void everyStaleCasIsReportedHoweverManyThereAre() throws InterruptedException {
         // Well past the birthday bound for a 31-bit identity hash (about 54,000 objects), so
         // some twenty pairs of these attempts share a hash. An attempt keyed by its bare hash

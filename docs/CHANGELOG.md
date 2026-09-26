@@ -116,6 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compare-and-set wrote before the next round started: a toggle that really followed the
   compare-and-set would have needed that first. A timestamp would not have helped, since it orders
   the records, not the operations. The runner now tells the detector where each round starts.
+- **`ABAProblemDetector` no longer judges a compare-and-set against a read from an earlier round
+  (#810).** A read stayed the thread's premise across a round boundary, so a pooled worker whose
+  compare-and-set in the next round recorded no read of its own was judged against last round's
+  read and last round's changes, all finished before the round began, and could be reported as an
+  ABA that could not have happened. A round start now drops every read no compare-and-set
+  consumed; such a compare-and-set draws no verdict, like any other with no recorded read.
 - **A volatile edge in the happens-before model is per field, not per object (#742).** A volatile
   write released its whole object and a later access the weaver marked as following a volatile
   read acquired it, so reading one volatile field ordered a plain access after a write of another

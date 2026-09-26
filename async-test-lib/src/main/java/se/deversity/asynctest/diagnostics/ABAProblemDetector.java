@@ -77,8 +77,8 @@ public class ABAProblemDetector {
         final String varName;
         /**
          * The latest recorded read per thread. A compare-and-set takes its premise from the read
-         * just before it, so a later read replaces an earlier one, and a compare-and-set
-         * consumes the read it was checked against.
+         * just before it, so a later read replaces an earlier one, a compare-and-set consumes
+         * the read it was checked against, and a round start drops the rest.
          */
         final Map<Long, ValueRead> reads = new ConcurrentHashMap<>();
         /**
@@ -199,8 +199,8 @@ public class ABAProblemDetector {
      * Record a CAS (Compare-And-Swap) attempt, on the thread that made it.
      *
      * <p>A successful attempt is an ABA finding when this thread's last recorded read of the
-     * variable saw {@code expectedValue}, and after that read other threads recorded a change
-     * away from it and a change back to it (see the class documentation).
+     * variable in this round saw {@code expectedValue}, and after that read other threads recorded
+     * a change away from it and a change back to it (see the class documentation).
      *
      * @param variableName a label identifying the variable in the report
      * @param expectedValue the value the compare-and-set expected to find
@@ -431,9 +431,19 @@ public class ABAProblemDetector {
      * change recorded from here on happened after every compare-and-set recorded before it and
      * cannot be the late record of an A-B-A one of them missed.
      *
+     * <p>It also drops every read no compare-and-set consumed. A pooled worker runs the body again
+     * on the same thread, and its compare-and-set in this round, with no read recorded in it, would
+     * otherwise be judged against last round's read and last round's changes, all of which ended
+     * before this round began (#810). No worker is running when the runner calls this; a read that
+     * a thread the test left running records meanwhile is either kept or dropped, and dropping it
+     * only withholds a verdict.
+     *
      * @since 1.12.3
      */
     public void markInvocationStart() {
+        for (AtomicValueHistory history : trackedVariables.values()) {
+            history.reads.clear();
+        }
         long[] started = roundStarts;
         long[] next = Arrays.copyOf(started, started.length + 1);
         next[started.length] = sequence.incrementAndGet();
