@@ -347,6 +347,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   library, the same condition as a `LinkedHashMap`'s order; otherwise it keeps the old verdict. The
   agent still weaves only `get(int)` and the `set` overloads, so a woven `add`, `roll`, `clear` or
   `setTimeZone` is not recorded.
+- **`SharedCollectionDetector` counts a relinking `get` as a writer (#820).** #807 made a `get` on a
+  `LinkedHashMap` known to be access-ordered a write for the lockset only; the detector's own tally
+  still counted it as a read, and its findings need a writer, so two unguarded `get`s alone in one
+  round on an LRU cache reported nothing. Such a `get` now counts as a write in the tally too. Gets
+  inside `synchronized (map)`, gets on an insertion-ordered map, and gets on a map whose order is
+  unknown (`java.util` not open to the library) are unchanged.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`
