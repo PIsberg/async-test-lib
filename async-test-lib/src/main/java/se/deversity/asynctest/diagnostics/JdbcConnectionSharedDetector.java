@@ -12,7 +12,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -89,15 +88,20 @@ public final class JdbcConnectionSharedDetector {
          * Threads that currently hold the resource, when the caller models handoff.
          *
          * <p>Empty unless {@link #recordRelease} is used. A resource whose ownership is never
-         * released stays on the older model, where every accessing thread counts.
+         * released stays on the older model, where every accessing thread counts. Keyed by
+         * thread id, each with the label a report prints for it, taken while the thread is alive.
          */
-        final Set<Long> currentHolders = ConcurrentHashMap.newKeySet();
+        final Map<Long, String> currentHolders = new ConcurrentHashMap<>();
 
         /** Whether the caller ever said a thread was done with this resource. */
         volatile boolean ownershipModelled;
 
-        /** The threads seen holding it at the same time, which is the actual defect. */
-        final Set<String> overlappingThreadNames = ConcurrentHashMap.newKeySet();
+        /**
+         * The threads seen holding it at the same time, which is the actual defect, by thread id:
+         * keyed by name, unnamed (virtual) threads merged into one blank entry and the report
+         * undercounted them.
+         */
+        final Map<Long, String> overlappingThreads = new ConcurrentHashMap<>();
 
         State(String label, String type) {
             this.label = label;
@@ -133,12 +137,17 @@ public final class JdbcConnectionSharedDetector {
                     finalType));
         }
         s.noteAccess(resource, thread);
-        s.currentHolders.add(thread.threadId());
+        long threadId = thread.threadId();
+        if (!s.currentHolders.containsKey(threadId)) {
+            String threadName = thread.getName();
+            s.currentHolders.put(threadId, threadName.isEmpty() ? "#" + threadId : threadName);
+        }
         if (s.currentHolders.size() >= 2) {
             // Two threads holding at once is the defect itself, so it is recorded when it
             // happens rather than inferred afterwards from a set of thread ids that has no
-            // notion of when each one held the resource.
-            s.overlappingThreadNames.add(thread.getName());
+            // notion of when each one held the resource. Every holder at this moment is part
+            // of it, the thread that took the resource first as much as the one that joined.
+            s.overlappingThreads.putAll(s.currentHolders);
         }
     }
 
@@ -185,7 +194,7 @@ public final class JdbcConnectionSharedDetector {
             // Ownership was modelled and no two threads ever held it at once: this is a pooled
             // handle doing its job, handed to one thread at a time. Reporting it would flag the
             // documented fix for the defect this detector exists to find.
-            if (s.ownershipModelled && s.overlappingThreadNames.isEmpty()) continue;
+            if (s.ownershipModelled && s.overlappingThreads.isEmpty()) continue;
             // Every use held the resource's own monitor or a declared lock: serialised by hand.
             if (!s.sawUnguardedSharing()) continue;
             String specificRisk = switch (s.type) {
@@ -204,9 +213,9 @@ public final class JdbcConnectionSharedDetector {
                             + "thread safety on %s; %s. Use a per-thread Connection (pool checkout)." + SelfGuard.REPORT_NOTE,
                     s.label,
                     s.type,
-                    s.ownershipModelled ? s.overlappingThreadNames.size() : s.threadCount(),
+                    s.ownershipModelled ? s.overlappingThreads.size() : s.threadCount(),
                     String.join(", ", s.ownershipModelled
-                            ? s.overlappingThreadNames : s.threadNames()),
+                            ? s.overlappingThreads.values() : s.threadNames()),
                     s.type,
                     specificRisk);
             r.violations.add(msg);

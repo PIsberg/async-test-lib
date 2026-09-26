@@ -48,7 +48,9 @@ entry, so it can only see a field reached *through* a getter or setter. A bare `
 method compiles to `GETFIELD` / `PUTFIELD` with no method call to bind to, and that is the most
 common shape of a real race — it is why the README's own counter example reported nothing before
 this option existed. `fields=true` instruments the instruction stream instead, inserting a
-stack-neutral, branch-free observation call before each field instruction.
+stack-neutral, branch-free observation call before each field instruction, and for a volatile field
+a second one that hands the value to the happens-before model: just before a store, and just after
+a load ([#742](https://github.com/PIsberg/async-test-lib/issues/742)).
 
 The call carries the receiver, so the analysis can tell six threads racing on one object from six
 threads each using their own, and — for a store of a reference type — the value being stored. That
@@ -192,13 +194,16 @@ refused publishes nothing, a value put into and read back from such a map,
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, and `Thread.start` and a `Thread.join` that returned with the thread finished (every
 `join` overload is substituted for this). With `fields=true`, a volatile write releases that field
-of its object, and a later access to the same object that the weaver marks as following a volatile
-read acquires the fields of that object the thread read, not the object as a whole: reading one
-volatile field receives nothing a write of another published. The acquire is taken at that access
-rather than at the read, so an access after a read that returned an older value is still ordered
-(#742). An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock hand-off is
-deliberately not an edge: the lockset judges locking, and ordering it by the one schedule a run took
-would hide what another schedule exposes.
+of its object, and a read of the same field acquires at the read what the write whose value it
+returned published: reading one volatile field receives nothing a write of another published, and
+a read that returned an older value receives nothing the later write published (#742). The acquire
+goes into the reading thread's clock, so everything the thread does after the read is ordered,
+including its accesses to the object the read returned, which is how a node published through a
+volatile `next` reaches its reader (#804). The value is compared as a primitive's bits or a
+reference's identity hash, and among the field's last two writes only, since a write is released
+just before it is stored. An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock
+hand-off is deliberately not an edge: the lockset judges locking, and ordering it by the one
+schedule a run took would hide what another schedule exposes.
 
 Three limits worth knowing before switching it on:
 

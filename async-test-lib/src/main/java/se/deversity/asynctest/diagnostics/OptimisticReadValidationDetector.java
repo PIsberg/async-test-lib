@@ -19,8 +19,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * lock or retries. Using the torn values anyway is the finding, and it is visible only where the
  * use is recorded with {@link #recordValuesUsed}: the stamp passed there is the one the used values
  * were read under, so a use after a re-read under the read lock names the read-lock stamp and stays
- * silent, while a use under the failed optimistic stamp is reported. A read that is never validated
- * is reported whether or not its use is recorded.
+ * silent, while a use under the failed optimistic stamp is reported. A use is judged against the
+ * latest {@code validate()} of its stamp before it, so a stamp that validated once and then failed a
+ * revalidation, because a writer landed in between, is reported if its values are used after the
+ * failure. A read that is never validated is reported whether or not its use is recorded.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -43,8 +45,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class OptimisticReadValidationDetector {
 
-    /** Where a read stands: not yet validated, failed its validation, or already reported as used. */
-    private enum State { PENDING, FAILED, REPORTED }
+    /**
+     * Where a read stands: not yet validated, validated or failed by its latest validation, or
+     * already reported as used.
+     */
+    private enum State { PENDING, VALIDATED, FAILED, REPORTED }
 
     private static class OptimisticRead {
         final long         stamp;
@@ -65,8 +70,9 @@ public class OptimisticReadValidationDetector {
     private record ReadKey(IdentityKey lock, long threadId) { }
 
     /**
-     * The latest read per (lock, thread) that is still pending or failed its validation. A read
-     * that validated is removed; a failed one stays so a later use of its values can be matched.
+     * The latest read per (lock, thread), with the outcome of its latest validation. A validated
+     * read stays too: a revalidation of the same stamp can still fail, and a use after it must be
+     * matched against that failure (it used to be removed, so the failure was never seen).
      */
     private final Map<ReadKey, OptimisticRead> reads      = new ConcurrentHashMap<>();
     private final List<String>                 violations = new CopyOnWriteArrayList<>();
@@ -116,8 +122,9 @@ public class OptimisticReadValidationDetector {
      * Call immediately after {@code lock.validate(stamp)}.
      *
      * @param result the boolean returned by {@code validate()}; either value closes the read, since a
-     *               false one is the caller's cue to re-read under a lock. After a false one,
-     *               {@link #recordValuesUsed} with this stamp reports the torn values being used
+     *               false one is the caller's cue to re-read under a lock. A later call for the
+     *               same stamp replaces the outcome, and {@link #recordValuesUsed} with this stamp
+     *               reports the torn values being used while the latest outcome is false
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param stamp the stamp returned by the {@code StampedLock} operation
@@ -125,28 +132,25 @@ public class OptimisticReadValidationDetector {
      */
     public void recordValidateCalled(Object lock, long stamp, boolean result, Thread thread) {
         if (lock == null || thread == null) return;
-        ReadKey k = key(lock, thread);
-        OptimisticRead read = reads.get(k);
+        OptimisticRead read = reads.get(key(lock, thread));
         if (read == null) return;
         // A validate() for some other stamp does not validate the pending read —
         // leave it pending so its missing validation is still reported at analysis
         // time (removing it here silently discarded the evidence).
-        if (read.stamp != stamp || read.state != State.PENDING) return;
+        if (read.stamp != stamp || read.state == State.REPORTED) return;
         // Validated either way. A false result is the idiom's retry signal, not a use of the
         // torn values, so it is not reported (it used to be, which fired on correct code). The
-        // failed read is kept so that recordValuesUsed can still catch its values being used.
-        if (result) {
-            reads.remove(k);
-        } else {
-            read.state = State.FAILED;
-        }
+        // read is kept with its latest outcome so that recordValuesUsed can still catch its values
+        // being used after a failure, including one that follows an earlier success.
+        read.state = result ? State.VALIDATED : State.FAILED;
     }
 
     /**
      * Call where the values read under {@code stamp} are used, after the {@code validate()} that
      * was meant to gate them. Pass the stamp the used values were read under: after a failed
      * validation that is the read-lock stamp of the re-read, so the retry idiom stays silent,
-     * while using the optimistic values themselves is reported. A use before any
+     * while using the optimistic values themselves is reported. The use is judged against the
+     * latest {@code validate()} recorded for its stamp before it. A use before any
      * {@code validate()} adds nothing to the never-validated finding already reported for it.
      *
      * @param lock the lock being recorded, tracked by identity rather than equality

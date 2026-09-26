@@ -353,6 +353,134 @@ public class StringBuilderDetectorTest {
                 + errors.get(0));
     }
 
+    // ---- Both conditions of the shared-mutation finding hold in one round (#782) ---------------
+    //
+    // "More than one writer" and "unguarded sharing" were each judged per round, but not in the
+    // same round, so a round that raced with one writer and a round with two guarded writers
+    // combined into a finding neither round supports.
+
+    @Test
+    void aRacingRoundWithOneWriterAndAGuardedRoundWithTwoDoNotCombine() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable guardedAppend = () -> {
+            synchronized (sb) {
+                detector.recordAppend(sb, "log");
+            }
+        };
+
+        // Round one races, unguarded, but only one thread writes: on its own no finding.
+        round(scope, () -> detector.recordAppend(sb, "log"), () -> detector.recordRead(sb, "log"));
+        // Round two has two writers, and they hold a common lock: on its own no finding either.
+        round(scope, guardedAppend, guardedAppend);
+
+        assertTrue(detector.analyze().sharedBuilderViolations.isEmpty(),
+            "no single round had both two writers and unguarded sharing: "
+                + detector.analyze().sharedBuilderViolations);
+    }
+
+    @Test
+    void aLaterRoundThatMeetsBothConditionsIsTheOneReported() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable guardedAppend = () -> {
+            synchronized (sb) {
+                detector.recordAppend(sb, "log");
+            }
+        };
+
+        round(scope, () -> detector.recordAppend(sb, "log"), () -> detector.recordRead(sb, "log"));
+        round(scope, guardedAppend, guardedAppend);
+        // Round three: two writers, unguarded. This is the round the finding stands on.
+        round(scope, () -> detector.recordAppend(sb, "log"), () -> detector.recordAppend(sb, "log"));
+        // Round four: three writers, all guarded, so it must not lend its count to the finding.
+        round(scope, guardedAppend, guardedAppend, guardedAppend);
+
+        var violations = detector.analyze().sharedBuilderViolations;
+        assertEquals(1, violations.size(), "two unguarded writers raced in round three: " + violations);
+        assertTrue(violations.get(0).contains("mutated by 2 threads"),
+            "the count is round three's two writers, not a guarded round's three: " + violations.get(0));
+    }
+
+    @Test
+    void roundsOfGuardedWritersAndReadersStaySilent() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable guardedAppend = () -> {
+            synchronized (sb) {
+                detector.recordAppend(sb, "log");
+            }
+        };
+        Runnable guardedRead = () -> {
+            synchronized (sb) {
+                detector.recordRead(sb, "log");
+            }
+        };
+
+        round(scope, guardedAppend, guardedAppend, guardedRead);
+        round(scope, guardedAppend, guardedRead, guardedAppend);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "every access of every round held the builder's monitor: " + detector.analyze());
+    }
+
+    @Test
+    void oneThreadPerRoundWritingAndReadingStaysSilent() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable writeTwiceThenRead = () -> {
+            detector.recordAppend(sb, "log");
+            detector.recordAppend(sb, "log");
+            detector.recordRead(sb, "log");
+        };
+
+        round(scope, writeTwiceThenRead);
+        round(scope, writeTwiceThenRead);
+        round(scope, writeTwiceThenRead);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "one thread per round never raced with anything: " + detector.analyze());
+    }
+
+    @Test
+    void theExceptionFindingCountsAnErrorRoundThatGrewAfterItsError() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable appendThenFail = () -> {
+            detector.recordAppend(sb, "log");
+            detector.recordError(sb, "log", "StringIndexOutOfBoundsException");
+        };
+        java.util.concurrent.CountDownLatch failed = new java.util.concurrent.CountDownLatch(1);
+        Runnable failFirst = () -> {
+            appendThenFail.run();
+            failed.countDown();
+        };
+        Runnable appendAfterTheFailure = () -> {
+            try {
+                failed.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            detector.recordAppend(sb, "log");
+        };
+
+        round(scope, appendThenFail, appendThenFail);
+        // Round two's exception is recorded while its thread is still the round's only user; the
+        // other three use the builder in the same round right after.
+        round(scope, failFirst, appendAfterTheFailure, appendAfterTheFailure, appendAfterTheFailure);
+
+        var errors = detector.analyze().builderErrors;
+        assertEquals(1, errors.size(), "two rounds had exceptions among several users: " + errors);
+        assertTrue(errors.get(0).contains("3 exception(s) while 4 threads used it"),
+            "round two ended with four users, more than round one's two: " + errors.get(0));
+    }
+
     /**
      * Two builders may share a name. Each keeps its own activity line; filed under the name, the
      * second builder's line overwrote the first's (#789).

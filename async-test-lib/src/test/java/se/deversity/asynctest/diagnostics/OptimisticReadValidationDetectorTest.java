@@ -151,6 +151,131 @@ public class OptimisticReadValidationDetectorTest {
                 "the values used were re-read under the read lock: " + d.analyze().violations);
     }
 
+    /**
+     * Revalidation of a stamp that already validated once: the first validate() passes, a writer
+     * lands, the second validate() of the same stamp fails, and the caller uses the optimistic
+     * values anyway. The use is judged against the latest validate() before it, not the first.
+     */
+    @Test
+    void usingTheValuesAfterAFailedRevalidationOfAValidatedStampIsReported() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        int[] shared = {1};
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        int x = shared[0];
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        boolean first = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, first, t);
+        assertTrue(first, "premise: no writer yet, so the stamp still validates");
+        d.recordValuesUsed(lock, stamp, t);
+        assertFalse(d.analyze().hasIssues(),
+                "a use after a successful validate() is correct: " + d.analyze().violations);
+
+        long write = lock.writeLock();                 // the concurrent writer
+        shared[0] = 2;
+        lock.unlockWrite(write);
+
+        boolean second = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, second, t);
+        assertFalse(second, "premise: the write invalidated the stamp that validated before it");
+        assertEquals(1, x, "premise: the value used is the one read before the write");
+        d.recordValuesUsed(lock, stamp, t);            // no retry: the stale value is used
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(),
+                "using values whose latest validate() failed must be reported, once: "
+                        + report.violations);
+        assertTrue(report.violations.get(0).contains("sharedX"), report.violations.get(0));
+        assertTrue(report.violations.get(0).contains("validate() returned false"),
+                report.violations.get(0));
+    }
+
+    /**
+     * The retry idiom around a revalidation: the stamp validates, a writer lands, the second
+     * validate() fails, and the value is re-read under the read lock before the use. Correct code,
+     * as is a second validate() that still passes.
+     */
+    @Test
+    void reReadingUnderTheReadLockAfterAFailedRevalidationIsSilent() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        int[] shared = {1};
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        int x = shared[0];
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        boolean stillValid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, stillValid, t);
+        assertTrue(stillValid, "premise: no writer yet, so a revalidation passes too");
+        d.recordValuesUsed(lock, stamp, t);
+
+        long write = lock.writeLock();
+        shared[0] = 2;
+        lock.unlockWrite(write);
+
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertFalse(valid, "premise: the write invalidated the stamp");
+        long read = lock.readLock();
+        try {
+            x = shared[0];
+            d.recordValuesUsed(lock, read, t);
+        } finally {
+            lock.unlockRead(read);
+        }
+
+        assertEquals(2, x, "the value used is the one re-read under the lock");
+        assertFalse(d.analyze().hasIssues(),
+                "the values used were re-read under the read lock: " + d.analyze().violations);
+    }
+
+    /**
+     * A StampedLock stamp that failed validation never validates again: the writer moved the
+     * lock's version on, so revalidating returns false for good and the use is still reported,
+     * once. A true after a false can only come from a caller recording a result the lock did not
+     * return; the detector then judges the use against that latest record, and stays silent.
+     */
+    @Test
+    void aStampThatFailedValidationStaysFailedAndTheLatestRecordedOutcomeWins() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        long write = lock.writeLock();
+        boolean whileWriting = lock.validate(stamp);
+        lock.unlockWrite(write);
+        boolean afterRelease = lock.validate(stamp);
+        assertFalse(whileWriting, "premise: validate() fails while the writer holds the lock");
+        assertFalse(afterRelease, "premise: and still fails once the writer has released it");
+        d.recordValidateCalled(lock, stamp, whileWriting, t);
+        d.recordValidateCalled(lock, stamp, afterRelease, t);
+        d.recordValuesUsed(lock, stamp, t);
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordValuesUsed(lock, stamp, t);
+        assertEquals(1, d.analyze().violations.size(),
+                "a use after the real sequence fail, fail is reported once: "
+                        + d.analyze().violations);
+
+        var synthetic = new OptimisticReadValidationDetector();
+        synthetic.recordOptimisticReadStarted(lock, 7L, t);
+        synthetic.recordDataAccessed(lock, 7L, t, "sharedX");
+        synthetic.recordValidateCalled(lock, 7L, false, t);
+        synthetic.recordValidateCalled(lock, 7L, true, t);
+        synthetic.recordValuesUsed(lock, 7L, t);
+        assertFalse(synthetic.analyze().hasIssues(),
+                "the use is judged against the latest recorded validate(): "
+                        + synthetic.analyze().violations);
+    }
+
     /** The loop form of the idiom: a failed attempt, a fresh optimistic read that validates, then the use. */
     @Test
     void usingTheValuesOfARetriedOptimisticReadIsSilent() {

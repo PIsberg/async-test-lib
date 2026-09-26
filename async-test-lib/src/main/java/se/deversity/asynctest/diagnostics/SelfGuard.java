@@ -669,7 +669,11 @@ public final class SelfGuard {
                 return ids.contains(threadId);
             }
 
-            /** {@return the live set of thread names, in the order a report has always listed them} */
+            /**
+             * {@return the live set of thread names, in the order a report has always listed them;
+             * an unnamed thread is listed as {@code #id}, as {@link ReportSections#threadLabel}
+             * does}
+             */
             Set<String> names() {
                 return names;
             }
@@ -687,8 +691,14 @@ public final class SelfGuard {
          */
         Round add(Thread thread) {
             Round round = roundFor(roundNow());
-            round.ids.add(thread.threadId());
-            round.names.add(thread.getName());
+            long id = thread.threadId();
+            if (round.ids.add(id)) {
+                // Named once, on the thread's first access in the round and while it is alive:
+                // an unnamed thread, which includes every default virtual thread, goes by its id,
+                // or all of them would share one blank entry (#798).
+                String name = thread.getName();
+                round.names.add(name.isEmpty() ? "#" + id : name);
+            }
             Round top = busiest.get();
             while (top != round // NOPMD CompareObjectsWithEquals - one Round per round, by identity
                     && (top == null || round.size() > top.size())) {

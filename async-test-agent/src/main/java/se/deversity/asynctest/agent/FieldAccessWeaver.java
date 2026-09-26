@@ -49,6 +49,15 @@ import java.util.Map;
  * and {@code DUP_X1, SWAP} and a static call after it, which leave exactly the polled element. None
  * of them branch.
  *
+ * <p>A volatile field instruction carries its value to the happens-before model as well (#742). A
+ * store is preceded by a copy of its owner and value and a static call consuming the copies, so
+ * the release comes before the value is visible; a load is bracketed by a {@code DUP} of the
+ * receiver before it (none for a static field) and a copy of the loaded value under the owner and
+ * a static call after it, so the acquire comes after the value is seen and matches the write that
+ * stored it. Each value shape has its own hook overload, so nothing is boxed; a two-slot value
+ * under a receiver is copied with category-2 forms of {@code DUP} and {@code POP}. Stack-neutral
+ * and branch-free like the rest.
+ *
  * <h4>What is deliberately not woven</h4>
  * <ul>
  *   <li>Fields whose <em>owner</em> is the JDK, Byte Buddy or this library. Without this a
@@ -1126,10 +1135,12 @@ final class FieldAccessWeaver {
             // identityHashCode, so the access would land in the identity-0 bucket and merge with
             // every other instance. javac writes captured fields there in every inner class.
             boolean constructionWrite = write && !isStaticAccess && insideConstructor;
+            boolean volatileLoad = false;
             if (weaveFieldInstructions && shouldWeave(owner) && !constructionWrite
                     && (isStaticAccess || !thisIsUninitialised)) {
                 boolean isWrite = write;
                 boolean isStatic = isStaticAccess;
+                boolean isVolatile = isVolatile(owner, name);
                 if (isStatic) {
                     liftStaticReceiver(owner, isWrite, descriptor);
                 } else {
@@ -1141,7 +1152,7 @@ final class FieldAccessWeaver {
                 super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, THREAD, "threadId", "()J", false);
                 super.visitLdcInsn(identifier);
                 super.visitInsn(isWrite ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
-                super.visitInsn(isVolatile(owner, name) ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
+                super.visitInsn(isVolatile ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
                 super.visitLdcInsn(tag);
                 super.visitInsn(ownersWithVolatileReadInThisMethod.contains(owner)
                         ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
@@ -1152,9 +1163,109 @@ final class FieldAccessWeaver {
                 if (isWrite && !isStatic) {
                     restoreReceiverBelowValue(descriptor);
                 }
-                notePublication(owner, name, isWrite, isVolatile(owner, name));
+                if (isVolatile && isWrite) {
+                    emitVolatileStore(owner, isStatic, descriptor, identifier);
+                } else if (isVolatile && !isStatic) {
+                    // A copy of the receiver waits under the load, for the call after it (#742).
+                    super.visitInsn(Opcodes.DUP);
+                }
+                volatileLoad = isVolatile && !isWrite;
+                notePublication(owner, name, isWrite, isVolatile);
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
+            if (volatileLoad) {
+                emitVolatileLoad(owner, isStaticAccess, descriptor, identifier);
+            }
+        }
+
+        /**
+         * {@return the descriptor of the value parameter of a volatile hook for a field of type
+         * {@code descriptor}}: one overload per stack shape, so the value is passed as the field
+         * instruction's own operand, never boxed. The sub-{@code int} primitives travel as the
+         * {@code int} they are on the stack.
+         */
+        private static String volatileHookValue(String descriptor) {
+            return switch (descriptor.charAt(0)) {
+                case 'J', 'F', 'D' -> descriptor;
+                case 'L', '[' -> "Ljava/lang/Object;";
+                default -> "I";
+            };
+        }
+
+        /** Pushes the declaring class a static field's hooks name as its owner, or {@code null}. */
+        private void pushStaticOwner(String owner) {
+            if (classConstantsUsable) {
+                super.visitLdcInsn(Type.getObjectType(owner));
+            } else {
+                super.visitInsn(Opcodes.ACONST_NULL);
+            }
+        }
+
+        /**
+         * Hands a volatile write's value to {@code TelemetryRegistry.volatileStore} just before the
+         * store, which is the release a read of that value acquires (#742).
+         *
+         * <p>Stack-neutral and branch-free: the field instruction's operands are copied, the call
+         * consumes the copies with the identifier, and the store sees exactly what it did. A
+         * category-2 value under a receiver cannot be copied with one instruction, so it takes the
+         * six that bring {@code obj, value} back above a copy of themselves.
+         */
+        private void emitVolatileStore(String owner, boolean isStatic, String descriptor,
+                                       String identifier) {
+            boolean wide = isCategoryTwo(descriptor);
+            if (isStatic) {
+                super.visitInsn(wide ? Opcodes.DUP2 : Opcodes.DUP); // v -> v, v
+                pushStaticOwner(owner);                            //   -> v, v, class
+                if (wide) {
+                    super.visitInsn(Opcodes.DUP_X2);               //   -> v, class, v, class
+                    super.visitInsn(Opcodes.POP);                  //   -> v, class, v
+                } else {
+                    super.visitInsn(Opcodes.SWAP);                 //   -> v, class, v
+                }
+            } else if (wide) {
+                super.visitInsn(Opcodes.DUP2_X1);                  // obj, v -> v, obj, v
+                super.visitInsn(Opcodes.POP2);                     //        -> v, obj
+                super.visitInsn(Opcodes.DUP_X2);                   //        -> obj, v, obj
+                super.visitInsn(Opcodes.DUP_X2);                   //        -> obj, obj, v, obj
+                super.visitInsn(Opcodes.POP);                      //        -> obj, obj, v
+                super.visitInsn(Opcodes.DUP2_X1);                  //        -> obj, v, obj, v
+            } else {
+                super.visitInsn(Opcodes.DUP2);                     // obj, v -> obj, v, obj, v
+            }
+            super.visitLdcInsn(identifier);
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "volatileStore",
+                    "(Ljava/lang/Object;" + volatileHookValue(descriptor) + "Ljava/lang/String;)V",
+                    false);
+        }
+
+        /**
+         * Hands a volatile read's value to {@code TelemetryRegistry.volatileLoad} just after the
+         * load, which is where the read acquires what the write it saw published (#742, #804).
+         *
+         * <p>Stack-neutral and branch-free: an instance load left the receiver copied by the
+         * {@code DUP} before it under the loaded value, which is moved beneath the pair and copied;
+         * a static load has the class pushed and swapped in. The call consumes owner, value and
+         * identifier, and leaves exactly the loaded value.
+         */
+        private void emitVolatileLoad(String owner, boolean isStatic, String descriptor,
+                                      String identifier) {
+            boolean wide = isCategoryTwo(descriptor);
+            if (isStatic) {
+                super.visitInsn(wide ? Opcodes.DUP2 : Opcodes.DUP); // v -> v, v
+                pushStaticOwner(owner);                            //   -> v, v, class
+                if (wide) {
+                    super.visitInsn(Opcodes.DUP_X2);               //   -> v, class, v, class
+                    super.visitInsn(Opcodes.POP);                  //   -> v, class, v
+                } else {
+                    super.visitInsn(Opcodes.SWAP);                 //   -> v, class, v
+                }
+            } else {
+                super.visitInsn(wide ? Opcodes.DUP2_X1 : Opcodes.DUP_X1); // obj, v -> v, obj, v
+            }
+            super.visitLdcInsn(identifier);
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "volatileLoad",
+                    "(Ljava/lang/Object;" + volatileHookValue(descriptor) + "Ljava/lang/String;)V",
+                    false);
         }
     }
 }

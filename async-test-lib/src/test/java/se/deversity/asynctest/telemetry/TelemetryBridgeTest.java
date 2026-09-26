@@ -108,11 +108,13 @@ class TelemetryBridgeTest {
     }
 
     /**
-     * Replays the woven volatile-flag idiom through the real ring on two real threads.
+     * Replays the woven volatile-flag idiom through the real ring on two real threads, each side
+     * emitting what the weaver emits: the access record, and the volatile hook with the value.
      *
-     * @param markedAfterVolatileRead whether the reader's data read carries the weaver's bit
+     * @param readyRead what the reader's volatile read of {@code ready} returned, 1 for the value
+     *                  the writer stored
      */
-    private static boolean volatileFlagThroughTheRing(boolean markedAfterVolatileRead)
+    private static boolean volatileFlagThroughTheRing(int readyRead)
             throws InterruptedException {
         AtomicityValidator av = new AtomicityValidator();
         Pub pub = new Pub();
@@ -123,6 +125,7 @@ class TelemetryBridgeTest {
                         Integer.MIN_VALUE, false, false);
                 TelemetryRegistry.recordAccess(pub, null, null, me, "Pub.ready", true, true, 1,
                         false, false);
+                TelemetryRegistry.volatileStore(pub, 1, "Pub.ready");
             });
             writer.start();
             writer.join();
@@ -130,8 +133,9 @@ class TelemetryBridgeTest {
                 long me = Thread.currentThread().threadId();
                 TelemetryRegistry.recordAccess(pub, null, null, me, "Pub.ready", false, true,
                         Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.volatileLoad(pub, readyRead, "Pub.ready");
                 TelemetryRegistry.recordAccess(pub, null, null, me, "Pub.data", false, false,
-                        Integer.MIN_VALUE, markedAfterVolatileRead, false);
+                        Integer.MIN_VALUE, true, false);
             });
             reader.start();
             reader.join();
@@ -143,11 +147,11 @@ class TelemetryBridgeTest {
 
     @Test
     void aVolatileFlagPublishedThroughTheRingIsOrdered() throws InterruptedException {
-        assertFalse(volatileFlagThroughTheRing(true),
+        assertFalse(volatileFlagThroughTheRing(1),
                 "the stamps travel through the ring, so the drain sees the writer's release and "
                         + "the reader's acquire and the lock-free single writer is not reported");
-        assertTrue(volatileFlagThroughTheRing(false),
-                "a read the weaver did not mark as following the volatile read acquires nothing");
+        assertTrue(volatileFlagThroughTheRing(0),
+                "a read that returned the value from before the write acquires nothing");
     }
 
     /** The weaver's view of the idiom lane's order: a mutable object handed off through a queue. */

@@ -249,51 +249,169 @@ public final class TelemetryRegistry {
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
-        acquireIfAfterVolatileRead(receiver, qualifiedName, isWrite, volatileField,
-                afterVolatileRead);
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
                 identity == 0 ? null : receiver, HappensBefore.current(), HappensBefore.round());
-        releaseIfVolatileWrite(receiver, qualifiedName, isWrite, volatileField);
     }
 
     /**
-     * Orders this access after the volatile reads the weaver saw before it in the same method,
-     * and remembers this access when it is a volatile read.
+     * The release half of a volatile write, called by woven code with the value about to be
+     * stored, after the write's {@code recordAccess} and before the write instruction.
      *
-     * <p>The acquire half of volatile publication, for {@code HappensBefore}. Taken at the marked
-     * access rather than at the volatile read itself, because that hook runs before the read
-     * instruction and an acquire made before the value is seen could order what the program does
-     * not. The weaver marks the access without naming the field it read, so the read is noted
-     * here, per object and field, and the marked access acquires only the fields of its object
-     * this thread read: a write of another volatile field of the same object orders nothing
-     * (#742). See {@code HappensBefore}'s limits for what remains approximate.
+     * <p>Everything the writing thread did so far is published to a read of the same field of the
+     * same object that returns this value (#742). Before the store, so the release precedes every
+     * read that can return the value; with the value, so a read that returned an earlier one can
+     * tell this release apart from the one it saw. One overload per stack shape, so the woven call
+     * passes the value as the store's own operand and boxes nothing: {@code int} for every
+     * primitive of one slot except {@code float}.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field, or
+     *              {@code null} when the weaver had neither; {@code null} records nothing
+     * @param value the value the write stores
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
      */
-    private static void acquireIfAfterVolatileRead(@Nullable Object receiver, String qualifiedName,
-                                                   boolean isWrite, boolean volatileField,
-                                                   boolean afterVolatileRead) {
-        if (receiver == null) {
-            return;
-        }
-        if (afterVolatileRead) {
-            HappensBefore.acquireVolatileReads(receiver);
-        }
-        if (volatileField && !isWrite) {
-            HappensBefore.volatileRead(receiver, qualifiedName);
+    public static void volatileStore(@Nullable Object owner, int value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.releaseVolatile(owner, field, value);
         }
     }
 
     /**
-     * The release half: a volatile write publishes what this thread did before it, to readers of
-     * the same field (#742). The hook runs before the write instruction, so the release precedes
-     * every read that can see the value.
+     * {@link #volatileStore(Object, int, String)} for a {@code long} field.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the value the write stores
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
      */
-    private static void releaseIfVolatileWrite(@Nullable Object receiver, String qualifiedName,
-                                               boolean isWrite, boolean volatileField) {
-        if (volatileField && isWrite && receiver != null) {
-            HappensBefore.releaseVolatile(receiver, qualifiedName);
+    public static void volatileStore(@Nullable Object owner, long value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.releaseVolatile(owner, field, value);
         }
     }
+
+    /**
+     * {@link #volatileStore(Object, int, String)} for a {@code float} field, compared by its bits.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the value the write stores
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileStore(@Nullable Object owner, float value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.releaseVolatile(owner, field, Float.floatToRawIntBits(value));
+        }
+    }
+
+    /**
+     * {@link #volatileStore(Object, int, String)} for a {@code double} field, compared by its bits.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the value the write stores
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileStore(@Nullable Object owner, double value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.releaseVolatile(owner, field, Double.doubleToRawLongBits(value));
+        }
+    }
+
+    /**
+     * {@link #volatileStore(Object, int, String)} for a reference field, compared by the stored
+     * object's identity hash so the model never holds the object itself.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the reference the write stores
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileStore(@Nullable Object owner, @Nullable Object value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.releaseVolatile(owner, field, System.identityHashCode(value));
+        }
+    }
+
+    /**
+     * The acquire half of a volatile read, called by woven code right after the read instruction
+     * with the value it returned.
+     *
+     * <p>The reading thread receives what the write that stored this value published, and
+     * nothing a write it did not see published (#742). Taken here, at the read, into the thread's
+     * clock, so every later access of the thread is ordered after that write, including an access
+     * to the object the read returned (#804). Overloads as for {@link #volatileStore}.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field, or
+     *              {@code null} when the weaver had neither; {@code null} records nothing
+     * @param value the value the read returned
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileLoad(@Nullable Object owner, int value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.acquireVolatile(owner, field, value);
+        }
+    }
+
+    /**
+     * {@link #volatileLoad(Object, int, String)} for a {@code long} field.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the value the read returned
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileLoad(@Nullable Object owner, long value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.acquireVolatile(owner, field, value);
+        }
+    }
+
+    /**
+     * {@link #volatileLoad(Object, int, String)} for a {@code float} field, compared by its bits.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the value the read returned
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileLoad(@Nullable Object owner, float value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.acquireVolatile(owner, field, Float.floatToRawIntBits(value));
+        }
+    }
+
+    /**
+     * {@link #volatileLoad(Object, int, String)} for a {@code double} field, compared by its bits.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the value the read returned
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileLoad(@Nullable Object owner, double value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.acquireVolatile(owner, field, Double.doubleToRawLongBits(value));
+        }
+    }
+
+    /**
+     * {@link #volatileLoad(Object, int, String)} for a reference field, compared by the returned
+     * object's identity hash.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field
+     * @param value the reference the read returned
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.12.3
+     */
+    public static void volatileLoad(@Nullable Object owner, @Nullable Object value, String field) {
+        if (!STOPPED.get()) {
+            HappensBefore.acquireVolatile(owner, field, System.identityHashCode(value));
+        }
+    }
+
     /**
      * Records a field access, with the reference the write stored in hand.
      *
@@ -342,15 +460,12 @@ public final class TelemetryRegistry {
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
         int storedIdentity = stored == null ? 0 : System.identityHashCode(stored);
-        acquireIfAfterVolatileRead(receiver, qualifiedName, isWrite, volatileField,
-                afterVolatileRead);
         // The receiver rides along so the drain side can tell apart two objects whose identity
         // hashes collide; the ring lends it for one callback and then clears the slot.
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
                 storedIdentity, identity == 0 ? null : receiver, HappensBefore.current(),
                 HappensBefore.round());
-        releaseIfVolatileWrite(receiver, qualifiedName, isWrite, volatileField);
     }
 
     /**

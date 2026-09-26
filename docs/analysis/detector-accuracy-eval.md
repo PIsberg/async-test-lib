@@ -221,7 +221,10 @@ report counts and names the threads of the round the finding came from, or of th
 where no round is marked. Pinned in each detector's own test and in
 `SharedMessageDigestDetectorTest` for the family's printed count. `StringBuilderDetector`'s
 exception finding followed (#783): it counts the users of the busiest round an exception came
-from, so one thread per round, each failing alone, is not concurrent access.
+from, so one thread per round, each failing alone, is not concurrent access. Its shared-mutation
+finding then tied its two conditions to one round (#782): two writers in one round and unguarded
+sharing in another, such as a writer racing a reader and then two writers under a common lock, is
+no longer a finding, since neither round would report alone.
 `SharedJsonMapperReconfigDetector`'s condition then widened within the round (#784): it had asked
 only about users recorded before the reconfiguration, so one recorded first in its round was
 never reported. A reconfiguration inside a run now races with any other user of its round,
@@ -233,6 +236,11 @@ high-contention line compared thread sets over the run. It keeps no per-instance
 pair compares two fields, which the three rounds `RoundThreads` retains cannot answer, so the round
 is stamped on each recorded access instead, from the same `SelfGuard.Scope` clock, and both
 predicates are taken within one round. Pinned in `FalseSharingDetectorTest` in both directions.
+The high-contention access threshold still counted over the run, so a platform thread that raced
+once and then worked alone crossed it; #794 counts only the accesses made in a round with more
+than one thread on the field. That is per run over the contended rounds rather than per round: a
+round is one body execution per worker, so a per-round threshold would need 51 accesses in one
+body and would silence steady contention across many rounds, which is the run the line is for.
 
 Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
 `BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched

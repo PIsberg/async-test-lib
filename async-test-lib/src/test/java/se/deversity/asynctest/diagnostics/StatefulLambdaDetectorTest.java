@@ -204,6 +204,8 @@ public class StatefulLambdaDetectorTest {
     // #785: a mutation recorded without its captured object has no capture identity, so it is
     // judged against the lambda, and all of a lambda's unnamed captures share one lockset. This
     // pins that documented limit, and beside it the named form that judges each capture alone.
+    // #800 kept it: the overload carries no object, and keying by name would hide the race in
+    // oneObjectUnderTwoNamesEachGuardedByItsOwnLockIsReported.
     @Test
     void twoUnnamedCapturesEachGuardedByItsOwnLockAreReported() throws Exception {
         var d = new StatefulLambdaDetector();
@@ -246,6 +248,112 @@ public class StatefulLambdaDetectorTest {
                         d.recordCapturedMutation(task[0], "misses", misses, Thread.currentThread());
                     } else {
                         d.recordCapturedMutation(task[0], "misses", Thread.currentThread());
+                    }
+                }
+            }
+        };
+        onTwoThreads(task[0]);
+        return d.analyze().hasIssues();
+    }
+
+    // #800: a capture is judged by the object recorded, never by its name, so one object mutated
+    // under two names, each under its own lock, is still one capture with no lock common to both
+    // sites. Keying by name would hide this race; one lock over both sites stays silent.
+    @Test
+    void oneObjectUnderTwoNamesEachGuardedByItsOwnLockIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertTrue(mutateOneObjectAtTwoSites(d, true, false),
+                "counter and alias are one array, and lock H and lock M serialise nothing");
+        assertTrue(d.analyze().violations.get(0).contains("alias"));
+    }
+
+    @Test
+    void oneObjectUnderTwoNamesGuardedByOneLockIsNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertFalse(mutateOneObjectAtTwoSites(d, true, true),
+                "one lock held at every mutation of the array: " + d.analyze().violations);
+    }
+
+    // #800: the same object recorded with its object at one site and without it at the other.
+    // The unnamed mutation may be of any capture of the lambda, so the named capture cannot be
+    // judged apart from it: judged apart, lock H over one site and lock M over the other hid the
+    // race. A lambda with an unnamed capture is judged as one capture, as it was before #769.
+    @Test
+    void oneObjectRecordedWithAndWithoutItsObjectUnderTwoLocksIsReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertTrue(mutateOneObjectAtTwoSites(d, false, false),
+                "the unnamed mutation may be of the named array, and lock H and lock M serialise "
+                        + "nothing");
+        assertTrue(d.analyze().violations.get(0).contains("alias"));
+    }
+
+    @Test
+    void oneObjectRecordedWithAndWithoutItsObjectUnderOneLockIsNotReported() throws Exception {
+        var d = new StatefulLambdaDetector();
+        assertFalse(mutateOneObjectAtTwoSites(d, false, true),
+                "one declared lock held at every mutation: " + d.analyze().violations);
+    }
+
+    @Test
+    void anUnnamedCaptureJoinsTheLambdasNamedCapturesIntoOneLockset() throws Exception {
+        var d = new StatefulLambdaDetector();
+        int[] hits = {0};
+        int[] misses = {0};
+        int[] total = {0};
+        Object totalLock = new Object();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            synchronized (hits) {
+                hits[0]++;
+                d.recordCapturedMutation(task[0], "hits", hits, Thread.currentThread());
+            }
+            synchronized (misses) {
+                misses[0]++;
+                d.recordCapturedMutation(task[0], "misses", misses, Thread.currentThread());
+            }
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(totalLock)) {
+                synchronized (totalLock) {
+                    total[0]++;
+                    d.recordCapturedMutation(task[0], "total", Thread.currentThread());
+                }
+            }
+        };
+        onTwoThreads(task[0]);
+
+        assertTrue(d.analyze().hasIssues(),
+                "the unnamed total may be hits or misses, so no one lock covered every mutation of "
+                        + "whatever it is; this is the limit the named overload avoids");
+    }
+
+    /**
+     * Mutates one array at two sites of one lambda: through {@code counter}, recorded with the
+     * array, under lock H; then through {@code alias}, the same array, under lock M, or under H
+     * again when {@code oneLock}. The second site names the array when {@code aliasNamed}.
+     */
+    private static boolean mutateOneObjectAtTwoSites(
+            StatefulLambdaDetector d, boolean aliasNamed, boolean oneLock)
+            throws InterruptedException {
+        int[] counter = {0};
+        int[] alias = counter;
+        Object lockH = new Object();
+        Object lockM = oneLock ? lockH : new Object();
+        Runnable[] task = new Runnable[1];
+        task[0] = () -> {
+            d.recordExecution(task[0], "task", Thread.currentThread());
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lockH)) {
+                synchronized (lockH) {
+                    counter[0]++;
+                    d.recordCapturedMutation(task[0], "counter", counter, Thread.currentThread());
+                }
+            }
+            try (var held = se.deversity.asynctest.AsyncTestContext.holdingLock(lockM)) {
+                synchronized (lockM) {
+                    alias[0]++;
+                    if (aliasNamed) {
+                        d.recordCapturedMutation(task[0], "alias", alias, Thread.currentThread());
+                    } else {
+                        d.recordCapturedMutation(task[0], "alias", Thread.currentThread());
                     }
                 }
             }

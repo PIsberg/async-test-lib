@@ -74,6 +74,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and one step through a single-`return` helper. Run against the old `OptimisticReadValidation`
   source it reports all four of its map calls. `SpinLocks` keys by hash on purpose and checks the
   referent on every lookup, so it is listed as deliberate, and the gate fails if it stops matching.
+- **`RunnerAllocationBudgetTest` measures the record paths (#752).** Its body was empty, so an
+  allocation added to `SelfGuard`'s lockset, round window or stamp, or to the happens-before
+  volatile-read path, passed it. A second body records through them 1,024 times per execution,
+  with a few `RaceConditionDetector` records, `HappensBefore` edges and agent field events through
+  `TelemetryRegistry`, and its cost beyond the empty body is held under 110,000 bytes per
+  execution: 84,297 to 91,227 measured on JDK 21, 24 and 26, and 123,804 with one `new Object[4]`
+  kept per `SelfGuard.noteAccess`, which the empty body's 80,000-byte ceiling let through.
 
 ### Fixed
 
@@ -93,16 +100,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their identity hash, so a later attempt sharing one replaced an earlier one, and a stale
   compare-and-set already judged an ABA dropped out of the report: of 300,000, two runs reported
   299,986 and 299,985. Attempts are now keyed by instance.
+- **`ABAProblemDetector` reports an A-B-A whose changes are recorded after the compare-and-set
+  (#779).** It only looked at changes already recorded when the compare-and-set was, so another
+  thread that swung A to B to A between the read and the compare-and-set, and recorded the swing a
+  moment later, went unreported. Such a late change back now counts when nothing recorded after
+  the read, neither a change nor a successful compare-and-set, took the variable off the value the
+  compare-and-set wrote before the next round started: a toggle that really followed the
+  compare-and-set would have needed that first. A timestamp would not have helped, since it orders
+  the records, not the operations. The runner now tells the detector where each round starts.
 - **A volatile edge in the happens-before model is per field, not per object (#742).** A volatile
   write released its whole object and a later access the weaver marked as following a volatile
   read acquired it, so reading one volatile field ordered a plain access after a write of another
   field of the same object, which publishes nothing to that reader, and the race between them went
-  unreported. The clock is now kept per object and field: the agent's hook notes which volatile
-  fields a thread reads, and the marked access acquires only those; `RaceConditionDetector`'s own
-  volatile rule, for a test that records by hand, acquires only the field it recorded a read of.
-  Reading the field that was written still orders the access. Still approximate: the weaver
-  reports a volatile read before it happens and not the value it returned, so an access after a
-  read that saw an older value is still ordered.
+  unreported. The clock is now kept per object and field, and a read acquires only the field it
+  read; `RaceConditionDetector`'s own volatile rule, for a test that records by hand, acquires
+  only the field it recorded a read of. Reading the field that was written still orders the
+  access.
+- **A woven volatile read acquires at the read, and only what the write it saw published (#742,
+  #804).** The weaver reported a volatile read before the read instruction and never saw its
+  value, so the acquire waited for the next access the weaver marked and took the field's clock
+  as it was by then. An access after a read that returned an older value was ordered by a write
+  the read never saw, which hid the race; and a node read through a volatile `next` acquired
+  nothing for the node, because the marked access was on another object, so correct linked-node
+  publication was reported (#804). The weaver now hands the value to the model on both sides of a
+  volatile field instruction, just before a store and just after a load
+  (`TelemetryRegistry.volatileStore` / `volatileLoad`), and the reader takes what the write that
+  stored that value published into its thread's clock, at the read. Measured with a throwaway
+  probe: a spin read of a published field still allocates 0 bytes per iteration, and a write then
+  a read on one thread 88 against 80.
+- **A volatile read is no longer forgotten, and no longer outlives its method (#805).** For the
+  per-field model each thread remembered its last 8 volatile reads, and an access the weaver
+  marked acquired the fields of its object among them: more than 8 other volatile reads in
+  between evicted the entry and reported a correctly published access, and a read in an earlier
+  method still ordered an access after a read of another field, which hid a race. With the
+  acquire taken at the read, the ring is gone (`HappensBefore.volatileRead` and
+  `acquireVolatileReads` are removed). What a thread keeps is a cache of 8 field clocks, where a
+  miss costs a lookup and never an edge.
 - **A refused offer or a failed `compareAndSet` no longer publishes (#742).** The agent's hooks
   release the element to the happens-before model before the call, so the take that returns it
   finds the release, and left that release in place when a bounded queue refused the element, a
@@ -124,6 +157,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   threads read as `used by 1 thread(s)`. They now print a thread the way #766 does, `name (id=N)`
   or `#N`, which changes their report text for named threads too. DaemonThreadHygiene is
   unchanged: it never reports a virtual thread, and its report already prints the thread id.
+- **The Shared* family lists unnamed threads apart (#798).** The detectors built on
+  `SelfGuard.ThreadTrackedInstance` (the Shared* family, FileChannelPositionRace,
+  NonAtomicConcurrentMapUpdate, WeakHashMapShared, JdbcConnectionShared and others) kept the
+  threads of a round by `Thread.getName()`, so every default virtual thread was the same blank
+  entry and a finding on two of them printed `2 threads ()`. An unnamed thread now prints as
+  `#N`, as #790 does; a named thread still prints by its bare name. The name is taken once, on the
+  thread's first access in the round, so the record path allocates nothing new per access.
+- **`JdbcConnectionSharedDetector` counts every thread in an overlap.** With ownership modelled
+  (`recordRelease`), the report counted and named only the threads that took a resource while
+  another held it, never the one already holding it, and kept them by name, so unnamed threads
+  merged into one blank entry: two named threads read as `accessed from 1 threads (second)`, and
+  three virtual threads as `1 threads ()`. Every holder at the moment of an overlap is now counted,
+  by thread id, and an unnamed one prints as `#N`, as #798 does for the rest of the family.
 - **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
   failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
   was judged by it. A blocking acquire through the agent now clears it
@@ -184,6 +230,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were read under: the failed optimistic stamp reports, once per read; the read-lock stamp of a
   re-read, or a stamp that validated, stays silent. A use with no `validate()` at all is still the
   one never-validated finding.
+- **`OptimisticReadValidationDetector` judges a use against the latest `validate()` of its stamp
+  (#795).** A read that validated was dropped at once, so when a revalidation of the same stamp
+  failed after a writer landed, and the caller used the values anyway, nothing was reported. The
+  read is now kept with its latest outcome: validate-ok, validate-fail, use reports once, while a
+  revalidation that still passes, and a re-read under the read lock after the failure, stay
+  silent. A `true` recorded after a `false` for the same stamp now counts as the latest outcome
+  and silences a later use; a real `StampedLock` never returns that, since a failed stamp stays
+  failed.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
@@ -216,6 +270,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each failing alone, read as concurrent access. It now counts the users of the busiest round an
   exception was recorded in, and needs two of them; two threads sharing the builder in one round
   still report, with that round's count.
+- **`StringBuilderDetector` needs two writers and unguarded sharing in the same round (#782).**
+  Each condition was judged per round, but not in the same one, so a round where one writer raced a
+  reader plus a round where two writers held a common lock reported "mutated by 2 threads", a
+  finding neither round supports. The sharing verdict is now taken afresh each round and the
+  finding latches on the first round that meets both, whose writers are the count printed; a guarded
+  round with more writers no longer lends its count. The exception finding now compares each error
+  round once it is over, so a round whose users arrived after its exception is counted with them.
 - **`HttpClientConcurrencyDetector` keeps one thread-activity line per client (#767).** The lines
   were filed under the client's name, so two clients registered under one name overwrote each
   other's and the report showed only one. Each client object now gets its own line, still printed
@@ -231,6 +292,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one field in one round and two others on the adjacent field in a later round were reported as a
   pair, and one thread per round hammering a field read as a high-contention field. Both findings
   now need their threads in the same round; the same accesses inside one round still report.
+- **`FalseSharingDetector` counts its high-contention threshold in contended rounds only (#794).**
+  After #765 the field needed two threads in one round, but the access threshold (100 on the field,
+  more than 50 from one thread) was still counted over the run, so a platform thread that raced
+  once and then worked alone for many rounds crossed it. Only accesses made in a round with more
+  than one thread on the field now count. Steady contention every round keeps its verdict, since
+  every access in it is contended.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common
@@ -251,8 +318,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded through `recordCapturedMutation(lambda, name, thread)` names no captured object, so it is
   judged against the lambda, and two such captures each under its own lock are still reported. The
   overload's javadoc now says so and points to `recordCapturedMutation(lambda, name, state, thread)`,
-  and a test pins both forms. The overload is not deprecated: its replacement is experimental, and
-  the limit only adds findings, never hides one.
+  and a test pins both forms. The overload is not deprecated: its replacement is experimental. Used
+  alone, the limit only adds findings; mixed with the object-taking overload it could hide one,
+  which #800 fixes.
+- **`StatefulLambdaDetector` no longer lets an unnamed capture hide a race on a named one** (#800).
+  A mutation recorded without its object was judged apart from the named captures, so one object
+  recorded with `recordCapturedMutation(lambda, name, state, thread)` under one lock and through the
+  object-less overload under another read as two guarded captures and was not reported. An unnamed
+  access may be of any capture, so a lambda with one is now judged as one capture, all its
+  accesses together: a lambda whose named captures each hold their own lock is reported once it
+  also records an unnamed mutation. Unnamed captures cannot be keyed more finely: the object-less
+  overload carries no object, and keying by name lets two names for one object hide a race. A test
+  now pins that one object under two names is still one capture.
 - **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
   LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
   OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by
