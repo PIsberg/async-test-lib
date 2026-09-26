@@ -180,7 +180,10 @@ afternoon is not spent twice.
 
 **Ordering the lockset cannot see (1.12.3).** The same hooks feed the shared happens-before model,
 `HappensBefore`, which `RaceConditionDetector` and `AtomicityValidator` consult before they report
-a round: a round whose every conflicting pair the model orders is not reported. For the field
+a round: a round whose every conflicting pair the model orders is not reported. The detectors on
+the shared per-instance round verdict (`SelfGuard`, the `Shared*` family among them) consult it
+too: a thread whose use of the instance the model orders after the previous thread's takes it
+over rather than sharing it, while two threads using it at once still report. For the field
 stream the accessing thread's clock is stamped at publish time and travels through the ring with
 the event, since the drain thread's own clock orders nothing. The edges are the ones the Java memory
 model names for the woven calls: an element offered to and taken from a `java.util.concurrent`

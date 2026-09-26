@@ -109,15 +109,17 @@ authority on which row is which - each outcome above is one assertion in it.
   synchronization rather than a verdict; the report wording says exactly that.
 - For `AtomicityValidator` the answer depends on how the access was recorded.
   `recordFieldAccessOn(owner, field, value, isWrite)` gives it the full lockset, and a field
-  covered by one lock across every access produces no finding. The agent-fed path gets a weaker
+  covered by one lock across every access of a round produces no finding. Since 1.12.3 that
+  lockset is judged per round on both paths, so a different lock in each round is consistent
+  locking: the harness orders the rounds. The agent-fed path gets a weaker
   model: it compares whole lock sets by fingerprint rather than intersecting them, so a field one
   thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
   than one thread touched this field and at least one wrote". On the agent-fed path an object
   that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`) is judged per
   ownership generation, so each owner may bring its own lock, or none while the object is exclusive
-  to it (#555); a lock that changes with no take, a thread that uses an object it did not take, and
-  two locks inside one generation still fire, and each direction is a case in
+  to it (#555); a lock that changes inside one round with no take, a thread that uses an object
+  it did not take, and two locks inside one generation still fire, and each direction is a case in
   `DetectorAccuracyEvalTest`. The report only mentions locks when
   the caller supplied some.
 - **Ownership-generation boundary (#559).** Exclusivity ends at the first foreign access in drain
@@ -218,6 +220,21 @@ instance after handing it back joins the new owner's window and is still reporte
 `SharedMessageDigestDetectorTest`, through the woven hook methods called directly rather than a
 real agent attach. What it does not see: a pool of wrapper objects, where the take names the
 wrapper and the access names the digest inside it.
+
+Within an owner's window the verdict also follows the shared `HappensBefore` model (1.12.3). Two
+threads in one round that the program ordered, one using a `MessageDigest` and counting a latch
+down while the other awaits it and then uses the digest, or a parent that uses it, starts a child
+that uses it and joins the child, never overlapped, yet read as sharing, because a lockset cannot
+see an ordering no lock provides. Each access now carries its thread's clock, and a thread whose
+access the model orders after the window's latest one takes the instance over. The edges come
+from the agent's woven latches, semaphores, queue and map hand-offs, `Thread.start` and `join`, or
+from `HappensBefore.release`/`acquire`/`fork`/`join` in the test. An edge only removes a finding:
+two siblings started by one parent, and two threads that use the digest at once after a hand-off,
+still fire, and an unwoven latch nobody declared orders nothing. Pinned in
+`SharedMessageDigestDetectorTest`, through the manual API and through the hook methods the weaver
+substitutes. `AtomicNonAtomicUpdateDetector`, whose finding needs no second thread, takes only the
+per-round lockset from the same windows (`sawUnguardedRound()`), so one lock per round, a
+different one each round, no longer reads as inconsistent locking.
 
 The last row is why the model is an intersection and not a per-thread "was anything held" flag.
 Two threads that each take their own lock have serialised nothing, and a flag would call that

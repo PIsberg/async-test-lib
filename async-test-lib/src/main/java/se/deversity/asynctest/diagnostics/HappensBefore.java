@@ -25,7 +25,9 @@ import org.jspecify.annotations.Nullable;
  * no lock provides, so a correct program that hands an object through a {@code BlockingQueue},
  * publishes it with a volatile flag or through a {@code ConcurrentHashMap}, or writes it before
  * {@code Thread.start} read as racing. Each detector used to grow its own excuse for one of these
- * shapes. This class is the one model they consult instead.
+ * shapes. This class is the one model they consult instead. {@code SelfGuard}'s per-round
+ * sharing verdict, which the detectors watching one non-thread-safe instance share, consults it
+ * too: a thread whose access it orders after the previous thread's took the instance over.
  *
  * <h2>The model</h2>
  *

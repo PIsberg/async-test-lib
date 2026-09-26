@@ -71,7 +71,11 @@ annotated method, and the licence gate applies as it does there.
 locks held at each. Correct code whose ordering comes from somewhere else, an object handed
 through a queue, a `Thread.start` and `join`, read as racing. They also consult one shared
 happens-before model, `se.deversity.asynctest.diagnostics.HappensBefore`, and a round whose every
-conflicting pair that model orders is not reported. With the agent attached the model is fed from
+conflicting pair that model orders is not reported. The detectors that watch one non-thread-safe
+instance through the shared round verdict, the `Shared*` family among them, consult it too: a
+thread whose use of the instance the model orders after the previous thread's is not sharing it,
+so a `MessageDigest` handed over through a latch or to a started child is not reported, while two
+threads using it at once still are. With the agent attached the model is fed from
 the calls it already weaves (see [attaching.md](../agent/attaching.md)). A test that records
 accesses by hand declares the edges itself, at the point the program makes them:
 

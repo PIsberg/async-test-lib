@@ -203,8 +203,10 @@ a `LOW` advisory.
 model. `RACE_CONDITIONS` intersects the lock sets held at each access to a field in a round (#570),
 so a field one thread holds `{A, B}` for and another holds `{A}` for is guarded by `A` and not
 reported. `ATOMICITY_VIOLATIONS` is coarser on its agent-fed path, where it compares whole lock sets
-rather than intersecting them. Both also excuse a round whose every conflicting pair the shared
-`HappensBefore` model orders (1.12.3). Neither report grades its findings, so both detectors are rated
+rather than intersecting them; since 1.12.3 it also judges its lockset per round, so one lock per
+round, a different one each round, is consistent locking. Both also excuse a round whose every
+conflicting pair the shared `HappensBefore` model orders (1.12.3). Neither report grades its
+findings, so both detectors are rated
 PROMPT as a whole. For `RACE_CONDITIONS` that is a decision rather than a gap: no finding it makes
 can tell an unguarded access from one under an undeclared lock, or a hand-off through a call that
 neither the agent nor the test described to the shared happens-before model, so no finding of it
@@ -228,7 +230,11 @@ have excluded nothing, which is a race however many locks were involved. Both th
 the lockset are taken within one invocation round and, inside it, per owner: a take out of a
 queue or a swap out of an atomic slot, woven by the agent with `collections=true` or declared with
 `AsyncTestContext.ownershipTaken(instance)`, separates one owner's accesses from the next's, so a
-pool that checks an instance out to one thread at a time is not reported.
+pool that checks an instance out to one thread at a time is not reported. Since 1.12.3 the round
+verdict also follows the shared `HappensBefore` model: a thread whose use of the instance that
+model orders after the previous thread's, through a latch, a queue or map hand-off, a
+`Thread.start` or a `join` that the agent wove or the test declared, takes the instance over
+instead of sharing it. Two threads using it at once still report, edge or no edge.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
 tier is one a reader has to rank alone. The split is 37 VERDICT, 73 PROMPT, 29 FACT and 7
