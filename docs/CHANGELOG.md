@@ -238,6 +238,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silent. A `true` recorded after a `false` for the same stamp now counts as the latest outcome
   and silences a later use; a real `StampedLock` never returns that, since a failed stamp stays
   failed.
+- **`OptimisticReadValidationDetector` reports data read after a successful `validate()` and not
+  validated again (#809).** Once a stamp validated, further `recordDataAccessed` calls on it were
+  dropped, so read x, validate, read y, use went unreported although a writer landing between the
+  validate and the read of y leaves x and y torn. A read after a successful validate now awaits a
+  `validate()` of its own and, if none follows, is reported like a never-validated read, naming
+  only the fields read since the validate. Reading everything before the validate, revalidating
+  after each read, and the retry loop falling back to the read lock stay silent; a read whose
+  failed validate was already reported for a use is not reported a second time.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through

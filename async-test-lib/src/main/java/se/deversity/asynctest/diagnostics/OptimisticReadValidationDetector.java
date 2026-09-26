@@ -22,7 +22,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * silent, while a use under the failed optimistic stamp is reported. A use is judged against the
  * latest {@code validate()} of its stamp before it, so a stamp that validated once and then failed a
  * revalidation, because a writer landed in between, is reported if its values are used after the
- * failure. A read that is never validated is reported whether or not its use is recorded.
+ * failure. A read that is never validated is reported whether or not its use is recorded. A
+ * {@code validate()} covers only the reads before it: data read under a stamp after its successful
+ * validation needs a {@code validate()} of its own, and is reported like a never-validated read if
+ * none follows it.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -46,16 +49,19 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class OptimisticReadValidationDetector {
 
     /**
-     * Where a read stands: not yet validated, validated or failed by its latest validation, or
-     * already reported as used.
+     * Where a read stands: not yet validated (or read again since its last successful validation),
+     * validated or failed by its latest validation, or already reported as used.
      */
     private enum State { PENDING, VALIDATED, FAILED, REPORTED }
 
     private static class OptimisticRead {
         final long         stamp;
         final String       threadName;
+        /** Fields read since the read started, or since the successful validation they followed. */
         final List<String> accessedFields = new ArrayList<>();
         volatile State     state          = State.PENDING;
+        /** Whether a validation passed before the reads now pending: names the finding, if any. */
+        volatile boolean   readAfterValidate;
 
         OptimisticRead(long stamp, String threadName) {
             this.stamp = stamp;
@@ -102,7 +108,9 @@ public class OptimisticReadValidationDetector {
     }
 
     /**
-     * Call when reading a field whose value was obtained during an optimistic read.
+     * Call when reading a field whose value was obtained during an optimistic read. A read after a
+     * successful {@code validate()} of the same stamp is not covered by it: it puts the read back to
+     * awaiting a {@code validate()}, and is reported if none follows.
      *
      * @param fieldName descriptive name for the data being read (for reports)
      *
@@ -111,9 +119,18 @@ public class OptimisticReadValidationDetector {
      * @param thread the thread performing the operation
      */
     public void recordDataAccessed(Object lock, long stamp, Thread thread, String fieldName) {
-        if (lock == null || thread == null) return;
+        if (lock == null || thread == null || fieldName == null) return;
         OptimisticRead read = reads.get(key(lock, thread));
-        if (read != null && read.stamp == stamp && read.state == State.PENDING && fieldName != null) {
+        if (read == null || read.stamp != stamp) return;
+        if (read.state == State.VALIDATED) {
+            // The validate() before this read says nothing about it: a writer may have landed
+            // since (#809). Only the fields read from here on are unvalidated, so only they are
+            // named. A FAILED or REPORTED read is left alone: a use of it is already judged, once.
+            read.accessedFields.clear();
+            read.readAfterValidate = true;
+            read.state = State.PENDING;
+        }
+        if (read.state == State.PENDING) {
             read.accessedFields.add(fieldName);
         }
     }
@@ -183,7 +200,10 @@ public class OptimisticReadValidationDetector {
 
     private static String neverValidatedViolation(OptimisticRead read) {
         return String.format(
-            "Thread '%s': data accessed (%s) during optimistic read but validate() was never called",
+            read.readAfterValidate
+                ? "Thread '%s': data accessed (%s) during optimistic read after its validate() passed,"
+                    + " and validate() was not called again"
+                : "Thread '%s': data accessed (%s) during optimistic read but validate() was never called",
             read.threadName, String.join(", ", read.accessedFields));
     }
 

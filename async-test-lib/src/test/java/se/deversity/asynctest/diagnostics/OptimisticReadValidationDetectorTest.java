@@ -319,6 +319,205 @@ public class OptimisticReadValidationDetectorTest {
         assertTrue(report.violations.get(0).contains("never called"), report.violations.get(0));
     }
 
+    /**
+     * A validate() covers only the reads before it. Here x is read and validated, a writer lands,
+     * and y is read under the same stamp and used without a second validate(): x and y come from
+     * different writes, a torn pair. The finding names y, the read no validate() covered.
+     */
+    @Test
+    void dataReadAfterASuccessfulValidateAndUsedWithoutRevalidatingIsReported() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        int[] shared = {1, 1};
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        int x = shared[0];
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertTrue(valid, "premise: no writer yet, so the stamp validates");
+
+        long write = lock.writeLock();                 // the concurrent writer
+        shared[0] = 2;
+        shared[1] = 2;
+        lock.unlockWrite(write);
+
+        int y = shared[1];
+        d.recordDataAccessed(lock, stamp, t, "sharedY");
+        d.recordValuesUsed(lock, stamp, t);            // no second validate(): x and y are torn
+        d.recordValuesUsed(lock, stamp, t);
+        assertNotEquals(x, y, "premise: the pair used is torn");
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(),
+                "a read after the validate() that covered the earlier ones must be reported, once: "
+                        + report.violations);
+        assertTrue(report.violations.get(0).contains("sharedY"), report.violations.get(0));
+        assertFalse(report.violations.get(0).contains("sharedX"),
+                "x was covered by the validate(): " + report.violations.get(0));
+    }
+
+    /** Everything read before the one validate(), then used: the textbook shape, silent. */
+    @Test
+    void readingEveryFieldBeforeTheValidateIsSilent() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        d.recordDataAccessed(lock, stamp, t, "sharedY");
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordValuesUsed(lock, stamp, t);
+
+        assertFalse(d.analyze().hasIssues(), d.analyze().violations.toString());
+    }
+
+    /** Revalidating after each read before its use: every value used was covered, silent. */
+    @Test
+    void revalidatingAfterEachReadUnderOneStampIsSilent() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordValuesUsed(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedY");
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordValuesUsed(lock, stamp, t);
+
+        assertFalse(d.analyze().hasIssues(), d.analyze().violations.toString());
+    }
+
+    /**
+     * A read after a successful validate() that then fails its own revalidation, and is used anyway:
+     * one finding, the failed use, not a second one for the missing validate() it was re-armed for.
+     */
+    @Test
+    void aReadAfterAValidateThatFailsItsRevalidationAndIsUsedIsReportedOnce() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        lock.unlockWrite(lock.writeLock());
+        d.recordDataAccessed(lock, stamp, t, "sharedY");
+        boolean valid = lock.validate(stamp);
+        d.recordValidateCalled(lock, stamp, valid, t);
+        assertFalse(valid, "premise: the write invalidated the stamp");
+        d.recordValuesUsed(lock, stamp, t);
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        assertTrue(report.violations.get(0).contains("validate() returned false"),
+                report.violations.get(0));
+    }
+
+    /**
+     * A read already reported is not re-armed: reading more under the stamp whose failed validate()
+     * was already reported for a use adds no second finding for the same optimistic read.
+     */
+    @Test
+    void aReadAlreadyReportedIsNotReArmedByMoreReadsUnderItsStamp() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        d.recordDataAccessed(lock, stamp, t, "sharedX");
+        lock.unlockWrite(lock.writeLock());
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordValuesUsed(lock, stamp, t);            // reported: the torn x is used
+        d.recordDataAccessed(lock, stamp, t, "sharedY");
+        d.recordValuesUsed(lock, stamp, t);
+
+        assertEquals(1, d.analyze().violations.size(), d.analyze().violations.toString());
+    }
+
+    /**
+     * A read after a successful validate() that is abandoned for a fresh optimistic read is reported
+     * once, when the fresh read replaces it, and not again at analysis.
+     */
+    @Test
+    void anUnrevalidatedReadReplacedByAFreshOptimisticReadIsReportedOnce() {
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        Thread t = Thread.currentThread();
+
+        d.recordOptimisticReadStarted(lock, 1L, t);
+        d.recordDataAccessed(lock, 1L, t, "sharedX");
+        d.recordValidateCalled(lock, 1L, true, t);
+        d.recordDataAccessed(lock, 1L, t, "sharedY");
+        d.recordOptimisticReadStarted(lock, 2L, t);
+        d.recordDataAccessed(lock, 2L, t, "sharedZ");
+        d.recordValidateCalled(lock, 2L, true, t);
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        assertTrue(report.violations.get(0).contains("sharedY"), report.violations.get(0));
+    }
+
+    /**
+     * The StampedLock javadoc's own loop (distanceFromOrigin): an optimistic attempt, and on a failed
+     * validate() the loop retries holding the read lock. Everything read under a stamp is read
+     * before that stamp's validate(). Silent with and without a writer landing.
+     */
+    @Test
+    void theStampedLockJavadocRetryLoopFallingBackToTheReadLockIsSilent() {
+        for (boolean writerLands : new boolean[] {false, true}) {
+            var d = new OptimisticReadValidationDetector();
+            StampedLock lock = new StampedLock();
+            int[] shared = {1, 1};
+            Thread t = Thread.currentThread();
+
+            long stamp = lock.tryOptimisticRead();
+            d.recordOptimisticReadStarted(lock, stamp, t);
+            int sum;
+            boolean first = true;
+            try {
+                for (;; stamp = lock.readLock()) {
+                    int x = shared[0];
+                    d.recordDataAccessed(lock, stamp, t, "sharedX");
+                    if (first && writerLands) {
+                        long write = lock.writeLock();
+                        shared[0] = 2;
+                        shared[1] = 2;
+                        lock.unlockWrite(write);
+                    }
+                    first = false;
+                    int y = shared[1];
+                    d.recordDataAccessed(lock, stamp, t, "sharedY");
+                    boolean valid = lock.validate(stamp);
+                    d.recordValidateCalled(lock, stamp, valid, t);
+                    if (!valid) {
+                        continue;
+                    }
+                    d.recordValuesUsed(lock, stamp, t);
+                    sum = x + y;
+                    break;
+                }
+            } finally {
+                if (StampedLock.isReadLockStamp(stamp)) {
+                    lock.unlockRead(stamp);
+                }
+            }
+
+            assertEquals(writerLands ? 4 : 2, sum, "premise: the sum used is consistent");
+            assertFalse(d.analyze().hasIssues(),
+                    "writerLands=" + writerLands + ": " + d.analyze().violations);
+        }
+    }
+
     /** Two locks read optimistically in turn, each validated: correct, even if their hashes collide. */
     @Test
     void twoLocksWhoseIdentityHashesCollideAreNotMerged() {
