@@ -22,7 +22,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * real memory layout. Keying is per class rather than per object, so thread-confined
  * instances of one class are indistinguishable from a genuinely shared instance. Thread
  * sets are compared within one invocation round, so accesses from different rounds, which
- * never overlapped, are not read as concurrent. The
+ * never overlapped, are not read as concurrent, and the high-contention access threshold
+ * counts only accesses made in a round another thread also spent on the field. The
  * findings are therefore not evidence of false sharing, and {@link #analyze()} returns
  * an empty report unless {@link #EXPERIMENTAL_PROPERTY} is set.
  * 
@@ -209,22 +210,24 @@ public class FalseSharingDetector {
             List<AccessEvent> history = entry.getValue();
             if (history.size() < FIELD_ACCESS_THRESHOLD) continue;
 
-            // Check for high-frequency access to adjacent fields
-            List<AccessEvent> snapshot = snapshot(history);
+            // Only accesses made in a round with more than one thread on the field count, for the
+            // field's total and for each thread's share alike. Threads in different rounds never
+            // contended (#765), and a platform thread outlives its round, so a count kept over the
+            // run added up the rounds it spent alone on the field after racing once (#794).
+            Map<Integer, Set<Long>> rounds = threadsByRound.getOrDefault(entry.getKey(), Map.of());
+            int contendedAccesses = 0;
             Map<Long, Integer> threadAccessCounts = new HashMap<>();
-            for (AccessEvent event : snapshot) {
-                threadAccessCounts.merge(event.threadId, 1, Integer::sum);
+            for (AccessEvent event : snapshot(history)) {
+                Set<Long> threads = rounds.get(event.round);
+                if (threads != null && threads.size() > 1) {
+                    contendedAccesses++;
+                    threadAccessCounts.merge(event.threadId, 1, Integer::sum);
+                }
             }
 
-            // More than one thread has to be true of one round: threads in different rounds
-            // never contended (#765).
-            boolean sharedInOneRound = threadsByRound.getOrDefault(entry.getKey(), Map.of())
-                    .values().stream().anyMatch(threads -> threads.size() > 1);
-            if (sharedInOneRound) {
-                int maxAccesses = threadAccessCounts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
-                if (maxAccesses > FIELD_ACCESS_THRESHOLD / 2) {
-                    report.highContentionFields.add(entry.getKey());
-                }
+            int maxAccesses = threadAccessCounts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+            if (contendedAccesses >= FIELD_ACCESS_THRESHOLD && maxAccesses > FIELD_ACCESS_THRESHOLD / 2) {
+                report.highContentionFields.add(entry.getKey());
             }
         }
     }

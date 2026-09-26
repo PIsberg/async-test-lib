@@ -273,6 +273,133 @@ class FalseSharingDetectorTest {
         }
     }
 
+    // ---- The access threshold is counted in contended rounds only (#794) -------------------------
+    //
+    // A platform thread outlives its round, so a count kept over the run adds up accesses from
+    // rounds in which the thread was alone on the field and nothing contended.
+
+    /**
+     * Starts the next round of {@code scope} and runs each body on its long-lived platform thread,
+     * one single-thread executor per worker, released together so their accesses overlap. The same
+     * worker thread across rounds is what a platform-thread run gives each worker slot.
+     */
+    private static void round(SelfGuard.Scope scope, java.util.concurrent.ExecutorService[] workers,
+                              Runnable... bodies) throws Exception {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        java.util.List<java.util.concurrent.Future<?>> done = new java.util.ArrayList<>();
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            done.add(workers[i].submit(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }));
+        }
+        for (java.util.concurrent.Future<?> future : done) {
+            future.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
+    private static java.util.concurrent.ExecutorService[] platformWorkers(int n) {
+        java.util.concurrent.ExecutorService[] workers = new java.util.concurrent.ExecutorService[n];
+        for (int i = 0; i < n; i++) {
+            workers[i] = java.util.concurrent.Executors.newSingleThreadExecutor();
+        }
+        return workers;
+    }
+
+    private static void shutdown(java.util.concurrent.ExecutorService[] workers) {
+        for (java.util.concurrent.ExecutorService worker : workers) {
+            worker.shutdownNow();
+        }
+    }
+
+    @Test
+    void aThreadThatRacedOnceThenWorkedAloneIsNotHighContention() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        java.util.concurrent.ExecutorService[] workers = platformWorkers(2);
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // Round one: both workers touch a once. Rounds two to twenty: the first worker, the
+            // same platform thread, touches a ten times a round with nobody else on it.
+            round(scope, workers, touchA, touchA);
+            for (int r = 2; r <= 20; r++) {
+                round(scope, workers, times(10, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.highContentionFields.isEmpty(),
+                    "the only round with two threads on a had one access from each; the 190 "
+                            + "later accesses were made alone and contended with nothing: " + report);
+        } finally {
+            shutdown(workers);
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void contentionAndThresholdInOneRoundFireDespiteLaterSoloRounds() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        java.util.concurrent.ExecutorService[] workers = platformWorkers(2);
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // Round one: both workers hammer a, 60 accesses each. Later solo rounds must not
+            // dilute or cancel what round one already showed.
+            round(scope, workers, times(60, touchA), times(60, touchA));
+            for (int r = 2; r <= 5; r++) {
+                round(scope, workers, times(10, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.highContentionFields.size(),
+                    "round one had two threads on a and each crossed the threshold in it: " + report);
+        } finally {
+            shutdown(workers);
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void steadyContentionEveryRoundOnPlatformThreadsKeepsItsVerdict() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        java.util.concurrent.ExecutorService[] workers = platformWorkers(2);
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // Ten rounds, both workers on a every round, 30 accesses each: no single round crosses
+            // the threshold, but every access counted was made while the other thread was on a.
+            for (int r = 1; r <= 10; r++) {
+                round(scope, workers, times(30, touchA), times(30, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.highContentionFields.size(),
+                    "both threads were on a in every round, so all 300 accesses of each were "
+                            + "contended and the run-wide count stands: " + report);
+        } finally {
+            shutdown(workers);
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
     static class TwoCounters {
         int a;
         int b;

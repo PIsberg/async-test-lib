@@ -244,6 +244,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one field in one round and two others on the adjacent field in a later round were reported as a
   pair, and one thread per round hammering a field read as a high-contention field. Both findings
   now need their threads in the same round; the same accesses inside one round still report.
+- **`FalseSharingDetector` counts its high-contention threshold in contended rounds only (#794).**
+  After #765 the field needed two threads in one round, but the access threshold (100 on the field,
+  more than 50 from one thread) was still counted over the run, so a platform thread that raced
+  once and then worked alone for many rounds crossed it. Only accesses made in a round with more
+  than one thread on the field now count. Steady contention every round keeps its verdict, since
+  every access in it is contended.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common
