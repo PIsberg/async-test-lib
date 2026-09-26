@@ -164,4 +164,109 @@ class SharedJsonMapperReconfigDetectorTest {
                 first.structuredViolations.get(0).message(),
                 second.structuredViolations.get(0).message());
     }
+
+    // ---- Users are counted within one round (#748) ---------------------------------------------
+    //
+    // The runner finishes one round before it starts the next, and with virtual threads every body
+    // execution is a fresh thread. A set of using threads kept across the run made any mapper used
+    // in two rounds look "used by two or more threads", and made every later thread look like one
+    // that "never used" it, so a reconfiguration with nothing in flight around it was reported.
+
+    /**
+     * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
+     * bound, released together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable... bodies) throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
+
+    @Test
+    void usersOfAnEarlierRoundDoNotMakeALaterSingleThreadReconfigurationARace() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        // Round one: two threads use the mapper at once. Nobody reconfigures it.
+        round(scope, () -> d.recordUse(mapper), () -> d.recordUse(mapper));
+        // Round two: one thread uses it and then reconfigures it, alone.
+        round(scope, () -> {
+            d.recordUse(mapper);
+            d.recordConfigMutation(mapper, "registerModule(JavaTimeModule)");
+        });
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                "round two's only user reconfigured the mapper; round one's users had finished: "
+                        + report.violations);
+    }
+
+    @Test
+    void aReconfigurationInARoundWithNoUseIsNotARace() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> d.recordUse(mapper), () -> d.recordUse(mapper));
+        // Round two: a fresh thread reconfigures it, and nothing uses it in that round.
+        round(scope, () -> d.recordConfigMutation(mapper, "configure(FAIL_ON_UNKNOWN, false)"));
+
+        var report = d.analyze();
+        assertFalse(report.hasIssues(),
+                "nothing used the mapper in the round it was reconfigured in: " + report.violations);
+    }
+
+    @Test
+    void aReconfigurationDuringASharedRoundStillFiresWithThatRoundsUserCount() throws Exception {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        var bothUsed = new java.util.concurrent.CyclicBarrier(2);
+
+        // Round one: one thread uses it alone.
+        round(scope, () -> d.recordUse(mapper));
+        // Round two: two threads use it at once, and one of them then reconfigures it.
+        round(scope, () -> {
+            d.recordUse(mapper);
+            await(bothUsed);
+            d.recordConfigMutation(mapper, "setSerializationInclusion(NON_NULL)");
+        }, () -> {
+            d.recordUse(mapper);
+            await(bothUsed);
+        });
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "two threads used the mapper in the round it was reconfigured in");
+        assertTrue(report.violations.get(0).contains("used by 2 thread(s)"),
+                "the count is round two's users, not the three threads of the run: "
+                        + report.violations.get(0));
+        assertEquals(2, report.structuredViolations.get(0).attributes().get("usingThreadCount"));
+    }
+
+    private static void await(java.util.concurrent.CyclicBarrier barrier) {
+        try {
+            barrier.await();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 }

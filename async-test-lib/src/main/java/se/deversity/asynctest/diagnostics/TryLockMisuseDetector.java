@@ -50,6 +50,26 @@ public final class TryLockMisuseDetector {
     }
 
     /**
+     * Record that {@code thread} now holds {@code lock} by some route other than {@code tryLock},
+     * such as a blocking {@code lock()}.
+     *
+     * <p>This forgets the thread's last {@code tryLock} outcome on that lock, so the common
+     * fallback {@code if (!lock.tryLock()) lock.lock();} is not judged at its {@code unlock()} by
+     * the failed try it already recovered from (#757). A failed try followed directly by an
+     * unlock still reports.
+     *
+     * @param lock the lock now held, tracked by identity rather than equality
+     * @param thread the thread that acquired it
+     */
+    public void recordLockAcquired(Object lock, Thread thread) {
+        if (lock == null || thread == null || lockResults.isEmpty()) return;
+        Map<Long, Boolean> threadResults = lockResults.get(new IdentityKey(lock));
+        if (threadResults != null) {
+            threadResults.remove(thread.threadId());
+        }
+    }
+
+    /**
      * Record an unlock() call.
      *
      * @param lock the lock being recorded, tracked by identity rather than equality

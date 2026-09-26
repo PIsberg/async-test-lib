@@ -2,8 +2,21 @@ package se.deversity.asynctest.diagnostics;
 
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.AsyncTestListener;
+import se.deversity.asynctest.AsyncTestListenerRegistry;
+import se.deversity.asynctest.report.JsonReportListener;
+import se.deversity.asynctest.report.Violation;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -194,5 +207,45 @@ class Phase1DetectorSetTest {
 
         assertFalse(phase1.collectReports().isEmpty(),
                 "with no shared registry to report through, Phase1DetectorSet must still report its own findings");
+    }
+
+    // ---- printReports(): listeners get the severity the gate reads, not the text's ----
+
+    /**
+     * A report shaped like the built-in ones that keep structured findings: its text marks
+     * CRITICAL, its one {@link Violation} says LOW. The gate reads LOW
+     * ({@link DetectorDefaultSeverity#of(String, String, IssueSeverity)}).
+     */
+    public static final class StructuredLowReport {
+        public final List<Violation> structuredViolations = List.of(new Violation(
+                "BusyWaitDetector", IssueSeverity.LOW, "spin loop", null, null, null));
+
+        @Override
+        public String toString() {
+            return "🔴 CRITICAL: spin loop";
+        }
+    }
+
+    @Test
+    void printReport_listenersReceiveTheStructuredSeverityNotTheTextOne(@TempDir Path dir) throws IOException {
+        List<Violation> violations = new ArrayList<>();
+        JsonReportListener json = new JsonReportListener(dir.toString(), false);
+        AsyncTestListener captor = new AsyncTestListener() {
+            @Override
+            public void onViolation(Violation violation) {
+                violations.add(violation);
+            }
+        };
+        try (var jsonRegistration = AsyncTestListenerRegistry.registerScoped(json);
+             var captorRegistration = AsyncTestListenerRegistry.registerScoped(captor)) {
+            Phase1DetectorSet.printReport("BusyWaitDetector", new StructuredLowReport());
+        }
+
+        String written = Files.readString(json.flush(), StandardCharsets.UTF_8);
+        assertTrue(written.contains("\"severity\": \"LOW\""),
+                "the JSON report must carry the structured LOW the gate acts on, not the text's CRITICAL: " + written);
+        assertEquals(1, violations.size());
+        assertEquals(IssueSeverity.LOW, violations.get(0).severity(),
+                "the Violation SARIF is built from must carry the structured severity");
     }
 }

@@ -72,7 +72,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 85. Stateful Lambda Detector
 * **Severity**: `HIGH`
-* **Description**: Detects lambdas/`Runnable`/`Callable` instances that capture a mutable container (an array, an outer field, or an Atomic used via get+set) and are subsequently executed concurrently. The JVM's effectively-final rule only covers the captured *reference*, not a mutable container's contents, so shared execution introduces a data race. Mutation of a captured object that is thread-safe by type (named through `recordCapturedMutation(lambda, name, state, thread)`: `java.util.concurrent` and its `atomic` package, or a `Collections.synchronizedXxx` wrapper) is not reported, nor is mutation that one lock covered every time: the captured object's own monitor, a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove.
+* **Description**: Detects lambdas/`Runnable`/`Callable` instances that capture a mutable container (an array, an outer field, or an Atomic used via get+set) and are subsequently executed concurrently. The JVM's effectively-final rule only covers the captured *reference*, not a mutable container's contents, so shared execution introduces a data race. Mutation of a captured object that is thread-safe by type (named through `recordCapturedMutation(lambda, name, state, thread)`: `java.util.concurrent` and its `atomic` package, or a `Collections.synchronizedXxx` wrapper) is not reported, nor is mutation that one lock covered every time: the captured object's own monitor, a lock declared with `AsyncTestContext.holdingLock(...)`, or one the agent wove. The lock is judged per captured object, so a lambda whose two captures are each guarded by a different lock is not reported; a capture guarded by one lock on one thread and another lock on a second thread still is. A mutation recorded without the captured object is judged against the lambda, so all of a lambda's unnamed captures share one lockset.
 * **Buggy Code**:
   ```java
   int[] counter = {0}; // mutable captured container
@@ -304,7 +304,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 96. Uncaught Exception Handler Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects threads started without a custom `Thread.UncaughtExceptionHandler` that subsequently throw an uncaught exception. Without a handler, the exception only reaches the thread group's default (stderr) handler, so the submitting code has no way to detect that the thread died.
+* **Description**: Detects threads started without a custom `Thread.UncaughtExceptionHandler` that subsequently throw an uncaught exception. Without a handler, the exception only reaches the thread group's default (stderr) handler, so the submitting code has no way to detect that the thread died. A JVM-wide handler set with `Thread.setDefaultUncaughtExceptionHandler` when the exception is recorded counts as a handler, and such a thread is not reported.
 * **Buggy Code**:
   ```java
   Thread worker = new Thread(this::riskyTask);

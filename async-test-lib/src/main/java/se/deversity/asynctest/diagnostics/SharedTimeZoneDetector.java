@@ -5,7 +5,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -40,9 +39,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedTimeZoneDetector {
 
-    private static final class TzState extends SelfGuard.TrackedInstance {
-        final Set<Long>   mutatingThreadIds   = ConcurrentHashMap.newKeySet();
-        final Set<String> mutatingThreadNames = ConcurrentHashMap.newKeySet();
+    /**
+     * The mutating threads are the tracked threads: every recorded access is a mutation, so the
+     * per-round thread set of the base class is the per-round mutator set, and the report counts
+     * the round that raced rather than every mutator of the run (#748).
+     */
+    private static final class TzState extends SelfGuard.ThreadTrackedInstance {
         volatile @Nullable String   firstOperation;
     }
 
@@ -59,10 +61,8 @@ public class SharedTimeZoneDetector {
         if (timeZone == null || thread == null) return;
         TzState s = timezones.computeIfAbsent(new IdentityKey(timeZone),
                 k -> new TzState());
-        s.noteAccess(timeZone, true, thread.threadId());
+        s.noteAccess(timeZone, true, thread);
         if (s.firstOperation == null) s.firstOperation = operation != null ? operation : "mutate";
-        s.mutatingThreadIds.add(thread.threadId());
-        s.mutatingThreadNames.add(thread.getName());
     }
 
     /**
@@ -71,13 +71,13 @@ public class SharedTimeZoneDetector {
     public SharedTimeZoneReport analyze() {
         SharedTimeZoneReport r = new SharedTimeZoneReport();
         for (TzState s : timezones.values()) {
-            if (s.mutatingThreadIds.size() > 1 && s.sawUnguardedSharing()) {
+            if (s.sharedAndUnguarded()) {
                 r.violations.add(String.format(
                         "TimeZone instance mutated from %d threads (%s) via '%s' — "
                                 + "unsynchronized concurrent mutations corrupt date/time arithmetic"
                                 + SelfGuard.REPORT_NOTE,
-                        s.mutatingThreadIds.size(),
-                        String.join(", ", s.mutatingThreadNames),
+                        s.threadCount(),
+                        String.join(", ", s.threadNames()),
                         s.firstOperation));
             }
         }

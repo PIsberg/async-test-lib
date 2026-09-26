@@ -111,7 +111,9 @@ authority on which row is which - each outcome above is one assertion in it.
   `recordFieldAccessOn(owner, field, value, isWrite)` gives it the full lockset, and a field
   covered by one lock across every access of a round produces no finding. Since 1.12.3 that
   lockset is judged per round on both paths, so a different lock in each round is consistent
-  locking: the harness orders the rounds. The agent-fed path gets a weaker
+  locking: the harness orders the rounds. The owner-aware path also groups accesses by the owner
+  it names, so the same field of two objects that each stay on one thread is two histories, not
+  one shared field (#750). The agent-fed path gets a weaker
   model: it compares whole lock sets by fingerprint rather than intersecting them, so a field one
   thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
@@ -206,6 +208,17 @@ round and a different lock that guarded all of the next also emptied the interse
 comes from a clock `AsyncTestContext` binds to each worker (`SelfGuard.Scope`); a detector
 driven with no context installed sees one round, the whole run, as before. The "one thread per
 round" row pins it for the whole roster.
+
+The verdict moved first; the thread sets a detector keeps beside it followed (#748). Reports kept
+printing "accessed from N threads" over every thread of the run, and three detectors kept a
+condition of their own over the run as well: `StringBuilderDetector`'s writers,
+`SharedTimeZoneDetector`'s mutators and `SharedJsonMapperReconfigDetector`'s users. A round that
+raced plus one writer in each of two other rounds read as two writers, and a mapper used by two
+threads in one round made a lone reconfiguration in a later round a race. Those sets are now kept
+per round (`SelfGuard.RoundThreads`): the extra condition must hold within one round, and a
+report counts and names the threads of the round the finding came from, or of the busiest round
+where no round is marked. Pinned in each detector's own test and in
+`SharedMessageDigestDetectorTest` for the family's printed count.
 
 Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
 `BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched

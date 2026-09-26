@@ -53,6 +53,11 @@ public class StringBuilderDetector {
         final AtomicInteger errorCount   = new AtomicInteger(0);
         final Set<Long> mutatingThreads  = ConcurrentHashMap.newKeySet();
         final Set<Long> readingThreads   = ConcurrentHashMap.newKeySet();
+        /**
+         * The writers per round, for the finding. {@link #mutatingThreads} spans the run and only
+         * feeds the activity line: two writers in different rounds never overlapped (#748).
+         */
+        final SelfGuard.RoundThreads roundWriters = new SelfGuard.RoundThreads();
 
         BuilderState(String name) {
             this.name = name;
@@ -149,6 +154,7 @@ public class StringBuilderDetector {
         BuilderState state = resolve(builder, name);
         state.noteAccess(builder, true);
         state.mutatingThreads.add(Thread.currentThread().threadId());
+        state.roundWriters.add(Thread.currentThread());
         switch (type) {
             case "append"  -> state.appendCount.incrementAndGet();
             case "insert"  -> state.insertCount.incrementAndGet();
@@ -183,10 +189,15 @@ public class StringBuilderDetector {
 
             report.totalBuilders++;
 
-            if (mutators > 1 && state.sawUnguardedSharing()) {
+            // The busiest round's writers: more than one writer has to be true of one round, the
+            // same frame the sharing verdict is taken in, and that round's count is the one printed.
+            // The two facts are each per round but not tied to the same round: a round where a
+            // writer and a reader raced, plus a round with two guarded writers, still reports.
+            int roundWriters = state.roundWriters.reportedSize();
+            if (roundWriters > 1 && state.sawUnguardedSharing()) {
                 report.sharedBuilderViolations.add(String.format(
                         "%s: mutated by %d threads (append: %d, insert: %d, delete: %d, replace: %d) — NOT THREAD SAFE!" + SelfGuard.REPORT_NOTE,
-                        state.name, mutators,
+                        state.name, roundWriters,
                         state.appendCount.get(), state.insertCount.get(),
                         state.deleteCount.get(), state.replaceCount.get()));
             }

@@ -33,6 +33,31 @@ class TryLockMisuseDetectorTest {
     }
 
     @Test
+    void cleanWhenFailedTryLockFallsBackToLockBeforeUnlock() {
+        // #757: if (!lock.tryLock()) lock.lock(); try { ... } finally { lock.unlock(); }
+        var d = new TryLockMisuseDetector();
+        var lock = new ReentrantLock();
+        d.recordTryLockResult(lock, "my-lock", false, Thread.currentThread());
+        d.recordLockAcquired(lock, Thread.currentThread());
+        d.recordUnlock(lock, "my-lock", Thread.currentThread());
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    @Test
+    void violationWhenOnlyAnotherThreadOrAnotherLockWasAcquired() throws InterruptedException {
+        var d = new TryLockMisuseDetector();
+        var lock = new ReentrantLock();
+        d.recordTryLockResult(lock, "my-lock", false, Thread.currentThread());
+        d.recordLockAcquired(new ReentrantLock(), Thread.currentThread());
+        Thread other = new Thread(() -> d.recordLockAcquired(lock, Thread.currentThread()));
+        other.start();
+        other.join();
+        d.recordUnlock(lock, "my-lock", Thread.currentThread());
+        assertTrue(d.analyze().hasIssues(),
+                "an acquisition clears only the acquiring thread's failed try on that same lock");
+    }
+
+    @Test
     void nullLockAndThreadAreIgnored() {
         var d = new TryLockMisuseDetector();
         var lock = new ReentrantLock();
@@ -40,6 +65,8 @@ class TryLockMisuseDetectorTest {
         d.recordTryLockResult(lock, "my-lock", false, null);
         d.recordUnlock(null, "my-lock", Thread.currentThread());
         d.recordUnlock(lock, "my-lock", null);
+        d.recordLockAcquired(null, Thread.currentThread());
+        d.recordLockAcquired(lock, null);
         assertFalse(d.analyze().hasIssues());
     }
 

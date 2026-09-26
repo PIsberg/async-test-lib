@@ -56,7 +56,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * and the platform workers were made daemon so that a deadlocked one could not hold the JVM
  * open (issue #479). So every {@code new Thread(...)} started from a test body is already
  * daemon before the body can get it wrong, in either thread mode, and {@link #analyze()}
- * skips anything registered as daemon, because the flag alone cannot say whether anybody
+ * skips anything recorded by hand that is daemon, because the flag alone cannot say whether anybody
  * decided it. {@code useVirtualThreads = false} was the documented way round this and is not
  * one any more.
  *
@@ -96,18 +96,15 @@ public final class DaemonThreadHygieneDetector {
         final long   threadId;
         final String label;
         final String threadName;
-        final boolean wasDaemonAtRegistration;
         final boolean observedAtStart;
         final @Nullable StackTraceElement creationSite;
 
         ThreadState(long threadId, String label, String threadName,
-                    boolean wasDaemon,
                     boolean observedAtStart,
                     @Nullable StackTraceElement creationSite) {
             this.threadId = threadId;
             this.label = label;
             this.threadName = threadName;
-            this.wasDaemonAtRegistration = wasDaemon;
             this.observedAtStart = observedAtStart;
             this.creationSite = creationSite;
         }
@@ -130,8 +127,7 @@ public final class DaemonThreadHygieneDetector {
         if (thread == null) return;
         recordThread(thread, null, true);
         tracked.computeIfPresent(thread.threadId(), (id, s) -> s.observedAtStart ? s
-                : new ThreadState(id, s.label, s.threadName, s.wasDaemonAtRegistration, true,
-                        s.creationSite));
+                : new ThreadState(id, s.label, s.threadName, true, s.creationSite));
     }
 
     /**
@@ -152,15 +148,14 @@ public final class DaemonThreadHygieneDetector {
         String effectiveLabel = (label != null) ? label : thread.getName();
         StackTraceElement site = firstUserFrame(Thread.currentThread().getStackTrace());
         tracked.putIfAbsent(id,
-                new ThreadState(id, effectiveLabel, thread.getName(),
-                        thread.isDaemon(),
-                        observedAtStart, site));
+                new ThreadState(id, effectiveLabel, thread.getName(), observedAtStart, site));
     }
 
     /**
-     * Analyze: a thread is flagged when it (1) was not marked daemon at
-     * registration time, and (2) is still alive (or never started) at analysis
-     * time — i.e. has not cleanly terminated.
+     * Analyze: a thread is flagged when it is still alive at analysis time and (1) is not
+     * daemon, or (2) was started by a woven call site with no observed {@code setDaemon}
+     * decision. The daemon flag is read here, not when the thread was recorded, because
+     * {@code setDaemon} may legally run between {@code recordThread} and {@code start()} (#760).
      *
      * @return the findings this detector collected during the run
      */
@@ -178,10 +173,12 @@ public final class DaemonThreadHygieneDetector {
             Boolean explicit = AgentThreadHooks.explicitDaemonSetting(t);
             if (Boolean.TRUE.equals(explicit)) continue; // the decision this rule asks for
 
-            // Daemon at registration with no decision seen: inherited from a daemon creator, or
-            // set somewhere nothing watched. Only a woven start makes that a finding (#731); a
-            // manual recording keeps the old reading, daemon means JVM-exit-friendly.
-            boolean inheritedDaemon = s.wasDaemonAtRegistration && explicit == null;
+            // Daemon with no decision seen: inherited from a daemon creator, or set somewhere
+            // nothing watched. Only a woven start makes that a finding (#731); a manual recording
+            // keeps the old reading, daemon means JVM-exit-friendly. The flag is read now, not at
+            // recording: setDaemon may run between recordThread and start() (#760), and after
+            // start() it cannot change, so for a woven start this is the flag it started with.
+            boolean inheritedDaemon = t.isDaemon() && explicit == null;
             if (inheritedDaemon && !s.observedAtStart) continue;
 
             String msg = String.format(inheritedDaemon

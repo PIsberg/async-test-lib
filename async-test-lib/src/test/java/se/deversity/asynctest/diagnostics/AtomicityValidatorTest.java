@@ -215,6 +215,44 @@ public class AtomicityValidatorTest {
         };
     }
 
+    /** A read then a write of {@code box.value}, naming the owner, with no lock held. */
+    private static Runnable ownerAwareIncrementUnguarded(AtomicityValidator validator, Box box) {
+        return () -> {
+            validator.recordFieldAccessOn(box, "Box.value", box.value, false);
+            box.value++;
+            validator.recordFieldAccessOn(box, "Box.value", box.value, true);
+        };
+    }
+
+    @Test
+    void twoConfinedObjectsWithTheSameFieldAreNotOneHistory() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        onThreads(ownerAwareIncrementUnguarded(validator, new Box()),
+                ownerAwareIncrementUnguarded(validator, new Box()));
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.hasIssues(),
+                "each thread touched only its own Box, and recordFieldAccessOn named it: two "
+                        + "confined objects sharing a field name share no state (#750). Got "
+                        + report);
+    }
+
+    @Test
+    void oneObjectTwoThreadsNoLockStillFiresOnTheOwnerAwarePath() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Box shared = new Box();
+        validator.markInvocationStart();
+        onThreads(ownerAwareIncrementUnguarded(validator, shared),
+                ownerAwareIncrementUnguarded(validator, shared));
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(report.unsafeFieldAccesses.stream().anyMatch(s -> s.startsWith("Box.value")),
+                "two threads incrementing one Box with no lock is the lost update itself; if this "
+                        + "goes silent, grouping by owner has split one object apart. Got "
+                        + report.unsafeFieldAccesses);
+    }
+
     @Test
     void aDifferentLockInEachRoundIsNotInconsistentLocking() throws InterruptedException {
         AtomicityValidator validator = new AtomicityValidator();
@@ -247,5 +285,46 @@ public class AtomicityValidatorTest {
                 "owner-aware: two locks in one round exclude nothing; got " + report.unsafeFieldAccesses);
         assertTrue(report.unsafeFieldAccesses.stream().anyMatch(s -> s.startsWith("Box.count")),
                 "fingerprinted: two locks in one round exclude nothing; got " + report.unsafeFieldAccesses);
+    }
+
+    /**
+     * One round of double-checked locking on a volatile field: both threads read with no lock,
+     * then write, thread 101 under {@code firstWriteLock} and thread 202 under
+     * {@code secondWriteLock}. Fingerprints are synthetic, as in {@code SafePublicationRuleTest}.
+     */
+    private static void doubleCheckedRound(AtomicityValidator validator, long firstWriteLock,
+                                           long secondWriteLock) {
+        validator.markInvocationStart();
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, false, 101L, 0L, true);
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, false, 202L, 0L, true);
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, true, 101L, firstWriteLock, true);
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, true, 202L, secondWriteLock, true);
+    }
+
+    @Test
+    void doubleCheckedLockingWithADifferentWriteLockEachRoundIsSafePublication() {
+        AtomicityValidator validator = new AtomicityValidator();
+        doubleCheckedRound(validator, 4242L, 4242L);
+        doubleCheckedRound(validator, 4343L, 4343L);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(report.unsafeFieldAccesses.isEmpty(),
+                "every write of each round held that round's lock, so each round is correct "
+                        + "double-checked locking; a run-wide write intersection empties only "
+                        + "because the harness-ordered rounds used different locks (#749). Got "
+                        + report.unsafeFieldAccesses);
+    }
+
+    @Test
+    void doubleCheckedLockingWithTwoWriteLocksInOneRoundStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        doubleCheckedRound(validator, 4242L, 4242L);
+        doubleCheckedRound(validator, 4242L, 4343L);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.unsafeFieldAccesses.isEmpty(),
+                "two writes in one round under two different locks exclude nothing: the volatile "
+                        + "field was mutated unserialised, which is not safe publication. If this "
+                        + "goes silent the per-round write lockset is excusing without looking.");
     }
 }

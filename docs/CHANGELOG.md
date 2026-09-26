@@ -62,6 +62,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`TryLockMisuseDetector` no longer reports the `tryLock()`-then-`lock()` fallback (#757).** A
+  failed try left its `false` recorded for the thread, and the `unlock()` after a blocking `lock()`
+  was judged by it. A blocking acquire through the agent now clears it
+  (`TryLockMisuseDetector.recordLockAcquired`); a failed try followed directly by `unlock()` still
+  reports.
+- **`UncaughtExceptionHandlerDetector` honours a JVM-wide default handler (#758).** A thread with
+  no handler of its own was reported even when `Thread.setDefaultUncaughtExceptionHandler` had set
+  the handler its exception is dispatched to, which is the fix the report itself suggests. The
+  default is sampled when the exception is recorded.
+- **`SynchronizedOnLiteralDetector` no longer reports a runtime-built lock string (#759).** Its
+  `s == s.intern()` test is true for any string not yet pooled, because `intern()` inserts the
+  receiver and returns it, so a private `StringBuilder`-built lock read as a literal and was pinned
+  in the pool as a side effect. It now interns a copy, the fix `BoxedPrimitiveLock` already had. A
+  literal, and a string the code interned itself, still report.
+- **`DaemonThreadHygieneDetector` reads the daemon flag when it analyses (#760).** It judged a
+  hand-recorded thread by the flag it had at `recordThread`, but `setDaemon` may run between the
+  recording and `start()`, the order the detector's own usage example shows. A thread made daemon
+  after recording was reported as non-daemon, and one made non-daemon after recording was missed.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
@@ -75,12 +93,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now starts a new owner, so a `MessageDigest` pool is not reported, and a latch, `start` or `join`
   that orders two threads excuses them. `AtomicityValidator` and `AtomicNonAtomicUpdateDetector`
   judge their lockset per round too. Concurrent unguarded use still reports.
+- **Thread counts beside the round verdict are per round too (#748).** A report printed "accessed
+  from N threads" over every thread of the run, which with virtual threads grows with the number of
+  rounds; it now counts and names the round the finding came from. `StringBuilderDetector` needs
+  two writers in one round, not one writer in each of two rounds; `SharedTimeZoneDetector` names
+  the mutators of the round that raced; and `SharedJsonMapperReconfigDetector` judges "used by two
+  threads" and "a thread that never used it" within the round of the reconfiguration, so a mapper
+  reconfigured in a round where nothing else used it is not reported.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common
   to every recorded access. The map detector keys sites by map identity and key equality instead of
   strings, LazyInitRace keys a field by its owner, and SynchronizedNonFinal reports a changing
   monitor only when the owner is recorded.
+- **`StatefulLambdaDetector` judges the lock per captured object** (#769). The lockset was kept per
+  lambda, so a lambda mutating two captures, each under its own lock, intersected the two locks to
+  nothing and was reported. A capture mutated with no lock, or under a different lock on each
+  thread, is still reported.
 - **Objects are no longer merged by identity hash or by name.** LOCK_ORDER, READ_WRITE_LOCK_FAIRNESS,
   LOCK_DOWNGRADE, LOCK_UPGRADE_DEADLOCK, LAMBDA_LOST_UPDATE, SCOPE_CONFIGURATION_MISUSE,
   OPTIMISTIC_READ_VALIDATION, HTTP_CLIENT and the agent-fed atomicity groups keyed objects by
@@ -108,6 +137,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`AtomicityValidator` no longer reports a volatile that one thread writes and others read.** One
   writer's read-then-write cannot lose an update and volatile reads are not data races;
   `RaceConditionDetector` already agreed. Two writers still report.
+- **`AtomicityValidator` judges double-checked locking per round (#749).** The safe-publication
+  excuse intersected write locks over the whole run, so a correct lazy initialiser that took a
+  different lock in each round was reported. Each round's own writes now decide once the run-wide
+  set is empty; two writes under two locks inside one round still report.
+- **`AtomicityValidator.recordFieldAccessOn` keeps two objects apart (#750).** Owner-aware accesses
+  were grouped by field name alone, so two objects that each stayed on one thread merged into one
+  history and read as a field shared by two threads. They are now grouped by the owner they name;
+  two threads on one object with no lock still report.
+- **`IssueDeduplicator` no longer prints line `-1` (#744).** `IssueGroup.formatDetailed` printed
+  `(line -1)` and `formatBrief` printed `location:-1` for any event whose site was not captured;
+  both now omit the line when it is unknown, as `RaceConditionDetector` already did.
+- **`Phase1DetectorSet.printReports` hands listeners the structured severity (#775).** It was the
+  last caller that let the listener registry read severity from the report text, so a report whose
+  structured findings said one severity and whose text marked another reached the JSON and SARIF
+  output with the text's, where the `failOn` gate and the runner's own listener calls use the
+  structured one. It now passes the same severity the runner does. None of the seven detectors in the set keeps structured findings yet,
+  so their output is unchanged today.
 
 - **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
   `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read

@@ -241,4 +241,72 @@ public class StringBuilderDetectorTest {
             "every mutation held the builder's monitor; the synchronized twin must stay silent: "
                 + detector.analyze());
     }
+
+    // ---- Writers are counted within one round (#748) -------------------------------------------
+    //
+    // The runner finishes one round before it starts the next, and with virtual threads every body
+    // execution is a fresh thread. A writer count kept across the run grows with the number of
+    // rounds, so one writer per round satisfied "mutated by more than one thread" as soon as any
+    // round raced at all, and the report printed the run-wide count.
+
+    /**
+     * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
+     * bound, released together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable... bodies) throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
+
+    @Test
+    void oneWriterPerRoundIsNotSharedMutationEvenWhenARoundRaced() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        // Round one races, unguarded: one writer and one reader overlap. Only one of them writes.
+        round(scope, () -> detector.recordAppend(sb, "log"), () -> detector.recordRead(sb, "log"));
+        // Round two: a different thread writes, alone.
+        round(scope, () -> detector.recordAppend(sb, "log"));
+
+        assertTrue(detector.analyze().sharedBuilderViolations.isEmpty(),
+            "no round had two writers; two writers in different rounds never overlapped: "
+                + detector.analyze().sharedBuilderViolations);
+    }
+
+    @Test
+    void twoWritersInOneRoundStillFireAndTheReportCountsThatRound() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> detector.recordAppend(sb, "log"), () -> detector.recordAppend(sb, "log"));
+        round(scope, () -> detector.recordAppend(sb, "log"));
+        round(scope, () -> detector.recordAppend(sb, "log"));
+
+        var violations = detector.analyze().sharedBuilderViolations;
+        assertEquals(1, violations.size(), "two writers raced in round one: " + violations);
+        assertTrue(violations.get(0).contains("mutated by 2 threads"),
+            "the finding is round one's two writers, not the four threads of the whole run: "
+                + violations.get(0));
+    }
 }

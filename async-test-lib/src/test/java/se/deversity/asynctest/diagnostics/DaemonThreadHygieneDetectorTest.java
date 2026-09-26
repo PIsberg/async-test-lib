@@ -61,6 +61,52 @@ class DaemonThreadHygieneDetectorTest {
     }
 
     @Test
+    void threadMadeDaemonAfterRecordingIsNotFlagged() throws Exception {
+        // #760: the documented order is record, then start, and setDaemon(true) may come between.
+        var d = new DaemonThreadHygieneDetector();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread t = new Thread(() -> {
+            try { release.await(); } catch (InterruptedException ignored) { }
+        }, "daemon-after-record");
+        t.setDaemon(false);
+        d.recordThread(t, "daemon-after-record");
+        t.setDaemon(true);
+        t.start();
+        try {
+            assertTrue(t.isAlive() && t.isDaemon(), "precondition: alive and daemon at analysis");
+            assertFalse(d.analyze().hasIssues(),
+                    "a thread that is daemon when analysed cannot block JVM exit; the flag read at "
+                            + "recording time is stale");
+        } finally {
+            release.countDown();
+            t.join();
+        }
+    }
+
+    @Test
+    void threadMadeNonDaemonAfterRecordingIsFlagged() throws Exception {
+        var d = new DaemonThreadHygieneDetector();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread t = new Thread(() -> {
+            try { release.await(); } catch (InterruptedException ignored) { }
+        }, "non-daemon-after-record");
+        t.setDaemon(true);
+        d.recordThread(t, "non-daemon-after-record");
+        t.setDaemon(false);
+        t.start();
+        try {
+            var report = d.analyze();
+            assertTrue(report.hasIssues(),
+                    "a thread that is non-daemon and alive when analysed blocks JVM exit, whatever "
+                            + "its flag was when it was recorded");
+            assertTrue(report.violations.get(0).contains("non-daemon"), report.violations.get(0));
+        } finally {
+            release.countDown();
+            t.join();
+        }
+    }
+
+    @Test
     void nullThreadIsIgnored() {
         var d = new DaemonThreadHygieneDetector();
         d.recordThread(null, "ignored");

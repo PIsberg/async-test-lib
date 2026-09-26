@@ -145,6 +145,45 @@ class IssueDeduplicatorTest {
     }
 
     @Test
+    void issueGroup_formatDetailed_unknownLine_omitsLineClause() {
+        IssueDeduplicator<TestEvent> dedup = new IssueDeduplicator<>();
+        // -1 is the DeduplicatableEvent contract's "line unknown": no site was captured.
+        dedup.record(new TestEvent("Race", "Account.balance", -1, 1));
+
+        String detailed = dedup.getGroups().get(0).formatDetailed();
+
+        assertTrue(detailed.contains("Location: Account.balance\n"), detailed);
+        assertFalse(detailed.contains("line"), detailed);
+        assertFalse(detailed.contains("-1"), detailed);
+    }
+
+    @Test
+    void issueGroup_formatDetailed_knownLine_printsLineClause() {
+        IssueDeduplicator<TestEvent> dedup = new IssueDeduplicator<>();
+        dedup.record(new TestEvent("Race", "Account.balance", 23, 1));
+
+        String detailed = dedup.getGroups().get(0).formatDetailed();
+
+        assertTrue(detailed.contains("Location: Account.balance (line 23)\n"), detailed);
+    }
+
+    @Test
+    void issueGroup_formatBrief_unknownLine_omitsLineNumber() {
+        IssueDeduplicator<TestEvent> dedup = new IssueDeduplicator<>();
+        dedup.record(new TestEvent("Race", "Account.balance", -1, 1));
+        dedup.record(new TestEvent("Race", "Account.balance", 23, 2));
+
+        List<IssueDeduplicator.IssueGroup<TestEvent>> groups = dedup.getGroups();
+        String unknown = groups.stream().filter(g -> g.getFingerprint().endsWith(":-1"))
+                .findFirst().orElseThrow().formatBrief();
+        String known = groups.stream().filter(g -> g.getFingerprint().endsWith(":23"))
+                .findFirst().orElseThrow().formatBrief();
+
+        assertEquals("Race at Account.balance (1 occurrences, 1 threads)", unknown);
+        assertEquals("Race at Account.balance:23 (1 occurrences, 1 threads)", known);
+    }
+
+    @Test
     void issueGroup_formatDetailed_limitsThreadList() {
         IssueDeduplicator<TestEvent> dedup = new IssueDeduplicator<>();
 
