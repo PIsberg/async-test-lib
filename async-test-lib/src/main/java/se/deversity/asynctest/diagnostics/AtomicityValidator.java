@@ -1158,8 +1158,8 @@ public class AtomicityValidator {
      * @param identity        {@code System.identityHashCode} of the object offered
      * @param container       {@code System.identityHashCode} of the container it was offered to
      * @param threadId        the thread that offered it
-     * @param lockFingerprint the locks that thread held, from {@code HeldLocks.lockFingerprint(true)},
-     *                        0 for none
+     * @param lockFingerprint the locks that thread held, from
+     *                        {@code HeldLocks.registeredLockFingerprint(monitor, true)}, 0 for none
      * @since 1.12.3
      */
     public void recordOwnershipOfferedUnderLocks(int identity, int container, long threadId,
@@ -1181,10 +1181,10 @@ public class AtomicityValidator {
      * one; the exclusion a take grants would then excuse exactly the race that makes. Plain lock
      * hand-offs are not {@link HappensBefore} edges, which is why the locks are asked for here.
      *
-     * <p>The locks are the ones the agent records, and a {@code synchronized} method's monitor is
-     * not among them: it comes from the access flag, with no instruction to weave. A side with no
-     * visible lock may therefore hold the very monitor the other side shows, so the take opens no
-     * generation only when the element's latest offer went into this same container and both the
+     * <p>The locks are the ones the agent records, a {@code synchronized} method's monitor among
+     * them: it comes from the access flag, with no instruction to weave, so the weaver passes it to
+     * the queue hooks (#796). An empty side is still read as unknown rather than unguarded, so the
+     * take opens no generation only when the element's latest offer went into this same container and both the
      * offer and the take held visible locks with no member in common. A lock on one side only, none
      * on either side, or no matching recorded offer keeps the edge, as every take did before. That
      * leaves an unguarded deque, and one guarded on one side only, unreported here;
@@ -1193,8 +1193,8 @@ public class AtomicityValidator {
      * @param identity        {@code System.identityHashCode} of the object taken
      * @param container       {@code System.identityHashCode} of the container it left
      * @param threadId        the thread that took it
-     * @param lockFingerprint the locks that thread held, from {@code HeldLocks.lockFingerprint(true)},
-     *                        0 for none
+     * @param lockFingerprint the locks that thread held, from
+     *                        {@code HeldLocks.registeredLockFingerprint(monitor, true)}, 0 for none
      * @since 1.12.3
      */
     public void recordOwnershipTakenUnderLocks(int identity, int container, long threadId,
@@ -1216,9 +1216,8 @@ public class AtomicityValidator {
     /**
      * {@return whether the visible locks at an offer and a take prove they were not serialised}
      *
-     * <p>Only two non-empty sets with no member in common prove it. An empty side proves nothing,
-     * because a {@code synchronized} method's monitor is never visible: that side may hold the
-     * very lock the other side shows.
+     * <p>Only two non-empty sets with no member in common prove it. An empty side is read as
+     * proving nothing.
      */
     private static boolean visiblyUnserialised(long offerLocks, long takeLocks) {
         if (offerLocks == 0L || takeLocks == 0L) {

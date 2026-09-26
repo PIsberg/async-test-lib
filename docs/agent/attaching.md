@@ -245,8 +245,9 @@ Three limits worth knowing before switching it on:
   `poll`/`relaxedPoll` hands back, is reported as taken. A queue that orders nothing itself, an
   unsynchronized `java.util` collection such as an `ArrayDeque`, does not count when the offer and the
   poll both held locks the agent records and those share none; with a recorded lock on one side
-  only, or on neither, it still counts, since a `synchronized` method's monitor is never recorded
-  and may be the lock the other side shows (#751). A
+  only, or on neither, it still counts (#751). Inside a `synchronized` method, whose monitor no
+  instruction takes, the weaver hands that monitor to the offer and take hooks, so it is a recorded
+  lock like a `synchronized` block's (#796). A
   take starts a new ownership generation, exclusive to the taker until another thread touches it, and
   locks only have to agree within a generation. That is netty's chunk moving between magazines
   (#555). Another thread's access inside the generation the receiver is still in withdraws the

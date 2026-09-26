@@ -172,6 +172,17 @@ class TelemetryBridgeTest {
         }
     }
 
+    /** Runs {@code body} holding {@code monitor} as a synchronized method does: unseen by HeldLocks. */
+    private static void inMethod(@org.jspecify.annotations.Nullable Object monitor, Runnable body) {
+        if (monitor == null) {
+            body.run();
+            return;
+        }
+        synchronized (monitor) {
+            body.run();
+        }
+    }
+
     /**
      * Replays the idiom lane's queue hand-off (#751) through the real hooks and the real ring: one
      * worker builds an order and offers it, a second polls it and updates it outside any lock, one
@@ -186,6 +197,23 @@ class TelemetryBridgeTest {
                                                  @org.jspecify.annotations.Nullable Object offerLock,
                                                  @org.jspecify.annotations.Nullable Object pollLock)
             throws InterruptedException {
+        return orderHandedOffThrough(queue, offerLock, null, pollLock, null);
+    }
+
+    /**
+     * {@link #orderHandedOffThrough(java.util.Queue, Object, Object)} with a {@code synchronized}
+     * method around either side (#796): its monitor is held, never recorded in the lockset, and
+     * handed to the hook the way the weaver hands it.
+     *
+     * @param offerMethod the monitor of a synchronized method around the offer, {@code null} for none
+     * @param pollMethod  the monitor of a synchronized method around the poll, {@code null} for none
+     */
+    private static boolean orderHandedOffThrough(java.util.Queue<Object> queue,
+                                                 @org.jspecify.annotations.Nullable Object offerLock,
+                                                 @org.jspecify.annotations.Nullable Object offerMethod,
+                                                 @org.jspecify.annotations.Nullable Object pollLock,
+                                                 @org.jspecify.annotations.Nullable Object pollMethod)
+            throws InterruptedException {
         AtomicityValidator av = new AtomicityValidator();
         Order order = new Order();
         try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
@@ -193,14 +221,16 @@ class TelemetryBridgeTest {
                 long me = Thread.currentThread().threadId();
                 TelemetryRegistry.recordAccess(order, null, null, me, "Order.quantity", true,
                         false, Integer.MIN_VALUE, false, false);
-                under(offerLock, () -> se.deversity.asynctest.AgentCollectionHooks.queueOffer(queue, order));
+                under(offerLock, () -> inMethod(offerMethod,
+                        () -> se.deversity.asynctest.AgentCollectionHooks.queueOffer(queue, order, offerMethod)));
             });
             producer.start();
             producer.join();
             Thread consumer = new Thread(() -> {
                 long me = Thread.currentThread().threadId();
                 Object[] taken = new Object[1];
-                under(pollLock, () -> taken[0] = se.deversity.asynctest.AgentCollectionHooks.queuePoll(queue));
+                under(pollLock, () -> inMethod(pollMethod,
+                        () -> taken[0] = se.deversity.asynctest.AgentCollectionHooks.queuePoll(queue, pollMethod)));
                 TelemetryRegistry.recordAccess(taken[0], null, null, me, "Order.quantity", false,
                         false, Integer.MIN_VALUE, false, false);
                 TelemetryRegistry.recordAccess(taken[0], null, null, me, "Order.quantity", true,
@@ -248,6 +278,20 @@ class TelemetryBridgeTest {
                 "offer and poll both under the pool's monitor is the synchronized object pool: "
                         + "the lock serialises the deque, so the order leaves it to one thread only, "
                         + "and the consumer's unlocked use of what it took is its own (#751)");
+    }
+
+    @Test
+    void aSynchronizedMethodsMonitorIsALockTheHandOffIsJudgedBy() throws InterruptedException {
+        Object pool = new Object();
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool, new Object(), null),
+                "the offer ran inside a synchronized method on the pool and the poll under a lock the "
+                        + "offers never take. The method's monitor reaches the hook from the weaver, "
+                        + "so both sides show a lock and they share none (#796)");
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool, pool, null),
+                "a synchronized-method offer and a synchronized-block poll on the same pool share its "
+                        + "monitor, whichever way each side took it (#796)");
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool, null, pool),
+                "both sides in synchronized methods on the pool is the synchronized object pool (#796)");
     }
 
     @Test

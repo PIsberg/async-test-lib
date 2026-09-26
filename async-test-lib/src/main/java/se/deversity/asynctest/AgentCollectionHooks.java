@@ -45,7 +45,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @since 1.9.8
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites, not from source: the method names and erased signatures are matched by CollectionAccessWeaver and cannot change independently of it. Every hook must end by performing the original operation and must never throw on the recording path - it runs inside the user's code, so an exception here surfaces as a failure in their test. Recording is best-effort by design: no context, a disabled detector, or a type the library knows is thread-safe all mean record nothing and delegate.")
+@AIContract(reason = "Called from bytecode the agent rewrites, not from source: the method names and erased signatures are matched by CollectionAccessWeaver and cannot change independently of it. Every hook must end by performing the original operation and must never throw on the recording path - it runs inside the user's code, so an exception here surfaces as a failure in their test. Recording is best-effort by design: no context, a disabled detector, or a type the library knows is thread-safe all mean record nothing and delegate. A queue offer or take hook with a trailing Object parameter is the variant the weaver calls inside a synchronized method: that parameter is the method's monitor, held by construction because no instruction takes it, so the hook counts it among the held locks without probing it, and the two-argument form delegates with null (#796).")
 public final class AgentCollectionHooks {
 
     /**
@@ -192,10 +192,16 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Collection.add}. @param receiver the collection @param element the element @return whether it changed */
     public static boolean collectionAdd(Collection<Object> receiver, Object element) {
+        return collectionAdd(receiver, element, null);
+    }
+
+    /** Weaves {@code Collection.add}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the collection @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it changed */
+    public static boolean collectionAdd(Collection<Object> receiver, Object element,
+                                        @Nullable Object monitor) {
         record(receiver, "add", true);
         if (receiver instanceof Queue) {
             // Queue.add is an offer that throws instead of returning false (#630).
-            TelemetryRegistry.ownershipOffered(element, receiver);
+            TelemetryRegistry.ownershipOffered(element, receiver, monitor);
             boolean added = false;
             try {
                 added = receiver.add(element);
@@ -211,13 +217,19 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Collection.remove}. @param receiver the collection @param element the element @return whether it changed */
     public static boolean collectionRemove(Collection<Object> receiver, Object element) {
+        return collectionRemove(receiver, element, null);
+    }
+
+    /** Weaves {@code Collection.remove}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the collection @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it changed */
+    public static boolean collectionRemove(Collection<Object> receiver, Object element,
+                                           @Nullable Object monitor) {
         record(receiver, "remove", true);
         boolean removed = receiver.remove(element);
         if (removed && receiver instanceof Queue) {
             // Out of the queue and in the remover's hands, like a poll that named its element
             // (#692). The argument stands for the element: a queue matches by equals, and an
             // equal stand-in is a reference the remover already holds alone.
-            TelemetryRegistry.ownershipTaken(element, receiver);
+            TelemetryRegistry.ownershipTaken(element, receiver, monitor);
         }
         return removed;
     }
@@ -236,11 +248,28 @@ public final class AgentCollectionHooks {
      */
     public static boolean collectionAddAll(Collection<Object> receiver,
                                            Collection<? extends Object> elements) {
+        return collectionAddAll(receiver, elements, null);
+    }
+
+    /**
+     * {@link #collectionAddAll(Collection, Collection)} inside a {@code synchronized} method, whose
+     * monitor the weaver passes because no instruction takes it (#796).
+     *
+     * @param receiver the collection
+     * @param elements the elements to add
+     * @param monitor  the monitor of the enclosing {@code synchronized} method, held by this
+     *                 thread; {@code null} outside one
+     * @return whether the collection changed
+     * @since 1.12.3
+     */
+    public static boolean collectionAddAll(Collection<Object> receiver,
+                                           Collection<? extends Object> elements,
+                                           @Nullable Object monitor) {
         record(receiver, "addAll", true);
         if (receiver instanceof Queue && elements != null) {
             try {
                 for (Object element : elements) {
-                    TelemetryRegistry.ownershipOffered(element, receiver);
+                    TelemetryRegistry.ownershipOffered(element, receiver, monitor);
                 }
             } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
                 // addAll below reads the same source and reports what is wrong with it.
@@ -294,9 +323,15 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Queue.offer}. @param receiver the queue @param element the element @return whether it was accepted */
     public static boolean queueOffer(Queue<Object> receiver, Object element) {
+        return queueOffer(receiver, element, null);
+    }
+
+    /** Weaves {@code Queue.offer}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the queue @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it was accepted */
+    public static boolean queueOffer(Queue<Object> receiver, Object element,
+                                     @Nullable Object monitor) {
         record(receiver, "offer", true);
         // Before the offer, so the take that removes the element drains after it (#630).
-        TelemetryRegistry.ownershipOffered(element, receiver);
+        TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = receiver.offer(element);
         if (!accepted) {
             TelemetryRegistry.ownershipRefused(element, receiver);
@@ -306,10 +341,16 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Queue.poll}. @param receiver the queue @return the head, or null */
     public static @Nullable Object queuePoll(Queue<Object> receiver) {
+        return queuePoll(receiver, null);
+    }
+
+    /** Weaves {@code Queue.poll}, with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the queue @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the head, or null */
+    public static @Nullable Object queuePoll(Queue<Object> receiver,
+                                             @Nullable Object monitor) {
         record(receiver, "poll", true);
         Object taken = receiver.poll();
         // The element left the queue, so it is this thread's alone as far as the queue goes (#555).
-        TelemetryRegistry.ownershipTaken(taken, receiver);
+        TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
 
@@ -324,8 +365,14 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Deque.offerFirst}, an offer at one end (#692). @param receiver the deque @param element the element @return whether it was accepted */
     public static boolean dequeOfferFirst(Deque<Object> receiver, Object element) {
+        return dequeOfferFirst(receiver, element, null);
+    }
+
+    /** Weaves {@code Deque.offerFirst}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it was accepted */
+    public static boolean dequeOfferFirst(Deque<Object> receiver, Object element,
+                                          @Nullable Object monitor) {
         record(receiver, "offerFirst", true);
-        TelemetryRegistry.ownershipOffered(element, receiver);
+        TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = receiver.offerFirst(element);
         if (!accepted) {
             TelemetryRegistry.ownershipRefused(element, receiver);
@@ -335,8 +382,14 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Deque.offerLast}, an offer at one end (#692). @param receiver the deque @param element the element @return whether it was accepted */
     public static boolean dequeOfferLast(Deque<Object> receiver, Object element) {
+        return dequeOfferLast(receiver, element, null);
+    }
+
+    /** Weaves {@code Deque.offerLast}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return whether it was accepted */
+    public static boolean dequeOfferLast(Deque<Object> receiver, Object element,
+                                         @Nullable Object monitor) {
         record(receiver, "offerLast", true);
-        TelemetryRegistry.ownershipOffered(element, receiver);
+        TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = receiver.offerLast(element);
         if (!accepted) {
             TelemetryRegistry.ownershipRefused(element, receiver);
@@ -346,8 +399,14 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Deque.addFirst}, an offer at one end (#692). @param receiver the deque @param element the element */
     public static void dequeAddFirst(Deque<Object> receiver, Object element) {
+        dequeAddFirst(receiver, element, null);
+    }
+
+    /** Weaves {@code Deque.addFirst}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one */
+    public static void dequeAddFirst(Deque<Object> receiver, Object element,
+                                     @Nullable Object monitor) {
         record(receiver, "addFirst", true);
-        TelemetryRegistry.ownershipOffered(element, receiver);
+        TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = false;
         try {
             receiver.addFirst(element);
@@ -361,8 +420,14 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Deque.addLast}, an offer at one end (#692). @param receiver the deque @param element the element */
     public static void dequeAddLast(Deque<Object> receiver, Object element) {
+        dequeAddLast(receiver, element, null);
+    }
+
+    /** Weaves {@code Deque.addLast}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one */
+    public static void dequeAddLast(Deque<Object> receiver, Object element,
+                                    @Nullable Object monitor) {
         record(receiver, "addLast", true);
-        TelemetryRegistry.ownershipOffered(element, receiver);
+        TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = false;
         try {
             receiver.addLast(element);
@@ -376,8 +441,14 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Deque.push}, an offer at one end (#692). @param receiver the deque @param element the element */
     public static void dequePush(Deque<Object> receiver, Object element) {
+        dequePush(receiver, element, null);
+    }
+
+    /** Weaves {@code Deque.push}, an offer at one end (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param element the element @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one */
+    public static void dequePush(Deque<Object> receiver, Object element,
+                                 @Nullable Object monitor) {
         record(receiver, "push", true);
-        TelemetryRegistry.ownershipOffered(element, receiver);
+        TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = false;
         try {
             receiver.push(element);
@@ -391,49 +462,85 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Deque.pollFirst}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
     public static @Nullable Object dequePollFirst(Deque<Object> receiver) {
+        return dequePollFirst(receiver, null);
+    }
+
+    /** Weaves {@code Deque.pollFirst}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    public static @Nullable Object dequePollFirst(Deque<Object> receiver,
+                                                  @Nullable Object monitor) {
         record(receiver, "pollFirst", true);
         Object taken = receiver.pollFirst();
-        TelemetryRegistry.ownershipTaken(taken, receiver);
+        TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
 
     /** Weaves {@code Deque.pollLast}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
     public static @Nullable Object dequePollLast(Deque<Object> receiver) {
+        return dequePollLast(receiver, null);
+    }
+
+    /** Weaves {@code Deque.pollLast}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    public static @Nullable Object dequePollLast(Deque<Object> receiver,
+                                                 @Nullable Object monitor) {
         record(receiver, "pollLast", true);
         Object taken = receiver.pollLast();
-        TelemetryRegistry.ownershipTaken(taken, receiver);
+        TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
 
     /** Weaves {@code Deque.removeFirst}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
     public static @Nullable Object dequeRemoveFirst(Deque<Object> receiver) {
+        return dequeRemoveFirst(receiver, null);
+    }
+
+    /** Weaves {@code Deque.removeFirst}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    public static @Nullable Object dequeRemoveFirst(Deque<Object> receiver,
+                                                    @Nullable Object monitor) {
         record(receiver, "removeFirst", true);
         Object taken = receiver.removeFirst();
-        TelemetryRegistry.ownershipTaken(taken, receiver);
+        TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
 
     /** Weaves {@code Deque.removeLast}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
     public static @Nullable Object dequeRemoveLast(Deque<Object> receiver) {
+        return dequeRemoveLast(receiver, null);
+    }
+
+    /** Weaves {@code Deque.removeLast}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    public static @Nullable Object dequeRemoveLast(Deque<Object> receiver,
+                                                   @Nullable Object monitor) {
         record(receiver, "removeLast", true);
         Object taken = receiver.removeLast();
-        TelemetryRegistry.ownershipTaken(taken, receiver);
+        TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
 
     /** Weaves {@code Deque.pop}, a take like {@code poll} (#692). @param receiver the deque @return the element taken */
     public static @Nullable Object dequePop(Deque<Object> receiver) {
+        return dequePop(receiver, null);
+    }
+
+    /** Weaves {@code Deque.pop}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the deque @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    public static @Nullable Object dequePop(Deque<Object> receiver,
+                                            @Nullable Object monitor) {
         record(receiver, "pop", true);
         Object taken = receiver.pop();
-        TelemetryRegistry.ownershipTaken(taken, receiver);
+        TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
 
     /** Weaves {@code Queue.remove}, a take like {@code poll} (#692). @param receiver the queue @return the element taken */
     public static @Nullable Object queueRemove(Queue<Object> receiver) {
+        return queueRemove(receiver, null);
+    }
+
+    /** Weaves {@code Queue.remove}, a take like {@code poll} (#692), with the monitor of an enclosing {@code synchronized} method (#796). @param receiver the queue @param monitor the monitor of the enclosing {@code synchronized} method, which this thread holds, {@code null} outside one @return the element taken */
+    public static @Nullable Object queueRemove(Queue<Object> receiver,
+                                               @Nullable Object monitor) {
         record(receiver, "remove", true);
         Object taken = receiver.remove();
-        TelemetryRegistry.ownershipTaken(taken, receiver);
+        TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
 

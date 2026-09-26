@@ -31,9 +31,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * An object pool over a plain {@code ArrayDeque}, through woven code (#751).
  *
  * <p>The deque orders nothing itself, so a poll out of it hands the item to one thread only while
- * the pool's lock serialises it. The agent sees a {@code synchronized} block's monitor and does not
- * see a {@code synchronized} method's, which comes from the access flag with no instruction to
- * weave. These cases pin what each shape amounts to end to end, with the item used unlocked
+ * the pool's lock serialises it. The agent sees a {@code synchronized} block's monitor through the
+ * woven instruction, and a {@code synchronized} method's, which comes from the access flag, because
+ * the weaver hands it to the queue hooks (#796). These cases pin what each shape amounts to end to
+ * end, with the item used unlocked
  * between a give-back and the next borrow on two threads, in the order the drain sees it.
  *
  * <p>Separate class because {@code selfAttach} is at-most-once per JVM and this class needs
@@ -65,9 +66,8 @@ class PlainDequePoolWeavingTest {
     void aPoolGuardedBySynchronizedMethodsStaysSilent() throws Exception {
         assertFalse(reports(PlainDequePoolBean::giveBack, PlainDequePoolBean::borrow),
                 "giveBack and borrow are synchronized methods, so the pool's monitor serialises the "
-                        + "deque and the item leaves it to one thread at a time. The agent cannot "
-                        + "see that monitor, so a hand-off with no visible lock on either side has "
-                        + "to keep its ownership edge (#751)");
+                        + "deque and the item leaves it to one thread at a time. The weaver hands "
+                        + "that monitor to the queue hooks, and both sides share it (#751, #796)");
     }
 
     @Test
@@ -79,9 +79,9 @@ class PlainDequePoolWeavingTest {
     @Test
     void aPoolGivingBackInAMethodAndBorrowingInABlockStaysSilent() throws Exception {
         assertFalse(reports(PlainDequePoolBean::giveBack, PlainDequePoolBean::borrowInBlock),
-                "both sides hold the pool's monitor; the agent sees it on the borrow only, because "
-                        + "the give-back takes it from the synchronized flag. One visible side "
-                        + "proves nothing, so the hand-off keeps its ownership edge (#751)");
+                "both sides hold the pool's monitor, the give-back through the synchronized flag, "
+                        + "which the weaver passes to the hook, and the borrow through a woven "
+                        + "block; the two sets share it (#751, #796)");
     }
 
     @Test
@@ -91,6 +91,25 @@ class PlainDequePoolWeavingTest {
                 "the give-back held the pool's monitor and the borrow a lock the give-backs never "
                         + "take, so nothing serialised the poll against the offer and the item's two "
                         + "users race (#751)");
+    }
+
+    @Test
+    void aSynchronizedMethodGiveBackAndABorrowUnderAnotherLockFires() throws Exception {
+        assertTrue(reports(PlainDequePoolBean::giveBack, PlainDequePoolBean::borrowUnderAnotherLock),
+                "the give-back holds the pool's monitor through the synchronized flag and the borrow "
+                        + "holds a lock the give-backs never take. The weaver passes the method's "
+                        + "monitor to the queue hook, so both sides show a lock and they share none "
+                        + "(#796)");
+    }
+
+    @Test
+    void aPoolGuardedByStaticSynchronizedMethodsStaysSilentAndItsBrokenTwinFires() throws Exception {
+        assertFalse(reports((pool, item) -> PlainDequePoolBean.giveBackToTheSharedPool(item),
+                        pool -> PlainDequePoolBean.borrowFromTheSharedPool()),
+                "both sides hold the class through static synchronized methods (#796)");
+        assertTrue(reports((pool, item) -> PlainDequePoolBean.giveBackToTheSharedPool(item),
+                        PlainDequePoolBean::borrowFromTheSharedPoolUnderAnotherLock),
+                "the give-back holds the class and the borrow a lock the give-backs never take (#796)");
     }
 
     @Test

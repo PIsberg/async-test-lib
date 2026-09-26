@@ -453,6 +453,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and one guarded on one side only are still not reported by `AtomicityValidator`;
   `SharedCollectionDetector` reports the deque itself in both. Concurrent queues, synchronized
   wrappers, JCTools queues and reference slots are unchanged.
+- **A queue offer or take inside a `synchronized` method now carries the method's monitor (#796).**
+  The monitor comes from the access flag, with no instruction to weave, so the collection hooks
+  never saw it and a plain-deque hand-off inside a `synchronized` method read as holding no lock.
+  With `collections=true` the weaver now loads it (`this`, or the class for a `static` method) and
+  calls a variant of each queue offer and take hook that takes it, as it already did for
+  `Thread.sleep`; it joins the locks the event carries. A give-back in a `synchronized` method and
+  a borrow under an unrelated lock are now reported by `AtomicityValidator`, and a
+  `synchronized`-method pool matches a `synchronized (this)` block on the other side.
 - **`AtomicityValidator.recordFieldAccessOn` keeps two objects apart (#750).** Owner-aware accesses
   were grouped by field name alone, so two objects that each stayed on one thread merged into one
   history and read as a field shared by two threads. They are now grouped by the owner they name;

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.CollectionCallSample;
+import com.example.agentfixture.SynchronizedQueueCallSample;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
@@ -23,6 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CollectionAccessWeaverTest {
 
     public static final ConcurrentLinkedQueue<Object> SEEN = new ConcurrentLinkedQueue<>();
+
+    /** The monitors the synchronized-method variants were handed, in call order (#796). */
+    public static final ConcurrentLinkedQueue<Object> MONITORS = new ConcurrentLinkedQueue<>();
 
     /**
      * Stands in for {@link AgentCollectionHooks} so the assertion is about capture, not recording.
@@ -185,6 +189,89 @@ class CollectionAccessWeaverTest {
                 java.util.concurrent.TimeUnit unit) throws InterruptedException {
             return receiver.pollLast(timeout, unit);
         }
+
+        // The synchronized-method variants (#796): the same calls, plus the monitor the weaver
+        // loaded, which is what the capture test below reads back.
+
+        public static boolean collectionAdd(java.util.Collection<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.add(element);
+        }
+
+        public static boolean collectionRemove(java.util.Collection<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.remove(element);
+        }
+
+        public static boolean collectionAddAll(java.util.Collection<Object> receiver, java.util.Collection<? extends Object> elements, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.addAll(elements);
+        }
+
+        public static boolean queueOffer(Queue<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.offer(element);
+        }
+
+        public static Object queuePoll(Queue<Object> receiver, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.poll();
+        }
+
+        public static Object queueRemove(Queue<Object> receiver, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.remove();
+        }
+
+        public static boolean dequeOfferFirst(java.util.Deque<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.offerFirst(element);
+        }
+
+        public static boolean dequeOfferLast(java.util.Deque<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.offerLast(element);
+        }
+
+        public static void dequeAddFirst(java.util.Deque<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            receiver.addFirst(element);
+        }
+
+        public static void dequeAddLast(java.util.Deque<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            receiver.addLast(element);
+        }
+
+        public static void dequePush(java.util.Deque<Object> receiver, Object element, Object monitor) {
+            MONITORS.add(monitor);
+            receiver.push(element);
+        }
+
+        public static Object dequePollFirst(java.util.Deque<Object> receiver, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.pollFirst();
+        }
+
+        public static Object dequePollLast(java.util.Deque<Object> receiver, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.pollLast();
+        }
+
+        public static Object dequeRemoveFirst(java.util.Deque<Object> receiver, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.removeFirst();
+        }
+
+        public static Object dequeRemoveLast(java.util.Deque<Object> receiver, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.removeLast();
+        }
+
+        public static Object dequePop(java.util.Deque<Object> receiver, Object monitor) {
+            MONITORS.add(monitor);
+            return receiver.pop();
+        }
     }
 
     @Test
@@ -235,5 +322,40 @@ class CollectionAccessWeaverTest {
         assertEquals(2, SEEN.size(), "both call shapes must be observed");
         assertSame(viaInterface, SEEN.poll(), "first recorded object is the interface-typed receiver");
         assertSame(viaConcreteType, SEEN.poll(), "second recorded object is the concrete-typed receiver");
+    }
+
+    @Test
+    @DisplayName("a queue offer or take inside a synchronized method hands its hook the method's monitor")
+    void passesTheSynchronizedMethodsMonitorToTheQueueHooks() throws Exception {
+        MONITORS.clear();
+        Class<?> woven = new ByteBuddy()
+                .redefine(SynchronizedQueueCallSample.class)
+                .visit(CollectionAccessWeaver.substitutions(StubHooks.class).get(0))
+                .make()
+                .load(getClass().getClassLoader(), ClassLoadingStrategy.Default.CHILD_FIRST)
+                .getLoaded();
+        Object sample = woven.getDeclaredConstructor().newInstance();
+        Object element = new Object();
+
+        assertSame(element, woven.getMethod("offerAndPollHoldingThis", Object.class)
+                        .invoke(sample, element),
+                "the original offer and poll must still happen");
+        assertEquals(List.of(sample, sample), List.copyOf(MONITORS),
+                "an instance synchronized method holds this, and both the offer and the poll must be "
+                        + "handed it: nothing else tells a queue hook the monitor is held");
+
+        MONITORS.clear();
+        assertSame(element, woven.getMethod("pushAndPopHoldingTheClass", Object.class)
+                        .invoke(null, element),
+                "the original push and pop must still happen");
+        assertEquals(List.of(woven, woven), List.copyOf(MONITORS),
+                "a static synchronized method holds its class");
+
+        MONITORS.clear();
+        assertSame(element, woven.getMethod("offerAndPollHoldingNothing", Object.class)
+                        .invoke(sample, element),
+                "the original offer and poll must still happen");
+        assertTrue(MONITORS.isEmpty(),
+                "outside a synchronized method the ordinary hooks run, with no monitor to pass");
     }
 }

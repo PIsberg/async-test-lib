@@ -320,6 +320,28 @@ public final class HeldLocks {
     }
 
     /**
+     * {@return {@link #lockFingerprint(boolean)} with {@code heldMonitor} counted among the held
+     * locks, registered the same way, or 0 for none}
+     *
+     * <p>For a monitor this thread holds without this registry having seen it taken: the monitor of
+     * a {@code synchronized} method, which comes from the access flag with no instruction to weave.
+     * The weaver knows it statically and passes it to the hooks that need it (#796). The caller
+     * vouches that it is held, and nothing is probed. The members stay recoverable through
+     * {@link #members(long)}, so a set holding the monitor this way and one holding it through a
+     * woven {@code synchronized} block intersect on it.
+     *
+     * @param heldMonitor a monitor this thread holds, {@code null} for none
+     * @param forWrite    whether the access being recorded is a write
+     * @since 1.12.3
+     */
+    public static long registeredLockFingerprint(@Nullable Object heldMonitor, boolean forWrite) {
+        if (heldMonitor == null) {
+            return lockFingerprint(forWrite);
+        }
+        return current().registeredFingerprint(System.identityHashCode(heldMonitor), forWrite);
+    }
+
+    /**
      * {@return the identity hashes behind a fingerprint produced by {@link #lockFingerprint(boolean)},
      * or {@code null} when the fingerprint is not one this registry has seen}
      *
@@ -616,6 +638,18 @@ public final class HeldLocks {
                 }
             }
             return forWrite ? writeFingerprint : readFingerprint;
+        }
+
+        /**
+         * {@return the digest over the held locks plus {@code extraHash}, registering its members
+         * the first time any thread computes it since the registry was last cleared}
+         */
+        long registeredFingerprint(int extraHash, boolean forWrite) {
+            long value = fingerprint(extraHash, forWrite);
+            if (value != 0L && !LocksetRegistry.isRegistered(value)) {
+                LocksetRegistry.register(value, snapshot(true, extraHash, forWrite));
+            }
+            return value;
         }
 
         boolean containsHash(int hash) {

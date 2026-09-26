@@ -1961,6 +1961,25 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static void ownershipTaken(@Nullable Object taken, @Nullable Object container) {
+        ownershipTaken(taken, container, null);
+    }
+
+    /**
+     * {@link #ownershipTaken(Object, Object)} inside a {@code synchronized} method.
+     *
+     * <p>The method's monitor comes from its access flag, with no instruction for
+     * {@link HeldLocks} to see, so the weaver passes it to the queue hooks and it joins the locks
+     * a take from a container that orders nothing carries (#796). Without it a
+     * {@code synchronized}-method pool would read as unguarded.
+     *
+     * @param taken     the object that left the queue, or {@code null}
+     * @param container the queue it left, or {@code null} when unknown
+     * @param monitor   the monitor of the enclosing {@code synchronized} method, which this
+     *                  thread holds; {@code null} outside one
+     * @since 1.12.3
+     */
+    public static void ownershipTaken(@Nullable Object taken, @Nullable Object container,
+                                      @Nullable Object monitor) {
         if (taken == null) {
             return;
         }
@@ -1978,7 +1997,7 @@ public final class TelemetryRegistry {
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, ordersNothing,
-                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
+                ordersNothing ? HeldLocks.registeredLockFingerprint(monitor, true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
                 container == null ? 0 : System.identityHashCode(container));
     }
@@ -2009,6 +2028,22 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static void ownershipOffered(@Nullable Object offered, @Nullable Object container) {
+        ownershipOffered(offered, container, null);
+    }
+
+    /**
+     * {@link #ownershipOffered(Object, Object)} inside a {@code synchronized} method, whose
+     * monitor joins the locks the offer carries; see
+     * {@link #ownershipTaken(Object, Object, Object)} (#796).
+     *
+     * @param offered   the element being offered, or {@code null}
+     * @param container the queue it is offered to
+     * @param monitor   the monitor of the enclosing {@code synchronized} method, which this
+     *                  thread holds; {@code null} outside one
+     * @since 1.12.3
+     */
+    public static void ownershipOffered(@Nullable Object offered, @Nullable Object container,
+                                        @Nullable Object monitor) {
         if (offered == null || container == null || STOPPED.get()) {
             return;
         }
@@ -2019,7 +2054,7 @@ public final class TelemetryRegistry {
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, ordersNothing,
-                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
+                ordersNothing ? HeldLocks.registeredLockFingerprint(monitor, true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
                 System.identityHashCode(container));
     }
