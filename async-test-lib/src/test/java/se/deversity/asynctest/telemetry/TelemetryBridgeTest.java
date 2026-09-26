@@ -150,6 +150,114 @@ class TelemetryBridgeTest {
                 "a read the weaver did not mark as following the volatile read acquires nothing");
     }
 
+    /** The weaver's view of the idiom lane's order: a mutable object handed off through a queue. */
+    static final class Order {
+        int quantity;
+    }
+
+    /** Runs {@code body} holding {@code lock} as a woven {@code synchronized} block does, or bare. */
+    private static void under(@org.jspecify.annotations.Nullable Object lock, Runnable body) {
+        if (lock == null) {
+            body.run();
+            return;
+        }
+        synchronized (lock) {
+            try (var held = se.deversity.asynctest.diagnostics.HeldLocks.holding(lock)) {
+                body.run();
+            }
+        }
+    }
+
+    /**
+     * Replays the idiom lane's queue hand-off (#751) through the real hooks and the real ring: one
+     * worker builds an order and offers it, a second polls it and updates it outside any lock, one
+     * after the other so the stream is the same on every run.
+     *
+     * @param queue     the queue the order goes through
+     * @param offerLock the monitor held around the offer, {@code null} for none
+     * @param pollLock  the monitor held around the poll, {@code null} for none
+     * @return whether AtomicityValidator reported the order's field
+     */
+    private static boolean orderHandedOffThrough(java.util.Queue<Object> queue,
+                                                 @org.jspecify.annotations.Nullable Object offerLock,
+                                                 @org.jspecify.annotations.Nullable Object pollLock)
+            throws InterruptedException {
+        AtomicityValidator av = new AtomicityValidator();
+        Order order = new Order();
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread producer = new Thread(() -> {
+                long me = Thread.currentThread().threadId();
+                TelemetryRegistry.recordAccess(order, null, null, me, "Order.quantity", true,
+                        false, Integer.MIN_VALUE, false, false);
+                under(offerLock, () -> se.deversity.asynctest.AgentCollectionHooks.queueOffer(queue, order));
+            });
+            producer.start();
+            producer.join();
+            Thread consumer = new Thread(() -> {
+                long me = Thread.currentThread().threadId();
+                Object[] taken = new Object[1];
+                under(pollLock, () -> taken[0] = se.deversity.asynctest.AgentCollectionHooks.queuePoll(queue));
+                TelemetryRegistry.recordAccess(taken[0], null, null, me, "Order.quantity", false,
+                        false, Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.recordAccess(taken[0], null, null, me, "Order.quantity", true,
+                        false, Integer.MIN_VALUE, false, false);
+            });
+            consumer.start();
+            consumer.join();
+            TelemetryRegistry.flush();
+            return av.analyzeAtomicity().unsafeFieldAccesses.stream()
+                    .anyMatch(line -> line.startsWith("Order.quantity"));
+        }
+    }
+
+    @Test
+    void aPollFromAPlainDequeUnderADifferentLockThanTheOfferIsNotAnOwnershipHandOff()
+            throws InterruptedException {
+        assertTrue(orderHandedOffThrough(new java.util.ArrayDeque<>(), new Object(), new Object()),
+                "the offer and the poll held two different monitors, which exclude nothing: an "
+                        + "ArrayDeque orders nothing itself and can hand one order to two pollers, "
+                        + "and a take recorded from it would open an ownership generation that "
+                        + "excuses the race on the order (#751)");
+    }
+
+    @Test
+    void aPlainDequeHandOffWithAnInvisibleSideKeepsItsEdge() throws InterruptedException {
+        Object pool = new Object();
+        String why = "a side with no lock the agent can see may hold a synchronized method's "
+                + "monitor, which comes from the access flag and is never recorded, and may be the "
+                + "very monitor the other side shows. Dropping the edge there reported correct "
+                + "pools, so AtomicityValidator leaves these alone until the weaver passes the "
+                + "method's monitor to the queue hooks (#751); SharedCollectionDetector still "
+                + "reports a deque accessed without its lock. Case: ";
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, null),
+                why + "no visible lock on either side");
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), pool, null),
+                why + "a visible lock on the offer side only");
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), null, pool),
+                why + "a visible lock on the poll side only");
+    }
+
+    @Test
+    void aPollFromAPlainDequeUnderTheOffersLockIsAnOwnershipHandOff() throws InterruptedException {
+        Object pool = new Object();
+        assertFalse(orderHandedOffThrough(new java.util.ArrayDeque<>(), pool, pool),
+                "offer and poll both under the pool's monitor is the synchronized object pool: "
+                        + "the lock serialises the deque, so the order leaves it to one thread only, "
+                        + "and the consumer's unlocked use of what it took is its own (#751)");
+    }
+
+    @Test
+    void aPollFromAConcurrentQueueIsAnOwnershipHandOffWithOrWithoutALock()
+            throws InterruptedException {
+        assertFalse(orderHandedOffThrough(new java.util.concurrent.ConcurrentLinkedQueue<>(),
+                        null, null),
+                "a concurrent queue orders the hand-off by its contract, and the consumer owns "
+                        + "what it took");
+        assertFalse(orderHandedOffThrough(new java.util.concurrent.ConcurrentLinkedQueue<>(),
+                        new Object(), new Object()),
+                "and locks the caller happens to hold do not change that");
+    }
+
     /**
      * Two accesses from two workers, the first still in the ring when the next round starts, which
      * is what a {@code TelemetryRegistry.flush()} that gave up after its one-second wait leaves.

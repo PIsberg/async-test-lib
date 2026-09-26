@@ -201,6 +201,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run, so the idiom with a different lock in each round was reported. Once that set is empty, each
   round's reads are judged against that round's write locks; two write locks in one round still
   report.
+- **A poll out of a plain `ArrayDeque` under a different lock than the offer no longer opens an
+  ownership generation (#751, in part).** With the agent, every `Queue` take was a hand-off, so an
+  object passed through a plain deque was excused as exclusive to its taker. A take out of an
+  unsynchronized `java.util` collection (`ArrayDeque`, `LinkedList`, `PriorityQueue`) now opens no
+  generation when the matching offer and the take both held locks the agent records and those
+  locks share no member. A lock on one side only, or none on either side, keeps the edge: a
+  `synchronized` method's monitor is never recorded, so the invisible side may hold the very lock
+  the other shows, and pools written with `synchronized` methods, or with a method on one side and
+  a `synchronized (this)` block on the other, stay silent. Not closed: the fully unguarded deque
+  and one guarded on one side only are still not reported by `AtomicityValidator`;
+  `SharedCollectionDetector` reports the deque itself in both. Concurrent queues, synchronized
+  wrappers, JCTools queues and reference slots are unchanged.
 - **`AtomicityValidator.recordFieldAccessOn` keeps two objects apart (#750).** Owner-aware accesses
   were grouped by field name alone, so two objects that each stayed on one thread merged into one
   history and read as a field shared by two threads. They are now grouped by the owner they name;

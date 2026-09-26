@@ -407,6 +407,16 @@ public class AtomicityValidator {
     /** Maps receiver identity to its most recent {@link Offer}; see {@link #recordOwnershipOffered}. */
     private final Map<Integer, Offer> offers = new ConcurrentHashMap<>();
 
+    /** An offer into a container that orders nothing, with the locks it held (#751). */
+    private record LockedOffer(int container, long lockFingerprint) {
+    }
+
+    /**
+     * Maps element identity to its most recent {@link LockedOffer}; see
+     * {@link #recordOwnershipOfferedUnderLocks}. Consumed by the next take of the element.
+     */
+    private final Map<Integer, LockedOffer> lockedOffers = new ConcurrentHashMap<>();
+
     private void recordTaker(int identity, int generation, long threadId) {
         generationTakers.computeIfAbsent(identity, ignored -> new ConcurrentHashMap<>())
                 .putIfAbsent(generation, threadId);
@@ -1131,6 +1141,94 @@ public class AtomicityValidator {
             return;
         }
         offers.values().removeIf(offer -> offer.container == container);
+    }
+
+    /**
+     * Records that {@code threadId} offered the object with identity {@code identity} to a
+     * container that orders nothing itself, holding the locks {@code lockFingerprint} names.
+     *
+     * <p>The offer half of {@link #recordOwnershipTakenUnderLocks}. An {@code ArrayDeque} hands an
+     * element to one thread only while its callers serialise it, so its take loses the ownership
+     * edge when the offer and the take held visible locks with none in common (#751). Beyond that
+     * the offer is an ordinary one: it can name generation 0's owner exactly as
+     * {@link #recordOwnershipOffered} does. Identity or container 0 records nothing.
+     *
+     * @param identity        {@code System.identityHashCode} of the object offered
+     * @param container       {@code System.identityHashCode} of the container it was offered to
+     * @param threadId        the thread that offered it
+     * @param lockFingerprint the locks that thread held, from {@code HeldLocks.lockFingerprint(true)},
+     *                        0 for none
+     * @since 1.12.3
+     */
+    public void recordOwnershipOfferedUnderLocks(int identity, int container, long threadId,
+                                                 long lockFingerprint) {
+        if (!enabled || identity == 0 || container == 0) {
+            return;
+        }
+        lockedOffers.put(identity, new LockedOffer(container, lockFingerprint));
+        recordOwnershipOffered(identity, container, threadId);
+    }
+
+    /**
+     * Records that {@code threadId} took the object with identity {@code identity} out of a
+     * container that orders nothing itself, holding the locks {@code lockFingerprint} names.
+     *
+     * <p>A {@link #recordOwnershipTaken(int, int, long) take} unless the locks prove the offer and
+     * the take were not serialised (#751). An {@code ArrayDeque} hands an element to one thread
+     * only while its callers serialise it, and two threads can poll one element out of an unguarded
+     * one; the exclusion a take grants would then excuse exactly the race that makes. Plain lock
+     * hand-offs are not {@link HappensBefore} edges, which is why the locks are asked for here.
+     *
+     * <p>The locks are the ones the agent records, and a {@code synchronized} method's monitor is
+     * not among them: it comes from the access flag, with no instruction to weave. A side with no
+     * visible lock may therefore hold the very monitor the other side shows, so the take opens no
+     * generation only when the element's latest offer went into this same container and both the
+     * offer and the take held visible locks with no member in common. A lock on one side only, none
+     * on either side, or no matching recorded offer keeps the edge, as every take did before. That
+     * leaves an unguarded deque, and one guarded on one side only, unreported here;
+     * {@code SharedCollectionDetector} reports the deque itself in both. Identity 0 is ignored.
+     *
+     * @param identity        {@code System.identityHashCode} of the object taken
+     * @param container       {@code System.identityHashCode} of the container it left
+     * @param threadId        the thread that took it
+     * @param lockFingerprint the locks that thread held, from {@code HeldLocks.lockFingerprint(true)},
+     *                        0 for none
+     * @since 1.12.3
+     */
+    public void recordOwnershipTakenUnderLocks(int identity, int container, long threadId,
+                                               long lockFingerprint) {
+        if (!enabled || identity == 0) {
+            return;
+        }
+        LockedOffer offer = lockedOffers.remove(identity);
+        if (offer != null && container != 0 && offer.container == container
+                && visiblyUnserialised(offer.lockFingerprint, lockFingerprint)) {
+            // No hand-off, but the element did leave the container, so the offer that named its
+            // previous owner is spent as it would be by a take.
+            offers.remove(identity);
+            return;
+        }
+        recordOwnershipTaken(identity, container, threadId);
+    }
+
+    /**
+     * {@return whether the visible locks at an offer and a take prove they were not serialised}
+     *
+     * <p>Only two non-empty sets with no member in common prove it. An empty side proves nothing,
+     * because a {@code synchronized} method's monitor is never visible: that side may hold the
+     * very lock the other side shows.
+     */
+    private static boolean visiblyUnserialised(long offerLocks, long takeLocks) {
+        if (offerLocks == 0L || takeLocks == 0L) {
+            return false;
+        }
+        return Lockset.intersect(membersOf(offerLocks), membersOf(takeLocks)).length == 0;
+    }
+
+    /** {@return the lock ids behind a non-zero fingerprint, one opaque id when unregistered} */
+    private static int[] membersOf(long fingerprint) {
+        int[] registered = HeldLocks.members(fingerprint);
+        return registered != null ? registered : new int[] {Lockset.opaque(fingerprint)};
     }
 
     /** {@return the ownership generation {@code identity} is currently in, 0 before any take} */
@@ -1895,6 +1993,7 @@ public class AtomicityValidator {
         receiverStates.clear();
         generationTakers.clear();
         offers.clear();
+        lockedOffers.clear();
         instances.clear();
         roundTokens = new long[0];
         invocationEpoch.set(0);

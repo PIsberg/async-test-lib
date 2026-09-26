@@ -1822,6 +1822,11 @@ public final class TelemetryRegistry {
      * JCTools {@code poll}/{@code relaxedPoll} passes its queue (#664); only a {@code VarHandle}
      * {@code getAndSet} on a static field or an array element passes none.
      *
+     * <p>A container that orders nothing itself, an {@code ArrayDeque} (see {@link #ordersNothing}),
+     * hands an element over only under a lock its callers share, so its take is flagged in the
+     * event's write slot and carries the locks this thread holds; the validator drops the edge when
+     * those and the matching offer's locks are both non-empty and share no member (#751).
+     *
      * @param taken     the object that left the queue, or {@code null}
      * @param container the queue it left, or {@code null} when unknown
      * @since 1.12.1
@@ -1842,7 +1847,9 @@ public final class TelemetryRegistry {
         if (HappensBefore.publishesElements(container)) {
             HappensBefore.acquire(taken);
         }
-        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, false, 0L, false,
+        boolean ordersNothing = ordersNothing(container);
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, ordersNothing,
+                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(taken), false, 0, 0,
                 container == null ? 0 : System.identityHashCode(container));
     }
@@ -1860,7 +1867,9 @@ public final class TelemetryRegistry {
      * after: the slot this claims in the buffer is then ahead of any take that removes the element,
      * so the drain always sees the offer first. That order is what lets a take that is the first
      * event recorded for an object name the thread that handed it over (#630). An offer the queue
-     * rejects still records, and is harmless: nothing takes that element out of that queue.
+     * rejects still records, and is harmless: nothing takes that element out of that queue. An offer
+     * to a container that orders nothing is flagged and carries this thread's locks, like the
+     * {@link #ownershipTaken(Object, Object) take} it has to be matched with (#751).
      *
      * <p>Allocation-free and non-throwing like every other hook on this path.
      *
@@ -1877,9 +1886,30 @@ public final class TelemetryRegistry {
         if (HappensBefore.publishesElements(container)) {
             HappensBefore.release(offered);
         }
-        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, false, 0L, false,
+        boolean ordersNothing = ordersNothing(container);
+        BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, ordersNothing,
+                ordersNothing ? HeldLocks.lockFingerprint(true) : 0L, false,
                 Integer.MIN_VALUE, System.identityHashCode(offered), false, 0, 0,
                 System.identityHashCode(container));
+    }
+
+    /**
+     * {@return whether {@code container} is a {@code java.util} collection that promises no thread
+     * safety, so passing an element through it is a hand-off only under a lock} (#751)
+     *
+     * <p>A take is an ownership edge because the structure hands the element to the taker and to
+     * no other. An {@code ArrayDeque}, a {@code LinkedList} or a {@code PriorityQueue} promises that
+     * only while its callers serialise it: shared with no lock, two threads can poll the same
+     * element. Only the JDK's own unsynchronized collections are known to be such; a
+     * {@code java.util.concurrent} type, a synchronized wrapper, and anything outside
+     * {@code java.util}, a JCTools queue or a reference slot, keep their unconditional edge. The
+     * JDK types are listed as {@code java.util} types that {@link HappensBefore#publishesElements}
+     * rejects. {@link Class#getName()} is cached, so this allocates nothing.
+     */
+    private static boolean ordersNothing(@Nullable Object container) {
+        return container != null
+                && container.getClass().getName().startsWith("java.util.")
+                && !HappensBefore.publishesElements(container);
     }
 
     // ---- Reference slots: offers and takes with their container (#664) -------------------------

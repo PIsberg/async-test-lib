@@ -233,8 +233,12 @@ Three limits worth knowing before switching it on:
   another thread's check of the flag and its swap leaves the old holder passing that re-check until
   the new holder records itself (#658; the forms are listed in `SpinLocks`). Separately, the
   object a reference `getAndSet` returns, or a `Queue.poll` or JCTools `MessagePassingQueue`
-  `poll`/`relaxedPoll` hands back, is reported as taken: it
-  starts a new ownership generation, exclusive to the taker until another thread touches it, and
+  `poll`/`relaxedPoll` hands back, is reported as taken. A queue that orders nothing itself, an
+  unsynchronized `java.util` collection such as an `ArrayDeque`, does not count when the offer and the
+  poll both held locks the agent records and those share none; with a recorded lock on one side
+  only, or on neither, it still counts, since a `synchronized` method's monitor is never recorded
+  and may be the lock the other side shows (#751). A
+  take starts a new ownership generation, exclusive to the taker until another thread touches it, and
   locks only have to agree within a generation. That is netty's chunk moving between magazines
   (#555). Another thread's access inside the generation the receiver is still in withdraws the
   taker's exclusivity for that whole generation, including accesses the taker made before it, so
