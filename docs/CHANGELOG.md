@@ -463,6 +463,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Thread.sleep`; it joins the locks the event carries. A give-back in a `synchronized` method and
   a borrow under an unrelated lock are now reported by `AtomicityValidator`, and a
   `synchronized`-method pool matches a `synchronized (this)` block on the other side.
+- **A validated `StampedLock` optimistic read is a read under the lock (#740).** The agent wove
+  the stamped acquisitions but not `tryOptimisticRead()`/`validate(long)`, so reads between them
+  looked unguarded, and `AtomicityValidator` reported the class javadoc's own `Point` in runs where
+  no validation failed and was silent in runs where one did. With `collections=true` both calls are
+  now woven and publish the speculation's start and result to the telemetry stream; the bridge
+  holds that thread's reads until the answer, records them under the lock in shared mode when
+  `validate` held, drops them when it failed, and records them as plain reads when nothing
+  validated them before the thread's next speculation, its next write or the end of the round.
+  `TelemetryEventBuffer.DrainCallback.onFlush()` is new for that last case. The idiom lane gains
+  the pair: the validated read stays silent, a read used without `validate` fires.
 - **`AtomicityValidator.recordFieldAccessOn` keeps two objects apart (#750).** Owner-aware accesses
   were grouped by field name alone, so two objects that each stayed on one thread merged into one
   history and read as a field shared by two threads. They are now grouped by the owner they name;

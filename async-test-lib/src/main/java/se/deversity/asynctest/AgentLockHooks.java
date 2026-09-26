@@ -16,6 +16,7 @@ import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.LockLeakDetector;
 import se.deversity.asynctest.diagnostics.LockOrderValidator;
 import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -42,11 +43,12 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * <p>{@link StampedLock} implements no locking interface, so its call sites get their own hooks:
  * the lock object is the lockset identity, exclusive for a write stamp, shared for a read stamp,
- * released by the {@code unlock*} and conversion hooks. An optimistic read records nothing,
- * because it holds nothing; its correctness lives in the {@code validate()} protocol, which a
- * lockset cannot judge, so code relying on it stays a {@code PROMPT}-tier prompt to verify. The
- * {@code asReadLock()}/{@code asWriteLock()} views resolve to the owning {@code StampedLock} the
- * way read-write views resolve to theirs.
+ * released by the {@code unlock*} and conversion hooks. An optimistic read holds nothing, so the
+ * lockset records nothing for it; {@code tryOptimisticRead()} and {@code validate(long)} instead
+ * tell the telemetry stream where a speculation starts and whether it held, and the drain side
+ * counts the reads between them as taken under the lock in shared mode when it did and drops
+ * them when it did not (#740). The {@code asReadLock()}/{@code asWriteLock()} views resolve to the
+ * owning {@code StampedLock} the way read-write views resolve to theirs.
  *
  * <h2>Ordering</h2>
  *
@@ -291,8 +293,9 @@ public final class AgentLockHooks {
     // StampedLock. It implements no locking interface: writeLock() hands back a long, so neither
     // the Lock entries nor the view entries above can see it, and code guarded by one read as
     // unguarded. The lock object itself is the lockset identity, exclusive for a write stamp and
-    // shared for a read stamp; an optimistic read is deliberately nothing, because it holds
-    // nothing - its correctness lives in the validate() protocol, which a lockset cannot judge.
+    // shared for a read stamp; an optimistic read pushes nothing, because it holds nothing. Its
+    // two ends are published instead, and the bridge decides what the reads between them were
+    // once validate() has answered (#740).
     // StampedLock is not reentrant, so a thread holds at most one entry for it, which is what
     // makes the mode-blind unlock(long) and the conversions exact: whatever entry exists is the
     // one being released or converted.
@@ -452,6 +455,42 @@ public final class AgentLockHooks {
             HeldLocks.released(receiver, false);
         }
         return converted;
+    }
+
+    /**
+     * Weaves {@code StampedLock.tryOptimisticRead()}: the start of a speculative read (#740).
+     *
+     * <p>Nothing is held and nothing is pushed. The start is published after the stamp is taken,
+     * so every read that follows it on this thread drains after it and waits for the validation.
+     *
+     * @param receiver the lock
+     * @return the observation stamp, 0 while the lock is held exclusively
+     * @since 1.12.3
+     */
+    public static long tryOptimisticRead(StampedLock receiver) {
+        long stamp = receiver.tryOptimisticRead();
+        TelemetryRegistry.optimisticReadStarted(receiver);
+        return stamp;
+    }
+
+    /**
+     * Weaves {@code StampedLock.validate(long)}: whether the speculation that stamp started held
+     * (#740).
+     *
+     * <p>Published after the answer, so it drains after every read it judges. A {@code true} means
+     * no write lock was taken since the stamp, so the reads in between saw what a reader under the
+     * lock in shared mode would have seen; a {@code false} means they may be torn and the caller
+     * discards them.
+     *
+     * @param receiver the lock
+     * @param stamp    the stamp to check
+     * @return whether no write lock has been taken since the stamp was issued
+     * @since 1.12.3
+     */
+    public static boolean validate(StampedLock receiver, long stamp) {
+        boolean valid = receiver.validate(stamp);
+        TelemetryRegistry.optimisticReadValidated(receiver, valid);
+        return valid;
     }
 
     /** Weaves {@code StampedLock.asReadLock()}. @param receiver the lock @return its read view */

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.DirectFieldMutationBean;
+import com.example.agentfixture.OptimisticPointBean;
 import com.example.agentfixture.ReadLockWritingBean;
 import com.example.agentfixture.ReadWriteLockBean;
 import com.example.agentfixture.StampedLockBean;
@@ -139,6 +140,80 @@ class LockModelWeavingEndToEndTest {
                 "StampedLock implements no locking interface, so only its own call-site hooks "
                         + "can make this bean readable as guarded. Findings: "
                         + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
+    /**
+     * {@return whether this is the first of {@link #drive}'s two workers}: the optimistic cases
+     * give one thread the writes and the other the reads, as the idiom does, so a reader's own
+     * re-read under the write lock cannot stand in for a validation (#311, #740).
+     */
+    private static boolean isTheMover() {
+        return Thread.currentThread().getName().endsWith("-0");
+    }
+
+    @Test
+    @DisplayName("a validated optimistic read reads as guarded: what validate confirms was shared")
+    void validatedOptimisticReadReadsAsGuarded() throws Exception {
+        OptimisticPointBean bean = new OptimisticPointBean();
+        AtomicityValidator.AtomicityReport report = drive(() -> {
+            if (isTheMover()) {
+                bean.move(1, 1);
+            } else {
+                bean.distanceFromOrigin();
+            }
+        });
+
+        assertFalse(report.hasIssues(),
+                "reads between tryOptimisticRead and a validate that held count as reads under "
+                        + "the lock in shared mode, and those of a validate that failed are "
+                        + "discarded for the re-read under the read lock (#740). Findings: "
+                        + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
+    @Test
+    @DisplayName("an optimistic read no writer overlapped is a read under the lock")
+    void anUncontendedValidatedOptimisticReadReadsAsGuarded() throws Exception {
+        OptimisticPointBean bean = new OptimisticPointBean();
+        AtomicityValidator validator = new AtomicityValidator();
+        Set<Long> workerThreadIds = ConcurrentHashMap.newKeySet();
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activateWithFilter(validator, workerThreadIds::contains)) {
+            for (Runnable turn : new Runnable[] {() -> bean.move(1, 1), bean::distanceFromOrigin}) {
+                Thread worker = new Thread(() -> {
+                    workerThreadIds.add(Thread.currentThread().threadId());
+                    turn.run();
+                }, "optimistic-turn");
+                worker.start();
+                worker.join(10_000);
+            }
+            TelemetryRegistry.flush();
+        }
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+
+        assertFalse(report.hasIssues(),
+                "the reader ran after the mover, so its validate held and no fallback read "
+                        + "happened: nothing but the woven tryOptimisticRead and validate can say "
+                        + "the reads were consistent (#740). Findings: "
+                        + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
+    @Test
+    @DisplayName("an optimistic read that is never validated keeps firing")
+    void unvalidatedOptimisticReadIsStillReported() throws Exception {
+        OptimisticPointBean bean = new OptimisticPointBean();
+        AtomicityValidator.AtomicityReport report = drive(() -> {
+            if (isTheMover()) {
+                bean.move(1, 1);
+            } else {
+                bean.distanceWithoutValidating();
+            }
+        });
+
+        assertTrue(report.unsafeFieldAccesses.stream()
+                        .anyMatch(f -> f.contains("OptimisticPointBean.")),
+                "a speculation nobody validates proves nothing about what it read, so its reads "
+                        + "are plain reads racing the writer (#740). Findings were: "
+                        + report.unsafeFieldAccesses);
     }
 
     @Test

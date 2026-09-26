@@ -4609,6 +4609,26 @@ final class Corpus {
                     "the same declaration over peek(): every thread declares the one digest its "
                             + "own and uses it at once, and a declaration cannot make that a "
                             + "hand-off",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_stampedLock_validatesItsOptimisticRead", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the class javadoc's Point: one writer per round moves it under the write "
+                            + "lock, and every reader reads it after tryOptimisticRead, validates, "
+                            + "and re-reads under the read lock when the validation failed. A "
+                            + "validate that held means no write lock was taken since the stamp, "
+                            + "so the reads it covers were reads under the lock in shared mode "
+                            + "(#740)"),
+
+            new RecordingSubject("idiom_stampedLock_usesAnOptimisticReadUnvalidated", JDK,
+                    "java.util.concurrent.locks.StampedLock",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same point read after tryOptimisticRead and used with no validate. "
+                            + "Nothing says the reads were consistent, so they are plain reads "
+                            + "racing the writer's",
                     IssueSeverity.HIGH)
     );
 

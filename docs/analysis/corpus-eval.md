@@ -1913,14 +1913,16 @@ a correct row is printed in the lane report rather than asserted.
 too, listed in `Corpus.idiomKnownGaps()` with the reason, the way `DetectorCoverage` lists refused
 detectors. Each must still draw its finding, and the run fails the day a fix makes one silent, until
 its entry is deleted, so a closed gap cannot stay listed as open. Every one was run before it was
-pinned, and one of the five candidates is not a row because it could not be pinned either way. A
-validated `StampedLock` optimistic read (the class javadoc's own `Point` example) is judged by the
-confirming-read excuse (#311), which clears a point once some reader's validation has failed and it
-re-read under the read lock. Whether any validation fails depends on whether a reader overlapped
-the writer, so the row was silent in some runs and reported in others, on a point per round as on
-one point shared by the run. A row that flips with the schedule is a flaky gate in either
-direction; the gap it would pin (`tryOptimisticRead` and `validate` are not woven) stands, and is
-recorded as a follow-up rather than as a row.
+pinned, and one of the five candidates was at first not a row because it could not be pinned
+either way. A validated `StampedLock` optimistic read (the class javadoc's own `Point` example) was
+judged by the confirming-read excuse (#311), which clears a point once some reader's validation has
+failed and it re-read under the read lock. Whether any validation fails depends on whether a reader
+overlapped the writer, so the row was silent in some runs and reported in others, on a point per
+round as on one point shared by the run. The agent now weaves `tryOptimisticRead` and `validate`
+(#740): reads a validation confirmed count as reads under the lock in shared mode, and reads a
+failed one covered are dropped. The pair is a row since, `idiom_stampedLock_validatesItsOptimisticRead`
+silent and `idiom_stampedLock_usesAnOptimisticReadUnvalidated` firing, and it held in three
+consecutive full runs.
 
 **What it found on its first run.** One seed row still drew a finding on the integration branch:
 a single writer bumping a volatile with a read-then-write while the other threads read it drew a

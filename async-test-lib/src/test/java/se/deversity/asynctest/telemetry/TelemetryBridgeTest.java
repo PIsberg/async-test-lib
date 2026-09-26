@@ -292,6 +292,140 @@ class TelemetryBridgeTest {
                 "both sides in synchronized methods on the pool is the synchronized object pool (#796)");
     }
 
+    /** The StampedLock javadoc's point, reduced to the one coordinate the cases need (#740). */
+    static final class Point {
+        int x;
+    }
+
+    /** How the reader in {@link #optimisticReadReported} treats its optimistic stamp. */
+    enum Reader {
+        /** Validates, and nothing wrote in between, so the validation holds. */
+        VALIDATES,
+        /** Validates after a writer ran in between, so the validation fails and it re-reads. */
+        VALIDATES_AND_FALLS_BACK,
+        /** Validates after a writer ran in between, and retries optimistically until one holds. */
+        RETRIES_UNTIL_VALID,
+        /** Validates after a writer ran in between, and gives up without reading again. */
+        VALIDATES_AND_GIVES_UP,
+        /** Uses what it read and never validates. */
+        NEVER_VALIDATES
+    }
+
+    /**
+     * One writer moves the point under the write lock and one reader reads it optimistically,
+     * through the real lock hooks, ring and bridge, in an order fixed by the test (#740).
+     *
+     * @return whether AtomicityValidator reported the point's field
+     */
+    private static boolean optimisticReadReported(Reader reader) throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        java.util.concurrent.ExecutorService readerThread =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        Runnable write = () -> {
+            long me = Thread.currentThread().threadId();
+            long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(lock);
+            try {
+                TelemetryRegistry.recordAccess(point, null, null, me, "Point.x", true, false,
+                        Integer.MIN_VALUE, false, false);
+                point.x++;
+            } finally {
+                se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, stamp);
+            }
+        };
+        Runnable read = () -> TelemetryRegistry.recordAccess(point, null, null,
+                Thread.currentThread().threadId(), "Point.x", false, false, Integer.MIN_VALUE,
+                false, false);
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(write);
+            writer.start();
+            writer.join();
+            long[] stamp = new long[1];
+            readerThread.submit(() -> {
+                stamp[0] = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                read.run();
+            }).get(10, TimeUnit.SECONDS);
+            if (reader == Reader.VALIDATES_AND_FALLS_BACK || reader == Reader.RETRIES_UNTIL_VALID
+                    || reader == Reader.VALIDATES_AND_GIVES_UP) {
+                Thread second = new Thread(write);
+                second.start();
+                second.join();
+            }
+            if (reader == Reader.RETRIES_UNTIL_VALID) {
+                readerThread.submit(() -> {
+                    long current = stamp[0];
+                    while (!se.deversity.asynctest.AgentLockHooks.validate(lock, current)) {
+                        current = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                        read.run();
+                    }
+                }).get(10, TimeUnit.SECONDS);
+            } else if (reader == Reader.VALIDATES_AND_GIVES_UP) {
+                readerThread.submit(() -> se.deversity.asynctest.AgentLockHooks.validate(lock, stamp[0]))
+                        .get(10, TimeUnit.SECONDS);
+            } else if (reader != Reader.NEVER_VALIDATES) {
+                readerThread.submit(() -> {
+                    if (!se.deversity.asynctest.AgentLockHooks.validate(lock, stamp[0])) {
+                        long readStamp = se.deversity.asynctest.AgentLockHooks.readLock(lock);
+                        try {
+                            read.run();
+                        } finally {
+                            se.deversity.asynctest.AgentLockHooks.unlockRead(lock, readStamp);
+                        }
+                    }
+                }).get(10, TimeUnit.SECONDS);
+            }
+            TelemetryRegistry.flush();
+            return av.analyzeAtomicity().unsafeFieldAccesses.stream()
+                    .anyMatch(line -> line.startsWith("Point.x"));
+        } finally {
+            readerThread.shutdownNow();
+        }
+    }
+
+    @Test
+    void aValidatedOptimisticReadIsAReadUnderTheLock() throws Exception {
+        assertFalse(optimisticReadReported(Reader.VALIDATES),
+                "the read ran between tryOptimisticRead and a validate that held, so no write lock "
+                        + "was taken in between and it saw what a reader holding the lock in shared "
+                        + "mode would have seen. It shares the writer's lock (#740)");
+    }
+
+    @Test
+    void aFailedValidationDropsItsReadsAndTheFallbackIsGuarded() throws Exception {
+        assertFalse(optimisticReadReported(Reader.VALIDATES_AND_FALLS_BACK),
+                "a writer ran between the stamp and the validate, so the validate failed and the "
+                        + "reader threw its speculative read away and read again under the read "
+                        + "lock. The discarded read is no access, and the re-read is guarded (#740)");
+    }
+
+    @Test
+    void aFailedValidationsReadsAreNoAccessesAtAll() throws Exception {
+        assertFalse(optimisticReadReported(Reader.VALIDATES_AND_GIVES_UP),
+                "the speculative read overlapped a writer, validate said so, and the reader "
+                        + "discarded what it read and used nothing. A read nobody uses is no access; "
+                        + "delivered as a plain read it would be a finding with nothing behind it, "
+                        + "because no re-read under the lock confirms it (#740)");
+    }
+
+    @Test
+    void aRetryLoopKeepsOnlyTheReadsOfTheValidationThatHeld() throws Exception {
+        assertFalse(optimisticReadReported(Reader.RETRIES_UNTIL_VALID),
+                "the first speculative read overlapped a writer and its validate failed, so the "
+                        + "reader discarded it and read again optimistically until a validate held. "
+                        + "Only the read that validation covered was used, and it counts as a read "
+                        + "under the lock; the discarded one is no access at all (#740)");
+    }
+
+    @Test
+    void anOptimisticReadNeverValidatedIsAnUnguardedRead() throws Exception {
+        assertTrue(optimisticReadReported(Reader.NEVER_VALIDATES),
+                "the reader used what it read under an optimistic stamp and never asked validate, "
+                        + "so nothing says the read was consistent: it is a plain read racing the "
+                        + "writer, and a speculation nobody closes must still reach the detector by "
+                        + "the end of the run (#740)");
+    }
+
     @Test
     void aPollFromAConcurrentQueueIsAnOwnershipHandOffWithOrWithoutALock()
             throws InterruptedException {

@@ -212,10 +212,14 @@ Three limits worth knowing before switching it on:
   Lock weaving rides along too: a `Lock.lock()`/`unlock()` call site in woven code feeds the same
   lockset, `ReadWriteLock.readLock()`/`writeLock()` call sites resolve each view to its owner,
   in shared mode for the read side, and `StampedLock`'s own call shapes are modelled the same way
-  (write stamps exclusive, read stamps shared, optimistic reads deliberately nothing), so a
-  collection guarded by a `ReentrantLock`, a `ReentrantReadWriteLock` or a `StampedLock` reports
-  nothing either. A lock acquired only inside unwoven code still needs
-  `AsyncTestContext.holdingLock(...)`.
+  (write stamps exclusive, read stamps shared), so a collection guarded by a `ReentrantLock`, a
+  `ReentrantReadWriteLock` or a `StampedLock` reports nothing either. An optimistic read holds
+  nothing, so `tryOptimisticRead()` and `validate(long)` mark where a speculation starts and
+  whether it held: the field reads in between count as reads under the lock in shared mode when
+  `validate` returned `true`, are dropped when it returned `false`, since the caller discards what
+  it read, and count as plain reads when nothing validated them before the thread's next
+  speculation, its next write or the end of the round (#740). A lock acquired only inside unwoven
+  code still needs `AsyncTestContext.holdingLock(...)`.
 - **Spinlocks and hand-offs are exclusion too (with `fields=true`).** A won
   `VarHandle.compareAndSet(this, 0, 1)` on an `int` field is a spinlock: the weaver replaces the
   call with a hook that performs it and declares a lock on that receiver's flag, released by a

@@ -361,8 +361,9 @@ final class CollectionAccessWeaver {
                     ReentrantReadWriteLock.WriteLock.class),
             // StampedLock implements no locking interface and hands back a long, so the concrete
             // class anchors every entry; the hooks record the lock object itself, exclusive for a
-            // write stamp and shared for a read stamp. tryOptimisticRead and validate are absent
-            // on purpose: an optimistic read holds nothing a lockset could record.
+            // write stamp and shared for a read stamp. An optimistic read holds nothing a lockset
+            // could record, so tryOptimisticRead and validate record nothing there: they mark the
+            // start and the outcome of a speculation in the telemetry stream instead (#740).
             Entry.call(StampedLock.class, "writeLock", "writeLock"),
             Entry.call(StampedLock.class, "readLock", "readLock"),
             Entry.call(StampedLock.class, "writeLockInterruptibly", "writeLockInterruptibly"),
@@ -378,6 +379,8 @@ final class CollectionAccessWeaver {
             Entry.call(StampedLock.class, "tryConvertToReadLock", "tryConvertToReadLock", long.class),
             Entry.call(StampedLock.class, "tryConvertToOptimisticRead", "tryConvertToOptimisticRead",
                     long.class),
+            Entry.call(StampedLock.class, "tryOptimisticRead", "tryOptimisticRead"),
+            Entry.call(StampedLock.class, "validate", "validate", long.class),
             Entry.view(StampedLock.class, "asReadLock", "asReadLock", Lock.class),
             Entry.view(StampedLock.class, "asWriteLock", "asWriteLock", Lock.class));
 
