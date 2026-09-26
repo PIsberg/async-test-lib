@@ -2,6 +2,8 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -165,6 +167,95 @@ class NonAtomicConcurrentMapUpdateDetectorTest {
         assertTrue(handedOver(false).analyze().hasIssues(),
                 "with no edge the model cannot order the two callers, so the lockset decides, "
                         + "and no lock covered either");
+    }
+
+    /**
+     * #827: {@code if (!map.containsKey(k)) map.put(k, CONSTANT)} on two threads puts one
+     * instance twice, so the map ends as it would under {@code putIfAbsent} and no caller holds a
+     * value the map dropped.
+     */
+    @Test
+    void callersThatAllPutTheSameInstanceAreNotFlagged() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, Boolean> map = new ConcurrentHashMap<>();
+        onTwoThreads(() -> {
+            if (!map.containsKey("k")) {
+                map.put("k", Boolean.TRUE);
+            }
+            d.recordCheckThenAct(map, "k", Boolean.TRUE, "mark-seen", Thread.currentThread());
+        });
+
+        assertFalse(d.analyze().hasIssues(),
+                "both callers put the same instance, so whichever put landed last, nothing was "
+                        + "lost: " + d.analyze());
+    }
+
+    @Test
+    void callersPuttingDifferentValuesAreStillFlagged() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+        onTwoThreads(() -> {
+            String session = "session-" + Thread.currentThread().threadId();
+            if (!map.containsKey("k")) {
+                map.put("k", session);
+            }
+            d.recordCheckThenAct(map, "k", session, "get-or-create", Thread.currentThread());
+        });
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "each caller put its own session, so one overwrote the other");
+        assertEquals(1, report.structuredViolations.size());
+        assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
+    }
+
+    /**
+     * The catalog's buggy example: two empty lists are equal, but each caller adds to the one it
+     * put, and the list the map dropped takes that caller's element with it. Equality would have
+     * excused the lost element, so values are compared by identity.
+     */
+    @Test
+    void equalButDistinctValuesAreStillFlagged() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, List<String>> map = new ConcurrentHashMap<>();
+        onTwoThreads(() -> {
+            List<String> fresh = new ArrayList<>();
+            if (!map.containsKey("k")) {
+                map.put("k", fresh);
+            }
+            d.recordCheckThenAct(map, "k", fresh, "add-to-bucket", Thread.currentThread());
+        });
+
+        assertTrue(d.analyze().hasIssues(),
+                "two new empty lists are equal and still two instances; the one the map dropped "
+                        + "loses what its caller adds to it");
+    }
+
+    @Test
+    void aCallerThatRecordedNoValueKeepsTheFinding() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, Boolean> map = new ConcurrentHashMap<>();
+        d.recordCheckThenAct(map, "k", Boolean.TRUE, "mark-seen", Thread.currentThread());
+        Thread t = new Thread(() -> d.recordCheckThenAct(map, "k", "mark-seen", Thread.currentThread()));
+        t.start();
+        t.join();
+
+        assertTrue(d.analyze().hasIssues(),
+                "the second caller did not say what it put, so the pair cannot be shown to agree");
+    }
+
+    @Test
+    void theOverloadWithoutAValueStillFlagsASameValuePair() throws Exception {
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, Boolean> map = new ConcurrentHashMap<>();
+        onTwoThreads(() -> {
+            if (!map.containsKey("k")) {
+                map.put("k", Boolean.TRUE);
+            }
+            d.recordCheckThenAct(map, "k", "mark-seen", Thread.currentThread());
+        });
+
+        assertTrue(d.analyze().hasIssues(),
+                "without the value the detector cannot tell a same-value pair from a lost update");
     }
 
     private static NonAtomicConcurrentMapUpdateDetector handedOver(boolean declared) throws Exception {

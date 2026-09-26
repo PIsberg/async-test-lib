@@ -51,7 +51,8 @@
 #   idiom_synchronizedCheckThenAct_withoutTheMonitor firing), as do the detector's unit tests.
 #   What neither reaches: a lock the library never saw, which leaves the finding standing as it
 #   does for every lockset detector, and a check-then-act whose every caller puts the same value,
-#   which loses nothing and is still reported, because the detector is never told the value.
+#   which loses nothing and is still reported when recorded without the value. Since #827 a caller
+#   can pass it, and a site whose every caller put the same instance is silent.
 #
 # Blank lines and # comments are ignored.
 

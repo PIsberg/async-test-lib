@@ -114,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commented-out capped line, that is also registered or rated VERDICT; restoring the old header's
   hold fails it with `CONCURRENT_MAP_CHECK_THEN_ACT is held on its model and also registered`.
   Known limits, unchanged: a lock the library never saw leaves the finding standing, and callers
-  that all put the same value lose nothing and are still reported.
+  that all put the same value lose nothing and are still reported (the second is lifted for a
+  caller that says what it put, #827, under Fixed).
 - **`FILE_CHANNEL_POSITION_RACE` judges the seek-then-I/O sequence, and reaches `VERDICT`
   (#819).** It reported any two threads making implicit-position calls on one channel, so threads
   that each made one self-contained `read(buffer)` or `write(buffer)`, which `FileChannel` runs one
@@ -136,6 +137,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`CONCURRENT_MAP_CHECK_THEN_ACT` excuses callers that all put the same instance (#827).**
+  `if (!map.containsKey(k)) map.put(k, Boolean.TRUE)` on two threads puts one instance twice, so
+  the map ends as `putIfAbsent` would leave it and nothing is lost, yet the pair was reported at
+  VERDICT/HIGH because the detector was never told what was put. The new overload
+  `recordCheckThenAct(map, key, value, operation, thread)` takes the value, and a site whose every
+  caller recorded the same instance is silent. Values are compared by identity: two new empty
+  lists are equal, yet the one the map dropped loses what its caller adds next, so
+  `NonAtomicConcurrentMapUpdateDetectorTest` pins that pair firing, along with callers putting
+  different values and a pair where one caller recorded no value. The four-argument overload has
+  no value and reports as before. The value is for the absent-check form only: after
+  `v = map.get(k); map.put(k, v + 1)` two equal puts are the lost update itself, and a check that
+  also gates other work, such as sending once, is a defect whatever is put; the javadoc says to
+  record those without the value.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

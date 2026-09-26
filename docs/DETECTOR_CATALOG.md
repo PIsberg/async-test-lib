@@ -167,7 +167,9 @@ same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the seco
 `recordCheckThenAct` is the body saying a check-then-act happened and the detector only counted
 threads on the `(map, key)` site. Since 2026-09-25 it also asks whether one lock covered every
 call and whether the happens-before model orders them, so the `synchronized` twin of the firing
-body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818).
+body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818). A
+caller that passes the value it put, through the five-argument `recordCheckThenAct`, is silent
+when every caller put the same instance, which loses nothing (#827).
 `FILE_CHANNEL_POSITION_RACE` used to be the third. It judged single accesses, so threads that each
 made one self-contained `read(buffer)` or `write(buffer)` drew the finding, and `FileChannel` runs
 one operation involving the position at a time, so those lose nothing (#755). Since #819 the
