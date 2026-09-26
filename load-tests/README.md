@@ -87,7 +87,10 @@ an inner-loop half and a ring half, and the two are deliberately different instr
   CI leg) fails when one all-detector `@AsyncTest` run allocates more than 80,000 bytes per body
   execution. That ceiling is 3.0x the 25,985 to 26,599 bytes measured on 2026-08-15 by watching
   the test fail with a 1-byte ceiling; allocation is what the runner and detectors control and it
-  is stable across machines, which is why it can gate where wall-clock cannot.
+  is stable across machines, which is why it can gate where wall-clock cannot. An empty body
+  cannot see a record path, so the same test also runs a body that records through the common
+  ones and fails when that costs more than 110,000 bytes per execution beyond the empty body
+  (1.21x the highest of 84,297 to 91,227 measured on JDK 21, 24 and 26, #752).
 - **Nightly ring, compared:** `load-tests.yml` runs this fast sweep every night at 04:00 UTC and
   `tools/compare-baseline.sh` joins the fresh `throughput.csv` / `memory.csv` rows with the newest
   committed `results/<version>/` set, printing a `::warning::` above 1.5x (median ms) or 2.0x

@@ -74,6 +74,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and one step through a single-`return` helper. Run against the old `OptimisticReadValidation`
   source it reports all four of its map calls. `SpinLocks` keys by hash on purpose and checks the
   referent on every lookup, so it is listed as deliberate, and the gate fails if it stops matching.
+- **`RunnerAllocationBudgetTest` measures the record paths (#752).** Its body was empty, so an
+  allocation added to `SelfGuard`'s lockset, round window or stamp, or to the happens-before
+  volatile-read path, passed it. A second body records through them 1,024 times per execution,
+  with a few `RaceConditionDetector` records, `HappensBefore` edges and agent field events through
+  `TelemetryRegistry`, and its cost beyond the empty body is held under 110,000 bytes per
+  execution: 84,297 to 91,227 measured on JDK 21, 24 and 26, and 123,804 with one `new Object[4]`
+  kept per `SelfGuard.noteAccess`, which the empty body's 80,000-byte ceiling let through.
 
 ### Fixed
 
