@@ -215,6 +215,44 @@ public class AtomicityValidatorTest {
         };
     }
 
+    /** A read then a write of {@code box.value}, naming the owner, with no lock held. */
+    private static Runnable ownerAwareIncrementUnguarded(AtomicityValidator validator, Box box) {
+        return () -> {
+            validator.recordFieldAccessOn(box, "Box.value", box.value, false);
+            box.value++;
+            validator.recordFieldAccessOn(box, "Box.value", box.value, true);
+        };
+    }
+
+    @Test
+    void twoConfinedObjectsWithTheSameFieldAreNotOneHistory() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        onThreads(ownerAwareIncrementUnguarded(validator, new Box()),
+                ownerAwareIncrementUnguarded(validator, new Box()));
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.hasIssues(),
+                "each thread touched only its own Box, and recordFieldAccessOn named it: two "
+                        + "confined objects sharing a field name share no state (#750). Got "
+                        + report);
+    }
+
+    @Test
+    void oneObjectTwoThreadsNoLockStillFiresOnTheOwnerAwarePath() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Box shared = new Box();
+        validator.markInvocationStart();
+        onThreads(ownerAwareIncrementUnguarded(validator, shared),
+                ownerAwareIncrementUnguarded(validator, shared));
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(report.unsafeFieldAccesses.stream().anyMatch(s -> s.startsWith("Box.value")),
+                "two threads incrementing one Box with no lock is the lost update itself; if this "
+                        + "goes silent, grouping by owner has split one object apart. Got "
+                        + report.unsafeFieldAccesses);
+    }
+
     @Test
     void aDifferentLockInEachRoundIsNotInconsistentLocking() throws InterruptedException {
         AtomicityValidator validator = new AtomicityValidator();

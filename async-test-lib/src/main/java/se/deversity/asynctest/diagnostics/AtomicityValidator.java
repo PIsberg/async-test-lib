@@ -635,6 +635,9 @@ public class AtomicityValidator {
      * does better on its own path: it passes a fingerprint of the woven locks plus the receiver's
      * monitor, resolved back into a set and intersected on the drain side.
      *
+     * <p>Accesses are analysed per owner: the same field of two different objects is two
+     * histories, so objects that each stay on one thread are not reported as shared (#750).
+     *
      * @param owner     the object whose field is being accessed; {@code null} counts as unguarded
      * @param fieldName the qualified field/accessor identifier; {@code null}/blank is ignored
      * @param value     the observed value, or {@code null} when unavailable
@@ -905,8 +908,11 @@ public class AtomicityValidator {
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
+        // The owner, when named, is the instance its accesses are grouped by: without it two
+        // objects that each stay on one thread merge into one history under the field name
+        // (#750). The identity hash stays 0, so the lock model is still the field's own guard.
         record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0,
-                false, 0, 0, 0, stampIfOwn(threadId), invocationEpoch.get());
+                false, 0, 0, instanceOf(owner), stampIfOwn(threadId), invocationEpoch.get());
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
@@ -1216,7 +1222,8 @@ public class AtomicityValidator {
             // Split by instance before anything else. Two threads touching the same field of two
             // different objects share nothing, and merging them is how a per-call object reads as
             // contended. Identity 0 means "not known", which keeps every pre-agent caller's
-            // accesses in one group exactly as before.
+            // accesses in one group exactly as before, except that an owner-aware access carries
+            // its owner's instance and is grouped by it (#750).
             //
             // Construction accesses (#312) leave the contention stats only when the excuse is
             // corroborated: the receiver's post-publication accesses must span more than one

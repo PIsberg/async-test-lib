@@ -116,6 +116,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   excuse intersected write locks over the whole run, so a correct lazy initialiser that took a
   different lock in each round was reported. Each round's own writes now decide once the run-wide
   set is empty; two writes under two locks inside one round still report.
+- **`AtomicityValidator.recordFieldAccessOn` keeps two objects apart (#750).** Owner-aware accesses
+  were grouped by field name alone, so two objects that each stayed on one thread merged into one
+  history and read as a field shared by two threads. They are now grouped by the owner they name;
+  two threads on one object with no lock still report.
 
 - **With the agent, `DaemonThreadHygieneDetector` judges a thread the test body constructs, and
   `ThreadFactoryDetector` judges a factory that never decides (#731).** Both read

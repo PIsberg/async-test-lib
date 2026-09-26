@@ -111,7 +111,9 @@ authority on which row is which - each outcome above is one assertion in it.
   `recordFieldAccessOn(owner, field, value, isWrite)` gives it the full lockset, and a field
   covered by one lock across every access of a round produces no finding. Since 1.12.3 that
   lockset is judged per round on both paths, so a different lock in each round is consistent
-  locking: the harness orders the rounds. The agent-fed path gets a weaker
+  locking: the harness orders the rounds. The owner-aware path also groups accesses by the owner
+  it names, so the same field of two objects that each stay on one thread is two histories, not
+  one shared field (#750). The agent-fed path gets a weaker
   model: it compares whole lock sets by fingerprint rather than intersecting them, so a field one
   thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
   The original overloads, which carry no lock information at all, keep their old meaning: "more
