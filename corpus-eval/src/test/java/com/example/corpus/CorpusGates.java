@@ -524,7 +524,8 @@ final class CorpusGates {
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
      * fails if one is missing, points at a different detector, or has drifted to the wrong
      * expectation. The pairs themselves are held to their outcomes every run by
-     * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, so between the two the tier cannot
+     * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, and an idiom row's correct half by
+     * {@link #everyCorrectIdiomDrewNothingWorthFailingOn}, so between the two the tier cannot
      * outlive the measurement that earned it.
      */
     static void everyCorpusBackedVerdictResolvesToItsPair() {
@@ -598,6 +599,18 @@ final class CorpusGates {
         if (subject.expectation() != expected) {
             problems.add(id + " is cited as the " + expected + " half for " + detector
                     + " but is declared " + subject.expectation());
+        }
+        if (expected == RecordingSubject.Expectation.MUST_STAY_SILENT) {
+            // Two kinds of correct row are not held to silence by their lane, so neither is the
+            // silent half of a pair: a known gap still draws its detector's finding, and a row
+            // that pins a severity expects its detector's note.
+            if (Corpus.idiomKnownGaps().containsKey(id)) {
+                problems.add(id + " is a known gap: " + detector + " still reports on it");
+            }
+            if (subject.expectedSeverity() != null) {
+                problems.add(id + " expects a " + subject.expectedSeverity() + " note from "
+                        + detector + ", so it is not silent");
+            }
         }
         return problems;
     }

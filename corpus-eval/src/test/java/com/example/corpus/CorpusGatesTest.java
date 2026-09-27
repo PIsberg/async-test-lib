@@ -655,6 +655,44 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("the idiom lane's lock pair resolves as verdict evidence")
+    void idiomLanePairResolvesAsVerdictEvidence() {
+        // The pair CONCURRENT_MAP_CHECK_THEN_ACT's VERDICT rests on since its lockset (#828): the
+        // same containsKey-then-put with and without the map's monitor.
+        assertDoesNotThrow(() -> CorpusGates.everyCorpusBackedVerdictResolvesToItsPair(
+                "CONCURRENT_MAP_CHECK_THEN_ACT = idiom_synchronizedCheckThenAct_withoutTheMonitor, "
+                        + "idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
+                Corpus::recordingByTestMethod));
+    }
+
+    @Test
+    @DisplayName("a known gap cited as the silent half fails the verdict resolution gate")
+    void knownGapCitedAsSilentHalfFailsGate() {
+        // A known gap is a correct idiom its detector still reports on, so it is no silent half.
+        AssertionFailedError failure = assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair(
+                        "SHARED_MESSAGE_DIGEST = idiom_digestHolderPool_peekedByEveryThread, "
+                                + "idiom_digestHolderPool_checkedOutUnderALock",
+                        Corpus::recordingByTestMethod));
+        assertTrue(failure.getMessage().contains("idiom_digestHolderPool_checkedOutUnderALock is a known gap"),
+                failure.getMessage());
+    }
+
+    @Test
+    @DisplayName("a silent half that expects a note fails the verdict resolution gate")
+    void silentHalfExpectingANoteFailsGate() {
+        RecordingSubject fire = new RecordingSubject("subFire", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_FIRE, "rat");
+        RecordingSubject note = new RecordingSubject("subNote", "lib", "Cls", DetectorType.LOCK_LEAKS,
+                Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT, "rat",
+                IssueSeverity.LOW);
+        AssertionFailedError failure = assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS=subFire,subNote",
+                        id -> id.equals("subFire") ? fire : note));
+        assertTrue(failure.getMessage().contains("subNote expects a LOW note"), failure.getMessage());
+    }
+
+    @Test
     @DisplayName("silent row never calling detector fails the silent row premise gate")
     void silentRowNeverCallingDetectorFailsGate() {
         String fakeSource = "void rowQuiet() { int x = 1; }";

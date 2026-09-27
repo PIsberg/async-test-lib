@@ -14,8 +14,10 @@
 # and both sides check it. In this module, DetectorTrustCoverageTest requires every VERDICT row to
 # be backed either by a pair of test methods it can resolve or by a line here, and requires every
 # line here to name a detector actually classified VERDICT. In corpus-eval, CorpusGates requires
-# each named id to be a RecordingSubject for that detector carrying that expectation, so a line
-# that stops being true fails the corpus build rather than quietly vouching for a tier.
+# each named id to be a row of the recording, agent-pair or idiom lane for that detector carrying
+# that expectation, and refuses as a silent half an idiom row that lane does not hold to silence (a
+# known gap, or a row expecting a note), so a line that stops being true fails the corpus build
+# rather than quietly vouching for a tier.
 #
 # The bar is the one the in-repo pairs meet: the two subjects differ in the defect and in nothing
 # else. The detectors on a "# held: TYPE" line below are corpus-measured and deliberately absent,
@@ -46,9 +48,10 @@
 #   detector's own: two callers on one key, unordered, with no lock in common. That is CONTEXTUAL,
 #   the same evidence the Shared* family's lines below carry. The registration below predates the
 #   lockset: the second wave made it on 2026-09-07 by the shape rule, while this paragraph still
-#   held, and it was unearned until 2026-09-25. The corpus pair separates on the key; the idiom
-#   lane separates on the lock (idiom_synchronizedCheckThenAct_onAConcurrentHashMap silent,
-#   idiom_synchronizedCheckThenAct_withoutTheMonitor firing), as do the detector's unit tests.
+#   held, and it was unearned until 2026-09-25. Its line below names the idiom lane's pair, which
+#   separates on the lock (idiom_synchronizedCheckThenAct_onAConcurrentHashMap silent,
+#   idiom_synchronizedCheckThenAct_withoutTheMonitor firing), as do the detector's unit tests. The
+#   recording lane's pair separates on the key, and named it until #828.
 #   What neither reaches: a lock the library never saw, which leaves the finding standing as it
 #   does for every lockset detector, and a check-then-act whose every caller puts the same value,
 #   which loses nothing and is still reported when recorded without the value. Since #827 a caller
@@ -78,12 +81,13 @@ WEAK_HASH_MAP_SHARED = recorded_weakHashMap_sharedAcrossThreads, recorded_weakHa
 # both reach the detector through the same record*/register* methods, so what separates them
 # is the state the calls carry. Agent-lane bodies make no such calls; AgentRowPremise holds
 # them to the same property instead.
-# VISIBILITY was registered here until 1.12.3 and is PROMPT now. Its pair varies whether threads
-# recorded different values for one field, and a correct AtomicInteger counter does exactly that:
-# the detector records a name and a value, no write, lock or ordering, so no pair of its can tell a
-# stale read from a value that is meant to change. It went to FACT first; the evidence caps below
-# then took it to PROMPT, because "two threads saw different values in one round" is a thread
-# count with no lock or ordering behind it (CONTEXT_FREE). The pair still runs.
+# VISIBILITY was registered here until 1.12.3 and is PROMPT now; its line is kept, commented, with
+# the capped ones in the last section. Its pair varies whether threads recorded different values
+# for one field, and a correct AtomicInteger counter does exactly that: the detector records a name
+# and a value, no write, lock or ordering, so no pair of its can tell a stale read from a value that
+# is meant to change. It went to FACT first; the evidence caps then took it to PROMPT, because "two
+# threads saw different values in one round" is a thread count with no lock or ordering behind it
+# (CONTEXT_FREE). The pair still runs.
 SEMAPHORE = agent_semaphore_permitNeverReturned, agent_semaphore_permitReturnedInFinally
 COUNTDOWN_LATCH = agent_countDownLatch_awaitTimedOut, agent_countDownLatch_awaitSawItsCount
 VOLATILE_ARRAY = recorded_volatileArray_elementsWrittenByEveryThread, recorded_volatileArray_confinedToOneThread
@@ -98,7 +102,7 @@ SYSTEM_PROPERTY_MUTATION = recorded_systemProperty_mutatedByEveryThread, recorde
 SHARED_XML_PARSER = recorded_xmlParser_sharedAcrossThreads, recorded_xmlParser_oneInstancePerThread
 SHARED_TIMEZONE = recorded_timeZone_mutatedByEveryThread, recorded_timeZone_oneInstancePerThread
 DAEMON_THREAD_HYGIENE = recorded_thread_leftNonDaemonAndAlive, recorded_thread_leftAsADaemon
-CONCURRENT_MAP_CHECK_THEN_ACT = recorded_concurrentReferenceHashMap_checkThenAct, recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys
+CONCURRENT_MAP_CHECK_THEN_ACT = idiom_synchronizedCheckThenAct_withoutTheMonitor, idiom_synchronizedCheckThenAct_onAConcurrentHashMap
 SHARED_DEFLATER = recorded_deflater_sharedAcrossThreads, recorded_deflater_oneInstancePerThread
 TRY_LOCK_MISUSE = agent_tryLock_unlockedAfterFailing, agent_tryLock_unlockedOnlyWhenAcquired
 SHARED_CHECKSUM = recorded_checksum_sharedAcrossThreads, recorded_checksum_oneInstancePerThread
@@ -222,6 +226,7 @@ FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_f
 # did not: ASSERTED, capped at FACT. For the rest it is a thread count or a threshold on one of the
 # paths that make a finding: CONTEXT_FREE or HEURISTIC, capped at PROMPT. Each line is kept here
 # with the class that capped it, so a detector whose model changes can be re-registered from it.
+# VISIBILITY, the last line, left in 1.12.3, before the classes existed; its class keeps it out now.
 #
 # Since #754, BLOCKING_QUEUE, SIMPLE_DATE_FORMAT, CALENDAR and STRING_BUILDER grade each finding by
 # its path, so the finding their pair exercises carries its own grade: VERDICT for the shared
@@ -255,3 +260,4 @@ FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_f
 #   EXECUTOR_DEADLOCK = recorded_executor_taskWaitedOnItsSibling, recorded_executor_taskWaitedWithThreadsToSpare    [ASSERTED]
 #   FUTURE_BLOCKING = recorded_future_blockedOnAFullPool, recorded_future_blockedWithThreadsToSpare    [ASSERTED]
 #   LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_readLock_releasedBeforeWriting    [ASSERTED]
+#   VISIBILITY = recorded_field_readInconsistentlyAcrossThreads, recorded_field_readConsistentlyAcrossThreads    [CONTEXT_FREE]

@@ -207,6 +207,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fires, and each worker calling `current()` itself stays silent. The pair is measured, not a
   promotion: the detector decides from the body's own records, which caps it below `VERDICT`.
   A lock released and taken again between the seek and the I/O read as held across until #831.
+- **`CONCURRENT_MAP_CHECK_THEN_ACT`'s evidence line names the pair that separates on the lock,
+  and `VISIBILITY`'s removal is a line the gate reads (#828).** The line named a pair that
+  separates on the key, while the property its `VERDICT` rests on since its lockset is the lock.
+  The pair that separates on the lock, `idiom_synchronizedCheckThenAct_*`, is in the idiom lane,
+  which the file could not cite: corpus-eval's `CorpusGates` resolved ids in the recording and
+  agent-pair lanes only. It now resolves idiom rows with the same checks, and refuses as a silent
+  half a known gap or a correct row expecting a note, the two kinds of idiom row that lane does not
+  hold to silence. `VISIBILITY`'s removal was prose only; it is now a commented line with its
+  `CONTEXT_FREE` class, so `DetectorTrustCoverageTest` fails with `VISIBILITY is kept as capped at
+  CONTEXT_FREE and also registered` if it is registered again, where before only the tier check
+  caught that. No tier moves.
 
 ### Fixed
 

@@ -821,7 +821,10 @@ another's, is silent, so the recorded call names an operation that is correct on
 the finding is the detector's own. It was registered as `VERDICT` evidence on 2026-09-07 by the
 shape rule, before that change, while the evidence file's header still argued it out; #818 re-read
 it against the lockset, kept the registration, and made the file's held detectors a list its gate
-checks. The idiom lane's `idiom_synchronizedCheckThenAct_*` pair separates on the lock itself.
+checks. The idiom lane's `idiom_synchronizedCheckThenAct_*` pair separates on the lock itself,
+and since #828 it is the pair the registration names: the evidence file may cite idiom rows, and
+`CorpusGates` resolves them as it resolves the others, refusing as a silent half a known gap or a
+correct row that expects a note, which that lane does not hold to silence.
 
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|
