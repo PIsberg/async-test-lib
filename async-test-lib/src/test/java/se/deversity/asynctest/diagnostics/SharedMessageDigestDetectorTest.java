@@ -1320,4 +1320,77 @@ public class SharedMessageDigestDetectorTest {
             throw new IllegalStateException(e);
         }
     }
+
+    /**
+     * #849: every access walked the stack for its call site, 1,152 bytes, although a loop on one
+     * line contributes a single site to the report.
+     */
+    @Test
+    void recordingATrackedDigestAllocatesNothingPerAccess() throws InterruptedException {
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> {
+            synchronized (md) {
+                d.recordAccess(md, "sha256", Thread.currentThread());
+            }
+        });
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a digest the detector "
+                + "already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " accesses; the call site is walked again");
+    }
+
+    private static void recordAtSiteA(SharedMessageDigestDetector d, MessageDigest md) {
+        d.recordAccess(md, "sha-sites", Thread.currentThread());
+    }
+
+    private static void recordAtSiteB(SharedMessageDigestDetector d, MessageDigest md) {
+        d.recordAccess(md, "sha-sites", Thread.currentThread());
+    }
+
+    private static java.util.Set<String> reportedSiteMethods(SharedMessageDigestDetector d) {
+        var violations = d.analyze().structuredViolations;
+        assertEquals(1, violations.size(), "precondition: the shared digest is reported");
+        var methods = new java.util.TreeSet<String>();
+        for (SiteCapture.Site site : violations.get(0).sites()) {
+            methods.add(site.methodName());
+        }
+        return methods;
+    }
+
+    @Test
+    void eachThreadsFirstCallSiteIsReported() throws Exception {
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+        recordAtSiteA(d, md);
+        Thread t = new Thread(() -> recordAtSiteB(d, md));
+        t.start();
+        t.join();
+
+        assertEquals(java.util.Set.of("recordAtSiteA", "recordAtSiteB"), reportedSiteMethods(d),
+                "a thread that first used the digest at another line names that line too");
+    }
+
+    /**
+     * #849: the site of a thread's first access is the one the report names for that thread. A
+     * later line on the same thread is not walked for, because the walk costs 1,152 bytes on every
+     * access of the threads under observation; the first site already points at the instance.
+     */
+    @Test
+    void aThreadsLaterCallSitesAreNotWalked() throws Exception {
+        var d = new SharedMessageDigestDetector();
+        MessageDigest md = sha256();
+        recordAtSiteA(d, md);
+        recordAtSiteB(d, md);
+        Thread t = new Thread(() -> {
+            recordAtSiteA(d, md);
+            recordAtSiteB(d, md);
+        });
+        t.start();
+        t.join();
+
+        assertEquals(java.util.Set.of("recordAtSiteA"), reportedSiteMethods(d),
+                "only the site of each thread's first access is captured");
+    }
 }

@@ -199,7 +199,11 @@ public final class DetectorTrust {
      * of it the code shows: a {@link Evidence#CONTEXTUAL} row whose detector reads no lockset,
      * monitor probe or happens-before edge fails, and so does a row other than CONTEXTUAL or
      * {@link Evidence#OBSERVED} whose detector reads one, unless that test names the finding path
-     * that decides without it (#756).
+     * that decides without it (#756). An OBSERVED row needs a detector the agent or the JVM feeds
+     * ({@link DetectorFeeds}) or one that asks a live object for its state; a detector so fed that
+     * is classified lower, and an ungraded one above {@link Evidence#HEURISTIC}'s cap that names a
+     * threshold, must each have the reason named in that test; and a graded detector's class must be
+     * one its grades name.
      */
     private static final List<Classified> TABLE = List.of(
             row(DetectorType.DEADLOCKS, "DeadlockDetector", "Deadlocks", TrustTier.VERDICT, Evidence.OBSERVED),

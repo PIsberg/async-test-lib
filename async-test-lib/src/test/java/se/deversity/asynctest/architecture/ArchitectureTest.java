@@ -300,11 +300,12 @@ class ArchitectureTest {
                     .because("analysis is a standalone pre-scanner; nothing in the run path may reference it");
 
     // The other direction — analysis depending on nothing in the library — is no longer asserted
-    // here, and does not need to be. async-test-analysis declares no dependency on async-test-lib,
-    // so its classes cannot see them at compile time; the reactor enforces what an ArchUnit rule
-    // could only describe. (Asserting it from this module would also be vacuous: the analysis
-    // classes are not on this module's classpath, and ArchUnit fails a rule whose selection is
-    // empty.)
+    // here, and does not need to be. async-test-analysis declares async-test-lib only at test
+    // scope, so its main classes cannot see the library at compile time; the reactor enforces what
+    // an ArchUnit rule could only describe. Its tests read the library's class files as bytes for
+    // LibraryStateIsKeyedByIdentityTest (#803), which is the one place ASM can run over them.
+    // (Asserting it from this module would also be vacuous: the analysis classes are not on this
+    // module's classpath, and ArchUnit fails a rule whose selection is empty.)
 
     /** Byte Buddy is the agent's dependency alone. */
     @ArchTest

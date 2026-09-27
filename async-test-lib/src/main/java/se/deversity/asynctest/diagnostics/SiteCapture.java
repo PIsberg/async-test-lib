@@ -20,10 +20,12 @@ import java.util.Set;
  * the same report can carry {@code "at MyService.encrypt(MyService.java:42)"},
  * turning a 5-minute hunt into a click.
  *
- * <p>Designed to be allocation-light enough for hot-path use: a single
- * {@link StackWalker#walk} call returning at most the first matching frame.
- * Detectors should still gate the call behind a "first access" check so the
- * cost is paid once per (instance, site) pair rather than per access.
+ * <p>A single {@link StackWalker#walk} call returning at most the first matching
+ * frame, which still allocates over 1,100 bytes. Detectors gate the call behind a
+ * "first access" check, so the cost is paid once per key rather than per access:
+ * per (instance, thread) in {@code SharedMessageDigestDetector}, per field in
+ * {@code RaceConditionDetector}. Which call site a key keeps is the first one; a
+ * site the key's later accesses reach is not seen (#849).
  */
 @AIPerformance(constraint = "Called from detector recordAccess paths; do not allocate when a site is already captured for a given key.")
 public final class SiteCapture {

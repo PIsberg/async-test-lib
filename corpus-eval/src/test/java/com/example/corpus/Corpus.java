@@ -1228,6 +1228,42 @@ final class Corpus {
                             + "Recorded by hand that history reads as its twin (#810); woven, the "
                             + "records are in the order the operations ran"),
 
+            new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a worker thread is started with no daemon decision and left running. It is "
+                            + "daemon here only because the runner's worker is, so its flag says "
+                            + "nothing; the woven new Thread and start say nobody decided, and "
+                            + "started from main the same code keeps the JVM from exiting (#736)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_thread_markedDaemonBeforeStart", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same worker, left running as long, given setDaemon(true) before it "
+                            + "starts. The pair separates on the decision alone: both threads are "
+                            + "daemon, and both are alive when the run is judged"),
+
+            new RecordingSubject("agent_guavaService_startedAndLeftRunning", GUAVA,
+                    "com.google.common.util.concurrent.AbstractExecutionThreadService",
+                    DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a service is started and never stopped. Its default executor runs it on a "
+                            + "thread from Executors.defaultThreadFactory, which is never daemon, "
+                            + "and Guava's own Thread.start is the woven call, so a program that "
+                            + "forgets stopAsync hangs at exit (#736)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_guavaService_stoppedBeforeTheRunEnds", GUAVA,
+                    "com.google.common.util.concurrent.AbstractExecutionThreadService",
+                    DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same service on the same non-daemon thread, stopped and awaited before "
+                            + "the run ends. Guava starts the thread the same way; what separates "
+                            + "the pair is whether it is still alive when the run is judged"),
+
             new RecordingSubject("agent_sleepStamped_whileHoldingTheWriteStamp", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,

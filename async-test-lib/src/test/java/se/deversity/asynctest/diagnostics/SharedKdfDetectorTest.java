@@ -145,4 +145,20 @@ class SharedKdfDetectorTest {
         assertTrue(s.contains("Fix:"), s);
         assertTrue(s.contains("ThreadLocal"), s);
     }
+
+    /** #849, pinning #812: the state lookup and the thread-id set must not allocate per access. */
+    @Test
+    void recordingATrackedKdfAllocatesNothingPerAccess() throws InterruptedException {
+        FakeKdf kdf = new FakeKdf();
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> {
+            synchronized (kdf) {
+                detector.recordAccess(kdf, "HKDF-SHA256", "deriveKey", Thread.currentThread());
+            }
+        });
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a KDF the detector "
+                + "already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " accesses");
+    }
 }

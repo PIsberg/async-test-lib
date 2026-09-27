@@ -59,11 +59,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a row other than `CONTEXTUAL` or `OBSERVED` whose detector reads one, unless the test names the
   finding path that decides without it. On the current tree every row agrees; the six rows that read
   a lockset on one path and are classified by a weaker one are named with that path. No tier moved.
+- **The evidence check separates `OBSERVED`, `ASSERTED` and `HEURISTIC` where the source shows it
+  (#756).** `DetectorEvidenceMatchesCodeTest` gains four implications. An `OBSERVED` row needs a
+  detector the agent or the JVM feeds (`DetectorFeeds`) or one that asks a live object for its state,
+  so declaring a detector that only reads record calls `OBSERVED` fails the build. A detector the
+  agent or the JVM feeds that is classified lower names the path holding it there
+  (`FED_BELOW_OBSERVED`: `ABA_PROBLEM`, `ATOMICITY_VIOLATIONS`, `BLOCKING_QUEUE`, `LIVELOCKS`,
+  `STATIC_INIT_DEADLOCK`), which is how making `ABA_PROBLEM` agent-fed while keeping it `ASSERTED`
+  becomes a stated decision rather than an unchecked one. A graded detector's class must be one its
+  grades name. An ungraded detector above the PROMPT cap that names a threshold must say why the
+  threshold decides no finding (`THRESHOLD_DECIDES_NO_FINDING`: four detectors whose threshold only
+  fills a warning section their `hasIssues()` ignores). Both lists may only shrink. Each rule was
+  shown red by one wrong declaration within the row's tier cap, which `DetectorTrustCoverageTest`
+  passed. No evidence class or tier moved: every disagreement on the current tree was a weaker path
+  or a warning, now named.
 - **`Thread.join` weaving is tested with the agent attached (#743).** The four woven `join`
   overloads were covered only by the table-resolution test, which proves a call site is matched and
   not that the match orders anything. `ThreadJoinWeavingTest` has a child write a field its parent
   reads: after each overload returned the pair is silent, and read before the join it is reported.
   With the join entries removed from the weaver's table, all four joined cases report.
+- **The lazy-initialisation detectors take the holder, not only its name (#776).**
+  `StableValueMisuseDetector`, `LazyConstantMisuseDetector` and `LazyCollectionMisuseDetector` gain
+  an experimental overload of every record method that also takes the `StableValue`, the
+  `LazyConstant` or the lazy collection, e.g. `recordSet(holder, "CONFIG", thread)`. A name only
+  labels a holder: two holders under one name were judged as one (two sets read as a double set,
+  and one holder's set excused another's read before set; for a lazy collection, a one-way
+  dependency in each of two collections read as a cycle), and one holder under two names as two.
+  The name-only methods also judge per round, so that a fresh holder per round under a reused
+  name is not "set twice", and so miss a static holder set or computed once in each of two rounds.
+  Keyed by the holder, state lasts the run and that second set or computation is reported, while
+  contention and convoys are still judged per round. The name-only methods behave as before; a
+  `null` holder falls back to them. No agent hook feeds these detectors.
+- **An identity-key gate that reads the bytecode (#803).** `DetectorStateIsKeyedByIdentityTest`
+  reads the source, so a hash stored in a field, returned by a helper longer than one `return`,
+  passed through a chain of helpers, or taken from `Object.hashCode()` of a type that does not
+  override it (a `Thread`, say) reached a map key unseen. `LibraryStateIsKeyedByIdentityTest`, in
+  `async-test-analysis` because ASM may not leave that module, follows the hash through the
+  library's class files: locals and branches, arithmetic, boxing, string building and records,
+  fields, helper returns and parameters, and lambdas. It is red on the old
+  `ABAProblemDetector` (line 191) and `OptimisticReadValidationDetector` (all four map calls), and
+  on a field, a two-statement helper and a `Thread.hashCode()` key the source gate passed. On the
+  current tree it finds no detector state keyed that way, and exempts 25 methods by name, each
+  with its reason: 19 that key a report map or set by the text it prints, where an unnamed
+  object's fallback name is `type@hash`; two in `LambdaLostUpdateDetector`, which groups by
+  rendered value on purpose; and four in `SpinLocks`, which keys by hash on purpose. The source
+  gate stays, since it also counts a hash inside a JDK call the bytecode gate does not follow. `async-test-analysis` now declares
+  `async-test-lib` at test scope; its main code still depends on nothing else.
 
 ### Changed
 
@@ -191,6 +232,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the ceiling now catches a 16-byte object per `SelfGuard` access: 27,612 to 33,808 measured,
   red. `SharedCollectionDetectorTest` and `SharedChecksumDetectorTest` pin the per-access cost
   below one byte on the thread that records.
+- **`SharedMessageDigestDetector` stops walking the stack on every access, and
+  `SharedStatefulCryptoDetector` stops reading the algorithm on every access (#849).** The digest
+  detector looked up the user-code call site of every access, 1,152 to 1,345 bytes each, although
+  its site list deduplicates to one entry per line. It now captures the site of each thread's first
+  access to an instance and skips the walk after that. A report lists each thread's first line: a
+  thread that goes on to use the instance at another line no longer adds that line. The verdicts
+  are unchanged. `SharedStatefulCryptoDetector` built a method reference for the algorithm on every
+  access, 16 bytes, which only a first access uses; it now reads the algorithm there. The digest
+  detector and the seven `Shared*` detectors #812 changed without a probe (CharsetCoder, Deflater,
+  Iterator, JsonMapper, Kdf, MemorySegment past its access cap, StatefulCrypto) are pinned below
+  one byte per access with `RecordPathAllocation`.
 - **`FILE_CHANNEL_POSITION_RACE` stays PROMPT for the reason it has now (#755).** Its hold in
   corpus-eval's `PairEvidence`, the `verdict-evidence-corpus` argument and the catalog said it
   had no lockset, which stopped being true when it joined the `Shared*` family's: a
@@ -277,6 +329,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **With the agent, a daemon decision the agent could not see no longer reads as a missing one
+  (#737).** `DaemonThreadHygieneDetector` and `ThreadFactoryDetector` judged a daemon thread
+  undecided unless a woven `setDaemon(true)` was seen, so `Thread.ofPlatform().daemon().unstarted(r)`
+  started from woven code, a thread given `setDaemon(true)` in a class outside `includes=`, and a
+  factory there that did the same were all reported. The agent now weaves a platform builder's
+  `daemon(boolean)` and `daemon()` and `Thread.Builder.unstarted(Runnable)`, and carries the
+  builder's decision to the threads it makes, and it marks every thread a woven class constructs
+  (after a `new Thread(...)`, and after the superclass call in a `Thread` subclass's constructor,
+  `ThreadConstructionWeaver`). A missing decision is evidence only for a thread the agent saw
+  constructed; any other thread is judged by its flag, so a non-daemon one is still reported
+  wherever it was made. User-visible changes: a `Thread.Builder` start is now an observed start,
+  so a builder thread with no daemon decision left running is reported (before #737 it was
+  skipped), and a daemon thread constructed outside `includes=` with no decision anywhere is no
+  longer reported, the miss that makes the decided one safe. The finding's text no longer says
+  the flag came from "the runner's daemon worker", only from the thread that created it.
+  `DaemonDecisionWeavingTest` pins eight shapes end to end, `DaemonThreadFactoryWeavingTest` the
+  factory ones, `ThreadConstructionWeaverTest` that every construction shape still verifies and is
+  marked once. Still unseen: a decision made by a call into unwoven code on a thread woven code
+  constructed.
+- **`DAEMON_THREAD_HYGIENE` has corpus agent pairs (#736).** The agent-pair lane gains
+  `agent_thread_startedWithNoDaemonDecision` (fires) and `agent_thread_markedDaemonBeforeStart`
+  (silent), and a library pair: `agent_guavaService_startedAndLeftRunning` (fires) starts a Guava
+  `AbstractExecutionThreadService` and leaves it running, whose thread Guava's own bytecode starts
+  from `Executors.defaultThreadFactory` and so is never daemon, and
+  `agent_guavaService_stoppedBeforeTheRunEnds` (silent) stops and awaits the same service. The
+  detector leaves `LibraryReach.UNREACHED`: 18 of the 21 agent-fed detectors are now measured on a
+  call site inside a library.
 - **`GathererConcurrencyMisuseDetector` no longer says a combiner-less gatherer loses results
   (#777).** The missing-combiner finding claimed that on a parallel stream "the per-thread states
   cannot be merged, results are lost". The JDK does not work that way: a gatherer whose combiner is
@@ -288,6 +367,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that shape, now at `LOW`, and says what it costs: the gather stage runs sequentially and the
   parallel stream buys it nothing. A shared-state race stays `HIGH` and sets the report's severity
   when both are present. On JDK 21 the two new tests are skipped by assumption.
+- **The SPI bridge reports a detector whose report it cannot reach (#847).** `LegacyDetectorAdapter`
+  calls each built-in detector's report method and the report's `hasIssues()` reflectively from
+  another package. A report type it may not call into, such as one that is not public, raised an
+  `IllegalAccessException` that the adapter returned as an empty list without a word, so the
+  detector read as clean through `spi.DetectorRegistry.build` whatever it recorded. It now goes
+  through `DetectorFailurePolicy.detectorFailed`, like a detector that throws: outside strict mode
+  one `[AsyncTest] Detector X failed during analysis and was skipped` line names it, under
+  `async-test.strict-detectors` the build fails. A detector with no report method at all still
+  returns an empty list and writes nothing; built-ins are held to that shape by
+  `DetectorFiringContractTest`. A new `AllDetectorsSpiCoverageTest` check reads every built-in's
+  report methods, `hasIssues()`, `toString()` and `structuredViolations` from outside the
+  detectors' package and found none unreachable today: the legacy registry names each report's
+  `hasIssues` by method reference, so javac already refuses a non-public report type there, and
+  the check covers report methods that registry does not name.
 - **The SPI bridge reports a detector that throws, and each finding at its own severity (#841).**
   `LegacyDetectorAdapter`, which `spi.DetectorRegistry.build` wraps every built-in detector in,
   invokes the detector reflectively and caught everything that came back as a reflection failure.
@@ -329,6 +422,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   idle in the runner's pool at analysis; the runner shuts its executor down first, and the virtual
   worker has ended. The workers that find the lock taken now join the holder's thread, bounded, so
   it has ended before the last round does.
+- **`REENTRANT_LOCK` judges a held lock only for the named thread recorded taking it (#848).** Its
+  held-at-analysis finding read the lock's holder name the way `LOCK_LEAKS` did before #843, and it
+  is a VERDICT. After an unnamed virtual thread recorded taking and releasing a lock, another
+  unnamed virtual thread that never recorded took it and kept working, and the lock's empty name
+  matched no live platform thread, so the detector reported "Locked by thread , which has
+  finished". A named virtual holder that never recorded read as finished the same way, and so did a
+  recorded thread that had ended while a live platform thread of the same name held the lock. The
+  detector now applies the #843 rule, through the same code `LOCK_LEAKS` uses: a hold is judged only
+  when the lock's holder name is not empty, is the name of the thread last recorded acquiring the
+  lock while holding it (`recordLockAcquired`), and no other live platform thread carries it.
+  Every other hold is printed as context, "a thread the detector cannot identify", with the
+  reason, and is not a finding. Behaviour change: a hold left by a thread that never recorded its
+  acquisition, or by an unnamed virtual thread, is no longer reported by this detector alone; with
+  `LOCK_LEAKS` enabled (the default) an unbalanced recorded pair is still reported there as a FACT.
+  The runner names its workers, so the documented shape, a worker that records its acquisition and
+  ends holding the lock, is still reported at VERDICT, and the corpus pair is unchanged.
 - **`ABA_PROBLEM` is fed by the agent, and a toggle that ran before the read is no longer an ABA
   there (#817).** Recorded by hand, two threads that swing a value A to B to A wholly before a
   third thread reads it, and record the swing after the read, leave exactly the records of a real
@@ -357,8 +466,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child. The agent now weaves `isAlive` like the joins: a `false` answer about a thread that ran
   acquires its clock, a `true` one orders nothing. `Thread.Builder.start(Runnable)` and
   `Thread.startVirtualThread(Runnable)` are woven too and fork and attribute the thread like a
-  woven `Thread.start`; they are not observed starts for `DAEMON_THREAD_HYGIENE`, because a
-  builder's `daemon(true)` is a decision the agent does not see. A task start and end now also
+  woven `Thread.start` (what a builder start means for `DAEMON_THREAD_HYGIENE` is #737's entry
+  below). A task start and end now also
   carry how many wrapped tasks the thread is running, so an end the ring gave up on no longer
   leaves the pool thread attributed to the run until the run ends: its next start or end ends the
   frames the bridge missed. `ThreadJoinWeavingTest` and `SpawnedWorkAttributionWeavingTest` pin
@@ -1046,10 +1155,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thread a woven call site starts is reported while alive unless a woven `setDaemon(true)` was seen
   on it, and a factory's daemon thread is reported as "daemon only by inheritance" when none was.
   The runner stops announcing `runner.detector.inert` for the daemon detector once the weave is
-  installed. Without the agent nothing changes. A decision made where the agent does not weave,
-  `Thread.Builder.OfPlatform.daemon()` or a class outside `includes=`, reads as undecided
-  (#737); a JDK factory is exempt for that reason. `DaemonThreadHygieneDetector` moves from
-  recording-only to agent-fed; it has no corpus agent pair yet (#736).
+  installed. Without the agent nothing changes. A builder's `daemon(true)` and a decision made in
+  a class outside `includes=` are handled since #737 (see its entry under Fixed).
+  `DaemonThreadHygieneDetector` moves from recording-only to agent-fed, with corpus agent pairs
+  since #736.
 
 - **`DaemonThreadHygieneDetector` stopped being able to see a thread a test body creates, and
   said nothing about it (#730).** A thread inherits the daemon flag of the thread that created

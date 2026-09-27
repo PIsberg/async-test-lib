@@ -17,7 +17,8 @@
         <module>async-test-lib</module>
         <!-- Opt-in Byte Buddy field-access agent. Carries the Premain-Class manifest. -->
         <module>async-test-agent</module>
-        <!-- Opt-in ASM pre-scanner for Loom pinning sites. Depends on nothing else here. -->
+        <!-- Opt-in ASM pre-scanner for Loom pinning sites. Its main code depends on nothing else
+             here; its tests read the library's classes (#803). -->
         <module>async-test-analysis</module>
     </modules>
     <url>https://github.com/PIsberg/async-test-lib</url>

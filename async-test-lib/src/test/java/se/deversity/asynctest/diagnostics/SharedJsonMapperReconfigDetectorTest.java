@@ -457,4 +457,17 @@ class SharedJsonMapperReconfigDetectorTest {
             throw new IllegalStateException(e);
         }
     }
+
+    /** #849, pinning #812: the state lookup and the round's user set must not allocate per use. */
+    @Test
+    void recordingAUseOfATrackedMapperAllocatesNothingPerAccess() throws InterruptedException {
+        var d = new SharedJsonMapperReconfigDetector();
+        var mapper = new FakeMapper();
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> d.recordUse(mapper));
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a use of a mapper the "
+                + "detector already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " uses");
+    }
 }

@@ -272,4 +272,120 @@ class LazyConstantMisuseDetectorTest {
         String str = detector.analyze().toString();
         assertTrue(str.contains("HIGH"), str);
     }
+
+    // ---- Constant-taking overloads (#776) ----
+
+    @Test
+    void twoConstantsUnderOneNameAreJudgedApart() {
+        // Two LazyConstants both labelled "CONFIG" in one round, each computed once to its own
+        // value. Keyed by the label that is one constant computed twice to two values.
+        Object first = new Object();
+        Object second = new Object();
+        detector.markInvocationStart();
+        detector.recordComputeStart(first, "CONFIG", new Thread("a"));
+        detector.recordComputeEnd(first, "CONFIG", new Thread("a"), "x");
+        detector.recordComputeStart(second, "CONFIG", new Thread("b"));
+        detector.recordComputeEnd(second, "CONFIG", new Thread("b"), "y");
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "two constants computed once each: " + report);
+    }
+
+    @Test
+    void oneConstantUnderTwoNamesIsJudgedTogether() {
+        Object constant = new Object();
+        Thread t = Thread.currentThread();
+        detector.markInvocationStart();
+        detector.recordComputeStart(constant, "CONFIG", t);
+        detector.recordComputeEnd(constant, "CONFIG", t, "x");
+        detector.recordComputeStart(constant, "settings", t);
+        detector.recordComputeEnd(constant, "settings", t, "y");
+        var report = detector.analyze();
+        assertEquals(1, report.getMultipleComputeIssues().size(), report.toString());
+        assertEquals(1, report.getNonDeterministicIssues().size(), report.toString());
+    }
+
+    @Test
+    void aStaticConstantComputedOnceInEachOfTwoRoundsIsComputedTwice() {
+        // The case the per-round name path misses: the constant outlives the round, so a second
+        // computation of it is a hand-rolled holder running its supplier again.
+        Object staticConstant = new Object();
+        Thread t = Thread.currentThread();
+        detector.markInvocationStart();
+        detector.recordComputeStart(staticConstant, "CONFIG", t);
+        detector.recordComputeEnd(staticConstant, "CONFIG", t, "x");
+        detector.markInvocationStart();
+        detector.recordComputeStart(staticConstant, "CONFIG", t);
+        detector.recordComputeEnd(staticConstant, "CONFIG", t, "x");
+        assertEquals(1, detector.analyze().getMultipleComputeIssues().size(), detector.analyze().toString());
+    }
+
+    @Test
+    void aFreshConstantPerRoundNamedByObjectIsComputedOnceEach() {
+        for (int round = 0; round < 3; round++) {
+            detector.markInvocationStart();
+            Object perRound = new Object();
+            Thread t = new Thread("round-" + round);
+            detector.recordGet(perRound, "CONFIG", t);
+            detector.recordComputeStart(perRound, "CONFIG", t);
+            detector.recordComputeEnd(perRound, "CONFIG", t, "value-" + round);
+        }
+        assertFalse(detector.analyze().hasIssues(), detector.analyze().toString());
+    }
+
+    @Test
+    void aComputationAbandonedInAnEarlierRoundDoesNotMakeAConvoyInTheNext() {
+        // Round one's supplier threw past its start. The constant outlives the round, but its
+        // in-flight count does not: nothing is computing when round two's readers arrive.
+        Object staticConstant = new Object();
+        detector.markInvocationStart();
+        detector.recordComputeStart(staticConstant, "CONFIG", new Thread("thrower"));
+        detector.markInvocationStart();
+        for (int i = 0; i < 6; i++) {
+            detector.recordGet(staticConstant, "CONFIG", new Thread("reader-" + i));
+        }
+        assertTrue(detector.analyze().getConvoyWarnings().isEmpty(), detector.analyze().toString());
+    }
+
+    @Test
+    void aConvoyOnAStaticConstantIsStillReportedWithinARound() {
+        Object staticConstant = new Object();
+        detector.markInvocationStart();
+        detector.recordComputeStart(staticConstant, "CONFIG", new Thread("computer"));
+        for (int i = 0; i < 4; i++) {
+            detector.recordGet(staticConstant, "CONFIG", new Thread("reader-" + i));
+        }
+        assertEquals(1, detector.analyze().getConvoyWarnings().size(), detector.analyze().toString());
+    }
+
+    @Test
+    void reentrancyIsJudgedPerConstant() {
+        Thread t = Thread.currentThread();
+        Object outer = new Object();
+        Object inner = new Object();
+        detector.recordComputeStart(outer, "CONFIG", t);
+        detector.recordComputeStart(inner, "CONFIG", t);
+        detector.recordComputeEnd(inner, "CONFIG", t, "i");
+        detector.recordComputeEnd(outer, "CONFIG", t, "o");
+        assertTrue(detector.analyze().getReentrantIssues().isEmpty(), detector.analyze().toString());
+
+        Object self = new Object();
+        detector.recordComputeStart(self, "CONFIG", t);
+        detector.recordComputeStart(self, "settings", t);
+        assertEquals(1, detector.analyze().getReentrantIssues().size(), detector.analyze().toString());
+    }
+
+    @Test
+    void aNullConstantFallsBackToTheName() {
+        Thread t = Thread.currentThread();
+        detector.recordComputeStart(null, "CONFIG", t);
+        detector.recordComputeEnd(null, "CONFIG", t, "x");
+        detector.recordComputeStart(null, "CONFIG", t);
+        detector.recordComputeEnd(null, "CONFIG", t, "x");
+        assertEquals(1, detector.analyze().getMultipleComputeIssues().size(), detector.analyze().toString());
+        assertDoesNotThrow(() -> {
+            detector.recordGet(null, null, t);
+            detector.recordComputeStart(new Object(), "K", null);
+            detector.recordComputeEnd(null, null, null, null);
+        });
+    }
 }

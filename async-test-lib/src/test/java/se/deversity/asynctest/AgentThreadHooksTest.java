@@ -12,12 +12,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * What the thread starts a builder makes are judged on (#834), called the way woven code calls them.
+ * What a woven thread start is judged on (#834, #737), with the hooks called the way woven code
+ * calls them.
  *
- * <p>A woven {@code Thread.start} is an observed start: {@link DaemonThreadHygieneDetector} reports
- * the thread while it lives unless a woven {@code setDaemon(true)} was seen. A
- * {@code Thread.Builder} decides the flag with {@code daemon(true)} inside the JDK, where nothing is
- * woven, so its start must not be judged that way or the decision would read as missing.
+ * <p>A woven {@code Thread.start} of a thread woven code constructed is an observed start:
+ * {@link DaemonThreadHygieneDetector} reports the thread while it lives unless a woven daemon
+ * decision was seen, a {@code setDaemon(true)} or a {@code daemon(true)} on the builder that made
+ * it. A thread constructed where nothing is woven may have been decided there, so its start is
+ * judged by the flag alone.
  */
 class AgentThreadHooksTest {
 
@@ -60,21 +62,56 @@ class AgentThreadHooksTest {
     }
 
     @Test
-    @DisplayName("a daemon thread a builder started with daemon(true) is not judged undecided")
-    void aBuilderStartIsNotAnObservedStart() throws InterruptedException {
+    @DisplayName("a daemon thread a builder started with a woven daemon(true) is not judged undecided")
+    void aBuilderStartCarriesTheBuildersDecision() throws InterruptedException {
         assertFalse(lingeringStartReported(task -> AgentThreadHooks.threadBuilderStart(
-                        Thread.ofPlatform().daemon(true).name("built-daemon"), task)),
-                "daemon(true) on the builder is the decision the rule asks for, made where the agent "
-                        + "does not look");
+                        AgentThreadHooks.threadBuilderDaemon(Thread.ofPlatform().name("built-daemon"),
+                                true), task)),
+                "daemon(true) on the builder is the decision the rule asks for");
+        assertFalse(lingeringStartReported(task -> {
+            Thread thread = AgentThreadHooks.threadBuilderUnstarted(
+                    AgentThreadHooks.threadBuilderDaemon(Thread.ofPlatform().name("built-daemon")),
+                    task);
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "daemon(), then unstarted and a separate start, is the same decision");
     }
 
     @Test
-    @DisplayName("the same lingering thread started through a woven Thread.start without setDaemon is")
+    @DisplayName("a builder start with no daemon decision is an observed, undecided start")
+    void aBuilderStartWithNoDecisionIsReported() throws InterruptedException {
+        assertTrue(lingeringStartReported(task -> AgentThreadHooks.threadBuilderStart(
+                        Thread.ofPlatform().name("built-undecided"), task)),
+                "the builder made the thread in woven code and nothing decided its flag, so it is "
+                        + "daemon only by inheritance from the daemon parent");
+    }
+
+    @Test
+    @DisplayName("a thread woven code constructed and started without setDaemon is reported")
     void aWovenStartWithNoDecisionIsStillReported() throws InterruptedException {
         assertTrue(lingeringStartReported(task -> {
             Thread thread = new Thread(task, "inherited-daemon");
+            AgentThreadHooks.threadConstructed(thread);
             AgentThreadHooks.threadStart(thread);
             return thread;
         }), "daemon only by inheritance from the daemon parent, and no setDaemon seen");
+    }
+
+    @Test
+    @DisplayName("a daemon thread constructed where nothing is woven is judged by its flag")
+    void aThreadConstructedOutsideTheWovenSetIsJudgedByItsFlag() throws InterruptedException {
+        assertFalse(lingeringStartReported(task -> {
+            Thread thread = new Thread(task, "decided-elsewhere");
+            thread.setDaemon(true);
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "setDaemon(true) where nothing is woven is a decision the agent cannot see, so the "
+                + "missing record must not read as a missing decision (#737)");
+        assertTrue(lingeringStartReported(task -> {
+            Thread thread = new Thread(task, "non-daemon-elsewhere");
+            thread.setDaemon(false);
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "a non-daemon thread holds the JVM open whoever made it");
     }
 }

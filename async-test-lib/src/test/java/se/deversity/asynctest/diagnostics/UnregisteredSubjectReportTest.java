@@ -118,8 +118,12 @@ class UnregisteredSubjectReportTest {
         ReentrantLockDetector detector = new ReentrantLockDetector();
         ReentrantLock lock = new ReentrantLock();
         // Since #589 a timeout alone is context, so the finding here is the hold the timeout was
-        // a symptom of: taken on another thread and never given back.
-        Thread leaker = new Thread(lock::lock);
+        // a symptom of: taken on another thread and never given back. The holder records its
+        // acquisition, since a hold is judged only for the named thread recorded taking it (#848).
+        Thread leaker = new Thread(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "leaker");
+        });
         leaker.start();
         leaker.join(10_000);
 

@@ -613,8 +613,10 @@ final class CollectionAccessWeaver {
 
     /**
      * The thread table: {@link Thread#start()}, {@link Thread#join()}, {@link Thread#isAlive()}
-     * and {@link Thread#setDaemon(boolean)}, and the two other ways to start a thread,
-     * {@link Thread.Builder#start(Runnable)} and {@link Thread#startVirtualThread(Runnable)}.
+     * and {@link Thread#setDaemon(boolean)}, the two other ways to start a thread,
+     * {@link Thread.Builder#start(Runnable)} and {@link Thread#startVirtualThread(Runnable)}, and
+     * the builder calls that decide and construct, {@link Thread.Builder.OfPlatform#daemon} and
+     * {@link Thread.Builder#unstarted(Runnable)}.
      *
      * <p>Every {@code join} overload is {@code final} on {@code Thread}, and so is
      * {@code isAlive}, so the call site names the method whatever type it was compiled against.
@@ -622,7 +624,12 @@ final class CollectionAccessWeaver {
      * before the joiner, and an {@code isAlive} that returned {@code false} does the same for a
      * parent that polls instead of joining (#834). {@code Thread.Builder} is sealed to the JDK's
      * two builders, whose {@code start} is {@code unstarted} followed by {@code start}, which is
-     * what the hook does in between (#834).
+     * what the hook does in between (#834). A platform builder applies its {@code daemon}
+     * decision inside {@code unstarted}, where nothing is woven, so the hooks carry a woven
+     * decision from the builder to the thread themselves (#737); every builder method returns the
+     * builder, so the substitutions return what the call returned. The threads a woven
+     * {@code new Thread} constructs are marked by {@link ThreadConstructionWeaver}, which travels
+     * with this table.
      */
     private static final List<Entry> THREAD_ENTRIES = List.of(
             Entry.call(Thread.class, "start", "threadStart"),
@@ -634,7 +641,12 @@ final class CollectionAccessWeaver {
             Entry.call(Thread.Builder.class, "start", "threadBuilderStart", Runnable.class),
             Entry.staticCall(Thread.class, "startVirtualThread", "threadStartVirtual",
                     Runnable.class),
-            Entry.call(Thread.class, "setDaemon", "threadSetDaemon", boolean.class));
+            Entry.call(Thread.class, "setDaemon", "threadSetDaemon", boolean.class),
+            Entry.call(Thread.Builder.OfPlatform.class, "daemon", "threadBuilderDaemon",
+                    boolean.class),
+            Entry.call(Thread.Builder.OfPlatform.class, "daemon", "threadBuilderDaemon"),
+            Entry.call(Thread.Builder.class, "unstarted", "threadBuilderUnstarted",
+                    Runnable.class));
 
     /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
@@ -906,12 +918,14 @@ final class CollectionAccessWeaver {
     }
 
     /**
-     * {@return the thread start/daemon substitutions}
+     * {@return the thread start/daemon substitutions, and the marking of threads a woven class
+     * constructs, which gives a missing daemon decision its meaning (#737)}
      *
      * @param threadHooks the class holding the hooks, resolved in the weaving class loader
      */
     static List<AsmVisitorWrapper> threadSubstitutions(Class<?> threadHooks) {
-        return List.of(new SubstitutionWrapper(targets(THREAD_ENTRIES, threadHooks)));
+        return List.of(new SubstitutionWrapper(targets(THREAD_ENTRIES, threadHooks)),
+                ThreadConstructionWeaver.of(threadHooks));
     }
 
     /** {@return the hook class name the substituted thread calls land in} */

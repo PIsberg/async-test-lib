@@ -5,6 +5,8 @@ import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
@@ -76,6 +78,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * d.recordComputeEnd("BOARDS", 7, Thread.currentThread(), b);
  * }</pre>
  *
+ * <p><strong>Naming the collection.</strong> Each record method has an overload that also takes the
+ * collection itself, and that one is the more precise: a name only labels a collection, so two
+ * collections under one name are judged as one, and a one-way dependency in each reads as a cycle,
+ * while one collection under two names is judged as two. Keyed by the name, an element's state
+ * lasts one round, since a name reused by a fresh collection each round would otherwise read as
+ * computing each element once per round, and so a static collection's element computed in each of
+ * two rounds is missed. Keyed by the collection, its elements last the run: that second computation
+ * is reported, while a collection built per round is a new collection, and the convoy is still
+ * judged per round. Use one form or the other for any one collection; the two are tracked apart.
+ *
  * @since 1.9.7
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
@@ -99,9 +111,30 @@ public final class LazyCollectionMisuseDetector {
      */
     public static final int DEFAULT_CONVOY_THRESHOLD = 4;
 
-    /** A collection element: the collection's name and the element's key or index. */
-    private record Element(String collection, String key) {
-        @Override public String toString() { return collection + "[" + key + "]"; }
+    /**
+     * A collection element: the collection, as its name or as the {@link IdentityKey} of the
+     * collection the caller passed, and the element's key or index. The label is only what the
+     * report prints, so it takes no part in equality: one collection recorded under two names is
+     * one collection.
+     */
+    private static final class Element {
+        final Object collection;
+        final String key;
+        final String label;
+
+        Element(Object collection, String key, String label) {
+            this.collection = collection;
+            this.key = key;
+            this.label = label;
+        }
+
+        @Override public boolean equals(Object other) {
+            return other instanceof Element that && that.collection.equals(collection) && that.key.equals(key);
+        }
+
+        @Override public int hashCode() { return 31 * collection.hashCode() + key.hashCode(); }
+
+        @Override public String toString() { return label + "[" + key + "]"; }
     }
 
     private static final class ElementState {
@@ -112,6 +145,8 @@ public final class LazyCollectionMisuseDetector {
         final AtomicInteger selfReentries = new AtomicInteger();
         /** Threads that asked for the element while another thread was computing it. */
         final Set<Long>     waiters       = ConcurrentHashMap.newKeySet();
+        /** The most waiters any closed round saw, for an element that outlives its rounds. */
+        final AtomicInteger closedWaiters = new AtomicInteger();
         /** Threads currently inside this element's mapping function. */
         final Set<Long>     computing     = ConcurrentHashMap.newKeySet();
         /** Completed values, kept to compare successive computations for determinism. */
@@ -128,7 +163,18 @@ public final class LazyCollectionMisuseDetector {
         /** Whether analyze() would report anything about this element. */
         boolean carriesAFinding(int convoyThreshold) {
             return selfReentries.get() > 0 || computeEnds.get() > 1 || nullValues.get() > 0
-                    || waiters.size() >= convoyThreshold || valuesDisagree();
+                    || waiterPeak() >= convoyThreshold || valuesDisagree();
+        }
+
+        /** The most threads that waited on the element within one round. */
+        int waiterPeak() {
+            return Math.max(waiters.size(), closedWaiters.get());
+        }
+
+        /** Ends a round for an element that outlives it: its waiters were that round's. */
+        void closeRound() {
+            closedWaiters.accumulateAndGet(waiters.size(), Math::max);
+            waiters.clear();
         }
 
         boolean valuesDisagree() {
@@ -180,16 +226,22 @@ public final class LazyCollectionMisuseDetector {
         // elements, and carrying the counts over read each round's one computation as a repeat
         // and each round's value as a disagreement. So the round's elements are closed here:
         // those that already carry a finding are kept for analyze(), the rest are dropped, and
-        // the next round starts from nothing.
-        for (ElementState s : elements.values()) {
+        // the next round starts from nothing. A collection the caller passed is the same
+        // collection next round, so its elements stay; only their waiters were the round's.
+        elements.entrySet().removeIf(e -> {
+            ElementState s = e.getValue();
             s.computing.clear();
+            if (e.getKey().collection instanceof IdentityKey) {
+                s.closeRound();
+                return false;
+            }
             if (s.carriesAFinding(convoyThreshold)) {
                 synchronized (closedRounds) {
                     closedRounds.add(s);
                 }
             }
-        }
-        elements.clear();
+            return true;
+        });
     }
 
     /** Elements of earlier rounds that carry a finding; guarded by its own monitor. */
@@ -221,7 +273,27 @@ public final class LazyCollectionMisuseDetector {
      * @param thread     the reading thread
      */
     public void recordGet(String collection, Object key, Thread thread) {
-        ElementState s = stateOrCreate(collection, key);
+        noteGet(stateOrCreate(collection, key), thread);
+    }
+
+    /**
+     * Record a read of one element of {@code lazyCollection}.
+     *
+     * @param lazyCollection the {@code List.ofLazy} or {@code Map.ofLazy} collection, which
+     *                       identifies it; {@code null} records by {@code name} alone, as
+     *                       {@link #recordGet(String, Object, Thread)} does
+     * @param name           the label the report prints for the collection, or {@code null} to
+     *                       print its class and identity hash
+     * @param key            the element's index or key
+     * @param thread         the reading thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordGet(@Nullable Object lazyCollection, @Nullable String name, Object key, Thread thread) {
+        noteGet(stateOrCreate(lazyCollection, name, key), thread);
+    }
+
+    private static void noteGet(@Nullable ElementState s, Thread thread) {
         if (s == null || thread == null) return;
         s.gets.incrementAndGet();
         long id = thread.threadId();
@@ -241,7 +313,30 @@ public final class LazyCollectionMisuseDetector {
      * @param thread     the computing thread
      */
     public void recordComputeStart(String collection, Object key, Thread thread) {
-        ElementState s = stateOrCreate(collection, key);
+        noteComputeStart(stateOrCreate(collection, key), thread);
+    }
+
+    /**
+     * Record entry into the mapping function for one element of {@code lazyCollection}. Pair it
+     * with {@link #recordComputeEnd(Object, String, Object, Thread, Object)} in a {@code finally},
+     * for the reason {@link #recordComputeStart(String, Object, Thread)} gives.
+     *
+     * @param lazyCollection the {@code List.ofLazy} or {@code Map.ofLazy} collection, which
+     *                       identifies it; {@code null} records by {@code name} alone, as
+     *                       {@link #recordComputeStart(String, Object, Thread)} does
+     * @param name           the label the report prints for the collection, or {@code null} to
+     *                       print its class and identity hash
+     * @param key            the element's index or key
+     * @param thread         the computing thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordComputeStart(@Nullable Object lazyCollection, @Nullable String name, Object key,
+                                   Thread thread) {
+        noteComputeStart(stateOrCreate(lazyCollection, name, key), thread);
+    }
+
+    private void noteComputeStart(@Nullable ElementState s, Thread thread) {
         if (s == null || thread == null) return;
 
         Deque<Element> stack = inFlightStack();
@@ -249,7 +344,7 @@ public final class LazyCollectionMisuseDetector {
             s.selfReentries.incrementAndGet();
         } else if (!stack.isEmpty()) {
             Element outer = stack.peek();
-            if (outer.collection().equals(s.element.collection())) {
+            if (outer.collection.equals(s.element.collection)) {
                 synchronized (dependencies) {
                     dependencies.add(Map.entry(outer, s.element));
                 }
@@ -268,7 +363,31 @@ public final class LazyCollectionMisuseDetector {
      * @param value      the value the mapping function produced, which JDK 26 rejects if null
      */
     public void recordComputeEnd(String collection, Object key, Thread thread, @Nullable Object value) {
-        ElementState s = stateOrCreate(collection, key);
+        noteComputeEnd(stateOrCreate(collection, key), thread, value);
+    }
+
+    /**
+     * Record the return from the mapping function for one element of {@code lazyCollection}. A
+     * second return for the same element, in any round and under any name, is a repeat
+     * computation.
+     *
+     * @param lazyCollection the {@code List.ofLazy} or {@code Map.ofLazy} collection, which
+     *                       identifies it; {@code null} records by {@code name} alone, as
+     *                       {@link #recordComputeEnd(String, Object, Thread, Object)} does
+     * @param name           the label the report prints for the collection, or {@code null} to
+     *                       print its class and identity hash
+     * @param key            the element's index or key
+     * @param thread         the computing thread
+     * @param value          the value the mapping function produced, which JDK 26 rejects if null
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordComputeEnd(@Nullable Object lazyCollection, @Nullable String name, Object key,
+                                 Thread thread, @Nullable Object value) {
+        noteComputeEnd(stateOrCreate(lazyCollection, name, key), thread, value);
+    }
+
+    private void noteComputeEnd(@Nullable ElementState s, Thread thread, @Nullable Object value) {
         if (s == null || thread == null) return;
 
         Deque<Element> stack = inFlightStack();
@@ -279,9 +398,19 @@ public final class LazyCollectionMisuseDetector {
         s.addValue(value);
     }
 
+
     private @Nullable ElementState stateOrCreate(String collection, Object key) {
         if (!enabled || collection == null) return null;
-        Element e = new Element(collection, String.valueOf(key));
+        Element e = new Element(collection, String.valueOf(key), collection);
+        return elements.computeIfAbsent(e, ElementState::new);
+    }
+
+    private @Nullable ElementState stateOrCreate(@Nullable Object lazyCollection, @Nullable String name,
+                                                 Object key) {
+        if (lazyCollection == null) return name == null ? null : stateOrCreate(name, key);
+        if (!enabled) return null;
+        IdentityKey id = IdentityKey.lookup(lazyCollection);
+        Element e = new Element(id, String.valueOf(key), name != null ? name : id.toString());
         return elements.computeIfAbsent(e, ElementState::new);
     }
 
@@ -368,7 +497,7 @@ public final class LazyCollectionMisuseDetector {
     }
 
     private static void convoy(Report r, ElementState s, int threshold) {
-        int waiters = s.waiters.size();
+        int waiters = s.waiterPeak();
         if (waiters < threshold) return;
         String msg = String.format(
                 "Element %s had %d thread(s) waiting on it while one thread ran its mapping function. The "

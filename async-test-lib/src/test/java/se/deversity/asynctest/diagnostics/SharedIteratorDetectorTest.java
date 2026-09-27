@@ -135,4 +135,21 @@ class SharedIteratorDetectorTest {
                 first.structuredViolations.get(0).message(),
                 second.structuredViolations.get(0).message());
     }
+
+    /** #849, pinning #812: the state lookup and the thread-id set must not allocate per access. */
+    @Test
+    void recordingATrackedIteratorAllocatesNothingPerAccess() throws InterruptedException {
+        var d = new SharedIteratorDetector();
+        Iterator<String> it = new ArrayList<String>().iterator();
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> {
+            synchronized (it) {
+                d.recordAccess(it, "hasNext");
+            }
+        });
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording an iterator the "
+                + "detector already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " accesses");
+    }
 }

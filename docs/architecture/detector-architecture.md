@@ -56,8 +56,13 @@ detectors were wired this way.
 Detectors that have adopted `SiteCapture` (canary: `SharedMessageDigestDetector`) include an
 `Access sites:` block in their reports pointing at the user-code line that produced the issue.
 Adding it is mechanical: declare `Set<SiteCapture.Site> accessSites`, call
-`SiteCapture.capture().ifPresent(accessSites::add)` in `recordAccess`, render in `analyze()`. The
-mechanism itself is described in [reporting-pipeline.md](reporting-pipeline.md).
+`SiteCapture.capture().ifPresent(accessSites::add)` in `recordAccess` behind a first-access check,
+render in `analyze()`. The check is not optional: a capture walks the stack and allocates over
+1,100 bytes, so calling it on every access puts that on every access of the threads under
+observation (#849). `SharedMessageDigestDetector` captures once per (instance, thread) with
+`SelfGuard.addThreadId`, which allocates nothing once the thread is recorded, and
+`SharedMessageDigestDetectorTest` pins that with `RecordPathAllocation`. The mechanism itself is
+described in [reporting-pipeline.md](reporting-pipeline.md).
 
 ![Detector Architecture Diagram](../diagrams/DetectorArchitecture.png)
 

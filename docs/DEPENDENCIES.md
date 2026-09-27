@@ -34,7 +34,7 @@ neither library may leak out of its module.
 | Library | Property | Why it is here |
 |---|---|---|
 | `net.bytebuddy:byte-buddy` + `byte-buddy-agent` | `bytebuddy.version` | The optional agent (`async-test-agent`) weaves JavaBean accessors at load time so detectors observe field reads and writes without hand-written hooks ([AGENT.md](AGENT.md)). `byte-buddy-agent` provides the `selfAttach()` path. |
-| `org.ow2.asm:asm` | `asm.version` | `StaticPinningScanner` (`async-test-analysis`) reads bytecode to flag `synchronized` blocks that would pin virtual threads — without executing any tests, which is why the module depends on nothing else in the project. |
+| `org.ow2.asm:asm` | `asm.version` | `StaticPinningScanner` (`async-test-analysis`) reads bytecode to flag `synchronized` blocks that would pin virtual threads — without executing any tests, which is why the module depends on nothing else in the project. One test-scope exception, in that direction only: the module's tests declare `async-test-lib` so that `LibraryStateIsKeyedByIdentityTest` can run ASM over the library's class files and refuse a map key that carries an identity hash (#803). It is sound because the test reads the classes as bytes and loads none of them, the main classes still cannot see the library, a test-scope dependency does not reach anyone who depends on the artifact, and ASM stays in this module. |
 
 ## 3. Test-only, in this repository's own suite
 

@@ -73,9 +73,10 @@ public class ThreadFactoryDetector {
      *
      * <p>A factory called from a body runs on one of the runner's workers, which are daemon
      * (#479), so {@code r -> new Thread(r)} hands back a daemon thread without deciding
-     * anything (#731). Only the agent can tell the two apart, by weaving {@code setDaemon}; until
-     * it has, the flag is taken at its word. A JDK factory decides inside the JDK, where nothing
-     * is woven, so its flag is taken at its word too.
+     * anything (#731). Only the agent can tell the two apart, by weaving {@code setDaemon} and a
+     * platform builder's {@code daemon}; until it has, the flag is taken at its word. So is the
+     * flag of a thread the agent did not see constructed (#737): a factory outside
+     * {@code includes=}, or a JDK one, decides where nothing is woven.
      *
      * @param factory the factory that created the thread
      * @param thread  a daemon thread it created
@@ -88,7 +89,8 @@ public class ThreadFactoryDetector {
         if (factoryClass.startsWith("java.") || factoryClass.startsWith("jdk.")) {
             return false;
         }
-        return AgentThreadHooks.explicitDaemonSetting(thread) == null;
+        return AgentThreadHooks.constructedInWovenCode(thread)
+                && AgentThreadHooks.explicitDaemonSetting(thread) == null;
     }
 
     /**

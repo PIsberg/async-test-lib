@@ -114,4 +114,21 @@ class SharedCharsetCoderDetectorTest {
         d.recordAccess(encoder, "encode", null);
         assertFalse(d.analyze().hasIssues());
     }
+
+    /** #849, pinning #812: the state lookup and the thread-id set must not allocate per access. */
+    @Test
+    void recordingATrackedCoderAllocatesNothingPerAccess() throws InterruptedException {
+        var d = new SharedCharsetCoderDetector();
+        CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> {
+            synchronized (encoder) {
+                d.recordAccess(encoder, "encode", Thread.currentThread());
+            }
+        });
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording an encoder the detector "
+                + "already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " accesses");
+    }
 }

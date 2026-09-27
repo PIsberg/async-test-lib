@@ -16,8 +16,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 final class RecordPathAllocation {
 
-    /** Calls made before measuring: the first builds the state, the thread's key and its boxed id. */
-    static final int WARMUP_CALLS = 1_000;
+    /**
+     * Calls made before measuring: the first builds the state, the thread's key and its boxed id,
+     * and the rest let the JVM finish warming the record path up. A probe that ran first in its JVM
+     * read a one-off 1,696 to 12,784 bytes after 1,000 or 5,000 warm-up calls, the same number on
+     * every run, and 0 after 20,000 or when a second probe of the same path followed (#849).
+     */
+    static final int WARMUP_CALLS = 20_000;
 
     /** Calls measured. */
     static final int MEASURED_CALLS = 10_000;

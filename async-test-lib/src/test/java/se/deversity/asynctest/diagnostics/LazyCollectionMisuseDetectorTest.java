@@ -267,4 +267,141 @@ class LazyCollectionMisuseDetectorTest {
         assertEquals(IssueSeverity.CRITICAL, DetectorDefaultSeverity.of("LazyCollectionMisuseDetector", report),
             "each finding carries a severity in its Violation, but the text the gate reads carried none");
     }
+
+    // ---- Collection-taking overloads (#776) ----
+
+    @Test
+    void twoCollectionsUnderOneNameAreJudgedApart() {
+        // Two lazy lists both labelled "GRID". In the first, element 0 reads element 1; in the
+        // second, element 1 reads element 0. Keyed by the label that is a cycle; it is two
+        // one-way dependencies in two collections, and nothing can deadlock.
+        var d = new LazyCollectionMisuseDetector();
+        Object first = new Object();
+        Object second = new Object();
+        Thread t = Thread.currentThread();
+        d.recordComputeStart(first, "GRID", 0, t);
+        d.recordComputeStart(first, "GRID", 1, t);
+        d.recordComputeEnd(first, "GRID", 1, t, "b");
+        d.recordComputeEnd(first, "GRID", 0, t, "a");
+
+        d.recordComputeStart(second, "GRID", 1, t);
+        d.recordComputeStart(second, "GRID", 0, t);
+        d.recordComputeEnd(second, "GRID", 0, t, "c");
+        d.recordComputeEnd(second, "GRID", 1, t, "d");
+
+        var report = d.analyze();
+        assertFalse(report.violations.stream().anyMatch(v -> v.contains("in a cycle")), report.toString());
+        assertFalse(report.violations.stream().anyMatch(v -> v.contains("times")), report.toString());
+        assertFalse(report.violations.stream().anyMatch(v -> v.contains("not equal")), report.toString());
+    }
+
+    @Test
+    void oneCollectionUnderTwoNamesIsJudgedTogether() {
+        var d = new LazyCollectionMisuseDetector();
+        Object grid = new Object();
+        Thread t = Thread.currentThread();
+        d.recordComputeStart(grid, "GRID", 0, t);
+        d.recordComputeStart(grid, "cells", 1, t);
+        d.recordComputeEnd(grid, "cells", 1, t, "b");
+        d.recordComputeEnd(grid, "GRID", 0, t, "a");
+
+        d.recordComputeStart(grid, "cells", 1, t);
+        d.recordComputeStart(grid, "GRID", 0, t);
+        d.recordComputeEnd(grid, "GRID", 0, t, "a");
+        d.recordComputeEnd(grid, "cells", 1, t, "b");
+
+        var report = d.analyze();
+        assertTrue(report.violations.stream().anyMatch(v -> v.contains("in a cycle")), report.toString());
+        assertTrue(report.violations.stream().anyMatch(v -> v.contains("computed 2 times")), report.toString());
+    }
+
+    @Test
+    void aStaticCollectionsElementComputedOnceInEachOfTwoRoundsIsComputedTwice() {
+        // The case the per-round name path misses: the collection outlives the round.
+        var d = new LazyCollectionMisuseDetector();
+        Object staticGrid = new Object();
+        Thread t = Thread.currentThread();
+        d.markInvocationStart();
+        d.recordComputeStart(staticGrid, "GRID", 0, t);
+        d.recordComputeEnd(staticGrid, "GRID", 0, t, "a");
+        d.markInvocationStart();
+        d.recordComputeStart(staticGrid, "GRID", 0, t);
+        d.recordComputeEnd(staticGrid, "GRID", 0, t, "a");
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(), report.toString());
+        assertTrue(report.violations.get(0).contains("GRID[0] was computed 2 times"), report.toString());
+    }
+
+    @Test
+    void aFreshCollectionPerRoundNamedByObjectComputesEachElementOnce() {
+        var d = new LazyCollectionMisuseDetector();
+        for (int round = 0; round < 3; round++) {
+            d.markInvocationStart();
+            Object perRound = new Object();
+            Thread t = new Thread("round-" + round);
+            d.recordGet(perRound, "BOARDS", 0, t);
+            d.recordComputeStart(perRound, "BOARDS", 0, t);
+            d.recordComputeEnd(perRound, "BOARDS", 0, t, "board-" + round);
+        }
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
+
+    @Test
+    void waitersOnAStaticCollectionAreCountedPerRound() {
+        // Three rounds, each with one computation abandoned by a throwing mapping function and
+        // one other reader. Three waiters in all, never more than one in a round: not a convoy.
+        var d = new LazyCollectionMisuseDetector(2);
+        Object staticGrid = new Object();
+        for (int round = 0; round < 3; round++) {
+            d.markInvocationStart();
+            d.recordComputeStart(staticGrid, "GRID", 0, new Thread("thrower-" + round));
+            d.recordGet(staticGrid, "GRID", 0, new Thread("reader-" + round));
+        }
+        d.markInvocationStart();
+        assertFalse(d.analyze().violations.stream().anyMatch(v -> v.contains("waiting on it")),
+            d.analyze().toString());
+    }
+
+    @Test
+    void aConvoyOnAStaticCollectionSurvivesTheRoundClosing() {
+        var d = new LazyCollectionMisuseDetector();
+        Object staticGrid = new Object();
+        d.markInvocationStart();
+        d.recordComputeStart(staticGrid, "GRID", 0, new Thread("computer"));
+        for (int i = 0; i < 4; i++) {
+            d.recordGet(staticGrid, "GRID", 0, new Thread("reader-" + i));
+        }
+        d.markInvocationStart();
+        assertTrue(d.analyze().violations.stream().anyMatch(v -> v.contains("4 thread(s) waiting on it")),
+            d.analyze().toString());
+    }
+
+    @Test
+    void aNullCollectionFallsBackToTheName() {
+        var d = new LazyCollectionMisuseDetector();
+        Thread t = Thread.currentThread();
+        d.recordComputeStart(null, "GRID", 0, t);
+        d.recordComputeEnd(null, "GRID", 0, t, "a");
+        d.recordComputeStart(null, "GRID", 0, t);
+        d.recordComputeEnd(null, "GRID", 0, t, "a");
+        assertTrue(d.analyze().violations.stream().anyMatch(v -> v.contains("GRID[0] was computed 2 times")),
+            d.analyze().toString());
+
+        var quiet = new LazyCollectionMisuseDetector();
+        quiet.recordGet(null, null, 0, t);
+        quiet.recordComputeStart(new Object(), "GRID", 0, null);
+        quiet.recordComputeEnd(null, null, 0, null, "x");
+        assertFalse(quiet.analyze().hasIssues(), quiet.analyze().toString());
+    }
+
+    @Test
+    void anUnnamedCollectionIsLabelledByItsIdentity() {
+        var d = new LazyCollectionMisuseDetector();
+        Object grid = new Object();
+        Thread t = Thread.currentThread();
+        d.recordComputeStart(grid, null, 3, t);
+        d.recordComputeEnd(grid, null, 3, t, null);
+        assertTrue(d.analyze().violations.stream().anyMatch(v -> v.contains("Element Object@")),
+            d.analyze().toString());
+    }
 }

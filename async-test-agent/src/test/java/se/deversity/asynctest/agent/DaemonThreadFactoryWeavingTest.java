@@ -1,7 +1,9 @@
 package se.deversity.asynctest.agent;
 
+import com.example.agentfixture.BuilderThreadFactory;
 import com.example.agentfixture.DaemonDecidingThreadFactory;
 import com.example.agentfixture.InheritingThreadFactory;
+import com.example.unwovenfixture.UnwovenDaemonThreadFactory;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -75,6 +77,37 @@ class DaemonThreadFactoryWeavingTest {
                 "Thread.Builder decides the flag inside the JDK, which is never woven, so no "
                         + "setDaemon is recorded; a JDK factory's flag must be taken at its word. "
                         + "Report: " + report);
+    }
+
+    @Test
+    void aFactoryThatDecidesOutsideTheWovenSetIsNotReported() throws InterruptedException {
+        ThreadFactoryDetector.ThreadFactoryReport report =
+                createOnDaemonWorker(new UnwovenDaemonThreadFactory(), "unwoven-deciding");
+
+        assertFalse(report.hasIssues(),
+                "UnwovenDaemonThreadFactory calls setDaemon(true) in a package the agent does not "
+                        + "weave (#737); a decision it cannot see must not read as a missing one. "
+                        + "Report: " + report);
+    }
+
+    @Test
+    void aFactoryThatDecidesOnABuilderIsNotReported() throws InterruptedException {
+        ThreadFactoryDetector.ThreadFactoryReport report =
+                createOnDaemonWorker(new BuilderThreadFactory(true), "builder-deciding");
+
+        assertFalse(report.hasIssues(),
+                "BuilderThreadFactory(true) gives its builder daemon(true) in woven code (#737). "
+                        + "Report: " + report);
+    }
+
+    @Test
+    void aFactoryWhoseBuilderNeverDecidesIsReported() throws InterruptedException {
+        ThreadFactoryDetector.ThreadFactoryReport report =
+                createOnDaemonWorker(new BuilderThreadFactory(false), "builder-inheriting");
+
+        assertTrue(report.hasIssues() && report.toString().contains("daemon only by inheritance"),
+                "BuilderThreadFactory(false) builds in woven code and never decides, so its "
+                        + "thread is daemon only because the calling worker was. Report: " + report);
     }
 
     /** Calls the factory on a daemon thread, as a runner worker would (#479). */

@@ -229,4 +229,131 @@ class StableValueMisuseDetectorTest {
         String str = detector.analyze().toString();
         assertTrue(str.contains("HIGH"), str);
     }
+
+    // ---- Holder-taking overloads (#776) ----
+
+    @Test
+    void twoHoldersUnderOneNameAreJudgedApart() {
+        // Two StableValues both labelled "CONFIG" in one round, each set once. Keyed by the
+        // label they are one holder set twice; keyed by the holder, neither is.
+        Object first = new Object();
+        Object second = new Object();
+        detector.markInvocationStart();
+        detector.recordSet(first, "CONFIG", new Thread("a"));
+        detector.recordSet(second, "CONFIG", new Thread("b"));
+        assertTrue(detector.analyze().getDoubleSetIssues().isEmpty(),
+            "two holders each set once share a label, not a set: " + detector.analyze());
+    }
+
+    @Test
+    void aReadOfAnUnsetHolderIsNotExcusedByAnotherHolderUnderItsName() {
+        // The other direction of the same merge: the label says "CONFIG was set", but the holder
+        // being read never was, and orElseThrow() on it throws.
+        Object setOne = new Object();
+        Object unsetOne = new Object();
+        Thread t = Thread.currentThread();
+        detector.markInvocationStart();
+        detector.recordSet(setOne, "CONFIG", t);
+        detector.recordRead(unsetOne, "CONFIG", t);
+        assertEquals(1, detector.analyze().getReadBeforeSetIssues().size(), detector.analyze().toString());
+    }
+
+    @Test
+    void oneHolderUnderTwoNamesIsJudgedTogether() {
+        Object holder = new Object();
+        detector.markInvocationStart();
+        detector.recordSet(holder, "CONFIG", new Thread("a"));
+        detector.recordSet(holder, "settings", new Thread("b"));
+        assertEquals(1, detector.analyze().getDoubleSetIssues().size(),
+            "one holder set under two labels is still set twice: " + detector.analyze());
+    }
+
+    @Test
+    void aStaticHolderSetOnceInEachOfTwoRoundsIsSetTwice() {
+        // The case the per-round name path misses: the holder outlives the round, so round two's
+        // setOrThrow() throws IllegalStateException.
+        Object staticHolder = new Object();
+        Thread t = Thread.currentThread();
+        detector.markInvocationStart();
+        detector.recordSet(staticHolder, "CONFIG", t);
+        detector.markInvocationStart();
+        detector.recordSet(staticHolder, "CONFIG", t);
+        assertEquals(1, detector.analyze().getDoubleSetIssues().size(), detector.analyze().toString());
+    }
+
+    @Test
+    void aFreshHolderPerRoundNamedByObjectIsSetOnceEach() {
+        Thread[] setters = { new Thread("r1"), new Thread("r2"), new Thread("r3") };
+        for (Thread setter : setters) {
+            detector.markInvocationStart();
+            Object perRound = new Object();
+            detector.recordSet(perRound, "CONFIG", setter);
+            detector.recordRead(perRound, "CONFIG", setter);
+        }
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "one set per fresh holder is the contract: " + report);
+        assertTrue(report.getContentionWarnings().isEmpty(), report.toString());
+    }
+
+    @Test
+    void aStaticHolderSetInOneRoundAndReadInTheNextIsNotReadBeforeSet() {
+        Object staticHolder = new Object();
+        Thread t = Thread.currentThread();
+        detector.markInvocationStart();
+        detector.recordSupplierStart(staticHolder, "CONFIG", t);
+        detector.recordSupplierEnd(staticHolder, "CONFIG", t);
+        detector.markInvocationStart();
+        detector.recordRead(staticHolder, "CONFIG", t);
+        assertFalse(detector.analyze().hasIssues(), detector.analyze().toString());
+    }
+
+    @Test
+    void aStaticHolderSetByOneThreadPerRoundIsNotContended() {
+        // Contention is threads racing inside one round; a static holder reached from a new
+        // thread each round is one setter per round. The repeat set is reported, not a race.
+        Object staticHolder = new Object();
+        for (int round = 0; round < 3; round++) {
+            detector.markInvocationStart();
+            detector.recordSupplierEnd(staticHolder, "CONFIG", new Thread("r" + round));
+        }
+        assertTrue(detector.analyze().getContentionWarnings().isEmpty(), detector.analyze().toString());
+    }
+
+    @Test
+    void reentrancyIsJudgedPerHolder() {
+        Thread t = Thread.currentThread();
+        Object outer = new Object();
+        Object inner = new Object();
+        // A supplier that computes another holder under the same label is not re-entering itself.
+        detector.recordSupplierStart(outer, "CONFIG", t);
+        detector.recordSupplierStart(inner, "CONFIG", t);
+        detector.recordSupplierEnd(inner, "CONFIG", t);
+        detector.recordSupplierEnd(outer, "CONFIG", t);
+        assertTrue(detector.analyze().getReentrantIssues().isEmpty(), detector.analyze().toString());
+
+        // One holder reached under a second label while its supplier runs is.
+        detector.recordSupplierStart(outer, "CONFIG", t);
+        detector.recordSupplierStart(outer, "settings", t);
+        assertEquals(1, detector.analyze().getReentrantIssues().size(), detector.analyze().toString());
+    }
+
+    @Test
+    void aNullHolderFallsBackToTheName() {
+        detector.recordSet(null, "CONFIG", new Thread("a"));
+        detector.recordSet(null, "CONFIG", new Thread("b"));
+        assertEquals(1, detector.analyze().getDoubleSetIssues().size(), detector.analyze().toString());
+        assertDoesNotThrow(() -> {
+            detector.recordSet(null, null, Thread.currentThread());
+            detector.recordRead(new Object(), "K", null);
+            detector.recordSupplierStart(null, null, null);
+        });
+    }
+
+    @Test
+    void anUnnamedHolderIsLabelledByItsIdentity() {
+        Object holder = new Object();
+        detector.recordRead(holder, null, Thread.currentThread());
+        String issue = detector.analyze().getReadBeforeSetIssues().get(0);
+        assertTrue(issue.contains("StableValue 'Object@"), issue);
+    }
 }

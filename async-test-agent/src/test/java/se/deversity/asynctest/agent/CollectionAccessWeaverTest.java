@@ -297,7 +297,9 @@ class CollectionAccessWeaverTest {
         // table travels in one visitor since the MemberSubstitution replacement.
         assertEquals(1, substitutions.size(), "one visitor carries the whole collection table");
         assertEquals(1, lockSubstitutions.size(), "one visitor carries the whole lock table");
-        assertEquals(1, threadSubstitutions.size(), "one visitor carries the whole thread table");
+        assertEquals(2, threadSubstitutions.size(),
+                "one visitor carries the whole thread table, and one marks the threads a woven "
+                        + "class constructs (#737)");
     }
 
     @Test
