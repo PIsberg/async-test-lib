@@ -329,6 +329,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An agent-fed `SharedMessageDigest` finding names the user's line, not the library's hook
+  (#853).** With the agent attached, a woven `update()` or `digest()` reaches the detector through
+  `AgentSharedInstanceHooks`, and `SiteCapture` skipped detector frames but not the root-package
+  `Agent*Hooks` classes, so every access site read
+  `AgentSharedInstanceHooks.recordDigest(AgentSharedInstanceHooks.java:354)`. `SiteCapture` now
+  also skips a top-level `se.deversity.asynctest.Agent*Hooks` class and the classes nested in it;
+  a user class named `*Hooks` and the library's own `Agent*HooksTest` classes stay user frames.
+  `AgentSharedInstanceHooksTest` pins the site end to end through the hook, `SiteCaptureTest` the
+  rule for all eight hook classes in both directions.
+
 - **With the agent, a daemon decision the agent could not see no longer reads as a missing one
   (#737).** `DaemonThreadHygieneDetector` and `ThreadFactoryDetector` judged a daemon thread
   undecided unless a woven `setDaemon(true)` was seen, so `Thread.ofPlatform().daemon().unstarted(r)`
