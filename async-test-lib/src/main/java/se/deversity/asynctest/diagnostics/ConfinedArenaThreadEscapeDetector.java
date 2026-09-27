@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -344,7 +345,7 @@ public final class ConfinedArenaThreadEscapeDetector {
                     a.label, a.ownerThreadName, wrongCloser), 2);
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     private static void add(Report r, String label, IssueSeverity severity, TrustTier tier,

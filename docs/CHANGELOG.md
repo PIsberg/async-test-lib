@@ -311,6 +311,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flag off the check returns before looking at the report and writes nothing. In this module's
   suite 86 built-in reports with issues pass through the check, 49 of them structured, and none
   came back with an empty list.
+- **The structured-list check runs where a detector builds its report, so its own unit tests drive
+  it (#829).** The #802 check sat in `DetectorRegistry.ifIssue`, which only the tests that fire a
+  detector through the registry reach: in this module's suite, 50 structured reports from 14 of
+  the 47 report types that keep a `structuredViolations` list. Every structured detector's
+  `analyze()` now returns through `DetectorFailurePolicy.checkedReport`, which applies the same
+  check under the same `async-test.strict-detectors` flag, so a detector unit test that calls
+  `analyze()` directly fails on a finding path that left the list empty. The suite now checks 618
+  structured reports with issues from all 47 of those report types, 555 of them outside
+  `StructuredViolationCoverageTest`; none came back empty. The no-context
+  `Phase1DetectorSet.printReports()` path is covered by the same call. `StructuredViolationCoverageTest`
+  now also fails a structured detector whose source does not return through the check, keeps one
+  driver per detector as a floor, and drops seven second- and third-site drivers whose findings the
+  detectors' own tests were measured producing. Consumers see no change: with the flag off the call
+  returns the report without reading it.
 - **`ABAProblemDetector` keeps every compare-and-set it records (#763).** Attempts were keyed by
   their identity hash, so a later attempt sharing one replaced an earlier one, and a stale
   compare-and-set already judged an ABA dropped out of the report: of 300,000, two runs reported

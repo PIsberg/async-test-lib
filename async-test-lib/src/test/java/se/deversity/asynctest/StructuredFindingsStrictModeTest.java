@@ -16,6 +16,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -103,6 +104,38 @@ class StructuredFindingsStrictModeTest {
                 "with no structured finding the gate falls back to the text, as before");
     }
 
+    @Test
+    @DisplayName("strict: a report built with issues and an empty list fails where the detector returns it")
+    void strictModeFailsTheReportWhereTheDetectorBuildsIt() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+
+        AssertionError raised = assertThrows(AssertionError.class, () ->
+                DetectorFailurePolicy.checkedReport(new PartialDetector(), new StructuredReport(List.of())),
+                "a unit test that calls analyze() directly must learn about the empty list too (#829)");
+
+        assertTrue(raised.getMessage().contains("PartialDetector"),
+                "the failure must name the detector: " + raised.getMessage());
+    }
+
+    @Test
+    @DisplayName("the check hands back the same report: filled, text-only, or outside strict mode")
+    void checkedReportReturnsTheReportUnchanged() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+        StructuredReport filled = new StructuredReport(List.of(new Violation("PartialDetector",
+                IssueSeverity.MEDIUM, "one finding", List.of(), Map.of(), null)));
+        TextOnlyReport textOnly = new TextOnlyReport();
+        assertSame(filled, DetectorFailurePolicy.checkedReport(new PartialDetector(), filled));
+        assertSame(textOnly, DetectorFailurePolicy.checkedReport(new PartialDetector(), textOnly),
+                "a report type with no structuredViolations field is judged by its text by design");
+
+        System.clearProperty(DetectorFailurePolicy.STRICT_PROPERTY);
+        StructuredReport empty = new StructuredReport(List.of());
+        String written = captureStdErr(() ->
+                assertSame(empty, DetectorFailurePolicy.checkedReport(new PartialDetector(), empty),
+                        "a library-internal inconsistency must not fail a consumer's run"));
+        assertEquals("", written, "a consumer's build log gains nothing from a library-internal check");
+    }
+
     private static String captureStdErr(Runnable body) {
         PrintStream previous = System.err;
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -130,7 +163,8 @@ class StructuredFindingsStrictModeTest {
             this.structuredViolations = new ArrayList<>(findings);
         }
 
-        boolean hasIssues() {
+        /** Public, as every built-in report's is, so the check can read it by name. */
+        public boolean hasIssues() {
             return true;
         }
 

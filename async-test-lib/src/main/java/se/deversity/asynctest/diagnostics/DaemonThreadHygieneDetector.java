@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.AgentThreadHooks;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -214,7 +215,7 @@ public final class DaemonThreadHygieneDetector {
                             "stillAlive", t.isAlive()),
                     Instant.now()));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     private static @Nullable Thread findLiveThread(long id) {

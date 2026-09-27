@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -235,7 +236,7 @@ public final class SharedMemorySegmentRaceDetector {
                     s.label, MAX_TRACKED_ACCESSES, dropped));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /**

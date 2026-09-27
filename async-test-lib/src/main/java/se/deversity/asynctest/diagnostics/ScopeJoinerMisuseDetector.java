@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -301,7 +302,7 @@ public final class ScopeJoinerMisuseDetector {
             offOwner(r, s);
             forkAfterShortCircuit(r, s);
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     private static void reuse(Report r, JoinerState s) {

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -192,7 +193,7 @@ public final class PlatformThreadPerTaskDetector {
                             "virtualThreadsCreated", virtualThreadsCreated.get()),
                     Instant.now()));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. {@code hasIssues()} drives the SPI sweep. */

@@ -42,10 +42,17 @@ it on. `DetectorSweepResilienceTest` pins both halves — the containment (with 
 the duration) and the promotion. Mechanics in `se.deversity.asynctest.DetectorFailurePolicy`.
 
 The flag also fails a built-in report that has issues and an empty `structuredViolations` list,
-checked once per report in `DetectorRegistry.ifIssue` (#802). Without it the `failOn` gate reads
-that finding's severity from its text, and only a hand-written driver in
-`StructuredViolationCoverageTest` could notice. With the flag off the check returns before looking
-at the report and writes nothing. `StructuredFindingsStrictModeTest` pins both halves.
+checked where each structured detector returns its report (`DetectorFailurePolicy.checkedReport`,
+#829) and again once per report in `DetectorRegistry.ifIssue` (#802). Without it the `failOn` gate
+reads that finding's severity from its text, and only a hand-written driver in
+`StructuredViolationCoverageTest` could notice. Because the check sits where the report is built, a
+detector's own unit tests that call `analyze()` drive it, not only the tests that fire the detector
+through the registry. The no-context `Phase1DetectorSet.printReports()` reads the list for the
+severity it hands listeners, and is covered by the same call. The SPI `LegacyDetectorAdapter` is
+not held to it: it never reads the list, and turns any built-in report with issues into one `HIGH`
+`Violation` from the text, so an empty list changes nothing it emits. With the flag off the check
+returns before looking at the report and writes nothing. `StructuredFindingsStrictModeTest` pins
+both halves.
 
 The same switch is on wherever the detectors are measured from outside this module: every
 corpus-eval lane, `consumer-fixture` and `consumer-fixture-langs` (Maven and Gradle), the examples

@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -296,7 +297,7 @@ public final class RecordMutableComponentLeakDetector {
                 + "were not examined. The findings above are a lower bound.",
                 MAX_INSTANCES, drops));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Is this value's runtime type mutable in a way that matters for sharing? */

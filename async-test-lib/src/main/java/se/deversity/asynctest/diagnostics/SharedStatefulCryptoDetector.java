@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AITestDriven;
@@ -165,7 +166,7 @@ public final class SharedStatefulCryptoDetector {
                             "threadCount", s.threadCount()),
                     Instant.now()));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     private static String safeString(java.util.concurrent.Callable<String> c) {

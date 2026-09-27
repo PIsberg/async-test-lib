@@ -234,9 +234,11 @@ mvn -q -Dlicense.mock.mode=true \
 - `DetectorRegistrySpiTest` / SPI instantiation → catches enum↔factory gaps.
 - `AsyncTestConfigBuildResolutionTest` → catches a missing config flag / build-block line.
 - `{{CLASS}}Test` → the new detector's own tests.
-- `StructuredViolationCoverageTest` → the report must keep `structuredViolations` (the template
-  does) and the detector needs one driver in that test's `PATHS` per place its report writes a
-  finding. It fails until the TODO detection rule can actually fire.
+- `StructuredViolationCoverageTest` → the report must keep `structuredViolations` and `analyze()`
+  must return it through `DetectorFailurePolicy.checkedReport(this, r)` (the template does both),
+  and the detector needs one driver in that test's `PATHS`. It fails until the TODO detection rule
+  can actually fire. Under strict mode the checked return fails any test that gets a report with
+  issues and an empty list, so the detector's own firing tests cover its other finding paths.
 
 Then a full compile to be sure nothing else drifted:
 ```bash

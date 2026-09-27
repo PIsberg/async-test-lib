@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -277,7 +278,7 @@ public final class ScopeConfigurationMisuseDetector {
         }
         sharedThreadFactory(r, all);
         duplicateNames(r, all);
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     private static void discardedConfiguration(Report r, ScopeState s) {

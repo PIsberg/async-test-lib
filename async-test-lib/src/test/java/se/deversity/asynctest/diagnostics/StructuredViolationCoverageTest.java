@@ -3,12 +3,14 @@ package se.deversity.asynctest.diagnostics;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.sql.Connection;
@@ -23,7 +25,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -59,15 +60,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       shrink.</li>
  *   <li><strong>Paths, driven.</strong> Every detector outside {@link #TEXT_ONLY} has at least one
  *       entry in {@link #PATHS}, and every entry drives that detector until its report has issues
- *       and then requires the structured list to be non-empty. A detector with more than one place
- *       where it writes a finding has one entry per place. A driver that fails to make its report
- *       fire fails the test rather than passing vacuously.</li>
+ *       and then requires the structured list to be non-empty. A driver that fails to make its
+ *       report fire fails the test rather than passing vacuously.</li>
  * </ul>
  *
- * <p>The paths half needs a driver per finding site, and a site added later with none would pass it.
- * {@code DetectorRegistry.ifIssue} backs it at run time: under strict mode it fails any report with
- * issues and an empty list, so every test that fires a detector through the registry is a driver
- * too ({@code StructuredFindingsStrictModeTest}, #802).
+ * <p>One entry per detector is a floor, not the coverage. A driver per finding site could not find a
+ * site added later, so every detector outside {@link #TEXT_ONLY} returns its report through
+ * {@code DetectorFailurePolicy.checkedReport} (pinned here), which under strict mode fails any report
+ * with issues and an empty list. Every test that obtains a report is then a driver: the detector's
+ * own unit tests that call {@code analyze()}, and the tests that fire it through the registry, where
+ * {@code DetectorRegistry.ifIssue} checks again (#802, #829). Entries for a second or third site
+ * were retired in #829 where the detector's own tests were measured producing the same finding.
  *
  * <p>The three detectors that gained structured findings in #774 are also held to the severity
  * their text alone resolved to ({@link #TEXT_AGREES}), so the change could not move what an
@@ -138,6 +141,13 @@ class StructuredViolationCoverageTest {
      */
     private static final Set<String> TEXT_AGREES = Set.of(
             "DeadlockDetector", "RaceConditionDetector", "AtomicityValidator");
+
+    /** Where the detectors' sources are, relative to the module the suite runs in. */
+    private static final java.nio.file.Path DIAGNOSTICS =
+            java.nio.file.Path.of("src/main/java/se/deversity/asynctest/diagnostics");
+
+    /** The call a structured detector's report-building method returns through. */
+    private static final String CHECKED_RETURN = "DetectorFailurePolicy.checkedReport(this, ";
 
     /** One way to make a detector report: its name, what the path is, and how to drive it. */
     private record Path(String detector, String path, Drive drive) {
@@ -224,34 +234,11 @@ class StructuredViolationCoverageTest {
                 d.recordWorkCompleted("report", "fetch", Thread.currentThread());
                 return d.analyze();
             }),
-            new Path("CompletableFutureCancellationPropagationDetector", "cancel(true) is ignored", () -> {
-                var d = new CompletableFutureCancellationPropagationDetector();
-                d.cancel(new CompletableFuture<String>(), "report", "view", true);
-                return d.analyze();
-            }),
             new Path("CompletableFutureCombinatorMisuseDetector", "combinator never awaited", () -> {
                 var d = new CompletableFutureCombinatorMisuseDetector();
                 var all = new CompletableFuture<Void>();
                 d.recordCombinator(all, "writes", "allOf", 3, Thread.currentThread());
                 d.recordConstituentCompleted(all, "a", false, Thread.currentThread());
-                return d.analyze();
-            }),
-            new Path("CompletableFutureCombinatorMisuseDetector", "non-blocking read before completion", () -> {
-                var d = new CompletableFutureCombinatorMisuseDetector();
-                var all = new CompletableFuture<Void>();
-                d.recordCombinator(all, "writes", "allOf", 2, Thread.currentThread());
-                d.recordConstituentCompleted(all, "a", false, Thread.currentThread());
-                d.recordAwait(all, "getNow", Thread.currentThread());
-                d.recordConstituentCompleted(all, "b", false, Thread.currentThread());
-                return d.analyze();
-            }),
-            new Path("CompletableFutureCombinatorMisuseDetector", "anyOf loser fails after the read", () -> {
-                var d = new CompletableFutureCombinatorMisuseDetector();
-                var any = new CompletableFuture<Object>();
-                d.recordCombinator(any, "first-answer", "anyOf", 2, Thread.currentThread());
-                d.recordConstituentCompleted(any, "fast", false, Thread.currentThread());
-                d.recordAwait(any, "join", Thread.currentThread());
-                d.recordConstituentCompleted(any, "slow", true, Thread.currentThread());
                 return d.analyze();
             }),
             new Path("CompletableFutureCompletionRaceDetector", "losing completion attempt", () -> {
@@ -378,13 +365,6 @@ class StructuredViolationCoverageTest {
                 }
                 return d.analyze();
             }),
-            new Path("PlatformThreadPerTaskDetector", "thread-per-task executor on platform threads", () -> {
-                var d = new PlatformThreadPerTaskDetector();
-                try (ExecutorService perTask = Executors.newThreadPerTaskExecutor(Thread.ofPlatform().factory())) {
-                    d.registerExecutor(perTask, "platform-per-task");
-                }
-                return d.analyze();
-            }),
             new Path("RecordMutableComponentLeakDetector", "component mutated while shared", () -> {
                 var d = new RecordMutableComponentLeakDetector();
                 List<String> items = new ArrayList<>(List.of("a"));
@@ -392,13 +372,6 @@ class StructuredViolationCoverageTest {
                 d.recordShared(order, "order", new Thread(() -> { }, "record-a"));
                 d.recordShared(order, "order", new Thread(() -> { }, "record-b"));
                 items.add("b");
-                return d.analyze();
-            }),
-            new Path("RecordMutableComponentLeakDetector", "mutable component, not mutated", () -> {
-                var d = new RecordMutableComponentLeakDetector();
-                Order order = new Order("o-2", new ArrayList<>(List.of("a")));
-                d.recordShared(order, "order", new Thread(() -> { }, "record-a"));
-                d.recordShared(order, "order", new Thread(() -> { }, "record-b"));
                 return d.analyze();
             }),
             new Path("ScopeConfigurationMisuseDetector", "configured timeout discarded", () -> {
@@ -486,13 +459,6 @@ class StructuredViolationCoverageTest {
                 Object segment = new Object();
                 d.recordAccess(segment, "ringBuffer", 0, 8, true, new Thread(() -> { }, "seg-1"));
                 d.recordAccess(segment, "ringBuffer", 4, 8, false, new Thread(() -> { }, "seg-2"));
-                return d.analyze();
-            }),
-            new Path("SharedMemorySegmentRaceDetector", "conflicting guards", () -> {
-                var d = new SharedMemorySegmentRaceDetector();
-                Object segment = new Object();
-                d.recordAccess(segment, "ringBuffer", 0, 8, true, new Thread(() -> { }, "seg-1"), "lockA");
-                d.recordAccess(segment, "ringBuffer", 0, 8, true, new Thread(() -> { }, "seg-2"), "lockB");
                 return d.analyze();
             }),
             new Path("SharedMessageDigestDetector", "digest shared across threads", () -> {
@@ -609,15 +575,6 @@ class StructuredViolationCoverageTest {
                 }
                 return d.analyze();
             }),
-            new Path("VirtualThreadPoolingDetector", "one virtual thread reused across tasks", () -> {
-                var d = new VirtualThreadPoolingDetector();
-                Thread worker = Thread.ofVirtual().name("reused-vt").start(() -> {
-                    d.recordTaskExecution("hand-rolled-pool");
-                    d.recordTaskExecution("hand-rolled-pool");
-                });
-                worker.join();
-                return d.analyze();
-            }),
             new Path("VirtualThreadResourceSaturationDetector", "fan-out beyond a bounded resource", () -> {
                 var d = new VirtualThreadResourceSaturationDetector();
                 d.registerResource("connections", 2);
@@ -692,8 +649,28 @@ class StructuredViolationCoverageTest {
         }
         assertTrue(undriven.isEmpty(),
                 "A detector outside TEXT_ONLY with no driver is claimed to fill its structured "
-                        + "list without anything checking it. Add one Path per place its report "
-                        + "writes a finding: " + undriven);
+                        + "list without anything checking it. Add one Path that makes its report "
+                        + "fire; its own unit tests cover its other finding sites: " + undriven);
+    }
+
+    @Test
+    @DisplayName("every detector that keeps structured findings returns its report through the strict check")
+    void everyStructuredDetectorReturnsThroughTheStrictCheck() throws IOException {
+        List<String> unchecked = new ArrayList<>();
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            if (TEXT_ONLY.contains(row.detectorClass())) {
+                continue;
+            }
+            java.nio.file.Path source = DIAGNOSTICS.resolve(row.detectorClass() + ".java");
+            if (!Files.readString(source, StandardCharsets.UTF_8).contains(CHECKED_RETURN)) {
+                unchecked.add(row.detectorClass());
+            }
+        }
+        assertTrue(unchecked.isEmpty(),
+                "These detectors keep structured findings but do not return their report through "
+                        + CHECKED_RETURN + "...), so a test that calls analyze() directly never "
+                        + "learns that a finding path left the list empty; only a test that fires "
+                        + "the detector through the registry would (#829): " + unchecked);
     }
 
     @Test
