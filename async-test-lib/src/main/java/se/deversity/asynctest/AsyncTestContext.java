@@ -1995,6 +1995,18 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link ABAProblemDetector} for the calling thread's test, or {@code null}}
+     *
+     * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is
+     * {@link AgentConcurrencyUtilHooks#abaSlot}, reached from woven {@code AtomicReference} calls
+     * that do not know a test is in progress (#817).
+     */
+    static @Nullable ABAProblemDetector currentABAProblemDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.abaProblemDetector;
+    }
+
+    /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
      * @deprecated use {@link #timerDetector()}

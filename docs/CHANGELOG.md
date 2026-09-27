@@ -329,6 +329,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   idle in the runner's pool at analysis; the runner shuts its executor down first, and the virtual
   worker has ended. The workers that find the lock taken now join the holder's thread, bounded, so
   it has ended before the last round does.
+- **`ABA_PROBLEM` is fed by the agent, and a toggle that ran before the read is no longer an ABA
+  there (#817).** Recorded by hand, two threads that swing a value A to B to A wholly before a
+  third thread reads it, and record the swing after the read, leave exactly the records of a real
+  ABA, and nothing in the records tells them apart (#810 pins that). The agent already substituted
+  every `AtomicReference` `get`, `getAcquire`, `set`, `lazySet`, `setRelease`, `compareAndSet` and
+  `getAndSet`; on a thread whose test has the detector each now runs through
+  `ABAProblemDetector.agentSlot(atomic)`, which takes its record inside the same lock as the
+  operation, so one atomic's records are in the order its operations ran. The toggle before the
+  read is silent and the one between the read and the swap fires, with no recording call. The
+  agent path keeps no history, only each thread's last read and whether the value left it and came
+  back since, and allocates nothing per operation once an atomic and a thread have been seen
+  (measured: 0 bytes per get, compareAndSet and set in steady state). It reports only a
+  compare-and-set whose expected value has a mutable field of its own: an A-B-A of an enum
+  constant, a boxed number, a `String`, a record or `null` leaves nothing stale, so a state
+  machine's toggle is silent. The recording path is unchanged. `ABA_PROBLEM` moves from
+  recording-only to agent-fed in `DetectorFeeds` and the catalog; its trust row stays `FACT`
+  (`ASSERTED`), the weaker of its two paths. `AbaAgentFeedWeavingTest` pins both directions end to
+  end, and the corpus agent-pair lane gains `agent_abaStack_nodePushedBackAfterTheRead` (fires) and
+  `agent_abaStack_nodePushedBackBeforeTheRead` (silent). Not fed yet: `AtomicStampedReference`,
+  `AtomicReferenceFieldUpdater`, `AtomicReferenceArray` and `VarHandle`.
 - **A parent that polls `Thread.isAlive()` instead of joining is ordered after its child, and a
   `Thread.Builder` start is attributed to the run (#834).** `isAlive()` returning `false` is an
   edge the Java memory model names (everything a terminated thread did happens before another

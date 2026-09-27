@@ -1208,6 +1208,26 @@ final class Corpus {
                             + "backward jump around it is what the weaver marks, and a loop "
                             + "re-tests the state a lost notify announced"),
 
+            new RecordingSubject("agent_abaStack_nodePushedBackAfterTheRead", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "five workers read a stack head, a sixth pops it and pushes the same node "
+                            + "back, and the first of the five to swap the head for the node's "
+                            + "next succeeds on a premise the stack no longer holds. Nothing is "
+                            + "recorded: the woven get, compareAndSet and set run through the "
+                            + "detector, which records each inside its operation (#817)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_abaStack_nodePushedBackBeforeTheRead", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same pop, push back, reads and swaps, with the pop and push back "
+                            + "before the reads, so every premise is read after the toggle. "
+                            + "Recorded by hand that history reads as its twin (#810); woven, the "
+                            + "records are in the order the operations ran"),
+
             new RecordingSubject("agent_sleepStamped_whileHoldingTheWriteStamp", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,

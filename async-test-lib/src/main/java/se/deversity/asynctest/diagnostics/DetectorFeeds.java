@@ -97,7 +97,12 @@ public final class DetectorFeeds {
             // Thread.start() and Thread.setDaemon(boolean) (#731). Woven, these track explicit
             // setDaemon decisions and observe thread starts directly, resolving the blind spot
             // where threads created on daemon test runner workers inherited daemon status.
-            DetectorType.DAEMON_THREAD_HYGIENE);
+            DetectorType.DAEMON_THREAD_HYGIENE,
+            // AtomicReference get, set and compareAndSet (#817), substituted already for the
+            // ownership and happens-before models. Recorded by hand, a toggle recorded after a
+            // read it ran before reads as an A-B-A; run through the detector, each record is taken
+            // inside its operation, so record order is operation order.
+            DetectorType.ABA_PROBLEM);
 
     /**
      * Fed by the JVM and the harness with no recording call.

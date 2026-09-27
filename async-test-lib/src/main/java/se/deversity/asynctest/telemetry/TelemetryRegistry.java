@@ -1,5 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
+import se.deversity.asynctest.AgentConcurrencyUtilHooks;
+import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.SelfGuard;
@@ -2207,7 +2209,9 @@ public final class TelemetryRegistry {
     // updater or the VarHandle, one instance per field, or the element's index. A slot reached
     // through two different handles reads as two containers, which can only lose a match and fall
     // back to the #557 excuse. Each hook performs the original operation with its own exceptions
-    // and result.
+    // and result. On a thread whose test has an ABAProblemDetector, an AtomicReference hook
+    // performs it through the detector's view of that atomic, which records it inside the same
+    // lock (#817).
 
     /** {@return the container identity of the slot {@code within} selects inside {@code holder}} */
     private static int slotIdentity(Object holder, int within) {
@@ -2246,7 +2250,12 @@ public final class TelemetryRegistry {
     public static void setAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
         ownershipOffered(value, slot);
         slotStored(slot, value);
-        slot.set(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        if (aba == null) {
+            slot.set(value);
+        } else {
+            aba.set(slot, value);
+        }
     }
 
     /**
@@ -2260,7 +2269,12 @@ public final class TelemetryRegistry {
     public static void lazySetAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
         ownershipOffered(value, slot);
         slotStored(slot, value);
-        slot.lazySet(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        if (aba == null) {
+            slot.lazySet(value);
+        } else {
+            aba.lazySet(slot, value);
+        }
     }
 
     /**
@@ -2274,7 +2288,12 @@ public final class TelemetryRegistry {
     public static void setReleaseAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
         ownershipOffered(value, slot);
         slotStored(slot, value);
-        slot.setRelease(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        if (aba == null) {
+            slot.setRelease(value);
+        } else {
+            aba.setRelease(slot, value);
+        }
     }
 
     /**
@@ -2292,7 +2311,9 @@ public final class TelemetryRegistry {
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
         ownershipOffered(update, slot);
-        boolean swapped = slot.compareAndSet(expected, update);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        boolean swapped = aba == null ? slot.compareAndSet(expected, update)
+                : aba.compareAndSet(slot, expected, update);
         if (!swapped) {
             ownershipRefused(update, slot);
         } else {
@@ -2316,7 +2337,8 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetAtomicReference(AtomicReference<Object> slot,
                                                             @Nullable Object value) {
         slotStored(slot, value);
-        Object previous = slot.getAndSet(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object previous = aba == null ? slot.getAndSet(value) : aba.getAndSet(slot, value);
         ownershipTaken(previous, slot);
         return previous;
     }
@@ -2350,7 +2372,8 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
-        Object value = slot.get();
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object value = aba == null ? slot.get() : aba.get(slot);
         if (!STOPPED.get()) {
             HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         }
@@ -2366,7 +2389,8 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
-        Object value = slot.getAcquire();
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object value = aba == null ? slot.getAcquire() : aba.getAcquire(slot);
         if (!STOPPED.get()) {
             HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         }

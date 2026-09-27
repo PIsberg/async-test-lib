@@ -238,6 +238,9 @@ class ABAProblemDetectorTest {
         // back to A and records it. The values cannot tell them apart either, since A is what the
         // read sees whether the toggle ran before it or after it. Reporting both is the choice;
         // a change that silences the first silences the second with it, and this test goes red.
+        // This is the recording path only: fed by the agent, each record is taken inside its
+        // operation and the first history is silent (#817), see
+        // underTheAgentAToggleThatRanBeforeTheReadIsSilentAndTheRealOneStillFires.
         ABAProblemDetector ranBefore = new ABAProblemDetector();
         AtomicReference<String> head = new AtomicReference<>("A");
         CountDownLatch movedAway = new CountDownLatch(1);
@@ -425,5 +428,159 @@ class ABAProblemDetectorTest {
 
         assertEquals(viaAnalyzeABA.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeABA.toString(), viaAnalyze.toString());
+    }
+
+    // ---- Fed by the agent (#817) ----------------------------------------------------------------
+
+    /** A lock-free stack node: its {@code next} is the state an A-B-A leaves stale. */
+    private static final class Node {
+        Node next;
+        final String name;
+
+        Node(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+
+    /** Each woven operation, as the agent's hooks run it on the calling thread. */
+    @SuppressWarnings("unchecked")
+    private static AtomicReference<Object> erased(AtomicReference<?> atomic) {
+        return (AtomicReference<Object>) atomic;
+    }
+
+    @Test
+    void underTheAgentAToggleThatRanBeforeTheReadIsSilentAndTheRealOneStillFires()
+            throws InterruptedException {
+        // The pin above, with every operation run through the agent's view of the atomic, which
+        // takes each record inside the operation's own lock. The toggle that ran wholly before the
+        // read is now recorded before it, whatever the threads do afterwards, and the real A-B-A
+        // keeps its finding.
+        Node a = new Node("A");
+        Node b = new Node("B");
+        Node c = new Node("C");
+
+        ABAProblemDetector ranBefore = new ABAProblemDetector();
+        AtomicReference<Object> head = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot = ranBefore.agentSlot(head);
+        CountDownLatch movedAway = new CountDownLatch(1);
+        CountDownLatch movedBack = new CountDownLatch(1);
+        CountDownLatch read = new CountDownLatch(1);
+        Thread away = new Thread(() -> {
+            slot.set(head, b);
+            movedAway.countDown();
+            awaitQuietly(read);                           // this thread lingers past the read
+        }, "aba-away");
+        Thread back = new Thread(() -> {
+            awaitQuietly(movedAway);
+            slot.set(head, a);
+            movedBack.countDown();
+            awaitQuietly(read);
+        }, "aba-back");
+        away.start();
+        back.start();
+        movedBack.await();                                // the whole toggle ran ...
+        Object seen = slot.get(head);                     // ... before this read
+        read.countDown();
+        away.join();
+        back.join();
+        assertTrue(slot.compareAndSet(head, seen, c));
+        assertFalse(ranBefore.analyzeABA().hasIssues(),
+            "the toggle ran before the read and was recorded before it: " + ranBefore.analyzeABA());
+
+        ABAProblemDetector ranAfter = new ABAProblemDetector();
+        AtomicReference<Object> head2 = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot2 = ranAfter.agentSlot(head2);
+        Object seen2 = slot2.get(head2);                  // this read ...
+        onAnotherThread(() -> slot2.set(head2, b));       // ... then the whole toggle
+        onAnotherThread(() -> slot2.compareAndSet(head2, b, a));
+        assertTrue(slot2.compareAndSet(head2, seen2, c));
+        assertTrue(ranAfter.analyzeABA().hasIssues(), "the real ABA: " + ranAfter.analyzeABA());
+        assertTrue(ranAfter.analyzeABA().toString().contains("expected A, set to C"),
+            ranAfter.analyzeABA().toString());
+    }
+
+    @Test
+    void underTheAgentAValueWithNoMutableStateIsNotAnABA() throws InterruptedException {
+        // A state machine read IDLE, others went IDLE -> BUSY -> IDLE, and its compare-and-set
+        // from IDLE succeeds: nothing behind IDLE changed, so the premise still holds. The same
+        // history of a node, whose next may have moved while it was away, is the finding.
+        for (Object idle : List.of(Thread.State.NEW, "idle", 7, new Object())) {
+            ABAProblemDetector detector = new ABAProblemDetector();
+            AtomicReference<Object> state = erased(new AtomicReference<>(idle));
+            ABAProblemDetector.AgentSlot slot = detector.agentSlot(state);
+            Object seen = slot.get(state);
+            onAnotherThread(() -> slot.set(state, "busy"));
+            onAnotherThread(() -> slot.set(state, idle));
+            assertTrue(slot.compareAndSet(state, seen, "busy"));
+            assertFalse(detector.analyzeABA().hasIssues(),
+                idle.getClass().getSimpleName() + " carries no state: " + detector.analyzeABA());
+        }
+    }
+
+    @Test
+    void underTheAgentOnlyAnotherThreadsToggleAfterThisThreadsReadCounts() throws InterruptedException {
+        Node a = new Node("A");
+        Node b = new Node("B");
+
+        ABAProblemDetector own = new ABAProblemDetector();
+        AtomicReference<Object> head = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot = own.agentSlot(head);
+        Object seen = slot.get(head);
+        slot.set(head, b);                                // this thread's own toggle
+        slot.set(head, a);
+        assertTrue(slot.compareAndSet(head, seen, b));
+        assertFalse(own.analyzeABA().hasIssues(), "a thread is not surprised by its own toggle");
+
+        ABAProblemDetector nextRound = new ABAProblemDetector();
+        AtomicReference<Object> head2 = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot2 = nextRound.agentSlot(head2);
+        Object stale = slot2.get(head2);
+        onAnotherThread(() -> {
+            slot2.set(head2, b);
+            slot2.set(head2, a);
+        });
+        nextRound.markInvocationStart();                  // the read belongs to the last round
+        assertTrue(slot2.compareAndSet(head2, stale, b));
+        assertFalse(nextRound.analyzeABA().hasIssues(), "a round start drops the premise (#810)");
+
+        ABAProblemDetector failed = new ABAProblemDetector();
+        AtomicReference<Object> head3 = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot3 = failed.agentSlot(head3);
+        Object premise = slot3.get(head3);
+        onAnotherThread(() -> {
+            slot3.set(head3, b);
+            slot3.set(head3, a);
+        });
+        assertFalse(slot3.compareAndSet(head3, b, a), "a failed attempt swaps nothing ...");
+        assertTrue(slot3.compareAndSet(head3, premise, b));
+        assertFalse(failed.analyzeABA().hasIssues(), "... and still uses up its premise");
+    }
+
+    @Test
+    void underTheAgentEveryOperationIsTheAtomicsOwn() {
+        Node a = new Node("A");
+        Node b = new Node("B");
+        ABAProblemDetector detector = new ABAProblemDetector();
+        AtomicReference<Object> atomic = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot = detector.agentSlot(atomic);
+        assertSame(slot, detector.agentSlot(atomic), "one view per atomic");
+        assertSame(a, slot.getAcquire(atomic));
+        slot.lazySet(atomic, b);
+        assertSame(b, atomic.get());
+        slot.setRelease(atomic, a);
+        assertSame(a, atomic.get());
+        assertSame(a, slot.getAndSet(atomic, b));
+        assertFalse(slot.compareAndSet(atomic, a, b));
+        assertSame(b, atomic.get());
+        detector.disable();
+        assertNull(detector.agentSlot(atomic), "a disabled detector takes no records");
+        detector.enable();
+        detector.reset();
+        assertNotSame(slot, detector.agentSlot(atomic), "reset forgets the atomics");
     }
 }

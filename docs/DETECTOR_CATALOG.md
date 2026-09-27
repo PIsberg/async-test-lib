@@ -314,7 +314,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (20)
+### Agent-fed (21)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -342,12 +342,21 @@ and marks the backward jump around a wait, which is what separates `while (!read
 enters `wait` before it has read the predicate, `do { wait(); } while (!ready)` among them, is not
 a marked loop.
 
+`ABAProblemDetector` joined with #817. Recorded by hand, a toggle that ran wholly before a read
+but was recorded after it has the records of a real A-B-A, and nothing in the records can tell
+them apart. The agent already substituted every `AtomicReference` `get`, `set` and
+`compareAndSet` for the ownership and happens-before models; on a thread whose test has this
+detector each now runs through the detector, which takes its record inside the operation's lock,
+so the records of one atomic are in the order its operations ran. A compare-and-set expecting a
+value with no mutable field of its own, an enum constant, a boxed number or a record, is not
+reported: an A-B-A of such a value leaves nothing stale.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
-`MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`
+`MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`
 
 ### Zero-config (3)
 
@@ -382,14 +391,14 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (123)
+### Recording-only (122)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
 recording is the feed:
 
 `VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
-`ABAProblemDetector`, `SynchronizerMonitor`, `ThreadPoolMonitor`,
+`SynchronizerMonitor`, `ThreadPoolMonitor`,
 `MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
 `CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
 `VirtualThreadPinningDetector`, `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
