@@ -603,6 +603,155 @@ class FalseSharingDetectorTest {
                         "virtual threads: one thread per round never contended. Report: " + virtual));
     }
 
+    // ---- Only writes make cache-line traffic (#825) -----------------------------------------------
+    //
+    // A load leaves the line Shared on the reader's core, and any number of cores can hold it Shared
+    // at once, so readers alone cause no coherence traffic. A store needs the line Exclusive, which
+    // invalidates every other copy; the next access from another core then misses. Every
+    // coherence miss on the line therefore follows a store, and a field nobody writes cannot be a
+    // false-sharing source, however many threads read it.
+
+    @Test
+    void aFieldManyThreadsOnlyReadIsNotHighContention() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable readA = () -> detector.recordFieldAccess(obj, "a", int.class, false);
+
+            // Four threads, 30 reads of a each, every round for five rounds: 600 contended reads.
+            for (int r = 1; r <= 5; r++) {
+                round(scope, times(30, readA), times(30, readA), times(30, readA), times(30, readA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.highContentionFields.isEmpty(),
+                    "600 reads and no write leave a's line Shared on every core, which is no "
+                            + "coherence traffic: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void aFieldWrittenInContendedRoundsIsHighContention() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable writeA = () -> detector.recordFieldAccess(obj, "a", int.class, true);
+            Runnable readA = () -> detector.recordFieldAccess(obj, "a", int.class, false);
+
+            // One writer and one reader on a in each of ten rounds: 300 writes, each made while the
+            // reader held a copy of the line.
+            for (int r = 1; r <= 10; r++) {
+                round(scope, times(30, writeA), times(30, readA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.highContentionFields.size(),
+                    "300 writes to a in rounds another thread was reading it: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void readsBesideAFewWritesDoNotMakeUpTheThreshold() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable writeA = () -> detector.recordFieldAccess(obj, "a", int.class, true);
+            Runnable readA = () -> detector.recordFieldAccess(obj, "a", int.class, false);
+
+            // Seven writes and 50 reads of a a round for ten rounds: 70 contended writes. A reader
+            // misses at most once per write, then reads its own copy until the next one, so the
+            // 500 reads stand for no more traffic than the 70 writes that invalidated them.
+            for (int r = 1; r <= 10; r++) {
+                round(scope, times(7, writeA), times(50, readA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.highContentionFields.isEmpty(),
+                    "70 contended writes is under the threshold of 100: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void theOverloadWithoutAReadWriteFlagStillCountsAsAWrite() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // aFieldManyThreadsOnlyReadIsNotHighContention's workload through the original overload,
+            // which cannot say an access was a read.
+            for (int r = 1; r <= 5; r++) {
+                round(scope, times(30, touchA), times(30, touchA), times(30, touchA), times(30, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.highContentionFields.size(),
+                    "a caller of the three-argument overload keeps the verdict it had: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void adjacentFieldsOnlyReadInOneRoundAreNotFalseSharing() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable readA = () -> detector.recordFieldAccess(obj, "a", int.class, false);
+            Runnable readB = () -> detector.recordFieldAccess(obj, "b", int.class, false);
+
+            // adjacentFieldsTouchedByDifferentThreadsInOneRoundStillFire's round, with every access
+            // a read.
+            round(scope, readA, readA, readB, readB);
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.falseSharedPairs.isEmpty(),
+                    "four threads read a and b and none wrote either, so the line they share stayed "
+                            + "Shared on every core: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void aWriteBesideReadsOfTheAdjacentFieldIsFalseSharing() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable readA = () -> detector.recordFieldAccess(obj, "a", int.class, false);
+            Runnable readB = () -> detector.recordFieldAccess(obj, "b", int.class, false);
+            Runnable writeB = () -> detector.recordFieldAccess(obj, "b", int.class, true);
+
+            // Two threads read a while one thread writes b and another reads it: each write to b
+            // invalidates the readers' copies of a, which never changed.
+            round(scope, readA, readA, writeB, readB);
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.falseSharedPairs.size(),
+                    "b was written in the round two other threads were reading a: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
     static class TwoCounters {
         int a;
         int b;

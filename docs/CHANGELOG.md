@@ -656,6 +656,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   threads made it, since cache-line traffic follows the field's accesses, not a thread's identity.
   User-visible: with the experimental property set, many threads touching a field lightly in
   shared rounds can now report on platform threads too, where no single worker made more than 50.
+- **`FalseSharingDetector` no longer reports a field that is only read (#825).** Behind its
+  experimental flag its high-contention line counted every access, reads included, and its pair
+  line needed only two threads on adjacent fields. Read-only sharing leaves a cache line Shared on
+  every core and causes no coherence traffic; only a write invalidates the other copies. The new
+  `recordFieldAccess(object, field, type, write)` overload says whether an access wrote the field.
+  The high-contention threshold (100) now counts writes made in rounds with more than one thread
+  on the field, and a pair needs a write to one of its two fields in the round that put them on
+  different threads. The three-argument overload counts as a write, so its callers keep their
+  verdict; the report's two headings now say a write was involved.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common

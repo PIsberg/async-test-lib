@@ -22,10 +22,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * real memory layout. Keying is per class rather than per object, so thread-confined
  * instances of one class are indistinguishable from a genuinely shared instance. Thread
  * sets are compared within one invocation round, so accesses from different rounds, which
- * never overlapped, are not read as concurrent, and the high-contention access threshold
- * counts the field's accesses made in a round another thread also spent on the field, over
- * the run and whichever threads made them, so pooled platform workers and one-round virtual
- * threads give the same workload the same verdict. The
+ * never overlapped, are not read as concurrent, and the high-contention threshold counts
+ * the field's writes made in a round another thread also spent on the field, over the run and
+ * whichever threads made them, so pooled platform workers and one-round virtual threads give
+ * the same workload the same verdict. Only writes make coherence traffic: a read leaves the
+ * line Shared, which any number of cores may hold at once, so a field that is only read is
+ * never high-contention, and a pair needs a write to one of its fields in the round that put
+ * them on different threads. The
  * findings are therefore not evidence of false sharing, and {@link #analyze()} returns
  * an empty report unless {@link #EXPERIMENTAL_PROPERTY} is set.
  * 
@@ -67,26 +70,46 @@ public class FalseSharingDetector {
      * runner finishes one round before it starts the next, so two threads that each touched a
      * field in a different round never contended, and with virtual threads every body execution
      * is a fresh thread (#765). The round comes from the same {@link SelfGuard.Scope} clock the
-     * sharing verdicts read; with none bound the whole run is one round, as before.
+     * sharing verdicts read; with none bound the whole run is one round, as before. Whether it
+     * was a write decides whether it can have cost another core its copy of the line (#825).
      */
     private static class AccessEvent {
         final long threadId;
         final int round;
+        final boolean write;
 
-        AccessEvent(long threadId, int round) {
+        AccessEvent(long threadId, int round, boolean write) {
             this.threadId = threadId;
             this.round = round;
+            this.write = write;
         }
     }
     
     /**
-     * Record a field access. Call this when a field is accessed in your test.
+     * Record a field access, counted as a write. Call this when a field is accessed in your test;
+     * {@link #recordFieldAccess(Object, String, Class, boolean)} tells a read from a write, and a
+     * field that is only read then stays out of the findings.
      *
      * @param object the object the access is on, tracked by identity
      * @param fieldName the field involved, as it should appear in the report
      * @param fieldType the declared type of the field
      */
     public void recordFieldAccess(Object object, String fieldName, Class<?> fieldType) {
+        recordFieldAccess(object, fieldName, fieldType, true);
+    }
+
+    /**
+     * Record a field access, saying whether it wrote the field.
+     *
+     * @param object the object the access is on, tracked by identity
+     * @param fieldName the field involved, as it should appear in the report
+     * @param fieldType the declared type of the field
+     * @param write {@code true} for a store to the field, {@code false} for a load; only stores
+     *              count toward the high-contention threshold, and a pair needs a store to one of
+     *              its two fields in the round that put them on different threads
+     * @since 1.12.3
+     */
+    public void recordFieldAccess(Object object, String fieldName, Class<?> fieldType, boolean write) {
         if (!enabled || object == null) return;
         
         String key = object.getClass().getName() + "." + fieldName;
@@ -100,7 +123,7 @@ public class FalseSharingDetector {
 
         // Record detailed access history for analysis; the thread sets are derived from it per round
         accessHistory.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()))
-            .add(new AccessEvent(Thread.currentThread().threadId(), SelfGuard.RoundThreads.roundNow()));
+            .add(new AccessEvent(Thread.currentThread().threadId(), SelfGuard.RoundThreads.roundNow(), write));
     }
     
     /**
@@ -119,18 +142,21 @@ public class FalseSharingDetector {
             return report;
         }
 
-        Map<String, Map<Integer, Set<Long>>> threadsByRound = threadsByRound();
+        Map<String, Set<Integer>> writtenRounds = new HashMap<>();
+        Map<String, Map<Integer, Set<Long>>> threadsByRound = threadsByRound(writtenRounds);
         List<Map.Entry<String, FieldAccessInfo>> fields = new ArrayList<>(fieldAccess.entrySet());
 
         // Find fields in same cache line accessed by different threads
         for (int i = 0; i < fields.size(); i++) {
             FieldAccessInfo field1 = fields.get(i).getValue();
             Map<Integer, Set<Long>> rounds1 = threadsByRound.getOrDefault(fields.get(i).getKey(), Map.of());
+            Set<Integer> written1 = writtenRounds.getOrDefault(fields.get(i).getKey(), Set.of());
             if (rounds1.values().stream().noneMatch(threads -> threads.size() >= 2)) continue;
 
             for (int j = i + 1; j < fields.size(); j++) {
                 FieldAccessInfo field2 = fields.get(j).getValue();
                 Map<Integer, Set<Long>> rounds2 = threadsByRound.getOrDefault(fields.get(j).getKey(), Map.of());
+                Set<Integer> written2 = writtenRounds.getOrDefault(fields.get(j).getKey(), Set.of());
 
                 // Check if fields are in same cache line
                 long offset1 = field1.memoryOffset;
@@ -140,8 +166,8 @@ public class FalseSharingDetector {
                     long distance = Math.abs(offset1 - offset2);
                     
                     if (distance < CACHE_LINE_SIZE && distance > 0) {
-                        // Different threads accessing adjacent fields, within one round
-                        if (differentThreadsInOneRound(rounds1, rounds2)) {
+                        // Different threads accessing adjacent fields, within one round, one of them written
+                        if (differentThreadsInOneRound(rounds1, written1, rounds2, written2)) {
                             FalseSharingReport.ContentionPair pair = new FalseSharingReport.ContentionPair(
                                 field1.fieldName, field2.fieldName, distance,
                                 field1.accessCount.get(), field2.accessCount.get()
@@ -160,31 +186,42 @@ public class FalseSharingDetector {
     }
 
     /**
-     * {@return whether some round saw at least two threads on the first field and a non-empty,
-     * different set of threads on the second}
+     * {@return whether some round saw at least two threads on the first field, a non-empty,
+     * different set of threads on the second, and a write to either}
      *
      * <p>The pair predicate the detector has always used (two or more threads on the first field,
      * unequal thread sets), taken within one round rather than over the run. A round in which the
-     * second field was not accessed at all is no contention for the line, however the sets compare.
+     * second field was not accessed at all is no contention for the line, however the sets compare,
+     * and neither is one in which both were only read: the line then stays Shared on every core that
+     * holds it, and no core's copy is invalidated (#825).
      */
-    private static boolean differentThreadsInOneRound(Map<Integer, Set<Long>> first,
-                                                      Map<Integer, Set<Long>> second) {
+    private static boolean differentThreadsInOneRound(Map<Integer, Set<Long>> first, Set<Integer> firstWritten,
+                                                      Map<Integer, Set<Long>> second, Set<Integer> secondWritten) {
         for (Map.Entry<Integer, Set<Long>> round : first.entrySet()) {
             Set<Long> other = second.get(round.getKey());
-            if (round.getValue().size() >= 2 && other != null && !round.getValue().equals(other)) {
+            if (round.getValue().size() >= 2 && other != null && !round.getValue().equals(other)
+                    && (firstWritten.contains(round.getKey()) || secondWritten.contains(round.getKey()))) {
                 return true;
             }
         }
         return false;
     }
 
-    /** {@return each field's accessing threads, per round, from a snapshot of the access history} */
-    private Map<String, Map<Integer, Set<Long>>> threadsByRound() {
+    /**
+     * {@return each field's accessing threads, per round, from a snapshot of the access history}
+     *
+     * @param writtenRounds filled with the rounds in which each field was written, keyed like the
+     *                      result; a field never written gets no entry
+     */
+    private Map<String, Map<Integer, Set<Long>>> threadsByRound(Map<String, Set<Integer>> writtenRounds) {
         Map<String, Map<Integer, Set<Long>>> byField = new HashMap<>();
         for (Map.Entry<String, List<AccessEvent>> entry : accessHistory.entrySet()) {
             Map<Integer, Set<Long>> rounds = new HashMap<>();
             for (AccessEvent event : snapshot(entry.getValue())) {
                 rounds.computeIfAbsent(event.round, r -> new HashSet<>()).add(event.threadId);
+                if (event.write) {
+                    writtenRounds.computeIfAbsent(entry.getKey(), k -> new HashSet<>()).add(event.round);
+                }
             }
             byField.put(entry.getKey(), rounds);
         }
@@ -223,16 +260,24 @@ public class FalseSharingDetector {
             // virtual thread lives one body execution. A per-thread share summed over the run is one
             // a pooled platform worker reaches across many rounds and a virtual thread only inside
             // one body, so the same workload reported on one thread model and not the other.
+            //
+            // Only writes count (#825). A read leaves the line Shared, and any number of cores hold
+            // a Shared line at once, so reads alone move nothing. A write takes the line Exclusive
+            // and invalidates every other copy, and each other core's next access misses once, then
+            // hits its fresh copy until the next write. Every coherence miss follows a write, so the
+            // writes made while another thread was on the field are the traffic, and a field nobody
+            // writes is never high-contention however many threads read it. Counting the reads of a
+            // round that also had a writer would let one write among many reads cross the threshold.
             Map<Integer, Set<Long>> rounds = threadsByRound.getOrDefault(entry.getKey(), Map.of());
-            int contendedAccesses = 0;
+            int contendedWrites = 0;
             for (AccessEvent event : snapshot(history)) {
                 Set<Long> threads = rounds.get(event.round);
-                if (threads != null && threads.size() > 1) {
-                    contendedAccesses++;
+                if (event.write && threads != null && threads.size() > 1) {
+                    contendedWrites++;
                 }
             }
 
-            if (contendedAccesses >= FIELD_ACCESS_THRESHOLD) {
+            if (contendedWrites >= FIELD_ACCESS_THRESHOLD) {
                 report.highContentionFields.add(entry.getKey());
             }
         }
@@ -313,9 +358,15 @@ public class FalseSharingDetector {
             }
         }
         
-        /** Field pairs close enough to share a cache line and written from different threads. */
+        /**
+         * Field pairs close enough to share a cache line, accessed by different threads in one round
+         * in which one of the two was written.
+         */
         public final Set<ContentionPair> falseSharedPairs = new HashSet<>();
-        /** Fields written often enough for cache-line sharing to matter. */
+        /**
+         * Fields written often enough for cache-line sharing to matter: 100 or more writes made in
+         * rounds another thread was also on the field. Reads do not count.
+         */
         public final Set<String> highContentionFields = new HashSet<>();
         
         /**
@@ -342,7 +393,7 @@ public class FalseSharingDetector {
             sb.append("POTENTIAL FALSE SHARING DETECTED:\n");
             
             if (!falseSharedPairs.isEmpty()) {
-                sb.append("\nFields in same cache line accessed by different threads:\n");
+                sb.append("\nFields in same cache line accessed by different threads, one of them written:\n");
                 for (ContentionPair pair : falseSharedPairs) {
                     sb.append(String.format(
                         "  - %s (accesses: %d) <-> %s (accesses: %d) [distance: %d bytes]%n",
@@ -352,7 +403,7 @@ public class FalseSharingDetector {
             }
 
             if (!highContentionFields.isEmpty()) {
-                sb.append("\nHigh-contention fields accessed by multiple threads:\n");
+                sb.append("\nHigh-contention fields written while other threads were on them:\n");
                 for (String field : highContentionFields) {
                     sb.append("  - ").append(field).append("\n");
                 }
