@@ -4,8 +4,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.diagnostics.DetectorFeed;
+import se.deversity.asynctest.diagnostics.DetectorFeeds;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.DetectorTrust.Evidence;
+import se.deversity.asynctest.diagnostics.TrustTier;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -33,30 +36,59 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * PROMPT until someone rereads its row, and one that loses its lockset keeps a {@code CONTEXTUAL}
  * that lets it claim VERDICT on a thread count. Neither made anything else go red.
  *
- * <p><strong>What is derived.</strong> Only whether the detector's class reads synchronization
- * context: one of the lockset verdicts {@code SelfGuard.TrackedInstance} answers (which carry the
- * round, the hand-off and the happens-before edges too), a monitor probe ({@code Thread.holdsLock},
- * {@code SelfGuard.heldOn}), the declared or woven lockset ({@code HeldLocks}), or the
- * happens-before model ({@code HappensBefore}). Recording into a {@code TrackedInstance} without
- * asking it for a verdict is not consulting it. From that one fact two implications are checked:
+ * <p><strong>What is derived.</strong> Four facts about a detector, each read from its own source
+ * or from {@link DetectorFeeds}:
  *
  * <ul>
- *   <li>a {@code CONTEXTUAL} detector reads context somewhere, since the class says it does;</li>
- *   <li>a detector that reads context is {@code CONTEXTUAL} or {@code OBSERVED} (whose cap is the
- *       same), or names in {@link #WEAKER_PATH} the finding path that decides without it. The class
- *       goes by the weakest path, so a lockset on one path does not earn the class; but a detector
- *       that has one must say why it is not enough, so one that gains a lockset on every path cannot
- *       keep a weaker class unnoticed.</li>
+ *   <li>whether it reads synchronization context: one of the lockset verdicts
+ *       {@code SelfGuard.TrackedInstance} answers (which carry the round, the hand-off and the
+ *       happens-before edges too), a monitor probe ({@code Thread.holdsLock},
+ *       {@code SelfGuard.heldOn}), the declared or woven lockset ({@code HeldLocks}), or the
+ *       happens-before model ({@code HappensBefore}). Recording into a {@code TrackedInstance}
+ *       without asking it for a verdict is not consulting it;</li>
+ *   <li>whether it asks a real JVM object for its state: one of the JDK queries in {@link #PROBE},
+ *       such as {@code ReentrantLock.isLocked}, {@code Thread.isAlive}, {@code CyclicBarrier.isBroken},
+ *       a {@code ThreadMXBean} dump, a {@code StackWalker} or reflection on the live instance;</li>
+ *   <li>whether something other than the test's record calls feeds it: the agent's woven streams
+ *       or the JVM and the harness ({@link DetectorFeed#AGENT}, {@link DetectorFeed#ZERO_CONFIG});</li>
+ *   <li>whether it grades its findings, and which evidence classes those grades name; and whether
+ *       it names a threshold, an identifier containing {@code threshold}.</li>
  * </ul>
  *
- * <p><strong>What is not derived.</strong> {@code OBSERVED}, {@code ASSERTED} and
- * {@code HEURISTIC} are not told apart: whether a detector asks the real object for its state or
- * trusts a recorded argument is not a token in its source. The scan reads the detector's own file,
- * nested classes included; a detector that moved its lock query into a helper class would read as
- * consulting nothing, which fails the first rule loudly rather than passing anything wrongly. It is
- * a source pattern, like {@code DetectorStateIsKeyedByIdentityTest}, and reads code only: comments
- * and string literals are removed first, because several detectors explain in prose the lock they
- * do not probe.
+ * <p>From those, six implications are checked. The class goes by the weakest finding path, except
+ * in a report that grades its findings, where it goes by the strongest grade; each implication
+ * that can be broken by a weaker path has a shrink-only exemption list naming that path.
+ *
+ * <ol>
+ *   <li>A {@code CONTEXTUAL} detector reads context somewhere, since the class says it does.</li>
+ *   <li>A detector that reads context is {@code CONTEXTUAL} or {@code OBSERVED} (whose cap is the
+ *       same), or names in {@link #WEAKER_PATH} the finding path that decides without it. A lockset
+ *       on one path does not earn the class; but a detector that has one must say why it is not
+ *       enough, so one that gains a lockset on every path cannot keep a weaker class unnoticed.</li>
+ *   <li>An {@code OBSERVED} detector is fed by the agent or the JVM, or asks a real object for its
+ *       state. A detector that only reads what the test recorded cannot be observing anything.</li>
+ *   <li>A detector fed by the agent or the JVM is {@code OBSERVED} or {@code CONTEXTUAL}, or names in
+ *       {@link #FED_BELOW_OBSERVED} the path that keeps it lower: a record method the feed does not
+ *       replace, or a threshold over what the feed delivers. This is the rule the catalog states as
+ *       "an agent-fed detector is classified by its woven feed", with its exceptions written down.</li>
+ *   <li>A detector that grades its findings has a grade naming its declared class, since that class
+ *       is the one behind its strongest grade.</li>
+ *   <li>A detector that names a threshold and does not grade its findings is capped at PROMPT
+ *       ({@code HEURISTIC} or {@code CONTEXT_FREE}), since the threshold path is its weakest, or
+ *       names in {@link #THRESHOLD_DECIDES_NO_FINDING} why the threshold never reaches a finding.</li>
+ * </ol>
+ *
+ * <p><strong>What is not derived.</strong> A JDK query in a detector below {@code OBSERVED} is not
+ * refused: many ask the recording thread whether it is virtual, or probe one path while a recorded
+ * one decides another, so a probe does not show that the finding is observed. A threshold written
+ * as a bare literal is not seen, so a {@code HEURISTIC} row is not required to name one, and
+ * {@code ASSERTED} is told apart from {@code HEURISTIC} only by a named threshold (rule 6) and from
+ * {@code CONTEXT_FREE} not at all: whether a finding is the record call itself or a thread count
+ * over records is not a token. The scan reads the detector's own file, nested classes included; a detector that
+ * moved its lock query or its probe into a helper class would read as consulting nothing, which
+ * fails rules 1 and 3 loudly rather than passing anything wrongly. It is a source pattern, like
+ * {@code DetectorStateIsKeyedByIdentityTest}, and reads code only: comments and string literals are
+ * removed first, because several detectors explain in prose the lock they do not probe.
  */
 class DetectorEvidenceMatchesCodeTest {
 
@@ -67,6 +99,28 @@ class DetectorEvidenceMatchesCodeTest {
             "\\b(?:sawUnguardedSharing|sawUnguardedRound|sawUnguardedAccess|sharedAndUnguarded"
                     + "|commonLockCount|holdsLock|heldOn)\\s*\\("
                     + "|\\b(?:HeldLocks|HappensBefore)\\s*\\.");
+
+    /**
+     * A JDK query that asks a live lock, synchronizer, thread, future, executor or class for its
+     * state, as a call in code, or a {@code StackWalker}. Names generic enough to be a detector's
+     * own accessor ({@code getState}, {@code getCount}) are left out. A new {@code OBSERVED}
+     * detector whose probe is missing here fails rule 3; add the query, not an exemption.
+     */
+    private static final Pattern PROBE = Pattern.compile(
+            "\\b(?:isLocked|isHeldByCurrentThread|getHoldCount|hasQueuedThreads?|getQueueLength"
+                    + "|getWaitQueueLength|hasWaiters|isWriteLocked|isReadLocked|isWriteLockedByCurrentThread"
+                    + "|getReadHoldCount|getReadLockCount|availablePermits|getNumberWaiting|isBroken"
+                    + "|getRegisteredParties|getUnarrivedParties|getArrivedParties|holdsLock"
+                    + "|isAlive|isDaemon|isVirtual|getUncaughtExceptionHandler|getThreadGroup"
+                    + "|getAllStackTraces|activeCount|getThreadMXBean|findDeadlockedThreads|dumpAllThreads"
+                    + "|getThreadInfo|isDone|isCompletedExceptionally|isCancelled|whenComplete"
+                    + "|getThreadFactory|getMaximumPoolSize|isShutdown|isTerminated|remainingCapacity"
+                    + "|getDeclaredFields?|getModifiers|getRecordComponents|getAccessor|isAccessibleBy"
+                    + "|intern)\\s*\\("
+                    + "|\\bStackWalker\\b");
+
+    /** A threshold named in code: any identifier containing the word. */
+    private static final Pattern THRESHOLD = Pattern.compile("(?i)threshold");
 
     /** A grade construction in code: the start of a {@code GradedFindings.Grade} argument list. */
     private static final Pattern GRADE = Pattern.compile("\\bnew\\s+(?:GradedFindings\\s*\\.\\s*)?Grade\\s*\\(");
@@ -95,6 +149,61 @@ class DetectorEvidenceMatchesCodeTest {
      */
     private static final int WEAKER_PATH_CEILING = 3;
 
+    /**
+     * Detectors the agent or the JVM feeds that are classified below {@code OBSERVED} and
+     * {@code CONTEXTUAL}, each with the path that holds them there. An entry leaves when the path
+     * goes or the detector grades that path's findings apart from the fed one's; the gate refuses
+     * an entry that no longer disagrees.
+     */
+    private static final Map<DetectorType, String> FED_BELOW_OBSERVED = Map.ofEntries(
+            entry(DetectorType.ABA_PROBLEM, "the agent path records inside each AtomicReference "
+                    + "operation, but recordRead and recordWrite still take the caller's order, and a "
+                    + "swing recorded after a read it ran before reads as an A-B-A (#810); no grade "
+                    + "separates the two paths yet"),
+            entry(DetectorType.ATOMICITY_VIOLATIONS, "the woven field accesses are judged against the "
+                    + "lockset, while a recorded compound operation or detectCheckThenActViolation "
+                    + "compares values the caller passed"),
+            entry(DetectorType.BLOCKING_QUEUE, "the feed sees the offer, but its primary finding, a "
+                    + "discarded false, is an event no probe of the queue at analysis confirms and a "
+                    + "lossy queue makes by design, so its strongest grade is FACT on ASSERTED "
+                    + "evidence; the 90% saturation grade is HEURISTIC"),
+            entry(DetectorType.LIVELOCKS, "the runner feeds it thread dumps, but starvation is every "
+                    + "recent snapshot BLOCKED or WAITING with flat CPU time and rapid cycling is five "
+                    + "state changes in ten snapshots: thresholds over what the JVM showed"),
+            entry(DetectorType.STATIC_INIT_DEADLOCK, "the live stack sample is graded FACT on OBSERVED "
+                    + "evidence, since one slow initializer looks the same, and the cycle of recorded "
+                    + "init requests is FACT on ASSERTED; with no grade above FACT it keeps ASSERTED"));
+
+    /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
+    private static final int FED_BELOW_OBSERVED_CEILING = 5;
+
+    /**
+     * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold
+     * decides no finding. All four print a warning section when a count crosses it, and their
+     * report's {@code hasIssues()} does not read that section, so the warning never reaches the
+     * {@code failOn} gate or the tier. An entry leaves when its warning becomes a finding (the
+     * detector is then {@code HEURISTIC}, or grades the warning apart) or the threshold goes.
+     */
+    private static final Map<DetectorType, String> THRESHOLD_DECIDES_NO_FINDING = Map.ofEntries(
+            entry(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, "HIGH_THREAD_LOCAL_COUNT_THRESHOLD fills "
+                    + "highCountWarnings; hasIssues() reads the leaks and the inheritable-in-virtual issues only"),
+            entry(DetectorType.SCOPED_VALUE, "HIGH_BINDING_COUNT_THRESHOLD fills highBindingWarnings; "
+                    + "hasIssues() reads the unbound-get and rebind issues only"),
+            entry(DetectorType.STABLE_VALUE_MISUSE, "SET_CONTENTION_THRESHOLD fills contentionWarnings; "
+                    + "hasIssues() reads the read-before-set, double-set and reentrant issues only"),
+            entry(DetectorType.LAZY_CONSTANT_MISUSE, "CONVOY_THRESHOLD fills convoyWarnings; hasIssues() "
+                    + "reads the reentrant, null-value, multiple-compute and non-deterministic issues "
+                    + "only"));
+
+    /** How many entries {@link #THRESHOLD_DECIDES_NO_FINDING} may hold; lower it when an entry leaves. */
+    private static final int THRESHOLD_DECIDES_NO_FINDING_CEILING = 4;
+
+    /** Joins the reasons one row gives more than one rule to refuse it. */
+    private static final String ALSO = "; also ";
+
+    /** Each detector's source with comments and literals blanked, read once. */
+    private static final Map<DetectorType, String> CODE = new EnumMap<>(DetectorType.class);
+
     @Test
     @DisplayName("every declared evidence class agrees with what the detector's code consults")
     void declaredEvidenceAgreesWithTheCode() {
@@ -103,9 +212,9 @@ class DetectorEvidenceMatchesCodeTest {
                 "these rows declare an evidence class the detector's code contradicts. Read the "
                         + "detector's record path and analyze(), then either correct the class in "
                         + "DetectorTrust (a class change can move the tier cap: update the tier, the "
-                        + "catalog and the CHANGELOG with it) or, for a detector that reads context on "
-                        + "one path and not on another, name the other path in WEAKER_PATH: "
-                        + disagreements);
+                        + "catalog and the CHANGELOG with it) or, for a detector that decides on one "
+                        + "path differently from another, name the other path in the exemption list "
+                        + "the line points at: " + disagreements);
     }
 
     @Test
@@ -131,6 +240,41 @@ class DetectorEvidenceMatchesCodeTest {
     }
 
     @Test
+    @DisplayName("a feed or threshold exemption names a row that still needs it, and each list only shrinks")
+    void feedAndThresholdExemptionsAreCurrent() {
+        Map<DetectorType, Evidence> declared = declared();
+        List<String> stale = new ArrayList<>();
+        for (DetectorType type : FED_BELOW_OBSERVED.keySet()) {
+            if (!fedWithoutRecording(type)) {
+                stale.add(type + " is no longer fed by the agent or the JVM");
+            } else if (acceptsContext(declared.get(type))) {
+                stale.add(type + " is now " + declared.get(type));
+            }
+        }
+        for (DetectorType type : THRESHOLD_DECIDES_NO_FINDING.keySet()) {
+            if (!namesThreshold(type)) {
+                stale.add(type + " names no threshold");
+            } else if (grades(type)) {
+                stale.add(type + " grades its findings");
+            } else if (!aboveThePromptCap(declared.get(type))) {
+                stale.add(type + " is now " + declared.get(type));
+            }
+        }
+        assertTrue(stale.isEmpty(),
+                "these FED_BELOW_OBSERVED or THRESHOLD_DECIDES_NO_FINDING entries no longer disagree "
+                        + "with their row, so each would only hide the next change to that detector; "
+                        + "remove them and lower the list's ceiling: " + stale);
+        assertTrue(FED_BELOW_OBSERVED.size() <= FED_BELOW_OBSERVED_CEILING,
+                "FED_BELOW_OBSERVED grew past " + FED_BELOW_OBSERVED_CEILING + ". A detector the agent "
+                        + "now feeds should be classified by its feed or grade the fed path apart, not "
+                        + "be excused: " + FED_BELOW_OBSERVED.keySet());
+        assertTrue(THRESHOLD_DECIDES_NO_FINDING.size() <= THRESHOLD_DECIDES_NO_FINDING_CEILING,
+                "THRESHOLD_DECIDES_NO_FINDING grew past " + THRESHOLD_DECIDES_NO_FINDING_CEILING + ". A "
+                        + "detector that gained a threshold is HEURISTIC or grades that finding apart: "
+                        + THRESHOLD_DECIDES_NO_FINDING.keySet());
+    }
+
+    @Test
     @DisplayName("a wrong declaration in either direction is refused")
     void aWrongDeclarationIsRefused() {
         // Both detectors are real and their sources are read as they are; only the declaration is
@@ -146,6 +290,31 @@ class DetectorEvidenceMatchesCodeTest {
         assertEquals(2, disagreements.size(), String.valueOf(disagreements));
         assertTrue(disagreements.get(0).startsWith("LOCK_CONTENTION"), disagreements.get(0));
         assertTrue(disagreements.get(1).startsWith("SHARED_CHECKSUM"), disagreements.get(1));
+    }
+
+    @Test
+    @DisplayName("a wrong declaration under each feed, grade and threshold rule is refused by that rule alone")
+    void aWrongDeclarationUnderEachLaterRuleIsRefused() {
+        // Real detectors, sources as they are, each declaration within its row's tier cap so that
+        // DetectorTrustCoverageTest would pass it. DOUBLE_CHECKED_LOCKING is fed only by record
+        // calls and queries no JVM object, so OBSERVED would be a claim about nothing it saw.
+        // EXPLICIT_GC is woven at every System.gc call site, so ASSERTED would keep a feed that
+        // sees the call below its class without a reason. VIRTUAL_THREAD_POOLING grades its
+        // findings OBSERVED and ASSERTED, so HEURISTIC names no grade it makes. BUSY_WAITING
+        // decides by SPIN_THRESHOLD_ITERATIONS, so ASSERTED would lift a threshold to FACT.
+        Map<DetectorType, Evidence> wrong = new EnumMap<>(declared());
+        wrong.put(DetectorType.DOUBLE_CHECKED_LOCKING, Evidence.OBSERVED);
+        wrong.put(DetectorType.EXPLICIT_GC, Evidence.ASSERTED);
+        wrong.put(DetectorType.VIRTUAL_THREAD_POOLING, Evidence.HEURISTIC);
+        wrong.put(DetectorType.BUSY_WAITING, Evidence.ASSERTED);
+
+        List<String> disagreements = disagreements(wrong);
+
+        assertEquals(4, disagreements.size(), String.valueOf(disagreements));
+        assertOneRule(disagreements.get(0), "DOUBLE_CHECKED_LOCKING", "fed only by record calls");
+        assertOneRule(disagreements.get(1), "BUSY_WAITING", "names a threshold");
+        assertOneRule(disagreements.get(2), "EXPLICIT_GC", "FED_BELOW_OBSERVED");
+        assertOneRule(disagreements.get(3), "VIRTUAL_THREAD_POOLING", "no grade names HEURISTIC");
     }
 
     /**
@@ -193,6 +362,16 @@ class DetectorEvidenceMatchesCodeTest {
                 "a text block is not code");
         assertFalse(readsContext("static final class State extends SelfGuard.TrackedInstance { }"),
                 "recording into a tracked instance without asking for its verdict consults nothing");
+        assertTrue(PROBE.matcher(codeOnly("boolean held = lock.isLocked();")).find());
+        assertFalse(PROBE.matcher(codeOnly("// asks lock.isLocked() at analysis\nvoid j() {}")).find(),
+                "a probe named in a comment is not a probe");
+        assertFalse(THRESHOLD.matcher(codeOnly("String n = \"above the threshold\";")).find(),
+                "a threshold named in a message is not one the code compares against");
+    }
+
+    private static void assertOneRule(String line, String type, String rule) {
+        assertTrue(line.startsWith(type) && line.contains(rule) && !line.contains(ALSO),
+                "expected only the rule containing '" + rule + "' for " + type + ": " + line);
     }
 
     /** {@return every row's declared class, keyed by detector} */
@@ -208,14 +387,38 @@ class DetectorEvidenceMatchesCodeTest {
     private static List<String> disagreements(Map<DetectorType, Evidence> declared) {
         List<String> out = new ArrayList<>();
         for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            Evidence evidence = declared.get(row.type());
-            boolean consults = consultsContext(row.type());
+            DetectorType type = row.type();
+            Evidence evidence = declared.get(type);
+            String detector = row.detectorClass();
+            List<String> reasons = new ArrayList<>();
+            boolean consults = consultsContext(type);
             if (evidence == Evidence.CONTEXTUAL && !consults) {
-                out.add(row.type() + " is CONTEXTUAL but " + row.detectorClass()
+                reasons.add("is CONTEXTUAL but " + detector
                         + " reads no lockset, monitor probe or happens-before edge");
-            } else if (consults && !acceptsContext(evidence) && !WEAKER_PATH.containsKey(row.type())) {
-                out.add(row.type() + " is " + evidence + " but " + row.detectorClass()
+            } else if (consults && !acceptsContext(evidence) && !WEAKER_PATH.containsKey(type)) {
+                reasons.add("is " + evidence + " but " + detector
                         + " reads synchronization context and WEAKER_PATH names no path that does not");
+            }
+            if (evidence == Evidence.OBSERVED && !fedWithoutRecording(type) && !probes(type)) {
+                reasons.add("is OBSERVED but " + detector + " is fed only by record calls and asks no "
+                        + "JVM object for its state");
+            }
+            if (fedWithoutRecording(type) && !acceptsContext(evidence) && !FED_BELOW_OBSERVED.containsKey(type)) {
+                reasons.add("is " + evidence + " but " + detector + " is fed by "
+                        + DetectorFeeds.feedOf(type) + " and FED_BELOW_OBSERVED names no path that holds it lower");
+            }
+            if (grades(type) && !namesEvidence(type, evidence)) {
+                reasons.add("is " + evidence + " but " + detector + " grades its findings and no grade names "
+                        + evidence + ", the class of its strongest grade");
+            }
+            if (namesThreshold(type) && !grades(type) && aboveThePromptCap(evidence)
+                    && !THRESHOLD_DECIDES_NO_FINDING.containsKey(type)) {
+                reasons.add("is " + evidence + " but " + detector + " names a threshold, does not grade "
+                        + "its findings, and THRESHOLD_DECIDES_NO_FINDING does not say why the threshold "
+                        + "decides no finding");
+            }
+            if (!reasons.isEmpty()) {
+                out.add(type + " " + String.join(ALSO, reasons));
             }
         }
         return out;
@@ -226,6 +429,36 @@ class DetectorEvidenceMatchesCodeTest {
         return evidence == Evidence.CONTEXTUAL || evidence == Evidence.OBSERVED;
     }
 
+    /** {@return whether {@code evidence} lets a finding claim more than PROMPT} */
+    private static boolean aboveThePromptCap(Evidence evidence) {
+        return evidence.cap().compareTo(TrustTier.PROMPT) > 0;
+    }
+
+    private static boolean fedWithoutRecording(DetectorType type) {
+        return DetectorFeeds.feedOf(type) != DetectorFeed.RECORDING;
+    }
+
+    private static boolean consultsContext(DetectorType type) {
+        return CONTEXT.matcher(code(type)).find();
+    }
+
+    private static boolean probes(DetectorType type) {
+        return PROBE.matcher(code(type)).find();
+    }
+
+    private static boolean grades(DetectorType type) {
+        return GRADE.matcher(code(type)).find();
+    }
+
+    private static boolean namesThreshold(DetectorType type) {
+        return THRESHOLD.matcher(code(type)).find();
+    }
+
+    /** {@return whether the detector's code names {@code evidence} as a constant, which is how a grade names it} */
+    private static boolean namesEvidence(DetectorType type, Evidence evidence) {
+        return Pattern.compile("\\bEvidence\\s*\\.\\s*" + evidence.name() + "\\b").matcher(code(type)).find();
+    }
+
     private static DetectorTrust.Row rowOf(DetectorType type) {
         return DetectorTrust.rows().stream()
                 .filter(row -> row.type() == type)
@@ -233,14 +466,17 @@ class DetectorEvidenceMatchesCodeTest {
                 .orElseThrow(() -> new AssertionError(type + " has no DetectorTrust row"));
     }
 
-    private static boolean consultsContext(DetectorType type) {
-        Path source = DIAGNOSTICS.resolve(rowOf(type).detectorClass() + ".java");
-        try {
-            return readsContext(Files.readString(source, StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not read " + source.toAbsolutePath()
-                    + "; this test reads the module's own sources and runs from the module directory", e);
-        }
+    /** {@return the code of the detector class behind {@code type}, comments and literals blanked} */
+    private static String code(DetectorType type) {
+        return CODE.computeIfAbsent(type, key -> {
+            Path source = DIAGNOSTICS.resolve(rowOf(key).detectorClass() + ".java");
+            try {
+                return codeOnly(Files.readString(source, StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not read " + source.toAbsolutePath()
+                        + "; this test reads the module's own sources and runs from the module directory", e);
+            }
+        });
     }
 
     /** {@return how many top-level arguments the call whose argument list opens before {@code from} has} */

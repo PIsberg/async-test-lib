@@ -59,6 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a row other than `CONTEXTUAL` or `OBSERVED` whose detector reads one, unless the test names the
   finding path that decides without it. On the current tree every row agrees; the six rows that read
   a lockset on one path and are classified by a weaker one are named with that path. No tier moved.
+- **The evidence check separates `OBSERVED`, `ASSERTED` and `HEURISTIC` where the source shows it
+  (#756).** `DetectorEvidenceMatchesCodeTest` gains four implications. An `OBSERVED` row needs a
+  detector the agent or the JVM feeds (`DetectorFeeds`) or one that asks a live object for its state,
+  so declaring a detector that only reads record calls `OBSERVED` fails the build. A detector the
+  agent or the JVM feeds that is classified lower names the path holding it there
+  (`FED_BELOW_OBSERVED`: `ABA_PROBLEM`, `ATOMICITY_VIOLATIONS`, `BLOCKING_QUEUE`, `LIVELOCKS`,
+  `STATIC_INIT_DEADLOCK`), which is how making `ABA_PROBLEM` agent-fed while keeping it `ASSERTED`
+  becomes a stated decision rather than an unchecked one. A graded detector's class must be one its
+  grades name. An ungraded detector above the PROMPT cap that names a threshold must say why the
+  threshold decides no finding (`THRESHOLD_DECIDES_NO_FINDING`: four detectors whose threshold only
+  fills a warning section their `hasIssues()` ignores). Both lists may only shrink. Each rule was
+  shown red by one wrong declaration within the row's tier cap, which `DetectorTrustCoverageTest`
+  passed. No evidence class or tier moved: every disagreement on the current tree was a weaker path
+  or a warning, now named.
 - **`Thread.join` weaving is tested with the agent attached (#743).** The four woven `join`
   overloads were covered only by the table-resolution test, which proves a call site is matched and
   not that the match orders anything. `ThreadJoinWeavingTest` has a child write a field its parent
