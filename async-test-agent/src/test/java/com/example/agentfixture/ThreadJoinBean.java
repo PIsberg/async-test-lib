@@ -45,6 +45,46 @@ public class ThreadJoinBean {
     }
 
     /**
+     * Starts the same child, spins until {@code isAlive()} returns {@code false} instead of
+     * joining it, and reads the box (#834). A terminated thread's actions happen before another
+     * thread's observation that it is no longer alive, so this is as ordered as a join.
+     */
+    public int readAfterIsAliveSpin(int value) {
+        Box box = new Box();
+        Thread child = new Thread(() -> box.value = value, "join-child");
+        child.start();
+        while (child.isAlive()) {
+            Thread.onSpinWait();
+        }
+        return box.value;
+    }
+
+    /**
+     * Starts a child that writes the box, runs {@code written} and then waits for
+     * {@code release}, and reads the box once {@code awaitWritten} returns and {@code isAlive()}
+     * said the child is still running (#834): a live answer orders nothing. Joins the child after
+     * releasing it.
+     */
+    public int readWhileAlive(int value, Runnable written, Runnable awaitWritten,
+                              Runnable release, Runnable awaitRelease) throws InterruptedException {
+        Box box = new Box();
+        Thread child = new Thread(() -> {
+            box.value = value;
+            written.run();
+            awaitRelease.run();
+        }, "join-child");
+        child.start();
+        awaitWritten.run();
+        if (!child.isAlive()) {
+            throw new IllegalStateException("the child finished before the read");
+        }
+        int read = box.value;
+        release.run();
+        child.join();
+        return read;
+    }
+
+    /**
      * Starts the same child and reads the box once {@code awaitWritten} returns, before any join:
      * the child runs {@code written} after its write, and the caller pairs the two through code
      * the weaver does not see, so the only ordering the agent could know about is a join.

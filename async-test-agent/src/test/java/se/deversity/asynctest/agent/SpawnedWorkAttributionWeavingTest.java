@@ -151,6 +151,45 @@ class SpawnedWorkAttributionWeavingTest {
                 "the child was started by a worker, so its accesses belong to the run");
     }
 
+    /** The three ways {@code SpawnedWorkBean.startBy} starts a child, by its {@code how}. */
+    private static final List<String> BUILT_STARTS = List.of("Thread.ofPlatform().start",
+            "Thread.ofVirtual().start", "Thread.startVirtualThread");
+
+    @Test
+    @DisplayName("a child started through a Thread.Builder or startVirtualThread is the run's (#834)")
+    void builtChildReadBeforeTheJoinIsReported() throws InterruptedException {
+        SpawnedWorkBean bean = new SpawnedWorkBean();
+        for (int how = 0; how < BUILT_STARTS.size(); how++) {
+            int form = how;
+            Written written = new Written();
+            Run run = onAWorker(() -> bean.builtChildReadBeforeJoin(form, 42, written::signal,
+                    written::await));
+
+            assertTrue(run.mentionsTheBox(),
+                    "The worker started a child through " + BUILT_STARTS.get(how) + ", which wrote "
+                            + "the box, and read it before the join. A silent run means the "
+                            + "child's write never reached the validator. Findings were: "
+                            + run.findings() + ", events dropped: " + run.dropped());
+        }
+    }
+
+    @Test
+    @DisplayName("the same built child's write read after the join is ordered, and nothing was dropped")
+    void builtChildReadAfterTheJoinIsSilent() throws InterruptedException {
+        SpawnedWorkBean bean = new SpawnedWorkBean();
+        for (int how = 0; how < BUILT_STARTS.size(); how++) {
+            int form = how;
+            Run run = onAWorker(() -> bean.builtChildReadAfterJoin(form, 42));
+
+            assertFalse(run.mentionsTheBox(),
+                    "The start through " + BUILT_STARTS.get(how) + " orders the worker before the "
+                            + "child and the join the child before the read. Findings were: "
+                            + run.findings());
+            assertEquals(0L, run.dropped(), "the child started through " + BUILT_STARTS.get(how)
+                    + " by a worker belongs to the run");
+        }
+    }
+
     @Test
     @DisplayName("a submitted task's write the worker reads before the get is reported")
     void taskReadBeforeTheGetIsReported() throws InterruptedException {

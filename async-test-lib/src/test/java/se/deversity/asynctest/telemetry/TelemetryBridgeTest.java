@@ -74,6 +74,16 @@ class TelemetryBridgeTest {
         bridge.onEvent(thread, TelemetryRegistry.TASK_ENDED, false, 0L);
     }
 
+    /** A task start that says how many handed tasks the thread was already running (#834). */
+    private static void taskStarted(TelemetryBridge bridge, long thread, long token, int depth) {
+        bridge.onEvent(thread, TelemetryRegistry.TASK_STARTED, false, token, false, depth);
+    }
+
+    /** A task end that says how many handed tasks the thread is still running (#834). */
+    private static void taskEnded(TelemetryBridge bridge, long thread, int depthAfter) {
+        bridge.onEvent(thread, TelemetryRegistry.TASK_ENDED, false, 0L, false, depthAfter);
+    }
+
     /** {@return whether {@code thread}'s access reached the bridge's validator} */
     private static boolean forwarded(TelemetryBridge bridge, long thread) {
         long before = bridge.droppedNonWorkerEvents();
@@ -168,6 +178,47 @@ class TelemetryBridgeTest {
             assertTrue(forwarded(bridge, CHILD),
                     "submitted from the run's task while it ran, begun after that task ended");
             taskEnded(bridge, CHILD);
+        }
+    }
+
+    @Test
+    void aDroppedTaskEndIsRepairedByTheThreadsNextTaskStart() {
+        try (TelemetryBridge bridge = TelemetryBridge.activate(new AtomicityValidator(), Set.of(WORKER_A))) {
+            submitted(bridge, WORKER_A, 7L);
+            taskStarted(bridge, POOL, 7L, 0);
+            assertTrue(forwarded(bridge, POOL), "precondition: running the run's task");
+            // The end of task 7 never drains: the ring gave up on it (#834).
+            submitted(bridge, NON_WORKER, 8L);
+            taskStarted(bridge, POOL, 8L, 0);
+            assertFalse(forwarded(bridge, POOL), "running a task from outside the run");
+            taskEnded(bridge, POOL, 0);
+            assertFalse(forwarded(bridge, POOL),
+                    "task 8 began with nothing running under it, so task 7 had ended: a lost end "
+                            + "must not leave the pool thread working for the run between tasks");
+        }
+    }
+
+    @Test
+    void aTaskEndSaysHowManyTasksTheThreadIsStillRunning() {
+        try (TelemetryBridge bridge = TelemetryBridge.activate(new AtomicityValidator(), Set.of(WORKER_A))) {
+            submitted(bridge, NON_WORKER, 1L);
+            taskStarted(bridge, POOL, 1L, 0);
+            submitted(bridge, WORKER_A, 2L);
+            taskStarted(bridge, POOL, 2L, 1);
+            assertTrue(forwarded(bridge, POOL), "precondition: the run's task inside another");
+            taskEnded(bridge, POOL, 1);
+            assertFalse(forwarded(bridge, POOL), "back in the outer task, which is not the run's");
+            submitted(bridge, WORKER_A, 3L);
+            taskStarted(bridge, POOL, 3L, 1);
+            submitted(bridge, NON_WORKER, 4L);
+            taskStarted(bridge, POOL, 4L, 2);
+            // The end of task 4 is lost; task 3's end says the thread is one deep again.
+            taskEnded(bridge, POOL, 1);
+            assertFalse(forwarded(bridge, POOL),
+                    "task 3 ended with only task 1 still running, so the lost end of task 4 must not "
+                            + "leave task 3 looking current");
+            taskEnded(bridge, POOL, 0);
+            assertFalse(forwarded(bridge, POOL), "after every task");
         }
     }
 

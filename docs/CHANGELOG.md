@@ -329,6 +329,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   idle in the runner's pool at analysis; the runner shuts its executor down first, and the virtual
   worker has ended. The workers that find the lock taken now join the holder's thread, bounded, so
   it has ended before the last round does.
+- **A parent that polls `Thread.isAlive()` instead of joining is ordered after its child, and a
+  `Thread.Builder` start is attributed to the run (#834).** `isAlive()` returning `false` is an
+  edge the Java memory model names (everything a terminated thread did happens before another
+  thread learns it terminated), but it was not woven, so a body that spun on `isAlive` and then
+  read what its child wrote had the read reported as racing the write once #745 attributed the
+  child. The agent now weaves `isAlive` like the joins: a `false` answer about a thread that ran
+  acquires its clock, a `true` one orders nothing. `Thread.Builder.start(Runnable)` and
+  `Thread.startVirtualThread(Runnable)` are woven too and fork and attribute the thread like a
+  woven `Thread.start`; they are not observed starts for `DAEMON_THREAD_HYGIENE`, because a
+  builder's `daemon(true)` is a decision the agent does not see. A task start and end now also
+  carry how many wrapped tasks the thread is running, so an end the ring gave up on no longer
+  leaves the pool thread attributed to the run until the run ends: its next start or end ends the
+  frames the bridge missed. `ThreadJoinWeavingTest` and `SpawnedWorkAttributionWeavingTest` pin
+  each form both ways end to end, and `TelemetryBridgeTest` the lost end. Still open: a thread
+  started in unwoven code, `Executor.execute`, dependent stages, the Shared*/SelfGuard feeds on
+  spawned threads, and a fork-join worker helping outside a wrapped task.
 - **`OptimisticReadValidationDetector` names a field in every never-validated finding (#826).**
   Once eight fields read under a stamp filled the name list, a field read after a passing
   `validate()` and never revalidated was reported as `data accessed (2 reads not named)`, naming
@@ -401,8 +417,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and an ungotten task's write are reported, the joined and gotten ones stay silent, and a
   lingering child from the previous run contributes nothing), and the corpus idiom lane's
   `start`/`join` and executor submit/get rows run on the woven path instead of the manual API.
-  Still dropped: a thread started in unwoven code or through a `Thread.Builder`, a task given to
-  `Executor.execute`, and a pool thread's work outside a wrapped task.
+  Still dropped: a thread started in unwoven code, a task given to `Executor.execute`, and a pool
+  thread's work outside a wrapped task. A `Thread.Builder` start is attributed since #834.
 - **`FILE_CHANNEL_POSITION_RACE` no longer counts a lock released and taken again between a seek
   and its I/O as guarding them (#831).** The locks were probed at the seek and at the I/O, so a
   thread that sought under a lock, let it go and took it again to read looked exactly like one

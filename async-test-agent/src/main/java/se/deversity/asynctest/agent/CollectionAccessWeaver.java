@@ -612,12 +612,17 @@ final class CollectionAccessWeaver {
             Entry.staticCall(System.class, "gc", "gc"));
 
     /**
-     * The thread table: {@link Thread#start()}, {@link Thread#join()} and
-     * {@link Thread#setDaemon(boolean)}.
+     * The thread table: {@link Thread#start()}, {@link Thread#join()}, {@link Thread#isAlive()}
+     * and {@link Thread#setDaemon(boolean)}, and the two other ways to start a thread,
+     * {@link Thread.Builder#start(Runnable)} and {@link Thread#startVirtualThread(Runnable)}.
      *
-     * <p>Every {@code join} overload is {@code final} on {@code Thread}, so the call site names the
-     * method whatever type it was compiled against. The joins exist for the happens-before model:
-     * a returned join orders the finished thread before the joiner.
+     * <p>Every {@code join} overload is {@code final} on {@code Thread}, and so is
+     * {@code isAlive}, so the call site names the method whatever type it was compiled against.
+     * The joins exist for the happens-before model: a returned join orders the finished thread
+     * before the joiner, and an {@code isAlive} that returned {@code false} does the same for a
+     * parent that polls instead of joining (#834). {@code Thread.Builder} is sealed to the JDK's
+     * two builders, whose {@code start} is {@code unstarted} followed by {@code start}, which is
+     * what the hook does in between (#834).
      */
     private static final List<Entry> THREAD_ENTRIES = List.of(
             Entry.call(Thread.class, "start", "threadStart"),
@@ -625,6 +630,10 @@ final class CollectionAccessWeaver {
             Entry.call(Thread.class, "join", "threadJoin", long.class),
             Entry.call(Thread.class, "join", "threadJoin", long.class, int.class),
             Entry.call(Thread.class, "join", "threadJoin", Duration.class),
+            Entry.call(Thread.class, "isAlive", "threadIsAlive"),
+            Entry.call(Thread.Builder.class, "start", "threadBuilderStart", Runnable.class),
+            Entry.staticCall(Thread.class, "startVirtualThread", "threadStartVirtual",
+                    Runnable.class),
             Entry.call(Thread.class, "setDaemon", "threadSetDaemon", boolean.class));
 
     /**

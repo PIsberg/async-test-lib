@@ -15,8 +15,10 @@ import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
- * Hooks for {@link Thread#start()}, {@link Thread#join()} and {@link Thread#setDaemon(boolean)},
- * making thread starts, joins and explicit daemon decisions visible to detectors.
+ * Hooks for {@link Thread#start()}, {@link Thread#join()}, {@link Thread#isAlive()} and
+ * {@link Thread#setDaemon(boolean)}, and for the starts through {@link Thread.Builder#start} and
+ * {@link Thread#startVirtualThread}, making thread starts, joins and explicit daemon decisions
+ * visible to detectors.
  *
  * <h2>Why these need the agent</h2>
  *
@@ -41,7 +43,10 @@ import se.deversity.vibetags.annotations.AIContract;
  * <p>A start and a returned join are the two happens-before edges the Java memory model gives a
  * thread's lifecycle, and both are reported to {@link HappensBefore}: the start as a fork before
  * the thread runs, the join as a join once the thread has finished. A timed join that returned
- * with the thread still alive orders nothing and reports nothing.
+ * with the thread still alive orders nothing and reports nothing. An {@code isAlive} that returned
+ * {@code false} is the same edge as a returned join, since everything a terminated thread did
+ * happens before another thread learns that it terminated, so a parent that polls instead of
+ * joining is ordered too (#834); one that returned {@code true} orders nothing.
  *
  * @since 1.12.3
  */
@@ -92,13 +97,73 @@ public final class AgentThreadHooks {
         if (detector != null) {
             detector.recordObservedStart(receiver);
         }
-        // Only a thread that has not started yet: a second start throws, and a fork recorded for
-        // a thread already running would be taken up by it as an edge that never existed.
-        if (receiver.getState() == Thread.State.NEW) {
-            HappensBefore.fork(receiver);
-            TelemetryRegistry.threadStarting(receiver);
-        }
+        forkAndAttribute(receiver);
         receiver.start();
+    }
+
+    /**
+     * The start's edge and attribution, for a thread about to be started.
+     *
+     * <p>Only a thread that has not started yet: a second start throws, and a fork recorded for a
+     * thread already running would be taken up by it as an edge that never existed.
+     */
+    private static void forkAndAttribute(Thread thread) {
+        if (thread.getState() == Thread.State.NEW) {
+            HappensBefore.fork(thread);
+            TelemetryRegistry.threadStarting(thread);
+        }
+    }
+
+    /**
+     * Weaves {@link Thread.Builder#start(Runnable)} (#834), which the JDK implements as
+     * {@code unstarted(task)} followed by {@code start()}: this does the same, with the fork and
+     * the attribution of a woven {@code Thread.start} in between. {@code Thread.Builder} is sealed
+     * to the JDK's two builders.
+     *
+     * <p>Not an observed start for {@link DaemonThreadHygieneDetector}: a builder's
+     * {@code daemon(true)} is a decision the agent does not see, and judging the thread as
+     * undecided would report exactly the code that made one.
+     *
+     * @param receiver the builder the call site invoked
+     * @param task     what the thread runs; the builder rejects {@code null}
+     * @return the started thread
+     */
+    public static Thread threadBuilderStart(Thread.Builder receiver, Runnable task) {
+        Thread thread = receiver.unstarted(task);
+        forkAndAttribute(thread);
+        thread.start();
+        return thread;
+    }
+
+    /**
+     * Weaves {@link Thread#startVirtualThread(Runnable)} (#834): an unnamed virtual thread from
+     * the default builder, which is what the JDK method creates, forked and attributed like a
+     * woven {@code Thread.start} and then started.
+     *
+     * @param task what the thread runs; {@code null} is rejected as by the JDK method
+     * @return the started thread
+     */
+    public static Thread threadStartVirtual(Runnable task) {
+        Thread thread = Thread.ofVirtual().unstarted(task);
+        forkAndAttribute(thread);
+        thread.start();
+        return thread;
+    }
+
+    /**
+     * Weaves {@link Thread#isAlive()} (#834). A {@code false} answer about a thread that ran is an
+     * acquire of everything it did, as a returned join is; a {@code true} one orders nothing, and
+     * {@link HappensBefore#join} ignores a thread that never started.
+     *
+     * @param receiver the thread asked about
+     * @return whether it is alive
+     */
+    public static boolean threadIsAlive(Thread receiver) {
+        boolean alive = receiver.isAlive();
+        if (!alive) {
+            HappensBefore.join(receiver);
+        }
+        return alive;
     }
 
     /**

@@ -115,6 +115,43 @@ class ThreadJoinWeavingTest {
     }
 
     @Test
+    @DisplayName("a child's write read once isAlive() returned false is ordered")
+    void readAfterIsAliveReturnedFalseIsSilent() throws Exception {
+        ThreadJoinBean bean = new ThreadJoinBean();
+        List<String> findings = findings(() -> bean.readAfterIsAliveSpin(42));
+
+        assertFalse(mentionsTheBox(findings),
+                "The parent spun on isAlive() until it returned false and then read the box. The "
+                        + "Java memory model orders everything a terminated thread did before "
+                        + "another thread's observation that it is no longer alive, exactly as for "
+                        + "a returned join (#834). A finding here means isAlive() fed no edge. "
+                        + "Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("the same write read while isAlive() still returns true keeps its finding")
+    void readWhileIsAliveReturnsTrueIsReported() throws Exception {
+        ThreadJoinBean bean = new ThreadJoinBean();
+        CountDownLatch written = new CountDownLatch(1);
+        CountDownLatch released = new CountDownLatch(1);
+        List<String> findings = findings(() -> bean.readWhileAlive(42, written::countDown,
+                () -> awaitQuietly(written), released::countDown, () -> awaitQuietly(released)));
+
+        assertTrue(mentionsTheBox(findings),
+                "isAlive() returned true, which orders nothing: the parent read the box after a "
+                        + "latch the agent does not see. Findings were: " + findings);
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(10, TimeUnit.SECONDS), "the other side never arrived");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
     @DisplayName("the same write read before the join keeps its finding")
     void readBeforeTheJoinIsReported() throws Exception {
         ThreadJoinBean bean = new ThreadJoinBean();

@@ -110,6 +110,77 @@ class AgentHappensBeforeFeedTest {
         assertTrue(startJoinReported(false), "the unwoven twin keeps its finding");
     }
 
+    /**
+     * The start and join of {@link #startJoinReported}, with the child started the way
+     * {@code how} names and waited for by a spin on {@code isAlive} (#834): 0 through a platform
+     * {@code Thread.Builder}, 1 through a virtual one, 2 through {@code startVirtualThread}.
+     */
+    private static boolean builtStartPolledEndReported(int how, boolean woven) {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        box.value = 1;
+        detector.recordFieldWrite(box, "value");
+        Runnable task = () -> {
+            box.value++;
+            detector.recordFieldWrite(box, "value");
+        };
+        Thread.Builder builder = how == 0 ? Thread.ofPlatform() : Thread.ofVirtual();
+        Thread child;
+        if (woven) {
+            child = how == 2 ? AgentThreadHooks.threadStartVirtual(task)
+                    : AgentThreadHooks.threadBuilderStart(builder, task);
+            while (AgentThreadHooks.threadIsAlive(child)) {
+                Thread.onSpinWait();
+            }
+        } else {
+            child = how == 2 ? Thread.startVirtualThread(task) : builder.start(task);
+            while (child.isAlive()) {
+                Thread.onSpinWait();
+            }
+        }
+        detector.recordFieldRead(box, "value");
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven Thread.Builder start or startVirtualThread, and an isAlive that said false, order the child")
+    void wovenBuiltStartAndPolledEnd() {
+        for (int how = 0; how < 3; how++) {
+            assertFalse(builtStartPolledEndReported(how, true),
+                    "start " + how + ": the builder start is a fork and a false isAlive a join");
+            assertTrue(builtStartPolledEndReported(how, false),
+                    "start " + how + ": the unwoven twin keeps its finding");
+        }
+    }
+
+    @Test
+    @DisplayName("an isAlive that says true orders nothing, and one about an unstarted thread nothing either")
+    void anIsAliveThatSaysTrueOrdersNothing() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        CountDownLatch written = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread child = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            written.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertFalse(AgentThreadHooks.threadIsAlive(child), "a thread not started yet is not alive");
+        child.start();
+        written.await();
+        assertTrue(AgentThreadHooks.threadIsAlive(child), "the hook answers what isAlive answers");
+        detector.recordFieldRead(box, "value");
+        release.countDown();
+        child.join();
+        assertTrue(detector.analyzeRaceConditions().hasIssues(),
+                "the read came after a latch the model does not see and an isAlive that said true");
+    }
+
     private static boolean mapPublicationReported(Map<Object, Object> map)
             throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();

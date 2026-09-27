@@ -2829,10 +2829,16 @@ public final class TelemetryRegistry {
      */
     static final String TASK_SUBMITTED = "#task-submitted";
 
-    /** The target an event carries when a thread begins a handed task, with its token (#745). */
+    /**
+     * The target an event carries when a thread begins a handed task, with its token (#745) and,
+     * in the constant slot, how many handed tasks the thread was already running (#834).
+     */
     static final String TASK_STARTED = "#task-started";
 
-    /** The target an event carries when a thread has finished the handed task it began (#745). */
+    /**
+     * The target an event carries when a thread has finished the handed task it began (#745),
+     * with how many it is still running in the constant slot (#834).
+     */
     static final String TASK_ENDED = "#task-ended";
 
     /**
@@ -2877,29 +2883,48 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * How many handed tasks each thread is running, one inside another (#834). Kept whether or not
+     * the registry runs, so the count stays true across a stop and a start.
+     */
+    private static final ThreadLocal<int[]> TASK_DEPTH = ThreadLocal.withInitial(() -> new int[1]);
+
+    /**
      * Records that the calling thread begins running the task {@code token} names (#745); must be
      * followed by {@link #taskEnded()} on the same thread when the task ends, however it ends.
+     *
+     * <p>The event also carries how many handed tasks the thread was already running (#834). The
+     * ring gives up on an event only after a sustained stall, and a lost end used to leave a pool
+     * thread working for the run that submitted the task until that run ended; the next start or
+     * end on the thread now says how deep it really is, and the bridge drops what it missed.
      *
      * @param token the token {@link #taskSubmitted} published for the task
      * @since 1.12.3
      */
     public static void taskStarted(long token) {
+        int[] depth = TASK_DEPTH.get();
+        int running = depth[0];
+        depth[0] = running + 1;
         if (STOPPED.get()) {
             return;
         }
-        BUFFER.publish(Thread.currentThread().threadId(), TASK_STARTED, false, token);
+        BUFFER.publish(Thread.currentThread().threadId(), TASK_STARTED, false, token, false,
+                running);
     }
 
     /**
-     * Records that the calling thread finished the task it began last (#745).
+     * Records that the calling thread finished the task it began last (#745), and how many handed
+     * tasks it is still running (#834).
      *
      * @since 1.12.3
      */
     public static void taskEnded() {
+        int[] depth = TASK_DEPTH.get();
+        int running = Math.max(depth[0] - 1, 0);
+        depth[0] = running;
         if (STOPPED.get()) {
             return;
         }
-        BUFFER.publish(Thread.currentThread().threadId(), TASK_ENDED, false, 0L);
+        BUFFER.publish(Thread.currentThread().threadId(), TASK_ENDED, false, 0L, false, running);
     }
 
     /**
