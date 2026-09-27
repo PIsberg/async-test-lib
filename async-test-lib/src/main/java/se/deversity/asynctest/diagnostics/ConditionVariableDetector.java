@@ -539,10 +539,12 @@ public class ConditionVariableDetector {
         WaitQueueQuery waitQueue = state.waitQueue;
         if (waitQueue == null) {
             if (recordedOpen > 0) {
-                report.unconfirmedWaits.add(String.format(
+                report.askCaller(String.format(
                     "%s: %d thread(s) still waiting at analysis by their recorded awaits, but the "
                         + "condition was registered without its lock, so nothing confirms they are "
-                        + "parked or that what they wait for arrived (%s)", state.name, recordedOpen, lastSignal));
+                        + "parked or that what they wait for arrived; register it with "
+                        + "registerCondition(lock, condition, ready, name) (%s)",
+                    state.name, recordedOpen, lastSignal));
             }
             if (state.abandonedAwaits > 0) {
                 report.unconfirmedWaits.add(String.format(
@@ -558,7 +560,7 @@ public class ConditionVariableDetector {
             if (parked > 0) {
                 if (result.hasPredicate) {
                     if (result.predicateFailure != null) {
-                        report.unconfirmedWaits.add(String.format(
+                        report.askCaller(String.format(
                             "%s: %d thread(s) parked on the condition at analysis, but its predicate threw "
                                 + "%s, so they are neither confirmed stuck nor idle (%s)",
                             state.name, parked, result.predicateFailure, lastSignal));
@@ -582,7 +584,7 @@ public class ConditionVariableDetector {
                             state.name, parked, lastSignal));
                     }
                 } else {
-                    report.unconfirmedWaits.add(String.format(
+                    report.askCaller(String.format(
                         "%s: %d thread(s) parked in await() at analysis, read from the lock, but no predicate "
                             + "was registered, so an idle consumer cannot be told from a stuck waiter; "
                             + "register it with registerCondition(lock, condition, ready, name) (%s; %d "
@@ -594,7 +596,7 @@ public class ConditionVariableDetector {
                         + "be read; %d recorded await(s) still open are not reported",
                     state.name, recordedOpen + state.abandonedAwaits));
             } else if (parked == NOT_OWNED) {
-                report.unconfirmedWaits.add(String.format(
+                report.askCaller(String.format(
                     "%s: the registered lock does not own this condition, so its waiters could not "
                         + "be read; register the lock whose newCondition() made it", state.name));
             }
@@ -646,6 +648,11 @@ public class ConditionVariableDetector {
          */
         final java.util.List<String> unconfirmedWaits = new java.util.ArrayList<>();
         /**
+         * The unconfirmed waits that only the caller can settle, by registering the condition's own
+         * lock or a predicate that does not throw (#816); each is also in {@link #unconfirmedWaits}.
+         */
+        private final java.util.List<String> callerNotes = new java.util.ArrayList<>();
+        /**
          * One line per condition object, named but not keyed by the name: two conditions may
          * share a name, and filed under it the second one's line overwrote the first's (#789).
          */
@@ -660,6 +667,30 @@ public class ConditionVariableDetector {
          */
         public boolean hasIssues() {
             return !stuckWaiters.isEmpty();
+        }
+
+        /** Adds an unconfirmed wait the caller can settle by changing how the condition is registered. */
+        void askCaller(String note) {
+            unconfirmedWaits.add(note);
+            callerNotes.add(note);
+        }
+
+        /**
+         * {@return the notes that ask the caller to change a registration, each naming the change:
+         * waits on a condition registered without its lock, parked threads with no predicate
+         * registered or a predicate that threw, and a registered lock that did not make the condition}
+         *
+         * <p>These are the notes that stop this detector from deciding anything about a condition, so
+         * the runner logs them when {@link #hasIssues()} is {@code false}, since the report itself is
+         * printed only when it has a finding (#816). The other notes (an idle consumer, a signal with
+         * nobody waiting, a wakeup with no recorded signal, a lock held or contended at analysis, an
+         * await abandoned or left unrecorded) are what correct code produces too, and stay in the
+         * report text.
+         *
+         * @since 1.12.3
+         */
+        public java.util.List<String> notes() {
+            return java.util.List.copyOf(callerNotes);
         }
 
         @Override

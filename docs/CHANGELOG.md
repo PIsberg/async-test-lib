@@ -630,8 +630,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   such notes at INFO as `runner.detector.note test=… detector=… notes=… note="…"`, once per run,
   at most three per detector, and `ConcurrencyRunnerLogContractTest` pins the event. A note is
   not a finding: it fails nothing, and a note beside a finding stays in the report text as before.
-  Only `SynchronizedNonFinalDetector` hands its notes out so far
-  (`SynchronizedNonFinalReport.notes()`).
+  `SynchronizedNonFinalDetector` hands its notes out through `SynchronizedNonFinalReport.notes()`.
+- **The notes that ask for a different recording now reach the log from three more detectors
+  (#816).** `ConditionVariableReport.notes()`, `ExchangerReport.notes()` and
+  `ReentrantLockReport.notes()` hand out, and the runner logs as `runner.detector.note` on a run
+  with no finding: recorded awaits still open on a condition registered without its lock (the
+  stranded consumer `DetectorAccuracyEvalTest` pins as a false negative), parked threads with no
+  predicate or a predicate that threw, and a registered lock that did not make the condition; an
+  exchange end recorded on a thread with no start there; a lock held at analysis by a thread that
+  never recorded taking it, and the waits recorded with the lock-less `recordStarvation`, counted in
+  one note. Each is something the detector cannot decide until the caller records it differently,
+  and before this a passing run said nothing about it. Background for a finding (an idle consumer,
+  a signal with no waiter, a handled timeout, a holder still running) stays in the report text, and
+  Phaser, CyclicBarrier, ABA and LockDowngrade context is not logged at all; the decision per
+  detector is in [docs/agent/diagnostics.md](agent/diagnostics.md#when-a-detector-leaves-a-note).
+  The lock-less condition note now names `registerCondition(lock, condition, ready, name)`.
 - **A report with issues carries a structured finding, and a gate checks it (#774).** The `failOn`
   gate reads a finding's severity from the report's `structuredViolations` list first and guesses
   from the text only when the list is empty, but nothing checked that a report that fired had

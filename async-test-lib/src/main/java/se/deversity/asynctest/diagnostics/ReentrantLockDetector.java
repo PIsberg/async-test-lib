@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -81,6 +82,8 @@ public class ReentrantLockDetector {
     private final Set<String> observedStarvation = ConcurrentHashMap.newKeySet();
     /** Recorded waits nothing corroborated: context. */
     private final Set<String> recordedWaits = ConcurrentHashMap.newKeySet();
+    /** How many of those waits named no lock, so could never be judged: a note for the caller (#816). */
+    private final AtomicInteger locklessWaits = new AtomicInteger();
 
     /**
      * Where to send acquire and release records, or {@code null} to keep them as context only.
@@ -242,6 +245,7 @@ public class ReentrantLockDetector {
      */
     public void recordStarvation(String threadName, long waitTimeMs) {
         if (waitTimeMs <= 0) return;
+        locklessWaits.incrementAndGet();
         recordedWaits.add(threadName + " (waited " + waitTimeMs + "ms; no lock named, so nothing "
                 + "could corroborate it)");
     }
@@ -298,6 +302,7 @@ public class ReentrantLockDetector {
         // The holder is read now, while it is the evidence, not when the report is printed.
         Map<ReentrantLock, String> held = new LinkedHashMap<>();
         Map<ReentrantLock, String> stillWorking = new LinkedHashMap<>();
+        List<String> unjudgedHolds = new ArrayList<>();
         Set<Thread> platformThreads = null;
         for (ReentrantLock lock : known) {
             if (!lock.isLocked() || lock.isHeldByCurrentThread() || leftToLeakReporter(lock)) {
@@ -318,6 +323,11 @@ public class ReentrantLockDetector {
             if (state == null) {
                 stillWorking.put(lock, holder + ", a thread the detector cannot identify: "
                         + whyUnidentified(holderName, recorded));
+                if (neverRecordedTaking(holderName, recorded)) {
+                    unjudgedHolds.add(nameOf(lock) + ": " + holder + " at analysis, a thread that never "
+                            + "recorded taking it, so the hold cannot be judged a leak; call "
+                            + "recordLockAcquired(lock, threadName) on the thread that takes the lock");
+                }
             } else if (state == HolderState.WORKING) {
                 stillWorking.put(lock, holder + ", still running");
             } else {
@@ -326,7 +336,7 @@ public class ReentrantLockDetector {
             }
         }
         return new ReentrantLockReport(lockRegistry, timeouts, observedStarvation, recordedWaits,
-                held, stillWorking);
+                held, stillWorking, unjudgedHolds, locklessWaits.get());
     }
 
     /** Where the thread holding a lock is when the run is analysed. */
@@ -377,11 +387,20 @@ public class ReentrantLockDetector {
         if (holderName.isEmpty()) {
             return "every unnamed virtual thread is named \"\"";
         }
-        if (recorded == null || !holderName.equals(recorded.getName())) {
+        if (neverRecordedTaking(holderName, recorded)) {
             return "it never recorded taking the lock, and a virtual thread cannot be listed to see "
                     + "whether it is still running";
         }
         return "another live platform thread carries the same name";
+    }
+
+    /**
+     * {@return whether the named holder of a lock is not the thread last recorded taking it, which
+     * a {@code recordLockAcquired} call on the holder would settle}; an empty name identifies no one
+     * whatever is recorded, so it is never this case
+     */
+    private static boolean neverRecordedTaking(String holderName, @Nullable Thread recorded) {
+        return !holderName.isEmpty() && (recorded == null || !holderName.equals(recorded.getName()));
     }
 
     /**
@@ -434,6 +453,10 @@ public class ReentrantLockDetector {
         private final Map<ReentrantLock, String> heldLocks;
         /** Each lock held at analysis by a holder still working or not identified, printed as context. */
         private final Map<ReentrantLock, String> stillWorking;
+        /** The holds among {@link #stillWorking} whose holder never recorded taking the lock (#816). */
+        private final List<String> unjudgedHolds;
+        /** How many recorded waits named no lock (#816). */
+        private final int locklessWaits;
 
         /**
          * Creates a ReentrantLockReport with no held locks.
@@ -452,7 +475,8 @@ public class ReentrantLockDetector {
             Set<ReentrantLock> timeoutLocks,
             Set<String> starvationThreads
         ) {
-            this(lockRegistry, countOnce(timeoutLocks), Set.of(), starvationThreads, Map.of(), Map.of());
+            this(lockRegistry, countOnce(timeoutLocks), Set.of(), starvationThreads, Map.of(), Map.of(),
+                    List.of(), 0);
         }
 
         private ReentrantLockReport(
@@ -461,7 +485,9 @@ public class ReentrantLockDetector {
             Set<String> observedStarvation,
             Set<String> recordedWaits,
             Map<ReentrantLock, String> heldLocks,
-            Map<ReentrantLock, String> stillWorking
+            Map<ReentrantLock, String> stillWorking,
+            List<String> unjudgedHolds,
+            int locklessWaits
         ) {
             this.lockRegistry = Collections.unmodifiableMap(new HashMap<>(lockRegistry));
             this.timeouts = Collections.unmodifiableMap(new HashMap<>(timeouts));
@@ -469,6 +495,8 @@ public class ReentrantLockDetector {
             this.recordedWaits = Collections.unmodifiableSet(new HashSet<>(recordedWaits));
             this.heldLocks = Collections.unmodifiableMap(new LinkedHashMap<>(heldLocks));
             this.stillWorking = Collections.unmodifiableMap(new LinkedHashMap<>(stillWorking));
+            this.unjudgedHolds = List.copyOf(unjudgedHolds);
+            this.locklessWaits = locklessWaits;
         }
 
         private static Map<ReentrantLock, Integer> countOnce(Set<ReentrantLock> locks) {
@@ -485,6 +513,32 @@ public class ReentrantLockDetector {
          */
         public boolean hasIssues() {
             return !heldLocks.isEmpty() || !observedStarvation.isEmpty();
+        }
+
+        /**
+         * {@return the notes that ask the caller to change a recording: one per lock held at
+         * analysis by a thread that never recorded taking it, and one counting the waits recorded
+         * with no lock named}
+         *
+         * <p>Each is something this detector could have judged had it been recorded differently:
+         * the hold with {@code recordLockAcquired} on the holder, the waits with
+         * {@link ReentrantLockDetector#recordStarvation(ReentrantLock, String, long)}. The runner
+         * logs these when {@link #hasIssues()} is {@code false}, since the report itself is printed
+         * only when it has a finding (#816). A holder still running, a wait the lock did not
+         * corroborate and a {@code tryLock()} timeout are background, and stay in the report text.
+         *
+         * @since 1.12.3
+         */
+        public List<String> notes() {
+            if (locklessWaits == 0) {
+                return unjudgedHolds;
+            }
+            List<String> notes = new ArrayList<>(unjudgedHolds);
+            notes.add(locklessWaits + " wait(s) recorded with recordStarvation(threadName, waitTimeMs), "
+                    + "which names no lock, so none could be judged; pass the lock, "
+                    + "recordStarvation(lock, threadName, waitTimeMs), to have a thread seen barging "
+                    + "past the waiter confirm starvation");
+            return notes;
         }
 
         /**
