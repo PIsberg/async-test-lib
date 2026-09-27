@@ -466,9 +466,20 @@ public class LockLeakDetectorTest {
      */
     private static void whileAnUnrecordedThreadHolds(ReentrantLock lock, Thread.Builder holder,
                                                      Runnable check) throws InterruptedException {
+        whileAnUnrecordedThreadHolds(lock, holder, () -> { }, check);
+    }
+
+    /**
+     * As {@link #whileAnUnrecordedThreadHolds(ReentrantLock, Thread.Builder, Runnable)}, with the
+     * holder running {@code first} before it takes the lock, such as registering the lock the way a
+     * test body does. Nothing it runs may record an acquisition.
+     */
+    private static void whileAnUnrecordedThreadHolds(ReentrantLock lock, Thread.Builder holder, Runnable first,
+                                                     Runnable check) throws InterruptedException {
         java.util.concurrent.CountDownLatch holding = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         Thread thread = holder.start(() -> {
+            first.run();
             lock.lock();
             try {
                 holding.countDown();
@@ -560,6 +571,22 @@ public class LockLeakDetectorTest {
         whileAnUnrecordedThreadHolds(lock, Thread.ofPlatform().name("pooled"), () ->
                 assertEveryGradeIsARecordedFact(detector,
                         "two threads carry the name the lock gives, and the live one may still release"));
+    }
+
+    /**
+     * The same from a virtual thread factory with a fixed name (#855): the live thread sharing the
+     * recorded one's name is virtual, so no platform scan finds it, but it registered the lock, so
+     * the detector saw it. Before #855 the recorded thread's end was taken for the holder's.
+     */
+    @Test
+    void aHolderWhoseNameALiveRecordedVirtualThreadSharesStaysAFact() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        Thread.Builder pooled = Thread.ofVirtual().name("pooled");
+        recordAnAcquireAndReleaseUnseen(detector, lock, pooled);
+        whileAnUnrecordedThreadHolds(lock, pooled, () -> detector.registerLock(lock, "shared"), () ->
+                assertEveryGradeIsARecordedFact(detector,
+                        "a live thread that recorded against the lock carries the name the lock gives"));
     }
 
     /**

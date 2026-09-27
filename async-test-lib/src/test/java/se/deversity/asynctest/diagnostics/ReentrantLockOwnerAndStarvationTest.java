@@ -378,9 +378,20 @@ class ReentrantLockOwnerAndStarvationTest {
      */
     private static void whileAnUnrecordedThreadHolds(ReentrantLock lock, Thread.Builder holder,
                                                      ThrowingCheck check) throws InterruptedException {
+        whileAnUnrecordedThreadHolds(lock, holder, () -> { }, check);
+    }
+
+    /**
+     * As {@link #whileAnUnrecordedThreadHolds(ReentrantLock, Thread.Builder, ThrowingCheck)}, with
+     * the holder running {@code first} before it takes the lock, such as registering the lock the
+     * way a test body does. Nothing it runs may record an acquisition.
+     */
+    private static void whileAnUnrecordedThreadHolds(ReentrantLock lock, Thread.Builder holder, Runnable first,
+                                                     ThrowingCheck check) throws InterruptedException {
         CountDownLatch holding = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         Thread thread = holder.start(() -> {
+            first.run();
             lock.lock();
             try {
                 holding.countDown();
@@ -501,6 +512,135 @@ class ReentrantLockOwnerAndStarvationTest {
         // running: the lock says "held by ''", and no scan can list virtual threads.
         assertHeldButNotJudged(detector.analyze(),
                 "an empty holder name cannot say the recorded thread is the one still holding");
+    }
+
+    // ---- #855: a hold the name does not identify ----
+
+    @Test
+    @DisplayName("#855: a hold whose name a live virtual thread that recorded against the lock shares with the finished recorded holder is not judged")
+    void aHolderWhoseNameALiveRecordedVirtualThreadSharesIsNotJudged() throws InterruptedException {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "pooled-lock");
+        // A virtual thread factory with a fixed name gives every thread it makes that name.
+        Thread.Builder pooled = Thread.ofVirtual().name("pooled");
+        // Correct code: a helper re-enters the lock, records its own pair, and gives its hold back
+        // before the caller releases the outer one. The helper's release is recorded while two holds
+        // are taken, so this thread stays the recorded holder after it has let go.
+        Thread recorded = pooled.start(() -> {
+            lock.lock();
+            try {
+                lock.lock();
+                detector.recordLockAcquired(lock, "pooled");
+                detector.recordLockReleased(lock, "pooled");
+                lock.unlock();
+            } finally {
+                lock.unlock();
+            }
+        });
+        recorded.join(10_000);
+        assertFalse(recorded.isAlive(), "the premise: the recorded thread has finished");
+        assertFalse(lock.isLocked(), "the premise: it gave every hold back");
+
+        // Another thread of the same name registers the lock, as a body does, and takes it without
+        // recording that. It is virtual, so no platform scan finds it; the detector saw it record.
+        whileAnUnrecordedThreadHolds(lock, pooled, () -> detector.registerLock(lock, "pooled-lock"), () -> {
+            ReentrantLockDetector.ReentrantLockReport report = detector.analyze();
+            assertHeldButNotJudged(report,
+                    "a live thread that recorded against the lock carries the name the lock gives, "
+                            + "and it may still release");
+            assertEquals(java.util.List.of(), report.notes(),
+                    "the name is the recorded thread's, so no recordLockAcquired call would settle it; "
+                            + "background, not a request (#816)");
+        });
+    }
+
+    /*
+     * #855 asked for a FACT finding on a hold the name does not identify. The two tests below pin why
+     * there is none: for each shape the issue names, a correct program leaves the detector exactly
+     * the same state, with the holder still working. The runner guarantees only that its own workers
+     * have finished at analysis, and it names them, so an unidentified holder is a thread outside that
+     * guarantee: one the body or the code under test started, which the runner does not join.
+     */
+
+    @Test
+    @DisplayName("#855: a balanced re-entry leak by an unnamed virtual thread reads exactly like correct code whose holder still works, so both are context")
+    void aBalancedReentryLeakByAnUnnamedVirtualThreadReadsLikeACorrectHandOn() throws InterruptedException {
+        // The leak: a helper re-enters the lock and never gives the extra hold back. The recorded
+        // pair balances, so LOCK_LEAKS has nothing to count, and the thread ends holding the lock.
+        ReentrantLockDetector leakDetector = new ReentrantLockDetector();
+        ReentrantLock leakLock = new ReentrantLock();
+        leakDetector.registerLock(leakLock, "reentered-lock");
+        Thread leaker = Thread.ofVirtual().start(() -> ReentrantLockDetectorModelTest.leakOneHold(leakDetector, leakLock));
+        leaker.join(10_000);
+        assertFalse(leaker.isAlive(), "the premise: the leaking thread has finished");
+        assertTrue(leakLock.isLocked(), "the premise: the hold really leaked");
+        ReentrantLockDetector.ReentrantLockReport leak = leakDetector.analyze();
+        assertHeldButNotJudged(leak, "an empty holder name cannot say the finished thread is the holder");
+
+        // Correct code: the same records from the same kind of thread, whose outer hold is given back
+        // where nothing records it; then another unnamed virtual thread, which records nothing, takes
+        // the lock and is still working when the run is analysed.
+        ReentrantLockDetector twinDetector = new ReentrantLockDetector();
+        ReentrantLock twinLock = new ReentrantLock();
+        twinDetector.registerLock(twinLock, "reentered-lock");
+        Thread recorder = Thread.ofVirtual().start(() -> {
+            try {
+                ReentrantLockDetectorModelTest.leakOneHold(twinDetector, twinLock);
+            } finally {
+                twinLock.unlock(); // the caller's release of the hold the helper kept
+            }
+        });
+        recorder.join(10_000);
+        assertFalse(recorder.isAlive() || twinLock.isLocked(), "the premise: every hold was given back");
+        whileAnUnrecordedThreadHolds(twinLock, Thread.ofVirtual(), () -> {
+            ReentrantLockDetector.ReentrantLockReport twin = twinDetector.analyze();
+            assertHeldButNotJudged(twin, "the holder is alive and working");
+            assertEquals(leak.toString(), twin.toString(),
+                    "the leak and its correct twin leave the detector the same evidence, so a finding on "
+                            + "one would be a finding on the other");
+            assertEquals(java.util.List.of(), leak.notes(), "an empty name is background, not a request (#816)");
+            assertEquals(leak.notes(), twin.notes(), "and the twin says the same");
+        });
+    }
+
+    @Test
+    @DisplayName("#855: a hold left by a named thread that never recorded taking it reads exactly like another run's worker of that name still holding it, so both are context")
+    void aLeakByAThreadThatNeverRecordedItsAcquisitionReadsLikeAnotherRunsWorker() throws InterruptedException {
+        // The leak: a worker registers the lock, as a body does, takes it without recording that, and
+        // ends holding it. The runner names its virtual workers async-test-worker-N from 0, per run.
+        ReentrantLockDetector leakDetector = new ReentrantLockDetector();
+        ReentrantLock leakLock = new ReentrantLock();
+        Thread leaker = Thread.ofVirtual().name("async-test-worker-3").start(() -> {
+            leakDetector.registerLock(leakLock, "worker-lock");
+            leakLock.lock(); // taken and never given back
+        });
+        leaker.join(10_000);
+        assertFalse(leaker.isAlive(), "the premise: the leaking thread has finished");
+        assertTrue(leakLock.isLocked(), "the premise: the hold really leaked");
+        ReentrantLockDetector.ReentrantLockReport leak = leakDetector.analyze();
+        assertHeldButNotJudged(leak, "the lock was never recorded taken, so its holder's name identifies no one");
+
+        // Correct code: this run's worker registers the lock and ends without taking it, while a worker
+        // of the same name from another @AsyncTest running in parallel holds the shared lock and is
+        // still working. That worker records into its own run's detector, never this one.
+        ReentrantLockDetector twinDetector = new ReentrantLockDetector();
+        ReentrantLock twinLock = new ReentrantLock();
+        Thread worker = Thread.ofVirtual().name("async-test-worker-3").start(() ->
+                twinDetector.registerLock(twinLock, "worker-lock"));
+        worker.join(10_000);
+        assertFalse(worker.isAlive(), "the premise: this run's worker has finished");
+        whileAnUnrecordedThreadHolds(twinLock, Thread.ofVirtual().name("async-test-worker-3"), () -> {
+            ReentrantLockDetector.ReentrantLockReport twin = twinDetector.analyze();
+            assertHeldButNotJudged(twin, "the holder is alive and working");
+            assertEquals(leak.toString(), twin.toString(),
+                    "the leak and its correct twin leave the detector the same evidence, so a finding on "
+                            + "one would be a finding on the other");
+            assertEquals(1, leak.notes().size(),
+                    "what would let the hold be judged is a recording, so it is a note asking for "
+                            + "recordLockAcquired (#816): " + leak.notes());
+            assertEquals(leak.notes(), twin.notes(), "and the twin draws the same note");
+        });
     }
 
     @Test

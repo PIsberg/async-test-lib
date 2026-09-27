@@ -504,6 +504,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LOCK_LEAKS` enabled (the default) an unbalanced recorded pair is still reported there as a FACT.
   The runner names its workers, so the documented shape, a worker that records its acquisition and
   ends holding the lock, is still reported at VERDICT, and the corpus pair is unchanged.
+- **`REENTRANT_LOCK` and `LOCK_LEAKS` see a live virtual thread that shares the recorded holder's
+  name (#855).** The #843 rule refused a holder name that another live platform thread also
+  carries, but no scan lists virtual threads, so a thread from a virtual factory with a fixed name
+  was missed. A correct helper that re-entered the lock, recorded its own pair and gave every hold
+  back left its thread the recorded holder; when another thread of the same name, which registered
+  the lock and took it without recording, was still working at analysis, `REENTRANT_LOCK` reported
+  "Locked by thread pooled, which has finished" at VERDICT, and `LOCK_LEAKS` raised an unbalanced
+  pair to VERDICT the same way. The rule now also refuses a name carried by any other live thread
+  that registered or recorded against the lock, virtual ones included, and the hold is context.
+  Not changed, on purpose: a hold whose name identifies no one stays context rather than becoming
+  a FACT. A balanced re-entry leak by an unnamed virtual thread, or by a thread that never recorded
+  its acquisition, leaves exactly the evidence correct code leaves while a holder the runner does
+  not join is still working, and two tests now pin each leak against its correct twin. Name the
+  thread and record the acquisition, as the runner's workers do, to have the hold judged.
 - **`ABA_PROBLEM` is fed by the agent, and a toggle that ran before the read is no longer an ABA
   there (#817).** Recorded by hand, two threads that swing a value A to B to A wholly before a
   third thread reads it, and record the swing after the read, leave exactly the records of a real
