@@ -249,6 +249,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `v = map.get(k); map.put(k, v + 1)` two equal puts are the lost update itself, and a check that
   also gates other work, such as sending once, is a defect whatever is put; the javadoc says to
   record those without the value.
+- **The same-instance check-then-act excuse is judged per round (#833).** The #827 excuse asked
+  whether every caller of the whole run put one instance, so callers that each put their round's
+  one object, a new one every round, were reported at VERDICT/HIGH although rounds run one after
+  another and never overlap. The detector now keeps one state per `(map, key)` site per round,
+  holding the sharing verdict and what that round's callers put, and reports a round that raced
+  and did not all put one instance. A round whose callers disagreed but had one caller no longer
+  convicts a round that raced in agreement. Only the round in progress and the round a finding
+  came from are kept. `NonAtomicConcurrentMapUpdateDetectorTest` pins both directions, and the
+  idiom lane gains a pair: `idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance` silent,
+  `idiom_checkThenAct_everyCallerPutsItsOwnInstance` firing. Known limits, now in the javadoc:
+  equal immutable values built per caller, such as `"v" + i` or a `Long` outside the boxing cache,
+  are still reported, and the detector takes the caller's word for the value, so recording a
+  read-modify-write or a dedup check through the value overload excuses a real lost update.
 - **The agent attributes a thread the body starts, and a task it submits, to the run (#745).**
   The telemetry bridge forwarded only the runner's workers, so a child thread a worker started and
   a pool thread running a task a worker submitted had every field access dropped

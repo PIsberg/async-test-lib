@@ -258,6 +258,75 @@ class NonAtomicConcurrentMapUpdateDetectorTest {
                 "without the value the detector cannot tell a same-value pair from a lost update");
     }
 
+    /**
+     * #833: the same-instance excuse is judged per round, as the sharing verdict is. Rounds run
+     * one after another, so callers of different rounds never overlapped: a round whose callers
+     * all put that round's instance lost nothing, whatever another round put.
+     */
+    @Test
+    void callersThatAgreeWithinEachRoundAreNotFlaggedForPuttingAnotherInstanceNextRound()
+            throws Exception {
+        var scope = new SelfGuard.Scope();
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, Object> map = new ConcurrentHashMap<>();
+        for (int round = 0; round < 3; round++) {
+            Object token = new Object();
+            onTwoThreadsIn(scope, () -> d.recordCheckThenAct(
+                    map, "k", token, "install-token", Thread.currentThread()));
+            scope.markInvocationStart();
+        }
+
+        assertFalse(d.analyze().hasIssues(),
+                "every round's two callers put that round's one token, so no round lost a put; "
+                        + "the tokens of different rounds never met: " + d.analyze());
+    }
+
+    @Test
+    void aRoundWhoseCallersPutDifferentInstancesStillFires() throws Exception {
+        var scope = new SelfGuard.Scope();
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, Object> map = new ConcurrentHashMap<>();
+        Object token = new Object();
+        onTwoThreadsIn(scope, () -> d.recordCheckThenAct(
+                map, "k", token, "install-token", Thread.currentThread()));
+        scope.markInvocationStart();
+        onTwoThreadsIn(scope, () -> d.recordCheckThenAct(
+                map, "k", new Object(), "install-token", Thread.currentThread()));
+        scope.markInvocationStart();
+        onTwoThreadsIn(scope, () -> d.recordCheckThenAct(
+                map, "k", token, "install-token", Thread.currentThread()));
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(),
+                "the second round's callers each put their own instance, so one put was lost there");
+        assertEquals(1, report.structuredViolations.size());
+        assertEquals(2, report.structuredViolations.get(0).attributes().get("threadCount"),
+                "the report counts the threads of the round that lost a put");
+    }
+
+    /**
+     * A round that disagreed but had one caller raced nobody, and a round that raced agreed, so
+     * no round lost a put. Judged over the run, the two made a finding together.
+     */
+    @Test
+    void aDisagreementWithNoRaceDoesNotConvictARoundThatRacedInAgreement() throws Exception {
+        var scope = new SelfGuard.Scope();
+        var d = new NonAtomicConcurrentMapUpdateDetector();
+        ConcurrentMap<String, Object> map = new ConcurrentHashMap<>();
+        Object token = new Object();
+        onTwoThreadsIn(scope, () -> d.recordCheckThenAct(
+                map, "k", token, "install-token", Thread.currentThread()));
+        scope.markInvocationStart();
+        inOneThreadIn(scope, () -> {
+            d.recordCheckThenAct(map, "k", new Object(), "install-token", Thread.currentThread());
+            d.recordCheckThenAct(map, "k", "install-token", Thread.currentThread());
+        });
+
+        assertFalse(d.analyze().hasIssues(),
+                "the round with two callers agreed, and the round that did not had one caller: "
+                        + d.analyze());
+    }
+
     private static NonAtomicConcurrentMapUpdateDetector handedOver(boolean declared) throws Exception {
         var d = new NonAtomicConcurrentMapUpdateDetector();
         ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
@@ -306,6 +375,28 @@ class NonAtomicConcurrentMapUpdateDetectorTest {
         b.start();
         a.join();
         b.join();
+    }
+
+    private static void onTwoThreadsIn(SelfGuard.Scope scope, Runnable body) throws InterruptedException {
+        onTwoThreads(boundTo(scope, body));
+    }
+
+    private static void inOneThreadIn(SelfGuard.Scope scope, Runnable body) throws InterruptedException {
+        Thread t = new Thread(boundTo(scope, body));
+        t.start();
+        t.join();
+    }
+
+    /** Runs {@code body} with {@code scope} bound, as a runner worker has its run's round clock. */
+    private static Runnable boundTo(SelfGuard.Scope scope, Runnable body) {
+        return () -> {
+            SelfGuard.Scope.bind(scope);
+            try {
+                body.run();
+            } finally {
+                SelfGuard.Scope.unbind();
+            }
+        };
     }
 
     @Test

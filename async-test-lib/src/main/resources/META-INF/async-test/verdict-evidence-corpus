@@ -55,7 +55,10 @@
 #   What neither reaches: a lock the library never saw, which leaves the finding standing as it
 #   does for every lockset detector, and a check-then-act whose every caller puts the same value,
 #   which loses nothing and is still reported when recorded without the value. Since #827 a caller
-#   can pass it, and a site whose every caller put the same instance is silent.
+#   can pass it, and a site whose every caller put the same instance is silent; since #833 that is
+#   judged per round, and the idiom lane pins it
+#   (idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance silent,
+#   idiom_checkThenAct_everyCallerPutsItsOwnInstance firing).
 #
 # Blank lines and # comments are ignored.
 

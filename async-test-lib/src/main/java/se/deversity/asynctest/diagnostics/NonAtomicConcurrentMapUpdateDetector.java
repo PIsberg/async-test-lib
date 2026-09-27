@@ -55,9 +55,13 @@ import org.jspecify.annotations.Nullable;
  * <p>Callers that all put the very same instance lose nothing: the map ends as
  * {@code putIfAbsent} would leave it, and no caller holds a value the map dropped. A caller
  * that says what it put, through the overload taking the value, lets the detector excuse such
- * a site. Values are compared by identity, not {@code equals}: two new empty lists are equal,
- * yet the one the map dropped loses whatever its caller adds to it next. A site any caller
- * recorded without a value is never excused.
+ * a site. The excuse is judged per round, as the sharing is: callers that each put their
+ * round's one instance are not reported for putting a different one in another round, which
+ * they never overlapped, while a round whose racing callers put two instances, or one of which
+ * recorded no value, is. Values are compared by identity, not {@code equals}: two new empty
+ * lists are equal, yet the one the map dropped loses whatever its caller adds to it next. So
+ * equal immutable values built per caller, such as {@code "v" + i} or a {@code Long} outside the
+ * boxing cache, are still reported; a caller that means one value passes one canonical instance.
  *
  * <p>Usage:
  * <pre>{@code
@@ -76,20 +80,17 @@ import org.jspecify.annotations.Nullable;
 )
 public final class NonAtomicConcurrentMapUpdateDetector {
 
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
-        /** Stands for a site whose callers put different instances, or one that said nothing. */
-        private static final Object MIXED = new Object();
-
+    /** One (map, key) site: its labels, the round in progress, and the round that lost a put. */
+    private static final class State {
         final String mapLabel;
         final String key;
         final String operation;
 
-        /**
-         * The one instance every caller so far put, {@link #MIXED} once two differed or one
-         * recorded no value, {@code null} before the first call. It only moves forward, from
-         * {@code null} to one instance to {@code MIXED}, so a site once unexcused stays reported.
-         */
-        private final AtomicReference<@Nullable Object> putValue = new AtomicReference<>();
+        /** The round in progress, replaced by the first caller of a later round. */
+        private final AtomicReference<@Nullable RoundState> current = new AtomicReference<>();
+
+        /** The first round whose callers raced and did not all put one instance; kept for the report. */
+        private final AtomicReference<@Nullable RoundState> finding = new AtomicReference<>();
 
         State(String mapLabel, String key, String operation) {
             this.mapLabel = mapLabel;
@@ -97,7 +98,57 @@ public final class NonAtomicConcurrentMapUpdateDetector {
             this.operation = operation;
         }
 
-        /** Folds one caller's put into {@link #putValue}; a {@code null} value makes the site {@code MIXED}. */
+        /**
+         * {@return the state of round {@code number}, started by the first caller in it}
+         *
+         * <p>A caller still recording from an older round joins the newer one, the direction that
+         * can only add a finding, as {@link SelfGuard.RoundThreads} does. Only the round in
+         * progress and the round a finding came from are kept, so memory does not grow with the
+         * rounds.
+         */
+        RoundState roundFor(int number) {
+            RoundState round = current.get();
+            while (round == null || round.number < number) {
+                RoundState next = new RoundState(number);
+                if (current.compareAndSet(round, next)) {
+                    return next;
+                }
+                round = current.get();
+            }
+            return round;
+        }
+
+        /** Keeps {@code round} as the finding when it raced and lost a put; the first one wins. */
+        void judge(RoundState round) {
+            if (finding.get() == null && round.sharedAndUnguarded() && !round.oneInstancePut()) {
+                finding.compareAndSet(null, round);
+            }
+        }
+    }
+
+    /**
+     * One round's check-then-acts on a site. The sharing verdict and the same-instance excuse are
+     * both taken within the round (#833): rounds run one after another, so callers of different
+     * rounds never overlapped, and what one round put says nothing about another round's race.
+     */
+    private static final class RoundState extends SelfGuard.ThreadTrackedInstance {
+        /** Stands for a round whose callers put different instances, or where one said nothing. */
+        private static final Object MIXED = new Object();
+
+        final int number;
+
+        /**
+         * The one instance every caller of this round so far put, {@link #MIXED} once two differed
+         * or one recorded no value, {@code null} before the first call. It only moves forward, from
+         * {@code null} to one instance to {@code MIXED}, so a round once unexcused stays reported.
+         */
+        private final AtomicReference<@Nullable Object> putValue = new AtomicReference<>();
+
+        RoundState(int number) {
+            this.number = number;
+        }
+
+        /** Folds one caller's put into {@link #putValue}; a {@code null} value makes the round {@code MIXED}. */
         @SuppressWarnings("ReferenceEquality") // equal but distinct values are two puts (#827)
         void notePut(@Nullable Object value) {
             Object seen = putValue.get();
@@ -110,7 +161,7 @@ public final class NonAtomicConcurrentMapUpdateDetector {
             }
         }
 
-        /** {@return whether every caller said it put one and the same instance} */
+        /** {@return whether every caller of this round said it put one and the same instance} */
         @SuppressWarnings("ReferenceEquality") // MIXED is a sentinel
         boolean oneInstancePut() {
             Object seen = putValue.get();
@@ -147,13 +198,15 @@ public final class NonAtomicConcurrentMapUpdateDetector {
 
     /**
      * Record a {@code containsKey}-then-{@code put} that puts {@code value} when {@code key} is
-     * absent. When every caller on the site put the same instance, the race lost nothing and is
-     * not reported.
+     * absent. When every caller of a round put the same instance, that round's race lost nothing
+     * and is not reported.
      *
      * <p>Only for a value chosen without reading the map. After {@code v = map.get(k);
      * map.put(k, v + 1)} two callers putting one value is the lost update itself, and a check
      * that also decides other work, such as sending once, is a defect whatever is put: record
-     * those with {@link #recordCheckThenAct(ConcurrentMap, Object, String, Thread)}.
+     * those with {@link #recordCheckThenAct(ConcurrentMap, Object, String, Thread)}. The detector
+     * cannot tell those shapes from the absent-check one: it takes the caller's word for what was
+     * put, so recording them here excuses a real lost update.
      *
      * @param map       the ConcurrentMap being mutated (null-safe)
      * @param key       the key involved (may be {@code null})
@@ -174,10 +227,13 @@ public final class NonAtomicConcurrentMapUpdateDetector {
             final String op = (operation != null) ? operation : "check-then-act";
             s = sites.computeIfAbsent(site, k -> new State(label, String.valueOf(key), op));
         }
+        RoundState round = s.roundFor(SelfGuard.RoundThreads.roundNow());
         // Probed on the calling thread while it is still inside the compound operation; the
         // explicit thread parameter is attribution only.
-        s.noteAccess(map, thread);
-        s.notePut(value);
+        round.noteAccess(map, thread);
+        round.notePut(value);
+        // Both halves only move towards a finding, so whichever caller completes the pair sees it.
+        s.judge(round);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -187,7 +243,8 @@ public final class NonAtomicConcurrentMapUpdateDetector {
     public Report analyze() {
         Report r = new Report();
         for (State s : sites.values()) {
-            if (!s.sharedAndUnguarded() || s.oneInstancePut()) continue;
+            RoundState round = s.finding.get();
+            if (round == null) continue;
             String msg = String.format(
                     "Non-atomic '%s' on %s for key '%s' performed by %d threads (%s) — "
                             + "check-then-act on a ConcurrentMap is not atomic; concurrent callers "
@@ -196,8 +253,8 @@ public final class NonAtomicConcurrentMapUpdateDetector {
                     s.operation,
                     s.mapLabel,
                     s.key,
-                    s.threadCount(),
-                    String.join(", ", s.threadNames()));
+                    round.threadCount(),
+                    String.join(", ", round.threadNames()));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "NonAtomicConcurrentMapUpdate",
@@ -208,7 +265,7 @@ public final class NonAtomicConcurrentMapUpdateDetector {
                             "map", s.mapLabel,
                             "key", s.key,
                             "operation", s.operation,
-                            "threadCount", s.threadCount()),
+                            "threadCount", round.threadCount()),
                     Instant.now()));
         }
         return DetectorFailurePolicy.checkedReport(this, r);

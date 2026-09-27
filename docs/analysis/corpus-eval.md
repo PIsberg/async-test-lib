@@ -2055,6 +2055,16 @@ after the take and must stay silent. Both have broken twins over `peek()`, one u
 declared, which must still fire: a declaration cannot turn every thread using one digest at once
 into a hand-off.
 
+**A check-then-act that puts one instance (#827, #833).** Two rows were added after run L, both on
+the manual API with the value overload of `recordCheckThenAct`. In
+`idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance` every thread of a round runs get-then-put
+on one key with no lock, each putting the round's one generation object, so no put is lost and the
+row must stay silent. The object changes every round, so the row also fails if the same-instance
+excuse is judged across the run rather than per round; against the detector before #833 it drew
+`VERDICT`/`HIGH`. Its twin, `idiom_checkThenAct_everyCallerPutsItsOwnInstance`, has each caller
+build its own object and must fire at `HIGH`. In the first full run with #833 the correct row was
+silent with nothing at `FACT` or above, and the twin drew `VERDICT`/`HIGH`.
+
 The "FACT or above" column is empty on every correct row. The only findings at that tier are on
 twins, from the `VERDICT` detectors whose twin they are. Below `FACT`, no detector other than a
 row's named one spoke on any row in this run, correct or twin. In other runs `AtomicityValidator`

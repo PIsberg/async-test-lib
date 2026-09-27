@@ -4692,6 +4692,23 @@ final class Corpus {
                     "the same point read after tryOptimisticRead and used with no validate. "
                             + "Nothing says the reads were consistent, so they are plain reads "
                             + "racing the writer's",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "six threads of a round run get-then-put on one key with no lock, each "
+                            + "putting the round's one generation object. Every put is the same "
+                            + "instance, so none is lost (#827); the object changes every round, "
+                            + "and rounds never overlap (#833)"),
+
+            new RecordingSubject("idiom_checkThenAct_everyCallerPutsItsOwnInstance", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same get-then-put with each caller building its own object, so one "
+                            + "caller's put can drop the object another caller just installed",
                     IssueSeverity.HIGH)
     );
 
@@ -4725,7 +4742,12 @@ final class Corpus {
                             + "monitor is no edge (#747), so the taker declares the checkout with "
                             + "AsyncTestContext.ownershipTaken, as the API documents for this shape"),
             Map.entry("idiom_digestHolderPool_declaredButPeeked",
-                    "the twin of the row above, making the same declaration")
+                    "the twin of the row above, making the same declaration"),
+            Map.entry("idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance",
+                    "a check-then-act is no single call, and only the caller knows what it put, "
+                            + "so the body records the pair with its value"),
+            Map.entry("idiom_checkThenAct_everyCallerPutsItsOwnInstance",
+                    "the twin of the row above, recording the same pair the same way")
     );
 
     /**
