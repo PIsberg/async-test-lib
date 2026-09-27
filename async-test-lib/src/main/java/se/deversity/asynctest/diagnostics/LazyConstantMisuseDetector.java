@@ -9,6 +9,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -70,6 +73,15 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * }
  * }</pre>
  *
+ * <p><strong>Naming the constant.</strong> Each record method has an overload that also takes the
+ * {@code LazyConstant} itself, and that one is the more precise: a name only labels a constant, so
+ * two constants under one name are judged as one and one constant under two names as two. Keyed
+ * by the name, a constant's state lasts one round, since a name reused by a fresh constant each
+ * round would otherwise read as computed once per round, and so a static constant computed in each
+ * of two rounds is missed. Keyed by the constant, its state lasts the run: that second computation
+ * is reported, while a constant built per round is a new constant, and the convoy is still judged
+ * per round. Use one form or the other for any one constant; the two are tracked apart.
+ *
  * @since 1.7.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-constant state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id sets are ConcurrentHashMap.newKeySet(); reports are synchronized lists.")
@@ -95,17 +107,20 @@ public class LazyConstantMisuseDetector {
         final AtomicBoolean convoyReported = new AtomicBoolean(false);
         // First completed result, for the determinism check. Guarded by synchronized(this)
         // in recordComputeEnd — completions are rare (at most once when used correctly).
-        Object firstResult = NO_RESULT;
+        @Nullable Object firstResult = NO_RESULT;
     }
 
-    // Per-constant state, keyed by the caller-supplied descriptive name, for the current round.
-    private final Map<String, State> states = new ConcurrentHashMap<>();
+    /**
+     * Per-constant state, keyed by the caller-supplied name for the current round, or by the
+     * constant's {@link IdentityKey} for the whole run when the caller names the constant.
+     */
+    private final Map<Object, State> states = new ConcurrentHashMap<>();
 
-    /** Names already warned about for a convoy, so the warning is made once per name. */
-    private final Set<String> convoyWarned = ConcurrentHashMap.newKeySet();
+    /** Names or constants already warned about for a convoy, so the warning is made once each. */
+    private final Set<Object> convoyWarned = ConcurrentHashMap.newKeySet();
 
-    // Per-thread set of constant names whose computation is currently running (reentrancy).
-    private final Map<Long, Set<String>> activeComputations = new ConcurrentHashMap<>();
+    // Per-thread set of constant keys (names or IdentityKeys) whose computation is running.
+    private final Map<Long, Set<Object>> activeComputations = new ConcurrentHashMap<>();
 
     private final List<String> reentrantIssues        = Collections.synchronizedList(new ArrayList<>());
     private final List<String> nullValueIssues        = Collections.synchronizedList(new ArrayList<>());
@@ -138,16 +153,31 @@ public class LazyConstantMisuseDetector {
         // builds its LazyConstant per round reuses the name for a new, uncomputed constant, and
         // carrying the old state over counted each round's one computation as a repeat and each
         // round's value as a disagreement. Every finding is already in its report list, so the
-        // state can go; a repeat computation is judged within a round.
-        states.clear();
+        // state can go; a repeat computation is judged within a round. A constant the caller
+        // named is the same constant next round, so what it computed stays; what was in flight,
+        // and who queued behind it, belonged to the round that ended.
+        states.entrySet().removeIf(e -> {
+            if (!(e.getKey() instanceof IdentityKey)) {
+                return true;
+            }
+            State s = e.getValue();
+            s.activeComputes.set(0);
+            s.computingThreadIds.clear();
+            s.convoyThreadIds.clear();
+            return false;
+        });
     }
 
-    private State stateFor(String name) {
-        State s = states.get(name);
+    private State stateFor(Object key) {
+        State s = states.get(key);
         if (s == null) {
-            s = states.computeIfAbsent(name, k -> new State());
+            s = states.computeIfAbsent(key, k -> new State());
         }
         return s;
+    }
+
+    private static String labelOf(IdentityKey key, @Nullable String name) {
+        return name != null ? name : key.toString();
     }
 
     /**
@@ -160,14 +190,40 @@ public class LazyConstantMisuseDetector {
      */
     public void recordGet(String name, Thread thread) {
         if (name == null || thread == null) return;
+        noteGet(name, name, thread);
+    }
+
+    /**
+     * Record a {@code get()} on {@code constant}. Gets that arrive while another thread's
+     * computation of that constant is in flight, in this round, count toward the convoy warning.
+     *
+     * @param constant the {@code LazyConstant} being read, which identifies it;
+     *                 {@code null} records by {@code name} alone, as
+     *                 {@link #recordGet(String, Thread)} does
+     * @param name     the label the report prints for the constant, or {@code null} to print
+     *                 its class and identity hash
+     * @param thread   the current thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordGet(@Nullable Object constant, @Nullable String name, Thread thread) {
+        if (constant == null) {
+            if (name != null) recordGet(name, thread);
+        } else if (thread != null) {
+            IdentityKey key = IdentityKey.lookup(constant);
+            noteGet(key, labelOf(key, name), thread);
+        }
+    }
+
+    private void noteGet(Object key, String name, Thread thread) {
         totalGets.incrementAndGet();
-        State s = stateFor(name);
+        State s = stateFor(key);
         if (!s.computed.get() && s.activeComputes.get() > 0
                 && !s.computingThreadIds.contains(thread.threadId())) {
             s.convoyThreadIds.add(thread.threadId());
             if (s.convoyThreadIds.size() >= CONVOY_THRESHOLD
                     && s.convoyReported.compareAndSet(false, true)
-                    && convoyWarned.add(name)) {
+                    && convoyWarned.add(key)) {
                 convoyWarnings.add(
                     "LazyConstant '" + name + "': " + s.convoyThreadIds.size()
                     + " distinct threads blocked in get() behind one in-flight computation. "
@@ -193,12 +249,41 @@ public class LazyConstantMisuseDetector {
      */
     public void recordComputeStart(String name, Thread thread) {
         if (name == null || thread == null) return;
+        noteComputeStart(name, name, thread);
+    }
+
+    /**
+     * Record the start of {@code constant}'s supplier computation. It is reentrant when that
+     * constant's supplier is already running on this thread, under any name; another constant's
+     * supplier under the same name is not. Pair it with
+     * {@link #recordComputeEnd(Object, String, Thread, Object)} in a {@code finally}, for the
+     * reason {@link #recordComputeStart(String, Thread)} gives.
+     *
+     * @param constant the {@code LazyConstant} whose supplier starts, which identifies it;
+     *                 {@code null} records by {@code name} alone, as
+     *                 {@link #recordComputeStart(String, Thread)} does
+     * @param name     the label the report prints for the constant, or {@code null} to print
+     *                 its class and identity hash
+     * @param thread   the current thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordComputeStart(@Nullable Object constant, @Nullable String name, Thread thread) {
+        if (constant == null) {
+            if (name != null) recordComputeStart(name, thread);
+        } else if (thread != null) {
+            IdentityKey key = IdentityKey.lookup(constant);
+            noteComputeStart(key, labelOf(key, name), thread);
+        }
+    }
+
+    private void noteComputeStart(Object key, String name, Thread thread) {
         long tid = thread.threadId();
-        State s = stateFor(name);
+        State s = stateFor(key);
         s.activeComputes.incrementAndGet();
         s.computingThreadIds.add(tid);
-        Set<String> running = activeComputations.computeIfAbsent(tid, k -> ConcurrentHashMap.newKeySet());
-        if (!running.add(name)) {
+        Set<Object> running = activeComputations.computeIfAbsent(tid, k -> ConcurrentHashMap.newKeySet());
+        if (!running.add(key)) {
             reentrantIssues.add(
                 "Thread " + thread.getName() + " (id=" + tid + "): "
                 + "LazyConstant '" + name + "' supplier re-entered the same constant while it "
@@ -217,16 +302,46 @@ public class LazyConstantMisuseDetector {
      * @param result the value the supplier produced (may be {@code null}, which is
      *               itself reported: JDK 26 {@code LazyConstant} rejects null)
      */
-    @SuppressWarnings("ReferenceEquality") // NO_RESULT is a unique sentinel; identity is the point, not value equality
     public void recordComputeEnd(String name, Thread thread, Object result) {
         if (name == null || thread == null) return;
+        noteComputeEnd(name, name, thread, result);
+    }
+
+    /**
+     * Record the completion of {@code constant}'s supplier computation. A second completion for
+     * the same constant, in any round and under any name, is a repeat computation, and one whose
+     * value is not {@code equals()} to the first is non-deterministic.
+     *
+     * @param constant the {@code LazyConstant} whose supplier completed, which identifies it;
+     *                 {@code null} records by {@code name} alone, as
+     *                 {@link #recordComputeEnd(String, Thread, Object)} does
+     * @param name     the label the report prints for the constant, or {@code null} to print
+     *                 its class and identity hash
+     * @param thread   the current thread
+     * @param result   the value the supplier produced (may be {@code null}, which is itself
+     *                 reported: JDK 26 {@code LazyConstant} rejects null)
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordComputeEnd(@Nullable Object constant, @Nullable String name, Thread thread,
+                                 @Nullable Object result) {
+        if (constant == null) {
+            if (name != null && thread != null) noteComputeEnd(name, name, thread, result);
+        } else if (thread != null) {
+            IdentityKey key = IdentityKey.lookup(constant);
+            noteComputeEnd(key, labelOf(key, name), thread, result);
+        }
+    }
+
+    @SuppressWarnings("ReferenceEquality") // NO_RESULT is a unique sentinel; identity is the point, not value equality
+    private void noteComputeEnd(Object key, String name, Thread thread, @Nullable Object result) {
         totalComputes.incrementAndGet();
         long tid = thread.threadId();
-        Set<String> running = activeComputations.get(tid);
+        Set<Object> running = activeComputations.get(tid);
         if (running != null) {
-            running.remove(name);
+            running.remove(key);
         }
-        State s = stateFor(name);
+        State s = stateFor(key);
         s.activeComputes.decrementAndGet();
 
         if (result == null) {
@@ -267,7 +382,8 @@ public class LazyConstantMisuseDetector {
         s.computed.set(true);
     }
 
-    private static String summarize(Object o) {
+
+    private static String summarize(@Nullable Object o) {
         if (o == null) return "null";
         String str = String.valueOf(o);
         return str.length() > 40 ? str.substring(0, 37) + "..." : str;

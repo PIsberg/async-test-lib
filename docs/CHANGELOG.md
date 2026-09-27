@@ -64,6 +64,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not that the match orders anything. `ThreadJoinWeavingTest` has a child write a field its parent
   reads: after each overload returned the pair is silent, and read before the join it is reported.
   With the join entries removed from the weaver's table, all four joined cases report.
+- **The lazy-initialisation detectors take the holder, not only its name (#776).**
+  `StableValueMisuseDetector`, `LazyConstantMisuseDetector` and `LazyCollectionMisuseDetector` gain
+  an experimental overload of every record method that also takes the `StableValue`, the
+  `LazyConstant` or the lazy collection, e.g. `recordSet(holder, "CONFIG", thread)`. A name only
+  labels a holder: two holders under one name were judged as one (two sets read as a double set,
+  and one holder's set excused another's read before set; for a lazy collection, a one-way
+  dependency in each of two collections read as a cycle), and one holder under two names as two.
+  The name-only methods also judge per round, so that a fresh holder per round under a reused
+  name is not "set twice", and so miss a static holder set or computed once in each of two rounds.
+  Keyed by the holder, state lasts the run and that second set or computation is reported, while
+  contention and convoys are still judged per round. The name-only methods behave as before; a
+  `null` holder falls back to them. No agent hook feeds these detectors.
 
 ### Changed
 

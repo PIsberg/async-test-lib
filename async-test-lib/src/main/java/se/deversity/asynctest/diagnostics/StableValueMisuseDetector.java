@@ -8,6 +8,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects misuse of Java 25+ {@code StableValue} (JEP 502 — Stable Values,
@@ -60,6 +63,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  *
+ * <p><strong>Naming the holder.</strong> Each record method has an overload that also takes the
+ * {@code StableValue} itself, and that one is the more precise: a name only labels a holder, so
+ * two holders under one name are judged as one and one holder under two names as two. Keyed by
+ * the name, a holder's state lasts one round, since a name reused by a fresh holder each round
+ * would otherwise read as set once per round, and so a static holder set in each of two rounds is
+ * missed. Keyed by the holder, its state lasts the run: that second set is reported, while a
+ * holder built per round is a new holder, and set contention is still judged per round. Use one
+ * form or the other for any one holder; the two are tracked apart.
+ *
  * @since 1.7.0
  */
 public class StableValueMisuseDetector {
@@ -73,21 +85,24 @@ public class StableValueMisuseDetector {
         final AtomicBoolean contentionReported = new AtomicBoolean(false);
     }
 
-    // Per-holder state, keyed by the caller-supplied descriptive name, for the current round.
-    private final Map<String, State> states = new ConcurrentHashMap<>();
+    /**
+     * Per-holder state, keyed by the caller-supplied name for the current round, or by the
+     * holder's {@link IdentityKey} for the whole run when the caller names the holder.
+     */
+    private final Map<Object, State> states = new ConcurrentHashMap<>();
 
     /**
      * Names set in any round so far. A read in a later round of a name set earlier is not a
      * read before set: the holder may be a static one that round set, and the name alone cannot
      * say it is not.
      */
-    private final Set<String> setInAnEarlierRound = ConcurrentHashMap.newKeySet();
+    private final Set<Object> setInAnEarlierRound = ConcurrentHashMap.newKeySet();
 
-    /** Names already warned about for contention, so the warning is made once per name. */
-    private final Set<String> contentionWarned = ConcurrentHashMap.newKeySet();
+    /** Names or holders already warned about for contention, so the warning is made once each. */
+    private final Set<Object> contentionWarned = ConcurrentHashMap.newKeySet();
 
-    // Per-thread set of holder names whose orElseSet supplier is currently running (reentrancy).
-    private final Map<Long, Set<String>> activeSuppliers = new ConcurrentHashMap<>();
+    // Per-thread set of holder keys (names or IdentityKeys) whose orElseSet supplier is running.
+    private final Map<Long, Set<Object>> activeSuppliers = new ConcurrentHashMap<>();
 
     private final List<String> readBeforeSetReports  = Collections.synchronizedList(new ArrayList<>());
     private final List<String> doubleSetReports       = Collections.synchronizedList(new ArrayList<>());
@@ -97,12 +112,16 @@ public class StableValueMisuseDetector {
     private final AtomicInteger totalReads = new AtomicInteger(0);
     private final AtomicInteger totalSets  = new AtomicInteger(0);
 
-    private State stateFor(String name) {
-        State s = states.get(name);
+    private State stateFor(Object key) {
+        State s = states.get(key);
         if (s == null) {
-            s = states.computeIfAbsent(name, k -> new State());
+            s = states.computeIfAbsent(key, k -> new State());
         }
         return s;
+    }
+
+    private static String labelOf(IdentityKey key, @Nullable String name) {
+        return name != null ? name : key.toString();
     }
 
     /**
@@ -127,13 +146,18 @@ public class StableValueMisuseDetector {
         // builds its StableValue per round (an instance field, a fixture) reuses the name for a
         // new, unset holder, and carrying the old state over read its one set as a second one
         // and its setters from every round as threads racing it. So a double set and set
-        // contention are judged within a round; only "was it ever set" survives.
-        for (Map.Entry<String, State> e : states.entrySet()) {
+        // contention are judged within a round; only "was it ever set" survives. A holder the
+        // caller named is the same holder next round, so its state stays, less its setters.
+        states.entrySet().removeIf(e -> {
+            if (e.getKey() instanceof IdentityKey) {
+                e.getValue().settingThreadIds.clear();
+                return false;
+            }
             if (e.getValue().set.get()) {
                 setInAnEarlierRound.add(e.getKey());
             }
-        }
-        states.clear();
+            return true;
+        });
     }
 
     /**
@@ -145,8 +169,34 @@ public class StableValueMisuseDetector {
      */
     public void recordSet(String name, Thread thread) {
         if (name == null || thread == null) return;
+        noteSet(name, name, thread);
+    }
+
+    /**
+     * Record a value-set attempt ({@code trySet} / {@code setOrThrow}) on {@code holder}. A
+     * second attempt on the same holder, in any round and under any name, is a double-set.
+     *
+     * @param holder the {@code StableValue} being set, which identifies it;
+     *               {@code null} records by {@code name} alone, as
+     *               {@link #recordSet(String, Thread)} does
+     * @param name   the label the report prints for the holder, or {@code null} to print its
+     *               class and identity hash
+     * @param thread the current thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordSet(@Nullable Object holder, @Nullable String name, Thread thread) {
+        if (holder == null) {
+            if (name != null) recordSet(name, thread);
+        } else if (thread != null) {
+            IdentityKey key = IdentityKey.lookup(holder);
+            noteSet(key, labelOf(key, name), thread);
+        }
+    }
+
+    private void noteSet(Object key, String name, Thread thread) {
         totalSets.incrementAndGet();
-        State s = stateFor(name);
+        State s = stateFor(key);
         s.settingThreadIds.add(thread.threadId());
 
         boolean wasAlreadySet = !s.set.compareAndSet(false, true);
@@ -164,7 +214,7 @@ public class StableValueMisuseDetector {
         // race of comparing size() to an exact value under concurrent adds.
         if (s.settingThreadIds.size() >= SET_CONTENTION_THRESHOLD
                 && s.contentionReported.compareAndSet(false, true)
-                && contentionWarned.add(name)) {
+                && contentionWarned.add(key)) {
             contentionWarnings.add(
                 "StableValue '" + name + "': " + s.settingThreadIds.size()
                 + " distinct threads raced to set it. Only one value is stored; the "
@@ -183,9 +233,36 @@ public class StableValueMisuseDetector {
      */
     public void recordRead(String name, Thread thread) {
         if (name == null || thread == null) return;
+        noteRead(name, name, thread);
+    }
+
+    /**
+     * Record a read ({@code orElseThrow()} / {@code get()}) on {@code holder}. A read before that
+     * holder was set, in this round or an earlier one, is a read-before-set; another holder set
+     * under the same name does not excuse it.
+     *
+     * @param holder the {@code StableValue} being read, which identifies it;
+     *               {@code null} records by {@code name} alone, as
+     *               {@link #recordRead(String, Thread)} does
+     * @param name   the label the report prints for the holder, or {@code null} to print its
+     *               class and identity hash
+     * @param thread the current thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordRead(@Nullable Object holder, @Nullable String name, Thread thread) {
+        if (holder == null) {
+            if (name != null) recordRead(name, thread);
+        } else if (thread != null) {
+            IdentityKey key = IdentityKey.lookup(holder);
+            noteRead(key, labelOf(key, name), thread);
+        }
+    }
+
+    private void noteRead(Object key, String name, Thread thread) {
         totalReads.incrementAndGet();
-        State s = stateFor(name);
-        if (!s.set.get() && !setInAnEarlierRound.contains(name)) {
+        State s = stateFor(key);
+        if (!s.set.get() && !setInAnEarlierRound.contains(key)) {
             readBeforeSetReports.add(
                 "Thread " + thread.getName() + " (id=" + thread.threadId() + "): "
                 + "StableValue '" + name + "' read via orElseThrow()/get() before it was set — "
@@ -210,9 +287,38 @@ public class StableValueMisuseDetector {
      */
     public void recordSupplierStart(String name, Thread thread) {
         if (name == null || thread == null) return;
+        noteSupplierStart(name, name, thread);
+    }
+
+    /**
+     * Record the start of {@code holder}'s {@code orElseSet(supplier)} computation. It is
+     * reentrant when that holder's supplier is already running on this thread, under any name;
+     * another holder's supplier under the same name is not. Pair it with
+     * {@link #recordSupplierEnd(Object, String, Thread)} in a {@code finally}, for the reason
+     * {@link #recordSupplierStart(String, Thread)} gives.
+     *
+     * @param holder the {@code StableValue} whose supplier starts, which identifies it;
+     *               {@code null} records by {@code name} alone, as
+     *               {@link #recordSupplierStart(String, Thread)} does
+     * @param name   the label the report prints for the holder, or {@code null} to print its
+     *               class and identity hash
+     * @param thread the current thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordSupplierStart(@Nullable Object holder, @Nullable String name, Thread thread) {
+        if (holder == null) {
+            if (name != null) recordSupplierStart(name, thread);
+        } else if (thread != null) {
+            IdentityKey key = IdentityKey.lookup(holder);
+            noteSupplierStart(key, labelOf(key, name), thread);
+        }
+    }
+
+    private void noteSupplierStart(Object key, String name, Thread thread) {
         long tid = thread.threadId();
-        Set<String> running = activeSuppliers.computeIfAbsent(tid, k -> ConcurrentHashMap.newKeySet());
-        if (!running.add(name)) {
+        Set<Object> running = activeSuppliers.computeIfAbsent(tid, k -> ConcurrentHashMap.newKeySet());
+        if (!running.add(key)) {
             reentrantReports.add(
                 "Thread " + thread.getName() + " (id=" + tid + "): "
                 + "StableValue '" + name + "' orElseSet() supplier re-entered the same holder "
@@ -232,12 +338,37 @@ public class StableValueMisuseDetector {
      */
     public void recordSupplierEnd(String name, Thread thread) {
         if (name == null || thread == null) return;
-        long tid = thread.threadId();
-        Set<String> running = activeSuppliers.get(tid);
-        if (running != null) {
-            running.remove(name);
+        noteSupplierEnd(name, thread);
+    }
+
+    /**
+     * Record the successful completion of {@code holder}'s {@code orElseSet(supplier)}
+     * computation. Marks that holder as set for the rest of the run.
+     *
+     * @param holder the {@code StableValue} whose supplier completed, which identifies it;
+     *               {@code null} records by {@code name} alone, as
+     *               {@link #recordSupplierEnd(String, Thread)} does
+     * @param name   not used once {@code holder} is given, since a completed supplier reports
+     *               nothing; it keeps the four overloads alike
+     * @param thread the current thread
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordSupplierEnd(@Nullable Object holder, @Nullable String name, Thread thread) {
+        if (holder == null) {
+            if (name != null) recordSupplierEnd(name, thread);
+        } else if (thread != null) {
+            noteSupplierEnd(IdentityKey.lookup(holder), thread);
         }
-        State s = stateFor(name);
+    }
+
+    private void noteSupplierEnd(Object key, Thread thread) {
+        long tid = thread.threadId();
+        Set<Object> running = activeSuppliers.get(tid);
+        if (running != null) {
+            running.remove(key);
+        }
+        State s = stateFor(key);
         s.settingThreadIds.add(tid);
         s.set.set(true);
     }
