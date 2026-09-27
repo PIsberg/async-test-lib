@@ -82,10 +82,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * collection itself, and that one is the more precise: a name only labels a collection, so two
  * collections under one name are judged as one, and a one-way dependency in each reads as a cycle,
  * while one collection under two names is judged as two. Keyed by the name, an element's state
- * lasts one round, since a name reused by a fresh collection each round would otherwise read as
- * computing each element once per round, and so a static collection's element computed in each of
- * two rounds is missed. Keyed by the collection, its elements last the run: that second computation
- * is reported, while a collection built per round is a new collection, and the convoy is still
+ * and its dependencies last one round, since a name reused by a fresh collection each round would
+ * otherwise read as computing each element once per round, and one-way dependencies in two rounds
+ * as a cycle, and so a static collection's element computed in each of two rounds is missed.
+ * Keyed by the collection, its elements and dependencies last the run: that second computation is
+ * reported, while a collection built per round is a new collection, and the convoy is still
  * judged per round. Use one form or the other for any one collection; the two are tracked apart.
  *
  * @since 1.9.7
@@ -206,7 +207,8 @@ public final class LazyCollectionMisuseDetector {
 
     /**
      * Closes the previous invocation round: clears the per-thread in-flight state it left
-     * over, and the per-holder state a name reused in the next round would otherwise carry.
+     * over, and the per-holder state and dependency edges a name reused in the next round would
+     * otherwise carry.
      *
      * <p>Called by {@code ConcurrencyRunner} before each round, after the previous round's
      * workers have all finished, so nothing is legitimately in flight when it runs.
@@ -242,10 +244,28 @@ public final class LazyCollectionMisuseDetector {
             }
             return true;
         });
+        // A name's dependency edges are the round's for the same reason: element 0 of one round's
+        // collection reading 1, and 1 of the next round's reading 0, is two one-way dependencies,
+        // not a cycle (#852). So the round's name-keyed edges are judged here and dropped; a
+        // collection the caller passed keeps its edges for the run.
+        synchronized (dependencies) {
+            Map<Element, Set<Element>> round = new LinkedHashMap<>();
+            dependencies.removeIf(edge -> {
+                if (edge.getKey().collection instanceof IdentityKey) return false;
+                round.computeIfAbsent(edge.getKey(), k -> new LinkedHashSet<>()).add(edge.getValue());
+                return true;
+            });
+            closedCycles.addAll(cycles(round));
+            closedNested.addAll(nestedEdges(round));
+        }
     }
 
     /** Elements of earlier rounds that carry a finding; guarded by its own monitor. */
     private final List<ElementState> closedRounds = new ArrayList<>();
+    /** Cycles among earlier rounds' name-keyed elements; guarded by {@link #dependencies}. */
+    private final SortedSet<String> closedCycles = new TreeSet<>();
+    /** One-way edges among earlier rounds' name-keyed elements; guarded by {@link #dependencies}. */
+    private final SortedSet<String> closedNested = new TreeSet<>();
 
     private final int        convoyThreshold;
     private volatile boolean enabled = true;
@@ -511,17 +531,16 @@ public final class LazyCollectionMisuseDetector {
 
     private void dependencyFindings(Report r) {
         Map<Element, Set<Element>> graph = new LinkedHashMap<>();
+        SortedSet<String> cycles;
+        SortedSet<String> nested;
         synchronized (dependencies) {
             for (Map.Entry<Element, Element> edge : dependencies) {
                 graph.computeIfAbsent(edge.getKey(), k -> new LinkedHashSet<>()).add(edge.getValue());
             }
+            cycles = new TreeSet<>(closedCycles);
+            nested = new TreeSet<>(closedNested);
         }
-        if (graph.isEmpty()) return;
-
-        Set<String> cycles = new TreeSet<>();
-        for (Element start : graph.keySet()) {
-            findCycle(graph, start, start, new LinkedHashSet<>(), new ArrayList<>(), cycles);
-        }
+        cycles.addAll(cycles(graph));
 
         if (!cycles.isEmpty()) {
             String cycleList = String.join("; ", cycles);
@@ -536,10 +555,8 @@ public final class LazyCollectionMisuseDetector {
             return;
         }
 
-        SortedSet<String> nested = new TreeSet<>();
-        for (Map.Entry<Element, Set<Element>> e : graph.entrySet()) {
-            for (Element inner : e.getValue()) nested.add(e.getKey() + " -> " + inner);
-        }
+        nested.addAll(nestedEdges(graph));
+        if (nested.isEmpty()) return;
         String edgeList = String.join(", ", nested);
         String msg = String.format(
                 "An element's mapping function computed another element of the same collection: %s. No cycle, "
@@ -548,6 +565,24 @@ public final class LazyCollectionMisuseDetector {
                 edgeList);
         r.add("LazyCollectionMisuse", IssueSeverity.LOW, msg,
                 Map.of("issue", "nestedLazyComputation", "edges", edgeList, "edgeCount", nested.size()));
+    }
+
+    /** Every cycle in {@code graph}, each printed as the path from one element back to itself. */
+    private static Set<String> cycles(Map<Element, Set<Element>> graph) {
+        Set<String> cycles = new TreeSet<>();
+        for (Element start : graph.keySet()) {
+            findCycle(graph, start, start, new LinkedHashSet<>(), new ArrayList<>(), cycles);
+        }
+        return cycles;
+    }
+
+    /** Every edge in {@code graph}, printed as {@code outer -> inner}. */
+    private static Set<String> nestedEdges(Map<Element, Set<Element>> graph) {
+        Set<String> nested = new TreeSet<>();
+        for (Map.Entry<Element, Set<Element>> e : graph.entrySet()) {
+            for (Element inner : e.getValue()) nested.add(e.getKey() + " -> " + inner);
+        }
+        return nested;
     }
 
     /** Depth-first walk looking for a path from {@code current} back to {@code target}. */

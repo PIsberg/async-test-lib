@@ -339,6 +339,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AgentSharedInstanceHooksTest` pins the site end to end through the hook, `SiteCaptureTest` the
   rule for all eight hook classes in both directions.
 
+- **A lazy collection rebuilt each round under one name no longer reads as a dependency cycle
+  (#852).** `LazyCollectionMisuseDetector`'s name-only record methods closed an element's state at
+  each round start (#498) but kept its dependency edges for the run, so a fresh `List.ofLazy` per
+  round under a reused name, whose element 0 read element 1 in one round and element 1 read 0 in
+  the next, was reported as a CRITICAL circular dependency. The round start now judges the
+  name-keyed edges it closes and keeps only the cycles and one-way edges they held, so a cycle
+  still has to form inside one round. A collection passed to the #776 overloads keeps its edges
+  for the run, and outside a run, with no round start, the whole run is still one round. Pinned by
+  `LazyCollectionMisuseDetectorTest` (the cross-round case, a same-round cycle that survives the
+  round closing, and a static collection's cross-round cycle).
 - **With the agent, a daemon decision the agent could not see no longer reads as a missing one
   (#737).** `DaemonThreadHygieneDetector` and `ThreadFactoryDetector` judged a daemon thread
   undecided unless a woven `setDaemon(true)` was seen, so `Thread.ofPlatform().daemon().unstarted(r)`
