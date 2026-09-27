@@ -4,8 +4,10 @@ import se.deversity.asynctest.DetectorType;
 
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Which detectors the corpus pairs, and why the rest are refused.
@@ -109,9 +111,37 @@ final class DetectorCoverage {
 
     /** {@return every detector this corpus pairs in some lane} */
     static Set<DetectorType> paired() {
+        return paired(Corpus::subjectsFor);
+    }
+
+    /**
+     * {@return every detector paired by the rows {@code rowsOf} gives each lane}
+     *
+     * @param rowsOf the rows of a lane; {@link Corpus#subjectsFor} outside a test of this rule
+     */
+    static Set<DetectorType> paired(Function<CorpusLane, List<RecordingSubject>> rowsOf) {
         Set<DetectorType> paired = EnumSet.noneOf(DetectorType.class);
-        paired.addAll(Corpus.pairedDetectors(CorpusLane.RECORDING));
-        paired.addAll(Corpus.pairedDetectors(CorpusLane.AGENT_PAIRS));
+        for (CorpusLane lane : List.of(CorpusLane.RECORDING, CorpusLane.AGENT_PAIRS)) {
+            for (RecordingSubject row : rowsOf.apply(lane)) {
+                paired.add(row.detector());
+            }
+        }
+        // The idiom lane pairs too (#836): #761 found a refusal outliving a pair there. Its twins
+        // may name another detector than their correct row, and a known gap or a pinned note is a
+        // correct row its detector still reports on, so a detector counts only with a firing row
+        // and a correct row the lane holds to silence.
+        Set<DetectorType> fires = EnumSet.noneOf(DetectorType.class);
+        Set<DetectorType> silent = EnumSet.noneOf(DetectorType.class);
+        for (RecordingSubject row : rowsOf.apply(CorpusLane.IDIOMS)) {
+            if (row.expectation() == RecordingSubject.Expectation.MUST_FIRE) {
+                fires.add(row.detector());
+            } else if (row.expectedSeverity() == null
+                    && !Corpus.idiomKnownGaps().containsKey(row.testMethod())) {
+                silent.add(row.detector());
+            }
+        }
+        fires.retainAll(silent);
+        paired.addAll(fires);
         // Lane one pairs these two over 82 unmodified subjects - fires on documented-unsafe,
         // silent on all 60 documented-safe - which is a stronger measurement than a two-row pair,
         // not a weaker one. CorpusGates owns the set so the two cannot drift apart.

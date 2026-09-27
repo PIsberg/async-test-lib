@@ -1829,9 +1829,10 @@ receiver's monitor across the same plain get and plain set, on the same handle a
 `recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor` holds
 `System.getProperties()` around the same shared-key write. Both stayed silent on their first run,
 and both fired with the `synchronized` removed, so the lock is what separates them.
-Neither moves a tier: `SYSTEM_PROPERTY_MUTATION` is already registered on its key-separated pair,
-and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades each finding, which `PairEvidence` holds back as
-`GRADED`.
+Neither moves a tier: `SYSTEM_PROPERTY_MUTATION` was already registered, on its key-separated
+pair, and its line now names the lock twin, the silent half that differs from the firing row in
+the defect alone (#836); `VAR_HANDLE_NON_ATOMIC_UPDATE` grades each finding, which `PairEvidence`
+holds back as `GRADED`.
 
 `THREAD_LOCAL_RANDOM_MISUSE` kept its refusal after its per-thread model landed and the idiom lane
 paired it, because `DetectorCoverage` counts the two pair lanes and lane one, not the idiom lane.
@@ -1842,7 +1843,9 @@ the test class initialised, with the obtain recorded for the thread that made it
 `current()` returns one JVM-wide object, so both halves hand the detector the same instance and
 differ only in which thread obtained it, which is the defect. The refusal is deleted. The pair is
 measured but is not a promotion candidate: the detector decides from the body's own obtain and use
-records, so its evidence class caps it below `VERDICT`.
+records, so its evidence class caps it below `VERDICT`. Since #836 `DetectorCoverage` counts the
+idiom lane as well, for a detector with a firing row there and a correct row the lane holds to
+silence, so a refusal cannot outlive a pair in that lane either.
 
 ### Where the roster stands, derived rather than counted
 

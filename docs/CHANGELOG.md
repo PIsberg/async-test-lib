@@ -218,6 +218,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTEXT_FREE` class, so `DetectorTrustCoverageTest` fails with `VISIBILITY is kept as capped at
   CONTEXT_FREE and also registered` if it is registered again, where before only the tier check
   caught that. No tier moves.
+- **`SYSTEM_PROPERTY_MUTATION`'s evidence line names its lock twin, and `DetectorCoverage` counts
+  the idiom lane (#836).** The line named the per-thread-key row as the silent half; it now names
+  the twin that differs from the firing row only in holding `System.getProperties()`. A detector
+  paired only in the idiom lane kept a stale refusal, the trap #761 hit, because the pairing count
+  read the recording and agent-pair lanes only. It now counts a detector with a firing row and a
+  correct row held to silence in the idiom lane, so `noRefusalOutlivesItsPair` sees that lane too.
+  No tier and no pairing count moves.
 
 ### Fixed
 
