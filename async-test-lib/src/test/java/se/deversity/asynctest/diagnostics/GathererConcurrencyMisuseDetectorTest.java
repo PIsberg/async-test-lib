@@ -3,9 +3,26 @@ package se.deversity.asynctest.diagnostics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
+import java.util.function.BinaryOperator;
+import java.util.function.Supplier;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Unit tests for {@link GathererConcurrencyMisuseDetector}.
@@ -124,7 +141,21 @@ class GathererConcurrencyMisuseDetectorTest {
         assertTrue(str.contains("LEARNING"), str);
         assertTrue(str.contains("Gatherer"), str);
         assertTrue(str.contains("combiner"), str);
-        assertTrue(str.contains("HIGH"), str);
+        // The JDK evaluates a combiner-less gatherer sequentially and loses nothing (#777).
+        assertEquals(IssueSeverity.LOW, IssueSeverity.fromReport(str), str);
+    }
+
+    @Test
+    void sharedStateRaceOutranksAMissingCombinerInTheReportSeverity() throws Exception {
+        detector.registerGatherer("sequential", false, true);
+        integrateOnTwoThreads("sequential");
+        detector.registerGatherer("shared", true, true);
+        java.util.List<String> shared = new java.util.ArrayList<>();
+        integrateStatesOnTwoThreads("shared", shared, shared);
+
+        String str = detector.analyze().toString();
+        assertEquals(IssueSeverity.HIGH, IssueSeverity.fromReport(str),
+            "A shared-state race is a data race and must set the report's severity: " + str);
     }
 
     @org.junit.jupiter.api.Test
@@ -156,8 +187,8 @@ class GathererConcurrencyMisuseDetectorTest {
         t2.join();
 
         assertTrue(detector.analyze().hasIssues(),
-            "Two threads integrated one parallel gatherer that declares no combiner - the "
-            + "per-thread states cannot be merged, which is the whole finding. Silence here "
+            "Two threads integrated one parallel gatherer that declares no combiner, which is "
+            + "the whole missing-combiner finding. Silence here "
             + "means a later registerGatherer call reset the observations of the earlier one; "
             + "registration must be first-wins, as it is in SharedMessageDigestDetector and "
             + "DaemonThreadHygieneDetector.");
@@ -276,5 +307,198 @@ class GathererConcurrencyMisuseDetectorTest {
         assertFalse(report.hasIssues(),
             "A sequential gatherer needs no combiner however many threads run their own "
                 + "sequential streams through it: " + report);
+    }
+
+    // ---- What the JDK does with a real Gatherer (JDK 24+, #777) ----
+    //
+    // The library compiles with release 21, where java.util.stream.Gatherer does not exist, so
+    // these build a real Gatherer and call Stream.gather by reflection. On JDK 21 they are
+    // skipped by assumption, which surefire reports as skipped rather than passed.
+
+    /** First JDK where {@code java.util.stream.Gatherer} is final API (JEP 485). */
+    private static final int GATHERER_FINAL_JDK = 24;
+
+    /** Stream length; large enough that a parallel stream splits into several leaves. */
+    private static final int ELEMENTS = 20_000;
+
+    /** What one {@code parallel().gather(...)} run observed from inside its integrator. */
+    private record GatherRun(List<Object> output, int states, int integratingThreads, boolean overlapped) { }
+
+    private static void assumeGathererIsFinalApi() {
+        assumeTrue(Runtime.version().feature() >= GATHERER_FINAL_JDK,
+            "java.util.stream.Gatherer is final API from JDK " + GATHERER_FINAL_JDK
+                + " (JEP 485); this JDK is " + Runtime.version());
+    }
+
+    private static List<Object> inOrder() {
+        return new ArrayList<>(IntStream.range(0, ELEMENTS).boxed().toList());
+    }
+
+    /**
+     * Runs {@code IntStream.range(0, ELEMENTS)} as a parallel stream through a real gatherer whose
+     * state is a plain {@link ArrayList} and whose integrator reports every call to
+     * {@code detector} under {@code label}, with its state and thread.
+     *
+     * <p>The stream runs in a four-thread pool so the thread count does not depend on the
+     * runner's cores, and the last element's upstream step sleeps 20 ms. That holds the
+     * rightmost segment back until its predecessors have integrated, so the JDK integrates it on
+     * its own worker, a hand-off between threads. Without the delay one thread often drains the
+     * whole chain: measured on JDK 26, 20 of 30 runs handed off in a four-thread pool and 11 of
+     * 30 in a two-thread one; with it, 30 of 30 in both.
+     *
+     * @param withCombiner true builds {@code Gatherer.of(init, integrator, combiner, finisher)},
+     *                     false builds {@code Gatherer.ofSequential(init, integrator, finisher)},
+     *                     which has no combiner
+     */
+    private static GatherRun gatherInParallel(boolean withCombiner, GathererConcurrencyMisuseDetector detector,
+                                              String label) throws Exception {
+        Class<?> gathererType = Class.forName("java.util.stream.Gatherer");
+        Class<?> integratorType = Class.forName("java.util.stream.Gatherer$Integrator");
+        Class<?> greedyType = Class.forName("java.util.stream.Gatherer$Integrator$Greedy");
+        Method push = Class.forName("java.util.stream.Gatherer$Downstream").getMethod("push", Object.class);
+
+        AtomicInteger states = new AtomicInteger();
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicBoolean overlapped = new AtomicBoolean();
+        Set<Long> threads = ConcurrentHashMap.newKeySet();
+
+        Supplier<List<Object>> initializer = () -> {
+            states.incrementAndGet();
+            return new ArrayList<>();
+        };
+        InvocationHandler integrate = (proxy, method, args) -> {
+            if (method.getDeclaringClass() == Object.class) {
+                return switch (method.getName()) {
+                    case "equals" -> proxy == args[0];
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    default -> "integrator";
+                };
+            }
+            @SuppressWarnings("unchecked")
+            List<Object> state = (List<Object>) args[0];
+            Thread self = Thread.currentThread();
+            if (inFlight.incrementAndGet() != 1) {
+                overlapped.set(true);
+            }
+            try {
+                threads.add(self.threadId());
+                detector.recordIntegrate(label, state, self);
+                state.add(args[1]);
+            } finally {
+                inFlight.decrementAndGet();
+            }
+            return Boolean.TRUE;
+        };
+        // Greedy: the integrator never short-circuits, which lets the JDK run the upstream of
+        // every segment in parallel ahead of the in-order integration.
+        Object integrator = Proxy.newProxyInstance(GathererConcurrencyMisuseDetectorTest.class.getClassLoader(),
+            new Class<?>[] {greedyType}, integrate);
+        BinaryOperator<List<Object>> combiner = (left, right) -> {
+            left.addAll(right);
+            return left;
+        };
+        BiConsumer<List<Object>, Object> finisher = (state, downstream) -> {
+            for (Object element : state) {
+                try {
+                    push.invoke(downstream, element);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        Object gatherer = withCombiner
+            ? gathererType.getMethod("of", Supplier.class, integratorType, BinaryOperator.class, BiConsumer.class)
+                .invoke(null, initializer, integrator, combiner, finisher)
+            : gathererType.getMethod("ofSequential", Supplier.class, integratorType, BiConsumer.class)
+                .invoke(null, initializer, integrator, finisher);
+        Method gather = Stream.class.getMethod("gather", gathererType);
+
+        try (ForkJoinPool pool = new ForkJoinPool(4)) {
+            List<?> output = pool.submit(() -> {
+                Stream<Integer> upstream = IntStream.range(0, ELEMENTS).boxed().parallel().map(i -> {
+                    if (i == ELEMENTS - 1) {
+                        try {
+                            Thread.sleep(20);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                    }
+                    return i;
+                });
+                try {
+                    return ((Stream<?>) gather.invoke(upstream, gatherer)).toList();
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    throw new IllegalStateException(e);
+                }
+            }).get();
+            return new GatherRun(new ArrayList<>(output), states.get(), threads.size(), overlapped.get());
+        }
+    }
+
+    @Test
+    void jdkEvaluatesAGathererWithoutACombinerSequentiallyOnAParallelStream() throws Exception {
+        // The premise #777 asked to establish. GathererOp sends a gatherer whose combiner is
+        // Gatherer.defaultCombiner() down its "Hybrid" path: the upstream runs in parallel, but
+        // one state is integrated segment by segment in encounter order, each segment's
+        // completion happening-before the next. Nothing is lost and nothing races.
+        assumeGathererIsFinalApi();
+
+        GatherRun sequential = gatherInParallel(false, new GathererConcurrencyMisuseDetector(), "g");
+        assertEquals(inOrder(), sequential.output(),
+            "A gatherer without a combiner on a parallel stream lost, duplicated or reordered "
+                + "elements; the JDK is documented to evaluate it sequentially");
+        assertEquals(1, sequential.states(),
+            "Without a combiner there is nothing to merge per-segment states with, so the JDK "
+                + "must create exactly one state for the whole stream");
+        assertFalse(sequential.overlapped(),
+            "Two integrations of the one state ran at the same time; the JDK serializes them");
+
+        // The twin: with a combiner the JDK really does split the state, one per segment, and
+        // merges them in order with the combiner.
+        GatherRun parallel = gatherInParallel(true, new GathererConcurrencyMisuseDetector(), "g");
+        assertEquals(inOrder(), parallel.output(), "The combiner must merge every segment, in order");
+        assertTrue(parallel.states() > 1,
+            "A gatherer with a combiner on a parallel stream gets one state per segment, saw "
+                + parallel.states());
+    }
+
+    @Test
+    void detectorFedByARealGathererWithoutACombinerDoesNotClaimLostResults() throws Exception {
+        assumeGathererIsFinalApi();
+
+        GathererConcurrencyMisuseDetector detector = null;
+        GatherRun run = null;
+        for (int attempt = 0; attempt < 5 && (run == null || run.integratingThreads() < 2); attempt++) {
+            detector = new GathererConcurrencyMisuseDetector();
+            detector.registerGatherer("running", /* hasCombiner */ false, /* parallel */ true);
+            run = gatherInParallel(false, detector, "running");
+        }
+        assumeTrue(run.integratingThreads() >= 2,
+            "The JDK kept every integration on one thread in 5 runs, so the detector had no "
+                + "multi-thread integration to judge");
+
+        var report = detector.analyze();
+        assertEquals(inOrder(), run.output(), "The JDK lost nothing in the run the detector judged");
+        assertFalse(report.getMissingCombinerIssues().isEmpty(),
+            "The detector should still say the gatherer ran without a combiner on a parallel "
+                + "stream: " + report);
+        String issue = report.getMissingCombinerIssues().get(0);
+        assertFalse(issue.contains("lost"),
+            "The JDK integrated one state in order on " + run.integratingThreads() + " threads and "
+                + "lost nothing, yet the finding claims lost results: " + issue);
+        assertEquals(IssueSeverity.LOW, IssueSeverity.fromReport(report.toString()),
+            "A correct, serialized gather stage is a missed speedup, not a HIGH defect: " + report);
+        assertTrue(report.getSharedStateIssues().isEmpty(),
+            "Handing the one state between threads is the JDK's design, not a shared-state race: "
+                + report);
+
+        // The twin: the same stream through a gatherer with a combiner, one state per segment.
+        GathererConcurrencyMisuseDetector combined = new GathererConcurrencyMisuseDetector();
+        combined.registerGatherer("running", /* hasCombiner */ true, /* parallel */ true);
+        GatherRun parallel = gatherInParallel(true, combined, "running");
+        assertEquals(inOrder(), parallel.output());
+        assertFalse(combined.analyze().hasIssues(),
+            "Each segment integrated its own state on its own thread: " + combined.analyze());
     }
 }

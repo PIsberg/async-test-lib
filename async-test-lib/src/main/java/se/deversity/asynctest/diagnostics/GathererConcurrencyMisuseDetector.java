@@ -23,25 +23,27 @@ import java.util.concurrent.atomic.AtomicInteger;
  * and then merges those states with the {@code combiner}. The contract is:
  *
  * <ul>
- *   <li>If a gatherer keeps mutable state, it <em>must</em> supply a {@code combiner}
- *       so the per-thread states can be merged. A {@code Gatherer.ofSequential(...)}
- *       (or any gatherer built without a combiner) is forced to run sequentially.</li>
+ *   <li>A gatherer that should run in parallel supplies a {@code combiner} so the
+ *       per-segment states can be merged. A {@code Gatherer.ofSequential(...)} (or any
+ *       gatherer built without a combiner) is evaluated sequentially even on a parallel
+ *       stream: the JDK integrates one state segment by segment, in encounter order, and
+ *       loses nothing. JDK 24+ behaviour, pinned by this detector's test (#777).</li>
  *   <li>The integrator must only touch the per-element state object it is handed —
  *       never shared/captured mutable state — or parallel workers race on it.</li>
  * </ul>
  *
- * <p>The dangerous combination is a gatherer whose integrator mutates state that is
- * <em>shared</em> across the split (captured field, external collection, instance
- * counter) while running on a parallel stream <em>without</em> a combiner. The
- * result is a silent data race: lost updates, {@code ConcurrentModificationException},
- * or non-deterministic output. This detector flags exactly that pattern.
+ * <p>The dangerous combination is a gatherer whose segments are not confined to their own
+ * state: an initializer returning a shared instance, or an integrator mutating captured
+ * state. The result is a silent data race: lost updates,
+ * {@code ConcurrentModificationException}, or non-deterministic output.
  *
  * <p><strong>Issues detected:</strong>
  * <ul>
- *   <li><b>Stateful gatherer on a parallel stream without a combiner</b> — the
- *       integrator was observed mutating state on more than one worker thread, but
- *       the gatherer declared no combiner. Workers cannot merge → lost results.</li>
- *   <li><b>Shared-state race</b> — one state object of a parallel gatherer that has a
+ *   <li><b>No combiner on a parallel stream</b> ({@code LOW}): the gatherer was declared
+ *       parallel without a combiner and its integrator ran on more than one thread. The
+ *       JDK hands its one state between threads in order, so results are correct, but the
+ *       gather stage runs sequentially and the parallel stream buys it nothing.</li>
+ *   <li><b>Shared-state race</b> ({@code HIGH}): one state object of a parallel gatherer that has a
  *       combiner was integrated on two threads, so the segments are not confined to their
  *       own state. This needs the state object, from
  *       {@link #recordIntegrate(String, Object, Thread)}; a gatherer with a combiner whose
@@ -217,14 +219,21 @@ public class GathererConcurrencyMisuseDetector {
         // Only a gatherer with no combiner is judged on threads alone. With a combiner, several
         // integrating threads is the parallel contract working (each segment on its own state),
         // so that shape is judged only on state identity, in the three-argument overload.
+        //
+        // What that shape costs is parallelism, not results: the JDK evaluates a gatherer with no
+        // combiner sequentially on a parallel stream, one state handed from segment to segment in
+        // encounter order (GathererOp's Hybrid path, pinned on JDK 24+ by the test, #777). Hence
+        // a LOW finding that says so, rather than the "results are lost" it used to claim.
         if (firstFromThisThread && !info.hasCombiner && info.parallel && !info.shapeConflict
                 && info.integratingThreadIds.size() >= 2
                 && info.reported.compareAndSet(false, true)) {
             missingCombinerReports.add(
-                "Gatherer '" + name + "': integrator ran on multiple threads but the gatherer "
-                + "declares no combiner. On a parallel stream the per-thread states cannot be "
-                + "merged — results are lost or non-deterministic. Add a combiner, or build it "
-                + "with Gatherer.ofSequential(...) to force sequential evaluation."
+                "Gatherer '" + name + "': declared parallel with no combiner, and its integrator "
+                + "ran on several threads. The JDK evaluates a gatherer without a combiner "
+                + "sequentially even on a parallel stream: one state, handed between threads in "
+                + "encounter order, so no result is dropped, but this stage gets no parallel "
+                + "speedup. Add a combiner if the stage should run in parallel; otherwise the "
+                + ".parallel() buys nothing here."
             );
         }
     }
@@ -264,7 +273,9 @@ public class GathererConcurrencyMisuseDetector {
         }
 
         /**
-         * {@return true if any unsafe parallel-gatherer usage was detected}
+         * {@return true if either finding was recorded: a combiner-less gatherer on a parallel
+         * stream ({@code LOW}, a missed speedup) or one state shared across segments
+         * ({@code HIGH}, a data race)}
          */
         public boolean hasIssues() {
             return !missingCombinerIssues.isEmpty() || !sharedStateIssues.isEmpty();
@@ -295,18 +306,18 @@ public class GathererConcurrencyMisuseDetector {
 
             StringBuilder sb = new StringBuilder();
 
-            if (!missingCombinerIssues.isEmpty()) {
-                sb.append(IssueSeverity.HIGH.format())
-                  .append(": Stateful gatherer on a parallel stream without a combiner (lost results)\n");
-            } else {
+            if (!sharedStateIssues.isEmpty()) {
                 sb.append(IssueSeverity.HIGH.format())
                   .append(": Gatherer state shared across parallel segments (data race)\n");
+            } else {
+                sb.append(IssueSeverity.LOW.format())
+                  .append(": Gatherer without a combiner on a parallel stream (evaluated sequentially)\n");
             }
 
             sb.append("  Gatherers=").append(totalGatherers)
               .append(", Integrations=").append(totalIntegrations).append("\n");
 
-            ReportSections.appendSection(sb, "Missing combiner on parallel stream (lost results)", missingCombinerIssues);
+            ReportSections.appendSection(sb, "No combiner on a parallel stream (the gather stage runs sequentially)", missingCombinerIssues);
             ReportSections.appendSection(sb, "One state object integrated on several threads (shared across the split)", sharedStateIssues);
 
             sb.append("\n\n").append("=".repeat(60));
@@ -323,26 +334,28 @@ public class GathererConcurrencyMisuseDetector {
                 Stream.gather(Gatherer) is the extension point for custom intermediate
                 operations. A Gatherer = initializer + integrator + (combiner) + (finisher).
 
-                On a PARALLEL stream the runtime:
+                On a PARALLEL stream, with a COMBINER the runtime:
                   1. splits the input,
-                  2. runs the integrator on independent state per worker thread,
-                  3. merges those states with the COMBINER.
+                  2. runs the integrator on independent state per segment,
+                  3. merges those states with the combiner.
+                Without a combiner it evaluates the gather stage sequentially: one state,
+                integrated segment by segment in encounter order. Correct, but not parallel.
 
                 Correct usage:
-                  // Stateful + parallel-safe → MUST provide a combiner:
+                  // Stateful and meant to run in parallel → provide a combiner:
                   Gatherer.of(initializer, integrator, combiner, finisher);
 
-                  // Stateful but no safe merge → force sequential:
+                  // Stateful with no safe merge → sequential, even on a parallel stream:
                   Gatherer.ofSequential(initializer, integrator, finisher);
 
                 Common mistakes:
-                  ✗ Stateful gatherer with no combiner on a parallel stream → states can't
-                    merge; results are dropped or non-deterministic
                   ✗ Integrator mutating captured/shared state instead of its private state
                     object → data race across the split (lost updates, CME)
+                  ~ No combiner on a parallel stream → nothing is lost, but the stage runs
+                    sequentially and .parallel() buys it nothing
 
-                Rule of thumb: keep all mutation inside the per-thread state from the
-                initializer, and supply a combiner whenever the gatherer can go parallel.
+                Rule of thumb: keep all mutation inside the state from the initializer, and
+                supply a combiner when the stage should actually run in parallel.
                 """;
         }
     }

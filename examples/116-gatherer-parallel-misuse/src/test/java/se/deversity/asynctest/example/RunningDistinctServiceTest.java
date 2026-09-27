@@ -18,14 +18,15 @@ import static org.junit.jupiter.api.Assertions.*;
  * ========================================================================
  *
  * On a PARALLEL stream the runtime splits the input, runs a Gatherer's integrator on
- * independent per-thread state, then merges those states with the COMBINER. A stateful
- * gatherer with NO combiner (or one whose integrator touches shared state) silently loses
- * or corrupts results.
+ * independent per-segment state, then merges those states with the COMBINER. A gatherer
+ * whose integrator touches shared state silently corrupts results. A gatherer with NO
+ * combiner loses nothing: the JDK evaluates it sequentially, one state handed between
+ * threads in order, so it only loses the parallelism.
  *
  * GathererConcurrencyMisuseDetector is standalone (not wired into @AsyncTest). You declare
  * the gatherer's shape up front with registerGatherer(name, hasCombiner, parallel), then
  * call recordIntegrate(name, thread) from the integrator. Once the integrator is observed
- * on more than one thread without a combiner, the detector fires.
+ * on more than one thread without a combiner, the detector reports it at LOW.
  */
 class RunningDistinctServiceTest {
 

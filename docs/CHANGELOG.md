@@ -258,6 +258,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`GathererConcurrencyMisuseDetector` no longer says a combiner-less gatherer loses results
+  (#777).** The missing-combiner finding claimed that on a parallel stream "the per-thread states
+  cannot be merged, results are lost". The JDK does not work that way: a gatherer whose combiner is
+  `Gatherer.defaultCombiner()` is evaluated sequentially even on a parallel stream, one state
+  integrated segment by segment in encounter order and handed between threads. A new JDK 24+ test
+  runs a real `Gatherer` through `parallel().gather(...)` by reflection (the library compiles
+  against 21) and pins it: one state, no overlapping integration, all 20,000 elements in order,
+  while the combiner twin splits into several states and merges them. The finding still fires on
+  that shape, now at `LOW`, and says what it costs: the gather stage runs sequentially and the
+  parallel stream buys it nothing. A shared-state race stays `HIGH` and sets the report's severity
+  when both are present. On JDK 21 the two new tests are skipped by assumption.
 - **`OptimisticReadValidationDetector` names a field in every never-validated finding (#826).**
   Once eight fields read under a stamp filled the name list, a field read after a passing
   `validate()` and never revalidated was reported as `data accessed (2 reads not named)`, naming

@@ -4036,10 +4036,10 @@ final class Corpus {
                     DetectorType.GATHERER_CONCURRENCY_MISUSE, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a gatherer is declared parallel with no combiner and then integrated from "
-                            + "six threads. A parallel pipeline splits the work and has nothing "
-                            + "to merge the halves with, so the integrator's state is shared "
-                            + "rather than combined",
-                    IssueSeverity.HIGH),
+                            + "six threads. The JDK evaluates such a gatherer sequentially, one "
+                            + "state handed between threads in order, so nothing is lost; the "
+                            + "finding is the LOW one, that the stage gets no parallelism (#777)",
+                    IssueSeverity.LOW),
 
             new RecordingSubject("recorded_gatherer_parallelWithACombiner", JDK,
                     "java.util.stream.Gatherer",
