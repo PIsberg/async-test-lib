@@ -212,8 +212,9 @@ volatile `next` reaches its reader (#804). An `AtomicReference` is modelled the 
 `set`, `lazySet`, `setRelease`, successful `compareAndSet` or `getAndSet` releases the slot, and a
 `get` or `getAcquire` acquires what the store whose value it returned published, so the same object
 read out of another slot receives nothing. The value is compared as a primitive's bits or a
-reference's identity hash, and among the field's last two writes only, since a write is released
-just before it is stored. An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock
+reference's identity, held weakly by the release so the model keeps nothing alive, and among the
+field's last four writes only, since a write is released just before it is stored and a read can
+still return an earlier value while later writers are in that window (#813). An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock
 hand-off is deliberately not an edge: the lockset judges locking, and ordering it by the one
 schedule a run took would hide what another schedule exposes.
 

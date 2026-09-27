@@ -266,6 +266,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier reads that a failed-use finding prints. The tail still counts reads, not fields, and
   says so: a field past the cap read five times is `, and 5 more reads`, since telling fields apart
   past the cap would need the names the cap drops. No verdict changed.
+- **A volatile read takes the write it saw behind pending writers, and only that object's (#813).**
+  A volatile write is released just before it is stored, and the model kept the field's last two
+  releases, so a read of the stored value while two later writers had released and not yet stored
+  acquired nothing, and its later accesses were reported as racing that write. A reference was
+  compared by its identity hash, so a read of one object could take the release of another that
+  shared the hash, which hid a race. A field now keeps its last four releases, linked, and a read
+  takes the latest that stored its value; a reference is matched by identity through the release
+  record itself, a `WeakReference` (`HappensBefore.releaseVolatileReference`/
+  `acquireVolatileReference`), so nothing the program stored is kept alive and no object is added:
+  one 48-byte record per volatile write, up from 40, and none per read. Same-value writes,
+  constructor writes and fields sharing a simple name stay the documented limits.
 - **A `synchronized` method's monitor counts in everything the method calls (#822).** The monitor
   comes from an access flag, with no instruction to weave, and until now only the queue offer and
   take hooks and the field hooks were handed it. `SharedCollectionDetector` never was, so a

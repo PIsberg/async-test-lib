@@ -320,8 +320,8 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * {@link #volatileStore(Object, int, String)} for a reference field, compared by the stored
-     * object's identity hash so the model never holds the object itself.
+     * {@link #volatileStore(Object, int, String)} for a reference field, the stored object compared
+     * by identity through a weak reference, so the model keeps nothing alive (#813).
      *
      * @param owner the object the field belongs to, the declaring class for a static field
      * @param value the reference the write stores
@@ -330,7 +330,7 @@ public final class TelemetryRegistry {
      */
     public static void volatileStore(@Nullable Object owner, @Nullable Object value, String field) {
         if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(owner, field, System.identityHashCode(value));
+            HappensBefore.releaseVolatileReference(owner, field, value);
         }
     }
 
@@ -398,8 +398,8 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * {@link #volatileLoad(Object, int, String)} for a reference field, compared by the returned
-     * object's identity hash.
+     * {@link #volatileLoad(Object, int, String)} for a reference field, the returned object
+     * compared by identity with the one each release stored (#813).
      *
      * @param owner the object the field belongs to, the declaring class for a static field
      * @param value the reference the read returned
@@ -408,7 +408,7 @@ public final class TelemetryRegistry {
      */
     public static void volatileLoad(@Nullable Object owner, @Nullable Object value, String field) {
         if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(owner, field, System.identityHashCode(value));
+            HappensBefore.acquireVolatileReference(owner, field, value);
         }
     }
 
@@ -2335,7 +2335,7 @@ public final class TelemetryRegistry {
      */
     private static void slotStored(AtomicReference<Object> slot, @Nullable Object value) {
         if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+            HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, value);
         }
     }
 
@@ -2352,7 +2352,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
         Object value = slot.get();
         if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+            HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         }
         return value;
     }
@@ -2368,7 +2368,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
         Object value = slot.getAcquire();
         if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+            HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         }
         return value;
     }
