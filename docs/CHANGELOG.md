@@ -461,7 +461,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand-off but not after B's fell back to every access of the round, so A's unlocked set-up, which
   that access is ordered after, reported it beside guarded uses by B and D. `SelfGuard` now keeps
   the hand-offs of a window, at most eight, and such an access falls back to the latest one it is
-  ordered after; past eight a new hand-off absorbs the one before it (narrowed by #821, below),
+  ordered after; past eight a new hand-off absorbs the one before it (narrowed by #821 and removed by #830, below),
   which can only add a finding. A late access that may overlap an unguarded owner still reports.
   Also pinned: the same lockset answers `AtomicNonAtomicUpdateDetector`, so one lock before an
   ordered hand-off and another after it are not a lost update, while the same two locks with no
@@ -481,6 +481,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SharedMessageDigestDetectorTest`: a late use that may overlap an unguarded owner past the
   eighth hand-off, one ordered after no hand-off, and an unguarded use beside the owner whose
   clock dropped the hand-off still report.
+- **A hand-off chain in which every hand-off matters no longer merges two of them (#830).** With
+  eight hand-offs kept in one window, each adding a lock the owners after it held, a new take-over
+  absorbed the latest into the one before, so a late use ordered after the absorbed hand-off fell
+  back one further and brought in an owner it is ordered after: ten owners each holding one more of
+  seven declared locks, and a late use under the seventh ordered after owner 7's hand-off, reported
+  owner 7, which never held it. `SelfGuard` now lets such a chain grow past eight and prunes it
+  again at each take-over; it stays within the locks one access can hold plus three. Pinned both
+  ways in `SharedMessageDigestDetectorTest`: a late use that may overlap owner 7, an unguarded one
+  and one ordered after no hand-off still report. Also pinned, unchanged: a thread that never owned
+  the instance and whose clock dropped the hand-off it follows (past 256 threads) still falls back
+  to the whole window, since unlike the owner it has no earlier access that orders it; and
+  `AtomicNonAtomicUpdateDetectorTest` now shows the owner's own access past a dropped clock judged
+  from its hand-off, as #821 did for the digest.
 - **The lock-aware detectors no longer count a read-only round as sharing (#787).** `SelfGuard`'s
   per-round verdict did not tell reads from writes, so two threads reading with no lock in one round
   latched it, and a mutation in a different round, which never overlapped the reads, completed a
