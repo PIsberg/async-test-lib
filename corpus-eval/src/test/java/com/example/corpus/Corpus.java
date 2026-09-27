@@ -4888,4 +4888,19 @@ final class Corpus {
                 .findFirst()
                 .orElse(null);
     }
+
+    /**
+     * {@return the lane whose rows declare {@code testMethod}, or {@code null} for none}
+     *
+     * <p>An agent-pair row answers {@link CorpusLane#AGENT_PAIRS}, including the library rows the
+     * library-excluded lane re-runs: that lane declares no rows of its own.
+     */
+    static CorpusLane laneOf(String testMethod) {
+        for (CorpusLane lane : List.of(CorpusLane.RECORDING, CorpusLane.AGENT_PAIRS, CorpusLane.IDIOMS)) {
+            if (pairByTestMethod(lane, testMethod) != null) {
+                return lane;
+            }
+        }
+        return null;
+    }
 }

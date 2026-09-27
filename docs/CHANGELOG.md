@@ -255,6 +255,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read the recording and agent-pair lanes only. It now counts a detector with a firing row and a
   correct row held to silence in the idiom lane, so `noRefusalOutlivesItsPair` sees that lane too.
   No tier and no pairing count moves.
+- **An evidence line's two halves must come from one corpus lane (#842).** Since #828 a line may
+  name recording, agent-pair or idiom rows, and `CorpusGates` held each half to its own lane's
+  rules only, so a line could pair a recording-lane firing row with an idiom-lane correct row.
+  Those differ in their bodies and their feeds, not only in the defect, which is the bar the file
+  states. The gate now fails such a line, naming both lanes. No current line mixes lanes, and no
+  tier moves.
 
 ### Fixed
 

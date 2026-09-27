@@ -693,6 +693,30 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("a pair whose halves come from two lanes fails the verdict resolution gate")
+    void mixedLanePairFailsGate() {
+        // Each half is valid on its own: the recording lane's firing check-then-act and the idiom
+        // lane's silent one. Their bodies and feeds differ, so the pair separates on more than the
+        // defect (#842).
+        AssertionFailedError failure = assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair(
+                        "CONCURRENT_MAP_CHECK_THEN_ACT = recorded_concurrentReferenceHashMap_checkThenAct, "
+                                + "idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
+                        Corpus::recordingByTestMethod));
+        assertTrue(failure.getMessage().contains("recorded_concurrentReferenceHashMap_checkThenAct comes from "
+                + "the recording lane and idiom_synchronizedCheckThenAct_onAConcurrentHashMap from the "
+                + "idioms lane"), failure.getMessage());
+    }
+
+    @Test
+    @DisplayName("every line of the shipped verdict evidence passes the verdict resolution gate")
+    void shippedVerdictEvidencePassesGate() {
+        // The recording lane runs this gate too; here it also runs in the agent-on fork, so a
+        // line that breaks it fails without waiting for a lane run.
+        assertDoesNotThrow(() -> CorpusGates.everyCorpusBackedVerdictResolvesToItsPair());
+    }
+
+    @Test
     @DisplayName("silent row never calling detector fails the silent row premise gate")
     void silentRowNeverCallingDetectorFailsGate() {
         String fakeSource = "void rowQuiet() { int x = 1; }";

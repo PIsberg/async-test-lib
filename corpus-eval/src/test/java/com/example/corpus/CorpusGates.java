@@ -528,7 +528,7 @@ final class CorpusGates {
      *
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
      * fails if one is missing, points at a different detector, or has drifted to the wrong
-     * expectation. The pairs themselves are held to their outcomes every run by
+     * expectation, or if the two halves of a line are rows of different lanes. The pairs themselves are held to their outcomes every run by
      * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, and an idiom row's correct half by
      * {@link #everyCorrectIdiomDrewNothingWorthFailingOn}, so between the two the tier cannot
      * outlive the measurement that earned it.
@@ -574,10 +574,21 @@ final class CorpusGates {
                         + ids.length);
                 continue;
             }
-            broken.addAll(problemsWith(detector, ids[0].strip(),
+            String fire = ids[0].strip();
+            String silent = ids[1].strip();
+            broken.addAll(problemsWith(detector, fire,
                     RecordingSubject.Expectation.MUST_FIRE, resolver));
-            broken.addAll(problemsWith(detector, ids[1].strip(),
+            broken.addAll(problemsWith(detector, silent,
                     RecordingSubject.Expectation.MUST_STAY_SILENT, resolver));
+            // Each lane's bodies and feed differ from the others', so halves drawn from two lanes
+            // differ in more than the defect (#842). An id no lane declares is reported above.
+            CorpusLane fireLane = Corpus.laneOf(fire);
+            CorpusLane silentLane = Corpus.laneOf(silent);
+            if (fireLane != null && silentLane != null && fireLane != silentLane) {
+                broken.add(detector + " pairs across lanes: " + fire + " comes from the "
+                        + fireLane.propertyValue() + " lane and " + silent + " from the "
+                        + silentLane.propertyValue() + " lane");
+            }
         }
 
         assertTrue(lines > 0, "verdict evidence parsed to no lines at all, so this gate passed by "

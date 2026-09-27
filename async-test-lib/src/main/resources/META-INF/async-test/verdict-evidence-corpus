@@ -15,9 +15,11 @@
 # be backed either by a pair of test methods it can resolve or by a line here, and requires every
 # line here to name a detector actually classified VERDICT. In corpus-eval, CorpusGates requires
 # each named id to be a row of the recording, agent-pair or idiom lane for that detector carrying
-# that expectation, and refuses as a silent half an idiom row that lane does not hold to silence (a
-# known gap, or a row expecting a note), so a line that stops being true fails the corpus build
-# rather than quietly vouching for a tier.
+# that expectation, requires both ids of a line to be rows of the same lane (#842), and refuses as
+# a silent half an idiom row that lane does not hold to silence (a known gap, or a row expecting a
+# note), so a line that stops being true fails the corpus build rather than quietly vouching for a
+# tier. The lanes differ in their bodies and their feeds, so a pair drawn from two of them differs
+# in more than the defect, which is the bar below.
 #
 # The bar is the one the in-repo pairs meet: the two subjects differ in the defect and in nothing
 # else. The detectors on a "# held: TYPE" line below are corpus-measured and deliberately absent,

@@ -824,7 +824,9 @@ it against the lockset, kept the registration, and made the file's held detector
 checks. The idiom lane's `idiom_synchronizedCheckThenAct_*` pair separates on the lock itself,
 and since #828 it is the pair the registration names: the evidence file may cite idiom rows, and
 `CorpusGates` resolves them as it resolves the others, refusing as a silent half a known gap or a
-correct row that expects a note, which that lane does not hold to silence.
+correct row that expects a note, which that lane does not hold to silence. Both halves of a line
+must be rows of one lane (#842), so neither half of this pair can be swapped for a recording-lane
+row, whose body and feed differ in more than the lock.
 
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|
