@@ -381,6 +381,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-recorded. `LibraryStateIsKeyedByIdentityTest` drops the 19 exemptions, so a report key built
   from an identity hash is red again.
 
+- **With the agent, `ConstructorSafetyValidator` knows when a constructor returned (#791).** After
+  #778 two cases still counted a read of an earlier, already published instance as an escape,
+  because the stack held a constructor of its class: a pooled thread inside the next constructor
+  before it recorded its start, and a later constructor that records no start. With
+  `collections=true` the agent now inserts a call before every `RETURN` of every constructor in a
+  woven class (`ConstructionWeaver`, `AgentConstructionHooks.constructorReturned`), which ends the
+  construction when the returning constructor is the object's own class's, and one after a
+  `this(...)` delegation (`constructorResumed`), which reopens what the callee's return ended. A
+  superclass constructor's return ends nothing, an end recorded by hand is never reopened, and a
+  class in a named module that cannot read the library is not woven. User-visible: both cases are
+  silent with the agent, and a construction whose end nobody recorded no longer shows as "started
+  but never completed" once its constructor returned. The hook costs every woven construction a
+  check of an empty map while nothing is tracked, 0 bytes measured for a class nobody tracks,
+  24 bytes for an instance of a tracked class. `ConstructorExitWeavingTest` pins the two silent
+  cases and three escapes that still fire (in the same constructor, after a delegation returned,
+  after a superclass constructor returned) through real weaving; `ConstructorSafetyValidatorTest`
+  the same through the hooks, and `ConstructionWeaverTest` that every return and delegation
+  shape verifies and reports once.
 - **With the agent, LRU gets under one read lock are reported on a default JVM (#807).** A `get` on
   an access-ordered `LinkedHashMap` relinks the entry, so it needs the exclusive lock, but the
   order is a private `java.util` field the library could read only with

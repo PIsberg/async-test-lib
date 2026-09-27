@@ -431,6 +431,13 @@ public final class AsyncTestAgent {
                     // spot: a class that keeps its state in a HashMap writes nothing of its own,
                     // so field weaving sees a correct class racing and reports nothing at all.
                     for (AsmVisitorWrapper substitution : collectionSubstitutions) {
+                        // Every constructor of the class calls the construction hooks, so a named
+                        // module that cannot read the library would fail to build anything (#791).
+                        if (substitution instanceof ConstructionWeaver construction
+                                && !construction.reachableFrom(
+                                        module == null ? null : (Module) module.unwrap())) {
+                            continue;
+                        }
                         woven = woven.visit(substitution);
                     }
                     return woven;
