@@ -387,6 +387,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that shape, now at `LOW`, and says what it costs: the gather stage runs sequentially and the
   parallel stream buys it nothing. A shared-state race stays `HIGH` and sets the report's severity
   when both are present. On JDK 21 the two new tests are skipped by assumption.
+- **The SPI bridge reads a third-party detector whose class or report type is not public (#851).**
+  After #847, a detector wrapped in `LegacyDetectorAdapter` whose class or report type was not
+  public, such as one nested in a test class, failed the build under strict mode, or wrote a
+  `failed during analysis` line and reported nothing, although the library could have read it.
+  The adapter now calls `trySetAccessible` on the report method and `hasIssues()`, as it already
+  did for `structuredViolations` and as `DetectorFailurePolicy` does for `hasIssues()`, so such a
+  detector's findings come out wherever its package is open to the library, which the class path
+  always is. It opens nothing a module keeps closed: in a named module that does not open the
+  package, the report method or `hasIssues()` is still refused and reported as #847 describes, and
+  a `structuredViolations` list there that the library may not read gives way to the text finding
+  graded by its text, which strict mode no longer calls an empty list. Built-in detectors are all
+  public and see no change. `LegacyDetectorAdapterTest` pins each outcome with fixtures in another
+  package, loaded once from the class path and once into a named module built in the test that
+  exports the package without opening it.
 - **The SPI bridge reports a detector whose report it cannot reach (#847).** `LegacyDetectorAdapter`
   calls each built-in detector's report method and the report's `hasIssues()` reflectively from
   another package. A report type it may not call into, such as one that is not public, raised an

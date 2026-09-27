@@ -54,8 +54,15 @@ Coverage is automated:
   `Violation` carrying its `toString()` at the severity `DetectorDefaultSeverity`
   gives that text: the same severity the `failOn` gate reads (#841). A detector
   that throws is contained through `DetectorFailurePolicy.detectorFailed`, as on
-  the registry path, so strict mode fails the build, and so does one whose report
-  the adapter may not call into, such as a report type that is not public (#847).
+  the registry path, so strict mode fails the build. A detector class or report type
+  that is not public, such as a third-party detector nested in a test class, is read
+  anyway where its package is open to the library, which the class path always is:
+  the adapter calls `trySetAccessible` on the report method, `hasIssues()` and the
+  `structuredViolations` field, as JUnit does for test methods (#851). It cannot
+  open what a named module keeps closed, so a report method or `hasIssues()` there
+  fails the build under strict mode like a detector that throws (#847), and a list
+  there that it may not read gives way to the text finding, which strict mode does
+  not call empty.
   Detectors whose report doesn't follow the canonical
   `analyze() → Report{hasIssues(), toString()}` shape return an empty list and
   write nothing; `DetectorFiringContractTest` holds every built-in to that shape,
