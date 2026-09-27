@@ -402,6 +402,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again, so a pooled worker that never did kept it reachable. `AsyncTestContext.markInvocationStart()`
   now calls the detector's new `markInvocationStart()`, which clears every slot opened since the
   last one; the seeks are linked through themselves, so listing one allocates nothing.
+- **`FILE_CHANNEL_POSITION_RACE` no longer reports a sequence guarded by an unwoven
+  `synchronized (channel)` around a woven re-entry of it (#835).** With the agent attached, only
+  the woven inner block or `synchronized` method reaches `HeldLocks`, and it is entered after the
+  seek, so the monitor read as taken again since the seek and a correctly guarded sequence was
+  reported. The seek now also notes whether the thread held the channel's monitor with no entry
+  for it, and if so the I/O counts the monitor whenever the thread holds it, as a monitor with no
+  entry at all already was. The cost is the mirror case, an unwoven block around the seek left
+  before a woven block around the read, which now reads as held across, the same limit as a
+  release in unwoven code; a test pins it. A woven block around the seek inside an unwoven one,
+  left and entered again before the read, is still reported.
+- **`FILE_CHANNEL_POSITION_RACE` keeps a thread's seeks on up to four channels (#835).** A thread
+  had one open seek, so in `seek(a); seek(b); read(a)` the read on `a` looked self-contained,
+  though it starts where the seek on `a` left the cursor. Each thread now keeps its latest seek on
+  each of four channels, in slots allocated once per thread, and a seek on a fifth replaces the one
+  sought longest ago; a test pins the bound.
+- **`FILE_CHANNEL_POSITION_RACE` ignores calls that neither use nor move the position (#835).**
+  `size`, `force`, `transferTo`, `transferFrom`, `map`, `lock` and `tryLock` recorded through
+  `recordImplicitPositionAccess` counted as calls that can land inside another thread's sequence,
+  so a thread calling `size()` beside correctly locked seek-then-read sequences was reported. By
+  the `FileChannel` javadoc only `read`, `write`, `position(long)` and `truncate` move the cursor,
+  and the transfers, `map` and the file locks take an explicit position. These names are now
+  ignored; any other name still counts, as the conservative choice, and a test pins that.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

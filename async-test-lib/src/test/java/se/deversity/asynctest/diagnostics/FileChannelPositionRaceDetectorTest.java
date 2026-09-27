@@ -649,4 +649,246 @@ class FileChannelPositionRaceDetectorTest {
             "the write lock excludes the reader for the whole sequence, and self-contained reads "
                 + "need not exclude each other: " + d.analyze());
     }
+
+    /**
+     * #835: an outer {@code synchronized (channel)} the agent does not weave holds the monitor
+     * across the sequence, and a woven block re-enters it around the read. The only entry the
+     * lock set has for the monitor is the inner one, taken after the seek, so the monitor read as
+     * not held since it and a correctly guarded sequence was reported.
+     */
+    @Test
+    void theChannelsMonitorHeldAcrossWhereTheAgentDoesNotSeeItGuardsAWovenReentryAroundTheRead()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Runnable guarded = () -> {
+            synchronized (channel) { // unwoven: nothing reaches HeldLocks
+                d.recordImplicitPositionAccess(channel, "position");
+                synchronized (channel) {
+                    try (var woven = HeldLocks.holding(channel)) {
+                        d.recordImplicitPositionAccess(channel, "read");
+                    }
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "the outer block held the monitor from the seek to the read on both threads: "
+                + d.analyze());
+    }
+
+    @Test
+    void aSynchronizedMethodReenteringTheMonitorHeldAcrossWhereTheAgentDoesNotSeeItStillGuards()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Runnable guarded = () -> {
+            synchronized (channel) {
+                d.recordImplicitPositionAccess(channel, "position");
+                HeldLocks.methodMonitorAcquired(channel); // a woven synchronized method's entry
+                try {
+                    d.recordImplicitPositionAccess(channel, "read");
+                } finally {
+                    HeldLocks.methodMonitorReleased(channel);
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "a synchronized method on the channel re-enters a monitor already held: " + d.analyze());
+    }
+
+    @Test
+    void aReadInAWovenBlockAfterASeekMadeOutsideTheMonitorIsNotGuardedByIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Runnable unguardedSeek = () -> {
+            d.recordImplicitPositionAccess(channel, "position");
+            synchronized (channel) {
+                try (var woven = HeldLocks.holding(channel)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        };
+        unguardedSeek.run();
+        inAnotherThread(unguardedSeek);
+        assertTrue(d.analyze().hasIssues(),
+            "the monitor was not held at the seek, so another thread's seek can land between it "
+                + "and the read");
+    }
+
+    /**
+     * The other side of the #835 fix, and the same limit as a monitor released in unwoven code
+     * (#831): a hold the agent did not see taken has no release it could see either, so a monitor
+     * held that way at the seek counts as held across whenever the thread holds it at the I/O.
+     * Here the unwoven block ends between the two, which nothing reports, and the race goes
+     * unreported. Pinned so that a fix for it is a deliberate change.
+     */
+    @Test
+    void anUnwovenHoldAtTheSeekReleasedBeforeAWovenBlockAroundTheReadIsTakenAsHeldAcross()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Runnable releasedBetween = () -> {
+            synchronized (channel) {
+                d.recordImplicitPositionAccess(channel, "position");
+            }
+            synchronized (channel) {
+                try (var woven = HeldLocks.holding(channel)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        };
+        releasedBetween.run();
+        inAnotherThread(releasedBetween);
+        assertFalse(d.analyze().hasIssues(),
+            "known limit: the unwoven release between the seek and the read is invisible: "
+                + d.analyze());
+    }
+
+    /**
+     * #835: a thread kept one open seek, so a seek on a second channel closed the first, and a
+     * read on the first channel after it looked self-contained, though it starts where the first
+     * seek left that channel's cursor.
+     */
+    @Test
+    void aReadReliesOnItsChannelsSeekAfterASeekOnAnotherChannel() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object a = new Object();
+        Object b = new Object();
+        d.recordImplicitPositionAccess(a, "position");
+        d.recordImplicitPositionAccess(b, "position");
+        d.recordImplicitPositionAccess(a, "read");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(a, "read"));
+        assertTrue(d.analyze().hasIssues(),
+            "the other thread's read can move a's cursor between the seek on a and the read on a");
+    }
+
+    @Test
+    void interleavedSequencesOnTwoChannelsUnderOneLockAreNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object a = new Object();
+        Object b = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(a, "position");
+                d.recordImplicitPositionAccess(b, "position");
+                d.recordImplicitPositionAccess(a, "read");
+                d.recordImplicitPositionAccess(b, "write");
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "one lock held across both interleaved sequences on every thread: " + d.analyze());
+    }
+
+    @Test
+    void aRoundStartForgetsTheOpenSeeksOnEveryChannel() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object a = new Object();
+        Object b = new Object();
+        d.recordImplicitPositionAccess(a, "position");
+        d.recordImplicitPositionAccess(b, "position");
+        d.markInvocationStart();
+        d.recordImplicitPositionAccess(a, "read");
+        d.recordImplicitPositionAccess(b, "read");
+        inAnotherThread(() -> {
+            d.recordImplicitPositionAccess(a, "read");
+            d.recordImplicitPositionAccess(b, "read");
+        });
+        assertFalse(d.analyze().hasIssues(),
+            "both seeks belonged to the round before: " + d.analyze());
+    }
+
+    /**
+     * The bound on the per-thread seeks (#835): a thread keeps its latest seek on each of four
+     * channels, and a seek on a fifth replaces the one sought longest ago, so I/O relying on that
+     * one is no longer judged as relying on it. Pinned so that the bound is a deliberate choice.
+     */
+    @Test
+    void aSeekOnAFifthChannelForgetsTheOneSoughtLongestAgo() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object first = new Object();
+        d.recordImplicitPositionAccess(first, "position");
+        Object latest = null;
+        for (int i = 0; i < 4; i++) {
+            latest = new Object();
+            d.recordImplicitPositionAccess(latest, "position");
+        }
+        Object stillOpen = latest;
+        d.recordImplicitPositionAccess(first, "read");
+        d.recordImplicitPositionAccess(stillOpen, "read");
+        inAnotherThread(() -> {
+            d.recordImplicitPositionAccess(first, "read");
+            d.recordImplicitPositionAccess(stillOpen, "read");
+        });
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(),
+            "only the channel whose seek is still kept is reported: " + report);
+        assertTrue(report.violations.get(0).contains(
+                stillOpen.getClass().getSimpleName() + "@" + System.identityHashCode(stillOpen)),
+            "and it is the latest one: " + report);
+    }
+
+    /**
+     * #835, decided: {@code size()} and {@code force(boolean)} neither read nor move the position
+     * ({@code FileChannel} changes it only in {@code read}, {@code write}, {@code position(long)}
+     * and {@code truncate}), and {@code transferTo}, {@code transferFrom}, {@code map},
+     * {@code lock} and {@code tryLock} take an explicit position, the transfers documented as not
+     * modifying the channel's. Another thread's call of one of them cannot move the cursor between
+     * a seek and its read, so it is no call that can land inside a sequence.
+     */
+    @Test
+    void anotherThreadsCallThatNeitherUsesNorMovesThePositionCannotLandInsideASequence()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        try (var held = HeldLocks.holding(lock)) {
+            seekThenRead(d, channel);
+        }
+        inAnotherThread(() -> {
+            for (String neutral : new String[] {"size", "force", "transferTo", "transferFrom",
+                    "map", "lock", "tryLock"}) {
+                d.recordImplicitPositionAccess(channel, neutral);
+            }
+        });
+        inAnotherThread(() -> {
+            try (var held = HeldLocks.holding(lock)) {
+                seekThenRead(d, channel);
+            }
+        });
+        assertFalse(d.analyze().hasIssues(),
+            "a call that cannot move the cursor cannot break a sequence: " + d.analyze());
+    }
+
+    @Test
+    void aCallThatNeitherUsesNorMovesThePositionLeavesTheSeekOpen() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.recordImplicitPositionAccess(channel, "size()");
+        d.recordImplicitPositionAccess(channel, "read");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertTrue(d.analyze().hasIssues(),
+            "the read after the size call still starts where the seek left the cursor");
+    }
+
+    @Test
+    void anOperationNameTheDetectorDoesNotKnowStillCountsAsACallThatCanLandInsideASequence()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        try (var held = HeldLocks.holding(lock)) {
+            seekThenRead(d, channel);
+        }
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "append"));
+        assertTrue(d.analyze().hasIssues(),
+            "an unknown name may move the cursor, so it is kept as the conservative choice");
+    }
 }
