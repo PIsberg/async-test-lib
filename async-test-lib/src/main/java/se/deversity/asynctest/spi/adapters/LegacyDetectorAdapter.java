@@ -1,21 +1,25 @@
 package se.deversity.asynctest.spi.adapters;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.DetectorType;
-import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.vibetags.annotations.AILegacyBridge;
 import se.deversity.vibetags.annotations.AIPerformance;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Generic SPI {@link Detector} that wraps a legacy detector instance and projects
- * its {@code analyze()} output into a structured {@link Violation}.
+ * its {@code analyze()} output into structured {@link Violation}s.
  *
  * <p>Legacy detectors do not share a common base interface — each one has its own
  * {@code analyze()} returning a bespoke {@code XxxReport} inner class. To avoid
@@ -28,10 +32,18 @@ import java.util.Map;
  * list — they continue to work via the legacy {@code DetectorRegistry} path; the
  * SPI registry simply has no structured view of them.
  *
- * <p>When a detector class is later migrated to expose a {@code structuredViolations}
- * field (the {@link se.deversity.asynctest.diagnostics.SharedMessageDigestDetector}
- * pattern), it gets its own dedicated factory with a typed adapter; this generic
- * fallback is reserved for the long tail.
+ * <p>A report with issues that keeps a public {@code structuredViolations} list hands
+ * over those {@link Violation}s as they are, at the severities the detector chose, which
+ * are the ones the {@code failOn} gate reads. A report without one becomes a single
+ * {@link Violation} carrying its {@code toString()}, at the severity
+ * {@link DetectorDefaultSeverity#of(String, String)} gives that text. Before 1.12.3 every
+ * finding came out {@code HIGH} (#841).
+ *
+ * <p>A detector that throws from its report method, its report's {@code hasIssues()} or
+ * {@code toString()} is contained the way the registry path contains it, through
+ * {@link DetectorFailurePolicy#detectorFailed}: its finding is lost and a line is written,
+ * and under strict mode the build fails. Any other {@link Error} it throws, strict mode's own
+ * {@link AssertionError} included, reaches the caller.
  *
  * @param <D> legacy detector type
  *
@@ -131,18 +143,88 @@ public final class LegacyDetectorAdapter<D> implements Detector {
             boolean has = (boolean) hasIssuesMethod.invoke(report);
             if (!has) return List.of();
 
+            // The detector's own findings, at the severities it chose, are what the failOn gate
+            // reads from the same report (DetectorDefaultSeverity.of). Grading the text HIGH here
+            // instead made this path disagree with the gate for every detector that rates below
+            // HIGH (#841).
+            List<Violation> structured = structuredFindings(report);
+            if (!structured.isEmpty()) return structured;
+
+            String text = String.valueOf(report);
+            // As DetectorRegistry.ifIssue: a report type that keeps the list and left it empty
+            // fails this build's tests, and changes nothing anywhere else.
+            DetectorFailurePolicy.structuredFindingsMissing(delegateName(), report);
             return List.of(new Violation(
                     detectorName,
-                    IssueSeverity.HIGH,
-                    String.valueOf(report),
+                    DetectorDefaultSeverity.of(detectorName, text),
+                    text,
                     List.of(),
                     Map.of(),
                     Instant.now()));
+        } catch (InvocationTargetException e) {
+            // analyze() or hasIssues() threw. Before #841 this was caught below as a shape
+            // mismatch, so a broken detector, even one failing strict mode's own AssertionError,
+            // reported nothing and failed nothing on this path.
+            Throwable thrown = e.getCause();
+            return detectorFailed(thrown != null ? thrown : e);
         } catch (ReflectiveOperationException e) {
-            // Detector doesn't follow canonical shape (NoSuchMethodException), or
-            // analyze()/hasIssues() threw — don't poison the rest of the SPI sweep.
+            // The detector doesn't follow the canonical shape (NoSuchMethodException) or its
+            // report is not accessible: it has no structured view on this path, by design.
+            return List.of();
+        } catch (RuntimeException | StackOverflowError e) {
+            // The report's toString() threw, or its structured list did.
+            return detectorFailed(e);
+        }
+    }
+
+    /**
+     * Contains a failure the delegate threw, the way {@code DetectorRegistry.ifIssue} does on the
+     * registry path: an exception or a {@link StackOverflowError} goes through
+     * {@link DetectorFailurePolicy#detectorFailed}, which writes its line and, under strict mode,
+     * fails the build; any other {@link Error}, such as strict mode's own {@link AssertionError}
+     * raised inside {@code analyze()}, propagates unchanged.
+     *
+     * @param failure what the delegate threw, unwrapped from the reflection call
+     * @return an empty list, since a broken detector costs its own finding and nothing else
+     */
+    private List<Violation> detectorFailed(Throwable failure) {
+        if (failure instanceof Error error && !(failure instanceof StackOverflowError)) {
+            throw error;
+        }
+        DetectorFailurePolicy.detectorFailed(delegateName(), failure);
+        return List.of();
+    }
+
+    /** {@return the delegate's simple class name, which the registry path's diagnostics use too} */
+    private String delegateName() {
+        return delegate.getClass().getSimpleName();
+    }
+
+    /**
+     * {@return the {@link Violation}s in {@code report}'s public {@code structuredViolations} list,
+     * or an empty list when its type keeps none or the list is empty}
+     *
+     * <p>Read by name, as {@link DetectorDefaultSeverity#structuredIn} reads it for the gate, since
+     * the built-in reports share no interface.
+     *
+     * @param report a report that has issues
+     */
+    private static List<Violation> structuredFindings(Object report) throws IllegalAccessException {
+        Field field;
+        try {
+            field = report.getClass().getField(DetectorDefaultSeverity.STRUCTURED_FIELD);
+        } catch (NoSuchFieldException textOnly) {
             return List.of();
         }
+        if (!(field.canAccess(report) || field.trySetAccessible())
+                || !(field.get(report) instanceof List<?> findings)) {
+            return List.of();
+        }
+        List<Violation> out = new ArrayList<>(findings.size());
+        for (Object finding : findings) {
+            if (finding instanceof Violation v) out.add(v);
+        }
+        return List.copyOf(out);
     }
 
     /**

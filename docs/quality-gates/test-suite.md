@@ -48,11 +48,10 @@ reads that finding's severity from its text, and only a hand-written driver in
 `StructuredViolationCoverageTest` could notice. Because the check sits where the report is built, a
 detector's own unit tests that call `analyze()` drive it, not only the tests that fire the detector
 through the registry. The no-context `Phase1DetectorSet.printReports()` reads the list for the
-severity it hands listeners, and is covered by the same call. The SPI `LegacyDetectorAdapter` is
-not held to it: it never reads the list, and turns any built-in report with issues into one `HIGH`
-`Violation` from the text, so an empty list changes nothing it emits. With the flag off the check
-returns before looking at the report and writes nothing. `StructuredFindingsStrictModeTest` pins
-both halves.
+severity it hands listeners, and is covered by the same call. The SPI `LegacyDetectorAdapter` hands
+over the list's `Violation`s and makes the same check before it falls back to the text (#841).
+With the flag off the check returns before looking at the report and writes nothing.
+`StructuredFindingsStrictModeTest` pins both halves, and `LegacyDetectorAdapterTest` the SPI one.
 
 The same switch is on wherever the detectors are measured from outside this module: every
 corpus-eval lane, `consumer-fixture` and `consumer-fixture-langs` (Maven and Gradle), the examples

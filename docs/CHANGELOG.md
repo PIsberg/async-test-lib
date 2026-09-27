@@ -275,6 +275,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that shape, now at `LOW`, and says what it costs: the gather stage runs sequentially and the
   parallel stream buys it nothing. A shared-state race stays `HIGH` and sets the report's severity
   when both are present. On JDK 21 the two new tests are skipped by assumption.
+- **The SPI bridge reports a detector that throws, and each finding at its own severity (#841).**
+  `LegacyDetectorAdapter`, which `spi.DetectorRegistry.build` wraps every built-in detector in,
+  invokes the detector reflectively and caught everything that came back as a reflection failure.
+  A detector whose `analyze()` or report threw therefore returned no findings and wrote nothing,
+  and strict mode's own `AssertionError` raised inside `analyze()` was swallowed the same way, so a
+  broken detector looked like a clean one on this path even under `async-test.strict-detectors`.
+  The detector's exception now goes through `DetectorFailurePolicy.detectorFailed`, as on the
+  registry path: outside strict mode the finding is lost and one `[AsyncTest] Detector X failed
+  during analysis and was skipped` line names it, under strict mode the build fails, and any other
+  `Error` reaches the caller. The adapter also graded every finding `HIGH`. Output change for
+  callers of `spi.DetectorRegistry.build(config).analyzeAll()` or an adapter's `analyze()`: a report
+  that keeps `structuredViolations` now comes out as those `Violation`s, one per finding with the
+  detector's own message, severity and attributes, instead of one `HIGH` `Violation` holding the
+  whole report text; a text-only report is still one `Violation` with that text, at the severity
+  the `failOn` gate reads from it (`DetectorDefaultSeverity.of`), which is `HIGH` only when neither
+  the text nor the detector's declared default says otherwise. The runner's path
+  (`buildExternal`, third-party detectors only) is unchanged. `LegacyDetectorAdapterTest` pins
+  both: a throwing detector fails strict mode and is logged and contained outside it, and
+  `ThreadLocalCacheDegradationDetector`'s `MEDIUM` finding comes out `MEDIUM` through
+  `spi.DetectorRegistry.build`.
 - **`OptimisticReadValidationDetector` names a field in every never-validated finding (#826).**
   Once eight fields read under a stamp filled the name list, a field read after a passing
   `validate()` and never revalidated was reported as `data accessed (2 reads not named)`, naming
