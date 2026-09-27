@@ -266,6 +266,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier reads that a failed-use finding prints. The tail still counts reads, not fields, and
   says so: a field past the cap read five times is `, and 5 more reads`, since telling fields apart
   past the cap would need the names the cap drops. No verdict changed.
+- **A `synchronized` method's monitor counts in everything the method calls (#822).** The monitor
+  comes from an access flag, with no instruction to weave, and until now only the queue offer and
+  take hooks and the field hooks were handed it. `SharedCollectionDetector` never was, so a
+  `HashMap` or an `ArrayDeque` touched only inside `synchronized` methods was reported as
+  unguarded, and a pool whose queue call sits in another object's method, a static helper or a
+  lambda body under the pool's `synchronized` method was reported by `AtomicityValidator` too.
+  The weaver now declares the monitor to `HeldLocks` at the method's entry and releases it before
+  each return (`TelemetryRegistry.methodMonitorEntered`/`methodMonitorExited`). An exception
+  leaving the method passes no return, and catching it would need stack map frames the weaver
+  does not compute, so the entry is re-confirmed with `Thread.holdsLock` whenever the lockset is
+  read and dropped once the monitor is let go; a `synchronized` block's release never takes a
+  method's entry. `PlainDequePoolWeavingTest` pins each shape both ways, including a method left
+  by an exception, and `HeldLocksTest` pins the path allocation-free.
 - **`CONCURRENT_MAP_CHECK_THEN_ACT` excuses callers that all put the same instance (#827).**
   `if (!map.containsKey(k)) map.put(k, Boolean.TRUE)` on two threads puts one instance twice, so
   the map ends as `putIfAbsent` would leave it and nothing is lost, yet the pair was reported at

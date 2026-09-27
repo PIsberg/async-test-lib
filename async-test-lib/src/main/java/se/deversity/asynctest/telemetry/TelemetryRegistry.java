@@ -511,6 +511,35 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Records that the calling thread has entered a {@code synchronized} method holding
+     * {@code monitor}: {@code this}, or the class for a static method.
+     *
+     * <p>Woven at the entry of every {@code synchronized} method, which takes its monitor from an
+     * access flag and so has no {@code MONITORENTER} for {@link #monitorEntered} to see (#822).
+     * With it the monitor counts in whatever the method calls: a helper, another object's method,
+     * a static method, a lambda body. Nothing is woven on an exception leaving the method, so
+     * {@code HeldLocks} re-confirms the entry with {@link Thread#holdsLock} whenever the set is
+     * read. Like {@link #monitorEntered}, deliberately does not check {@link #stop()}.
+     *
+     * @param monitor the monitor the method holds
+     * @since 1.12.3
+     */
+    public static void methodMonitorEntered(Object monitor) {
+        HeldLocks.methodMonitorAcquired(monitor);
+    }
+
+    /**
+     * Records that the calling thread is returning from the {@code synchronized} method whose
+     * entry {@link #methodMonitorEntered} recorded, woven before each of its return instructions.
+     *
+     * @param monitor the monitor the method holds
+     * @since 1.12.3
+     */
+    public static void methodMonitorExited(Object monitor) {
+        HeldLocks.methodMonitorReleased(monitor);
+    }
+
+    /**
      * Records that {@code handle} is a {@code VarHandle} on {@code qualifiedName}.
      *
      * <p>Emitted by the weaver right after a {@code findVarHandle} call in a type initializer,
