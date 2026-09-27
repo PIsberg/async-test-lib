@@ -223,7 +223,12 @@ findings to FACT with it. Now an access after a recorded close (`CONFINED_ARENA_
 recorded executions on one virtual thread (`VIRTUAL_THREAD_POOLING`) are FACT on `ASSERTED`
 evidence, while the JVM refusing a thread, a segment whose scope the JVM says is dead and a pool
 whose factory makes virtual threads are VERDICT on `OBSERVED` evidence. `STATIC_INIT_DEADLOCK`
-and `SHARED_MEMORY_SEGMENT_RACE` have no VERDICT path, so they stay `ASSERTED`.
+and `SHARED_MEMORY_SEGMENT_RACE` have no VERDICT path, so they stay `ASSERTED`. For the segment
+race none can be added by asking the scope (#837): a Java access to a closed arena's segment
+throws `IllegalStateException` at the access, so the JVM has already answered it, while
+`scope().isAlive()` read when the access is recorded, after the fact, is false for a correct
+access that another thread's close followed, and a segment reinterpreted from a raw address has
+a global scope that is always alive.
 `VAR_HANDLE_NON_ATOMIC_UPDATE`, `RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK`
 keep their VERDICT grades, and since #837 name their evidence too: the lost update and the
 plain-mode note `CONTEXTUAL`, since both are decided after the lockset; the observed mutation and

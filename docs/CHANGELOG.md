@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both arrived as `PROMPT`. `AsyncTestListenerRegistry.fireDetectorReport` gains an overload
   taking the grades, which the runner calls. corpus-eval's idiom lane now reads a graded report at
   the strongest of those tiers instead of the detector's evidence cap, and its table prints that
-  tier. No idiom row moved: no graded detector reports on any of the 50 rows today.
+  tier. No idiom row moved: no graded detector reports on any idiom row today.
 - **A detector's evidence class is checked against its code (#756).** `DetectorTrust.Evidence` is
   declared by hand and caps the tier, so a detector that gained or lost a lockset kept a class it no
   longer earned. `DetectorEvidenceMatchesCodeTest` reads each detector's source: a `CONTEXTUAL` row
@@ -127,7 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when `isLocked()` is still true, the analysing thread is not the holder, and the holder the lock
   names has ended or waits idle in its pool, both of that lock's findings go from FACT to VERDICT
   on `OBSERVED` evidence and say so in the text. A `minTrust = VERDICT` gate now fails on them,
-  and a passing run prints the block in full. A holder still running, a free lock whose counts
+  and a passing run prints the block in full. The added text changes those findings'
+  fingerprints, so a baseline entry recorded for such a leak before has to be recorded again. A
+  holder still running, a free lock whose counts
   disagree with it, and a `Lock` that is not a `ReentrantLock` stay FACT; the 5 s hold stays
   PROMPT and the detector-wide tier stays PROMPT. `LOCK_LEAKS` is classified `OBSERVED` (was
   `ASSERTED`). `BLOCKING_QUEUE` stays at FACT: a discarded `false` cannot be confirmed from the
