@@ -203,6 +203,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the ceiling now catches a 16-byte object per `SelfGuard` access: 27,612 to 33,808 measured,
   red. `SharedCollectionDetectorTest` and `SharedChecksumDetectorTest` pin the per-access cost
   below one byte on the thread that records.
+- **`SharedMessageDigestDetector` stops walking the stack on every access, and
+  `SharedStatefulCryptoDetector` stops reading the algorithm on every access (#849).** The digest
+  detector looked up the user-code call site of every access, 1,152 to 1,345 bytes each, although
+  its site list deduplicates to one entry per line. It now captures the site of each thread's first
+  access to an instance and skips the walk after that. A report lists each thread's first line: a
+  thread that goes on to use the instance at another line no longer adds that line. The verdicts
+  are unchanged. `SharedStatefulCryptoDetector` built a method reference for the algorithm on every
+  access, 16 bytes, which only a first access uses; it now reads the algorithm there. The digest
+  detector and the seven `Shared*` detectors #812 changed without a probe (CharsetCoder, Deflater,
+  Iterator, JsonMapper, Kdf, MemorySegment past its access cap, StatefulCrypto) are pinned below
+  one byte per access with `RecordPathAllocation`.
 - **`FILE_CHANNEL_POSITION_RACE` stays PROMPT for the reason it has now (#755).** Its hold in
   corpus-eval's `PairEvidence`, the `verdict-evidence-corpus` argument and the catalog said it
   had no lockset, which stopped being true when it joined the `Shared*` family's: a

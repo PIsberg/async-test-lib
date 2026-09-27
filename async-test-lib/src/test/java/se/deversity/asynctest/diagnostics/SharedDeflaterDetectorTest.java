@@ -106,4 +106,24 @@ class SharedDeflaterDetectorTest {
         }
         assertFalse(d.analyze().hasIssues());
     }
+
+    /** #849, pinning #812: the state lookup and the thread-id set must not allocate per access. */
+    @Test
+    void recordingATrackedDeflaterAllocatesNothingPerAccess() throws InterruptedException {
+        var d = new SharedDeflaterDetector();
+        Deflater deflater = new Deflater();
+        try {
+            long bytes = RecordPathAllocation.measuredBytes(() -> {
+                synchronized (deflater) {
+                    d.recordAccess(deflater, "deflater", Thread.currentThread());
+                }
+            });
+
+            assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a deflater the "
+                    + "detector already tracks allocated " + bytes + " bytes over "
+                    + RecordPathAllocation.MEASURED_CALLS + " accesses");
+        } finally {
+            deflater.end();
+        }
+    }
 }

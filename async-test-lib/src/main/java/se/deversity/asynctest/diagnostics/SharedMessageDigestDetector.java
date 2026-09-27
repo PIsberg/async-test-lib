@@ -27,6 +27,11 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * other lock object is invisible and still fires; treat such a finding as a prompt to verify
  * the synchronization, or to move to a per-thread instance.
  *
+ * <p>A finding lists its access sites: the user-code line of each thread's first access to the
+ * instance. A thread's later lines are not looked for, because finding a line walks the stack, over
+ * 1,100 bytes a walk, and doing that on every access was a probe effect on the threads being
+ * observed (#849); the first line already points at the shared instance.
+ *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedMessageDigestDetector();
@@ -49,6 +54,8 @@ public class SharedMessageDigestDetector {
         final String      name;
         final String      type;
         final Set<SiteCapture.Site> accessSites = ConcurrentHashMap.newKeySet();
+        /** Ids of the threads whose first access has been looked up for {@link #accessSites}. */
+        final Set<Long> sitedThreads = ConcurrentHashMap.newKeySet();
 
         DigestState(String name, String type) {
             this.name = name;
@@ -100,9 +107,12 @@ public class SharedMessageDigestDetector {
             });
         }
         s.noteAccess(digest, thread);
-        // Capture the user-code site once per distinct call site. The Set's hashing
-        // gives us per-(class, line) dedupe so a tight loop doesn't accumulate frames.
-        SiteCapture.capture().ifPresent(s.accessSites::add);
+        // The user-code site of the calling thread's first access, whose stack is the one walked.
+        // Once per thread: a walk on every access allocated over 1,100 bytes (#849). The Set
+        // dedupes by (class, line), so threads that start at the same line contribute one entry.
+        if (SelfGuard.addThreadId(s.sitedThreads, Thread.currentThread().threadId())) {
+            SiteCapture.capture().ifPresent(s.accessSites::add);
+        }
     }
 
     /**
@@ -143,9 +153,8 @@ public class SharedMessageDigestDetector {
                             s.name, s.threadCount(),
                             String.join(", ", s.threadNames()));
                 }
-                // Append source-line attribution if we captured at least one user-code frame.
-                // The set is already deduped by (class, line); a tight loop on one site
-                // contributes a single entry, multiple distinct sites all show.
+                // Append source-line attribution if we captured at least one user-code frame:
+                // each thread's first site, deduped by (class, line).
                 if (!s.accessSites.isEmpty()) {
                     StringBuilder sites = new StringBuilder("\n    Access sites:");
                     for (SiteCapture.Site site : s.accessSites) {

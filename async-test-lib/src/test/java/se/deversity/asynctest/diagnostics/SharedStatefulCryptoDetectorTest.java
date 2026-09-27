@@ -112,4 +112,21 @@ class SharedStatefulCryptoDetectorTest {
         d.recordAccess(Cipher.getInstance("AES/CBC/PKCS5Padding"), "label", null);
         assertFalse(d.analyze().hasIssues());
     }
+
+    /** #849, pinning #812: the state lookup and the thread-id set must not allocate per access. */
+    @Test
+    void recordingATrackedCipherAllocatesNothingPerAccess() throws Exception {
+        var d = new SharedStatefulCryptoDetector();
+        var cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> {
+            synchronized (cipher) {
+                d.recordAccess(cipher, "aes", Thread.currentThread());
+            }
+        });
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a cipher the detector "
+                + "already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " accesses");
+    }
 }

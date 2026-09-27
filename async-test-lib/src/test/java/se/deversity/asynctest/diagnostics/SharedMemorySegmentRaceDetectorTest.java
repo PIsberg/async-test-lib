@@ -234,4 +234,24 @@ class SharedMemorySegmentRaceDetectorTest {
             "the runner orders rounds through its latch, so a write in round one and a write in "
                 + "round two cannot race");
     }
+
+    /**
+     * #849, pinning #812: once the segment holds {@code MAX_TRACKED_ACCESSES} accesses, a further
+     * access is only counted as dropped, and neither that nor the state lookup may allocate. The
+     * accesses kept below the cap are the analysis input, one record each.
+     */
+    @Test
+    void recordingPastTheAccessCapAllocatesNothingPerAccess() throws InterruptedException {
+        Thread filler = Thread.currentThread();
+        for (int i = 0; i < SharedMemorySegmentRaceDetector.MAX_TRACKED_ACCESSES; i++) {
+            detector.recordAccess(segment, "ringBuffer", 0, 8, true, filler, "lock");
+        }
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> detector.recordAccess(
+                segment, "ringBuffer", 0, 8, true, Thread.currentThread(), "lock"));
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording past the cap on a "
+                + "segment the detector already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " accesses");
+    }
 }

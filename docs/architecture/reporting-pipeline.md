@@ -32,9 +32,11 @@ filtered by package prefix (`runner.`, `extension.`, `benchmark.`, JDK reflectio
 `java.util.concurrent`, JUnit, Gradle) and class-name suffix (`Detector`,
 `Monitor`, `Validator`, `SiteCapture`). Detectors that adopt the helper add
 `Set<SiteCapture.Site>` to their per-instance state; the `Set` dedupes by
-`(class, line)` so a tight loop on one call site contributes a single
-attribution. `SharedMessageDigestDetector` is the canary; other detectors
-migrate incrementally.
+`(class, line)`. The walk allocates over 1,100 bytes, so a detector captures once
+per key, not per access: `SharedMessageDigestDetector` keeps the site of each
+thread's first access to an instance, and a thread's later lines are not listed
+(#849). `SharedMessageDigestDetector` is the canary; other detectors migrate
+incrementally.
 
 The two formatters ship with no external dependencies. JSON output uses a small
 hand-rolled writer with proper escape handling for `\"`, `\\`, `\n`, `\r`, `\t`,

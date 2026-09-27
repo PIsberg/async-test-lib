@@ -90,8 +90,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Cipher cipher, String name, Thread thread) {
         if (cipher == null) return;
-        record(cipher, name, "Cipher",
-                cipher.getClass(), safeString(cipher::getAlgorithm), thread);
+        record(cipher, name, "Cipher", thread);
     }
 
     /**
@@ -103,8 +102,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Mac mac, String name, Thread thread) {
         if (mac == null) return;
-        record(mac, name, "Mac",
-                mac.getClass(), safeString(mac::getAlgorithm), thread);
+        record(mac, name, "Mac", thread);
     }
 
     /**
@@ -116,20 +114,20 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Signature signature, String name, Thread thread) {
         if (signature == null) return;
-        record(signature, name, "Signature",
-                signature.getClass(), safeString(signature::getAlgorithm), thread);
+        record(signature, name, "Signature", thread);
     }
 
-    private void record(Object instance, String name, String kind, Class<?> type,
-                        String algorithm, Thread thread) {
+    private void record(Object instance, String name, String kind, Thread thread) {
         if (thread == null) return;
         // The thread's lookup key, reused while it names the same instance (#812).
         State s = instances.get(IdentityKey.lookup(instance));
         if (s == null) {
             IdentityKey key = new IdentityKey(instance);
-            // Cold path — first observation of this instance.
+            // Cold path, the first observation of this instance. The algorithm is read here, not by
+            // the callers: a method reference per access cost 16 bytes (#849).
             final String label = (name != null)
-                    ? name : type.getSimpleName() + "@" + key.hashCode();
+                    ? name : instance.getClass().getSimpleName() + "@" + key.hashCode();
+            final String algorithm = algorithmOf(instance);
             s = instances.computeIfAbsent(key, k -> new State(label, kind, algorithm));
         }
         s.noteAccess(instance, thread);
@@ -170,8 +168,14 @@ public final class SharedStatefulCryptoDetector {
         return DetectorFailurePolicy.checkedReport(this, r);
     }
 
-    private static String safeString(java.util.concurrent.Callable<String> c) {
-        try { return c.call(); } catch (Exception e) { return "unknown"; }
+    private static String algorithmOf(Object instance) {
+        try {
+            if (instance instanceof Cipher cipher) return cipher.getAlgorithm();
+            if (instance instanceof Mac mac) return mac.getAlgorithm();
+            return ((Signature) instance).getAlgorithm();
+        } catch (RuntimeException e) {
+            return "unknown";
+        }
     }
 
     public static final class Report {
