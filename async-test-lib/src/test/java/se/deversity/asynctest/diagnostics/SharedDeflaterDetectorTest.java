@@ -119,7 +119,7 @@ class SharedDeflaterDetectorTest {
                 }
             });
 
-            assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a deflater the "
+            assertTrue(bytes < RecordPathAllocation.CEILING, "recording a deflater the "
                     + "detector already tracks allocated " + bytes + " bytes over "
                     + RecordPathAllocation.MEASURED_CALLS + " accesses");
         } finally {

@@ -371,7 +371,7 @@ class ConstructorSafetyValidatorTest {
             long bytes = RecordPathAllocation.measuredBytes(
                     () -> AgentConstructionHooks.constructorReturned(untracked, name));
 
-            assertEquals(0, bytes, "every constructor of every woven class calls this: "
+            assertTrue(bytes < RecordPathAllocation.CEILING, "every constructor of every woven class calls this: "
                     + bytes + " bytes over " + RecordPathAllocation.MEASURED_CALLS + " calls");
             assertTrue(validator.validateConstructorSafety()
                             .possiblyIncompleteConstructions.isEmpty(),

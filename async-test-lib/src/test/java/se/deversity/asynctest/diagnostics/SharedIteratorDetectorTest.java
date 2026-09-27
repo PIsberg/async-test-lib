@@ -148,7 +148,7 @@ class SharedIteratorDetectorTest {
             }
         });
 
-        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording an iterator the "
+        assertTrue(bytes < RecordPathAllocation.CEILING, "recording an iterator the "
                 + "detector already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }

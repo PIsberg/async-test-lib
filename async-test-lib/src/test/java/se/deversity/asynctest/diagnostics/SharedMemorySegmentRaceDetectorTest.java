@@ -250,7 +250,7 @@ class SharedMemorySegmentRaceDetectorTest {
         long bytes = RecordPathAllocation.measuredBytes(() -> detector.recordAccess(
                 segment, "ringBuffer", 0, 8, true, Thread.currentThread(), "lock"));
 
-        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording past the cap on a "
+        assertTrue(bytes < RecordPathAllocation.CEILING, "recording past the cap on a "
                 + "segment the detector already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }
