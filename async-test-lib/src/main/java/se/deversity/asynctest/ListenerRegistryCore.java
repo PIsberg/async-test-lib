@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
+import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.report.Violation;
 
@@ -129,6 +130,11 @@ final class ListenerRegistryCore {
     }
 
     void fireDetectorReport(String detectorName, String report, @Nullable IssueSeverity structuredSeverity) {
+        fireDetectorReport(detectorName, report, structuredSeverity, null);
+    }
+
+    void fireDetectorReport(String detectorName, String report, @Nullable IssueSeverity structuredSeverity,
+                            @Nullable List<GradedFindings.Grade> grades) {
         // One read of the field, used for the emptiness check and the walk both: reading it twice
         // could skip the work for an empty set and then iterate a non-empty one, or the reverse.
         List<AsyncTestListener> current = listeners;
@@ -138,7 +144,7 @@ final class ListenerRegistryCore {
             return;
         }
         IssueSeverity severity = DetectorDefaultSeverity.of(detectorName, report, structuredSeverity);
-        Violation violation = toViolation(detectorName, severity, report);
+        Violation violation = toViolation(detectorName, severity, report, grades);
         for (AsyncTestListener listener : current) {
             guarded("onDetectorReport", () -> listener.onDetectorReport(detectorName, report));
             guarded("onStructuredReport",
@@ -185,30 +191,44 @@ final class ListenerRegistryCore {
      * Builds the structured form of a text report: the detector as reported, the parsed
      * severity, the report's first non-blank line as the message (severity markers are
      * rendered with ANSI colour, which is stripped), and the whole report kept under the
-     * {@code "report"} attribute so nothing is lost in the conversion.
+     * {@code "report"} attribute so nothing is lost in the conversion. A report that graded its
+     * findings also gets {@code "findingTiers"}: each finding's tier in report order, comma-separated,
+     * beside {@code "trustTier"}, which is the detector's and so its weakest (#837).
      *
      * @return the violation, or {@code null} if one could not be built — a listener callback
      *         is not worth failing a test run over
      */
     private static @Nullable Violation toViolation(String detectorName, IssueSeverity severity,
-                                                   String report) {
+                                                   String report, @Nullable List<GradedFindings.Grade> grades) {
         try {
             String detector = (detectorName == null || detectorName.isBlank())
                     ? "UnknownDetector" : detectorName;
             String text = (report == null) ? "" : report;
             String message = firstMeaningfulLine(text);
+            String trustTier = DetectorTrust.tierOfDetector(detector).name();
+            Map<String, Object> attributes = grades == null || grades.isEmpty()
+                    ? Map.of("report", text, "trustTier", trustTier)
+                    : Map.of("report", text, "trustTier", trustTier, "findingTiers", tiersOf(grades));
             return new Violation(
                     detector,
                     severity,
                     message.isEmpty() ? detector + " reported a finding" : message,
                     List.of(),
-                    Map.of("report", text,
-                           "trustTier", DetectorTrust.tierOfDetector(detector).name()),
+                    attributes,
                     Instant.now());
         } catch (RuntimeException e) {
             log.warn("Could not build a Violation for detector {}: {}", detectorName, e.toString(), e);
             return null;
         }
+    }
+
+    /** {@return the grades' tier names in report order, joined with commas, e.g. {@code "VERDICT,PROMPT"}} */
+    private static String tiersOf(List<GradedFindings.Grade> grades) {
+        StringBuilder tiers = new StringBuilder();
+        for (GradedFindings.Grade grade : grades) {
+            tiers.append(tiers.isEmpty() ? "" : ",").append(grade.tier().name());
+        }
+        return tiers.toString();
     }
 
     private static String firstMeaningfulLine(String report) {

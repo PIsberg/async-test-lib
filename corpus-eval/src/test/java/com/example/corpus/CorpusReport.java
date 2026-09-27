@@ -297,7 +297,7 @@ final class CorpusReport {
     /** {@return each finding as tier/severity, for a table cell} */
     private static String tiersOf(List<CorpusRecorder.Finding> findings) {
         return findings.stream()
-                .map(finding -> finding.tier() + "/" + finding.severity())
+                .map(finding -> CorpusGates.claimedTier(finding) + "/" + finding.severity())
                 .distinct()
                 .collect(java.util.stream.Collectors.joining(", "));
     }
@@ -305,7 +305,7 @@ final class CorpusReport {
     /** {@return each finding as detector tier/severity, for a table cell} */
     private static String detectorsOf(List<CorpusRecorder.Finding> findings) {
         return findings.stream()
-                .map(finding -> "`" + finding.detector() + "` " + finding.tier() + "/"
+                .map(finding -> "`" + finding.detector() + "` " + CorpusGates.claimedTier(finding) + "/"
                         + finding.severity())
                 .distinct()
                 .collect(java.util.stream.Collectors.joining(", "));

@@ -133,6 +133,12 @@ public void onViolation(Violation violation) {
 string callbacks offered is lost. Fired for every finding, alongside `onDetectorReport` and
 `onStructuredReport`; the default implementation is a no-op.
 
+`"trustTier"` is the reporting detector's tier, the weakest its findings can be. A report that
+grades each finding (`GradedFindings`) also carries `"findingTiers"`: the tier of each finding, in
+report order and comma-separated, after the evidence cap, as the `failOn` gate read them. A
+listener that routes on trust reads that one: a report holding `VERDICT,PROMPT` has a finding the
+library stands behind, which its `PROMPT` detector tier alone does not say.
+
 To assert on findings from a test rather than route them, use
 [`AsyncFindings`](ASYNC_ASSERT.md#asserting-on-detector-findings-asyncfindings-190), which is a
 collector built on this callback. Detectors and SPI adapters that already hold a `Violation` can

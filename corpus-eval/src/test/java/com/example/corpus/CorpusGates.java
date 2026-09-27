@@ -416,17 +416,22 @@ final class CorpusGates {
     /**
      * {@return the strongest tier {@code finding} can carry once the runner has clamped it}
      *
-     * <p>A listener sees a {@code Violation}, which carries no grade, and {@link CorpusRecorder}
-     * stamps it with the detector's row tier. For most detectors that is the tier the runner gates
-     * on. A detector whose report grades each finding can put one above its row tier, up to its
-     * evidence cap, and the runner lowers anything past the cap
-     * ({@code DetectorTrust.clampToCap}). Which grade a given violation got is not visible here,
-     * so a graded detector's finding is read at its cap: the most the runner could let it claim,
-     * which is the reading that cannot let a claim through the idiom bar.
+     * <p>A listener sees one {@code Violation} per report, and {@link CorpusRecorder} stamps it with
+     * the detector's row tier. For most detectors that is the tier the runner gates on. A detector
+     * whose report grades each finding can put one above its row tier, up to its evidence cap, and
+     * the runner lowers anything past the cap ({@code DetectorTrust.clampToCap}). Since #837 the
+     * violation carries those clamped grades, and the strongest of them is the claim: a report
+     * holding only a structural note is a prompt even from a detector whose other path is a
+     * verdict. A graded detector's violation that arrives without grades, from a path that does
+     * not pass them, is read at its cap: the most the runner could let it claim, which is the
+     * reading that cannot let a claim through the idiom bar.
      *
      * @param finding what a detector reported
      */
     static TrustTier claimedTier(CorpusRecorder.Finding finding) {
+        if (finding.gradedTier() != null) {
+            return finding.gradedTier();
+        }
         return DetectorExposure.typeOf(finding.detector())
                 .filter(PairEvidence::carriesPerFindingGrades)
                 .map(type -> DetectorTrust.capOfDetector(finding.detector()))

@@ -1942,8 +1942,10 @@ around the instance a detector tracks. `IdiomRowPremise` fails the lane if any o
 
 **The bar on a correct row** is stricter than either pair lane's:
 
-- nothing at `FACT` tier or above from any detector. A graded detector's finding is read at its
-  evidence cap, the most the runner's clamp lets it claim, because a listener sees no grade;
+- nothing at `FACT` tier or above from any detector. A graded detector's report is read at the
+  strongest of its findings' tiers, as the runner clamped them and passed them to listeners in
+  `findingTiers` (#837); one that arrives without them is read at its evidence cap, the most the
+  clamp lets it claim;
 - nothing at any tier from the detector the row names. The seed false positives were mostly
   `PROMPT`-tier `AtomicityValidator` findings, which the tier bar alone would let back in;
 - a row that pins a severity expects a note instead: the shared `java.util.Random` row must draw

@@ -66,7 +66,8 @@ check something".
 | **ADVISORY** | A performance or hygiene note, not a correctness claim. | Read it, gate on nothing |
 
 **The tier is in the code, not in this document.** `DetectorTrust` classifies all 146, the runner
-prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute, and
+prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute (and,
+for a report that grades its findings, each finding's tier in report order as `findingTiers`), and
 `@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
 `DetectorTrustCoverageTest` fails the build if a detector is unclassified, if a row names a
 detector class the factories do not construct, if anything reaches VERDICT without naming

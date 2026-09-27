@@ -980,7 +980,7 @@ class CorpusGatesTest {
     }
 
     @Test
-    @DisplayName("a graded detector's finding is read at its evidence cap, the most the runner allows")
+    @DisplayName("a graded detector's finding that arrives without grades is read at its evidence cap")
     void aGradedFindingIsReadAtItsCap() {
         List<String> misread = new ArrayList<>();
         for (DetectorType type : DetectorType.values()) {
@@ -999,6 +999,40 @@ class CorpusGatesTest {
                         DetectorExposure.classOf(DetectorType.ATOMICITY_VIOLATIONS),
                         TrustTier.PROMPT, IssueSeverity.HIGH)) == TrustTier.PROMPT,
                 "an ungraded detector's finding keeps its row tier");
+    }
+
+    /**
+     * The runner hands a listener each graded finding's clamped tier (#837), so the idiom bar reads
+     * what the gate read. Before, a graded detector's structural note on a correct idiom was read
+     * at the detector's cap, VERDICT for an OBSERVED detector, and failed the lane as if it were
+     * the observed mutation beside it.
+     */
+    @Test
+    @DisplayName("a graded finding that carries its grades is read at its strongest grade, not the cap")
+    void aGradedFindingIsReadAtItsStrongestGrade() {
+        String graded = DetectorExposure.classOf(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK);
+        assertTrue(PairEvidence.carriesPerFindingGrades(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK),
+                "precondition: the subject grades its findings");
+        CorpusRecorder.Finding note = new CorpusRecorder.Finding("idiom_any", graded, IssueSeverity.MEDIUM,
+                TrustTier.PROMPT, "structural note", "-", TrustTier.PROMPT);
+        CorpusRecorder.Finding mutation = new CorpusRecorder.Finding("idiom_any", graded, IssueSeverity.HIGH,
+                TrustTier.PROMPT, "observed mutation", "-", TrustTier.VERDICT);
+
+        org.junit.jupiter.api.Assertions.assertEquals(TrustTier.PROMPT, CorpusGates.claimedTier(note),
+                "a report whose only grade is PROMPT claims PROMPT, whatever the detector's cap");
+        org.junit.jupiter.api.Assertions.assertEquals(TrustTier.VERDICT, CorpusGates.claimedTier(mutation));
+    }
+
+    @Test
+    @DisplayName("the recorder reads the strongest of the tiers a violation's findings carry")
+    void theRecorderReadsTheStrongestFindingTier() {
+        org.junit.jupiter.api.Assertions.assertEquals(TrustTier.VERDICT,
+                CorpusRecorder.strongestFindingTier(java.util.Map.of("findingTiers", "PROMPT,VERDICT,FACT")));
+        org.junit.jupiter.api.Assertions.assertEquals(TrustTier.ADVISORY,
+                CorpusRecorder.strongestFindingTier(java.util.Map.of("findingTiers", "ADVISORY")));
+        org.junit.jupiter.api.Assertions.assertNull(
+                CorpusRecorder.strongestFindingTier(java.util.Map.of("trustTier", "PROMPT")),
+                "an ungraded report carries no finding tiers, and the recorder must not invent one");
     }
 
     @Test

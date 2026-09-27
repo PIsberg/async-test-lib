@@ -126,6 +126,39 @@ class PerFindingTierGateTest {
         run(StructuralRiskOnlyDummy.class).assertStatistics(s -> s.started(1).succeeded(1).failed(0));
     }
 
+    /**
+     * A listener sees one {@code Violation} per report, and its {@code trustTier} is the
+     * detector's, the weakest grade it can produce. Without the grades a listener, and so the
+     * JSON output and corpus-eval's idiom lane, could not tell an observed mutation from a
+     * structural note: both arrived as PROMPT (#837). The report's clamped grades now ride along.
+     */
+    @Test
+    @DisplayName("a listener sees the tier of each graded finding, not only the detector's")
+    void aListenerSeesTheGradeOfEachFinding() {
+        List<se.deversity.asynctest.report.Violation> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        AsyncTestListener listener = new AsyncTestListener() {
+            @Override
+            public void onViolation(se.deversity.asynctest.report.Violation violation) {
+                if ("RecordMutableComponentLeakDetector".equals(violation.detector())) {
+                    seen.add(violation);
+                }
+            }
+        };
+        try (var registration = AsyncTestListenerRegistry.registerScoped(listener)) {
+            run(StructuralRiskOnlyDummy.class);
+            run(ObservedMutationDummy.class);
+        }
+
+        assertEquals(2, seen.size(), "one violation per fixture's report: " + seen);
+        assertEquals("PROMPT", seen.get(0).attributes().get("trustTier"), "the detector's tier is unchanged");
+        assertEquals("PROMPT", seen.get(0).attributes().get("findingTiers"),
+                "the structural note alone is a prompt: " + seen.get(0).attributes().keySet());
+        assertEquals("PROMPT", seen.get(1).attributes().get("trustTier"), "the detector's tier is unchanged");
+        assertTrue(String.valueOf(seen.get(1).attributes().get("findingTiers")).contains("VERDICT"),
+                "the observed mutation is graded VERDICT, and the listener has to see it: "
+                        + seen.get(1).attributes().get("findingTiers"));
+    }
+
     private static Events run(Class<?> fixture) {
         return EngineTestKit.engine("junit-jupiter")
                 .selectors(DiscoverySelectors.selectClass(fixture))

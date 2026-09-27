@@ -1,5 +1,7 @@
 package com.example.corpus;
 
+import org.jspecify.annotations.Nullable;
+
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
@@ -31,9 +33,19 @@ final class CorpusRecorder implements AsyncTestListener {
      * on a documented-thread-safe subject has to be arguable from the report alone, and the
      * headline message is the same sentence for every atomicity finding; the field and the class
      * are in the evidence.
+     *
+     * <p>{@code gradedTier} is the strongest tier among the report's graded findings, as the runner
+     * clamped them before its gate read them (the violation's {@code findingTiers}, #837), or
+     * {@code null} for a report that grades nothing.
      */
     record Finding(String subject, String detector, IssueSeverity severity, TrustTier tier,
-                   String message, String evidence) {
+                   String message, String evidence, @Nullable TrustTier gradedTier) {
+
+        /** A finding from a report that carried no grades. */
+        Finding(String subject, String detector, IssueSeverity severity, TrustTier tier,
+                String message, String evidence) {
+            this(subject, detector, severity, tier, message, evidence, null);
+        }
     }
 
     /** A RuntimeException thrown out of a subject's own code while several threads used it. */
@@ -116,7 +128,27 @@ final class CorpusRecorder implements AsyncTestListener {
                 violation.severity(),
                 DetectorTrust.tierOfDetector(violation.detector()),
                 violation.message(),
-                evidenceOf(violation)));
+                evidenceOf(violation),
+                strongestFindingTier(violation.attributes())));
+    }
+
+    /**
+     * {@return the strongest tier named in a violation's {@code findingTiers} attribute, or
+     * {@code null} when it has none because its report graded nothing}
+     *
+     * @param attributes the violation's attributes
+     */
+    static @Nullable TrustTier strongestFindingTier(Map<String, Object> attributes) {
+        Object tiers = attributes.get("findingTiers");
+        if (tiers == null) {
+            return null;
+        }
+        TrustTier strongest = null;
+        for (String tier : tiers.toString().split(",")) {
+            TrustTier read = TrustTier.valueOf(tier.trim());
+            strongest = strongest == null || read.compareTo(strongest) > 0 ? read : strongest;
+        }
+        return strongest;
     }
 
     /** {@return the violation's sites and attributes on one line, or {@code "-"} when it has none} */

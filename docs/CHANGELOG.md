@@ -43,6 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model does not see yet is a pinned row that flips visibly when fixed, as the `CompletableFuture`,
   executor submit/get, `Exchanger` and `AtomicReference` rows did (#741). The false positives fixed here were all found this
   way, by a throwaway probe; the lane keeps them from coming back.
+- **Listeners see each graded finding's tier (#837).** A `Violation` built from a report that
+  grades its findings carries a `findingTiers` attribute beside `trustTier`: each finding's tier in
+  report order, comma-separated, after the evidence cap, as the `failOn` gate read them.
+  `trustTier` is the detector's tier and is unchanged; with only that, a listener, the JSON output
+  or corpus-eval could not tell an observed mutation from the structural note beside it, since
+  both arrived as `PROMPT`. `AsyncTestListenerRegistry.fireDetectorReport` gains an overload
+  taking the grades, which the runner calls. corpus-eval's idiom lane now reads a graded report at
+  the strongest of those tiers instead of the detector's evidence cap, and its table prints that
+  tier. No idiom row moved: no graded detector reports on any of the 50 rows today.
 - **A detector's evidence class is checked against its code (#756).** `DetectorTrust.Evidence` is
   declared by hand and caps the tier, so a detector that gained or lost a lockset kept a class it no
   longer earned. `DetectorEvidenceMatchesCodeTest` reads each detector's source: a `CONTEXTUAL` row

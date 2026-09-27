@@ -4,6 +4,8 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.diagnostics.DetectorTrust;
+import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AIContract;
@@ -148,6 +150,31 @@ public final class AsyncTestListenerRegistry {
     public static void fireDetectorReport(String detectorName, String report,
                                           @Nullable IssueSeverity structuredSeverity) {
         GLOBAL.fireDetectorReport(detectorName, report, structuredSeverity);
+    }
+
+    /**
+     * Fires the same events as {@link #fireDetectorReport(String, String, IssueSeverity)}, and tells
+     * the listeners what each finding in a graded report is worth.
+     *
+     * <p>The violation's {@code trustTier} attribute is the detector's tier, which is the weakest
+     * grade the detector can produce. For a report implementing {@link GradedFindings} the runner
+     * calls this overload, and the violation also carries {@code findingTiers}: each finding's tier
+     * in report order, comma-separated, so a listener can tell a verdict-grade finding from the
+     * prompt beside it without parsing the report (#837).
+     *
+     * @param detectorName the reporting detector, as it appears in the report
+     * @param report the report content
+     * @param structuredSeverity the report's most severe structured severity, or {@code null} to
+     *                           read it from the text
+     * @param grades the report's grades as the {@code failOn} gate read them, after
+     *               {@link DetectorTrust#clampToCap}; {@code null} or empty adds no attribute
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public static void fireDetectorReport(String detectorName, String report,
+                                          @Nullable IssueSeverity structuredSeverity,
+                                          @Nullable List<GradedFindings.Grade> grades) {
+        GLOBAL.fireDetectorReport(detectorName, report, structuredSeverity, grades);
     }
 
     /**

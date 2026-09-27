@@ -762,7 +762,7 @@ public class ConcurrencyRunner {
                 System.err.println(trustBanner(e.getKey(), grades));
                 System.err.println(e.getValue());
             }
-            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue(), structuredSeverity);
+            AsyncTestListenerRegistry.fireDetectorReport(e.getKey(), e.getValue(), structuredSeverity, grades);
             if (trips) {
                 failing.add(e.getKey());
                 failingFingerprints.put(e.getKey(), fingerprints);
@@ -1401,11 +1401,11 @@ public class ConcurrencyRunner {
         Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
         Map<String, IssueSeverity> structured = phase2Analysis.severities();
         for (Map.Entry<String, String> finding : phase2Analysis.get().entrySet()) {
-            System.err.println("\n" + trustBanner(finding.getKey(),
-                    graded.getOrDefault(finding.getKey(), List.of())));
+            List<GradedFindings.Grade> grades = graded.getOrDefault(finding.getKey(), List.of());
+            System.err.println("\n" + trustBanner(finding.getKey(), grades));
             System.err.println(finding.getValue());
             AsyncTestListenerRegistry.fireDetectorReport(finding.getKey(), finding.getValue(),
-                    structured.get(finding.getKey()));
+                    structured.get(finding.getKey()), grades);
         }
     }
 
