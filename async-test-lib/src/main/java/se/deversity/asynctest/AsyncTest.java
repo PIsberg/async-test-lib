@@ -1827,8 +1827,8 @@ public @interface AsyncTest {
 
     /**
      * Enable {@link java.nio.channels.FileChannel}/{@link java.nio.channels.SeekableByteChannel}
-     * position-race detection. Flags channels whose implicit position is accessed from more
-     * than one thread. See
+     * position-race detection. Flags a thread's {@code position(n)} and the read or write
+     * relying on it when another thread's implicit-position call can land between them. See
      * {@link se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector}.
      * @since 1.7.0
      *

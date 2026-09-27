@@ -293,6 +293,128 @@ public class CalendarDetectorTest {
                 + "only read: " + detector.analyze());
     }
 
+    // #820: setTime() computes every field at once, and so does an add() to a field below MONTH,
+    // which the JDK carries out as a setTimeInMillis. Neither leaves the next get() anything to
+    // write, so gets under one read lock after them only read.
+
+    @Test
+    void getsUnderOneReadLockAfterASetTimeAreNotReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> underLock(lock, false, () -> {
+            cal.set(Calendar.DAY_OF_MONTH, 3);
+            detector.recordSet(cal, "read-locked-calendar");
+            cal.setTime(new java.util.Date(0L));
+            detector.recordSetTime(cal, "read-locked-calendar");
+        }));
+        Runnable get = () -> underLock(lock, true, () -> {
+            cal.get(Calendar.DAY_OF_MONTH);
+            detector.recordGet(cal, "read-locked-calendar");
+        });
+        round(scope, get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "setTime() recomputed every field the set() left, under the write lock, so the gets "
+                + "only read: " + detector.analyze());
+    }
+
+    @Test
+    void getsUnderOneReadLockAfterAnAddToATimeFieldAreNotReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> underLock(lock, false, () -> {
+            cal.add(Calendar.HOUR_OF_DAY, 5);
+            detector.recordAdd(cal, "read-locked-calendar", Calendar.HOUR_OF_DAY);
+            cal.add(Calendar.DAY_OF_MONTH, 1);
+            detector.recordAdd(cal, "read-locked-calendar", Calendar.DAY_OF_MONTH);
+        }));
+        Runnable get = () -> underLock(lock, true, () -> {
+            cal.get(Calendar.DAY_OF_MONTH);
+            detector.recordGet(cal, "read-locked-calendar");
+        });
+        round(scope, get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "an add() to a day or time field sets the time and every field, so the gets only "
+                + "read: " + detector.analyze());
+    }
+
+    @Test
+    void getsUnderOneReadLockAfterAnAddToTheMonthAreReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+
+        round(scope, () -> underLock(lock, false, () -> {
+            cal.add(Calendar.MONTH, 1);
+            detector.recordAdd(cal, "read-locked-calendar", Calendar.MONTH);
+        }));
+        Runnable get = () -> underLock(lock, true, () -> {
+            cal.get(Calendar.DAY_OF_MONTH);
+            detector.recordGet(cal, "read-locked-calendar");
+        });
+        round(scope, get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "an add() to the month sets the month and pins the day, leaving the fields for the "
+                + "first get() to recompute");
+    }
+
+    // #820: a calendar can have fields to compute before its first recorded access. The JDK's
+    // GregorianCalendar(year, month, dayOfMonth) only set()s the fields it is given and computes
+    // nothing, so the first get() on it writes the time and every other field.
+
+    @Test
+    void getsUnderOneReadLockOnACalendarBuiltFromFieldsAreReported() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = new java.util.GregorianCalendar(2024, Calendar.JANUARY, 15);
+        detector.registerCalendar(cal, "built-calendar");
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable get = () -> underLock(lock, true, () -> {
+            detector.recordGet(cal, "built-calendar");
+            cal.get(Calendar.DAY_OF_WEEK);
+        });
+
+        round(new SelfGuard.Scope(), get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "the first get() computes the fields the constructor left, which a read lock does not "
+                + "make exclusive");
+    }
+
+    @Test
+    void getsUnderOneReadLockOnACalendarCompletedBeforeItsFirstRecordAreNotReported()
+            throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = new java.util.GregorianCalendar(2024, Calendar.JANUARY, 15);
+        cal.getTime();
+        cal.get(Calendar.DAY_OF_WEEK);
+        detector.registerCalendar(cal, "built-calendar");
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable get = () -> underLock(lock, true, () -> {
+            detector.recordGet(cal, "built-calendar");
+            cal.get(Calendar.DAY_OF_WEEK);
+        });
+
+        round(new SelfGuard.Scope(), get, get);
+
+        assertFalse(detector.analyze().hasIssues(),
+            "the building thread computed every field before sharing the calendar, so the gets "
+                + "only read: " + detector.analyze());
+    }
+
     /** Runs {@code body} holding {@code lock}'s read view if {@code shared}, else its write view. */
     private static void underLock(java.util.concurrent.locks.ReentrantReadWriteLock lock,
                                   boolean shared, Runnable body) {

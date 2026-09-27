@@ -241,6 +241,12 @@ once and then worked alone crossed it; #794 counts only the accesses made in a r
 than one thread on the field. That is per run over the contended rounds rather than per round: a
 round is one body execution per worker, so a per-round threshold would need 51 accesses in one
 body and would silence steady contention across many rounds, which is the run the line is for.
+That fix left a per-thread share in the threshold (more than 50 contended accesses from one
+thread), which a pooled platform worker reaches across rounds and a virtual thread, living one
+round, only inside one body, so the same workload reported on one thread model and not the other.
+#811 drops the share: the line now counts the field's contended traffic, which is what drives
+cache-line transfers, whichever Java threads made it. `FalseSharingDetectorTest` runs one workload
+through the runner on both thread models and asserts the verdict they share.
 
 Within a round the verdict is also per owner. A `MessageDigest` pool checked out through a
 `BlockingQueue` (take, use, put back) gives each thread the digest alone, yet two threads touched

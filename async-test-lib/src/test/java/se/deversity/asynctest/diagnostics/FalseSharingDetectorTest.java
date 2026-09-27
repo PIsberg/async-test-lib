@@ -400,6 +400,209 @@ class FalseSharingDetectorTest {
         }
     }
 
+    // ---- The threshold counts the field's contended traffic, not one thread's (#811) --------------
+    //
+    // False sharing is cache-line traffic between cores, and what drives it is how often the line is
+    // touched while more than one core holds it. Which Java thread made an access says nothing about
+    // that: a platform worker migrates between cores, and a virtual thread lives one body execution.
+    // A per-thread share summed over the run is reachable by a pooled platform worker across many
+    // rounds, but a virtual thread needs it inside one body, so the same workload used to report on
+    // platform threads and stay silent on virtual threads.
+
+    @Test
+    void steadyContentionOnFreshThreadsEveryRoundHasThePlatformVerdict() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // steadyContentionEveryRoundOnPlatformThreadsKeepsItsVerdict's workload, with two fresh
+            // threads every round, as useVirtualThreads = true runs it.
+            for (int r = 1; r <= 10; r++) {
+                round(scope, times(30, touchA), times(30, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.highContentionFields.size(),
+                    "two threads were on a in every round, 600 contended accesses in all, the same "
+                            + "traffic the platform-thread run reports; that each thread lived one "
+                            + "round and made 30 of them does not change the field's traffic: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void aRaceOnceThenSoloRunOnFreshThreadsStaysSilent() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // aThreadThatRacedOnceThenWorkedAloneIsNotHighContention's workload on fresh threads.
+            round(scope, touchA, touchA);
+            for (int r = 2; r <= 20; r++) {
+                round(scope, times(10, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.highContentionFields.isEmpty(),
+                    "two contended accesses and 190 solo ones: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void manyWorkersEachTouchingLightlyAreStillTheFieldsTraffic() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        java.util.concurrent.ExecutorService[] workers = platformWorkers(4);
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // Four platform workers, three accesses each, every round for nine rounds: 108 contended
+            // accesses on a, 27 from any one worker. No thread reaches a per-thread share of more
+            // than 50, yet the line carried the traffic.
+            for (int r = 1; r <= 9; r++) {
+                round(scope, workers, times(3, touchA), times(3, touchA), times(3, touchA),
+                        times(3, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertEquals(1, report.highContentionFields.size(),
+                    "108 accesses to a were made in rounds four threads shared: " + report);
+        } finally {
+            shutdown(workers);
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void contendedTrafficBelowTheThresholdStaysSilent() throws Exception {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        java.util.concurrent.ExecutorService[] workers = platformWorkers(2);
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            Runnable touchA = () -> detector.recordFieldAccess(obj, "a", int.class);
+
+            // 98 contended accesses (seven rounds of two workers with seven each), then solo rounds
+            // that take the run's history past the threshold without contending with anything.
+            for (int r = 1; r <= 7; r++) {
+                round(scope, workers, times(7, touchA), times(7, touchA));
+            }
+            for (int r = 8; r <= 12; r++) {
+                round(scope, workers, times(10, touchA));
+            }
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.highContentionFields.isEmpty(),
+                    "98 contended accesses is under the threshold of 100: " + report);
+        } finally {
+            shutdown(workers);
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    // The same workload through the runner, once per thread model: the runner decides whether a
+    // worker keeps its thread across rounds, so this is the pin that both models agree.
+
+    /** A shared field each body execution touches {@code accessesPerBody} times. */
+    static final class HotField {
+        int a;
+        final int accessesPerBody;
+
+        HotField(int accessesPerBody) {
+            this.accessesPerBody = accessesPerBody;
+        }
+
+        void hammer() {
+            FalseSharingDetector detector = se.deversity.asynctest.AsyncTestContext.falseSharingDetector();
+            for (int i = 0; i < accessesPerBody; i++) {
+                detector.recordFieldAccess(this, "a", int.class);
+            }
+        }
+    }
+
+    /** {@return the FalseSharingDetector report the runner handed its listeners, or null if none} */
+    private static String runnerReport(boolean virtualThreads, int threads, int invocations,
+                                       int accessesPerBody) throws Throwable {
+        String previousLicense = System.getProperty("license.mock.mode");
+        System.setProperty("license.mock.mode", "true");
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        java.util.concurrent.atomic.AtomicReference<String> seen =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        try (se.deversity.asynctest.AsyncTestListenerRegistry.Registration ignored =
+                     se.deversity.asynctest.AsyncTestListenerRegistry.registerScoped(
+                             new se.deversity.asynctest.AsyncTestListener() {
+                                 @Override
+                                 public void onDetectorReport(String detectorName, String report) {
+                                     if (detectorName.contains("FalseSharing")) {
+                                         seen.set(report);
+                                     }
+                                 }
+                             })) {
+            se.deversity.asynctest.AsyncTestConfig config = se.deversity.asynctest.AsyncTestConfig.builder()
+                    .threads(threads).invocations(invocations).useVirtualThreads(virtualThreads)
+                    .timeoutMs(10_000).detectAll(false).detectDeadlocks(false)
+                    .detectFalseSharing(true)
+                    .build();
+            HotField target = new HotField(accessesPerBody);
+            java.lang.reflect.Method body = HotField.class.getDeclaredMethod("hammer");
+            se.deversity.asynctest.runner.ConcurrencyRunner.execute(
+                    new org.junit.jupiter.api.extension.ReflectiveInvocationContext<java.lang.reflect.Method>() {
+                        @Override public Class<?> getTargetClass() { return HotField.class; }
+                        @Override public java.lang.reflect.Method getExecutable() { return body; }
+                        @Override public java.util.List<Object> getArguments() { return java.util.List.of(); }
+                        @Override public java.util.Optional<Object> getTarget() { return java.util.Optional.of(target); }
+                    }, config);
+            return seen.get();
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+            if (previousLicense == null) {
+                System.clearProperty("license.mock.mode");
+            } else {
+                System.setProperty("license.mock.mode", previousLicense);
+            }
+        }
+    }
+
+    @Test
+    void theRunnerReportsSteadyContentionOnBothThreadModels() throws Throwable {
+        // Two workers, ten rounds, 30 accesses to a per body: 600 contended accesses on a. A pooled
+        // platform worker makes 300 of them, a virtual thread 30.
+        String platform = runnerReport(false, 2, 10, 30);
+        String virtual = runnerReport(true, 2, 10, 30);
+
+        assertAll(
+                () -> assertTrue(platform != null && platform.contains("High-contention fields"),
+                        "platform threads: two workers on a in every round. Report: " + platform),
+                () -> assertTrue(virtual != null && virtual.contains("High-contention fields"),
+                        "virtual threads: the same workload put the same contended traffic on a, "
+                                + "so it must get the platform verdict. Report: " + virtual));
+    }
+
+    @Test
+    void theRunnerStaysSilentForOneWorkerOnBothThreadModels() throws Throwable {
+        // One worker, ten rounds, 30 accesses per body: 300 accesses on a, none of them contended.
+        String platform = runnerReport(false, 1, 10, 30);
+        String virtual = runnerReport(true, 1, 10, 30);
+
+        assertAll(
+                () -> assertFalse(platform != null && platform.contains("High-contention fields"),
+                        "platform threads: one thread per round never contended. Report: " + platform),
+                () -> assertFalse(virtual != null && virtual.contains("High-contention fields"),
+                        "virtual threads: one thread per round never contended. Report: " + virtual));
+    }
+
     static class TwoCounters {
         int a;
         int b;

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.lang.reflect.Field;
 import java.util.Calendar;
 import java.util.Map;
 import java.util.Set;
@@ -58,12 +59,16 @@ public class CalendarDetector {
          * Whether a recorded {@code set} or {@code add} left fields for the next {@code get} to
          * recompute (#807). That {@code get} writes the time and every field into the instance,
          * so it needs the exclusive lock a {@code set} does; the gets after it only read, and a
-         * read lock guards them. A calendar starts complete, as {@code getInstance()} returns one.
+         * read lock guards them. A recorded {@code setTime}, or an {@code add} to a field below
+         * the month, computes every field and clears it (#820). It starts as the calendar is when
+         * first seen ({@link PendingFields}): {@code getInstance()} returns a complete one, while
+         * {@code new GregorianCalendar(year, month, day)} only sets the fields it is given.
          */
-        final AtomicBoolean fieldsPending = new AtomicBoolean();
+        final AtomicBoolean fieldsPending;
 
         CalendarState(Calendar calendar, String name) {
             this.name = name != null ? name : "calendar@" + System.identityHashCode(calendar);
+            this.fieldsPending = new AtomicBoolean(PendingFields.of(calendar));
         }
     }
 
@@ -77,7 +82,8 @@ public class CalendarDetector {
      */
     public void registerCalendar(Calendar calendar, String name) {
         if (calendar == null) return;
-        calendars.putIfAbsent(new IdentityKey(calendar), new CalendarState(calendar, name));
+        // computeIfAbsent, so the calendar's state is read once, when it is first seen.
+        calendars.computeIfAbsent(new IdentityKey(calendar), k -> new CalendarState(calendar, name));
     }
 
     /**
@@ -87,34 +93,70 @@ public class CalendarDetector {
      * @param name     the label (should match registration)
      */
     public void recordGet(Calendar calendar, String name) {
-        recordAccess(calendar, name, "get");
+        recordAccess(calendar, name, "get", false);
     }
 
     /**
-     * Record a {@code set()} or {@code setTime()} call.
+     * Record a {@code set()} call.
      *
      * <p>The next recorded {@code get} then counts as a write, which needs an exclusive lock: after
-     * a {@code set()} it recomputes the fields into the instance. {@code setTime()} recomputes them
-     * at once, but is recorded the same way, so the {@code get} after it counts as a write too.
+     * a {@code set()} it recomputes the fields into the instance. Record a {@code setTime()} or
+     * {@code setTimeInMillis()} with {@link #recordSetTime} instead; recorded here, the {@code get}
+     * after it counts as a write too.
      *
      * @param calendar the Calendar instance
      * @param name     the label (should match registration)
      */
     public void recordSet(Calendar calendar, String name) {
-        recordAccess(calendar, name, "set");
+        recordAccess(calendar, name, "set", true);
+    }
+
+    /**
+     * Record a {@code setTime()} or {@code setTimeInMillis()} call.
+     *
+     * <p>A write, counted with the sets, but it computes every field at once, including the ones
+     * an earlier {@code set()} left, so the next recorded {@code get} only reads (#820).
+     *
+     * @param calendar the Calendar instance
+     * @param name     the label (should match registration)
+     * @since 1.12.3
+     */
+    public void recordSetTime(Calendar calendar, String name) {
+        recordAccess(calendar, name, "set", false);
     }
 
     /**
      * Record an {@code add()} or {@code roll()} call.
      *
      * <p>As with {@link #recordSet}, the next recorded {@code get} then counts as a write: an
-     * {@code add} to a date field and most rolls leave the fields to recompute.
+     * {@code add} to a date field and most rolls leave the fields to recompute. Record an
+     * {@code add()} with {@link #recordAdd(Calendar, String, int)} where the field is known.
      *
      * @param calendar the Calendar instance
      * @param name     the label (should match registration)
      */
     public void recordAdd(Calendar calendar, String name) {
-        recordAccess(calendar, name, "add");
+        recordAccess(calendar, name, "add", true);
+    }
+
+    /**
+     * Record an {@code add(field, amount)} call, saying which field it added to.
+     *
+     * <p>An {@code add} to {@link Calendar#ERA}, {@link Calendar#YEAR} or {@link Calendar#MONTH}
+     * sets that field and leaves the rest to recompute, so the next recorded {@code get} counts
+     * as a write, as after {@link #recordSet}. An {@code add} to any other field is carried out
+     * as a {@code setTimeInMillis}, which computes every field at once, so the next {@code get}
+     * only reads, as after {@link #recordSetTime} (#820). A {@code roll()} goes through
+     * {@link #recordAdd(Calendar, String)}.
+     *
+     * @param calendar the Calendar instance
+     * @param name     the label (should match registration)
+     * @param field    the field the {@code add} was made to, such as {@link Calendar#HOUR}
+     * @since 1.12.3
+     */
+    public void recordAdd(Calendar calendar, String name, int field) {
+        recordAccess(calendar, name, "add",
+                field == Calendar.ERA || field == Calendar.YEAR || field == Calendar.MONTH);
     }
 
     /**
@@ -132,7 +174,9 @@ public class CalendarDetector {
         }
     }
 
-    private void recordAccess(Calendar calendar, String name, String method) {
+    // leavesFieldsPending: for a write, whether it leaves fields for the next get to recompute.
+    private void recordAccess(Calendar calendar, String name, String method,
+                              boolean leavesFieldsPending) {
         if (calendar == null) return;
 
         IdentityKey key = new IdentityKey(calendar);
@@ -146,7 +190,7 @@ public class CalendarDetector {
         state.noteAccess(calendar, !get
                 || state.fieldsPending.get() && state.fieldsPending.getAndSet(false));
         if (!get) {
-            state.fieldsPending.set(true);
+            state.fieldsPending.set(leavesFieldsPending);
         }
         state.accessingThreads.add(Thread.currentThread().threadId());
         if (state.firstAccessTime == 0) state.firstAccessTime = now;
@@ -200,6 +244,73 @@ public class CalendarDetector {
         }
 
         return report;
+    }
+
+    /**
+     * Reads whether a calendar has fields its next {@code get} would compute, before this detector
+     * has recorded anything about it (#820).
+     *
+     * <p>A field that is not set says so through public API: {@code complete()} marks every field
+     * computed, so an unset field means it has not run since the fields were last touched, as
+     * after {@code new GregorianCalendar(year, month, day)} or {@code clear()}. A {@code set()}
+     * on a calendar whose fields were all computed leaves every field set, and only the private
+     * {@code isTimeSet}, {@code areFieldsSet} and {@code areAllFieldsSet} flags tell. Those are read only when
+     * {@code java.util} is already open to this library, for example by
+     * {@code --add-opens java.base/java.util=ALL-UNNAMED}; the library never opens it, as for
+     * {@link SelfGuard#relinksOnGet(Object)}. Otherwise such a calendar counts as complete, as
+     * every calendar did before.
+     */
+    static final class PendingFields {
+
+        /** The protected flags {@code complete()} checks, or none when they cannot be read. */
+        private static final Field[] FLAGS = flags();
+
+        private PendingFields() {
+        }
+
+        /**
+         * {@return whether {@code calendar}'s next {@code get} computes fields, as far as can be
+         * read}
+         *
+         * @param calendar the calendar first seen
+         */
+        static boolean of(Calendar calendar) {
+            for (int field = 0; field < Calendar.FIELD_COUNT; field++) {
+                if (!calendar.isSet(field)) {
+                    return true;
+                }
+            }
+            try {
+                for (Field flag : FLAGS) {
+                    if (!flag.getBoolean(calendar)) {
+                        return true;
+                    }
+                }
+            } catch (IllegalAccessException e) { // NOPMD - unreadable flags are unknown ones
+                return false;
+            }
+            return false;
+        }
+
+        private static Field[] flags() {
+            try {
+                Field[] flags = {
+                    Calendar.class.getDeclaredField("isTimeSet"),
+                    Calendar.class.getDeclaredField("areFieldsSet"),
+                    Calendar.class.getDeclaredField("areAllFieldsSet"),
+                };
+                for (Field flag : flags) {
+                    // trySetAccessible answers false, and opens nothing, unless java.util is
+                    // already open to this library's module.
+                    if (flag.getType() != boolean.class || !flag.trySetAccessible()) {
+                        return new Field[0];
+                    }
+                }
+                return flags;
+            } catch (NoSuchFieldException | RuntimeException e) { // NOPMD - unreadable is unknown
+                return new Field[0];
+            }
+        }
     }
 
     // ---- Report ----------------------------------------------------------------

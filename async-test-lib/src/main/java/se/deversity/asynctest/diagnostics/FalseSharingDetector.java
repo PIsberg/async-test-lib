@@ -23,7 +23,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * instances of one class are indistinguishable from a genuinely shared instance. Thread
  * sets are compared within one invocation round, so accesses from different rounds, which
  * never overlapped, are not read as concurrent, and the high-contention access threshold
- * counts only accesses made in a round another thread also spent on the field. The
+ * counts the field's accesses made in a round another thread also spent on the field, over
+ * the run and whichever threads made them, so pooled platform workers and one-round virtual
+ * threads give the same workload the same verdict. The
  * findings are therefore not evidence of false sharing, and {@link #analyze()} returns
  * an empty report unless {@link #EXPERIMENTAL_PROPERTY} is set.
  * 
@@ -210,23 +212,27 @@ public class FalseSharingDetector {
             List<AccessEvent> history = entry.getValue();
             if (history.size() < FIELD_ACCESS_THRESHOLD) continue;
 
-            // Only accesses made in a round with more than one thread on the field count, for the
-            // field's total and for each thread's share alike. Threads in different rounds never
-            // contended (#765), and a platform thread outlives its round, so a count kept over the
-            // run added up the rounds it spent alone on the field after racing once (#794).
+            // Only accesses made in a round with more than one thread on the field count. Threads in
+            // different rounds never contended (#765), and a platform thread outlives its round, so a
+            // count kept over the run added up the rounds it spent alone on the field after racing
+            // once (#794).
+            //
+            // The threshold is the field's contended traffic, not any one thread's share of it
+            // (#811). Cache-line traffic is set by how often the line is touched while more than one
+            // core holds it, and a Java thread is not a core: a platform worker migrates, and a
+            // virtual thread lives one body execution. A per-thread share summed over the run is one
+            // a pooled platform worker reaches across many rounds and a virtual thread only inside
+            // one body, so the same workload reported on one thread model and not the other.
             Map<Integer, Set<Long>> rounds = threadsByRound.getOrDefault(entry.getKey(), Map.of());
             int contendedAccesses = 0;
-            Map<Long, Integer> threadAccessCounts = new HashMap<>();
             for (AccessEvent event : snapshot(history)) {
                 Set<Long> threads = rounds.get(event.round);
                 if (threads != null && threads.size() > 1) {
                     contendedAccesses++;
-                    threadAccessCounts.merge(event.threadId, 1, Integer::sum);
                 }
             }
 
-            int maxAccesses = threadAccessCounts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
-            if (contendedAccesses >= FIELD_ACCESS_THRESHOLD && maxAccesses > FIELD_ACCESS_THRESHOLD / 2) {
+            if (contendedAccesses >= FIELD_ACCESS_THRESHOLD) {
                 report.highContentionFields.add(entry.getKey());
             }
         }

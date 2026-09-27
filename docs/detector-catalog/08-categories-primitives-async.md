@@ -69,7 +69,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 100. Shared WeakHashMap Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `WeakHashMap` or `IdentityHashMap` instances accessed from more than one thread. Both are documented as not thread-safe; `WeakHashMap`'s GC-driven cleanup mutates its table on every `get`/`put` without locking (risking infinite loops in the entry chain), and `IdentityHashMap`'s linear-probing open addressing can silently drop or duplicate entries under concurrent puts.
+* **Description**: Detects `WeakHashMap` or `IdentityHashMap` instances accessed from more than one thread. Both are documented as not thread-safe; `WeakHashMap`'s GC-driven cleanup mutates its table on every `get`/`put` without locking (risking infinite loops in the entry chain), and `IdentityHashMap`'s linear-probing open addressing can silently drop or duplicate entries under concurrent puts. `recordAccess` counts an access as a write; a read recorded with `recordRead` only races a write, so gets under one read lock beside puts under the write lock stay silent, since the JDK serializes a `WeakHashMap` reader's cleanup on its reference queue.
 * **Buggy Code**:
   ```java
   private final Map<Key, Value> cache = new WeakHashMap<>();

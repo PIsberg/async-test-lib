@@ -68,7 +68,18 @@ import org.jspecify.annotations.Nullable;
  *       write just before its store and the read just after its load, and the reading thread
  *       acquires at the read, so everything it does afterwards is ordered, on whatever object: a
  *       node read through a volatile {@code next} included (#742, #804). A volatile clock is kept
- *       per object and field, the field compared by its simple name.
+ *       per object and field, the field compared by its simple name. An {@code AtomicReference}
+ *       store and a {@code get} or {@code getAcquire} are the same model, on the slot (#741).
+ *   <li>Since #741: a {@code CompletableFuture} completed through {@code complete},
+ *       {@code completeExceptionally} or an {@code obtrude} call, and a {@code join} or
+ *       {@code get} that observed it, where a {@code complete} the future refused is withdrawn;
+ *       a task submitted to a JDK {@code ExecutorService} or to
+ *       {@code CompletableFuture.supplyAsync} or {@code runAsync}, which runs wrapped: it
+ *       {@link #receive receives} the submitter's {@link #handOff stamp} before it starts, and a
+ *       {@code get} or {@code join} of its future on the submitting thread receives the stamp it
+ *       left when it ended; and each side of an {@code Exchanger}, which releases the object it
+ *       hands over and acquires the one it gets back, and withdraws its release when the
+ *       exchange failed.
  * </ul>
  *
  * <p>Plain lock and monitor hand-offs are deliberately not edges. The detectors judge lock
@@ -89,13 +100,23 @@ import org.jspecify.annotations.Nullable;
  *       constructor is not woven, so it publishes nothing. Two fields of one object sharing a
  *       simple name, a field and the one it shadows, share a clock.
  *   <li>A withdrawn release was visible for the length of the refused call, and one another
- *       thread folded into its own release in that time stays. {@code addAll} into a queue,
- *       which can accept some elements and refuse the rest, withdraws nothing.
+ *       thread folded into its own release in that time stays. An {@code addAll} into a queue
+ *       that implements it itself, a {@code LinkedBlockingDeque} or a
+ *       {@code ConcurrentLinkedQueue}, and throws part way withdraws nothing; one that inherits
+ *       {@code AbstractQueue}'s is offered element by element and withdraws the refused one
+ *       (#806).
  *   <li>A clock keeps at most 256 threads. Past that the entries of the lowest
  *       thread ids go, which loses edges and never adds one; a thread never loses its own.
- *   <li>Not yet observed: {@code CompletableFuture} completion, {@code Executor} submission and
- *       {@code Future.get}, {@code Exchanger}, {@code AtomicReference.get}, and a validated
- *       {@code StampedLock} optimistic read. Code relying on those needs the manual methods.
+ *   <li>A submitted task's end is found by the future its submitter was handed, among the last
+ *       16 that thread submitted and has not got yet; a get on another thread, or of an older
+ *       future, receives nothing. An object handed through an {@code Exchanger} is released by
+ *       identity like a queue element, so one object two pairs exchange at once orders each
+ *       taker after both givers.
+ *   <li>Not yet observed: a dependent stage's function ({@code thenApply} and the rest),
+ *       {@code Executor.execute}, a task submitted to an executor outside the JDK, a
+ *       {@code get} of an {@code AtomicReferenceFieldUpdater} or an {@code AtomicReferenceArray},
+ *       and a validated {@code StampedLock} optimistic read. Code relying on those needs the
+ *       manual methods.
  * </ul>
  *
  * <p>The state is process-wide, because ordering is a property of the execution rather than of one
@@ -369,6 +390,39 @@ public final class HappensBefore {
         if (clock != null) {
             acquireFrom(CLOCKS.get(), clock);
         }
+    }
+
+    /**
+     * {@return everything the calling thread did so far, for a hand-off that carries its own
+     * clock}
+     *
+     * <p>The release half of a hand-off with no object both sides can name when it happens: a
+     * task submitted to an executor, where the agent's wrapper carries the stamp to the thread
+     * that runs the task, and back to the thread that gets its result (#741). The stamp covers
+     * every access the thread recorded before this call and none after it, as a {@link #release}
+     * does. Allocation-free: it is the thread's current snapshot.
+     */
+    @API(status = Status.INTERNAL)
+    public static Stamp handOff() {
+        ThreadClock me = CLOCKS.get();
+        // A release of its own, which ends the window in which the last one could be withdrawn.
+        me.forgetRelease();
+        me.published = true;
+        return me.current;
+    }
+
+    /**
+     * The acquire half of {@link #handOff}: the calling thread receives what {@code stamp}
+     * covers.
+     *
+     * <p>Call it where the program makes the matching acquire: when the handed task starts to run,
+     * or after the get that observed it finish.
+     *
+     * @param stamp what {@link #handOff} returned on the other side; {@code null} is ignored
+     */
+    @API(status = Status.INTERNAL)
+    public static void receive(@Nullable Stamp stamp) {
+        acquireStamp(CLOCKS.get(), stamp);
     }
 
     /**

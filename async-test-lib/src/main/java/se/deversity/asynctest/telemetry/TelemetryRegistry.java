@@ -2207,7 +2207,8 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * Weaves {@code AtomicReference.set}: an offer of {@code value} to {@code slot} (#664).
+     * Weaves {@code AtomicReference.set}: an offer of {@code value} to {@code slot} (#664),
+     * and a release to a get that returns it (#741).
      *
      * @param slot  the atomic the call site invoked
      * @param value the reference to store
@@ -2215,11 +2216,13 @@ public final class TelemetryRegistry {
      */
     public static void setAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
         ownershipOffered(value, slot);
+        slotStored(slot, value);
         slot.set(value);
     }
 
     /**
-     * Weaves {@code AtomicReference.lazySet}: an offer of {@code value} to {@code slot} (#664).
+     * Weaves {@code AtomicReference.lazySet}: an offer of {@code value} to {@code slot} (#664),
+     * and a release to a get that returns it (#741).
      *
      * @param slot  the atomic the call site invoked
      * @param value the reference to store
@@ -2227,11 +2230,13 @@ public final class TelemetryRegistry {
      */
     public static void lazySetAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
         ownershipOffered(value, slot);
+        slotStored(slot, value);
         slot.lazySet(value);
     }
 
     /**
-     * Weaves {@code AtomicReference.setRelease}: an offer of {@code value} to {@code slot} (#664).
+     * Weaves {@code AtomicReference.setRelease}: an offer of {@code value} to {@code slot} (#664),
+     * and a release to a get that returns it (#741).
      *
      * @param slot  the atomic the call site invoked
      * @param value the reference to store
@@ -2239,6 +2244,7 @@ public final class TelemetryRegistry {
      */
     public static void setReleaseAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
         ownershipOffered(value, slot);
+        slotStored(slot, value);
         slot.setRelease(value);
     }
 
@@ -2260,13 +2266,18 @@ public final class TelemetryRegistry {
         boolean swapped = slot.compareAndSet(expected, update);
         if (!swapped) {
             ownershipRefused(update, slot);
+        } else {
+            // After the swap, not before: a slot's release cannot be withdrawn, and one a failed
+            // swap left behind would match a later read of the same value stored by somebody else.
+            // A read that returns the value before this lands finds no release and takes nothing.
+            slotStored(slot, update);
         }
         return swapped;
     }
 
     /**
      * Weaves {@code AtomicReference.getAndSet}: the reference returned is taken out of {@code slot}
-     * (#555, #664).
+     * (#555, #664), and the one stored is published to a get that returns it (#741).
      *
      * @param slot  the atomic the call site invoked
      * @param value the reference to store
@@ -2275,9 +2286,62 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetAtomicReference(AtomicReference<Object> slot,
                                                             @Nullable Object value) {
+        slotStored(slot, value);
         Object previous = slot.getAndSet(value);
         ownershipTaken(previous, slot);
         return previous;
+    }
+
+    /**
+     * The name an {@code AtomicReference}'s value is kept under in the happens-before model, as
+     * if it were the volatile field it is inside the JDK (#741).
+     */
+    private static final String SLOT_VALUE = "value";
+
+    /**
+     * The release half of a store into an {@code AtomicReference}, which has volatile-write
+     * semantics: everything this thread did so far is published to a get of the same slot that
+     * returns {@code value}, the model a volatile field has (#741, #742). Kept per slot rather
+     * than per stored object, so the same object read out of another slot receives nothing.
+     */
+    private static void slotStored(AtomicReference<Object> slot, @Nullable Object value) {
+        if (!STOPPED.get()) {
+            HappensBefore.releaseVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReference.get}, a volatile read: the reading thread receives what the
+     * store of the value it returned published, and nothing a store it did not see published
+     * (#741). The acquire half of {@link #slotStored}, as {@link #volatileLoad} is of a
+     * volatile field's store.
+     *
+     * @param slot the atomic the call site invoked
+     * @return the reference the slot held
+     * @since 1.12.3
+     */
+    public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
+        Object value = slot.get();
+        if (!STOPPED.get()) {
+            HappensBefore.acquireVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+        }
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicReference.getAcquire}, an acquiring read, as
+     * {@link #getAtomicReference}.
+     *
+     * @param slot the atomic the call site invoked
+     * @return the reference the slot held
+     * @since 1.12.3
+     */
+    public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
+        Object value = slot.getAcquire();
+        if (!STOPPED.get()) {
+            HappensBefore.acquireVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+        }
+        return value;
     }
 
     /**

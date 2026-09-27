@@ -301,7 +301,7 @@ public final class DetectorTrust {
             row(DetectorType.SHARED_BYTE_BUFFER, "SharedByteBufferDetector", "SharedByteBuffer", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.SHARED_CHARSET_CODER, "SharedCharsetCoderDetector", "SharedCharsetCoder", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.SHARED_CHECKSUM, "SharedChecksumDetector", "SharedChecksum", TrustTier.VERDICT, Evidence.CONTEXTUAL),
-            row(DetectorType.FILE_CHANNEL_POSITION_RACE, "FileChannelPositionRaceDetector", "FileChannelPositionRace", TrustTier.PROMPT, Evidence.CONTEXTUAL),
+            row(DetectorType.FILE_CHANNEL_POSITION_RACE, "FileChannelPositionRaceDetector", "FileChannelPositionRace", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.SHARED_ITERATOR, "SharedIteratorDetector", "SharedIterator", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.HIGH_CONTENTION_ATOMIC, "HighContentionAtomicDetector", "HighContentionAtomic", TrustTier.ADVISORY, Evidence.HEURISTIC),
             row(DetectorType.SHARED_JSON_MAPPER_RECONFIG, "SharedJsonMapperReconfigDetector", "SharedJsonMapperReconfig", TrustTier.VERDICT, Evidence.CONTEXTUAL),

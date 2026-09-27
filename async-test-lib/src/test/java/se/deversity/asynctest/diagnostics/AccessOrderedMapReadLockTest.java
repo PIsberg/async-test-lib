@@ -24,6 +24,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * already open to it and never opens it itself, so these scenarios run twice: in a child JVM
  * started with {@code --add-opens java.base/java.util=ALL-UNNAMED}, where the order is known, and
  * in this JVM, where it is not.
+ *
+ * <p>Whether a {@link java.util.Calendar} has fields left to compute is private {@code java.util}
+ * state too, read on the same terms. A calendar {@code set()} before its first recorded access
+ * leaves the first {@code get} a write, which is known only with {@code java.util} open (#820).
  */
 class AccessOrderedMapReadLockTest {
 
@@ -49,6 +53,19 @@ class AccessOrderedMapReadLockTest {
                         + "lock is the correct read-write idiom: " + seen);
         assertEquals(Boolean.FALSE, seen.get("lruCollectionContainsKeyUnderOneReadLock"),
                 "containsKey() does not relink even on an access-ordered map: " + seen);
+        assertEquals(Boolean.TRUE, seen.get("lruCollectionGetsAloneInOneRound"),
+                "two unguarded gets on an access-ordered map both relink it, so the detector's own "
+                        + "writer tally counts two writers (#820): " + seen);
+        assertEquals(Boolean.FALSE, seen.get("insertionCollectionGetsAloneInOneRound"),
+                "gets on an insertion-ordered map only read: " + seen);
+        assertEquals(Boolean.FALSE, seen.get("lruCollectionGetsUnderItsMonitorInOneRound"),
+                "gets that relink an access-ordered map inside synchronized (map) are guarded: "
+                        + seen);
+        assertEquals(Boolean.TRUE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
+                "a set() before the calendar's first recorded access leaves the first get() the "
+                        + "fields to compute, which one read lock does not make exclusive: " + seen);
+        assertEquals(Boolean.FALSE, seen.get("calendarCompletedBeforeFirstRecordGetsUnderOneReadLock"),
+                "a get() before the first recorded access already computed the fields: " + seen);
     }
 
     /**
@@ -75,6 +92,17 @@ class AccessOrderedMapReadLockTest {
                 seen.toString());
         assertEquals(Boolean.FALSE, seen.get("lruCollectionContainsKeyUnderOneReadLock"),
                 seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("lruCollectionGetsAloneInOneRound"),
+                "an unknown order is no known writer for the tally, the verdict it had: " + seen);
+        assertEquals(Boolean.FALSE, seen.get("insertionCollectionGetsAloneInOneRound"),
+                seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("lruCollectionGetsUnderItsMonitorInOneRound"),
+                seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
+                "an unrecorded set() on a calendar whose fields were all computed cannot be seen "
+                        + "without reading java.util, so the read lock still guards the gets: " + seen);
+        assertEquals(Boolean.FALSE, seen.get("calendarCompletedBeforeFirstRecordGetsUnderOneReadLock"),
+                seen.toString());
     }
 
     private static Map<String, Boolean> runInChildJvm(String... jvmFlags) throws Exception {
@@ -96,7 +124,7 @@ class AccessOrderedMapReadLockTest {
                 seen.put(pair[0], Boolean.valueOf(pair[1]));
             }
         }
-        assertEquals(7, seen.size(), "child JVM did not print every scenario:\n" + output);
+        assertEquals(12, seen.size(), "child JVM did not print every scenario:\n" + output);
         return seen;
     }
 
@@ -126,7 +154,37 @@ class AccessOrderedMapReadLockTest {
                     collectionReadsUnderOneReadLock(insertion(), "get"));
             seen.put("lruCollectionContainsKeyUnderOneReadLock",
                     collectionReadsUnderOneReadLock(lru(), "containsKey"));
+            seen.put("lruCollectionGetsAloneInOneRound", collectionGetsAloneInOneRound(lru()));
+            seen.put("insertionCollectionGetsAloneInOneRound",
+                    collectionGetsAloneInOneRound(insertion()));
+            seen.put("lruCollectionGetsUnderItsMonitorInOneRound", collectionGetsUnderItsMonitor(lru()));
+            seen.put("calendarSetBeforeFirstRecordGetsUnderOneReadLock",
+                    calendarGetsUnderOneReadLock(false));
+            seen.put("calendarCompletedBeforeFirstRecordGetsUnderOneReadLock",
+                    calendarGetsUnderOneReadLock(true));
             return seen;
+        }
+
+        /**
+         * A calendar whose fields were all computed, {@code set()} before its first recorded
+         * access and then, if {@code completed}, read once; then two gets under one read lock.
+         */
+        private static boolean calendarGetsUnderOneReadLock(boolean completed)
+                throws InterruptedException {
+            CalendarDetector detector = new CalendarDetector();
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            cal.set(java.util.Calendar.DAY_OF_MONTH, 3);
+            if (completed) {
+                cal.get(java.util.Calendar.DAY_OF_MONTH);
+            }
+            detector.registerCalendar(cal, "calendar");
+            ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+            Runnable get = () -> underLock(lock, true, () -> {
+                detector.recordGet(cal, "calendar");
+                cal.get(java.util.Calendar.DAY_OF_MONTH);
+            });
+            round(new SelfGuard.Scope(), () -> { }, get, get);
+            return detector.analyze().hasIssues();
         }
 
         private static Map<String, String> lru() {
@@ -171,6 +229,28 @@ class AccessOrderedMapReadLockTest {
             round(scope, detector::markInvocationStart,
                     () -> underLock(lock, false, () -> detector.recordWrite(map, "map", "put")),
                     read, read);
+            return detector.analyze().hasIssues();
+        }
+
+        /** One round: two unguarded gets and nothing else. */
+        private static boolean collectionGetsAloneInOneRound(Map<String, String> map)
+                throws InterruptedException {
+            SharedCollectionDetector detector = new SharedCollectionDetector();
+            Runnable get = () -> detector.recordRead(map, "map", "get");
+            round(new SelfGuard.Scope(), detector::markInvocationStart, get, get);
+            return detector.analyze().hasIssues();
+        }
+
+        /** One round: two gets, each inside {@code synchronized (map)}. */
+        private static boolean collectionGetsUnderItsMonitor(Map<String, String> map)
+                throws InterruptedException {
+            SharedCollectionDetector detector = new SharedCollectionDetector();
+            Runnable get = () -> {
+                synchronized (map) {
+                    detector.recordRead(map, "map", "get");
+                }
+            };
+            round(new SelfGuard.Scope(), detector::markInvocationStart, get, get);
             return detector.analyze().hasIssues();
         }
 

@@ -6,7 +6,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 53. Calendar Sharing Detector
 * **Severity**: `MEDIUM`
-* **Description**: `Calendar` is not thread-safe; concurrent `get()`/`set()`/`add()`/`getTime()` calls on a shared instance can interleave and silently corrupt the represented date with no exception thrown. The detector tracks shared registrations and flags mutation-during-read contention. A round of `get()` calls alone still counts as sharing, because after a `set()` the next `get()` recomputes the fields into the instance, so concurrent `get()` calls race. A read lock held over every `get()` guards them, except for the first `get()` after a recorded `set()` or `add()`: that one writes the recomputed fields, so it needs the write lock, and gets under one read lock after a `set()` are reported.
+* **Description**: `Calendar` is not thread-safe; concurrent `get()`/`set()`/`add()`/`getTime()` calls on a shared instance can interleave and silently corrupt the represented date with no exception thrown. The detector tracks shared registrations and flags mutation-during-read contention. A round of `get()` calls alone still counts as sharing, because after a `set()` the next `get()` recomputes the fields into the instance, so concurrent `get()` calls race. A read lock held over every `get()` guards them, except for the first `get()` after a recorded `set()` or `add()`: that one writes the recomputed fields, so it needs the write lock, and gets under one read lock after a `set()` are reported. A `setTime()` recorded with `recordSetTime`, and an `add()` to a field below the month recorded with `recordAdd(calendar, name, field)`, compute every field at once, so the gets after them only read. A calendar that has fields to compute when the detector first sees it, such as one built with `new GregorianCalendar(year, month, day)`, which computes nothing, starts the same way as after a `set()`; a `set()` on a complete calendar before its first recorded access is seen only when the test JVM opens `java.util` to the library (`--add-opens java.base/java.util=ALL-UNNAMED`).
 * **Buggy Code**:
   ```java
   private static final Calendar SHARED_CAL = Calendar.getInstance();
@@ -27,7 +27,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 54. Shared Collection Detector
 * **Severity**: `HIGH`
-* **Description**: Flags plain `ArrayList`, `HashMap`/`LinkedHashMap`, `HashSet`, `LinkedList`, `TreeMap`/`TreeSet`, and `ArrayDeque` instances mutated from multiple threads without synchronization, which can corrupt internal state or throw `ConcurrentModificationException`.
+* **Description**: Flags plain `ArrayList`, `HashMap`/`LinkedHashMap`, `HashSet`, `LinkedList`, `TreeMap`/`TreeSet`, and `ArrayDeque` instances mutated from multiple threads without synchronization, which can corrupt internal state or throw `ConcurrentModificationException`. A `get` on a `LinkedHashMap` known to be access-ordered relinks the entry and counts as a write, so unguarded gets alone on an LRU cache report; the order is known only when the test JVM opens `java.util` to the library (`--add-opens java.base/java.util=ALL-UNNAMED`).
 * **Buggy Code**:
   ```java
   private static final List<String> SHARED = new ArrayList<>();

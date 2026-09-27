@@ -2,6 +2,9 @@ package se.deversity.asynctest;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
+import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
+
+import java.util.List;
 
 /**
  * What happens when a detector throws while the runner is collecting its findings.
@@ -22,6 +25,10 @@ import org.apiguardian.api.API.Status;
  * <p>Setting {@value #STRICT_PROPERTY} to {@code true} turns that stderr line into a build failure.
  * The library's own Maven and Gradle test configurations set it, so a detector that throws during
  * analysis goes red here and stays a contained warning everywhere else.
+ *
+ * <p>The same switch holds the built-in reports to their own structured findings: a report type
+ * that keeps a {@code structuredViolations} list and has issues with that list empty fails the build
+ * under it, and changes nothing outside it ({@link #structuredFindingsMissing}).
  *
  * @since 1.7.0
  */
@@ -62,6 +69,50 @@ public final class DetectorFailurePolicy {
                 + " finding was lost and the run reported nothing for it — which looks exactly"
                 + " like a clean run. Strict mode (" + STRICT_PROPERTY + ") fails the build"
                 + " instead of writing a line to stderr.", failure);
+        }
+    }
+
+    /**
+     * Reports a built-in report that has issues but put none of them in its structured list.
+     *
+     * <p>A report type that keeps a public {@code structuredViolations} list promises the
+     * {@code failOn} gate the severity of each finding. A report with issues and an empty list
+     * breaks that promise for this finding: the gate falls back to guessing from the text, which
+     * can land on a different severity than the detector chose on its other paths (#774). A
+     * hand-kept list of drivers found the paths known in #774 and cannot find one added later, so
+     * the check runs here, where every report enters the findings, and every test in this build
+     * that makes a detector fire is a driver for it (#802).
+     *
+     * <p>Only under {@value #STRICT_PROPERTY}. Everywhere else it returns at once and writes
+     * nothing: the finding is still reported with its text, and a consumer's build has no use for
+     * a line about the library's own bookkeeping. A report type with no such field is judged by
+     * its text by design and is never held to it.
+     *
+     * @param detectorName simple class name of the detector that produced the report
+     * @param report       the report, which has issues and carries no structured finding
+     * @throws AssertionError under strict mode, when the report's type keeps the list
+     * @since 1.12.3
+     */
+    public static void structuredFindingsMissing(String detectorName, Object report) {
+        if (!Boolean.getBoolean(STRICT_PROPERTY) || !keepsStructuredFindings(report)) {
+            return;
+        }
+        throw new AssertionError("Detector " + detectorName + " reported issues with an empty "
+            + DetectorDefaultSeverity.STRUCTURED_FIELD
+            + " list, so the failOn gate reads this finding's severity from its text instead of"
+            + " the one the detector states on its other paths. Add a Violation beside the text"
+            + " line, at the severity the text resolves to. Strict mode (" + STRICT_PROPERTY
+            + ") fails the build; consumers see the finding unchanged. Report: " + report);
+    }
+
+    /** {@return whether {@code report}'s type declares the public structured list} */
+    private static boolean keepsStructuredFindings(Object report) {
+        try {
+            return List.class.isAssignableFrom(report.getClass()
+                .getField(DetectorDefaultSeverity.STRUCTURED_FIELD)
+                .getType());
+        } catch (NoSuchFieldException textOnly) {
+            return false;
         }
     }
 

@@ -52,6 +52,20 @@ Read a clean report from any of these as "not observed" rather than "nothing the
 names the test that triggered it, and each carries a `hint=` field with the same advice as the
 table above.
 
+### When a detector leaves a note
+
+Some detectors write notes that are not findings, such as `SynchronizedNonFinalDetector`'s
+undecided slot, which names the four-argument `recordLockObject` call that would decide it. A
+report is printed only when it has a finding, so the runner logs the notes of a report that has
+none at INFO, once per run (#816):
+
+```
+runner.detector.note test=… detector=SynchronizedNonFinalDetector notes=1 note="Holder.lock: synchronized on 6 different objects. … recordLockObject(lock, \"lock\", Holder.class, this)."
+```
+
+One event per distinct note, at most three per detector per run; `notes=` is the total. A note
+beside a finding stays in that report's text and is not logged again. Nothing here fails a test.
+
 ## 8. Troubleshooting
 
 | Symptom | Likely cause & fix |

@@ -751,7 +751,8 @@ final class DetectorRegistry {
                 LockContentionDetector.LockContentionReport::hasIssues, out);
         ifIssue(synchronizedNonFinalDetector,
                 SynchronizedNonFinalDetector::analyze,
-                SynchronizedNonFinalDetector.SynchronizedNonFinalReport::hasIssues, out);
+                SynchronizedNonFinalDetector.SynchronizedNonFinalReport::hasIssues,
+                SynchronizedNonFinalDetector.SynchronizedNonFinalReport::notes, out);
         ifIssue(missedSignalDetector,
                 MissedSignalDetector::analyze,
                 MissedSignalDetector.MissedSignalReport::hasIssues, out);
@@ -1143,7 +1144,23 @@ final class DetectorRegistry {
 
         lastGrades = out.grades();
         lastSeverities = out.severities();
+        lastNotes = out.notes();
         return out.reports();
+    }
+
+    /** Notes of reports with no finding from the last analysis pass; see {@link #lastNotes()}. */
+    private Map<String, List<String>> lastNotes = Map.of();
+
+    /**
+     * {@return the notes of every report that had no finding in the most recent
+     * {@link #analyzeAllNamed()} pass, keyed by detector}
+     *
+     * <p>A report is printed only when it has a finding, so a note in one that has none never
+     * reached the user (#816). A note in a report that has a finding is printed with it and is
+     * not repeated here.
+     */
+    Map<String, List<String>> lastNotes() {
+        return lastNotes;
     }
 
     /** Structured severities from the last analysis pass; see {@link #lastSeverities()}. */
@@ -1187,11 +1204,28 @@ final class DetectorRegistry {
                                Function<D, R> analyze,
                                Function<R, Boolean> hasIssues,
                                FindingSink out) {
+        ifIssue(detector, analyze, hasIssues, null, out);
+    }
+
+    /**
+     * As {@link #ifIssue(Object, Function, Function, FindingSink)}, and when the report has no
+     * issues, records the notes {@code notes} reads from it: things the detector wants the
+     * caller to know that are not findings, which would otherwise never be seen, because only a
+     * report with a finding is printed (#816).
+     */
+    static <D, R> void ifIssue(@Nullable D detector,
+                               Function<D, R> analyze,
+                               Function<R, Boolean> hasIssues,
+                               @Nullable Function<R, List<String>> notes,
+                               FindingSink out) {
         if (detector == null) return;
         String name = detector.getClass().getSimpleName();
         try {
             R report = analyze.apply(detector);
             if (Boolean.TRUE.equals(hasIssues.apply(report))) {
+                se.deversity.asynctest.diagnostics.IssueSeverity structured =
+                        se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
+                                .orElse(null);
                 // A grade above the detector's evidence cap is lowered here, the one place grades
                 // enter the sink, so the failOn gate, the banner and findingGrades() all read the
                 // tier the evidence can carry rather than the one the report named.
@@ -1199,8 +1233,14 @@ final class DetectorRegistry {
                         report instanceof se.deversity.asynctest.diagnostics.GradedFindings graded
                                 ? se.deversity.asynctest.diagnostics.DetectorTrust.clampToCap(name, graded.grades())
                                 : null,
-                        se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
-                                .orElse(null));
+                        structured);
+                if (structured == null) {
+                    // One check per report, never per access: a structured report whose list
+                    // stayed empty on this path fails this build's tests, and nothing else (#802).
+                    DetectorFailurePolicy.structuredFindingsMissing(name, report);
+                }
+            } else if (notes != null) {
+                out.note(name, notes.apply(report));
             }
         } catch (RuntimeException | StackOverflowError e) {
             // Contain the failure: analyzeAllNamed() chains ~100 of these, so letting one

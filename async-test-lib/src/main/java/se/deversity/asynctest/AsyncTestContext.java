@@ -1066,6 +1066,21 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the notes that are not findings from the most recent {@link #analyzeAllNamed()}
+     * pass, keyed by detector}
+     *
+     * <p>Only reports with no finding contribute: a report with a finding carries its notes in
+     * its own text. The runner logs these as {@code runner.detector.note}, because a report with
+     * no finding is never printed (#816). Call after {@link #analyzeAllNamed()}.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.INTERNAL, since = "1.12.3")
+    public Map<String, List<String>> detectorNotes() {
+        return registry.lastNotes();
+    }
+
+    /**
      * Merges third-party SPI violations into {@code reports}, keyed by
      * {@link Violation#detector()}, then fires {@code onTestEnd()} once.
      *

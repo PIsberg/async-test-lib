@@ -18,31 +18,40 @@
 # that stops being true fails the corpus build rather than quietly vouching for a tier.
 #
 # The bar is the one the in-repo pairs meet: the two subjects differ in the defect and in nothing
-# else. Three corpus-measured detectors are deliberately absent, and the reason in each case is
-# the detector's model rather than the pair (#406, #419):
+# else. The detectors on a "# held: TYPE" line below are corpus-measured and deliberately absent,
+# and the reason in each case is the detector's model rather than the pair (#406, #419).
+# DetectorTrustCoverageTest refuses a held detector that is also registered here or classified
+# VERDICT, and so a commented-out registration kept with the class that capped it, as in the last
+# section: the argument and the tier cannot disagree again (#818). Whether the argument still
+# describes the detector is a reading, and no gate does that.
 #
+# held: CACHE_CONCURRENCY
 #   CACHE_CONCURRENCY asks the map's own type whether it synchronizes itself, so given one class
 #   both halves of a pair get the same answer by construction and no same-class pair can exist. It
 #   also consults no lock at all, so a HashMap correctly guarded by the caller's own lock draws the
 #   same finding as a raced one. That is the definition of PROMPT.
 #
-#   CONCURRENT_MAP_CHECK_THEN_ACT is classified by its caller. recordCheckThenAct IS the assertion
-#   that a check-then-act happened; the detector's own decision is only whether more than one
-#   thread reached the same (map, key). A same-class pair exists and is in the corpus, and it makes
-#   the silence a decision rather than an absence of calls, but it cannot make a finding mean the
-#   code is wrong, because the body declared that before the detector saw anything.
+# FILE_CHANNEL_POSITION_RACE was held here from #755 until 2026-09-26, when #819 made the detector
+# judge the seek-then-I/O sequence rather than single accesses; it is registered below, and its
+# line says how.
 #
-#   FILE_CHANNEL_POSITION_RACE has a same-class pair in the corpus and it is a good one: the two
-#   rows share one channel and differ only in the read overload, so the silence is the operation
-#   model deciding. What it cannot show is the other half of what VERDICT means. This entry used
-#   to name the missing lockset; the detector now keeps SelfGuard's per-round lockset, so a caller
-#   that wraps position(n) and read(buffer) in synchronized(channel), or in a lock declared through
-#   HeldLocks, stays silent. Re-asked on 2026-09-26 (#755) and still held, on the unit it judges:
-#   an access, not the seek-then-I/O sequence the race is. FileChannel runs one operation involving
-#   the position at a time, so threads that each make one self-contained read(buffer) or
-#   write(buffer) lose nothing, and they draw the same finding as a thread whose position(n)
-#   another thread's call lands behind. The firing row is that self-contained shape. Re-ask once a
-#   finding needs a call landing between a thread's position(n) and the I/O that relies on it.
+#   CONCURRENT_MAP_CHECK_THEN_ACT was held here from 2026-08-29 because its only decision was
+#   whether more than one thread reached the same (map, key): recordCheckThenAct is the body saying
+#   a check-then-act happened, so a finding said no more than the body had. Re-asked on 2026-09-26
+#   (#818), and it no longer holds. Since 2026-09-25 the detector keeps SelfGuard's per-round
+#   lockset and happens-before model, so a check-then-act that every caller makes inside one lock,
+#   the map's own monitor, a lock declared through HeldLocks or one the agent wove, stays silent,
+#   and so does one ordered after another's. The recorded call now names an operation that is
+#   correct on one thread, under one lock or in order, not the defect; the finding is the
+#   detector's own: two callers on one key, unordered, with no lock in common. That is CONTEXTUAL,
+#   the same evidence the Shared* family's lines below carry. The registration below predates the
+#   lockset: the second wave made it on 2026-09-07 by the shape rule, while this paragraph still
+#   held, and it was unearned until 2026-09-25. The corpus pair separates on the key; the idiom
+#   lane separates on the lock (idiom_synchronizedCheckThenAct_onAConcurrentHashMap silent,
+#   idiom_synchronizedCheckThenAct_withoutTheMonitor firing), as do the detector's unit tests.
+#   What neither reaches: a lock the library never saw, which leaves the finding standing as it
+#   does for every lockset detector, and a check-then-act whose every caller puts the same value,
+#   which loses nothing and is still reported, because the detector is never told the value.
 #
 # Blank lines and # comments are ignored.
 
@@ -182,6 +191,25 @@ CYCLIC_BARRIER = recorded_cyclicBarrier_awaitedWhileBroken, recorded_cyclicBarri
 # which is noted rather than reported (#657), and a predicate that is wrong about what the waiter
 # waits for, which the detector evaluates but cannot check.
 CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition_consumerIdleOnAnEmptyQueue
+
+# --- 2026-09-26, #819: held on its model since #755, promoted once the model changed.
+#
+# FILE_CHANNEL_POSITION_RACE judged single accesses, so threads that each made one self-contained
+# read(buffer) or write(buffer) drew the finding, and FileChannel runs one operation involving the
+# position at a time, so those lose nothing: a probe (8 threads, 5,000 operations each, JDK 21 and
+# 26) read every chunk once and wrote every record whole. The finding is now a position(n)-then-I/O
+# sequence on one thread with another thread's implicit-position call that no common lock and no
+# happens-before edge keeps out of it, the shape the same probe read wrong about 1,500 times in
+# 40,000. Both halves below seek and read the same shared channel through the same calls and
+# differ only in synchronized (channel). The lane also holds the self-contained reads that were the
+# firing row until #819, now silent, and the positional-read twin, which calls
+# recordPositionalAccess and decides nothing; PairEvidence.REVIEWED_DESPITE_SHAPE records that
+# reading. FileChannelPositionRaceDetectorTest pins both directions.
+#
+# What the pair does not reach: a lock released and taken again between the seek and the I/O,
+# which reads as held across and is not reported, and a self-contained call that relies on where
+# an earlier one left the cursor, such as write(buffer) then position(), which is no sequence.
+FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_fileChannel_seekThenReadUnderItsOwnMonitor
 
 # --- 2026-09-26: a pair is necessary, not sufficient.
 #

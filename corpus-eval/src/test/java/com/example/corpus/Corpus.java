@@ -1820,10 +1820,10 @@ final class Corpus {
             // demonstrated the atomic primitive that fixes the row above, and as evidence it was
             // empty: it called no detector API, so a detector that fired on every recordCheckThenAct
             // would have passed it. It cannot be repaired either, and that is the interesting part.
-            // The correct use of a ConcurrentMap has no check-then-act to record, so for this
-            // detector the correct twin is unrecordable - which is the same fact, seen from the
-            // other side, as its staying PROMPT: the caller declares the defect, and a caller with
-            // nothing to declare is silent before the detector is consulted.
+            // The correct use of a ConcurrentMap has no check-then-act to record, so that twin is
+            // unrecordable. The recordable correct twin is a check-then-act every caller makes
+            // under one lock, which the detector's lockset (2026-09-25) keeps silent: the idiom
+            // lane's idiom_synchronizedCheckThenAct_* pair, and why it is VERDICT (#818).
             // recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys is the silent row that
             // does exercise the model, on the same class as the firing row.
             // --- JdbcConnectionShared: a pool is the documented fix, and used to be reported
@@ -2167,22 +2167,44 @@ final class Corpus {
                             + "silence is its operation model deciding rather than an absence "
                             + "of input"),
 
-            // --- FileChannelPositionRace: the class is documented thread-safe and the hazard
-            //     is the one stateful thing that guarantee does not cover, the implicit
-            //     position. Both rows read the same temp file through a channel shared by every
-            //     thread and differ only in which read overload the body uses - the
-            //     cursor-advancing read(ByteBuffer) or the self-contained read(ByteBuffer, long).
+            // --- FileChannelPositionRace: the class is documented thread-safe and runs one
+            //     operation involving the position at a time, so a single read(ByteBuffer) is
+            //     whole. The hazard is the one thing that guarantee cannot cover, two calls: a
+            //     position(n) and the read(ByteBuffer) relying on it (#819). Every row shares one
+            //     channel across every thread. The firing row and its guarded twin make the same
+            //     calls and differ only in synchronized (channel); the other two silent rows make
+            //     the self-contained calls that lose nothing.
 
-            new RecordingSubject("recorded_fileChannel_implicitReadsShared", JDK,
+            new RecordingSubject("recorded_fileChannel_seekThenReadShared", JDK,
                     "java.nio.channels.FileChannel",
                     DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "every thread records a cursor-advancing read(ByteBuffer) on one shared "
-                            + "channel. FileChannel serializes each call internally, but the "
-                            + "offset a read starts from depends on every other thread's "
-                            + "progress, so the I/O lands at positions no caller chose - the "
-                            + "class is thread-safe and the caller is still wrong",
+                    "every thread seeks the shared channel with position(n) and then reads "
+                            + "through read(ByteBuffer), relying on the seek, with nothing held. "
+                            + "FileChannel serializes each call, not the pair, so another "
+                            + "thread's call can land between them and the read starts where "
+                            + "that call left the cursor - a probe read the wrong bytes about "
+                            + "1,500 times in 40,000 this way",
                     IssueSeverity.HIGH),
+
+            new RecordingSubject("recorded_fileChannel_seekThenReadUnderItsOwnMonitor", JDK,
+                    "java.nio.channels.FileChannel",
+                    DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same seek-then-read on the same six threads, inside synchronized "
+                            + "(channel). Every thread holds the monitor across both calls, so "
+                            + "no other call can land between them; the same probe read nothing "
+                            + "wrong this way. A finding here would report the fix as the bug"),
+
+            new RecordingSubject("recorded_fileChannel_selfContainedReadsShared", JDK,
+                    "java.nio.channels.FileChannel",
+                    DetectorType.FILE_CHANNEL_POSITION_RACE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread makes one cursor-advancing read(ByteBuffer) and seeks "
+                            + "nothing. The channel runs one such call at a time, so each read is "
+                            + "whole and each chunk is read once, and no thread relied on where "
+                            + "the cursor was; the probe read 40,000 chunks this way, each "
+                            + "exactly once. This was the firing row until #819"),
 
             new RecordingSubject("recorded_fileChannel_positionalReadsShared", JDK,
                     "java.nio.channels.FileChannel",
@@ -4509,9 +4531,9 @@ final class Corpus {
                             + "not thread-safe: the thread-safety Random has is what is missing",
                     IssueSeverity.HIGH),
 
-            // --- Known gaps: correct idioms whose ordering the happens-before model does not
-            //     observe yet. Each is in Corpus.idiomKnownGaps() with the reason, and each still
-            //     has its twin, so the day the gap closes the pair is already written.
+            // --- Hand-offs the happens-before model learned in #741: a completion, an executor
+            //     submission and its get, an exchange, an AtomicReference set and get. Each correct
+            //     row was a known gap until then, and each twin reaches the value another way.
 
             new RecordingSubject("idiom_completableFuture_publishesThroughCompletion", JDK,
                     "java.util.concurrent.CompletableFuture",
@@ -4688,17 +4710,6 @@ final class Corpus {
      * fails until the entry is deleted, so a closed gap cannot stay listed as open.
      */
     private static final Map<String, String> IDIOM_KNOWN_GAPS = Map.of(
-            "idiom_completableFuture_publishesThroughCompletion",
-            "CompletableFuture.complete and join are not woven, so HappensBefore sees no edge "
-                    + "from the completing thread to the joining ones",
-            "idiom_executorSubmit_futureGetOrdersTheTask",
-            "ExecutorService.submit and Future.get are not woven, and the pool thread is "
-                    + "started inside the JDK, so neither the submission nor the get is an edge",
-            "idiom_exchanger_swapsFilledParcels",
-            "Exchanger.exchange is not woven, so the swap orders nothing in HappensBefore",
-            "idiom_atomicReference_publishesAFreshlyBuiltObject",
-            "AtomicReference.set and get are substituted for the spinlock detectors only; "
-                    + "HappensBefore takes no release from the set or acquire from the get",
             "idiom_digestHolderPool_checkedOutUnderALock",
             "the woven take names the holder while the detector tracks the digest inside it, "
                     + "and a monitor is no edge in HappensBefore, so nothing hands the digest "

@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * validation needs a {@code validate()} of its own, and is reported like a never-validated read if
  * none follows it.
  *
+ * <p>A never-validated finding names the fields no {@code validate()} covered. A use after a failed
+ * validation names every field read under the stamp, before and after the failed {@code validate()}:
+ * the failure says the snapshot as a whole is torn, so a field read before a passing validation is
+ * as much a part of it as one read after, and re-reading only the later fields would still pair
+ * them with the stale earlier ones. Each field is named once, up to a cap, and a finding counts
+ * the reads past the cap that it does not name.
+ *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
  * var mon = AsyncTestContext.optimisticReadValidationMonitor();
@@ -49,6 +58,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class OptimisticReadValidationDetector {
 
     /**
+     * How many field names one optimistic read keeps for its finding; the reads past it are only
+     * counted. A body that reads under one stamp in a loop used to add a name per read. Eight names
+     * also fit the ten-slot array an {@link ArrayList} allocates on its first add, so the list never
+     * grows past that one allocation.
+     */
+    static final int MAX_NAMED_FIELDS = 8;
+
+    /**
      * Where a read stands: not yet validated (or read again since its last successful validation),
      * validated or failed by its latest validation, or already reported as used.
      */
@@ -57,8 +74,18 @@ public class OptimisticReadValidationDetector {
     private static class OptimisticRead {
         final long         stamp;
         final String       threadName;
-        /** Fields read since the read started, or since the successful validation they followed. */
+        /**
+         * The fields read under the stamp, in the order first read and at most
+         * {@link #MAX_NAMED_FIELDS}: a field is kept again only when it is read again after a
+         * successful validation, since that read starts the part no validation covers.
+         */
         final List<String> accessedFields = new ArrayList<>();
+        /** Where in {@link #accessedFields} the reads since the latest successful validation start. */
+        int                pendingFrom;
+        /** Reads of a field not named because {@link #accessedFields} was full. */
+        int                unnamedReads;
+        /** {@link #unnamedReads} at the latest successful validation. */
+        int                unnamedBeforePending;
         volatile State     state          = State.PENDING;
         /** Whether a validation passed before the reads now pending: names the finding, if any. */
         volatile boolean   readAfterValidate;
@@ -66,6 +93,26 @@ public class OptimisticReadValidationDetector {
         OptimisticRead(long stamp, String threadName) {
             this.stamp = stamp;
             this.threadName = threadName;
+        }
+
+        /** Keeps a field read under the stamp for the finding, once per uncovered part, or counts it. */
+        @SuppressFBWarnings(value = "AT_NONATOMIC_OPERATIONS_ON_SHARED_VARIABLE",
+                justification = "a read is keyed by its thread and written only by it, like accessedFields;"
+                        + " analyze() reads it after the run")
+        void name(String field) {
+            for (int i = pendingFrom; i < accessedFields.size(); i++) {
+                if (accessedFields.get(i).equals(field)) return;
+            }
+            if (accessedFields.size() < MAX_NAMED_FIELDS) {
+                accessedFields.add(field);
+            } else {
+                unnamedReads++;
+            }
+        }
+
+        /** {@return whether a field was read since the read started or since its latest successful validation} */
+        boolean hasPendingReads() {
+            return accessedFields.size() > pendingFrom || unnamedReads > unnamedBeforePending;
         }
     }
 
@@ -102,7 +149,7 @@ public class OptimisticReadValidationDetector {
         // If the replaced read had accessed data without ever being validated, that
         // evidence must be flushed now — otherwise the replacement silently erases
         // the violation and analyze() never sees it.
-        if (replaced != null && replaced.state == State.PENDING && !replaced.accessedFields.isEmpty()) {
+        if (replaced != null && replaced.state == State.PENDING && replaced.hasPendingReads()) {
             violations.add(neverValidatedViolation(replaced));
         }
     }
@@ -125,13 +172,17 @@ public class OptimisticReadValidationDetector {
         if (read.state == State.VALIDATED) {
             // The validate() before this read says nothing about it: a writer may have landed
             // since (#809). Only the fields read from here on are unvalidated, so only they are
-            // named. A FAILED or REPORTED read is left alone: a use of it is already judged, once.
-            read.accessedFields.clear();
+            // named by a never-validated finding; a failed use still names the earlier ones (#815).
+            read.pendingFrom = read.accessedFields.size();
+            read.unnamedBeforePending = read.unnamedReads;
             read.readAfterValidate = true;
             read.state = State.PENDING;
         }
-        if (read.state == State.PENDING) {
-            read.accessedFields.add(fieldName);
+        // A read on a FAILED stamp changes no verdict, a use of it is judged already, but it is
+        // part of the torn snapshot that use would report, so it is named too (#815). A REPORTED
+        // read's finding is written.
+        if (read.state != State.REPORTED) {
+            read.name(fieldName);
         }
     }
 
@@ -190,7 +241,7 @@ public class OptimisticReadValidationDetector {
         OptimisticReadValidationReport r = new OptimisticReadValidationReport();
         // reads still pending at analysis time were never validated
         for (OptimisticRead read : reads.values()) {
-            if (read.state == State.PENDING && !read.accessedFields.isEmpty()) {
+            if (read.state == State.PENDING && read.hasPendingReads()) {
                 r.violations.add(neverValidatedViolation(read));
             }
         }
@@ -204,15 +255,28 @@ public class OptimisticReadValidationDetector {
                 ? "Thread '%s': data accessed (%s) during optimistic read after its validate() passed,"
                     + " and validate() was not called again"
                 : "Thread '%s': data accessed (%s) during optimistic read but validate() was never called",
-            read.threadName, String.join(", ", read.accessedFields));
+            read.threadName,
+            fieldList(read.accessedFields.subList(read.pendingFrom, read.accessedFields.size()),
+                read.unnamedReads - read.unnamedBeforePending));
     }
 
     private static String usedAfterFailedValidation(OptimisticRead read) {
+        List<String> fields = read.accessedFields.stream().distinct().toList();
         return String.format(
             "Thread '%s': values read optimistically (%s) were used after validate() returned false,"
                 + " so they may be torn",
             read.threadName,
-            read.accessedFields.isEmpty() ? "no fields recorded" : String.join(", ", read.accessedFields));
+            fields.isEmpty() && read.unnamedReads == 0
+                ? "no fields recorded" : fieldList(fields, read.unnamedReads));
+    }
+
+    /** {@return the named fields, then the count of the reads past the cap, as other detectors count theirs} */
+    private static String fieldList(List<String> fields, int unnamedReads) {
+        String named = String.join(", ", fields);
+        if (unnamedReads == 0) return named;
+        return named.isEmpty()
+            ? String.format("%d reads not named", unnamedReads)
+            : named + String.format(", and %d more reads", unnamedReads);
     }
 
     /** Report produced by {@link #analyze()}. */

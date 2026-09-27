@@ -6,6 +6,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -111,5 +112,22 @@ class AgentCollectionHooksOwnershipFormsTest {
         Queue<Object> queue = new ConcurrentLinkedQueue<>();
 
         assertThrows(NullPointerException.class, () -> AgentCollectionHooks.collectionAddAll(queue, null));
+    }
+
+    @Test
+    @DisplayName("addAll into a bounded queue keeps what fits and throws what the queue's own addAll throws (#806)")
+    void addAllIntoABoundedQueueFailsLikeTheQueue() {
+        Queue<Object> queue = new ArrayBlockingQueue<>(2);
+
+        assertThrows(IllegalStateException.class,
+                () -> AgentCollectionHooks.collectionAddAll(queue, List.of("a", "b", "c")));
+        assertEquals(List.of("a", "b"), new ArrayList<>(queue));
+        assertThrows(IllegalArgumentException.class,
+                () -> AgentCollectionHooks.collectionAddAll(queue, queue));
+        assertThrows(NullPointerException.class, () -> AgentCollectionHooks.collectionAddAll(queue, null));
+        queue.clear();
+        assertTrue(AgentCollectionHooks.collectionAddAll(queue, List.of("x")));
+        assertFalse(AgentCollectionHooks.collectionAddAll(queue, List.of()));
+        assertEquals(List.of("x"), new ArrayList<>(queue));
     }
 }

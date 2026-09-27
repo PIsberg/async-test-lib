@@ -300,7 +300,7 @@ public enum DetectorType {
     SHARED_CHARSET_CODER,
     /** Detects Checksum implementations (e.g. */
     SHARED_CHECKSUM,
-    /** Detects FileChannel / SeekableByteChannel instances whose implicit position is read or mutated from more than one thread. */
+    /** Detects a FileChannel / SeekableByteChannel seek and the read or write relying on it, with another thread's implicit-position call able to land between them. */
     FILE_CHANNEL_POSITION_RACE,
     /** Detects a single Iterator, ListIterator, or Spliterator instance being driven from more than one thread. */
     SHARED_ITERATOR,

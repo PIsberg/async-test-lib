@@ -69,9 +69,10 @@ nine were held on their detector's model:
   call is the defect in the corpus; it is not the only thing the detector reports.
 - `RACE_CONDITIONS`, `READ_WRITE_LOCK_FAIRNESS`, `THREAD_LOCAL_LEAKS`, `SCHEDULED_EXECUTOR`,
   `TIMER` and `LOCK_UPGRADE_DEADLOCK` are held for the same kind of reason, and
-  `FILE_CHANNEL_POSITION_RACE`, whose argument was already in `verdict-evidence-corpus`, is now
+  `FILE_CHANNEL_POSITION_RACE`, whose argument was already in `verdict-evidence-corpus`, was
   recorded there too. `READ_WRITE_LOCK_FAIRNESS` has since moved to `ADVISORY` (#569), which is not a
-  promotion candidate, so its hold was removed.
+  promotion candidate, so its hold was removed, and `FILE_CHANNEL_POSITION_RACE` was promoted once
+  its finding became a seek-then-I/O sequence another thread's call can land inside (#819).
 
 Several of those reasons are detector defects rather than limits, and each has an issue. The
 first to be fixed was `LOCK_UPGRADE_DEADLOCK` (#566): it now asks the lock whenever the recording

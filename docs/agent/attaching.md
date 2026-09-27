@@ -193,13 +193,25 @@ model names for the woven calls: an element offered to and taken from a `java.ut
 refused publishes nothing, a value put into and read back from such a map,
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, and `Thread.start` and a `Thread.join` that returned with the thread finished (every
-`join` overload is substituted for this). With `fields=true`, a volatile write releases that field
+`join` overload is substituted for this). Since #741 also: a `CompletableFuture` completed with
+`complete`, `completeExceptionally` or an `obtrude` call and a `join` or `get` that observed it, where a
+`complete` the future refused publishes nothing; a task handed to `ExecutorService.submit` or
+`CompletableFuture.supplyAsync`/`runAsync`, which starts ordered after the call and is ordered before
+a `get` or `join` of its future on the thread that submitted it; and each side of an
+`Exchanger.exchange`, ordered before its partner's return. The submitted task runs wrapped, which only
+the JDK's own executors get, since only there nothing a caller can reach returns the task; a get on
+another thread, or of one of more than 16 futures a thread submitted without getting, orders nothing.
+`Executor.execute` is not an edge, because a `ThreadPoolExecutor` hands the task itself back from its
+queue. With `fields=true`, a volatile write releases that field
 of its object, and a read of the same field acquires at the read what the write whose value it
 returned published: reading one volatile field receives nothing a write of another published, and
 a read that returned an older value receives nothing the later write published (#742). The acquire
 goes into the reading thread's clock, so everything the thread does after the read is ordered,
 including its accesses to the object the read returned, which is how a node published through a
-volatile `next` reaches its reader (#804). The value is compared as a primitive's bits or a
+volatile `next` reaches its reader (#804). An `AtomicReference` is modelled the same way (#741): a
+`set`, `lazySet`, `setRelease`, successful `compareAndSet` or `getAndSet` releases the slot, and a
+`get` or `getAcquire` acquires what the store whose value it returned published, so the same object
+read out of another slot receives nothing. The value is compared as a primitive's bits or a
 reference's identity hash, and among the field's last two writes only, since a write is released
 just before it is stored. An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock
 hand-off is deliberately not an edge: the lockset judges locking, and ordering it by the one

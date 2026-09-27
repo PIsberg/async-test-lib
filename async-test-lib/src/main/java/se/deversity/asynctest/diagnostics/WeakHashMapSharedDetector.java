@@ -23,10 +23,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <ul>
  *   <li><strong>WeakHashMap</strong> — entry removal is driven by the GC reclaiming
- *       referents. The clean-up runs lazily on every {@code get}/{@code put}
- *       and mutates the internal table without locking. Concurrent access can
- *       produce infinite loops in the entry chain (the same family of bugs
- *       that {@code HashMap.put} concurrency caused on Java 7).</li>
+ *       referents. The clean-up runs lazily on every {@code get}/{@code put};
+ *       readers take turns at it on the reference queue's monitor, but nothing
+ *       orders it against a {@code put}. Concurrent writes can produce infinite
+ *       loops in the entry chain (the same family of bugs that
+ *       {@code HashMap.put} concurrency caused on Java 7).</li>
  *   <li><strong>IdentityHashMap</strong> — uses open addressing with linear
  *       probing on a power-of-two table. Concurrent {@code put} can shift
  *       entries past the probe range another thread is currently reading,
@@ -67,14 +68,39 @@ public final class WeakHashMapSharedDetector {
     private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
-     * Record an access to a {@link WeakHashMap} or {@link IdentityHashMap}.
-     * Other map types are ignored (this detector is type-specific).
+     * Record an access to a {@link WeakHashMap} or {@link IdentityHashMap}, counted as a write.
+     * Other map types are ignored (this detector is type-specific). Record a read with
+     * {@link #recordRead}, which only a write races.
      *
      * @param map    the map being accessed (null-safe; other map types ignored)
      * @param name   descriptive label (may be {@code null})
      * @param thread accessing thread
      */
     public void recordAccess(Map<?, ?> map, String name, Thread thread) {
+        record(map, name, true, thread);
+    }
+
+    /**
+     * Record a read of a {@link WeakHashMap} or {@link IdentityHashMap}: a {@code get},
+     * {@code containsKey}, {@code size} or iteration. Other map types are ignored.
+     *
+     * <p>{@link #recordAccess} counts every access as a write, so gets under one read lock beside
+     * puts under the write lock were reported. A read here only races a write: reads alone in a
+     * round, and reads under a shared read lock whose writes hold the write lock, are no finding.
+     * A {@code WeakHashMap} read does expunge cleared entries, but the JDK unlinks each one inside
+     * {@code synchronized (queue)}, so readers take turns, and keeps the unlinked entry's
+     * {@code next} for a traversal standing on it (#807, #820).
+     *
+     * @param map    the map being read (null-safe; other map types ignored)
+     * @param name   descriptive label (may be {@code null})
+     * @param thread reading thread
+     * @since 1.12.3
+     */
+    public void recordRead(Map<?, ?> map, String name, Thread thread) {
+        record(map, name, false, thread);
+    }
+
+    private void record(Map<?, ?> map, String name, boolean forWrite, Thread thread) {
         if (map == null || thread == null) return;
         String type;
         if (map instanceof WeakHashMap)         type = "WeakHashMap";
@@ -91,7 +117,7 @@ public final class WeakHashMapSharedDetector {
         }
         // Probed on the accessing thread, which is the one inside (or outside) the guarded
         // region; the explicit thread parameter is attribution only.
-        s.noteAccess(map, thread);
+        s.noteAccess(map, forWrite, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.

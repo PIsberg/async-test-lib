@@ -61,7 +61,11 @@ Keep the list, and fill it wherever the text gains a line. `StructuredViolationC
 on a detector whose report has no `structuredViolations` field unless it is pinned in that test's
 text-only allow-list, which only shrinks, so a new detector needs the field. It also drives every
 detector outside that list and fails when a report with issues comes back with an empty list, so
-add one entry to its `PATHS` per place the new report writes a finding.
+add one entry to its `PATHS` per place the new report writes a finding. The same check runs on
+every report that enters a run's findings: under `async-test.strict-detectors`, which this build's
+tests set, `DetectorRegistry.ifIssue` throws for a report with issues and an empty list, so any test
+that makes the detector fire through the runner or the registry is a driver as well (#802). It only
+sees the paths some test reaches, so the `PATHS` entries are still needed.
 
 ## Tests are part of the change
 

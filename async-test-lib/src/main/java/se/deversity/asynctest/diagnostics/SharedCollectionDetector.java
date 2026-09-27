@@ -126,6 +126,11 @@ public class SharedCollectionDetector {
     /**
      * Record a read operation ({@code get}, {@code contains}, {@code size}, iteration).
      *
+     * <p>A {@code get} or {@code getOrDefault} on a {@link java.util.LinkedHashMap} known to be
+     * access-ordered relinks the entry, so it is recorded as a write, in the lockset and in the
+     * writer tally alike (#807, #820). Its order is known only where {@code java.util} is open to
+     * the library; see {@code SelfGuard.relinksOnGet}.
+     *
      * @param collection the collection instance
      * @param name       the label (should match registration)
      * @param operation  a short name for the operation, e.g. {@code "get"}
@@ -135,10 +140,18 @@ public class SharedCollectionDetector {
         CollectionState state = resolveState(collection, name);
         // A get on an access-ordered LinkedHashMap relinks the entry, so for the lockset it is a
         // write, which a read lock does not guard (#807). containsKey and iteration do not relink.
-        state.noteAccess(collection, ("get".equals(operation) || "getOrDefault".equals(operation))
-                && SelfGuard.relinksOnGet(collection));
-        state.readThreads.add(Thread.currentThread().threadId());
-        state.readCount.incrementAndGet();
+        boolean relinks = ("get".equals(operation) || "getOrDefault".equals(operation))
+                && SelfGuard.relinksOnGet(collection);
+        state.noteAccess(collection, relinks);
+        // And for the writer tally: counted as a read, two unguarded LRU gets alone in a round
+        // made no writer, and the finding needs one (#820).
+        if (relinks) {
+            state.writeThreads.add(Thread.currentThread().threadId());
+            state.writeCount.incrementAndGet();
+        } else {
+            state.readThreads.add(Thread.currentThread().threadId());
+            state.readCount.incrementAndGet();
+        }
     }
 
     /**

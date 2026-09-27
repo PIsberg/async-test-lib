@@ -382,9 +382,19 @@ public final class SelfGuard {
      * <p>An access ordered after an earlier hand-off but not after a later one may overlap the
      * accesses since the earlier one and none before it, so the verdict falls back to that one
      * rather than to the whole window. Immutable, like the window, and allocated only at a
-     * take-over. At most {@link #MAX_KEPT} are kept per window; past that a new hand-off absorbs
-     * the one before it, and an access ordered after the absorbed one falls back one hand-off
-     * further, which can only add a finding.
+     * take-over.
+     *
+     * <p>At most {@link #MAX_KEPT} are kept per window. When a take-over finds that many, the
+     * chain first drops every hand-off but the first that a fallback gains nothing from: one
+     * where the locks and writes since it are those since the hand-off before it, so an access
+     * ordered after it and one ordered only after the one before are judged alike (#821). Such a
+     * hand-off stays redundant, because what follows it only ever shrinks the locks and adds
+     * writes. Every hand-off kept then either adds a lock to what a fallback reads or keeps a
+     * write out of it, and the locks are those held at every access since the latest hand-off,
+     * so the chain stays full only while the owner holds at least {@code MAX_KEPT - 2} locks at
+     * every access. Only then does a new hand-off absorb the one before it, and an access
+     * ordered after the absorbed one falls back one hand-off further, which can only add a
+     * finding.
      */
     private static final class HandOff {
 
@@ -398,8 +408,10 @@ public final class SelfGuard {
         final HappensBefore.Stamp stamp;
 
         /**
-         * The locks held at every access from {@code previous} up to this hand-off; not read when
-         * there is no {@code previous}, since falling back past this one reaches the whole window.
+         * The locks held at every access from {@code previous} up to this hand-off, or from the
+         * latest one dropped since as redundant, whose accesses before add nothing a fallback
+         * reads; not read when there is no {@code previous}, since falling back past this one
+         * reaches the whole window.
          */
         final int[] locksBefore;
 
@@ -432,13 +444,45 @@ public final class SelfGuard {
             if (latest == null) {
                 return new HandOff(owner, stamp, locks, wrote, null, 1);
             }
-            if (latest.depth < MAX_KEPT) {
-                return new HandOff(owner, stamp, locks, wrote, latest, latest.depth + 1);
+            HandOff kept = latest.depth < MAX_KEPT ? latest : withoutRedundant(latest, locks, wrote);
+            if (kept.depth < MAX_KEPT) {
+                return new HandOff(owner, stamp, locks, wrote, kept, kept.depth + 1);
             }
-            // Full: absorb the latest, so what it separated falls back together. The first is never
-            // absorbed, and with MAX_KEPT above one the absorbed one always has a previous.
-            return new HandOff(owner, stamp, retain(locks, latest.locksBefore),
-                    wrote || latest.wroteBefore, latest.previous, latest.depth);
+            // Still full: absorb the latest, so what it separated falls back together. The first
+            // is never absorbed, and with MAX_KEPT above one the absorbed one always has a previous.
+            return new HandOff(owner, stamp, retain(locks, kept.locksBefore),
+                    wrote || kept.wroteBefore, kept.previous, kept.depth);
+        }
+
+        /**
+         * {@return the chain ending at {@code handOff} without the hand-offs, other than the
+         * first, whose fallback reads what the one before it does, where {@code since} and
+         * {@code wroteSince} cover the accesses after {@code handOff}}
+         *
+         * <p>A hand-off is redundant when every lock in {@code since} was also held before it,
+         * back to the hand-off before, and it keeps no write out: falling back past it then
+         * changes nothing. A walk reaching the hand-off before has already intersected what came
+         * after, so a dropped hand-off's own locks and writes are not carried anywhere. Recurses
+         * once per hand-off in the chain, at most {@link #MAX_KEPT} deep, and allocates only the
+         * hand-offs after the earliest one dropped and a narrowed lock set per hand-off kept.
+         */
+        @SuppressWarnings("ReferenceEquality") // a hand-off is replaced, never mutated
+        private static HandOff withoutRedundant(HandOff handOff, int[] since, boolean wroteSince) {
+            HandOff previous = handOff.previous;
+            if (previous == null) {
+                return handOff;
+            }
+            int[] before = retain(since, handOff.locksBefore);
+            boolean wroteBefore = wroteSince || handOff.wroteBefore;
+            HandOff keptBefore = withoutRedundant(previous, before, wroteBefore);
+            if (before == since && wroteBefore == wroteSince) { // NOPMD CompareObjectsWithEquals - retain returns its input when nothing dropped
+                return keptBefore;
+            }
+            if (keptBefore == previous) { // NOPMD CompareObjectsWithEquals - nothing before it was dropped
+                return handOff;
+            }
+            return new HandOff(handOff.owner, handOff.stamp, handOff.locksBefore,
+                    handOff.wroteBefore, keptBefore, keptBefore.depth + 1);
         }
     }
 
@@ -731,8 +775,13 @@ public final class SelfGuard {
                 // lockset and the writes are those since that one, or the whole window's when it
                 // is ordered after none. An access ordered after a hand-off is ordered after every
                 // one before it, through the owner that took over there, so walking back, the
-                // first it is ordered after is the latest.
-                while (handOff != null
+                // first it is ordered after is the latest. The owner's own access, made by the
+                // caller, walks nowhere: it follows, in program order, the access with which it
+                // took the instance over at the latest hand-off, and a walk only ever moves back
+                // from there. Its clock may no longer show that, once it holds more threads than
+                // a clock keeps and has dropped the previous owner (#821).
+                boolean ownersOwn = threadId == owner && stamp != null;
+                while (!ownersOwn && handOff != null
                         && !HappensBefore.ordered(handOff.owner, handOff.stamp, threadId, stamp)) {
                     HandOff passed = handOff;
                     handOff = passed.previous;

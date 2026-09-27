@@ -129,6 +129,83 @@ class DiscardedOfferWeavingTest {
                                   int maxElements) {
             return q.drainTo(target, maxElements);
         }
+
+        // The hand-off rows (#741), which this test never reaches but the table resolves.
+
+        public static boolean complete(java.util.concurrent.CompletableFuture<Object> f, Object v) {
+            return f.complete(v);
+        }
+
+        public static boolean completeExceptionally(java.util.concurrent.CompletableFuture<Object> f,
+                                                    Throwable t) {
+            return f.completeExceptionally(t);
+        }
+
+        public static void obtrudeValue(java.util.concurrent.CompletableFuture<Object> f, Object v) {
+            f.obtrudeValue(v);
+        }
+
+        public static void obtrudeException(java.util.concurrent.CompletableFuture<Object> f,
+                                            Throwable t) {
+            f.obtrudeException(t);
+        }
+
+        public static Object join(java.util.concurrent.CompletableFuture<Object> f) {
+            return f.join();
+        }
+
+        public static Object get(java.util.concurrent.Future<Object> f) throws Exception {
+            return f.get();
+        }
+
+        public static Object get(java.util.concurrent.Future<Object> f, long timeout, TimeUnit unit)
+                throws Exception {
+            return f.get(timeout, unit);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> supplyAsync(
+                java.util.function.Supplier<Object> s) {
+            return java.util.concurrent.CompletableFuture.supplyAsync(s);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> supplyAsync(
+                java.util.function.Supplier<Object> s, java.util.concurrent.Executor e) {
+            return java.util.concurrent.CompletableFuture.supplyAsync(s, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAsync(Runnable r) {
+            return java.util.concurrent.CompletableFuture.runAsync(r);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAsync(Runnable r,
+                                                                            java.util.concurrent.Executor e) {
+            return java.util.concurrent.CompletableFuture.runAsync(r, e);
+        }
+
+        public static java.util.concurrent.Future<Object> submit(
+                java.util.concurrent.ExecutorService x, java.util.concurrent.Callable<Object> c) {
+            return x.submit(c);
+        }
+
+        public static java.util.concurrent.Future<?> submit(java.util.concurrent.ExecutorService x,
+                                                            Runnable r) {
+            return x.submit(r);
+        }
+
+        public static java.util.concurrent.Future<Object> submit(
+                java.util.concurrent.ExecutorService x, Runnable r, Object result) {
+            return x.submit(r, result);
+        }
+
+        public static Object exchange(java.util.concurrent.Exchanger<Object> x, Object item)
+                throws InterruptedException {
+            return x.exchange(item);
+        }
+
+        public static Object exchange(java.util.concurrent.Exchanger<Object> x, Object item,
+                                      long timeout, TimeUnit unit) throws Exception {
+            return x.exchange(item, timeout, unit);
+        }
     }
 
     @Test

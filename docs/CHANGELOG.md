@@ -30,9 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **corpus-eval gains an `idioms` lane.** Correct user-code concurrency (a queue hand-off, volatile
   publication, `start`/`join`, an `AtomicInteger` counter, a latch, a pool checkout, guarded waits and
   more) runs with the agent attached and every detector on, each idiom beside its broken twin. A
-  correct idiom fails the run on any finding at FACT or above, and the idioms the happens-before
-  model does not see yet (`CompletableFuture`, executor submit/get, `Exchanger`, `AtomicReference`)
-  are pinned rows that flip visibly when fixed. The false positives fixed here were all found this
+  correct idiom fails the run on any finding at FACT or above, and an idiom the happens-before
+  model does not see yet is a pinned row that flips visibly when fixed, as the `CompletableFuture`,
+  executor submit/get, `Exchanger` and `AtomicReference` rows did (#741). The false positives fixed here were all found this
   way, by a throwaway probe; the lane keeps them from coming back.
 
 ### Changed
@@ -100,9 +100,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of 40,000 for an unguarded `position(n)` then `read(buffer)`, and none under
   `synchronized (channel)`. `FileChannelPositionRaceDetectorTest` pins a declared lock staying
   silent, two different locks firing, and the self-contained case the hold rests on.
+- **`CONCURRENT_MAP_CHECK_THEN_ACT` stays VERDICT, now for a reason the evidence file agrees
+  with (#818).** The header of `verdict-evidence-corpus` argued it could not back a VERDICT,
+  because `recordCheckThenAct` is the body saying a check-then-act happened and the detector only
+  counted threads on the `(map, key)` site, while a line further down registered it and
+  `DetectorTrust` rated it VERDICT. Re-read against the detector, the argument stopped holding on
+  2026-09-25: the detector now asks whether one lock covered every call and whether the
+  happens-before model orders them, so the recorded call names an operation that is correct on one
+  thread and the finding is the detector's own. The tier does not change, so neither does what a
+  `minTrust = VERDICT` gate or a passing run's report shows. The registration was made on 2026-09-07,
+  before that model existed, and was unearned for 18 days. The header now names held detectors on
+  `# held:` lines, and `DetectorTrustCoverageTest` refuses a detector named there, or kept as a
+  commented-out capped line, that is also registered or rated VERDICT; restoring the old header's
+  hold fails it with `CONCURRENT_MAP_CHECK_THEN_ACT is held on its model and also registered`.
+  Known limits, unchanged: a lock the library never saw leaves the finding standing, and callers
+  that all put the same value lose nothing and are still reported.
+- **`FILE_CHANNEL_POSITION_RACE` judges the seek-then-I/O sequence, and reaches `VERDICT`
+  (#819).** It reported any two threads making implicit-position calls on one channel, so threads
+  that each made one self-contained `read(buffer)` or `write(buffer)`, which `FileChannel` runs one
+  at a time and which lose nothing, drew a finding saying they corrupted the file or lost writes.
+  An operation recorded as `position` now opens a seek, and the same thread's next implicit call on
+  that channel in the same round is the I/O relying on it. A finding needs such a sequence and
+  another thread's implicit-position call that no lock common to both and no happens-before edge
+  keeps out of it, which is `SelfGuard`'s verdict with the sequence's I/O as the write and every
+  other call as a read: self-contained calls alone are silent, and a read lock guards them but not
+  a sequence. The report says what is true of that shape (the I/O runs at an offset its thread did
+  not choose) and adds holding one lock across the seek and the I/O to the fixes. The corpus
+  firing row, one self-contained read per body, is now a silent row; the new firing row is a
+  `position(n)` then `read(buffer)`, beside the same body under `synchronized (channel)`, and that
+  pair is registered in `verdict-evidence-corpus`. Example 123 said one record lands on top of
+  another and quoted a sentence the `FileChannel` javadoc does not contain; it now quotes the
+  javadoc and demonstrates a seek-then-read returning the wrong record. Not seen: a lock released
+  and taken again between the seek and the I/O, which reads as held across, and a self-contained
+  call relying on where an earlier one left the cursor, such as `write(buffer)` then `position()`.
 
 ### Fixed
 
+- **A detector note that is not a finding now reaches the user (#816).** A report is printed only
+  when `hasIssues()` is true, so a note in a report with no finding, such as
+  `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call
+  that decides it, was shown only when the same report also had a finding. The runner now logs
+  such notes at INFO as `runner.detector.note test=… detector=… notes=… note="…"`, once per run,
+  at most three per detector, and `ConcurrencyRunnerLogContractTest` pins the event. A note is
+  not a finding: it fails nothing, and a note beside a finding stays in the report text as before.
+  Only `SynchronizedNonFinalDetector` hands its notes out so far
+  (`SynchronizedNonFinalReport.notes()`).
 - **A report with issues carries a structured finding, and a gate checks it (#774).** The `failOn`
   gate reads a finding's severity from the report's `structuredViolations` list first and guesses
   from the text only when the list is empty, but nothing checked that a report that fired had
@@ -115,6 +157,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an atomicity violation. No `failOn` outcome changes, and the test pins that agreement.
   `AtomicityValidator`'s `DetectorDefaultSeverity` entry is removed as redundant; it declared the
   same `HIGH` the fallback gives.
+- **A structured report with issues and an empty list fails this build wherever it fires (#802).**
+  `StructuredViolationCoverageTest` needs one hand-written driver per finding site, so a text-only
+  site added later to an already-structured detector passed it. `DetectorRegistry.ifIssue` now
+  checks each report with issues once: under `async-test.strict-detectors`, which this repository's
+  builds set, a report type that keeps a `structuredViolations` list and returns it empty throws an
+  `AssertionError` naming the detector. Every test, corpus lane and example that makes a detector
+  fire is a driver. Report types without the field are skipped. Consumers see no change: with the
+  flag off the check returns before looking at the report and writes nothing. In this module's
+  suite 86 built-in reports with issues pass through the check, 49 of them structured, and none
+  came back with an empty list.
 - **`ABAProblemDetector` keeps every compare-and-set it records (#763).** Attempts were keyed by
   their identity hash, so a later attempt sharing one replaced an earlier one, and a stale
   compare-and-set already judged an ABA dropped out of the report: of 300,000, two runs reported
@@ -173,6 +225,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that never happened, and a race between them went unreported. The hooks now withdraw the release
   when the call fails (`HappensBefore.retract`, `TelemetryRegistry.ownershipRefused`); an accepted
   offer and a successful swap still order the take.
+- **A `CompletableFuture` completion, an executor submission and its get, an `Exchanger` swap and
+  an `AtomicReference` set and get order what they hand over (#741).** None of these calls fed the
+  happens-before model, so correct code publishing through them still drew a `RaceConditionDetector`
+  or `AtomicityValidator` finding, and the corpus idiom lane pinned all four as known gaps. With
+  `collections=true` the agent now substitutes `CompletableFuture.complete`,
+  `completeExceptionally`, the two `obtrude` calls, `join`, `supplyAsync` and `runAsync`,
+  `Future.get`, `ExecutorService.submit` and `Exchanger.exchange`: a completion releases the future
+  and a `join` or `get` that observed it acquires it; a task submitted to a JDK executor or through
+  `supplyAsync`/`runAsync` runs wrapped, receiving its submitter's clock before it starts and leaving
+  its own for a `get` or `join` on the submitting thread; an exchange releases the object handed
+  over and acquires the one received. A `complete` the future refused and an exchange that failed
+  withdraw their release. With `fields=true`, `AtomicReference.get` and `getAcquire` are
+  substituted too, and a store into the slot is modelled as the volatile write it is: a get acquires
+  what the store of the value it returned published, and the same object read out of another slot
+  receives nothing. The four idiom rows are silent now and their twins still fire. Limits: a get on
+  a thread other than the submitter's, `Executor.execute`, a user-defined executor and a dependent
+  stage's function (`thenApply`) are not edges. Measured cost: 24 bytes per submission (the
+  wrapper), nothing for an `AtomicReference.get`, and about 190 bytes per future completed and
+  joined through the hooks.
+- **An `addAll` a bounded queue takes only part of publishes only that part (#806).** The woven
+  `addAll` released every element before the call and withdrew nothing, so an element the queue
+  refused still read as handed over, and whoever reached it another way was ordered after the
+  producer by a hand-off that never happened. A queue whose `addAll` is `AbstractQueue`'s, which
+  includes `ArrayBlockingQueue`, `LinkedBlockingQueue` and the other bounded JDK queues, is now
+  filled one `add` at a time, the calls its own `addAll` makes, so a refused element withdraws its
+  release and the elements after it are never offered. A queue that implements `addAll` itself,
+  `LinkedBlockingDeque` among them, keeps its own call and still withdraws nothing when it throws.
 - **`LockUpgradeDeadlockDetector` and `LockDowngradeDetector` name unnamed threads by id (#766).**
   Both printed a thread by name alone, so a finding on default virtual threads, which have no
   name, printed an empty name for every thread, and the upgrade report collapsed them into one.
@@ -238,13 +317,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand-off but not after B's fell back to every access of the round, so A's unlocked set-up, which
   that access is ordered after, reported it beside guarded uses by B and D. `SelfGuard` now keeps
   the hand-offs of a window, at most eight, and such an access falls back to the latest one it is
-  ordered after; past eight a new hand-off absorbs the one before it, which can only add a
-  finding. A late access that may overlap an unguarded owner still reports. Also pinned: the same
-  lockset answers `AtomicNonAtomicUpdateDetector`, so one lock before an ordered hand-off and
-  another after it are not a lost update, while the same two locks with no edge still report;
-  and an access recorded for a thread other than the caller carries no clock and never takes an
-  instance over, because that thread's clock read at the record may already know an edge made
-  after the access.
+  ordered after; past eight a new hand-off absorbs the one before it (narrowed by #821, below),
+  which can only add a finding. A late access that may overlap an unguarded owner still reports.
+  Also pinned: the same lockset answers `AtomicNonAtomicUpdateDetector`, so one lock before an
+  ordered hand-off and another after it are not a lost update, while the same two locks with no
+  edge still report; and an access recorded for a thread other than the caller carries no clock
+  and never takes an instance over, because that thread's clock read at the record may already
+  know an edge made after the access.
+- **A late access past the eighth hand-off is judged from the hand-off it is ordered after (#821).**
+  Past eight hand-offs in one window, each new one absorbed the one before it, so in a chain of 12
+  owners where owner 8 used a digest unlocked, a guarded use ordered after owner 9's hand-off fell
+  back to owner 7's and reported owner 8's use, which it is ordered after. When the chain is full,
+  `SelfGuard` now first drops the hand-offs a fallback gains nothing from, those where the locks
+  and writes since them equal those since the one before, and absorbs only when every kept one
+  still matters, which needs the owner to hold six or more locks at every access. Separately, an
+  owner's own access no longer asks its clock whether it follows the hand-off it took the instance
+  over at: past 256 threads the clock can drop the previous owner, and the access then fell back
+  to the whole window while nothing was shared. Pinned both ways in
+  `SharedMessageDigestDetectorTest`: a late use that may overlap an unguarded owner past the
+  eighth hand-off, one ordered after no hand-off, and an unguarded use beside the owner whose
+  clock dropped the hand-off still report.
 - **The lock-aware detectors no longer count a read-only round as sharing (#787).** `SelfGuard`'s
   per-round verdict did not tell reads from writes, so two threads reading with no lock in one round
   latched it, and a mutation in a different round, which never overlapped the reads, completed a
@@ -267,16 +359,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write, and gets alone in one round on one known to be insertion-ordered as reads. The order is a
   private field of `java.util`, read only when the test JVM already opens that package to the
   library (`--add-opens java.base/java.util=ALL-UNNAMED`); the library never opens it, and an
-  unknown order keeps the verdict it had. `recordSet` cannot tell `set()` from `setTime()`, which
-  leaves nothing to recompute, so a `get` after a recorded `setTime()` also counts as a write.
+  unknown order keeps the verdict it had.
 - **A `WeakHashMap` read counts as a read (#807).** #787 counted every read of one as a write for
   the round rule, because a read expunges cleared entries, so gets alone in one round beside a put
   in another were reported. The JDK makes expunging safe among readers: `expungeStaleEntries`
   unlinks each entry inside `synchronized (queue)`, keeps the unlinked entry's `next` for a
   traversal standing on it, and a `get` never returns a cleared entry's value. Gets alone in a
   round, and gets under one read lock beside puts under the write lock, are no finding; a put and
-  an unguarded get in one round still are. `WeakHashMapSharedDetector` records every access as a
-  write and keeps its verdict.
+  an unguarded get in one round still are. `WeakHashMapSharedDetector` gained a way to record a
+  read in #820.
+- **`CacheConcurrencyDetector` counts a stampede within one round (#820).** The threads that wrote
+  a key were counted across the run, so one thread computing the key in each of two rounds was
+  reported as a key "recomputed by 2 threads", though the runner finishes one round before it
+  starts the next and the two computations never overlapped. The writers of a key are now kept per
+  round, and the report counts the round that saw the most: two threads recomputing one key in the
+  same round still report.
+- **`CalendarDetector` can tell a `setTime()` from a `set()` (#820).** `recordSet` was the only way
+  to record either, and `recordAdd` did not say which field it added to, so the first `get` after a
+  `setTime()`, or after an `add()` to an hour or a day, counted as a write and needed an exclusive
+  lock, though both compute every field at once and leave the `get` nothing to write. A `setTime`
+  under the write lock and gets under the read lock were reported. The new `recordSetTime` and
+  `recordAdd(calendar, name, field)` record them: after either, the next `get` only reads, except
+  after an `add` to the era, the year or the month, which sets that field and leaves the rest to
+  recompute, as a `set()` does.
+- **`CalendarDetector` sees fields left to compute before a calendar's first recorded access
+  (#820).** A calendar started out as complete, which is what `Calendar.getInstance()` returns, but
+  `new GregorianCalendar(year, month, day)` only sets the fields it is given, so the first `get` on
+  it computes the time and every other field. Gets under one read lock on such a calendar were not
+  reported. The detector now reads the calendar when it first sees it: a field that is not set
+  means the fields are pending, through public API. A `set()` on a calendar whose fields were all
+  computed leaves every field set, and is seen only when the test JVM opens `java.util` to the
+  library, the same condition as a `LinkedHashMap`'s order; otherwise it keeps the old verdict. The
+  agent still weaves only `get(int)` and the `set` overloads, so a woven `add`, `roll`, `clear` or
+  `setTimeZone` is not recorded.
+- **`SharedCollectionDetector` counts a relinking `get` as a writer (#820).** #807 made a `get` on a
+  `LinkedHashMap` known to be access-ordered a write for the lockset only; the detector's own tally
+  still counted it as a read, and its findings need a writer, so two unguarded `get`s alone in one
+  round on an LRU cache reported nothing. Such a `get` now counts as a write in the tally too. Gets
+  inside `synchronized (map)`, gets on an insertion-ordered map, and gets on a map whose order is
+  unknown (`java.util` not open to the library) are unchanged.
+- **`WeakHashMapSharedDetector` can record a read (#820).** `recordAccess` counts every access as a
+  write, so gets under one read lock beside puts under the write lock were reported, though #807
+  settled from the JDK source that a `WeakHashMap` read is a read: its cleanup is serialized among
+  readers on the reference queue. The new `recordRead(map, name, thread)` records a `get`,
+  `containsKey`, `size` or iteration of a `WeakHashMap` or `IdentityHashMap`; reads alone in a
+  round, and reads under a read lock whose writes hold the write lock, are no finding, while an
+  unguarded write beside them still is. `recordAccess` keeps its meaning. The detector is fed only
+  by hand, so no woven path changes.
 - **`SynchronizedNonFinalDetector` decides an owner-less recording from the field's declaration
   (#768).** Recorded with `recordLockObject(lock, fieldId, ownerClass)`, a monitor that changed was
   only ever an undecided note, so a reassigned static lock went unreported. The field `fieldId`
@@ -306,6 +435,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only the fields read since the validate. Reading everything before the validate, revalidating
   after each read, and the retry loop falling back to the read lock stay silent; a read whose
   failed validate was already reported for a use is not reported a second time.
+- **`OptimisticReadValidationDetector` names the whole torn snapshot in a failed-use finding
+  (#815).** A read made on a stamp whose `validate()` had already failed was not recorded, and a
+  read after a passing `validate()` dropped the fields read before it, so read x, validate, read y,
+  failed revalidation, use named only y, and read x, failed validate, read y, use named only x.
+  The finding now names every field read under the stamp: the failure makes the snapshot torn as a
+  whole, and re-reading only the later fields under the read lock would still pair them with the
+  stale earlier ones. The never-validated finding still names only the reads no `validate()`
+  covered, and no verdict changed. Each field is named once and at most eight per read, with the
+  rest counted (`, and N more reads`); a stamp read in a loop used to add a name per read.
 - **`RaceConditionDetector` and `AtomicityValidator` no longer report correctly ordered code.** A
   hand-off through a concurrent queue or map, volatile-flag publication, a single lock-free writer
   publishing through a volatile, an object published in the same round through
@@ -373,6 +511,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once and then worked alone for many rounds crossed it. Only accesses made in a round with more
   than one thread on the field now count. Steady contention every round keeps its verdict, since
   every access in it is contended.
+- **`FalseSharingDetector`'s high-contention line gives both thread models the same verdict (#811).**
+  Its threshold also needed more than 50 contended accesses from one thread over the run. A pooled
+  platform worker reaches that across rounds; a virtual thread lives one round, so under
+  `useVirtualThreads = true` it needed them inside one body execution, and the same workload
+  reported on platform threads and stayed silent on virtual threads. The threshold now counts the
+  field's contended traffic (100 accesses in rounds with more than one thread on it), whichever
+  threads made it, since cache-line traffic follows the field's accesses, not a thread's identity.
+  User-visible: with the experimental property set, many threads touching a field lightly in
+  shared rounds can now report on platform threads too, where no single worker made more than 50.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common

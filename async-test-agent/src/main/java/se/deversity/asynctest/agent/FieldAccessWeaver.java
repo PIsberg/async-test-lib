@@ -161,13 +161,19 @@ final class FieldAccessWeaver {
     /** The erased {@code Object} descriptor element the reference-slot tables are written in. */
     private static final String OBJECT = "Ljava/lang/Object;";
 
-    /** The {@code AtomicReference} calls substituted; the hook is the name plus {@code AtomicReference}. */
+    /**
+     * The {@code AtomicReference} calls substituted; the hook is the name plus {@code AtomicReference}.
+     * The stores are offers (#664) and releases, and the two acquiring reads are acquires of the
+     * store whose value they returned, the model a volatile field has (#741).
+     */
     private static final Map<String, String> ATOMIC_REFERENCE_FORMS = Map.of(
             "set", "(" + OBJECT + ")V",
             "lazySet", "(" + OBJECT + ")V",
             "setRelease", "(" + OBJECT + ")V",
             "compareAndSet", "(" + OBJECT + OBJECT + ")Z",
-            "getAndSet", "(" + OBJECT + ")" + OBJECT);
+            "getAndSet", "(" + OBJECT + ")" + OBJECT,
+            "get", "()" + OBJECT,
+            "getAcquire", "()" + OBJECT);
 
     /** The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus {@code ReferenceUpdater}. */
     private static final Map<String, String> REFERENCE_UPDATER_FORMS = Map.of(
@@ -799,7 +805,9 @@ final class FieldAccessWeaver {
          * through one (#555): stored with {@code set}, {@code lazySet} or a compare-and-set, and
          * taken with {@code getAndSet}. Substituting both ends puts the slot in the registry's hand
          * at each, so a take-first generation can be matched to the offer that filled the slot
-         * (#664, #692). The atomic calls are matched on their exact erased descriptors. A
+         * (#664, #692). An {@code AtomicReference} {@code get} or {@code getAcquire} is substituted
+         * as well, so a read that returned what a store published acquires it (#741). The atomic
+         * calls are matched on their exact erased descriptors. A
          * {@code VarHandle} call qualifies on an instance field, a static field, or an array
          * element, with each operand a reference except the array element index.
          */

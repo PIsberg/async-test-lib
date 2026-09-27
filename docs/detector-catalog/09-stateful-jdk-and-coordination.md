@@ -72,7 +72,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 114. FileChannel Position Race Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a `FileChannel`/`SeekableByteChannel` whose implicit (shared) position is read or mutated from more than one thread via `read(buffer)`, `write(buffer)`, `position(long)`, `truncate`, or `transferFrom`. Interleaved seek-then-read/write pairs from different threads perform I/O at the wrong offset, corrupting or losing data. The positional overloads that take an explicit offset are unaffected and never flagged.
+* **Description**: Detects a `FileChannel`/`SeekableByteChannel` whose implicit (shared) position one thread sets with `position(long)` (or reads with `position()`) and then relies on in the next `read(buffer)` or `write(buffer)`, while another thread's implicit-position call can land between the two. The I/O then runs at an offset its thread did not choose: a read returns bytes from the wrong region, a write lands away from where it was aimed. `FileChannel` runs one operation involving the position at a time, so self-contained `read(buffer)` / `write(buffer)` calls with no seek before them lose nothing and are not reported on their own. The positional overloads that take an explicit offset never touch the cursor and are never flagged. Holding one lock (the channel's own monitor, or one declared through `HeldLocks`) across the seek and the I/O on every thread keeps it silent.
 * **Buggy Code**:
   ```java
   void appendLine(FileChannel channel, ByteBuffer data) throws IOException {
