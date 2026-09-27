@@ -315,4 +315,56 @@ class VarHandleNonAtomicUpdateDetectorTest {
         assertTrue(report.contains("thread '#" + vt.threadId() + "' read 'count'"),
                 "the unnamed thread must be named by its id: " + report);
     }
+
+    /**
+     * Each finding names the evidence of the path behind it (#837). Both rules are decided only
+     * after the lockset says no one lock covers every access, which is what keeps the
+     * synchronized twin silent; the plain-mode rule stays a prompt because an ordering the
+     * detector cannot see can still supply what the plain mode lacks.
+     */
+    @Test
+    void aLostUpdateIsAVerdictOnContextualEvidence() throws Exception {
+        Holder h = new Holder();
+        onTwoThreads(() -> {
+            Thread me = Thread.currentThread();
+            detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, me);
+            detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, me);
+        });
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(IssueSeverity.HIGH, grades.get(0).severity(), grades.toString());
+        assertEquals(TrustTier.VERDICT, grades.get(0).tier(), grades.toString());
+        assertEquals(DetectorTrust.Evidence.CONTEXTUAL, grades.get(0).evidence(),
+                "the finding stands only after the lockset found no common lock: " + grades);
+        assertEquals(grades, DetectorTrust.clampToCap("VarHandleNonAtomicUpdateDetector", grades),
+                "graded at its own evidence, nothing is left for the report path to lower");
+    }
+
+    @Test
+    void plainModeSharingIsAPromptOnContextualEvidence() throws Exception {
+        Holder h = new Holder();
+        onTwoThreads(() -> detector.recordSet(COUNT, h, "count",
+                VarHandleNonAtomicUpdateDetector.Mode.PLAIN, Thread.currentThread()));
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(IssueSeverity.MEDIUM, grades.get(0).severity(), grades.toString());
+        assertEquals(TrustTier.PROMPT, grades.get(0).tier(), grades.toString());
+        assertEquals(DetectorTrust.Evidence.CONTEXTUAL, grades.get(0).evidence(), grades.toString());
+    }
+
+    @Test
+    void theSynchronizedTwinCarriesNoGrade() throws Exception {
+        Holder h = new Holder();
+        onTwoThreads(() -> {
+            Thread me = Thread.currentThread();
+            synchronized (h) {
+                detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.PLAIN, me);
+                detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.PLAIN, me);
+            }
+        });
+
+        assertEquals(java.util.List.of(), detector.analyze().grades(), "a silent report grades nothing");
+    }
 }

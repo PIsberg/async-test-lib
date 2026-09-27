@@ -112,6 +112,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` `CONTEXTUAL`, `LOCK_LEAKS` and `BLOCKING_QUEUE`
   `ASSERTED`), which takes the last three out of `DetectorEvidenceMatchesCodeTest`'s exemptions
   (six to three).
+- **The three oldest graded reports name the evidence of each finding (#837).**
+  `VAR_HANDLE_NON_ATOMIC_UPDATE`, `RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK`
+  graded by severity and named no evidence, so every grade fell back to the detector's class. Each
+  now records its grade as it adds the finding: the lost update and the plain-mode note on
+  `CONTEXTUAL`, the observed mutation and the probed executor on `OBSERVED`, the structural note on
+  `CONTEXT_FREE` and the churn count on `HEURISTIC`. No tier changes; `Grade.evidence()` is no
+  longer `null` for these findings. `DetectorEvidenceMatchesCodeTest` now fails on a built-in grade
+  constructed without evidence.
 - **The trust banner no longer claims more than its weakest finding.** A block mixing a VERDICT and
   a PROMPT finding was headed "a finding means the code is wrong"; it now reads
   `trust=PROMPT..VERDICT` and lists each finding's tier.

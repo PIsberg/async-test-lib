@@ -225,4 +225,54 @@ class RecordMutableComponentLeakDetectorTest {
 
         assertTrue(detector.analyze().toString().contains("changed contents while shared"));
     }
+
+    /**
+     * Each finding names the evidence of the path behind it (#837), so the report path caps it
+     * by that path and not only by the detector's class. The mutation is read back from the real
+     * component; the structural note is a thread count over recordShared calls, which a record
+     * shared under a lock draws just the same.
+     */
+    @Test
+    void anObservedMutationIsAVerdictOnObservedEvidence() {
+        List<String> items = new ArrayList<>(List.of("a"));
+        Order order = new Order("o-g1", items);
+        detector.recordShared(order, "order", threadA);
+        detector.recordShared(order, "order", threadB);
+        items.add("b");
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(IssueSeverity.HIGH, grades.get(0).severity(), grades.toString());
+        assertEquals(TrustTier.VERDICT, grades.get(0).tier(), grades.toString());
+        assertEquals(DetectorTrust.Evidence.OBSERVED, grades.get(0).evidence(),
+                "the changed contents were read from the component itself: " + grades);
+        assertEquals(grades, DetectorTrust.clampToCap("RecordMutableComponentLeakDetector", grades),
+                "graded at its own evidence, nothing is left for the report path to lower");
+    }
+
+    @Test
+    void aStructuralRiskIsAPromptOnContextFreeEvidence() {
+        Order order = new Order("o-g2", new ArrayList<>(List.of("a")));
+        detector.recordShared(order, "order", threadA);
+        detector.recordShared(order, "order", threadB);
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(IssueSeverity.MEDIUM, grades.get(0).severity(), grades.toString());
+        assertEquals(TrustTier.PROMPT, grades.get(0).tier(), grades.toString());
+        assertEquals(DetectorTrust.Evidence.CONTEXT_FREE, grades.get(0).evidence(),
+                "two threads recorded touching a record is the whole of the sharing claim, and a "
+                        + "record shared under a lock draws it too: " + grades);
+    }
+
+    @Test
+    void theListCopyOfTwinCarriesNoGrade() {
+        List<String> items = new ArrayList<>(List.of("a"));
+        SafeOrder order = new SafeOrder("o-g3", items);
+        detector.recordShared(order, "order", threadA);
+        detector.recordShared(order, "order", threadB);
+        items.add("b");
+
+        assertEquals(List.of(), detector.analyze().grades(), "a silent report grades nothing");
+    }
 }

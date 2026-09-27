@@ -218,7 +218,10 @@ evidence, while the JVM refusing a thread, a segment whose scope the JVM says is
 whose factory makes virtual threads are VERDICT on `OBSERVED` evidence. `STATIC_INIT_DEADLOCK`
 and `SHARED_MEMORY_SEGMENT_RACE` have no VERDICT path, so they stay `ASSERTED`.
 `VAR_HANDLE_NON_ATOMIC_UPDATE`, `RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK`
-keep their VERDICT grades.
+keep their VERDICT grades, and since #837 name their evidence too: the lost update and the
+plain-mode note `CONTEXTUAL`, since both are decided after the lockset; the observed mutation and
+the probed executor `OBSERVED`; the structural note `CONTEXT_FREE` and the churn count `HEURISTIC`.
+`DetectorEvidenceMatchesCodeTest` fails the build on a built-in grade that names none.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,

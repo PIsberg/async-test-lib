@@ -68,6 +68,9 @@ class DetectorEvidenceMatchesCodeTest {
                     + "|commonLockCount|holdsLock|heldOn)\\s*\\("
                     + "|\\b(?:HeldLocks|HappensBefore)\\s*\\.");
 
+    /** A grade construction in code: the start of a {@code GradedFindings.Grade} argument list. */
+    private static final Pattern GRADE = Pattern.compile("\\bnew\\s+(?:GradedFindings\\s*\\.\\s*)?Grade\\s*\\(");
+
     /**
      * Detectors that read synchronization context on one finding path and are classified below
      * {@code CONTEXTUAL} by another that reads none. Each reason names that other path, so a
@@ -145,6 +148,35 @@ class DetectorEvidenceMatchesCodeTest {
         assertTrue(disagreements.get(1).startsWith("SHARED_CHECKSUM"), disagreements.get(1));
     }
 
+    /**
+     * A grade that names no evidence falls back to its detector's class, which a detector with a
+     * JVM-answered path and a recorded one has to set by the stronger path; the recorded path's
+     * grade then rides on it. Three reports graded that way until #837, and nothing noticed.
+     */
+    @Test
+    @DisplayName("every grade a built-in report constructs names the evidence of its path")
+    void everyBuiltInGradeNamesItsEvidence() throws IOException {
+        List<String> coarse = new ArrayList<>();
+        try (var sources = Files.list(DIAGNOSTICS)) {
+            for (Path source : sources.filter(path -> path.toString().endsWith(".java")).sorted().toList()) {
+                String code = codeOnly(Files.readString(source, StandardCharsets.UTF_8));
+                var grade = GRADE.matcher(code);
+                while (grade.find()) {
+                    if (argumentCount(code, grade.end()) != 4) {
+                        coarse.add(source.getFileName() + ": " + code.substring(grade.start(),
+                                Math.min(code.length(), grade.end() + 60)).replaceAll("\\s+", " "));
+                    }
+                }
+            }
+        }
+        assertTrue(coarse.isEmpty(),
+                "these grades name no DetectorTrust.Evidence, so the report path caps them at the "
+                        + "detector's class instead of the class of the path that produced them. "
+                        + "Use the four-argument Grade constructor: " + coarse);
+        assertEquals(3, argumentCount(codeOnly("new Grade(a, f(b, c), \"x, y\")"), "new Grade(".length()),
+                "nested calls and literals are one argument each");
+    }
+
     @Test
     @DisplayName("the scan reads code, not comments or string literals")
     void theScanReadsCodeOnly() {
@@ -209,6 +241,26 @@ class DetectorEvidenceMatchesCodeTest {
             throw new UncheckedIOException("Could not read " + source.toAbsolutePath()
                     + "; this test reads the module's own sources and runs from the module directory", e);
         }
+    }
+
+    /** {@return how many top-level arguments the call whose argument list opens before {@code from} has} */
+    private static int argumentCount(String code, int from) {
+        int depth = 0;
+        int commas = 0;
+        for (int i = from; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                if (depth == 0) {
+                    return commas + 1;
+                }
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                commas++;
+            }
+        }
+        return commas + 1;
     }
 
     private static boolean readsContext(String source) {
