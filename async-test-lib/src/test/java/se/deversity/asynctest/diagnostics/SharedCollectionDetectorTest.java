@@ -302,4 +302,27 @@ public class SharedCollectionDetectorTest {
             worker.join();
         }
     }
+
+    /**
+     * #812: every access built an {@code IdentityKey} and a capturing lambda for
+     * {@code computeIfAbsent} and boxed its thread id, 72 bytes, which the run's allocation budget
+     * had to absorb as noise.
+     */
+    @Test
+    void recordingATrackedCollectionAllocatesNothingPerAccess() throws InterruptedException {
+        SharedCollectionDetector detector = new SharedCollectionDetector();
+        List<String> list = new ArrayList<>();
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> {
+            synchronized (list) {
+                detector.recordRead(list, "list", "get");
+                detector.recordWrite(list, "list", "add");
+            }
+        });
+
+        long accesses = 2L * RecordPathAllocation.MEASURED_CALLS;
+        assertTrue(bytes < accesses, "recording a collection the detector already tracks allocated "
+                + bytes + " bytes over " + accesses + " accesses; a state lookup or a thread-id "
+                + "set started allocating per access");
+    }
 }

@@ -48,10 +48,14 @@ public class SharedDecimalFormatDetector {
      */
     public void recordAccess(Object format, String name, Thread thread) {
         if (format == null || thread == null) return;
-        // The fallback label is built only when the instance is first seen.
-        FormatState s = formats.computeIfAbsent(
-                new IdentityKey(format), id -> new FormatState(name != null ? name
-                        : format.getClass().getSimpleName() + "@" + System.identityHashCode(format)));
+        // The thread's lookup key, reused while it names the same instance (#812).
+        FormatState s = formats.get(IdentityKey.lookup(format));
+        if (s == null) {
+            // The fallback label is built only when the instance is first seen.
+            s = formats.computeIfAbsent(new IdentityKey(format), id -> new FormatState(name != null
+                    ? name
+                    : format.getClass().getSimpleName() + "@" + System.identityHashCode(format)));
+        }
         s.noteAccess(format, thread);
     }
 

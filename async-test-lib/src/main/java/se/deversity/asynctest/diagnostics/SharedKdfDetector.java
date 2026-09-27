@@ -84,9 +84,10 @@ public final class SharedKdfDetector {
      */
     public void recordAccess(Object kdf, String algorithm, String operation, Thread thread) {
         if (kdf == null || thread == null) return;
-        IdentityKey key = new IdentityKey(kdf);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(kdf));
         if (s == null) {
+            IdentityKey key = new IdentityKey(kdf);
             final String label = kdf.getClass().getSimpleName() + "@" + key.hashCode();
             final String algo = algorithm != null ? algorithm : "unknown";
             s = instances.computeIfAbsent(key, k -> new State(label, algo));

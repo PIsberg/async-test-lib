@@ -80,9 +80,10 @@ public final class SharedChecksumDetector {
      */
     public void recordAccess(Checksum checksum, String operation, Thread thread) {
         if (checksum == null || thread == null) return;
-        IdentityKey key = new IdentityKey(checksum);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(checksum));
         if (s == null) {
+            IdentityKey key = new IdentityKey(checksum);
             final String label = checksum.getClass().getSimpleName() + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label));
         }

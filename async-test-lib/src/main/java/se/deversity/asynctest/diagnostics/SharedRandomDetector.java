@@ -81,9 +81,10 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        IdentityKey key = new IdentityKey(random);
-        RandomState state = randoms.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        RandomState state = randoms.get(IdentityKey.lookup(random));
         if (state == null) {
+            IdentityKey key = new IdentityKey(random);
             // Auto-register. computeIfAbsent, not get-then-put: two threads racing here both
             // saw null, both built a state and the second put discarded the first, so each
             // thread counted itself alone and analyze()'s "> 1 thread" test never tripped. A
@@ -95,12 +96,16 @@ public class SharedRandomDetector {
         
         long now = System.currentTimeMillis();
         state.accessCount.incrementAndGet();
-        state.accessingThreads.add(Thread.currentThread().threadId());
+        SelfGuard.addThreadId(state.accessingThreads, Thread.currentThread().threadId());
         
         if (state.firstAccessTime == null) {
             state.firstAccessTime = now;
         }
-        state.lastAccessTime = now;
+        // Boxed only when the millisecond moved on, not on every access (#812).
+        Long last = state.lastAccessTime;
+        if (last == null || last != now) {
+            state.lastAccessTime = now;
+        }
         
         if (methodName != null) {
             state.methodCounts.computeIfAbsent(methodName, k -> new AtomicInteger(0))

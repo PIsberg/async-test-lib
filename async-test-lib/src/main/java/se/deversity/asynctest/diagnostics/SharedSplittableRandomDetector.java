@@ -103,9 +103,10 @@ public final class SharedSplittableRandomDetector {
         if (!tracked(generator)) {
             return;
         }
-        IdentityKey key = new IdentityKey(generator);
-        GeneratorState state = generators.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        GeneratorState state = generators.get(IdentityKey.lookup(generator));
         if (state == null) {
+            IdentityKey key = new IdentityKey(generator);
             final String type = generator.getClass().getSimpleName();
             final String label = name != null ? name : type + "@" + key.hashCode();
             state = generators.computeIfAbsent(key, k -> new GeneratorState(label, type));

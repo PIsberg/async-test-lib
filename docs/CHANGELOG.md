@@ -178,6 +178,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TelemetryRegistry`, and its cost beyond the empty body is held under 110,000 bytes per
   execution: 84,297 to 91,227 measured on JDK 21, 24 and 26, and 123,804 with one `new Object[4]`
   kept per `SelfGuard.noteAccess`, which the empty body's 80,000-byte ceiling let through.
+- **The `Shared*` detectors' record paths stop allocating per access, and the recording
+  ceiling drops from 110,000 to 25,000 bytes (#812).** Measured per call on one thread after
+  warm-up, `SharedCollectionDetector` spent 72 bytes on every access: an `IdentityKey` and a
+  capturing lambda for `computeIfAbsent`, and a boxed thread id. The rest of the family spent 24 to
+  72 the same ways. Each now looks its state up with `IdentityKey.lookup`, which reuses the
+  thread's key while it names the same instance (a fresh key per `get` was removed by the compiler
+  in some JVMs and not in others, which read as a 24,000-byte swing between runs), builds the
+  factory only on a miss, and adds thread ids with `SelfGuard.addThreadId`, which boxes the calling
+  thread's id once. Of the twelve measured, eleven read 0 bytes per access on JDK 26;
+  `SharedMessageDigestDetector` still walks the stack for its site on every access (1,152 bytes). The recording body fell from 88,203 to 91,227 to 10,897 to 18,203 on JDK 21, 24 and 26,
+  so the ceiling now catches a 16-byte object per `SelfGuard` access: 27,612 to 33,808 measured,
+  red. `SharedCollectionDetectorTest` and `SharedChecksumDetectorTest` pin the per-access cost
+  below one byte on the thread that records.
 - **`FILE_CHANNEL_POSITION_RACE` stays PROMPT for the reason it has now (#755).** Its hold in
   corpus-eval's `PairEvidence`, the `verdict-evidence-corpus` argument and the catalog said it
   had no lockset, which stopped being true when it joined the `Shared*` family's: a

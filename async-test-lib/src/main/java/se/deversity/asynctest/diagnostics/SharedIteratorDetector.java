@@ -101,9 +101,10 @@ public final class SharedIteratorDetector {
     public void recordAccess(Object iterator, String operation) {
         if (iterator == null) return;
         Thread thread = Thread.currentThread();
-        IdentityKey key = new IdentityKey(iterator);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(iterator));
         if (s == null) {
+            IdentityKey key = new IdentityKey(iterator);
             final String kind = kindOf(iterator);
             final String label = kind + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label, kind));

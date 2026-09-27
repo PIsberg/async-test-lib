@@ -34,6 +34,13 @@ New detectors live in `diagnostics/` and follow the house thread-safety idiom: p
 `ConcurrentHashMap.newKeySet()`, counters as `LongAdder`. Violation lists are `CopyOnWrite` or
 synchronized lists; first-registration-wins uses `putIfAbsent`.
 
+The hot path has two allocation traps (#812). Look the state up with
+`map.get(IdentityKey.lookup(x))`, which reuses the calling thread's key while it names the same
+instance, and make the stored key on a miss: a `new IdentityKey(x)` per call costs 24 bytes,
+which the compiler removes in some JVMs and not in others. And add a thread id with
+`SelfGuard.addThreadId(set, id)`, not `set.add(id)`, which boxes 24 bytes on every call.
+The recording body of `RunnerAllocationBudgetTest` is the gate, through `SharedCollectionDetector`.
+
 Declare parameters and fields as `ConcurrentMap`, not `ConcurrentHashMap` — PMD's `LooseCoupling`
 rule fails the build otherwise.
 

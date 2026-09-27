@@ -97,7 +97,7 @@ public final class SharedByteBufferDetector {
         State s = resolve(buffer);
         s.noteAccess(buffer);
         Thread thread = Thread.currentThread();
-        s.positionalThreadIds.add(thread.threadId());
+        SelfGuard.addThreadId(s.positionalThreadIds, thread.threadId());
         s.positionalThreadNames.add(thread.getName());
         s.positionalOperations.add(operation != null ? operation : "unknown");
     }
@@ -115,15 +115,16 @@ public final class SharedByteBufferDetector {
         if (buffer == null) return;
         State s = resolve(buffer);
         Thread thread = Thread.currentThread();
-        s.absoluteThreadIds.add(thread.threadId());
+        SelfGuard.addThreadId(s.absoluteThreadIds, thread.threadId());
         s.absoluteThreadNames.add(thread.getName());
         s.absoluteOperations.add(operation != null ? operation : "unknown");
     }
 
     private State resolve(Object buffer) {
-        IdentityKey key = new IdentityKey(buffer);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(buffer));
         if (s == null) {
+            IdentityKey key = new IdentityKey(buffer);
             final String kind = buffer.getClass().getSimpleName();
             final String label = kind + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
