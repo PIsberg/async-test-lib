@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.fasterxml.jackson.databind.util.StdDateFormat;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
+import com.google.common.util.concurrent.AbstractExecutionThreadService;
 import com.google.common.util.concurrent.Monitor;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.zaxxer.hikari.util.UtilityElf;
@@ -150,6 +151,8 @@ class CorpusAgentPairLaneTest {
 
     @AfterAll
     static void reportAndGate() throws IOException {
+        LANE_OVER.countDown();
+        SERVICE_LEFT_RUNNING.stopAsync();
         CorpusRecorder.uninstall();
         SHARED_FORMATTER.close();
         CorpusLane lane = CorpusLane.current();
@@ -743,6 +746,118 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
     void agent_abaStack_nodePushedBackBeforeTheRead() {
         counted(() -> abaRound(true));
+    }
+
+    // --- Thread daemon flag, left running (#736) ----------------------------------------------
+
+    /**
+     * Released when the lane ends, which is after every row's analysis: whatever the daemon-hygiene
+     * rows leave running is still alive when its row is judged, and gone before the JVM exits.
+     */
+    private static final CountDownLatch LANE_OVER = new CountDownLatch(1);
+
+    private static final AtomicBoolean UNDECIDED_THREAD_STARTED = new AtomicBoolean();
+
+    private static final AtomicBoolean DAEMON_THREAD_STARTED = new AtomicBoolean();
+
+    /** What a worker thread left running does: waits, bounded, for the lane to end. */
+    private static void runUntilTheLaneEnds() {
+        try {
+            LANE_OVER.await(60, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Starts a worker thread and leaves it running, with no daemon decision.
+     *
+     * <p>One execution of the run starts it; the rest only count. The worker is daemon here, by
+     * inheritance from the runner's daemon worker, which is exactly what makes the missing
+     * decision invisible to {@code isDaemon()}: started from {@code main}, the same code keeps the
+     * JVM from exiting. The woven {@code new Thread} and {@code start} are the detector's only
+     * input.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_thread_startedWithNoDaemonDecision() {
+        counted(() -> {
+            if (UNDECIDED_THREAD_STARTED.compareAndSet(false, true)) {
+                Thread worker = new Thread(CorpusAgentPairLaneTest::runUntilTheLaneEnds,
+                        "corpus-undecided-worker");
+                worker.start();
+            }
+        });
+    }
+
+    /** The same worker, marked daemon before it starts, which is the fix. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_thread_markedDaemonBeforeStart() {
+        counted(() -> {
+            if (DAEMON_THREAD_STARTED.compareAndSet(false, true)) {
+                Thread worker = new Thread(CorpusAgentPairLaneTest::runUntilTheLaneEnds,
+                        "corpus-daemon-worker");
+                worker.setDaemon(true);
+                worker.start();
+            }
+        });
+    }
+
+    // --- Guava service, left running (#736) ---------------------------------------------------
+
+    /**
+     * A Guava service whose {@code run} lasts until it is stopped, bounded by the lane's end.
+     *
+     * <p>{@code AbstractExecutionThreadService}'s default executor starts {@code run} on a thread
+     * from {@code MoreExecutors.newThread}, which comes from {@code Executors.defaultThreadFactory}
+     * and is therefore never daemon, and the {@code Thread.start} is in Guava's bytecode.
+     */
+    private static final class LingeringService extends AbstractExecutionThreadService {
+
+        private final CountDownLatch stopped = new CountDownLatch(1);
+
+        @Override
+        protected void run() throws InterruptedException {
+            stopped.await(60, TimeUnit.SECONDS);
+        }
+
+        @Override
+        protected void triggerShutdown() {
+            stopped.countDown();
+        }
+    }
+
+    private static final LingeringService SERVICE_LEFT_RUNNING = new LingeringService();
+
+    private static final LingeringService SERVICE_STOPPED = new LingeringService();
+
+    private static final AtomicBoolean SERVICE_LEFT_RUNNING_STARTED = new AtomicBoolean();
+
+    private static final AtomicBoolean SERVICE_STOPPED_STARTED = new AtomicBoolean();
+
+    /**
+     * Starts a Guava service and leaves it running past the end of the run.
+     *
+     * <p>Its thread is non-daemon, so a program that does this never exits. Nothing is recorded:
+     * the woven {@code Thread.start} inside Guava is the detector's only input.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaService_startedAndLeftRunning() {
+        counted(() -> {
+            if (SERVICE_LEFT_RUNNING_STARTED.compareAndSet(false, true)) {
+                SERVICE_LEFT_RUNNING.startAsync().awaitRunning();
+            }
+        });
+    }
+
+    /** The same service, stopped and awaited before the run ends, which is the fix. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_guavaService_stoppedBeforeTheRunEnds() {
+        counted(() -> {
+            if (SERVICE_STOPPED_STARTED.compareAndSet(false, true)) {
+                SERVICE_STOPPED.startAsync().awaitRunning();
+                SERVICE_STOPPED.stopAsync().awaitTerminated();
+            }
+        });
     }
 
     /**

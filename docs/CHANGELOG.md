@@ -348,6 +348,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   factory ones, `ThreadConstructionWeaverTest` that every construction shape still verifies and is
   marked once. Still unseen: a decision made by a call into unwoven code on a thread woven code
   constructed.
+- **`DAEMON_THREAD_HYGIENE` has corpus agent pairs (#736).** The agent-pair lane gains
+  `agent_thread_startedWithNoDaemonDecision` (fires) and `agent_thread_markedDaemonBeforeStart`
+  (silent), and a library pair: `agent_guavaService_startedAndLeftRunning` (fires) starts a Guava
+  `AbstractExecutionThreadService` and leaves it running, whose thread Guava's own bytecode starts
+  from `Executors.defaultThreadFactory` and so is never daemon, and
+  `agent_guavaService_stoppedBeforeTheRunEnds` (silent) stops and awaits the same service. The
+  detector leaves `LibraryReach.UNREACHED`: 18 of the 21 agent-fed detectors are now measured on a
+  call site inside a library.
 - **`GathererConcurrencyMisuseDetector` no longer says a combiner-less gatherer loses results
   (#777).** The missing-combiner finding claimed that on a parallel stream "the per-thread states
   cannot be merged, results are lost". The JDK does not work that way: a gatherer whose combiner is
@@ -1149,8 +1157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The runner stops announcing `runner.detector.inert` for the daemon detector once the weave is
   installed. Without the agent nothing changes. A builder's `daemon(true)` and a decision made in
   a class outside `includes=` are handled since #737 (see its entry under Fixed).
-  `DaemonThreadHygieneDetector` moves from recording-only to agent-fed; it has no corpus agent
-  pair yet (#736).
+  `DaemonThreadHygieneDetector` moves from recording-only to agent-fed, with corpus agent pairs
+  since #736.
 
 - **`DaemonThreadHygieneDetector` stopped being able to see a thread a test body creates, and
   said nothing about it (#730).** A thread inherits the daemon flag of the thread that created

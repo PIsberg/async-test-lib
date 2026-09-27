@@ -110,10 +110,10 @@ above, and the correct idioms the happens-before model does not see yet are list
 with the reason, so that a fix flips them visibly.
 
 The library agent pairs put the woven JDK call inside Guava, Jackson, HikariCP, Spring, commons-lang3
-or Groovy instead of the test file, so 17 of the 21 agent-fed detectors are measured on a call site
-nobody here compiled; `EXPLICIT_GC` is refused a pair in every lane, `MISSED_SIGNAL` and
+or Groovy instead of the test file, so 18 of the 21 agent-fed detectors are measured on a call site
+nobody here compiled; `EXPLICIT_GC` is refused a pair in every lane, and `MISSED_SIGNAL` and
 `ABA_PROBLEM` have a JDK pair only, because no corpus library waits behind an `if` or pushes a
-popped node back, and `DAEMON_THREAD_HYGIENE` has no agent pair yet (#736). Their
+popped node back. Their
 first run found a detector that dropped every sleep held under a `ReentrantLock`, which the
 test-file pair could not see because it sleeps inside a `synchronized` method.
 
