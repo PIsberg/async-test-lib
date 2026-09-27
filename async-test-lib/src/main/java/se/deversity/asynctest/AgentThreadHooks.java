@@ -155,10 +155,8 @@ public final class AgentThreadHooks {
      */
     private static boolean observedUndecidedOrDecided(Thread thread) {
         Boolean inherited = CONSTRUCTED_IN_WOVEN_CODE.get(thread);
-        if (inherited == null) {
-            return false;
-        }
-        return EXPLICIT_DAEMON.containsKey(thread) || thread.isDaemon() == inherited;
+        return inherited != null
+                && (EXPLICIT_DAEMON.containsKey(thread) || thread.isDaemon() == inherited);
     }
 
     /**

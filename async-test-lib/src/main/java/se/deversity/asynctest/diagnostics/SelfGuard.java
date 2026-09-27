@@ -214,10 +214,7 @@ public final class SelfGuard {
                 return UNKNOWN;
             }
             Boolean accessOrder = BUILT.get(IdentityKey.lookup(map));
-            if (accessOrder == null) {
-                return UNKNOWN;
-            }
-            return accessOrder ? ACCESS : INSERTION;
+            return accessOrder == null ? UNKNOWN : accessOrder ? ACCESS : INSERTION;
         }
 
         /**
