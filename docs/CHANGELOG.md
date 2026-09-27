@@ -105,6 +105,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rendered value on purpose; and four in `SpinLocks`, which keys by hash on purpose. The source
   gate stays, since it also counts a hash inside a JDK call the bytecode gate does not follow. `async-test-analysis` now declares
   `async-test-lib` at test scope; its main code still depends on nothing else.
+- **`GathererConcurrencyMisuseDetector` sees one state shared by several streams at once (#846).**
+  A combiner-less gatherer whose initializer returns one captured object to streams running at the
+  same time races on it, and the detector could not see it: the three-argument `recordIntegrate`
+  skips a gatherer without a combiner, because the JDK hands such a gatherer's single state between
+  threads in order (#777), so a state on two threads proves nothing. The new
+  `recordIntegrateEnter(name, state, thread)` and `recordIntegrateExit(name, state)` record when an
+  integration starts and ends, and two integrations of one state in progress at once on two threads
+  is reported as the existing `HIGH` shared-state finding, for any registered gatherer. The JDK
+  never overlaps integrations of one state, so its hand-off stays silent. JDK 24+ tests pin both
+  with a real `Gatherer` by reflection: two parallel streams sharing an initializer's state fire
+  (and one of them emits the other's elements, which the three-argument overload missed), one
+  parallel stream handing its state across threads does not. On JDK 21 those two are skipped; two
+  thread-level tests pin the same pair there. The existing findings and their severities are
+  unchanged.
 
 ### Changed
 

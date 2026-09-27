@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,7 +49,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       own state. This needs the state object, from
  *       {@link #recordIntegrate(String, Object, Thread)}; a gatherer with a combiner whose
  *       integrator merely runs on several threads is the correct parallel shape and is
- *       silent.</li>
+ *       silent. For any gatherer, with or without a combiner, the same finding is drawn from
+ *       time rather than threads when the integrator records
+ *       {@link #recordIntegrateEnter(String, Object, Thread)} and
+ *       {@link #recordIntegrateExit(String, Object)}: two integrations of one state in progress
+ *       at once on two threads, which the JDK's in-order hand-off never produces.</li>
  * </ul>
  *
  * <p>Labels identify gatherers. Registering one label twice with different shapes marks it
@@ -97,6 +102,12 @@ public class GathererConcurrencyMisuseDetector {
         /** Thread id that first integrated each state object, keyed by the object's identity. */
         final Map<IdentityKey, Long> stateOwners = new ConcurrentHashMap<>();
 
+        /**
+         * State objects some thread is inside an integration of right now, keyed by identity, from
+         * the enter and exit records (#846).
+         */
+        final Map<IdentityKey, InIntegration> inIntegration = new ConcurrentHashMap<>();
+
         /** Claims the one shared-state report this gatherer may produce. */
         final java.util.concurrent.atomic.AtomicBoolean sharedStateReported =
                 new java.util.concurrent.atomic.AtomicBoolean();
@@ -116,6 +127,33 @@ public class GathererConcurrencyMisuseDetector {
         GathererInfo(boolean hasCombiner, boolean parallel) {
             this.hasCombiner = hasCombiner;
             this.parallel = parallel;
+        }
+    }
+
+    /**
+     * One state object that a thread is inside an integration of. Mutated only inside the owning
+     * map's {@code compute}, which serializes every change to one key.
+     */
+    private static final class InIntegration {
+        /** The thread whose enter found the state idle and opened this entry. */
+        final long threadId;
+
+        /** Integrations of the state entered and not yet exited, on any thread. */
+        private int open = 1;
+
+        InIntegration(long threadId) {
+            this.threadId = threadId;
+        }
+
+        InIntegration enter() {
+            open++;
+            return this;
+        }
+
+        /** {@return this entry, or null once no integration of the state is open, to remove it} */
+        @Nullable InIntegration exit() {
+            open--;
+            return open == 0 ? null : this;
         }
     }
 
@@ -205,6 +243,73 @@ public class GathererConcurrencyMisuseDetector {
                 + "mutation inside it."
             );
         }
+    }
+
+    /**
+     * Record that an integrator invocation has started on {@code state}; pair it with
+     * {@link #recordIntegrateExit(String, Object)} in a {@code finally} block.
+     *
+     * <p>Counts as one integration exactly like {@link #recordIntegrate(String, Object, Thread)},
+     * so call this instead of it, not as well. What the pair adds is time: the JDK never runs two
+     * integrations of one state at once, not even for a gatherer without a combiner, whose single
+     * state it hands between threads in encounter order (#777). So when a second thread enters an
+     * integration of a state another thread is still inside, the initializer handed that state to
+     * several streams or segments at once, and they race on it. That is reported ({@code HIGH})
+     * whatever the gatherer's registered shape. Thread identity alone cannot see this sharing:
+     * for a combiner-less gatherer a state on two threads is the JDK's hand-off.
+     *
+     * <p>A state deliberately shared and itself thread-safe is reported too: the gatherer contract
+     * is one state per initializer call.
+     *
+     * @param name   the gatherer's registered name; an unregistered one is counted and not judged
+     * @param state  the state object the integrator received; null skips the overlap check
+     * @param thread the thread running the integrator; null records nothing
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordIntegrateEnter(String name, Object state, Thread thread) {
+        recordIntegrate(name, state, thread);
+        if (name == null || state == null || thread == null) return;
+        GathererInfo info = gatherers.get(name);
+        if (info == null) return;
+
+        if (info.inIntegration.size() >= MAX_TRACKED_STATES) {
+            // Only a missing exit leaves an entry behind. Dropping entries can miss an overlap
+            // that straddles the clear, never invent one.
+            info.inIntegration.clear();
+        }
+        long tid = thread.threadId();
+        InIntegration inside = info.inIntegration.compute(IdentityKey.lookup(state),
+            (key, current) -> current == null ? new InIntegration(tid) : current.enter());
+        // The entry names the thread that opened this stretch of integrations. Until two threads
+        // have overlapped only one thread is ever inside, so a different name here is the first
+        // overlap; after that the gatherer has already claimed its one report.
+        if (inside.threadId != tid && info.sharedStateReported.compareAndSet(false, true)) {
+            sharedStateReports.add(
+                "Gatherer '" + name + "': two integrations of one state object ("
+                + state.getClass().getSimpleName() + ") were in progress at the same time on two "
+                + "threads. The JDK never integrates one state concurrently, even when it hands a "
+                + "gatherer's single state between threads, so the initializer gave that object to "
+                + "several streams or segments at once and they race on it. Return a fresh object "
+                + "from the initializer and keep all mutation inside it."
+            );
+        }
+    }
+
+    /**
+     * Record that the integrator invocation {@link #recordIntegrateEnter(String, Object, Thread)}
+     * opened on {@code state} has returned or thrown. An exit with no open enter is ignored.
+     *
+     * @param name  the gatherer's registered name, as passed to the enter
+     * @param state the state object passed to the enter; null records nothing
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public void recordIntegrateExit(String name, Object state) {
+        if (name == null || state == null) return;
+        GathererInfo info = gatherers.get(name);
+        if (info == null) return;
+        info.inIntegration.computeIfPresent(IdentityKey.lookup(state), (key, current) -> current.exit());
     }
 
     private void recordThread(String name, GathererInfo info, Thread thread) {
