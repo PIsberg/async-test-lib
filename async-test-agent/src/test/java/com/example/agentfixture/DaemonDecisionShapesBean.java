@@ -1,5 +1,7 @@
 package com.example.agentfixture;
 
+import java.util.concurrent.ThreadFactory;
+
 /**
  * Starts threads whose daemon flag is decided, or left undecided, somewhere other than a
  * {@code setDaemon} call in this class (#737): on a {@code Thread.Builder}, in a subclass, or in
@@ -66,6 +68,46 @@ public class DaemonDecisionShapesBean {
         Thread thread = new UndecidedWorkerThread(name, task);
         thread.start();
         return thread;
+    }
+
+    /**
+     * Makes a thread through the factory of a builder that was never given a daemon decision, and
+     * starts it (#856).
+     *
+     * @param name the thread's name
+     * @param task what the thread runs
+     * @return the started thread
+     */
+    public Thread builderFactoryStarted(String name, Runnable task) {
+        ThreadFactory factory = Thread.ofPlatform().name(name).factory();
+        Thread thread = factory.newThread(task);
+        thread.start();
+        return thread;
+    }
+
+    /**
+     * Makes a thread through the factory of a builder given {@code daemon(true)}, and starts it.
+     *
+     * @param name the thread's name
+     * @param task what the thread runs
+     * @return the started thread
+     */
+    public Thread builderFactoryDaemonStarted(String name, Runnable task) {
+        ThreadFactory factory = Thread.ofPlatform().name(name).daemon(true).factory();
+        Thread thread = factory.newThread(task);
+        thread.start();
+        return thread;
+    }
+
+    /**
+     * Constructs a thread here, in woven code, and leaves its flag and its start to others.
+     *
+     * @param name the thread's name
+     * @param task what the thread runs
+     * @return the unstarted thread
+     */
+    public Thread construct(String name, Runnable task) {
+        return new Thread(task, name);
     }
 
     /**

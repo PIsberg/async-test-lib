@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -61,6 +62,21 @@ class AgentThreadHooksTest {
         }
     }
 
+    /** {@return what {@code build} returns, run on a new non-daemon thread} */
+    private static Thread onNonDaemonThread(java.util.function.Supplier<Thread> build) {
+        AtomicReference<Thread> built = new AtomicReference<>();
+        Thread nonDaemon = new Thread(() -> built.set(build.get()), "non-daemon-constructor");
+        nonDaemon.setDaemon(false);
+        nonDaemon.start();
+        try {
+            nonDaemon.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+        return built.get();
+    }
+
     @Test
     @DisplayName("a daemon thread a builder started with a woven daemon(true) is not judged undecided")
     void aBuilderStartCarriesTheBuildersDecision() throws InterruptedException {
@@ -95,6 +111,62 @@ class AgentThreadHooksTest {
             AgentThreadHooks.threadStart(thread);
             return thread;
         }), "daemon only by inheritance from the daemon parent, and no setDaemon seen");
+    }
+
+    @Test
+    @DisplayName("a woven-built thread whose inherited flag unwoven code changed is judged by its flag")
+    void aFlagChangedWhereNothingIsWovenIsADecision() throws InterruptedException {
+        assertFalse(lingeringStartReported(task -> {
+            // Built, as woven code builds it, on a non-daemon thread, so it inherited false.
+            Thread thread = onNonDaemonThread(() -> {
+                Thread built = new Thread(task, "decided-unwoven");
+                AgentThreadHooks.threadConstructed(built);
+                return built;
+            });
+            assertEquals(Boolean.FALSE, AgentThreadHooks.inheritedDaemon(thread));
+            thread.setDaemon(true); // a plain call: what unwoven code does, unrecorded
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "it inherited false and is daemon at its start, so something decided it (#856)");
+    }
+
+    @Test
+    @DisplayName("an unwoven setDaemon(true) on a thread a daemon worker built still reads as none")
+    void aFlagConfirmedWhereNothingIsWovenStillReadsAsNoDecision() throws InterruptedException {
+        assertTrue(lingeringStartReported(task -> {
+            Thread thread = new Thread(task, "confirmed-unwoven");
+            AgentThreadHooks.threadConstructed(thread);
+            thread.setDaemon(true); // unrecorded, and the flag it inherited already
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "the known false positive (#856): nothing tells this decision from no decision");
+    }
+
+    @Test
+    @DisplayName("a thread from a builder's factory is constructed in woven code and carries its decision")
+    void aBuilderFactorysThreadIsJudgedLikeTheBuildersOwn() throws InterruptedException {
+        assertTrue(lingeringStartReported(task -> {
+            Thread thread = AgentThreadHooks.threadFactoryNewThread(
+                    AgentThreadHooks.threadBuilderFactory(
+                            Thread.ofPlatform().name("factory-undecided")), task);
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "the builder behind the factory never decided, so the thread is daemon only by "
+                + "inheritance (#856)");
+        assertFalse(lingeringStartReported(task -> {
+            Thread thread = AgentThreadHooks.threadFactoryNewThread(
+                    AgentThreadHooks.threadBuilderFactory(AgentThreadHooks.threadBuilderDaemon(
+                            Thread.ofPlatform().name("factory-daemon"), true)), task);
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "daemon(true) on the builder before factory() is the decision its threads carry");
+        assertFalse(lingeringStartReported(task -> {
+            Thread thread = AgentThreadHooks.threadFactoryNewThread(
+                    r -> new Thread(r, "other-factory"), task);
+            thread.setDaemon(true);
+            AgentThreadHooks.threadStart(thread);
+            return thread;
+        }), "a factory no woven factory() made is only called, and its thread judged by its flag");
     }
 
     @Test

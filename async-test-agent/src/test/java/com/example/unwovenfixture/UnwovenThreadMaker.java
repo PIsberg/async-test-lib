@@ -32,6 +32,16 @@ public final class UnwovenThreadMaker {
     }
 
     /**
+     * {@return {@code thread}, given setDaemon(true) here, where the agent cannot see it (#856)}
+     *
+     * @param thread an unstarted thread, constructed anywhere
+     */
+    public static Thread decideDaemon(Thread thread) {
+        thread.setDaemon(true);
+        return thread;
+    }
+
+    /**
      * {@return an unstarted thread given setDaemon(false) here}
      *
      * @param name the thread's name

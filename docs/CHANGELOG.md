@@ -381,6 +381,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-recorded. `LibraryStateIsKeyedByIdentityTest` drops the 19 exemptions, so a report key built
   from an identity hash is red again.
 
+- **With the agent, two more daemon decisions are seen (#856).** A thread from a
+  `Thread.Builder`'s `factory()` was not marked constructed, so a missing daemon decision on it was
+  never judged: the agent now weaves `Thread.Builder.factory()` and `ThreadFactory.newThread`, and a
+  thread a woven `newThread` gets from a builder's factory counts as constructed in woven code and
+  carries the builder's woven `daemon(...)` decision, as `unstarted` does. And a daemon decision
+  made by a call into unwoven code on a thread woven code constructed read as missing: the library
+  now records the flag the thread inherited from its constructing thread, and a woven start, or a
+  `ThreadFactoryDetector` recording, that finds a different flag with no woven decision takes the
+  flag as decided. User-visible: a builder-factory thread with no daemon decision left running is
+  reported by `DaemonThreadHygieneDetector`, and a thread built on a non-daemon thread and made
+  daemon in unwoven code is no longer reported by it or by `ThreadFactoryDetector`. Still reported,
+  as a known false positive: `setDaemon(true)` in unwoven code on a thread a daemon worker
+  constructed, which leaves the inherited flag unchanged. `DaemonDecisionWeavingTest` pins the
+  three new shapes end to end, `DaemonThreadFactoryWeavingTest` both factory directions,
+  `AgentThreadHooksTest` the hooks. The `AsyncTestAgent` guardrail note now names every weaver and
+  what each inserts, instead of "neither weaver".
 - **With the agent, `ConstructorSafetyValidator` knows when a constructor returned (#791).** After
   #778 two cases still counted a read of an earlier, already published instance as an escape,
   because the stack held a constructor of its class: a pooled thread inside the next constructor

@@ -49,7 +49,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Deliberately unseen: a subclass instance constructed where nothing is woven still runs its
  * woven constructor and is marked, and a thread constructed in woven code but configured by a call
- * into unwoven code has that decision missed. Both are narrower than the blind spot this closes.
+ * into unwoven code has that decision missed, unless it changed the flag the thread inherited,
+ * which the library compares at the start (#856). Both are narrower than the blind spot this
+ * closes.
  */
 final class ThreadConstructionWeaver implements AsmVisitorWrapper {
 

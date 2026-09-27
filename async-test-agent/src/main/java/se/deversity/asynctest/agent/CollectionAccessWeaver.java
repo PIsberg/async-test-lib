@@ -615,8 +615,9 @@ final class CollectionAccessWeaver {
      * The thread table: {@link Thread#start()}, {@link Thread#join()}, {@link Thread#isAlive()}
      * and {@link Thread#setDaemon(boolean)}, the two other ways to start a thread,
      * {@link Thread.Builder#start(Runnable)} and {@link Thread#startVirtualThread(Runnable)}, and
-     * the builder calls that decide and construct, {@link Thread.Builder.OfPlatform#daemon} and
-     * {@link Thread.Builder#unstarted(Runnable)}.
+     * the builder calls that decide and construct, {@link Thread.Builder.OfPlatform#daemon},
+     * {@link Thread.Builder#unstarted(Runnable)} and {@link Thread.Builder#factory()}, and
+     * {@link java.util.concurrent.ThreadFactory#newThread(Runnable)}.
      *
      * <p>Every {@code join} overload is {@code final} on {@code Thread}, and so is
      * {@code isAlive}, so the call site names the method whatever type it was compiled against.
@@ -627,7 +628,10 @@ final class CollectionAccessWeaver {
      * what the hook does in between (#834). A platform builder applies its {@code daemon}
      * decision inside {@code unstarted}, where nothing is woven, so the hooks carry a woven
      * decision from the builder to the thread themselves (#737); every builder method returns the
-     * builder, so the substitutions return what the call returned. The threads a woven
+     * builder, so the substitutions return what the call returned. A builder's factory makes its
+     * threads inside the JDK too, so the factory a woven {@code factory()} returns is remembered,
+     * and a woven {@code newThread} on it marks the thread it made as a woven {@code unstarted}
+     * does (#856); a {@code newThread} on any other factory is only performed. The threads a woven
      * {@code new Thread} constructs are marked by {@link ThreadConstructionWeaver}, which travels
      * with this table.
      */
@@ -646,7 +650,10 @@ final class CollectionAccessWeaver {
                     boolean.class),
             Entry.call(Thread.Builder.OfPlatform.class, "daemon", "threadBuilderDaemon"),
             Entry.call(Thread.Builder.class, "unstarted", "threadBuilderUnstarted",
-                    Runnable.class));
+                    Runnable.class),
+            Entry.call(Thread.Builder.class, "factory", "threadBuilderFactory"),
+            Entry.call(java.util.concurrent.ThreadFactory.class, "newThread",
+                    "threadFactoryNewThread", Runnable.class));
 
     /**
      * One resolved rewrite: the call shape to match and the hook invocation that replaces it.
