@@ -30,7 +30,10 @@ import java.util.Map;
  * <p>Detectors whose report does not follow the canonical shape
  * ({@code analyze() → Report{hasIssues(), toString()}}) silently return an empty
  * list — they continue to work via the legacy {@code DetectorRegistry} path; the
- * SPI registry simply has no structured view of them.
+ * SPI registry simply has no structured view of them. A detector that has the shape
+ * but whose report method or {@code hasIssues()} sits on a class this package may not
+ * call into, such as a report type that is not public, is not shapeless: it is reported
+ * as a failure below, since it would otherwise look clean whatever it recorded (#847).
  *
  * <p>A report with issues that keeps a public {@code structuredViolations} list hands
  * over those {@link Violation}s as they are, at the severities the detector chose, which
@@ -40,7 +43,8 @@ import java.util.Map;
  * finding came out {@code HIGH} (#841).
  *
  * <p>A detector that throws from its report method, its report's {@code hasIssues()} or
- * {@code toString()} is contained the way the registry path contains it, through
+ * {@code toString()}, or whose report cannot be reached, is contained the way the registry
+ * path contains a throwing one, through
  * {@link DetectorFailurePolicy#detectorFailed}: its finding is lost and a line is written,
  * and under strict mode the build fails. Any other {@link Error} it throws, strict mode's own
  * {@link AssertionError} included, reaches the caller.
@@ -167,13 +171,18 @@ public final class LegacyDetectorAdapter<D> implements Detector {
             // reported nothing and failed nothing on this path.
             Throwable thrown = e.getCause();
             return detectorFailed(thrown != null ? thrown : e);
-        } catch (ReflectiveOperationException e) {
-            // The detector doesn't follow the canonical shape (NoSuchMethodException) or its
-            // report is not accessible: it has no structured view on this path, by design.
-            return List.of();
-        } catch (RuntimeException | StackOverflowError e) {
-            // The report's toString() threw, or its structured list did.
+        } catch (IllegalAccessException | RuntimeException | StackOverflowError e) {
+            // The report's toString() threw, or its structured list did. Or the detector has the
+            // canonical shape but its report method or the report's hasIssues() is declared on a
+            // class this package may not call into (IllegalAccessException), so whatever it
+            // records never reaches this path: returned silently before #847, which read exactly
+            // like a clean detector.
             return detectorFailed(e);
+        } catch (ReflectiveOperationException e) {
+            // The detector doesn't follow the canonical shape (NoSuchMethodException): it has no
+            // structured view on this path, by design. Built-ins are held to the shape at build
+            // time by DetectorFiringContractTest instead.
+            return List.of();
         }
     }
 
@@ -184,7 +193,8 @@ public final class LegacyDetectorAdapter<D> implements Detector {
      * fails the build; any other {@link Error}, such as strict mode's own {@link AssertionError}
      * raised inside {@code analyze()}, propagates unchanged.
      *
-     * @param failure what the delegate threw, unwrapped from the reflection call
+     * @param failure what the delegate threw, unwrapped from the reflection call, or the
+     *                {@link IllegalAccessException} that refused the call into its report
      * @return an empty list, since a broken detector costs its own finding and nothing else
      */
     private List<Violation> detectorFailed(Throwable failure) {

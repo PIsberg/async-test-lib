@@ -12,6 +12,7 @@ import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorRegistry;
+import se.deversity.asynctest.spi.adapters.fixture.HiddenReportDetector;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -184,6 +185,49 @@ class LegacyDetectorAdapterTest {
         assertEquals("findings written as text", violations.get(0).message());
     }
 
+    @Test
+    @DisplayName("strict: a report the adapter cannot reach fails the build instead of reporting nothing (#847)")
+    void strictModeFailsAReportTheAdapterCannotReach() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+        Detector adapter = new LegacyDetectorAdapter<>(new HiddenReportDetector(), DetectorType.DEADLOCKS, "Hidden");
+
+        AssertionError raised = assertThrows(AssertionError.class, adapter::analyze,
+                "a report whose hasIssues() the adapter may not call reports nothing, which looks like a clean run");
+
+        assertTrue(raised.getMessage().contains("HiddenReportDetector"),
+                "the failure must name the detector: " + raised.getMessage());
+        assertInstanceOf(IllegalAccessException.class, raised.getCause(),
+                "the cause says why the report could not be read: " + raised.getCause());
+    }
+
+    @Test
+    @DisplayName("not strict: an unreachable report is contained and writes the policy's line")
+    void outsideStrictModeAnUnreachableReportIsLogged() {
+        System.clearProperty(DetectorFailurePolicy.STRICT_PROPERTY);
+        Detector adapter = new LegacyDetectorAdapter<>(new HiddenReportDetector(), DetectorType.DEADLOCKS, "Hidden");
+
+        List<List<Violation>> result = new ArrayList<>();
+        String written = captureStdErr(() -> result.add(adapter.analyze()));
+
+        assertTrue(result.get(0).isEmpty(), "the finding cannot be read: " + result.get(0));
+        assertTrue(written.contains("[AsyncTest] Detector HiddenReportDetector failed during analysis and was skipped: "
+                        + "java.lang.IllegalAccessException"),
+                "the line names the detector and the refused access: " + written);
+    }
+
+    @Test
+    @DisplayName("strict: a detector with no report method is not a failure; it has no view on this path, and says nothing")
+    void aShapelessDetectorStaysSilentEvenUnderStrictMode() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+        Detector adapter = new LegacyDetectorAdapter<>(new ShapelessDetector(), DetectorType.DEADLOCKS, "Shapeless");
+
+        List<List<Violation>> result = new ArrayList<>();
+        String written = captureStdErr(() -> result.add(adapter.analyze()));
+
+        assertTrue(result.get(0).isEmpty(), "nothing to report from: " + result.get(0));
+        assertEquals("", written, "a detector without the canonical shape is not a broken one");
+    }
+
     private static String captureStdErr(Runnable body) {
         PrintStream previous = System.err;
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -202,6 +246,13 @@ class LegacyDetectorAdapterTest {
     public static final class ThrowingDetector {
         public TextReport analyze() {
             throw new IllegalStateException("analysis broke");
+        }
+    }
+
+    /** A detector with no report method at all, which built-ins are barred from by DetectorFiringContractTest. */
+    public static final class ShapelessDetector {
+        public void record() {
+            // records into nothing; there is no analyze() to read it back
         }
     }
 

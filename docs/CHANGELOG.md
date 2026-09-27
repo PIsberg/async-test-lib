@@ -288,6 +288,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that shape, now at `LOW`, and says what it costs: the gather stage runs sequentially and the
   parallel stream buys it nothing. A shared-state race stays `HIGH` and sets the report's severity
   when both are present. On JDK 21 the two new tests are skipped by assumption.
+- **The SPI bridge reports a detector whose report it cannot reach (#847).** `LegacyDetectorAdapter`
+  calls each built-in detector's report method and the report's `hasIssues()` reflectively from
+  another package. A report type it may not call into, such as one that is not public, raised an
+  `IllegalAccessException` that the adapter returned as an empty list without a word, so the
+  detector read as clean through `spi.DetectorRegistry.build` whatever it recorded. It now goes
+  through `DetectorFailurePolicy.detectorFailed`, like a detector that throws: outside strict mode
+  one `[AsyncTest] Detector X failed during analysis and was skipped` line names it, under
+  `async-test.strict-detectors` the build fails. A detector with no report method at all still
+  returns an empty list and writes nothing; built-ins are held to that shape by
+  `DetectorFiringContractTest`. A new `AllDetectorsSpiCoverageTest` check reads every built-in's
+  report methods, `hasIssues()`, `toString()` and `structuredViolations` from outside the
+  detectors' package and found none unreachable today: the legacy registry names each report's
+  `hasIssues` by method reference, so javac already refuses a non-public report type there, and
+  the check covers report methods that registry does not name.
 - **The SPI bridge reports a detector that throws, and each finding at its own severity (#841).**
   `LegacyDetectorAdapter`, which `spi.DetectorRegistry.build` wraps every built-in detector in,
   invokes the detector reflectively and caught everything that came back as a reflection failure.

@@ -54,9 +54,12 @@ Coverage is automated:
   `Violation` carrying its `toString()` at the severity `DetectorDefaultSeverity`
   gives that text: the same severity the `failOn` gate reads (#841). A detector
   that throws is contained through `DetectorFailurePolicy.detectorFailed`, as on
-  the registry path, so strict mode fails the build. Detectors whose report
-  doesn't follow the canonical `analyze() → Report{hasIssues(), toString()}` shape
-  return an empty list.
+  the registry path, so strict mode fails the build, and so does one whose report
+  the adapter may not call into, such as a report type that is not public (#847).
+  Detectors whose report doesn't follow the canonical
+  `analyze() → Report{hasIssues(), toString()}` shape return an empty list and
+  write nothing; `DetectorFiringContractTest` holds every built-in to that shape,
+  and `AllDetectorsSpiCoverageTest` checks every built-in report is reachable.
 - **`SharedMessageDigestDetectorFactory`** is the typed-adapter template: when
   a legacy detector is migrated to expose `structuredViolations` natively,
   its factory uses a typed adapter to project them directly (no reflection).
