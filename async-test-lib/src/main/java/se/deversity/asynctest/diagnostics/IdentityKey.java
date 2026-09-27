@@ -37,6 +37,44 @@ final class IdentityKey {
         this.identityHash = System.identityHashCode(referent);
     }
 
+    /**
+     * The key the calling thread last looked an instance up with, for {@link #lookup(Object)}.
+     */
+    private static final ThreadLocal<IdentityKey> LOOKUP = new ThreadLocal<>();
+
+    /**
+     * {@return a key to look {@code referent} up with: the calling thread's previous one when it
+     * names the same instance, otherwise a new one that replaces it}
+     *
+     * <p>For the {@code get} on a record path, where nearly every call asks about the instance the
+     * same thread asked about last. A new key per call costs 24 bytes, and the compiler removes it
+     * only when the map's {@code get} is inlined into the record method, which one JVM does and the
+     * next, compiling in another order, does not (#812). The key is an ordinary one, so a caller
+     * may also store it.
+     *
+     * <p>It holds its referent strongly until the thread looks up another instance, or until
+     * {@link #forgetLookup()}, which a worker runs as it leaves its run, so a run's instances are
+     * not kept past it by the threads that recorded them.
+     *
+     * @param referent the tracked instance
+     * @throws NullPointerException if {@code referent} is null, as the constructor does
+     */
+    @SuppressWarnings("ReferenceEquality") // referent identity is the point; see the class javadoc
+    static IdentityKey lookup(Object referent) {
+        IdentityKey last = LOOKUP.get();
+        if (last != null && last.referent == referent) { // NOPMD CompareObjectsWithEquals - identity is the point
+            return last;
+        }
+        IdentityKey key = new IdentityKey(referent);
+        LOOKUP.set(key);
+        return key;
+    }
+
+    /** Drops the calling thread's {@link #lookup(Object)} key, and the instance it holds. */
+    static void forgetLookup() {
+        LOOKUP.remove();
+    }
+
     /** {@return the tracked instance} */
     Object referent() {
         return referent;

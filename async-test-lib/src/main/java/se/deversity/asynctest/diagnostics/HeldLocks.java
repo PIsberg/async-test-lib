@@ -352,17 +352,55 @@ public final class HeldLocks {
      * when this frame has an entry for it acquired at or before the mark, and also when the frame
      * has no entry for it at all: a {@code synchronized} block the agent did not weave never
      * reaches this class, so whether that monitor was released in between cannot be seen, and it
-     * is taken as held across, as it was before the mark existed.
+     * is taken as held across, as it was before the mark existed. A monitor such a block held at
+     * the mark and a woven one entered again since is the case
+     * {@link #countOnlyHeldSince(long, boolean)} covers; this form says it was not.
      *
      * @param mark a value {@link #acquisitionMark()} returned at the first access of the unit, or
      *             {@link #EVERY_ACQUISITION} to count every held lock again
      * @return the setting in force before this call, to restore in a {@code finally}
      */
     static long countOnlyHeldSince(long mark) {
+        return countOnlyHeldSince(mark, false);
+    }
+
+    /**
+     * {@link #countOnlyHeldSince(long)}, saying whether the tracked instance's own monitor was
+     * held at the mark by a hold this frame has no entry for, as {@link #heldUnseen(Object)}
+     * answered then.
+     *
+     * <p>Such a hold, a {@code synchronized} block or method the agent did not weave, has no
+     * release anything could report, so with {@code true} the monitor counts whenever
+     * {@link Thread#holdsLock} finds it held, whatever entries this frame gained for it since the
+     * mark: a woven block or {@code synchronized} method re-entering it inside the unwoven one is
+     * no break (#835). It is the assumption a monitor with no entry at all already gets. The
+     * flag is not part of the returned setting: passing that back through
+     * {@link #countOnlyHeldSince(long)} clears it, so the setting does not nest.
+     *
+     * @param mark                    a value {@link #acquisitionMark()} returned at the first
+     *                                access of the unit, or {@link #EVERY_ACQUISITION}
+     * @param monitorHeldUnseenAtMark what {@link #heldUnseen(Object)} answered for the tracked
+     *                                instance when {@code mark} was taken
+     * @return the setting in force before this call, to restore in a {@code finally}
+     */
+    static long countOnlyHeldSince(long mark, boolean monitorHeldUnseenAtMark) {
         Frame frame = current();
         long previous = frame.heldSince;
         frame.heldSince = mark;
+        frame.monitorHeldUnseenAtMark = monitorHeldUnseenAtMark;
         return previous;
+    }
+
+    /**
+     * {@return whether the calling thread holds {@code monitor} while this set has no entry for
+     * it: the thread entered it in code the agent did not weave, or without the agent at all}
+     *
+     * <p>Taken with {@link #acquisitionMark()} for {@link #countOnlyHeldSince(long, boolean)}.
+     *
+     * @param monitor the object whose monitor is asked about, never {@code null}
+     */
+    static boolean heldUnseen(Object monitor) {
+        return Thread.holdsLock(monitor) && current().indexOf(monitor) < 0;
     }
 
     /**
@@ -565,7 +603,7 @@ public final class HeldLocks {
         long since = frame.heldSince;
         boolean selfHeld = Thread.holdsLock(self);
         int selfHash = selfHeld ? System.identityHashCode(self) : 0;
-        if (selfHeld && since != EVERY_ACQUISITION) {
+        if (selfHeld && since != EVERY_ACQUISITION && !frame.monitorHeldUnseenAtMark) {
             selfHeld = frame.monitorHeldSince(selfHash, since);
         }
 
@@ -622,6 +660,9 @@ public final class HeldLocks {
 
         /** The {@link HeldLocks#countOnlyHeldSince(long)} setting that {@code intersect} reads. */
         private long heldSince = EVERY_ACQUISITION;
+
+        /** Whether the tracked instance's monitor was held unseen at {@link #heldSince} (#835). */
+        private boolean monitorHeldUnseenAtMark;
 
         /**
          * How many entries are re-confirmed when the set is read, a {@link Revocable} lock or a

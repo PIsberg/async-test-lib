@@ -97,9 +97,10 @@ public final class SharedDeflaterDetector {
 
     private void record(Object instance, String name, String kind, Thread thread) {
         if (thread == null) return;
-        IdentityKey key = new IdentityKey(instance);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(instance));
         if (s == null) {
+            IdentityKey key = new IdentityKey(instance);
             final String label = (name != null) ? name : kind + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }

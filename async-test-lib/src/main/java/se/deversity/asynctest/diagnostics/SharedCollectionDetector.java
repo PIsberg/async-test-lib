@@ -146,10 +146,10 @@ public class SharedCollectionDetector {
         // And for the writer tally: counted as a read, two unguarded LRU gets alone in a round
         // made no writer, and the finding needs one (#820).
         if (relinks) {
-            state.writeThreads.add(Thread.currentThread().threadId());
+            SelfGuard.addThreadId(state.writeThreads, Thread.currentThread().threadId());
             state.writeCount.incrementAndGet();
         } else {
-            state.readThreads.add(Thread.currentThread().threadId());
+            SelfGuard.addThreadId(state.readThreads, Thread.currentThread().threadId());
             state.readCount.incrementAndGet();
         }
     }
@@ -165,13 +165,18 @@ public class SharedCollectionDetector {
         if (collection == null) return;
         CollectionState state = resolveState(collection, name);
         state.noteAccess(collection, true);
-        state.writeThreads.add(Thread.currentThread().threadId());
+        SelfGuard.addThreadId(state.writeThreads, Thread.currentThread().threadId());
         state.writeCount.incrementAndGet();
     }
 
     private CollectionState resolveState(Object collection, String name) {
-        IdentityKey key = new IdentityKey(collection);
-        return collections.computeIfAbsent(key, k -> {
+        // Get first, with the thread's lookup key, reused while it names the same instance:
+        // computeIfAbsent allocated its capturing factory and a key on every call (#812).
+        CollectionState state = collections.get(IdentityKey.lookup(collection));
+        if (state != null) {
+            return state;
+        }
+        return collections.computeIfAbsent(new IdentityKey(collection), k -> {
             String type = collection.getClass().getSimpleName();
             String label = name != null ? name : type + "@" + k.hashCode();
             return new CollectionState(label, type);

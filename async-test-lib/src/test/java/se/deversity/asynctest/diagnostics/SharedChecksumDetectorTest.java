@@ -130,4 +130,24 @@ class SharedChecksumDetectorTest {
         assertEquals(first.violations, second.violations);
         assertEquals(first.structuredViolations.size(), second.structuredViolations.size());
     }
+
+    /**
+     * #812: the round's thread-id set boxed the id on every access, 24 bytes once it is past the
+     * {@code Long} cache, and the lookup key was allocated whenever the compiler kept it.
+     */
+    @Test
+    void recordingATrackedChecksumAllocatesNothingPerAccess() throws InterruptedException {
+        var d = new SharedChecksumDetector();
+        var crc = new CRC32();
+
+        long bytes = RecordPathAllocation.measuredBytes(() -> {
+            synchronized (crc) {
+                d.recordAccess(crc, "update", Thread.currentThread());
+            }
+        });
+
+        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a checksum the detector "
+                + "already tracks allocated " + bytes + " bytes over "
+                + RecordPathAllocation.MEASURED_CALLS + " accesses");
+    }
 }

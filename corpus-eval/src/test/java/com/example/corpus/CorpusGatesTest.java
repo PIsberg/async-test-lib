@@ -504,6 +504,27 @@ class CorpusGatesTest {
                 CorpusLane.AGENT_PAIRS));
     }
 
+    /**
+     * The agent-pair bar reads the tier the runner gated on, as the idiom lane does since #837. A
+     * graded detector's violation carries its detector's row tier, the weakest grade it can
+     * produce, so a verdict-grade finding from a PROMPT-rated detector passed this bar as a prompt
+     * (#843).
+     */
+    @Test
+    @DisplayName("a graded VERDICT finding from a PROMPT-rated detector fails the agent-pair bar")
+    void aGradedVerdictCollateralFindingInTheAgentPairLaneFails() {
+        RecordingSubject silent = aSilentRow(CorpusLane.AGENT_PAIRS);
+        DetectorType graded = DetectorType.LOCK_LEAKS;
+        assertTrue(silent.detector() != graded && PairEvidence.carriesPerFindingGrades(graded),
+                "precondition: the collateral detector grades its findings and is not the row's own");
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.noCollateralFindingOnASilentRow(
+                        List.of(new CorpusRecorder.Finding(silent.testMethod(), DetectorExposure.classOf(graded),
+                                IssueSeverity.CRITICAL, TrustTier.PROMPT, "leak the lock confirmed", "-",
+                                TrustTier.VERDICT)),
+                        CorpusLane.AGENT_PAIRS));
+    }
+
     @Test
     @DisplayName("a VERDICT finding on a firing row passes, since a second true positive is not noise")
     void aCollateralFindingOnAFiringRowPasses() {
@@ -690,6 +711,30 @@ class CorpusGatesTest {
                 CorpusGates.everyCorpusBackedVerdictResolvesToItsPair("LOCK_LEAKS=subFire,subNote",
                         id -> id.equals("subFire") ? fire : note));
         assertTrue(failure.getMessage().contains("subNote expects a LOW note"), failure.getMessage());
+    }
+
+    @Test
+    @DisplayName("a pair whose halves come from two lanes fails the verdict resolution gate")
+    void mixedLanePairFailsGate() {
+        // Each half is valid on its own: the recording lane's firing check-then-act and the idiom
+        // lane's silent one. Their bodies and feeds differ, so the pair separates on more than the
+        // defect (#842).
+        AssertionFailedError failure = assertThrows(AssertionFailedError.class, () ->
+                CorpusGates.everyCorpusBackedVerdictResolvesToItsPair(
+                        "CONCURRENT_MAP_CHECK_THEN_ACT = recorded_concurrentReferenceHashMap_checkThenAct, "
+                                + "idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
+                        Corpus::recordingByTestMethod));
+        assertTrue(failure.getMessage().contains("recorded_concurrentReferenceHashMap_checkThenAct comes from "
+                + "the recording lane and idiom_synchronizedCheckThenAct_onAConcurrentHashMap from the "
+                + "idioms lane"), failure.getMessage());
+    }
+
+    @Test
+    @DisplayName("every line of the shipped verdict evidence passes the verdict resolution gate")
+    void shippedVerdictEvidencePassesGate() {
+        // The recording lane runs this gate too; here it also runs in the agent-on fork, so a
+        // line that breaks it fails without waiting for a lane run.
+        assertDoesNotThrow(() -> CorpusGates.everyCorpusBackedVerdictResolvesToItsPair());
     }
 
     @Test

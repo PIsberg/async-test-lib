@@ -195,6 +195,31 @@ public final class SelfGuard {
         return instance != null && Thread.holdsLock(instance);
     }
 
+    /** The calling thread's id, boxed once per thread for {@link #addThreadId}. */
+    private static final ThreadLocal<Long> BOXED_THREAD_ID =
+            ThreadLocal.withInitial(() -> Thread.currentThread().threadId());
+
+    /**
+     * Adds {@code threadId} to {@code threadIds} without boxing it on every call.
+     *
+     * <p>For the thread-id sets on a record path, where nearly every call is a thread already
+     * recorded. A bare {@code add} boxes on every call, 24 bytes once the id is past the
+     * {@link Long} cache, which every worker's is (#812), and the compiler does not remove that
+     * box. The calling thread's own id, the usual case, is boxed once per thread instead; an id
+     * attributed to another thread is boxed as before. The membership test comes first because
+     * it takes no lock, where an {@code add} of a present element may take the bin's monitor.
+     *
+     * @param threadIds a concurrent set of thread ids
+     * @param threadId  the id to record
+     * @return {@code true} when this call added the id, as {@link Set#add} answers
+     */
+    static boolean addThreadId(Set<Long> threadIds, long threadId) {
+        Long boxed = threadId == Thread.currentThread().threadId()
+                ? BOXED_THREAD_ID.get()
+                : Long.valueOf(threadId);
+        return !threadIds.contains(boxed) && threadIds.add(boxed);
+    }
+
     /**
      * The round clock one run's sharing verdicts are taken against.
      *
@@ -236,9 +261,13 @@ public final class SelfGuard {
             BOUND.set(scope);
         }
 
-        /** Unbinds the calling thread's scope. Called from {@code AsyncTestContext.uninstall()}. */
+        /**
+         * Unbinds the calling thread's scope, and drops its cached lookup key, so the thread keeps
+         * no instance of the run it leaves. Called from {@code AsyncTestContext.uninstall()}.
+         */
         public static void unbind() {
             BOUND.remove();
+            IdentityKey.forgetLookup();
         }
 
         /** {@return the calling thread's scope, or {@code null} outside a run} */
@@ -942,7 +971,7 @@ public final class SelfGuard {
         Round add(Thread thread) {
             Round round = roundFor(roundNow());
             long id = thread.threadId();
-            if (round.ids.add(id)) {
+            if (addThreadId(round.ids, id)) {
                 // Named once, on the thread's first access in the round and while it is alive:
                 // an unnamed thread, which includes every default virtual thread, goes by its id,
                 // or all of them would share one blank entry (#798).

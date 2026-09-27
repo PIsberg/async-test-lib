@@ -2,6 +2,10 @@ package se.deversity.asynctest.diagnostics;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,6 +18,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Detects the ABA Problem in atomic operations.
@@ -60,6 +65,22 @@ import java.util.concurrent.atomic.AtomicLong;
  * it back, or one thread that makes both changes before recording the first: a thread that
  * records each change right after making it cannot. Those records are the records of a real ABA,
  * so it is reported as one.
+ *
+ * <p><strong>With the agent.</strong> Attached with {@code fields=true}, the agent substitutes
+ * every {@code AtomicReference} {@code get}, {@code getAcquire}, {@code set}, {@code lazySet},
+ * {@code setRelease}, {@code compareAndSet} and {@code getAndSet} in woven code, and on a thread
+ * whose test has this detector each runs through an {@link AgentSlot}, which takes its record
+ * inside the same lock as the operation (#817). The records of one atomic are then in the order
+ * its woven operations ran, so neither limit above applies there: a toggle that ran before a read
+ * is recorded before it, and one recorded after a compare-and-set ran after it. The finding is
+ * also narrowed to the case an A-B-A can hurt. A compare-and-set whose expected value has no
+ * mutable field of its own (an enum constant, a boxed number, a {@code String}, a record, any
+ * class whose instance fields are all final) or is {@code null} is judged harmless: nothing
+ * behind the value can have changed while it was away, so a state machine's A-B-A is silent,
+ * while a lock-free stack that pushes a popped node back is reported. The agent's records keep no
+ * history, only each thread's last read and whether the value left it and came back since, so a
+ * hot atomic costs one entry per thread. They are reported under the atomic's class and identity,
+ * apart from the named variables above.
  *
  * <p>A value going A to B and back to A is not a finding on its own. One thread pushing and
  * then popping, a flag set and cleared, a counter incremented and decremented: each is an
@@ -153,6 +174,10 @@ public class ABAProblemDetector {
     }
     
     private final Map<String, AtomicValueHistory> trackedVariables = new ConcurrentHashMap<>();
+
+    /** The atomics the agent feeds, by identity (#817). */
+    private final Map<IdentityKey, AgentSlot> agentSlots = new ConcurrentHashMap<>();
+
     private volatile boolean enabled = true;
     
     /**
@@ -406,6 +431,9 @@ public class ABAProblemDetector {
                 }
             }
         }
+        for (AgentSlot slot : agentSlots.values()) {
+            slot.reportInto(report);
+        }
         
         return report;
     }
@@ -433,6 +461,7 @@ public class ABAProblemDetector {
      */
     public void reset() {
         trackedVariables.clear();
+        agentSlots.clear();
         roundStarts = new long[0];
     }
 
@@ -455,6 +484,9 @@ public class ABAProblemDetector {
         for (AtomicValueHistory history : trackedVariables.values()) {
             history.reads.clear();
         }
+        for (AgentSlot slot : agentSlots.values()) {
+            slot.forgetReads();
+        }
         long[] started = roundStarts;
         long[] next = Arrays.copyOf(started, started.length + 1);
         next[started.length] = sequence.incrementAndGet();
@@ -473,6 +505,324 @@ public class ABAProblemDetector {
         enabled = true;
     }
     
+    /**
+     * {@return this detector's view of {@code atomic}, through which the agent performs each woven
+     * operation on it (#817), or {@code null} while the detector is disabled}
+     *
+     * <p>Called by the agent's hooks on the thread making the call; test code records by name
+     * instead.
+     *
+     * @param atomic the atomic a woven call site invoked
+     * @since 1.12.3
+     */
+    @API(status = Status.INTERNAL)
+    public @Nullable AgentSlot agentSlot(Object atomic) {
+        if (!enabled) {
+            return null;
+        }
+        IdentityKey key = new IdentityKey(atomic);
+        AgentSlot slot = agentSlots.get(key);
+        return slot != null ? slot : agentSlots.computeIfAbsent(key, AgentSlot::new);
+    }
+
+    /**
+     * One {@code AtomicReference} the agent feeds (#817): each woven operation on it runs here, with
+     * its record taken inside the same lock, so the records of one atomic are in the order its
+     * operations ran.
+     *
+     * <p>Only woven operations of threads whose test has this detector take the lock; any other
+     * code touches the atomic as before. A change that bypasses the lock can hide an A-B-A, never
+     * make one: every read and change judged here ran in the order it was recorded, so a reported
+     * one really went from the value a thread read, away and back, before that thread's
+     * compare-and-set expecting it succeeded.
+     *
+     * <p>No history is kept. Each thread's last read is the premise its next compare-and-set is
+     * judged against, as on the recording path, and each change updates the other threads'
+     * premises as it happens: away from the value they read, then back to it.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.INTERNAL)
+    public static final class AgentSlot {
+
+        /** How many distinct findings one atomic keeps; each is one line of the report. */
+        private static final int MAX_FINDINGS = 16;
+
+        private final String label;
+        private final Object lock = new Object();
+
+        /** Guarded by {@link #lock}: one premise per thread that read this atomic. */
+        private Premise[] premises = new Premise[2];
+        /** Guarded by {@link #lock}. */
+        private int premiseCount;
+        /** Guarded by {@link #lock}: the last change, for the cycle count shown as context. */
+        private @Nullable Object lastOld;
+        /** Guarded by {@link #lock}. */
+        private @Nullable Object lastNew;
+        /** Guarded by {@link #lock}: whether {@link #lastOld} and {@link #lastNew} hold a change. */
+        private boolean anyChange;
+        /** Guarded by {@link #lock}. */
+        private int cycles;
+        /** Guarded by {@link #lock}: expected and new value of each A-B-A compare-and-set. */
+        private final List<Object[]> findings = new ArrayList<>();
+
+        private AgentSlot(IdentityKey atomic) {
+            this.label = atomic.toString();
+        }
+
+        /** A thread's last read of the atomic and what happened to that value since. */
+        private static final class Premise {
+            final long thread;
+            @Nullable Object value;
+            boolean live;
+            boolean movedAway;
+            boolean cameBack;
+
+            Premise(long thread) {
+                this.thread = thread;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicReference.get}, recorded as the calling thread's premise.
+         *
+         * @param atomic the atomic this slot describes
+         * @return what {@code get} returned
+         */
+        public @Nullable Object get(AtomicReference<Object> atomic) {
+            synchronized (lock) {
+                Object value = atomic.get();
+                read(value);
+                return value;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicReference.getAcquire}, recorded as {@link #get} records.
+         *
+         * @param atomic the atomic this slot describes
+         * @return what {@code getAcquire} returned
+         */
+        public @Nullable Object getAcquire(AtomicReference<Object> atomic) {
+            synchronized (lock) {
+                Object value = atomic.getAcquire();
+                read(value);
+                return value;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicReference.set}, recorded as a change from what the atomic held.
+         *
+         * @param atomic the atomic this slot describes
+         * @param value  the reference to store
+         */
+        public void set(AtomicReference<Object> atomic, @Nullable Object value) {
+            synchronized (lock) {
+                Object old = atomic.get();
+                atomic.set(value);
+                changed(old, value);
+            }
+        }
+
+        /**
+         * Performs {@code AtomicReference.lazySet}, recorded as {@link #set} records.
+         *
+         * @param atomic the atomic this slot describes
+         * @param value  the reference to store
+         */
+        public void lazySet(AtomicReference<Object> atomic, @Nullable Object value) {
+            synchronized (lock) {
+                Object old = atomic.get();
+                atomic.lazySet(value);
+                changed(old, value);
+            }
+        }
+
+        /**
+         * Performs {@code AtomicReference.setRelease}, recorded as {@link #set} records.
+         *
+         * @param atomic the atomic this slot describes
+         * @param value  the reference to store
+         */
+        public void setRelease(AtomicReference<Object> atomic, @Nullable Object value) {
+            synchronized (lock) {
+                Object old = atomic.get();
+                atomic.setRelease(value);
+                changed(old, value);
+            }
+        }
+
+        /**
+         * Performs {@code AtomicReference.getAndSet}, recorded as a change from the value it
+         * returns.
+         *
+         * @param atomic the atomic this slot describes
+         * @param value  the reference to store
+         * @return the reference the atomic held
+         */
+        public @Nullable Object getAndSet(AtomicReference<Object> atomic, @Nullable Object value) {
+            synchronized (lock) {
+                Object old = atomic.getAndSet(value);
+                changed(old, value);
+                return old;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicReference.compareAndSet}, judged against the calling thread's
+         * premise and recorded, when it swapped, as a change from {@code expected}. Either way the
+         * premise is used up: a retry reads again.
+         *
+         * @param atomic   the atomic this slot describes
+         * @param expected the reference the atomic must hold
+         * @param update   the reference to store
+         * @return whether it swapped
+         */
+        @SuppressWarnings("ReferenceEquality") // the atomic compares identity, so this does too
+        public boolean compareAndSet(AtomicReference<Object> atomic, @Nullable Object expected,
+                                     @Nullable Object update) {
+            // Outside the lock: the first answer for a class reads its fields, which may load
+            // classes, and nothing that can load a class runs under this lock.
+            boolean stateful = canCarryState(expected);
+            synchronized (lock) {
+                boolean swapped = atomic.compareAndSet(expected, update);
+                Premise mine = premiseOf(Thread.currentThread().threadId());
+                if (mine != null && mine.live) {
+                    if (swapped && mine.cameBack && mine.value == expected // NOPMD CompareObjectsWithEquals - identity, as the atomic compares
+                            && stateful && findings.size() < MAX_FINDINGS) {
+                        findings.add(new Object[] {expected, update});
+                    }
+                    mine.live = false;
+                }
+                if (swapped) {
+                    changed(expected, update);
+                }
+                return swapped;
+            }
+        }
+
+        /** Records the calling thread's read. Call holding {@link #lock}. */
+        private void read(@Nullable Object value) {
+            long me = Thread.currentThread().threadId();
+            Premise mine = premiseOf(me);
+            if (mine == null) {
+                if (premiseCount == premises.length) {
+                    premises = Arrays.copyOf(premises, premiseCount * 2);
+                }
+                mine = new Premise(me);
+                premises[premiseCount] = mine;
+                premiseCount++;
+            }
+            mine.value = value;
+            mine.live = true;
+            mine.movedAway = false;
+            mine.cameBack = false;
+        }
+
+        /**
+         * Applies a change the calling thread made to every other thread's premise, and counts a
+         * change that undoes the one before it. Call holding {@link #lock}.
+         */
+        @SuppressWarnings("ReferenceEquality") // the atomic compares identity, so this does too
+        private void changed(@Nullable Object old, @Nullable Object neu) {
+            long me = Thread.currentThread().threadId();
+            for (int i = 0; i < premiseCount; i++) {
+                Premise other = premises[i];
+                if (other.thread == me || !other.live || other.cameBack) {
+                    continue;
+                }
+                if (!other.movedAway) {
+                    other.movedAway = old == other.value && neu != other.value; // NOPMD CompareObjectsWithEquals - identity
+                } else if (neu == other.value) { // NOPMD CompareObjectsWithEquals - identity
+                    other.cameBack = true;
+                }
+            }
+            if (anyChange && old == lastNew && neu == lastOld && lastOld != lastNew) { // NOPMD CompareObjectsWithEquals - identity
+                cycles++;
+            }
+            lastOld = old;
+            lastNew = neu;
+            anyChange = true;
+        }
+
+        /** {@return the premise of {@code thread}, or {@code null}}. Call holding {@link #lock}. */
+        private @Nullable Premise premiseOf(long thread) {
+            for (int i = 0; i < premiseCount; i++) {
+                if (premises[i].thread == thread) {
+                    return premises[i];
+                }
+            }
+            return null;
+        }
+
+        /** Drops every premise: the harness orders every read before a round start (#810). */
+        private void forgetReads() {
+            synchronized (lock) {
+                for (int i = 0; i < premiseCount; i++) {
+                    premises[i].live = false;
+                }
+            }
+        }
+
+        /** Adds this atomic's findings and cycle count to {@code report}. */
+        private void reportInto(ABAReport report) {
+            List<Object[]> found;
+            int cycleCount;
+            synchronized (lock) {
+                found = new ArrayList<>(findings);
+                cycleCount = cycles;
+            }
+            // Formatted outside the lock: toString is the program's code.
+            if (cycleCount > 0) {
+                report.variablesWithCycles.put(label, cycleCount);
+            }
+            for (Object[] finding : found) {
+                report.successfulABACases.add(String.format(
+                        "%s: CAS succeeded despite ABA (expected %s, set to %s)",
+                        label, finding[0], finding[1]));
+            }
+        }
+    }
+
+    /**
+     * Which classes' instances have a mutable field of their own, and so can carry state an A-B-A
+     * leaves stale (#817). The JDK's value classes are listed rather than read: a {@code String} or
+     * a {@code BigInteger} caches a hash or a magnitude in a non-final field without being any less
+     * a value.
+     */
+    private static final ClassValue<Boolean> CARRIES_STATE = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            if (type.isArray()) {
+                return Boolean.TRUE;
+            }
+            if (type.isEnum() || type.isRecord() || type == String.class || type == Boolean.class
+                    || type == Character.class
+                    || Number.class.isAssignableFrom(type) && type.getName().startsWith("java.")) {
+                return Boolean.FALSE;
+            }
+            try {
+                for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (Field field : c.getDeclaredFields()) {
+                        int modifiers = field.getModifiers();
+                        if (!Modifier.isStatic(modifiers) && !Modifier.isFinal(modifiers)) {
+                            return Boolean.TRUE;
+                        }
+                    }
+                }
+            } catch (LinkageError | SecurityException unreadable) {
+                return Boolean.TRUE; // its fields cannot be read, so it may have such a field
+            }
+            return Boolean.FALSE;
+        }
+    };
+
+    /** {@return whether an A-B-A of {@code value} can leave state behind it stale} */
+    static boolean canCarryState(@Nullable Object value) {
+        return value != null && !(value instanceof Enum<?>) && CARRIES_STATE.get(value.getClass());
+    }
+
     public static class ABAReport {
         /** How many A-B-A cycles were observed per variable. */
         public final Map<String, Integer> variablesWithCycles = new HashMap<>();

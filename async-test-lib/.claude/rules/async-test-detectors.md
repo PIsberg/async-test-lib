@@ -14,7 +14,10 @@ in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
   `ConcurrentHashMap` / `ConcurrentHashMap.newKeySet()` / `LongAdder`; never a bare `HashMap` or a
   non-final lock target.
 - **Allocation-free on the record path.** `recordX(...)` runs inside the contended region. Use
-  get-then-`computeIfAbsent`, and do not allocate when state already exists for a key.
+  get-then-`computeIfAbsent`, and do not allocate when state already exists for a key. The `get`
+  takes `IdentityKey.lookup(x)`, the thread's reused key, not a `new IdentityKey(x)` per call
+  (#812). Add thread ids with `SelfGuard.addThreadId`, not `Set<Long>.add`, which boxes on every
+  call.
 
 Detectors that carry additional guarantees (an explicit thread-safety strategy, a security aspect,
 a performance budget) are annotated individually and appear below.

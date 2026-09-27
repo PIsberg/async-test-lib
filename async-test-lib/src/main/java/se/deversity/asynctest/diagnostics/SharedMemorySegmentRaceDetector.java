@@ -178,9 +178,10 @@ public final class SharedMemorySegmentRaceDetector {
     }
 
     private SegmentState stateFor(Object segment, @Nullable String label) {
-        IdentityKey key = new IdentityKey(segment);
-        SegmentState s = segments.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        SegmentState s = segments.get(IdentityKey.lookup(segment));
         if (s == null) {
+            IdentityKey key = new IdentityKey(segment);
             final String lbl = label != null ? label : "MemorySegment@" + key.hashCode();
             s = segments.computeIfAbsent(key, k -> new SegmentState(lbl));
         }

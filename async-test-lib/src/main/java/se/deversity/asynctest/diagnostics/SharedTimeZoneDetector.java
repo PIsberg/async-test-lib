@@ -59,8 +59,11 @@ public class SharedTimeZoneDetector {
      */
     public void recordMutation(Object timeZone, String operation, Thread thread) {
         if (timeZone == null || thread == null) return;
-        TzState s = timezones.computeIfAbsent(new IdentityKey(timeZone),
-                k -> new TzState());
+        // The thread's lookup key, reused while it names the same instance (#812).
+        TzState s = timezones.get(IdentityKey.lookup(timeZone));
+        if (s == null) {
+            s = timezones.computeIfAbsent(new IdentityKey(timeZone), k -> new TzState());
+        }
         s.noteAccess(timeZone, true, thread);
         if (s.firstOperation == null) s.firstOperation = operation != null ? operation : "mutate";
     }

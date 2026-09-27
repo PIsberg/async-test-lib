@@ -298,9 +298,10 @@ public final class SharedJsonMapperReconfigDetector {
     }
 
     private State stateFor(Object mapper) {
-        IdentityKey key = new IdentityKey(mapper);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(mapper));
         if (s == null) {
+            IdentityKey key = new IdentityKey(mapper);
             s = instances.computeIfAbsent(key, k -> new State(mapper.getClass().getName()));
         }
         return s;

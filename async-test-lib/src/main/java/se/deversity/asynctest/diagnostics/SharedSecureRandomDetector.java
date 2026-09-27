@@ -99,9 +99,10 @@ public final class SharedSecureRandomDetector {
      */
     public void recordAccess(SecureRandom random, String name, Thread thread) {
         if (random == null || thread == null) return;
-        IdentityKey key = new IdentityKey(random);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(random));
         if (s == null) {
+            IdentityKey key = new IdentityKey(random);
             // Cold path — first observation of this instance.
             s = instances.computeIfAbsent(key, k -> {
                 String label = (name != null)
@@ -113,7 +114,7 @@ public final class SharedSecureRandomDetector {
                 return new State(label, algorithm, provider);
             });
         }
-        s.accessingThreadIds.add(thread.threadId());
+        SelfGuard.addThreadId(s.accessingThreadIds, thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         s.sharing.record(invocationEpoch.get(), thread.threadId());
     }

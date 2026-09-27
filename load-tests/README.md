@@ -89,8 +89,9 @@ an inner-loop half and a ring half, and the two are deliberately different instr
   the test fail with a 1-byte ceiling; allocation is what the runner and detectors control and it
   is stable across machines, which is why it can gate where wall-clock cannot. An empty body
   cannot see a record path, so the same test also runs a body that records through the common
-  ones and fails when that costs more than 110,000 bytes per execution beyond the empty body
-  (1.21x the highest of 84,297 to 91,227 measured on JDK 21, 24 and 26, #752).
+  ones and fails when that costs more than 25,000 bytes per execution beyond the empty body
+  (1.37x the highest of 10,897 to 18,203 measured on JDK 21, 24 and 26, #752, #812), close
+  enough that a 16-byte object per access turns it red.
 - **Nightly ring, compared:** `load-tests.yml` runs this fast sweep every night at 04:00 UTC and
   `tools/compare-baseline.sh` joins the fresh `throughput.csv` / `memory.csv` rows with the newest
   committed `results/<version>/` set, printing a `::warning::` above 1.5x (median ms) or 2.0x

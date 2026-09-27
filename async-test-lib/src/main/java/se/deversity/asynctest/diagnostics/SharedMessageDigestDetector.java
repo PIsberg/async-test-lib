@@ -76,9 +76,10 @@ public class SharedMessageDigestDetector {
         // detector has already seen at least once, so we avoid all classification
         // work (instanceof chain, label string construction, lambda allocation)
         // until we know the entry is missing.
-        IdentityKey key = new IdentityKey(digest);
-        DigestState s = digests.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        DigestState s = digests.get(IdentityKey.lookup(digest));
         if (s == null) {
+            IdentityKey key = new IdentityKey(digest);
             // Cold path: first encounter of this instance. computeIfAbsent
             // guarantees the factory runs at most once even under contention.
             s = digests.computeIfAbsent(key, k -> {

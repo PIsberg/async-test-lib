@@ -123,9 +123,10 @@ public final class SharedStatefulCryptoDetector {
     private void record(Object instance, String name, String kind, Class<?> type,
                         String algorithm, Thread thread) {
         if (thread == null) return;
-        IdentityKey key = new IdentityKey(instance);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(instance));
         if (s == null) {
+            IdentityKey key = new IdentityKey(instance);
             // Cold path — first observation of this instance.
             final String label = (name != null)
                     ? name : type.getSimpleName() + "@" + key.hashCode();

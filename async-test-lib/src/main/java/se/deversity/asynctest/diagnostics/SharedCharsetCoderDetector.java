@@ -99,9 +99,10 @@ public final class SharedCharsetCoderDetector {
 
     private void record(Object coder, String operation, String kind, Thread thread) {
         if (thread == null) return;
-        IdentityKey key = new IdentityKey(coder);
-        State s = instances.get(key);
+        // The thread's lookup key, reused while it names the same instance (#812).
+        State s = instances.get(IdentityKey.lookup(coder));
         if (s == null) {
+            IdentityKey key = new IdentityKey(coder);
             final String label = kind + "@" + key.hashCode();
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }

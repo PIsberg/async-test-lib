@@ -49,7 +49,8 @@ import se.deversity.vibetags.annotations.AIKeepInSync;
  *
  * <h2>Which threads are forwarded</h2>
  * The worker threads the bridge is given, and the threads they hand work to (#745): a thread a
- * forwarded thread starts through a woven {@code Thread.start}, from its first access, and a pool
+ * forwarded thread starts through a woven {@code Thread.start}, {@code Thread.Builder} start or
+ * {@code Thread.startVirtualThread} (#834), from its first access, and a pool
  * thread while it runs a task a forwarded thread submitted to a JDK executor or to
  * {@code CompletableFuture.supplyAsync}/{@code runAsync}, and at no other time. Both are learned
  * from events the hooks publish into the same ring as the accesses, ahead of anything the new
@@ -57,8 +58,7 @@ import se.deversity.vibetags.annotations.AIKeepInSync;
  * run, so a thread that outlives the run that started it, or a pool thread shared by several runs,
  * contributes to a later run only what that run's own workers hand it. Anything else is dropped
  * and counted ({@link #droppedNonWorkerEvents()}): a thread started in code the agent does not
- * weave or through a {@code Thread.Builder}, and a task handed over by {@code Executor.execute}
- * or to a non-JDK executor.
+ * weave, and a task handed over by {@code Executor.execute} or to a non-JDK executor.
  *
  * <h2>Thread safety</h2>
  * {@link #onEvent} runs on the single telemetry drain thread, while {@link #activate}
@@ -194,12 +194,18 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * One thread's nested handed tasks, innermost in the lowest bit, a bit set for a task of this
      * run. A task runs inside another when an executor runs it on the submitting thread, or a
      * fork-join worker helps while it waits; past 64 levels the outer bits are lost, which only
-     * stops forwarding.
+     * stops forwarding. {@code base} is how many handed tasks the thread was already running when
+     * the first of these began, so {@code base + depth} is its nesting as the thread counts it,
+     * which each task event carries (#834).
      */
     private static final class TaskFrames {
         long ours;
         int depth;
+        int base;
     }
+
+    /** The depth a task event carries when it was published without one. */
+    private static final int DEPTH_UNKNOWN = Integer.MIN_VALUE;
 
     /** A read held back until its speculation is judged: the arguments it will be recorded with. */
     private record HeldRead(String field, long threadId, long lockFingerprint, int ownMonitor,
@@ -523,7 +529,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName != null && !qualifiedName.isEmpty() && qualifiedName.charAt(0) == '#'
-                && attribution(threadId, qualifiedName, lockFingerprint)) {
+                && attribution(threadId, qualifiedName, lockFingerprint, constantTag)) {
             return;
         }
         if (!forwards(threadId)) {
@@ -611,8 +617,13 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * <p>Each is judged when it drains, against what this bridge forwards at that point in the
      * ring, which is where the thread that published it stood when it did: a start or a submission
      * made inside one of this run's tasks counts, one made after it ended does not.
+     *
+     * <p>A task start or end also says how many handed tasks its thread runs besides (#834). The
+     * ring drops an event only after a sustained stall, and a lost end used to leave the frame of
+     * a task of this run on a pool thread that had long finished it, forwarding whatever the thread
+     * did next until the run ended. The frames deeper than the count are ended here instead.
      */
-    private boolean attribution(long threadId, String name, long other) {
+    private boolean attribution(long threadId, String name, long other, int depth) {
         if (TelemetryRegistry.THREAD_STARTING.equals(name)) {
             if (forwards(threadId)) {
                 startedThreads.add(other);
@@ -628,13 +639,24 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (TelemetryRegistry.TASK_STARTED.equals(name)) {
             boolean ours = submittedTasks.remove(other);
             TaskFrames frames = runningTasks.get(threadId);
+            if (frames != null && depth != DEPTH_UNKNOWN) {
+                frames = endFramesBeyond(threadId, frames, depth);
+            }
             if (frames == null && ours) {
                 frames = new TaskFrames();
+                frames.base = depth == DEPTH_UNKNOWN ? 0 : depth;
                 runningTasks.put(threadId, frames);
             }
             // A thread with no task of ours running needs no frame for another run's task: its
             // end finds no frame and changes nothing.
             if (frames != null) {
+                // A start deeper than the frames reach: tasks began whose starts never drained,
+                // and none of them can be shown to be this run's.
+                int missed = depth == DEPTH_UNKNOWN ? 0 : depth - frames.base - frames.depth;
+                if (missed > 0) {
+                    frames.ours = missed >= Long.SIZE ? 0L : frames.ours << missed;
+                    frames.depth += missed;
+                }
                 frames.ours = frames.ours << 1 | (ours ? 1L : 0L);
                 frames.depth++;
             }
@@ -642,7 +664,9 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
         if (TelemetryRegistry.TASK_ENDED.equals(name)) {
             TaskFrames frames = runningTasks.get(threadId);
-            if (frames != null) {
+            if (frames != null && depth != DEPTH_UNKNOWN) {
+                endFramesBeyond(threadId, frames, depth);
+            } else if (frames != null) {
                 frames.ours >>>= 1;
                 frames.depth--;
                 if (frames.depth == 0) {
@@ -652,6 +676,25 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return true;
         }
         return false;
+    }
+
+    /**
+     * Ends every frame of {@code threadId} nested deeper than {@code running}, the number of
+     * handed tasks its latest task event says it is running (#834), and {@return what is left, or
+     * {@code null} when nothing is}.
+     */
+    private @Nullable TaskFrames endFramesBeyond(long threadId, TaskFrames frames, int running) {
+        int ended = frames.base + frames.depth - running;
+        if (ended <= 0) {
+            return frames;
+        }
+        if (ended >= frames.depth) {
+            runningTasks.remove(threadId);
+            return null;
+        }
+        frames.ours = ended >= Long.SIZE ? 0L : frames.ours >>> ended;
+        frames.depth -= ended;
+        return frames;
     }
 
     /**

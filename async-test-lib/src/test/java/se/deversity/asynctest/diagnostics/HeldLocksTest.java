@@ -387,4 +387,38 @@ class HeldLocksTest {
         assertEquals(2, HeldLocks.intersect(null, instance).length,
                 "restoring the setting counts every held lock again");
     }
+
+    @Test
+    @DisplayName("a monitor held unseen at the mark counts across a woven re-entry after it (#835)")
+    void aMonitorHeldUnseenAtTheMarkCountsAcrossAWovenReentry() {
+        Object instance = new Object();
+        synchronized (instance) { // unwoven: no entry
+            assertTrue(HeldLocks.heldUnseen(instance), "held, and this set has no entry for it");
+            long mark = HeldLocks.acquisitionMark();
+            try (var woven = HeldLocks.holding(instance)) {
+                assertFalse(HeldLocks.heldUnseen(instance), "the woven re-entry is an entry");
+
+                long previous = HeldLocks.countOnlyHeldSince(mark, false);
+                int[] entryOnly;
+                try {
+                    entryOnly = HeldLocks.intersect(null, instance);
+                } finally {
+                    HeldLocks.countOnlyHeldSince(previous);
+                }
+                assertEquals(0, entryOnly.length,
+                        "judged by its entries alone, the monitor was taken after the mark");
+
+                previous = HeldLocks.countOnlyHeldSince(mark, true);
+                int[] unseenAtMark;
+                try {
+                    unseenAtMark = HeldLocks.intersect(null, instance);
+                } finally {
+                    HeldLocks.countOnlyHeldSince(previous);
+                }
+                assertArrayEquals(new int[] {System.identityHashCode(instance)}, unseenAtMark,
+                        "the hold nothing saw taken at the mark is still held, and counts");
+            }
+        }
+        assertFalse(HeldLocks.heldUnseen(instance), "not held at all");
+    }
 }

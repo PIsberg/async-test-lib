@@ -117,7 +117,7 @@ Monitors that track synchronizer usage, thread pools, and Loom (virtual threads)
 
 ### 5. Lock Leak Detector
 * **Severity**: `HIGH`
-* **Description**: Flags locks acquired but not guaranteed to be released on all execution paths. The recorded acquire and release counts are a FACT; for a `ReentrantLock` the lock is also asked at analysis, and a counted leak it still holds for a holder that has ended or waits idle in its pool is a VERDICT (#837). A holder still running keeps the counted grade, since it may yet release.
+* **Description**: Flags locks acquired but not guaranteed to be released on all execution paths. The recorded acquire and release counts are a FACT; for a `ReentrantLock` the lock is also asked at analysis, and a counted leak it still holds for a holder that has ended or waits idle in its pool is a VERDICT (#837). A holder still running keeps the counted grade, since it may yet release, and so does a holder the lock names only ambiguously: an unnamed virtual thread, a name another live thread shares, or a thread that never recorded against the lock (#843).
 * **Buggy Code**:
   ```java
   void doLockedWork() {

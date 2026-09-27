@@ -178,6 +178,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TelemetryRegistry`, and its cost beyond the empty body is held under 110,000 bytes per
   execution: 84,297 to 91,227 measured on JDK 21, 24 and 26, and 123,804 with one `new Object[4]`
   kept per `SelfGuard.noteAccess`, which the empty body's 80,000-byte ceiling let through.
+- **The `Shared*` detectors' record paths stop allocating per access, and the recording
+  ceiling drops from 110,000 to 25,000 bytes (#812).** Measured per call on one thread after
+  warm-up, `SharedCollectionDetector` spent 72 bytes on every access: an `IdentityKey` and a
+  capturing lambda for `computeIfAbsent`, and a boxed thread id. The rest of the family spent 24 to
+  72 the same ways. Each now looks its state up with `IdentityKey.lookup`, which reuses the
+  thread's key while it names the same instance (a fresh key per `get` was removed by the compiler
+  in some JVMs and not in others, which read as a 24,000-byte swing between runs), builds the
+  factory only on a miss, and adds thread ids with `SelfGuard.addThreadId`, which boxes the calling
+  thread's id once. Of the twelve measured, eleven read 0 bytes per access on JDK 26;
+  `SharedMessageDigestDetector` still walks the stack for its site on every access (1,152 bytes). The recording body fell from 88,203 to 91,227 to 10,897 to 18,203 on JDK 21, 24 and 26,
+  so the ceiling now catches a 16-byte object per `SelfGuard` access: 27,612 to 33,808 measured,
+  red. `SharedCollectionDetectorTest` and `SharedChecksumDetectorTest` pin the per-access cost
+  below one byte on the thread that records.
 - **`FILE_CHANNEL_POSITION_RACE` stays PROMPT for the reason it has now (#755).** Its hold in
   corpus-eval's `PairEvidence`, the `verdict-evidence-corpus` argument and the catalog said it
   had no lockset, which stopped being true when it joined the `Shared*` family's: a
@@ -255,9 +268,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read the recording and agent-pair lanes only. It now counts a detector with a firing row and a
   correct row held to silence in the idiom lane, so `noRefusalOutlivesItsPair` sees that lane too.
   No tier and no pairing count moves.
+- **An evidence line's two halves must come from one corpus lane (#842).** Since #828 a line may
+  name recording, agent-pair or idiom rows, and `CorpusGates` held each half to its own lane's
+  rules only, so a line could pair a recording-lane firing row with an idiom-lane correct row.
+  Those differ in their bodies and their feeds, not only in the defect, which is the bar the file
+  states. The gate now fails such a line, naming both lanes. No current line mixes lanes, and no
+  tier moves.
 
 ### Fixed
 
+- **`GathererConcurrencyMisuseDetector` no longer says a combiner-less gatherer loses results
+  (#777).** The missing-combiner finding claimed that on a parallel stream "the per-thread states
+  cannot be merged, results are lost". The JDK does not work that way: a gatherer whose combiner is
+  `Gatherer.defaultCombiner()` is evaluated sequentially even on a parallel stream, one state
+  integrated segment by segment in encounter order and handed between threads. A new JDK 24+ test
+  runs a real `Gatherer` through `parallel().gather(...)` by reflection (the library compiles
+  against 21) and pins it: one state, no overlapping integration, all 20,000 elements in order,
+  while the combiner twin splits into several states and merges them. The finding still fires on
+  that shape, now at `LOW`, and says what it costs: the gather stage runs sequentially and the
+  parallel stream buys it nothing. A shared-state race stays `HIGH` and sets the report's severity
+  when both are present. On JDK 21 the two new tests are skipped by assumption.
+- **The SPI bridge reports a detector that throws, and each finding at its own severity (#841).**
+  `LegacyDetectorAdapter`, which `spi.DetectorRegistry.build` wraps every built-in detector in,
+  invokes the detector reflectively and caught everything that came back as a reflection failure.
+  A detector whose `analyze()` or report threw therefore returned no findings and wrote nothing,
+  and strict mode's own `AssertionError` raised inside `analyze()` was swallowed the same way, so a
+  broken detector looked like a clean one on this path even under `async-test.strict-detectors`.
+  The detector's exception now goes through `DetectorFailurePolicy.detectorFailed`, as on the
+  registry path: outside strict mode the finding is lost and one `[AsyncTest] Detector X failed
+  during analysis and was skipped` line names it, under strict mode the build fails, and any other
+  `Error` reaches the caller. The adapter also graded every finding `HIGH`. Output change for
+  callers of `spi.DetectorRegistry.build(config).analyzeAll()` or an adapter's `analyze()`: a report
+  that keeps `structuredViolations` now comes out as those `Violation`s, one per finding with the
+  detector's own message, severity and attributes, instead of one `HIGH` `Violation` holding the
+  whole report text; a text-only report is still one `Violation` with that text, at the severity
+  the `failOn` gate reads from it (`DetectorDefaultSeverity.of`), which is `HIGH` only when neither
+  the text nor the detector's declared default says otherwise. The runner's path
+  (`buildExternal`, third-party detectors only) is unchanged. `LegacyDetectorAdapterTest` pins
+  both: a throwing detector fails strict mode and is logged and contained outside it, and
+  `ThreadLocalCacheDegradationDetector`'s `MEDIUM` finding comes out `MEDIUM` through
+  `spi.DetectorRegistry.build`.
+- **`LOCK_LEAKS` confirms a hold only when the lock's holder name is the recorded thread (#843).**
+  A `ReentrantLock` names its holder by thread name alone, and the #837 probe took that name at
+  its word. The lock's `held by ''` matched any unnamed virtual thread, so a counted leak whose
+  lock was now held by another, still running, unnamed virtual thread was graded VERDICT as "held
+  by '', which has finished". A name the recorded thread did not carry was looked up among the
+  live platform threads only, so a virtual holder that never recorded, and is still working, read
+  as ended; and a live platform thread sharing the recorded thread's name was ignored. Each of
+  these now stays FACT: the lock must name the thread this detector recorded acquiring it, by a
+  non-empty name no other live platform thread carries. A named thread that recorded and ended
+  holding the lock, the runner's own arrangement, is still a VERDICT. A virtual thread given the
+  recorded thread's exact name remains undetectable, since nothing at analysis can list it.
+- **corpus-eval reads the graded tier in every VERDICT bar (#843).** The agent-pair lane's
+  collateral bar and the documented-thread-safe false-positive count compared the detector's row
+  tier to VERDICT, so a verdict-grade finding from a lower-rated graded detector passed as the
+  weaker claim. Both now read `CorpusGates.claimedTier`, as the idiom lane has since #837, and the
+  report tables print that tier.
+- **The E2E lock tests wait for the holder to end instead of assuming it (#843).** Both fixtures
+  (`PerFindingTierGateTest`, `ReentrantLockHeldAtAnalysisRunTest`) described the leaking worker as
+  idle in the runner's pool at analysis; the runner shuts its executor down first, and the virtual
+  worker has ended. The workers that find the lock taken now join the holder's thread, bounded, so
+  it has ended before the last round does.
+- **`ABA_PROBLEM` is fed by the agent, and a toggle that ran before the read is no longer an ABA
+  there (#817).** Recorded by hand, two threads that swing a value A to B to A wholly before a
+  third thread reads it, and record the swing after the read, leave exactly the records of a real
+  ABA, and nothing in the records tells them apart (#810 pins that). The agent already substituted
+  every `AtomicReference` `get`, `getAcquire`, `set`, `lazySet`, `setRelease`, `compareAndSet` and
+  `getAndSet`; on a thread whose test has the detector each now runs through
+  `ABAProblemDetector.agentSlot(atomic)`, which takes its record inside the same lock as the
+  operation, so one atomic's records are in the order its operations ran. The toggle before the
+  read is silent and the one between the read and the swap fires, with no recording call. The
+  agent path keeps no history, only each thread's last read and whether the value left it and came
+  back since, and allocates nothing per operation once an atomic and a thread have been seen
+  (measured: 0 bytes per get, compareAndSet and set in steady state). It reports only a
+  compare-and-set whose expected value has a mutable field of its own: an A-B-A of an enum
+  constant, a boxed number, a `String`, a record or `null` leaves nothing stale, so a state
+  machine's toggle is silent. The recording path is unchanged. `ABA_PROBLEM` moves from
+  recording-only to agent-fed in `DetectorFeeds` and the catalog; its trust row stays `FACT`
+  (`ASSERTED`), the weaker of its two paths. `AbaAgentFeedWeavingTest` pins both directions end to
+  end, and the corpus agent-pair lane gains `agent_abaStack_nodePushedBackAfterTheRead` (fires) and
+  `agent_abaStack_nodePushedBackBeforeTheRead` (silent). Not fed yet: `AtomicStampedReference`,
+  `AtomicReferenceFieldUpdater`, `AtomicReferenceArray` and `VarHandle`.
+- **A parent that polls `Thread.isAlive()` instead of joining is ordered after its child, and a
+  `Thread.Builder` start is attributed to the run (#834).** `isAlive()` returning `false` is an
+  edge the Java memory model names (everything a terminated thread did happens before another
+  thread learns it terminated), but it was not woven, so a body that spun on `isAlive` and then
+  read what its child wrote had the read reported as racing the write once #745 attributed the
+  child. The agent now weaves `isAlive` like the joins: a `false` answer about a thread that ran
+  acquires its clock, a `true` one orders nothing. `Thread.Builder.start(Runnable)` and
+  `Thread.startVirtualThread(Runnable)` are woven too and fork and attribute the thread like a
+  woven `Thread.start`; they are not observed starts for `DAEMON_THREAD_HYGIENE`, because a
+  builder's `daemon(true)` is a decision the agent does not see. A task start and end now also
+  carry how many wrapped tasks the thread is running, so an end the ring gave up on no longer
+  leaves the pool thread attributed to the run until the run ends: its next start or end ends the
+  frames the bridge missed. `ThreadJoinWeavingTest` and `SpawnedWorkAttributionWeavingTest` pin
+  each form both ways end to end, and `TelemetryBridgeTest` the lost end. Still open: a thread
+  started in unwoven code, `Executor.execute`, dependent stages, the Shared*/SelfGuard feeds on
+  spawned threads, and a fork-join worker helping outside a wrapped task.
 - **`OptimisticReadValidationDetector` names a field in every never-validated finding (#826).**
   Once eight fields read under a stamp filled the name list, a field read after a passing
   `validate()` and never revalidated was reported as `data accessed (2 reads not named)`, naming
@@ -330,8 +437,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and an ungotten task's write are reported, the joined and gotten ones stay silent, and a
   lingering child from the previous run contributes nothing), and the corpus idiom lane's
   `start`/`join` and executor submit/get rows run on the woven path instead of the manual API.
-  Still dropped: a thread started in unwoven code or through a `Thread.Builder`, a task given to
-  `Executor.execute`, and a pool thread's work outside a wrapped task.
+  Still dropped: a thread started in unwoven code, a task given to `Executor.execute`, and a pool
+  thread's work outside a wrapped task. A `Thread.Builder` start is attributed since #834.
 - **`FILE_CHANNEL_POSITION_RACE` no longer counts a lock released and taken again between a seek
   and its I/O as guarding them (#831).** The locks were probed at the seek and at the I/O, so a
   thread that sought under a lock, let it go and took it again to read looked exactly like one
@@ -365,6 +472,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again, so a pooled worker that never did kept it reachable. `AsyncTestContext.markInvocationStart()`
   now calls the detector's new `markInvocationStart()`, which clears every slot opened since the
   last one; the seeks are linked through themselves, so listing one allocates nothing.
+- **`FILE_CHANNEL_POSITION_RACE` no longer reports a sequence guarded by an unwoven
+  `synchronized (channel)` around a woven re-entry of it (#835).** With the agent attached, only
+  the woven inner block or `synchronized` method reaches `HeldLocks`, and it is entered after the
+  seek, so the monitor read as taken again since the seek and a correctly guarded sequence was
+  reported. The seek now also notes whether the thread held the channel's monitor with no entry
+  for it, and if so the I/O counts the monitor whenever the thread holds it, as a monitor with no
+  entry at all already was. The cost is the mirror case, an unwoven block around the seek left
+  before a woven block around the read, which now reads as held across, the same limit as a
+  release in unwoven code; a test pins it. A woven block around the seek inside an unwoven one,
+  left and entered again before the read, is still reported.
+- **`FILE_CHANNEL_POSITION_RACE` keeps a thread's seeks on up to four channels (#835).** A thread
+  had one open seek, so in `seek(a); seek(b); read(a)` the read on `a` looked self-contained,
+  though it starts where the seek on `a` left the cursor. Each thread now keeps its latest seek on
+  each of four channels, in slots allocated once per thread, and a seek on a fifth replaces the one
+  sought longest ago; a test pins the bound.
+- **`FILE_CHANNEL_POSITION_RACE` ignores calls that neither use nor move the position (#835).**
+  `size`, `force`, `transferTo`, `transferFrom`, `map`, `lock` and `tryLock` recorded through
+  `recordImplicitPositionAccess` counted as calls that can land inside another thread's sequence,
+  so a thread calling `size()` beside correctly locked seek-then-read sequences was reported. By
+  the `FileChannel` javadoc only `read`, `write`, `position(long)` and `truncate` move the cursor,
+  and the transfers, `map` and the file locks take an explicit position. These names are now
+  ignored; any other name still counts, as the conservative choice, and a test pins that.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call
@@ -785,6 +914,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the field, and a pair needs a write to one of its two fields in the round that put them on
   different threads. The three-argument overload counts as a write, so its callers keep their
   verdict; the report's two headings now say a write was involved.
+- **`FalseSharingDetector`'s pair verdict no longer depends on map iteration order (#839).** Behind
+  its experimental flag the pair line looked at each pair of adjacent fields once, in the order its
+  `ConcurrentHashMap` yielded them, and needed the field it met first to be the one with two or
+  more threads in a round. Two threads on one field beside a single thread on its neighbour
+  reported or not depending on which field name hashed first, so renaming a field, or a JDK with a
+  different map layout, could change the verdict. Each pair is now tried with either field in that
+  role, and pairs are taken in field-name order, so the report also names them the same way on
+  every run. User-visible: with the experimental property set, such a pair now reports in both
+  orders, where before it reported in one.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common

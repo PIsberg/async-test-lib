@@ -48,6 +48,41 @@ public class SpawnedWorkBean {
         return read;
     }
 
+    /**
+     * Starts {@code task} the way {@code how} names (#834): 0 through
+     * {@code Thread.ofPlatform().start}, 1 through {@code Thread.ofVirtual().start}, 2 through
+     * {@code Thread.startVirtualThread}.
+     */
+    private static Thread startBy(int how, Runnable task) {
+        return switch (how) {
+            case 0 -> Thread.ofPlatform().name("built-child").start(task);
+            case 1 -> Thread.ofVirtual().name("built-child").start(task);
+            default -> Thread.startVirtualThread(task);
+        };
+    }
+
+    /** As {@link #childReadAfterJoin}, with the child started the way {@code how} names. */
+    public int builtChildReadAfterJoin(int how, int value) throws InterruptedException {
+        Box box = new Box();
+        Thread child = startBy(how, () -> box.value = value);
+        child.join();
+        return box.value;
+    }
+
+    /** As {@link #childReadBeforeJoin}, with the child started the way {@code how} names. */
+    public int builtChildReadBeforeJoin(int how, int value, Runnable written,
+                                        Runnable awaitWritten) throws InterruptedException {
+        Box box = new Box();
+        Thread child = startBy(how, () -> {
+            box.value = value;
+            written.run();
+        });
+        awaitWritten.run();
+        int read = box.value;
+        child.join();
+        return read;
+    }
+
     /** Submits a task that writes a fresh box, gets its future, and reads the box. */
     public int taskReadAfterGet(ExecutorService executor, int value)
             throws InterruptedException, ExecutionException {

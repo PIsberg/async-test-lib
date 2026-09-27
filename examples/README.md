@@ -153,7 +153,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 113 | [CF Blocking Callback](113-completablefuture-blocking-callback/) | `CompletableFutureBlockingCallbackDetector` | A blocking call inside a `thenApply`/`thenAccept` callback occupies a common-pool worker for the duration | 🟡 High |
 | 114 | [StableValue Misuse](114-stable-value-misuse/) | `StableValueMisuseDetector` *(standalone, JDK 25/26)* | `StableValue` (JEP 502) read before set (`NoSuchElementException`) or set twice (lost update) | 🔴 Critical |
 | 115 | [StructuredTaskScope Misuse](115-structured-task-scope-misuse/) | `StructuredTaskScopeMisuseDetector` *(standalone, JDK 25/26)* | `StructuredTaskScope.open(Joiner)` (JEP 505) lifecycle broken — fork-after-join, result-before-join, owner-confinement, missing join | 🔴 Critical |
-| 116 | [Gatherer Parallel Misuse](116-gatherer-parallel-misuse/) | `GathererConcurrencyMisuseDetector` *(standalone, JDK 24+)* | Stateful `Gatherer` (JEP 485) on a parallel stream with no combiner — per-thread states can't merge, results lost | 🟠 High |
+| 116 | [Gatherer Parallel Misuse](116-gatherer-parallel-misuse/) | `GathererConcurrencyMisuseDetector` *(standalone, JDK 24+)* | Stateful `Gatherer` (JEP 485) state shared across parallel segments; a gatherer with no combiner on a parallel stream (runs sequentially, LOW) | 🟠 High |
 | 117 | [LazyConstant Misuse](117-lazy-constant-misuse/) | `LazyConstantMisuseDetector` *(JDK 26)* | `LazyConstant` (Lazy Constants, 2nd preview) supplier returns null (NPE), re-enters itself, or runs more than once in a hand-rolled holder | 🔴 Critical |
 | 118 | [Final Field Mutation](118-final-field-mutation/) | `FinalFieldMutationDetector` *(JEP 500, JDK 26)* | Reflective `Field.set` on a `final` field — warned on JDK 26, denied in a future release, voids the JMM final-field publication guarantee today | 🔴 Critical |
 | 119 | [Shared KDF](119-shared-kdf/) | `SharedKdfDetector` *(JEP 510, JDK 25)* | One `javax.crypto.KDF` instance shared across threads — documented not thread-safe, silently derives wrong keys | 🟡 High |
@@ -774,9 +774,10 @@ assertTrue(d.analyze().hasIssues());
 ```
 
 ### 116 — Gatherer Parallel Misuse (JEP 485)
-**What**: A stateful `Gatherer` on a parallel stream needs a combiner to merge per-thread
-states. Detects a stateful gatherer with no combiner running on more than one thread (lost
-results) and concurrent-integrator shared-state races.
+**What**: A stateful `Gatherer` on a parallel stream needs a combiner to run in parallel;
+without one the JDK evaluates it sequentially and loses nothing. Detects one state object
+shared across parallel segments (a data race, HIGH) and, at LOW, a gatherer with no combiner
+whose integrator ran on more than one thread (the stage ran sequentially).
 
 **Detect**:
 ```java

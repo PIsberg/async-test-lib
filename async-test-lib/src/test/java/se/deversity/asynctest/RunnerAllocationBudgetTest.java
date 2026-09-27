@@ -87,28 +87,31 @@ class RunnerAllocationBudgetTest {
      * Bytes per body execution the recording body allocates beyond the empty body, each the least
      * of {@value #MEASURED} runs after {@value #WARMUPS} warmup runs of both, in one JVM.
      *
-     * <p>Measured 2026-09-26 on Windows 11 from a 1-byte ceiling's failure message, one JVM per
-     * reading: JDK 26 91,227 / 88,235 / 90,635; JDK 21 91,021 / 88,203 / 90,388; JDK 24 90,904;
-     * held to two processors, JDK 26 85,116 / 85,622 and JDK 21 84,297 / 84,311. The spread is
-     * 8.2% across all eleven and at most 3.4% within one JDK and processor count. 110,000 is 1.21x
-     * the highest reading.
+     * <p>Measured 2026-09-27 on Windows 11 from a 1-byte ceiling's failure message, one JVM per
+     * reading, after #812 took the detectors' own bookkeeping off the {@code SharedCollectionDetector}
+     * path: JDK 26 17,540 / 17,836 / 17,794 / 17,535 / 17,062 / 17,809; JDK 21 15,835 / 16,718 /
+     * 17,134 / 15,206 / 16,164 / 16,658; JDK 24 18,203 / 17,752; with JaCoCo, as CI runs it, JDK 26
+     * 17,174 / 17,203 and JDK 21 15,221 / 16,752; held to two processors, JDK 26 12,830 / 12,353 and
+     * JDK 21 10,897 / 11,030. What is left is mostly {@link HappensBefore}'s clock joins. Before
+     * #812 the same body read 88,203 to 91,227: a key, a capturing lambda and a boxed thread id on
+     * every access, 72 bytes, which forced a margin that a 16-byte regression passed.
      *
-     * <p>The margin is narrower than the empty body's on purpose, because the regression it has to
-     * catch is small per access: one {@code new Object[4]} kept per {@code SelfGuard.noteAccess}
-     * call, 32 bytes on each of 1,024 accesses per execution, measured 123,804 on JDK 26 and
-     * 122,337 on JDK 21, while the empty body's test stayed green. The ceiling sits 18,773 bytes
-     * above the highest reading, so it catches an object of 24 bytes or more per SelfGuard access
-     * or stamp (1,024 per execution), or of 40 bytes or more per volatile read acquired (512);
-     * the smallest object, 16 bytes, per SelfGuard access passes. The empty body's ceiling sees
-     * none of these.
+     * <p>25,000 is 1.37x the highest reading, 6,797 bytes above it, and the regression it has to
+     * catch is small per access: one 16-byte object per {@code SelfGuard} access or stamp (1,024
+     * per execution) adds 16,384, which the lowest reading, 10,897, turns into 27,281, still red.
+     * One of 24 bytes per volatile read acquired (512 per execution, 12,288) is red wherever four
+     * or more processors ran the body, whose lowest reading is 15,206; held to two it takes 32
+     * bytes. A 16-byte object kept per {@code SelfGuard.noteAccess} call measured 33,808 on JDK 26
+     * and 32,217 on JDK 21, and 27,684 and 27,612 held to two processors, all red, while the empty
+     * body's test stayed green.
      *
      * <p>The difference, rather than the recording body alone, is asserted because the empty
-     * body's own cost moves with the JDK and the processor count (31,267 to 34,432 bytes on JDK 21,
-     * 38,230 to 44,004 on JDK 26 in the same runs) and says nothing about the record paths. The
+     * body's own cost moves with the JDK and the processor count (32,168 to 38,134 bytes on JDK 21,
+     * 37,743 to 42,711 on JDK 26 in the same runs) and says nothing about the record paths. The
      * least of the runs is taken because a collection or a late compilation only ever adds to a
      * run, while a per-access allocation adds to every run.
      */
-    static final long RECORDING_CEILING_BYTES_PER_EXECUTION = 110_000L;
+    static final long RECORDING_CEILING_BYTES_PER_EXECUTION = 25_000L;
 
     @Test
     void oneAllDetectorRunStaysUnderTheAllocationCeiling() {
@@ -166,7 +169,8 @@ class RunnerAllocationBudgetTest {
                         + RECORDING_CEILING_BYTES_PER_EXECUTION + ". Something on the SelfGuard, "
                         + "HappensBefore, RaceConditionDetector or agent field-event path started "
                         + "allocating per access, or the ceiling needs re-deriving (measure with a "
-                        + "1-byte ceiling on each JDK CI runs, then set ~1.2x the highest; see "
+                        + "1-byte ceiling on each JDK CI runs, then set it under the lowest reading plus "
+                        + "16,384 with a stated margin over the highest; see "
                         + "RECORDING_CEILING_BYTES_PER_EXECUTION).");
     }
 

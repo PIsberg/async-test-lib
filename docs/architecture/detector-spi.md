@@ -48,10 +48,15 @@ Coverage is automated:
   matching `AsyncTestConfig` boolean in `isEnabledFor()`, and produces a
   `LegacyDetectorAdapter` wrapping a fresh detector instance.
 - **`LegacyDetectorAdapter<D>`** is the generic SPI `Detector` that reflectively
-  invokes `delegate.analyze()` and the resulting report's `hasIssues()` /
-  `toString()`, wrapping the toString into a single `Violation` when has-issues
-  fires. Detectors whose report doesn't follow the canonical
-  `analyze() → Report{hasIssues(), toString()}` shape return an empty list.
+  invokes `delegate.analyze()` and the resulting report's `hasIssues()`. When
+  has-issues fires it returns the report's `structuredViolations` as they are, at
+  the severities the detector chose, or, for a report that keeps none, one
+  `Violation` carrying its `toString()` at the severity `DetectorDefaultSeverity`
+  gives that text: the same severity the `failOn` gate reads (#841). A detector
+  that throws is contained through `DetectorFailurePolicy.detectorFailed`, as on
+  the registry path, so strict mode fails the build. Detectors whose report
+  doesn't follow the canonical `analyze() → Report{hasIssues(), toString()}` shape
+  return an empty list.
 - **`SharedMessageDigestDetectorFactory`** is the typed-adapter template: when
   a legacy detector is migrated to expose `structuredViolations` natively,
   its factory uses a typed adapter to project them directly (no reflection).

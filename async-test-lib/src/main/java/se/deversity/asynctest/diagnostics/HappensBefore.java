@@ -58,8 +58,9 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li>The four methods here, for tests that record by hand: {@link #release}, {@link #acquire},
  *       {@link #fork} and {@link #join}.
- *   <li>With the agent attached, from the calls it already substitutes: {@code Thread.start} and
- *       {@code Thread.join}; an element offered to, and taken from, a concurrent queue, map or
+ *   <li>With the agent attached, from the calls it already substitutes: {@code Thread.start}, a
+ *       {@code Thread.Builder} start and {@code Thread.startVirtualThread}, {@code Thread.join},
+ *       and an {@code isAlive} that returned {@code false} (#834); an element offered to, and taken from, a concurrent queue, map or
  *       {@code AtomicReference}, where an offer the container refused or a failed
  *       {@code compareAndSet} is withdrawn with {@link #retract} and publishes nothing;
  *       {@code CountDownLatch.countDown} and a successful {@code await};

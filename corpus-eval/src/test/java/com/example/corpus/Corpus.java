@@ -1208,6 +1208,26 @@ final class Corpus {
                             + "backward jump around it is what the weaver marks, and a loop "
                             + "re-tests the state a lost notify announced"),
 
+            new RecordingSubject("agent_abaStack_nodePushedBackAfterTheRead", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "five workers read a stack head, a sixth pops it and pushes the same node "
+                            + "back, and the first of the five to swap the head for the node's "
+                            + "next succeeds on a premise the stack no longer holds. Nothing is "
+                            + "recorded: the woven get, compareAndSet and set run through the "
+                            + "detector, which records each inside its operation (#817)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_abaStack_nodePushedBackBeforeTheRead", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same pop, push back, reads and swaps, with the pop and push back "
+                            + "before the reads, so every premise is read after the toggle. "
+                            + "Recorded by hand that history reads as its twin (#810); woven, the "
+                            + "records are in the order the operations ran"),
+
             new RecordingSubject("agent_sleepStamped_whileHoldingTheWriteStamp", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
@@ -4036,10 +4056,10 @@ final class Corpus {
                     DetectorType.GATHERER_CONCURRENCY_MISUSE, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "a gatherer is declared parallel with no combiner and then integrated from "
-                            + "six threads. A parallel pipeline splits the work and has nothing "
-                            + "to merge the halves with, so the integrator's state is shared "
-                            + "rather than combined",
-                    IssueSeverity.HIGH),
+                            + "six threads. The JDK evaluates such a gatherer sequentially, one "
+                            + "state handed between threads in order, so nothing is lost; the "
+                            + "finding is the LOW one, that the stage gets no parallelism (#777)",
+                    IssueSeverity.LOW),
 
             new RecordingSubject("recorded_gatherer_parallelWithACombiner", JDK,
                     "java.util.stream.Gatherer",
@@ -4887,5 +4907,20 @@ final class Corpus {
                 .filter(subject -> subject.testMethod().equals(testMethod))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * {@return the lane whose rows declare {@code testMethod}, or {@code null} for none}
+     *
+     * <p>An agent-pair row answers {@link CorpusLane#AGENT_PAIRS}, including the library rows the
+     * library-excluded lane re-runs: that lane declares no rows of its own.
+     */
+    static CorpusLane laneOf(String testMethod) {
+        for (CorpusLane lane : List.of(CorpusLane.RECORDING, CorpusLane.AGENT_PAIRS, CorpusLane.IDIOMS)) {
+            if (pairByTestMethod(lane, testMethod) != null) {
+                return lane;
+            }
+        }
+        return null;
     }
 }

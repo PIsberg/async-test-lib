@@ -57,10 +57,13 @@ public class SharedXmlParserDetector {
      */
     public void recordAccess(Object parser, String parserType, Thread thread) {
         if (parser == null || thread == null) return;
-        String label = parserType != null ? parserType
-                : parser.getClass().getSimpleName();
-        ParserState s = parsers.computeIfAbsent(
-                new IdentityKey(parser), id -> new ParserState(label));
+        // The thread's lookup key, reused while it names the same instance (#812).
+        ParserState s = parsers.get(IdentityKey.lookup(parser));
+        if (s == null) {
+            String label = parserType != null ? parserType
+                    : parser.getClass().getSimpleName();
+            s = parsers.computeIfAbsent(new IdentityKey(parser), id -> new ParserState(label));
+        }
         s.noteAccess(parser, thread);
     }
 

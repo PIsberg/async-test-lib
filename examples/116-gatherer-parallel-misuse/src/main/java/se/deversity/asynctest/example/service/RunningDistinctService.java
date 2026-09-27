@@ -9,12 +9,17 @@ import java.util.Set;
  *
  * <p>The real JDK 24+ shape is a custom intermediate operation:
  * <pre>{@code
- * Gatherer<T,?,T> runningDistinct = Gatherer.ofSequential(
- *     HashSet::new,                                  // per-thread state
+ * Set<T> seen = new HashSet<>();                     // one set, captured
+ * Gatherer<T,?,T> runningDistinct = Gatherer.of(
+ *     () -> seen,                                    // ✗ every segment gets the same set
  *     (state, elem, downstream) ->                   // integrator
- *         state.add(elem) ? downstream.push(elem) : true);
- * list.parallelStream().gather(runningDistinct).toList();   // ✗ no combiner → can't merge
+ *         state.add(elem) ? downstream.push(elem) : true,
+ *     (left, right) -> left);
+ * list.parallelStream().gather(runningDistinct).toList();   // segments race on seen
  * }</pre>
+ *
+ * <p>A {@code Gatherer.ofSequential(HashSet::new, ...)} has no combiner and is safe on a
+ * parallel stream: the JDK runs it sequentially, which costs the stage its parallelism.
  *
  * <p>{@code Stream.gather} / {@code java.util.stream.Gatherer} are not present on the
  * Java 21 baseline this example targets, so the stateful "running distinct" reduction is

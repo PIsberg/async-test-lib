@@ -400,7 +400,7 @@ final class CorpusGates {
                 }
             } else {
                 for (CorpusRecorder.Finding finding : fromOwn) {
-                    wrong.add(own + " reported " + finding.tier() + "/" + finding.severity()
+                    wrong.add(own + " reported " + claimedTier(finding) + "/" + finding.severity()
                             + " on " + subject.testMethod() + ", the correct idiom it names: "
                             + finding.evidence());
                 }
@@ -424,7 +424,10 @@ final class CorpusGates {
      * holding only a structural note is a prompt even from a detector whose other path is a
      * verdict. A graded detector's violation that arrives without grades, from a path that does
      * not pass them, is read at its cap: the most the runner could let it claim, which is the
-     * reading that cannot let a claim through the idiom bar.
+     * reading that cannot let a claim through a bar. Every tier bar in this module reads it: the
+     * idiom lane's FACT bar since #837, and the agent-pair collateral bar and the documented-safe
+     * false-positive count since #843, which until then read the row tier and so let a verdict-grade
+     * finding from a lower-rated detector through as the weaker claim.
      *
      * @param finding what a detector reported
      */
@@ -528,7 +531,7 @@ final class CorpusGates {
      *
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
      * fails if one is missing, points at a different detector, or has drifted to the wrong
-     * expectation. The pairs themselves are held to their outcomes every run by
+     * expectation, or if the two halves of a line are rows of different lanes. The pairs themselves are held to their outcomes every run by
      * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, and an idiom row's correct half by
      * {@link #everyCorrectIdiomDrewNothingWorthFailingOn}, so between the two the tier cannot
      * outlive the measurement that earned it.
@@ -574,10 +577,21 @@ final class CorpusGates {
                         + ids.length);
                 continue;
             }
-            broken.addAll(problemsWith(detector, ids[0].strip(),
+            String fire = ids[0].strip();
+            String silent = ids[1].strip();
+            broken.addAll(problemsWith(detector, fire,
                     RecordingSubject.Expectation.MUST_FIRE, resolver));
-            broken.addAll(problemsWith(detector, ids[1].strip(),
+            broken.addAll(problemsWith(detector, silent,
                     RecordingSubject.Expectation.MUST_STAY_SILENT, resolver));
+            // Each lane's bodies and feed differ from the others', so halves drawn from two lanes
+            // differ in more than the defect (#842). An id no lane declares is reported above.
+            CorpusLane fireLane = Corpus.laneOf(fire);
+            CorpusLane silentLane = Corpus.laneOf(silent);
+            if (fireLane != null && silentLane != null && fireLane != silentLane) {
+                broken.add(detector + " pairs across lanes: " + fire + " comes from the "
+                        + fireLane.propertyValue() + " lane and " + silent + " from the "
+                        + silentLane.propertyValue() + " lane");
+            }
         }
 
         assertTrue(lines > 0, "verdict evidence parsed to no lines at all, so this gate passed by "
@@ -822,7 +836,7 @@ final class CorpusGates {
             if (!lane.failsOnAnyCollateral() && !isTheLibrarysStrongestClaim(finding)) {
                 continue;
             }
-            collateral.add(finding.detector() + " reported " + finding.tier() + "/"
+            collateral.add(finding.detector() + " reported " + claimedTier(finding) + "/"
                     + finding.severity() + " on " + finding.subject() + ", whose row states only "
                     + "that " + DetectorExposure.classOf(
                             Corpus.pairByTestMethod(lane, finding.subject()).detector())
@@ -848,7 +862,7 @@ final class CorpusGates {
      * @param finding what a detector reported
      */
     private static boolean isTheLibrarysStrongestClaim(CorpusRecorder.Finding finding) {
-        return finding.tier() == TrustTier.VERDICT
+        return claimedTier(finding) == TrustTier.VERDICT
                 && (finding.severity() == IssueSeverity.HIGH
                         || finding.severity() == IssueSeverity.CRITICAL);
     }

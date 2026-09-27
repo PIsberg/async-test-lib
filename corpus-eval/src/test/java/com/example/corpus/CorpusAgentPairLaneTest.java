@@ -45,6 +45,8 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The agent-pair lane: JDK types, with test bodies that record nothing at all.
@@ -648,6 +650,99 @@ class CorpusAgentPairLaneTest {
                 }
             }
         });
+    }
+
+    // --- AtomicReference compare-and-set, the A-B-A (#817) -------------------------------------
+
+    /**
+     * A lock-free stack node. Its {@code next} is written once, before any worker runs, and only
+     * read after that; a node pushed back keeps its {@code next}, which is what an A-B-A of the
+     * head leaves stale.
+     */
+    private static final class AbaNode {
+
+        AbaNode next;
+        private final String name;
+
+        AbaNode(String name, AbaNode next) {
+            this.name = name;
+            this.next = next;
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+
+    private static final AbaNode ABA_B = new AbaNode("B", null);
+
+    private static final AbaNode ABA_A = new AbaNode("A", ABA_B);
+
+    /** The head both A-B-A rows read, pop, push back and swap. */
+    private static final AtomicReference<AbaNode> ABA_HEAD = new AtomicReference<>(ABA_A);
+
+    /** Hands out one toggler per round: the round's six executions draw six tickets in lockstep. */
+    private static final AtomicInteger ABA_TICKETS = new AtomicInteger();
+
+    /**
+     * One round of the A-B-A: one worker pops the head and pushes the same node back, the others
+     * read the head and then swap it for its {@code next}, and {@code toggleFirst} says whether the
+     * pop and push run before the reads or between the reads and the swaps.
+     *
+     * <p>The first swap of a round succeeds and the rest fail. The head is put back afterwards, so
+     * every round starts from the same stack. Nothing is recorded: the woven {@code get},
+     * {@code compareAndSet} and {@code set} are the detector's only input.
+     */
+    private static void abaRound(boolean toggleFirst) throws InterruptedException {
+        boolean toggler = ABA_TICKETS.getAndIncrement() % THREADS == 0;
+        if (toggler && toggleFirst) {
+            popAndPushBack();
+        }
+        everyWorkerIsHere();
+        AbaNode seen = ABA_HEAD.get();
+        everyWorkerIsHere();
+        if (toggler && !toggleFirst) {
+            popAndPushBack();
+        }
+        everyWorkerIsHere();
+        if (!toggler) {
+            ABA_HEAD.compareAndSet(seen, seen.next);
+        }
+        everyWorkerIsHere();
+        if (toggler) {
+            ABA_HEAD.set(ABA_A);
+        }
+        everyWorkerIsHere();
+    }
+
+    /** Pops the head and pushes the same node back, which is the A-B-A. */
+    private static void popAndPushBack() {
+        AbaNode popped = ABA_HEAD.get();
+        ABA_HEAD.compareAndSet(popped, popped.next);
+        ABA_HEAD.compareAndSet(popped.next, popped);
+    }
+
+    /**
+     * Reads the head, lets another worker pop it and push the same node back, then swaps.
+     *
+     * <p>The swap expects the node it read and finds it, although the stack moved underneath it:
+     * the A-B-A a stack that reuses nodes suffers.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_abaStack_nodePushedBackAfterTheRead() {
+        counted(() -> abaRound(false));
+    }
+
+    /**
+     * The same pop, push back, read and swap, with the pop and push back before the read.
+     *
+     * <p>Recorded by hand, a toggle recorded after a read it ran before reads as this pair's
+     * firing half (#810). Woven, each record is taken inside its operation (#817).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_abaStack_nodePushedBackBeforeTheRead() {
+        counted(() -> abaRound(true));
     }
 
     /**

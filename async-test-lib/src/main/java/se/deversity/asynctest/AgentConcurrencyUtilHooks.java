@@ -21,6 +21,7 @@ import java.util.function.Supplier;
 
 import org.jspecify.annotations.Nullable;
 
+import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.CountDownLatchDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
@@ -67,6 +68,21 @@ import se.deversity.vibetags.annotations.AIContract;
 public final class AgentConcurrencyUtilHooks {
 
     private AgentConcurrencyUtilHooks() {
+    }
+
+    /**
+     * {@return the calling thread's {@link ABAProblemDetector} view of {@code atomic}, or
+     * {@code null} when no test with that detector runs on this thread} (#817)
+     *
+     * <p>Not a substitution: the {@code AtomicReference} hooks in {@link TelemetryRegistry} ask it
+     * before each woven operation, and run the operation through the answer when there is one.
+     *
+     * @param atomic the atomic a woven call site invoked
+     * @since 1.12.3
+     */
+    public static ABAProblemDetector.@Nullable AgentSlot abaSlot(Object atomic) {
+        ABAProblemDetector detector = AsyncTestContext.currentABAProblemDetector();
+        return detector == null ? null : detector.agentSlot(atomic);
     }
 
     /**

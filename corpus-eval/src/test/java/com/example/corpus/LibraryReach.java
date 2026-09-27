@@ -43,6 +43,11 @@ final class LibraryReach {
         unreached(DetectorType.DAEMON_THREAD_HYGIENE,
                 "agent-fed since #731 through the woven Thread.start and Thread.setDaemon, and "
                         + "no agent pair has been written for it yet (#736)");
+        unreached(DetectorType.ABA_PROBLEM,
+                "agent-fed since #817 through the woven AtomicReference calls; a firing library "
+                        + "row needs a library that pushes a popped node back onto a lock-free "
+                        + "stack, and no corpus library ships that defect, so its pair calls the "
+                        + "JDK type from the test file");
     }
 
     private static void unreached(DetectorType type, String reason) {

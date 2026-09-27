@@ -444,6 +444,144 @@ public class LockLeakDetectorTest {
         assertEquals(List.of(), gradesOf(detector.analyze()), "unlock in finally is the correct twin");
     }
 
+    // ---- the lock names its holder only by name (#843) -------------------------------------------
+
+    /**
+     * Records an acquire on a thread from {@code recorder} while it holds {@code lock}, then releases
+     * the lock without recording the release, so the counts show a leak and the lock is free.
+     */
+    private static void recordAnAcquireAndReleaseUnseen(LockLeakDetector detector, ReentrantLock lock,
+                                                        Thread.Builder recorder) throws InterruptedException {
+        Thread thread = recorder.start(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "shared");
+            lock.unlock();
+        });
+        thread.join();
+    }
+
+    /**
+     * Runs {@code check} while a thread from {@code holder}, which records nothing, holds
+     * {@code lock} and is still running.
+     */
+    private static void whileAnUnrecordedThreadHolds(ReentrantLock lock, Thread.Builder holder,
+                                                     Runnable check) throws InterruptedException {
+        java.util.concurrent.CountDownLatch holding = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread thread = holder.start(() -> {
+            lock.lock();
+            try {
+                holding.countDown();
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        });
+        try {
+            holding.await();
+            check.run();
+        } finally {
+            release.countDown();
+            thread.join();
+        }
+    }
+
+    private static void assertEveryGradeIsARecordedFact(LockLeakDetector detector, String why) {
+        List<GradedFindings.Grade> grades = DetectorTrust.clampToCap("LockLeakDetector", gradesOf(detector.analyze()));
+        assertFalse(grades.isEmpty(), "the recorded imbalance is still reported");
+        for (GradedFindings.Grade grade : grades) {
+            assertEquals(TrustTier.FACT, grade.tier(), why + ": " + grade);
+            assertEquals(DetectorTrust.Evidence.ASSERTED, grade.evidence(), grade.toString());
+        }
+    }
+
+    /**
+     * The blind spot #837 left open. Every unnamed virtual thread is named {@code ""}, so the lock
+     * says only "held by ''". The one the detector recorded has ended, but the holder is another
+     * unnamed virtual thread that is still running and may yet release, and no probe of the lock or
+     * of the live threads can tell the two apart. A verdict here would be a guess.
+     */
+    @Test
+    void anUnnamedVirtualHolderTheDetectorNeverSawStaysAFact() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        recordAnAcquireAndReleaseUnseen(detector, lock, Thread.ofVirtual());
+        whileAnUnrecordedThreadHolds(lock, Thread.ofVirtual(), () -> {
+            assertEquals("", ReentrantLockDetector.holderNameOf(lock), "precondition: the lock names no one");
+            assertEveryGradeIsARecordedFact(detector,
+                    "an unnamed virtual thread still holding the lock cannot be told from the ended one that recorded");
+        });
+    }
+
+    /**
+     * The same name from the other side: the unnamed virtual thread that recorded really did end
+     * holding the lock. It stays a fact because, from analysis, it looks exactly like the case above.
+     */
+    @Test
+    void anUnnamedVirtualThreadThatEndedHoldingTheLockStaysAFact() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        Thread leaker = Thread.ofVirtual().start(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "unnamed");
+        });
+        leaker.join();
+        assertTrue(lock.isLocked(), "precondition: the ended thread still holds the lock");
+
+        assertEveryGradeIsARecordedFact(detector,
+                "an empty holder name identifies no thread, so the lock cannot confirm which one ended");
+    }
+
+    /**
+     * A virtual holder the detector never recorded, with a name of its own. The live platform
+     * threads cannot list it, so finding none of that name is no evidence that it ended.
+     */
+    @Test
+    void aNamedVirtualHolderTheDetectorNeverSawStaysAFact() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        recordAnAcquireAndReleaseUnseen(detector, lock, Thread.ofPlatform().name("recorder"));
+        whileAnUnrecordedThreadHolds(lock, Thread.ofVirtual().name("unseen-holder"), () ->
+                assertEveryGradeIsARecordedFact(detector,
+                        "a virtual thread is not among the platform threads a scan can find, alive or not"));
+    }
+
+    /**
+     * The recorded thread ended, and a live thread of the same name, which never recorded, holds
+     * the lock. The name the lock gives is that live thread's as much as the recorded one's.
+     */
+    @Test
+    void aHolderWhoseNameAnotherLiveThreadSharesStaysAFact() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        recordAnAcquireAndReleaseUnseen(detector, lock, Thread.ofPlatform().name("pooled"));
+        whileAnUnrecordedThreadHolds(lock, Thread.ofPlatform().name("pooled"), () ->
+                assertEveryGradeIsARecordedFact(detector,
+                        "two threads carry the name the lock gives, and the live one may still release"));
+    }
+
+    /**
+     * The runner's own arrangement: its virtual workers are named with a counter, so a named virtual
+     * thread that recorded and ended holding the lock is still a verdict.
+     */
+    @Test
+    void aNamedVirtualThreadThatEndedHoldingTheLockIsAVerdict() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        Thread leaker = Thread.ofVirtual().name("named-virtual-leaker").start(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "named");
+        });
+        leaker.join();
+
+        List<GradedFindings.Grade> grades = DetectorTrust.clampToCap("LockLeakDetector", gradesOf(detector.analyze()));
+        assertEquals(2, grades.size(), "the imbalance and the lock still held: " + grades);
+        assertTrue(grades.stream().allMatch(g -> g.tier() == TrustTier.VERDICT),
+                "the lock names the thread that recorded, and that thread has ended: " + grades);
+    }
+
     /** Waits until {@code worker} is parked waiting for its pool's next task. */
     private static void waitUntilIdle(Thread worker) throws InterruptedException {
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);

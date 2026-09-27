@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -60,4 +62,38 @@ class IdentityKeyTest {
         assertThrows(NullPointerException.class, () -> new IdentityKey(null));
     }
 
+    @Test
+    @DisplayName("a lookup key finds the instance's state, and only that instance's (#812)")
+    void lookupFindsTheSameInstanceOnly() {
+        String one = new String("pool");
+        String two = new String("pool");
+        Map<IdentityKey, String> state = new ConcurrentHashMap<>();
+        state.put(new IdentityKey(one), "one");
+
+        assertEquals("one", state.get(IdentityKey.lookup(one)));
+        assertEquals("one", state.get(IdentityKey.lookup(one)), "the reused key finds it again");
+        assertNull(state.get(IdentityKey.lookup(two)), "an equal instance right after is another key");
+        assertEquals("one", state.get(IdentityKey.lookup(one)));
+        IdentityKey.forgetLookup();
+    }
+
+    @Test
+    @DisplayName("a worker leaving its run keeps no instance it looked up (#812)")
+    void unbindingReleasesTheLookedUpInstance() throws InterruptedException {
+        WeakReference<Object> instance = lookedUpAndDropped();
+
+        SelfGuard.Scope.unbind();
+
+        for (int i = 0; i < 50 && instance.get() != null; i++) {
+            System.gc();
+            Thread.sleep(10);
+        }
+        assertNull(instance.get(), "the thread's cached lookup key still holds the instance");
+    }
+
+    private static WeakReference<Object> lookedUpAndDropped() {
+        Object instance = new Object();
+        IdentityKey.lookup(instance);
+        return new WeakReference<>(instance);
+    }
 }

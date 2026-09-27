@@ -47,9 +47,15 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p><strong>What is judged.</strong> A {@code position} call a thread records opens a seek, and
  * every read or write that thread makes on the same channel after it, in the same invocation round
- * and until its next seek, is I/O relying on it: each starts where the seek and the calls since
- * left the cursor, so a second read after one seek relies on it as much as the first. Any other
- * call, such as a {@code truncate}, relies on nothing and leaves the seek open (#831). The verdict
+ * and until its next seek on that channel, is I/O relying on it: each starts where the seek and the
+ * calls since left the cursor, so a second read after one seek relies on it as much as the first,
+ * and so does a read after a seek on another channel. A thread keeps an open seek on up to
+ * four channels at once, and a seek on one more forgets the one sought longest
+ * ago (#835). Any other call, such as a {@code truncate}, relies on nothing and leaves the seek
+ * open (#831). A call that neither uses nor moves the position ({@code size}, {@code force},
+ * {@code transferTo}, {@code transferFrom}, {@code map}, {@code lock}, {@code tryLock}) is not
+ * recorded at all, so it is no call that can land inside a sequence either; any other name counts,
+ * as {@code truncate} does (#835). The verdict
  * is {@link SelfGuard}'s, taken per invocation round, with each sequence's I/O as the write and
  * every other implicit-position call as a read: a round is reported when a thread completed a
  * sequence and another thread made an implicit-position call that no lock common to both and no
@@ -60,7 +66,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * thread's call in, and is not counted for the I/O (#831). That is decided from {@link HeldLocks},
  * so it covers declared locks and, with the agent attached, woven {@code synchronized} blocks and
  * {@code Lock} calls; the channel's own monitor left and entered again in code the agent does not
- * weave still reads as held across, since nothing reports its release. A {@code position} call is
+ * weave still reads as held across, since nothing reports its release. For the same reason a
+ * monitor that code the agent does not weave held at the seek counts at the I/O whenever the thread
+ * holds it there, woven re-entries of it included (#835): an unwoven {@code synchronized (channel)}
+ * around the sequence guards it with a woven block around the read inside it, and an unwoven block
+ * around the seek, left before a woven block around the read, reads as held across. A woven block
+ * around the seek inside an unwoven one, left and entered again before the read, still reads as a
+ * break, since nothing tells the outer hold from none. A {@code position} call is
  * always a seek, never I/O relying on the call before it: the operation name cannot tell
  * {@code position()} from {@code position(long)}, and even a {@code position()} after a write
  * starts the next sequence as often as it asks where the write landed. So a self-contained call
@@ -96,7 +108,24 @@ public final class FileChannelPositionRaceDetector {
     }
 
     /**
-     * The channel a thread's latest recorded seek set, the round it was recorded in, and where
+     * How many channels a thread keeps an open seek on at once. A seek on one more replaces the
+     * one sought longest ago, and I/O relying on that one is then judged as self-contained.
+     */
+    private static final int SEEK_SLOTS = 4;
+
+    /**
+     * Operation names that neither use nor move the position. {@code FileChannel} moves it only in
+     * {@code read}, {@code write}, {@code position(long)} and {@code truncate}; {@code size} and
+     * {@code force} do not touch it, and {@code transferTo}, {@code transferFrom}, {@code map},
+     * {@code lock} and {@code tryLock} take an explicit position, the transfers documented as not
+     * modifying the channel's. Any other name may move it, and counts.
+     */
+    private static final String[] NEUTRAL_OPERATIONS = {
+        "size", "force", "transferTo", "transferFrom", "map", "lock", "tryLock"
+    };
+
+    /**
+     * The channel one of a thread's recorded seeks set, the round it was recorded in, and where
      * the thread's lock acquisitions stood at it.
      */
     private static final class Seek {
@@ -106,28 +135,83 @@ public final class FileChannelPositionRaceDetector {
         /** {@link HeldLocks#acquisitionMark()} at the seek; only locks held since guard the I/O. */
         long locksMark;
 
-        /** Whether this seek is on {@link #openSeeks}, where a round start finds it. */
+        /**
+         * {@link HeldLocks#heldUnseen(Object)} for the channel at the seek: its monitor held by
+         * code the agent did not weave, whose release nothing reports (#835).
+         */
+        boolean monitorHeldUnseen;
+
+        /** When the thread made this seek, in its {@link Seeks#clock}; the oldest is replaced. */
+        long soughtAt;
+    }
+
+    /** A thread's open seeks, at most one per channel and {@link #SEEK_SLOTS} of them. */
+    private static final class Seeks {
+        final Seek[] slots = new Seek[SEEK_SLOTS];
+
+        /** Counts this thread's seeks, to order its slots by age. */
+        long clock;
+
+        /** Whether these seeks are on {@link #openSeeks}, where a round start finds them. */
         boolean listed;
 
-        /** The seek listed before this one on {@link #openSeeks}, or {@code null} at the end. */
-        @Nullable Seek next;
+        /** The seeks listed before these on {@link #openSeeks}, or {@code null} at the end. */
+        @Nullable Seeks next;
+
+        Seeks() {
+            for (int i = 0; i < SEEK_SLOTS; i++) {
+                slots[i] = new Seek();
+            }
+        }
+
+        /**
+         * {@return the slot a seek on {@code channel} goes in: the one already on it, else a free
+         * one or one from an earlier round, else the one sought longest ago}
+         */
+        @SuppressWarnings("ReferenceEquality") // channels are tracked by identity, as instances is
+        Seek slotFor(Object channel, int round) {
+            Seek replaced = slots[0];
+            for (Seek slot : slots) {
+                if (slot.channel == channel) { // NOPMD CompareObjectsWithEquals - channels by identity
+                    return slot;
+                }
+                if (slot.channel == null || slot.round != round) {
+                    replaced = slot;
+                } else if (replaced.channel != null && replaced.round == round
+                        && slot.soughtAt < replaced.soughtAt) {
+                    replaced = slot;
+                }
+            }
+            return replaced;
+        }
+
+        /** {@return the slot holding a seek on {@code channel}, or {@code null}} */
+        @SuppressWarnings("ReferenceEquality") // channels are tracked by identity, as instances is
+        @Nullable Seek slotOn(Object channel) {
+            for (Seek slot : slots) {
+                if (slot.channel == channel) { // NOPMD CompareObjectsWithEquals - channels by identity
+                    return slot;
+                }
+            }
+            return null;
+        }
     }
 
     private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
 
     /**
-     * The calling thread's open seek, if it recorded one. Confined to its thread; set on the
-     * thread's first seek and reused after that, replaced by the thread's next seek, and its
-     * channel cleared at the next round start.
+     * The calling thread's open seeks, if it recorded any. Confined to its thread; set on the
+     * thread's first seek and reused after that, each slot replaced by a later seek on its channel
+     * or, when every slot is taken, on another, and every channel cleared at the next round start.
      */
-    private final ThreadLocal<Seek> seeks = new ThreadLocal<>();
+    private final ThreadLocal<Seeks> seeks = new ThreadLocal<>();
 
     /**
-     * Every seek opened since the last round start, linked through {@link Seek#next}, so that
-     * {@link #markInvocationStart()}, which runs on the runner thread, can reach the slots of the
-     * workers. The seek objects are the links, so listing one allocates nothing.
+     * Every thread's seeks opened since the last round start, linked through {@link Seeks#next},
+     * so that {@link #markInvocationStart()}, which runs on the runner thread, can reach the slots
+     * of the workers. The holders are the links, so listing one allocates nothing.
      */
-    private final AtomicReference<@Nullable Seek> openSeeks = new AtomicReference<>();
+    private final AtomicReference<@Nullable Seeks> openSeeks = new AtomicReference<>();
 
     /**
      * Record an implicit-position operation: one of {@code read}, {@code write},
@@ -138,16 +222,19 @@ public final class FileChannelPositionRaceDetector {
      * <p>An operation whose name starts with {@code position}, for {@code position(long)} or
      * {@code position()}, is a seek. One whose name starts with {@code read} or {@code write},
      * made by the calling thread on the same channel after a seek, in the same invocation round
-     * and until its next seek, is I/O relying on that seek. Any other name, {@code truncate}
-     * among them, relies on nothing and leaves an open seek open. Only a seek with I/O relying on
-     * it can be reported, and only when another thread's implicit-position call can land inside
-     * it; every call is recorded so that it can be that other call.
+     * and until its next seek on that channel, is I/O relying on that seek. A name starting with
+     * {@code size}, {@code force}, {@code transferTo}, {@code transferFrom}, {@code map},
+     * {@code lock} or {@code tryLock} neither uses nor moves the position and is ignored. Any
+     * other name, {@code truncate} among them, relies on nothing and leaves an open seek open.
+     * Only a seek with I/O relying on it can be reported, and only when another thread's
+     * implicit-position call can land inside it; every call but an ignored one is recorded so
+     * that it can be that other call.
      *
      * @param channel   the channel instance (null-safe)
      * @param operation short name of the operation, e.g. {@code "read"}
      */
     public void recordImplicitPositionAccess(Object channel, String operation) {
-        if (channel == null) return;
+        if (channel == null || neutral(operation)) return;
         State s = stateFor(channel);
         if (operation != null) {
             s.operations.add(operation);
@@ -168,7 +255,7 @@ public final class FileChannelPositionRaceDetector {
         }
         // I/O relying on a seek is the write: it needs a lock that excludes every other
         // implicit-position call, and one released and taken again since the seek did not (#831).
-        long previous = HeldLocks.countOnlyHeldSince(reliedOn.locksMark);
+        long previous = HeldLocks.countOnlyHeldSince(reliedOn.locksMark, reliedOn.monitorHeldUnseen);
         try {
             s.noteAccess(channel, true, caller);
         } finally {
@@ -176,36 +263,54 @@ public final class FileChannelPositionRaceDetector {
         }
     }
 
-    private void openSeek(Object channel) {
-        Seek seek = seeks.get();
-        if (seek == null) {
-            seek = new Seek();
-            seeks.set(seek);
+    /** {@return whether {@code operation} names a call that neither uses nor moves the position} */
+    private static boolean neutral(@Nullable String operation) {
+        if (operation == null) {
+            return false;
         }
+        for (String name : NEUTRAL_OPERATIONS) {
+            if (operation.startsWith(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void openSeek(Object channel) {
+        Seeks mine = seeks.get();
+        if (mine == null) {
+            mine = new Seeks();
+            seeks.set(mine);
+        }
+        int round = SelfGuard.RoundThreads.roundNow();
+        Seek seek = mine.slotFor(channel, round);
         seek.channel = channel;
-        seek.round = SelfGuard.RoundThreads.roundNow();
+        seek.round = round;
         seek.locksMark = HeldLocks.acquisitionMark();
-        if (!seek.listed) {
-            seek.listed = true;
-            Seek head;
+        seek.monitorHeldUnseen = HeldLocks.heldUnseen(channel);
+        mine.clock++;
+        seek.soughtAt = mine.clock;
+        if (!mine.listed) {
+            mine.listed = true;
+            Seeks head;
             do {
                 head = openSeeks.get();
-                seek.next = head;
-            } while (!openSeeks.compareAndSet(head, seek));
+                mine.next = head;
+            } while (!openSeeks.compareAndSet(head, mine));
         }
     }
 
     /**
-     * {@return the calling thread's open seek when it is on {@code channel} and from this round,
-     * or {@code null} when the call relies on no seek}
+     * {@return the calling thread's open seek on {@code channel} when it is from this round, or
+     * {@code null} when the call relies on no seek}
      *
      * <p>The seek stays open for the calls after this one, which start where this one leaves the
      * cursor.
      */
-    @SuppressWarnings("ReferenceEquality") // channels are tracked by identity, as instances is
     private @Nullable Seek seekReliedOn(Object channel) {
-        Seek seek = seeks.get();
-        if (seek == null || seek.channel != channel) { // NOPMD CompareObjectsWithEquals - channels by identity
+        Seeks mine = seeks.get();
+        Seek seek = mine == null ? null : mine.slotOn(channel);
+        if (seek == null) {
             return null;
         }
         if (seek.round != SelfGuard.RoundThreads.roundNow()) {
@@ -217,8 +322,8 @@ public final class FileChannelPositionRaceDetector {
     }
 
     /**
-     * Starts a new invocation round: every thread's open seek is forgotten, and its slot lets go
-     * of the channel.
+     * Starts a new invocation round: every thread's open seeks are forgotten, and their slots let go
+     * of the channels.
      *
      * <p>A seek is relied on only within its round, which the round clock already decides, but the
      * slot of a pooled worker held the channel reference until that worker sought again, if it ever
@@ -229,13 +334,15 @@ public final class FileChannelPositionRaceDetector {
      * @since 1.12.3
      */
     public void markInvocationStart() {
-        Seek seek = openSeeks.getAndSet(null);
-        while (seek != null) {
-            Seek next = seek.next;
-            seek.channel = null;
-            seek.next = null;
-            seek.listed = false;
-            seek = next;
+        Seeks listed = openSeeks.getAndSet(null);
+        while (listed != null) {
+            Seeks next = listed.next;
+            for (Seek slot : listed.slots) {
+                slot.channel = null;
+            }
+            listed.next = null;
+            listed.listed = false;
+            listed = next;
         }
     }
 

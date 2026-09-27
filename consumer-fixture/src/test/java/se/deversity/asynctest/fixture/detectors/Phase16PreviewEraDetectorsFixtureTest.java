@@ -103,7 +103,8 @@ class Phase16PreviewEraDetectorsFixtureTest {
         // A stateful stage in a parallel pipeline is the hazard a Gatherer makes easy to
         // write; the sequential collect below is its safe counterpart.
         // A parallel gatherer with no combiner integrated from more than one thread is the
-        // misuse: without a combiner the integrator's state cannot be merged safely.
+        // LOW finding: the JDK runs such a gatherer sequentially, so the stage loses its
+        // parallelism, not its results.
         var gatherer = AsyncTestContext.gathererConcurrencyMisuseDetector();
         registerOnce("gatherer", () -> gatherer.registerGatherer("fixture-gatherer", false, true));
         gatherer.recordIntegrate("fixture-gatherer", Thread.currentThread());

@@ -723,7 +723,7 @@ now says its ground truth is the cached field set rather than a quote.
   exactly that. The next library someone points the agent at may hold a third.
 - **Detection is probabilistic, and the gate is built around that rather than excused by it.**
   `CorpusGates` fails the run when a documented-thread-safe class draws a VERDICT-tier HIGH or
-  CRITICAL finding, when fewer than 85% of the documented-unsafe subjects draw a finding, when
+  CRITICAL finding (a graded detector's finding at its own grade, since #843), when fewer than 85% of the documented-unsafe subjects draw a finding, when
   either `AtomicityValidator` or `SharedCollectionDetector` says nothing about any of them, when a
   detector reports that the feed table says cannot be fed, when the control lane hears from an
   agent-fed detector, and when something keeps publishing events after the last subject. It still
@@ -824,7 +824,9 @@ it against the lockset, kept the registration, and made the file's held detector
 checks. The idiom lane's `idiom_synchronizedCheckThenAct_*` pair separates on the lock itself,
 and since #828 it is the pair the registration names: the evidence file may cite idiom rows, and
 `CorpusGates` resolves them as it resolves the others, refusing as a silent half a known gap or a
-correct row that expects a note, which that lane does not hold to silence.
+correct row that expects a note, which that lane does not hold to silence. Both halves of a line
+must be rows of one lane (#842), so neither half of this pair can be swapped for a recording-lane
+row, whose body and feed differ in more than the lock.
 
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|
@@ -2320,8 +2322,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, 17 of the 20 agent-fed detectors are measured in both directions on call sites inside a
-library. `LibraryReach` records why the other three are not, and
+added below, 17 of the 21 agent-fed detectors are measured in both directions on call sites inside a
+library. `LibraryReach` records why the other four are not, and
 `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
@@ -2330,6 +2332,7 @@ arrangement `DetectorCoverage` uses for refusals:
 | `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
 | `MISSED_SIGNAL` | agent-fed since #694. A firing library row needs a library method that waits behind an `if`, and no corpus library ships that defect; `agent_wait_behindAnIf` and its looped twin pair it on `jdk:` call sites through the same `MONITOR_ENTRIES` |
 | `DAEMON_THREAD_HYGIENE` | agent-fed since #731, through the woven `Thread.start` and `Thread.setDaemon`; it has no agent pair in any lane yet (#736) |
+| `ABA_PROBLEM` | agent-fed since #817, through the woven `AtomicReference` calls. A firing library row needs a library that pushes a popped node back onto a lock-free stack, and no corpus library ships that defect; `agent_abaStack_nodePushedBackAfterTheRead` and its twin pair it on `jdk:` call sites |
 
 **A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
 and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,

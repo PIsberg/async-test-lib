@@ -33,10 +33,14 @@ final class CorpusReport {
     private CorpusReport() {
     }
 
-    /** A finding is counted as a false positive when the library's own strongest claim is wrong. */
+    /**
+     * A finding is counted as a false positive when the library's own strongest claim is wrong. The
+     * tier is the one the runner gated on ({@link CorpusGates#claimedTier}), so a graded finding is
+     * judged at its own grade rather than at its detector's weakest (#843).
+     */
     static boolean isFalsePositive(CorpusRecorder.Finding finding, Subject subject) {
         return subject.contract() == Contract.THREAD_SAFE
-                && finding.tier() == TrustTier.VERDICT
+                && CorpusGates.claimedTier(finding) == TrustTier.VERDICT
                 && (finding.severity() == IssueSeverity.HIGH || finding.severity() == IssueSeverity.CRITICAL);
     }
 
@@ -80,7 +84,7 @@ final class CorpusReport {
                     .count();
             Set<String> detectors = new LinkedHashSet<>();
             for (CorpusRecorder.Finding finding : mine) {
-                detectors.add(finding.detector() + " (" + finding.tier() + "/" + finding.severity() + ")");
+                detectors.add(finding.detector() + " (" + CorpusGates.claimedTier(finding) + "/" + finding.severity() + ")");
             }
             out.append("| `").append(subject.testMethod()).append("` | ")
                     .append(subject.library()).append(" | ")
@@ -460,7 +464,7 @@ final class CorpusReport {
             out.append("| `").append(finding.subject()).append("` | `")
                     .append(DetectorExposure.classOf(subject.detector())).append("` | `")
                     .append(finding.detector()).append("` | ")
-                    .append(finding.tier()).append(" / ").append(finding.severity())
+                    .append(CorpusGates.claimedTier(finding)).append(" / ").append(finding.severity())
                     .append(" |\n");
         }
         return out.toString();
@@ -614,7 +618,7 @@ final class CorpusReport {
         for (CorpusRecorder.Finding finding : noise) {
             out.append("| `").append(finding.subject()).append("` | ")
                     .append(finding.detector()).append(" | ")
-                    .append(finding.tier()).append('/').append(finding.severity()).append(" | ")
+                    .append(CorpusGates.claimedTier(finding)).append('/').append(finding.severity()).append(" | ")
                     .append(finding.evidence().replace("|", "\\|").replace("\n", " ")).append(" |\n");
         }
         return out.append('\n').toString();
