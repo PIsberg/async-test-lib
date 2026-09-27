@@ -509,6 +509,101 @@ public class OptimisticReadValidationDetectorTest {
     }
 
     /**
+     * The tail counts reads, not fields, and says so: one field read five times past the cap is five
+     * reads not named. Counting distinct fields past the cap would need the names the cap drops.
+     */
+    @Test
+    void theTailPastTheCapCountsEachReadOfAnUnnamedField() {
+        Thread t = Thread.currentThread();
+        int cap = OptimisticReadValidationDetector.MAX_NAMED_FIELDS;
+        for (boolean validateFails : new boolean[] {false, true}) {
+            var d = new OptimisticReadValidationDetector();
+            StampedLock lock = new StampedLock();
+            long stamp = lock.tryOptimisticRead();
+            d.recordOptimisticReadStarted(lock, stamp, t);
+            for (int i = 0; i < cap; i++) {
+                d.recordDataAccessed(lock, stamp, t, "field" + i);
+            }
+            for (int i = 0; i < 5; i++) {
+                d.recordDataAccessed(lock, stamp, t, "late");
+            }
+            if (validateFails) {
+                lock.unlockWrite(lock.writeLock());
+                d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+                d.recordValuesUsed(lock, stamp, t);
+            }
+
+            var report = d.analyze();
+            assertEquals(1, report.violations.size(), report.violations.toString());
+            String v = report.violations.get(0);
+            assertTrue(v.contains("field" + (cap - 1) + ", and 5 more reads)"), v);
+            assertFalse(v.contains("late"), v);
+        }
+    }
+
+    /**
+     * A read after a passing validate() once earlier reads filled the cap still names a field: the
+     * part it opens takes over the last slot, so its never-validated finding is not an anonymous
+     * count. A field the list already names moves into that slot, and a new one takes it, the name
+     * it displaces joining the count of the earlier reads, which a failed use then reports.
+     */
+    @Test
+    void aReadAfterAPassingValidateNamesAFieldAfterEarlierReadsFilledTheCap() {
+        Thread t = Thread.currentThread();
+        int cap = OptimisticReadValidationDetector.MAX_NAMED_FIELDS;
+        for (String late : new String[] {"late", "field3"}) {
+            var d = new OptimisticReadValidationDetector();
+            StampedLock lock = new StampedLock();
+            long stamp = lock.tryOptimisticRead();
+            d.recordOptimisticReadStarted(lock, stamp, t);
+            for (int i = 0; i < cap; i++) {
+                d.recordDataAccessed(lock, stamp, t, "field" + i);
+            }
+            d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+            d.recordDataAccessed(lock, stamp, t, late);
+            d.recordDataAccessed(lock, stamp, t, late);
+
+            var report = d.analyze();
+            assertEquals(1, report.violations.size(), report.violations.toString());
+            assertTrue(report.violations.get(0).contains("data accessed (" + late + ") during optimistic"
+                + " read after its validate() passed"), report.violations.get(0));
+
+            var twin = new OptimisticReadValidationDetector();   // the same reads, revalidated
+            twin.recordOptimisticReadStarted(lock, stamp, t);
+            for (int i = 0; i < cap; i++) {
+                twin.recordDataAccessed(lock, stamp, t, "field" + i);
+            }
+            twin.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+            twin.recordDataAccessed(lock, stamp, t, late);
+            twin.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+            twin.recordValuesUsed(lock, stamp, t);
+            assertFalse(twin.analyze().hasIssues(), twin.analyze().violations.toString());
+        }
+
+        var d = new OptimisticReadValidationDetector();
+        StampedLock lock = new StampedLock();
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, t);
+        for (int i = 0; i < cap; i++) {
+            d.recordDataAccessed(lock, stamp, t, "field" + i);
+        }
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordDataAccessed(lock, stamp, t, "late");
+        lock.unlockWrite(lock.writeLock());
+        d.recordValidateCalled(lock, stamp, lock.validate(stamp), t);
+        d.recordValuesUsed(lock, stamp, t);
+
+        var report = d.analyze();
+        assertEquals(1, report.violations.size(), report.violations.toString());
+        StringBuilder named = new StringBuilder("(field0");
+        for (int i = 1; i < cap - 1; i++) {
+            named.append(", field").append(i);
+        }
+        named.append(", late, and 1 more reads)");
+        assertTrue(report.violations.get(0).contains(named), report.violations.get(0));
+    }
+
+    /**
      * A field read before a passing validate() and read again after it: the never-validated finding
      * for the second read names it, and a failed use names it once.
      */

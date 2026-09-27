@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,7 +35,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * the failure says the snapshot as a whole is torn, so a field read before a passing validation is
  * as much a part of it as one read after, and re-reading only the later fields would still pair
  * them with the stale earlier ones. Each field is named once, up to a cap, and a finding counts
- * the reads past the cap that it does not name.
+ * the reads past the cap that it does not name. The reads after a successful {@code validate()}
+ * keep at least one name however many fields came before, so their finding always names a field.
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
@@ -77,7 +79,8 @@ public class OptimisticReadValidationDetector {
         /**
          * The fields read under the stamp, in the order first read and at most
          * {@link #MAX_NAMED_FIELDS}: a field is kept again only when it is read again after a
-         * successful validation, since that read starts the part no validation covers.
+         * successful validation, since that read starts the part no validation covers. When the
+         * list is full, {@link #startPart} reorders or replaces its last name instead.
          */
         final List<String> accessedFields = new ArrayList<>();
         /** Where in {@link #accessedFields} the reads since the latest successful validation start. */
@@ -108,6 +111,33 @@ public class OptimisticReadValidationDetector {
             } else {
                 unnamedReads++;
             }
+        }
+
+        /**
+         * Opens the part that {@code field}, read after a successful validation, starts. The part
+         * gets a name slot even when earlier parts filled {@link #accessedFields}, so its
+         * never-validated finding names a field rather than only a count (#826): {@code field}
+         * moves into the last slot if it is already named, or else takes it, and the name it
+         * displaces is counted with the reads the earlier parts do not name.
+         */
+        @SuppressFBWarnings(value = {"AT_NONATOMIC_OPERATIONS_ON_SHARED_VARIABLE", "AT_STALE_THREAD_WRITE_OF_PRIMITIVE"},
+                justification = "a read is keyed by its thread and written only by it, like accessedFields;"
+                        + " analyze() reads it after the run")
+        void startPart(String field) {
+            int size = accessedFields.size();
+            if (size == MAX_NAMED_FIELDS) {
+                int last = size - 1;
+                int at = accessedFields.indexOf(field);
+                if (at >= 0) {
+                    Collections.swap(accessedFields, at, last);
+                } else {
+                    accessedFields.remove(last);
+                    unnamedReads++;
+                }
+                size = last;
+            }
+            pendingFrom = size;
+            unnamedBeforePending = unnamedReads;
         }
 
         /** {@return whether a field was read since the read started or since its latest successful validation} */
@@ -173,8 +203,7 @@ public class OptimisticReadValidationDetector {
             // The validate() before this read says nothing about it: a writer may have landed
             // since (#809). Only the fields read from here on are unvalidated, so only they are
             // named by a never-validated finding; a failed use still names the earlier ones (#815).
-            read.pendingFrom = read.accessedFields.size();
-            read.unnamedBeforePending = read.unnamedReads;
+            read.startPart(fieldName);
             read.readAfterValidate = true;
             read.state = State.PENDING;
         }
@@ -270,13 +299,16 @@ public class OptimisticReadValidationDetector {
                 ? "no fields recorded" : fieldList(fields, read.unnamedReads));
     }
 
-    /** {@return the named fields, then the count of the reads past the cap, as other detectors count theirs} */
+    /**
+     * {@return the named fields, then the count of the reads past the cap, as other detectors count
+     * theirs} The count is of reads, not fields: a field the cap left out is counted once per read,
+     * since telling fields apart past the cap would need the names it drops. {@code fields} is never
+     * empty when {@code unnamedReads} is positive, because every part keeps a name.
+     */
     private static String fieldList(List<String> fields, int unnamedReads) {
         String named = String.join(", ", fields);
         if (unnamedReads == 0) return named;
-        return named.isEmpty()
-            ? String.format("%d reads not named", unnamedReads)
-            : named + String.format(", and %d more reads", unnamedReads);
+        return named + String.format(", and %d more reads", unnamedReads);
     }
 
     /** Report produced by {@link #analyze()}. */

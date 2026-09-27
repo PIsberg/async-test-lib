@@ -210,6 +210,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`OptimisticReadValidationDetector` names a field in every never-validated finding (#826).**
+  Once eight fields read under a stamp filled the name list, a field read after a passing
+  `validate()` and never revalidated was reported as `data accessed (2 reads not named)`, naming
+  nothing. The reads after a passing `validate()` now take the last name slot: a field the list
+  already names moves into it, and a new field replaces the last name, which joins the count of the
+  earlier reads that a failed-use finding prints. The tail still counts reads, not fields, and
+  says so: a field past the cap read five times is `, and 5 more reads`, since telling fields apart
+  past the cap would need the names the cap drops. No verdict changed.
 - **`CONCURRENT_MAP_CHECK_THEN_ACT` excuses callers that all put the same instance (#827).**
   `if (!map.containsKey(k)) map.put(k, Boolean.TRUE)` on two threads puts one instance twice, so
   the map ends as `putIfAbsent` would leave it and nothing is lost, yet the pair was reported at
