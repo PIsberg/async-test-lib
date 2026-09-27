@@ -128,8 +128,9 @@ public class SharedCollectionDetector {
      *
      * <p>A {@code get} or {@code getOrDefault} on a {@link java.util.LinkedHashMap} known to be
      * access-ordered relinks the entry, so it is recorded as a write, in the lockset and in the
-     * writer tally alike (#807, #820). Its order is known only where {@code java.util} is open to
-     * the library; see {@code SelfGuard.relinksOnGet}.
+     * writer tally alike (#807, #820). Its order is known where {@code java.util} is open to the
+     * library, or where the agent saw a woven class build the map; see
+     * {@code SelfGuard.relinksOnGet}.
      *
      * @param collection the collection instance
      * @param name       the label (should match registration)

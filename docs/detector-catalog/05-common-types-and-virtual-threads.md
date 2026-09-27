@@ -27,7 +27,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 54. Shared Collection Detector
 * **Severity**: `HIGH`
-* **Description**: Flags plain `ArrayList`, `HashMap`/`LinkedHashMap`, `HashSet`, `LinkedList`, `TreeMap`/`TreeSet`, and `ArrayDeque` instances mutated from multiple threads without synchronization, which can corrupt internal state or throw `ConcurrentModificationException`. A `get` on a `LinkedHashMap` known to be access-ordered relinks the entry and counts as a write, so unguarded gets alone on an LRU cache report; the order is known only when the test JVM opens `java.util` to the library (`--add-opens java.base/java.util=ALL-UNNAMED`).
+* **Description**: Flags plain `ArrayList`, `HashMap`/`LinkedHashMap`, `HashSet`, `LinkedList`, `TreeMap`/`TreeSet`, and `ArrayDeque` instances mutated from multiple threads without synchronization, which can corrupt internal state or throw `ConcurrentModificationException`. A `get` on a `LinkedHashMap` known to be access-ordered relinks the entry and counts as a write, so unguarded gets alone on an LRU cache report; the order is known when the test JVM opens `java.util` to the library (`--add-opens java.base/java.util=ALL-UNNAMED`), or, with the agent attached with `collections=true`, for a map a woven class builds with `new LinkedHashMap<>(capacity, loadFactor, accessOrder)` or a subclass's `super(capacity, loadFactor, accessOrder)`.
 * **Buggy Code**:
   ```java
   private static final List<String> SHARED = new ArrayList<>();

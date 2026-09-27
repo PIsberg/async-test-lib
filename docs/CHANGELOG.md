@@ -381,6 +381,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-recorded. `LibraryStateIsKeyedByIdentityTest` drops the 19 exemptions, so a report key built
   from an identity hash is red again.
 
+- **With the agent, LRU gets under one read lock are reported on a default JVM (#807).** A `get` on
+  an access-ordered `LinkedHashMap` relinks the entry, so it needs the exclusive lock, but the
+  order is a private `java.util` field the library could read only with
+  `--add-opens java.base/java.util=ALL-UNNAMED`, so on a default JVM every such get counted as a
+  read and a read lock guarded it. With `collections=true` the agent now weaves the three-argument
+  constructor in a woven class (`ConstructionWeaver`): the order argument goes to
+  `AgentConstructionHooks` before the call and the built map after it, for a
+  `new LinkedHashMap<>(capacity, loadFactor, accessOrder)` and for a subclass's
+  `super(capacity, loadFactor, accessOrder)`, the usual LRU cache. `SelfGuard` keeps the order
+  weakly by identity. User-visible: `SharedCollectionDetector` and `CacheConcurrencyDetector`
+  report LRU gets under one read lock on such a map, and a map seen built insertion-ordered gets
+  the #787 round rule, so gets alone beside a put in another round stay silent.
+  `AccessOrderedMapWeavingTest` pins both LRU shapes firing end to end, its `Spares` twin both
+  insertion-ordered shapes silent beside a firing control, `ConstructionWeaverTest` that every
+  construction shape verifies and reports once with its order. Still unknown: a map built by a
+  constructor reference, reflection, or in a class outside `includes=`.
 - **With the agent, a daemon decision the agent could not see no longer reads as a missing one
   (#737).** `DaemonThreadHygieneDetector` and `ThreadFactoryDetector` judged a daemon thread
   undecided unless a woven `setDaemon(true)` was seen, so `Thread.ofPlatform().daemon().unstarted(r)`

@@ -517,6 +517,9 @@ public final class AsyncTestAgent {
                     Class.forName(CollectionAccessWeaver.gcHooksClassName(), false, loader)));
             all.addAll(CollectionAccessWeaver.threadSubstitutions(
                     Class.forName(CollectionAccessWeaver.threadHooksClassName(), false, loader)));
+            // What a woven constructor call knows and nothing later can read: a LinkedHashMap's
+            // order (#807).
+            all.add(ConstructionWeaver.of(Class.forName(ConstructionWeaver.HOOKS, false, loader)));
             return all;
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(

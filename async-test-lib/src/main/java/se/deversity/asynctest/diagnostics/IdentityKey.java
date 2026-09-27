@@ -80,10 +80,24 @@ final class IdentityKey {
         return referent;
     }
 
+    /**
+     * {@return whether {@code other} names the same instance}: another key for it, or a
+     * {@link Weak} key whose referent it still is, so a map keyed weakly can be looked up with the
+     * thread's {@link #lookup} key and allocate nothing (#807)
+     *
+     * @param other the key to compare with
+     */
     @Override
     @SuppressWarnings("ReferenceEquality") // referent identity is the point; see the class javadoc
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(
+            value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS",
+            justification = "a strong and a weak key for one live referent are the same key, by "
+                    + "design, so a weakly keyed map can be looked up without allocating (#807)")
     public boolean equals(Object other) {
-        return other instanceof IdentityKey that && that.referent == this.referent;
+        if (other instanceof IdentityKey that) {
+            return that.referent == this.referent;
+        }
+        return other instanceof Weak weak && weak.refersTo(referent);
     }
 
     @Override
@@ -102,7 +116,8 @@ final class IdentityKey {
      * <p>For state that must not keep what it describes alive: an object the agent saw once and the
      * code under test then dropped should not survive the run because a detector remembered it.
      * Once the referent is collected the key equals only itself, which is what lets a map remove it
-     * after its {@link java.lang.ref.ReferenceQueue} reports it.
+     * after its {@link java.lang.ref.ReferenceQueue} reports it. A strong {@link IdentityKey} for
+     * the same live referent is equal to it in both directions, so either can look up the other.
      */
     static final class Weak extends java.lang.ref.WeakReference<Object> {
 
@@ -121,9 +136,16 @@ final class IdentityKey {
 
         @Override
         @SuppressWarnings("ReferenceEquality") // referent identity is the point; see IdentityKey
+        @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(
+                value = "EQ_CHECK_FOR_OPERAND_NOT_COMPATIBLE_WITH_THIS",
+                justification = "equal to the strong key of the same live referent, the other "
+                        + "half of IdentityKey.equals (#807)")
         public boolean equals(Object other) {
             if (other == this) {
                 return true;
+            }
+            if (other instanceof IdentityKey strong) {
+                return refersTo(strong.referent());
             }
             if (!(other instanceof Weak that)) {
                 return false;

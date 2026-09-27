@@ -86,6 +86,7 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 
 - `se.deversity.asynctest.AgentCollectionHooks`
 - `se.deversity.asynctest.AgentConcurrencyUtilHooks`
+- `se.deversity.asynctest.AgentConstructionHooks`
 - `se.deversity.asynctest.AgentGcHooks`
 - `se.deversity.asynctest.AgentLockHooks`
 - `se.deversity.asynctest.AgentMonitorHooks`
