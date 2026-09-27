@@ -25,8 +25,8 @@ public class LockOrderValidator {
     /**
      * One lock acquired while another was already held: {@code from} nests {@code to}.
      *
-     * <p>Locks are {@link IdentityKey}s, not labels. The label is class name plus identity hash,
-     * and two live locks share an identity hash often enough to matter: keyed by the label, one
+     * <p>Locks are {@link IdentityKey}s, not labels. The label was class name plus identity hash,
+     * and two live locks share an identity hash often enough to matter: keyed by that label, one
      * thread nesting {@code X1} inside {@code A} and another nesting {@code A} inside {@code X2}
      * read as one pair taken both ways round, an inversion and a deadlock cycle that three
      * distinct locks cannot form.
@@ -65,11 +65,22 @@ public class LockOrderValidator {
         }
     }
 
-    /** {@return how a lock is named in the report: its class and identity hash} */
-    private static String label(IdentityKey lock) {
-        return lock.referent().getClass().getSimpleName() + "@" + lock.hashCode();
+    /**
+     * How the report names each lock it has printed: its class and a number, assigned by the first
+     * report that names the lock and kept for every later one. Filled only by analysis, so the
+     * record path never touches it.
+     */
+    private final Map<IdentityKey, String> labels = new ConcurrentHashMap<>();
+
+    /**
+     * {@return how the report names {@code lock}}, such as {@code ReentrantLock@4}. Not the identity
+     * hash it was: two locks share one often enough that a report printed two inversions as one line
+     * and two locks on a cycle as one (#854).
+     */
+    private String label(IdentityKey lock) {
+        return labels.computeIfAbsent(lock, k -> ReportSections.unnamed(k.referent().getClass().getSimpleName()));
     }
-    
+
     private final Map<Long, LockSequence> threadLockOrders = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
@@ -195,6 +206,7 @@ public class LockOrderValidator {
      */
     public void reset() {
         threadLockOrders.clear();
+        labels.clear();
     }
     /**
      * Disable.

@@ -313,6 +313,20 @@ class ReentrantLockOwnerAndStarvationTest {
                 "both recorded waits are printed as context: " + report);
     }
 
+    @Test
+    @DisplayName("waits on two unregistered locks sharing an identity hash print as two lines")
+    void waitsOnTwoUnnamedCollidingLocksAreTwoLines() {
+        ReentrantLockDetector detector = new ReentrantLockDetector();
+        for (ReentrantLock lock : IdentityCollisions.pair(ReentrantLock::new)) {
+            detector.recordStarvation(lock, "worker", 5);
+            detector.recordStarvation(lock, "worker", 5);
+        }
+
+        String report = detector.analyze().toString();
+        assertEquals(2, report.split("worker on ", -1).length - 1,
+                "one line per lock, and each lock keeps one name across its records (#854): " + report);
+    }
+
     // ---- the holder is a thread, not a name ----
 
     @Test

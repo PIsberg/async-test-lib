@@ -85,7 +85,7 @@ public class ConcurrentModificationDetector {
         final boolean synchronizedWrapper;
 
         CollectionState(Collection<?> collection, String name) {
-            this.name = name != null ? name : "collection@" + System.identityHashCode(collection);
+            this.name = name != null ? name : ReportSections.unnamed("collection");
             String type = collection == null ? "" : collection.getClass().getName();
             this.concurrentType = isConcurrentByConvention(type);
             this.synchronizedWrapper = isSynchronizedWrapperByConvention(type);

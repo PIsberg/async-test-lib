@@ -47,15 +47,6 @@ class LibraryStateIsKeyedByIdentityTest {
     /** Well under the library's class count, so a scan that found the wrong place cannot pass. */
     private static final int MIN_CLASSES = 500;
 
-    /**
-     * Report text: a map or set keyed by the display name or message a reader sees, where the
-     * fallback name of an unnamed object ends in its identity hash ({@code "queue@1b6d3586"}).
-     */
-    private static final String REPORT_TEXT = "keyed by the text the report prints, whose fallback name "
-            + "for an unnamed object ends in its identity hash: two unnamed objects whose hashes "
-            + "collide print one line, as two objects given the same name do, while the detector "
-            + "state behind the line is keyed by the object";
-
     /** The lock table the agent's spinlock hooks share, keyed by hash on purpose. */
     private static final String SPIN_LOCKS = "keys by hash plus a weak reference, so nothing is "
             + "retained, and checks Lock.isFor on every lookup: a colliding second object goes "
@@ -76,26 +67,7 @@ class LibraryStateIsKeyedByIdentityTest {
                     + "rendered value on purpose, so values that print alike are one group; the "
                     + "identity hash is only the rendering of a value whose toString() throws"),
             Map.entry("LambdaLostUpdateDetector.java#unaccountedReads", "counts reads and writes per "
-                    + "rendered value, the same grouping as collide"),
-            Map.entry("ABAProblemDetector.java#reportInto", REPORT_TEXT),
-            Map.entry("BlockingQueueDetector.java#analyze", REPORT_TEXT),
-            Map.entry("CalendarDetector.java#analyze", REPORT_TEXT),
-            Map.entry("CompletableFutureExceptionDetector.java#analyze", REPORT_TEXT),
-            Map.entry("ConcurrentModificationDetector.java#analyze", REPORT_TEXT),
-            Map.entry("CopyOnWriteCollectionDetector.java#analyze", REPORT_TEXT),
-            Map.entry("LatchMisuseDetector.java#analyze", REPORT_TEXT),
-            Map.entry("LockLeakDetector.java#analyze", REPORT_TEXT),
-            Map.entry("LockOrderValidator.java#validateLockOrder", REPORT_TEXT),
-            Map.entry("LockOrderValidator.java#detectDeadlockCycles", REPORT_TEXT),
-            Map.entry("ParallelStreamDetector.java#analyze", REPORT_TEXT),
-            Map.entry("RaceConditionDetector.java#analyzeRaceConditions", REPORT_TEXT),
-            Map.entry("ReentrantLockDetector.java#recordStarvation", REPORT_TEXT),
-            Map.entry("SharedCollectionDetector.java#analyze", REPORT_TEXT),
-            Map.entry("SharedRandomDetector.java#analyze", REPORT_TEXT),
-            Map.entry("SimpleDateFormatDetector.java#analyze", REPORT_TEXT),
-            Map.entry("ThreadLocalMonitor.java#analyzeThreadLocalLeaks", REPORT_TEXT),
-            Map.entry("TimerDetector.java#analyze", REPORT_TEXT),
-            Map.entry("WakeupDetector.java#describeInto", REPORT_TEXT));
+                    + "rendered value, the same grouping as collide"));
 
     @Test
     @DisplayName("no library state is keyed by an identity hash, however the hash gets there")

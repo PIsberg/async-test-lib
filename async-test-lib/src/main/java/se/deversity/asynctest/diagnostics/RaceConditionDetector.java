@@ -133,14 +133,26 @@ public class RaceConditionDetector {
 
     private static class ObjectFieldState {
         final String className;
-        final int objectId;
         final Class<?> type;
         final Map<String, FieldState> fields = new ConcurrentHashMap<>();
 
-        ObjectFieldState(Class<?> type, int objectId) {
+        /**
+         * How the report names the object, numbered by the first report that prints it and kept
+         * for every later one. Not the identity hash it was, which two objects share often enough
+         * that their lines merged (#854), and not assigned on the record path, which stays free of it.
+         */
+        private @Nullable String label;
+
+        ObjectFieldState(Class<?> type) {
             this.className = type.getSimpleName();
-            this.objectId = objectId;
             this.type = type;
+        }
+
+        synchronized String label() {
+            if (label == null) {
+                label = ReportSections.unnamed(className);
+            }
+            return label;
         }
     }
 
@@ -229,7 +241,7 @@ public class RaceConditionDetector {
         // identityHashCode keying merged distinct objects on hash collision.
         ObjectFieldState state = objects.computeIfAbsent(
             new IdentityKey(object),
-            key -> new ObjectFieldState(object.getClass(), key.hashCode())
+            key -> new ObjectFieldState(object.getClass())
         );
         FieldState field = state.fields.computeIfAbsent(fieldName,
                 name -> new FieldState(isVolatile(state.type, name)));
@@ -289,8 +301,7 @@ public class RaceConditionDetector {
                     continue;
                 }
 
-                String fieldRef = String.format(Locale.ROOT, "%s@%x.%s",
-                        state.className, state.objectId, fieldName);
+                String fieldRef = state.label() + "." + fieldName;
 
                 // Pair accesses only within their invocation round: the runner ends a round
                 // by awaiting the worker latch and starts the next by submitting fresh

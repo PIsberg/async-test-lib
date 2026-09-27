@@ -46,8 +46,8 @@ public class SharedRandomDetector {
         volatile @Nullable Long firstAccessTime = null;
         volatile @Nullable Long lastAccessTime = null;
 
-        RandomState(Random random, String name) {
-            this.name = name != null ? name : "random@" + System.identityHashCode(random);
+        RandomState(String name) {
+            this.name = name != null ? name : ReportSections.unnamed("random");
         }
     }
 
@@ -67,7 +67,7 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        randoms.putIfAbsent(new IdentityKey(random), new RandomState(random, name));
+        randoms.putIfAbsent(new IdentityKey(random), new RandomState(name));
     }
 
     /**
@@ -90,8 +90,7 @@ public class SharedRandomDetector {
             // thread counted itself alone and analyze()'s "> 1 thread" test never tripped. A
             // detector whose whole job is spotting concurrent sharing went silent under
             // exactly the contention it exists to find.
-            final String label = name != null ? name : "random@" + key.hashCode();
-            state = randoms.computeIfAbsent(key, k -> new RandomState(random, label));
+            state = randoms.computeIfAbsent(key, k -> new RandomState(name));
         }
         
         long now = System.currentTimeMillis();

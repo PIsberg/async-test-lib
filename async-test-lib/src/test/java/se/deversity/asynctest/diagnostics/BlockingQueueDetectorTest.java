@@ -665,4 +665,18 @@ public class BlockingQueueDetectorTest {
         assertEquals(List.of(), gradesOf(detector.analyze()),
                 "a rejected offer whose false the caller read is the correct twin and grades nothing");
     }
+
+    @Test
+    void twoUnnamedQueuesSharingAnIdentityHashPrintAsTwoQueues() {
+        BlockingQueueDetector detector = new BlockingQueueDetector();
+        for (BlockingQueue<String> queue : IdentityCollisions.<BlockingQueue<String>>pair(
+                () -> new ArrayBlockingQueue<>(1))) {
+            detector.registerQueue(queue, null, 1);
+        }
+
+        BlockingQueueDetector.BlockingQueueReport report = detector.analyze();
+        assertEquals(2, report.queueActivity.size(),
+                "two queues the test left unnamed are two queues in the report, even when their "
+                        + "identity hashes collide (#854): " + report.queueActivity.keySet());
+    }
 }

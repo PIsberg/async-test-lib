@@ -99,10 +99,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fields, helper returns and parameters, and lambdas. It is red on the old
   `ABAProblemDetector` (line 191) and `OptimisticReadValidationDetector` (all four map calls), and
   on a field, a two-statement helper and a `Thread.hashCode()` key the source gate passed. On the
-  current tree it finds no detector state keyed that way, and exempts 25 methods by name, each
-  with its reason: 19 that key a report map or set by the text it prints, where an unnamed
-  object's fallback name is `type@hash`; two in `LambdaLostUpdateDetector`, which groups by
-  rendered value on purpose; and four in `SpinLocks`, which keys by hash on purpose. The source
+  current tree it finds no detector state keyed that way, and exempts six methods by name, each
+  with its reason: two in `LambdaLostUpdateDetector`, which groups by rendered value on purpose,
+  and four in `SpinLocks`, which keys by hash on purpose. It exempted 19 more when it landed,
+  which keyed a report map or set by the text it prints; #854 fixed those. The source
   gate stays, since it also counts a hash inside a JDK call the bytecode gate does not follow. `async-test-analysis` now declares
   `async-test-lib` at test scope; its main code still depends on nothing else.
 - **`GathererConcurrencyMisuseDetector` sees one state shared by several streams at once (#846).**
@@ -363,6 +363,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for the run, and outside a run, with no round start, the whole run is still one round. Pinned by
   `LazyCollectionMisuseDetectorTest` (the cross-round case, a same-round cycle that survives the
   round closing, and a static collection's cross-round cycle).
+- **Two unnamed objects whose identity hashes collide no longer print as one report line (#854).**
+  Nineteen report paths (ABA, BlockingQueue, Calendar, CompletableFutureException,
+  ConcurrentModification, CopyOnWriteCollection, LatchMisuse, LockLeak, LockOrder twice,
+  RaceCondition, ReentrantLock, SharedCollection, SharedRandom, SimpleDateFormat, ThreadLocal,
+  Timer and Wakeup, plus ParallelStream, whose fallback was unreachable and is gone) named an
+  object the test gave no name by its type and identity hash, then keyed a report map or set by
+  that name, so two such objects sharing a hash came out as one line.
+  The detector state behind the line was already kept per object, so no verdict changed. An
+  unnamed object is now labelled once, where its state is created or where a report first names
+  it, with a number no other label has had (`ReportSections.unnamed`, `queue@3`), and a named
+  object keeps its name. User-visible: the digits after `@` in such a label are that number, not
+  the identity hash, so a baseline fingerprint (which reads `@` and digits as `@#`) still matches.
+  Two labels change shape: an unnamed thread-local is `ThreadLocal@n` (was `ThreadLocal-hash`),
+  and a latch registered with a null or blank name is `CountDownLatch@n` (was plain
+  `CountDownLatch`, which merged every such latch); a baseline entry for either must be
+  re-recorded. `LibraryStateIsKeyedByIdentityTest` drops the 19 exemptions, so a report key built
+  from an identity hash is red again.
+
 - **With the agent, a daemon decision the agent could not see no longer reads as a missing one
   (#737).** `DaemonThreadHygieneDetector` and `ThreadFactoryDetector` judged a daemon thread
   undecided unless a woven `setDaemon(true)` was seen, so `Thread.ofPlatform().daemon().unstarted(r)`

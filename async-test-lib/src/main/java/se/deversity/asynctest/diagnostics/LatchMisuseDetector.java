@@ -65,7 +65,8 @@ public class LatchMisuseDetector {
             return;
         }
         latches.putIfAbsent(new IdentityKey(latch),
-            new LatchState(name == null || name.isBlank() ? "CountDownLatch" : name, initialCount));
+            new LatchState(name == null || name.isBlank() ? ReportSections.unnamed("CountDownLatch") : name,
+                initialCount));
     }
 
     /**
@@ -95,7 +96,7 @@ public class LatchMisuseDetector {
         IdentityKey key = new IdentityKey(latch);
         int observed = (int) Math.min(countDownLatch.getCount(), Integer.MAX_VALUE);
         latches.computeIfAbsent(key,
-                absent -> new LatchState("CountDownLatch@" + absent.hashCode(), observed))
+                absent -> new LatchState(ReportSections.unnamed("CountDownLatch"), observed))
             .initialCount.accumulateAndGet(observed, Math::max);
     }
     /**

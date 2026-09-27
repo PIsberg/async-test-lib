@@ -78,9 +78,8 @@ public class ThreadLocalMonitor {
             return;
         }
 
-        int id = System.identityHashCode(threadLocal);
-        String resolvedName = (name == null || name.isBlank()) ? "ThreadLocal-" + id : name;
-        ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal, ignored -> new ThreadLocalState(resolvedName));
+        ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal, ignored -> new ThreadLocalState(
+                name == null || name.isBlank() ? ReportSections.unnamed("ThreadLocal") : name));
         state.initialized = true;
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
@@ -94,8 +93,8 @@ public class ThreadLocalMonitor {
             return;
         }
 
-        int id = System.identityHashCode(threadLocal);
-        ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal, ignored -> new ThreadLocalState("ThreadLocal-" + id));
+        ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal,
+                ignored -> new ThreadLocalState(ReportSections.unnamed("ThreadLocal")));
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
     /**

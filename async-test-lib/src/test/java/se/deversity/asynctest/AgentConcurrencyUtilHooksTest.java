@@ -295,9 +295,10 @@ class AgentConcurrencyUtilHooksTest {
                 BlockingQueue<Object> fresh = new ArrayBlockingQueue<>(4);
                 // One element already there, so take() returns instead of blocking the gate.
                 fresh.add("seed");
+                long before = unnamedQueues(detector.analyze().toString());
                 hook.invoke(null, argumentsFor(hook, fresh));
 
-                assertTrue(detector.analyze().toString().contains("queue@" + System.identityHashCode(fresh)),
+                assertEquals(before + 1, unnamedQueues(detector.analyze().toString()),
                         hook.getName() + Arrays.toString(hook.getParameterTypes())
                                 + " left its receiver unregistered, so this queue is invisible to "
                                 + "every later call on it. An overload that records without "
@@ -306,6 +307,12 @@ class AgentConcurrencyUtilHooksTest {
         } finally {
             AsyncTestContext.uninstall();
         }
+    }
+
+    /** {@return how many distinct unnamed queues, labelled {@code queue@n}, a report names} */
+    private static long unnamedQueues(String report) {
+        return java.util.regex.Pattern.compile("queue@\\d+").matcher(report).results()
+                .map(java.util.regex.MatchResult::group).distinct().count();
     }
 
     /**

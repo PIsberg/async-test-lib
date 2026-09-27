@@ -289,7 +289,7 @@ public class WakeupDetector {
 
     private MonitorState stateFor(Object monitor) {
         return monitors.computeIfAbsent(new IdentityKey(monitor),
-                key -> new MonitorState(key.toString()));
+                key -> new MonitorState(ReportSections.unnamed(key.referent().getClass().getSimpleName())));
     }
 
     public static class WakeupReport {

@@ -119,7 +119,7 @@ public class SharedCollectionDetector {
         if (collection == null) return;
         IdentityKey key = new IdentityKey(collection);
         String resolvedType = collectionType != null ? collectionType : collection.getClass().getSimpleName();
-        String resolvedName = name != null ? name : resolvedType + "@" + key.hashCode();
+        String resolvedName = name != null ? name : ReportSections.unnamed(resolvedType);
         collections.putIfAbsent(key, new CollectionState(resolvedName, resolvedType));
     }
 
@@ -178,7 +178,7 @@ public class SharedCollectionDetector {
         }
         return collections.computeIfAbsent(new IdentityKey(collection), k -> {
             String type = collection.getClass().getSimpleName();
-            String label = name != null ? name : type + "@" + k.hashCode();
+            String label = name != null ? name : ReportSections.unnamed(type);
             return new CollectionState(label, type);
         });
     }

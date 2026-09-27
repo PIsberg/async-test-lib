@@ -196,4 +196,17 @@ public class ThreadLocalMonitorTest {
         assertEquals(viaAnalyzeThreadLocalLeaks.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeThreadLocalLeaks.toString(), viaAnalyze.toString());
     }
+
+    @Test
+    void twoUnnamedThreadLocalsSharingAnIdentityHashPrintAsTwoLeaks() {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        for (ThreadLocal<String> threadLocal : IdentityCollisions.<ThreadLocal<String>>pair(ThreadLocal::new)) {
+            monitor.recordThreadLocalInit(threadLocal, null);
+        }
+
+        ThreadLocalMonitor.ThreadLocalReport report = monitor.analyzeThreadLocalLeaks();
+        assertEquals(2, report.uncleanedThreadLocals.size(),
+                "two thread-locals set and never removed are two leaks, even when their identity "
+                        + "hashes collide (#854): " + report.uncleanedThreadLocals);
+    }
 }

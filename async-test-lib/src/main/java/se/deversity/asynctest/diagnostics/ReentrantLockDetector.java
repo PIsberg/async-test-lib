@@ -119,10 +119,20 @@ public class ReentrantLockDetector {
         }
     }
 
-    /** {@return the registered name of {@code lock}, or a stable fallback} */
+    /**
+     * The name each unregistered lock is printed under, numbered the first time one is needed.
+     * {@code ReentrantLock} keeps {@code Object}'s equality, so keys are identities.
+     */
+    private final Map<ReentrantLock, String> unnamed = new ConcurrentHashMap<>();
+
+    /**
+     * {@return the registered name of {@code lock}, or a fallback kept for it} The fallback was
+     * the identity hash, which two locks share often enough that their lines merged (#854).
+     */
     private String nameOf(ReentrantLock lock) {
         LockInfo info = lockRegistry.get(lock);
-        return info != null ? info.name : "ReentrantLock@" + System.identityHashCode(lock);
+        return info != null ? info.name
+                : unnamed.computeIfAbsent(lock, l -> ReportSections.unnamed("ReentrantLock"));
     }
 
     /** {@return what has been seen on {@code lock}, created on first use} */
