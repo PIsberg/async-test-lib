@@ -197,7 +197,7 @@ public final class SharedMemorySegmentRaceDetector {
         for (SegmentState s : segments.values()) {
             long afterClose = s.afterClose.sum();
             if (afterClose > 0) {
-                add(r, s, IssueSeverity.CRITICAL, String.format(
+                add(r, s, IssueSeverity.CRITICAL, TrustTier.FACT, DetectorTrust.Evidence.ASSERTED, String.format(
                     "CRITICAL: segment '%s' was accessed %d time(s) by thread(s) %s after its "
                     + "arena was closed. Closing an arena frees the backing memory, so this reads "
                     + "or writes memory the JVM has already released.",
@@ -209,7 +209,7 @@ public final class SharedMemorySegmentRaceDetector {
             findOverlaps(s, conflicting, unguarded);
 
             if (!conflicting.isEmpty()) {
-                add(r, s, IssueSeverity.HIGH, String.format(
+                add(r, s, IssueSeverity.HIGH, TrustTier.PROMPT, DetectorTrust.Evidence.CONTEXTUAL, String.format(
                     "HIGH: segment '%s' has %d overlapping concurrent access(es) whose locking "
                     + "disagrees — %s. Threads that guard the same bytes with different monitors, "
                     + "or where one guards and another does not, are not mutually excluded: this "
@@ -218,7 +218,7 @@ public final class SharedMemorySegmentRaceDetector {
                     s.label, conflicting.size(), summarise(conflicting)));
             }
             if (!unguarded.isEmpty()) {
-                add(r, s, IssueSeverity.MEDIUM, String.format(
+                add(r, s, IssueSeverity.MEDIUM, TrustTier.PROMPT, DetectorTrust.Evidence.CONTEXT_FREE, String.format(
                     "MEDIUM: segment '%s' has %d overlapping concurrent access(es) with no lock "
                     + "recorded on either side — %s. Plain MemorySegment access has no ordering "
                     + "or atomicity guarantee, so this is a race unless the accesses are ordered "
@@ -283,7 +283,9 @@ public final class SharedMemorySegmentRaceDetector {
              + String.format("; and %d more", pairs.size() - MAX_REPORTED_PAIRS);
     }
 
-    private static void add(Report r, SegmentState s, IssueSeverity severity, String msg) {
+    private static void add(Report r, SegmentState s, IssueSeverity severity, TrustTier tier,
+                            DetectorTrust.Evidence evidence, String msg) {
+        r.grades.add(new GradedFindings.Grade(severity, tier, msg, evidence));
         r.violations.add(msg);
         r.structuredViolations.add(new Violation(
                 "SharedMemorySegmentRace",
@@ -300,6 +302,8 @@ public final class SharedMemorySegmentRaceDetector {
         public final List<String> violations = new ArrayList<>();
         /** The same findings as machine-readable {@link Violation} records. */
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Grades of the findings collected so far, in report order; see {@link #grades()}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
 
         /**
          * Checks if any issues were detected.
@@ -309,26 +313,17 @@ public final class SharedMemorySegmentRaceDetector {
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         /**
-         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
-         * the same detector.
+         * One grade per finding, set by the path that produced it rather than by its severity.
          *
-         * <p>Access after the arena closed is a verdict: the segment's lifetime ended, and using it is
-         * undefined behaviour whatever else the program does. The overlapping-access findings depend
-         * on locks the detector was told about, so they stay prompts, exactly as they do for every
-         * other detector without a complete lock model.
+         * <p>Access after the arena closed would be a verdict if the JVM had said the segment was
+         * dead, but the only evidence here is the close the test recorded, so it is a
+         * {@link TrustTier#FACT} on {@link DetectorTrust.Evidence#ASSERTED} evidence (#753). The
+         * overlapping-access findings depend on the guards the test named, or on none, so they stay
+         * prompts, exactly as they do for every other detector without a complete lock model.
          */
         @Override
         public List<GradedFindings.Grade> grades() {
-            return structuredViolations.stream()
-                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
-                    .toList();
-        }
-
-        private static TrustTier tierOf(IssueSeverity severity) {
-            return switch (severity) {
-            case CRITICAL -> TrustTier.VERDICT;
-            default -> TrustTier.PROMPT;
-            };
+            return List.copyOf(grades);
         }
 
         @Override

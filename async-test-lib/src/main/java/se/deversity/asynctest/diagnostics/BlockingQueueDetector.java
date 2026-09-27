@@ -384,7 +384,7 @@ public class BlockingQueueDetector {
     /**
      * Report class for BlockingQueue analysis.
      */
-    public static class BlockingQueueReport {
+    public static class BlockingQueueReport implements GradedFindings {
         private boolean enabled = true;
         final java.util.List<String> droppedElements = new java.util.ArrayList<>();
         final java.util.List<String> silentFailures = new java.util.ArrayList<>();
@@ -423,6 +423,34 @@ public class BlockingQueueDetector {
          */
         public boolean hasIssues() {
             return !saturation.isEmpty() || !droppedElements.isEmpty();
+        }
+
+        /**
+         * One grade per finding, set by the path that produced it (#754).
+         *
+         * <p>A dropped element is an offer that returned {@code false} with its result discarded,
+         * as the agent's woven call site or the test recorded it. That is true as recorded, and a
+         * lossy queue may drop by design, so it is a {@link TrustTier#FACT} on
+         * {@link DetectorTrust.Evidence#ASSERTED} evidence rather than a verdict. Saturation is 90%
+         * of capacity, a threshold, and a full bounded queue is backpressure working, so it stays a
+         * {@link TrustTier#PROMPT}; before this the whole detector was rated by it. The activity
+         * counts are context, not findings, and are not graded. Every grade keeps the severity the
+         * gate has always read for this report.
+         */
+        @Override
+        public java.util.List<GradedFindings.Grade> grades() {
+            if (!hasIssues()) {
+                return java.util.List.of();
+            }
+            IssueSeverity severity = DetectorDefaultSeverity.of(BlockingQueueDetector.class.getSimpleName(), toString());
+            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            for (String dropped : droppedElements) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.FACT, dropped, DetectorTrust.Evidence.ASSERTED));
+            }
+            for (String full : saturation) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, full, DetectorTrust.Evidence.HEURISTIC));
+            }
+            return java.util.List.copyOf(out);
         }
 
         @Override

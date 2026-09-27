@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -251,5 +252,60 @@ public class LockLeakDetectorTest {
                 "the released lock's line survives beside the kept lock's: " + report);
         assertTrue(report.contains("db: 1 threads acquired, 0 threads released"),
                 "the kept lock's line survives beside the released lock's: " + report);
+    }
+
+    // ---- grades follow the path, not one tier for the detector (#754) ---------------------------
+
+    /** {@return the report's per-finding grades, failing if the report does not grade} */
+    private static List<GradedFindings.Grade> gradesOf(Object report) {
+        return assertInstanceOf(GradedFindings.class, report,
+                "the report must grade each finding by the path behind it: " + report).grades();
+    }
+
+    @Test
+    void anUnbalancedAcquireAndALockLeftHeldAreFacts() {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        detector.registerLock(lock, "leaky");
+        detector.recordLockAcquired(lock, "leaky");
+        detector.recordLockAcquired(lock, "leaky");
+        detector.recordLockReleased(lock, "leaky");
+        detector.recordLockAcquired(lock, "leaky");
+
+        LockLeakDetector.LockLeakReport report = detector.analyze();
+        List<GradedFindings.Grade> grades = DetectorTrust.clampToCap("LockLeakDetector", gradesOf(report));
+        assertEquals(2, grades.size(), "the imbalance and the lock still held: " + grades);
+        for (GradedFindings.Grade grade : grades) {
+            assertEquals(TrustTier.FACT, grade.tier(),
+                    "the counts are the acquires and releases the test recorded, true as recorded: " + grade);
+            assertEquals(DetectorTrust.Evidence.ASSERTED, grade.evidence(), grade.toString());
+            assertEquals(DetectorDefaultSeverity.of("LockLeakDetector", report.toString()), grade.severity(),
+                    "the severity is the one the gate always read for this report: " + grade);
+        }
+    }
+
+    @Test
+    void aHoldOverTheThresholdStaysAPrompt() {
+        LockLeakDetector.LockLeakReport report = new LockLeakDetector.LockLeakReport();
+        // Five seconds of real hold time is too slow for a unit test; the finding is the line.
+        report.excessiveHoldTimes.add("slow: lock held for up to 6000ms (potential deadlock precursor)");
+
+        List<GradedFindings.Grade> grades = DetectorTrust.clampToCap("LockLeakDetector", gradesOf(report));
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(TrustTier.PROMPT, grades.get(0).tier(),
+                "a hold time over 5 s is a threshold, and a slow critical section is not a leak: " + grades);
+        assertEquals(DetectorTrust.Evidence.HEURISTIC, grades.get(0).evidence(), grades.toString());
+    }
+
+    @Test
+    void aBalancedLockCarriesNoGrade() {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        lock.lock();
+        detector.recordLockAcquired(lock, "balanced");
+        lock.unlock();
+        detector.recordLockReleased(lock, "balanced");
+
+        assertEquals(List.of(), gradesOf(detector.analyze()), "the correct twin grades nothing");
     }
 }

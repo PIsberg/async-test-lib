@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -275,5 +276,31 @@ class HeldLocksTest {
                 instance);
         assertEquals(0, afterRelease.length,
                 "and outside the block it is no longer held, so the set empties");
+    }
+
+    @Test
+    @DisplayName("counting only the locks held since a mark leaves out one released and taken again")
+    void aLockTakenAgainSinceTheMarkIsNotCounted() {
+        Object instance = new Object();
+        Object across = new Object();
+        Object retaken = new Object();
+        HeldLocks.acquired(across);
+        HeldLocks.acquired(retaken);
+        long mark = HeldLocks.acquisitionMark();
+        HeldLocks.released(retaken);
+        HeldLocks.acquired(retaken);
+
+        long previous = HeldLocks.countOnlyHeldSince(mark);
+        int[] sinceMark;
+        try {
+            sinceMark = HeldLocks.intersect(null, instance);
+        } finally {
+            HeldLocks.countOnlyHeldSince(previous);
+        }
+        assertArrayEquals(new int[] {System.identityHashCode(across)}, sinceMark,
+                "only the lock held without a break since the mark counts: the other one was "
+                        + "free in between, whatever it holds now");
+        assertEquals(2, HeldLocks.intersect(null, instance).length,
+                "restoring the setting counts every held lock again");
     }
 }

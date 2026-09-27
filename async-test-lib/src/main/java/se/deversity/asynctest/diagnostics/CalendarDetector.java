@@ -318,7 +318,7 @@ public class CalendarDetector {
     /**
      * Report produced by {@link #analyze()}.
      */
-    public static class CalendarReport {
+    public static class CalendarReport implements GradedFindings {
 
         int totalCalendars = 0;
         final java.util.List<String> sharedCalendars  = new java.util.ArrayList<>();
@@ -332,6 +332,33 @@ public class CalendarDetector {
          */
         public boolean hasIssues() {
             return !sharedCalendars.isEmpty() || !calendarErrors.isEmpty();
+        }
+
+        /**
+         * One grade per finding, set by the path that produced it (#754).
+         *
+         * <p>A shared calendar is reported only when the per-round lockset {@link SelfGuard} keeps
+         * found no common lock, so the {@code synchronized (calendar)} twin, a declared lock and a
+         * woven monitor all stay silent: a {@link TrustTier#VERDICT} on
+         * {@link DetectorTrust.Evidence#CONTEXTUAL} evidence. A recorded error is the test's own
+         * {@code recordError} call, a {@link TrustTier#FACT} on
+         * {@link DetectorTrust.Evidence#ASSERTED} evidence; before this the whole detector was rated
+         * by it. Every grade keeps the severity the gate has always read for this report.
+         */
+        @Override
+        public java.util.List<GradedFindings.Grade> grades() {
+            if (!hasIssues()) {
+                return java.util.List.of();
+            }
+            IssueSeverity severity = DetectorDefaultSeverity.of(CalendarDetector.class.getSimpleName(), toString());
+            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            for (String shared : sharedCalendars) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.VERDICT, shared, DetectorTrust.Evidence.CONTEXTUAL));
+            }
+            for (String error : calendarErrors) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.FACT, error, DetectorTrust.Evidence.ASSERTED));
+            }
+            return java.util.List.copyOf(out);
         }
 
         @Override

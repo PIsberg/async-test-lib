@@ -78,7 +78,7 @@ This is measured rather than asserted. Two evals run each covered detector again
 *and* against a synchronized twin that records the identical event stream while holding a real
 lock, and the results are published in
 [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md).
-`DetectorAccuracyEvalTest` covers twenty detectors, one per mechanism class, with the per-detector
+`DetectorAccuracyEvalTest` covers at least one detector per mechanism class, with the per-detector
 outcome in that document. `SharedTypeAccuracyEvalTest` covers the whole `SHARED_*` family, the 19 that watch a
 non-thread-safe JDK type: 19 of 19 fire on unguarded sharing, and 17 of 19 stay silent both on the
 `synchronized (instance)` twin and on a twin guarded by a declared `ReentrantLock`. The same 17
@@ -121,7 +121,14 @@ with a threshold, given a pair on the right side of it. `ExecutorDeadlockDetecto
 VERDICT that way while its finding was a lifetime counter of recorded waits. Since 2026-09-26
 every row in `DetectorTrust` also names what its detector decides from, read from its record path
 and `analyze()`, and the class caps the tier. `DetectorTrustCoverageTest` refuses a row above its
-cap, and the report path lowers a graded finding above its detector's cap before the gate reads it.
+cap, and the report path lowers a graded finding above its detector's cap, or above the cap of the
+evidence the finding itself names, before the gate reads it.
+The class is declared by hand, so `DetectorEvidenceMatchesCodeTest` checks it against the
+detector's source: a `CONTEXTUAL` row whose detector reads no lockset, monitor probe or
+happens-before edge fails, and so does a row other than `CONTEXTUAL` or `OBSERVED` whose detector
+reads one, unless the test names the finding path that decides without it. It names these rows
+that way today, each with that path: `CONCURRENT_MODIFICATIONS`, `ATOMICITY_VIOLATIONS` and
+`CACHE_CONCURRENCY`. The check does not tell `OBSERVED`, `ASSERTED` and `HEURISTIC` apart.
 
 | Evidence | The detector decides from | Highest tier |
 |---|---|---|
@@ -153,21 +160,33 @@ woven feed, which delivers the same events its record methods take. The caps mov
   `THREAD_LOCAL_CACHE_DEGRADATION`, `SCOPE_JOINER_MISUSE`, `SCOPE_CONFIGURATION_MISUSE` and
   `LAZY_COLLECTION_MISUSE`, each on a count threshold or a thread count.
 
-Several of those lost VERDICT to one secondary path beside a primary one that could carry it:
-`LOCK_LEAKS`, `BLOCKING_QUEUE`, `THREAD_LEAKS`, `CALENDAR`, `SIMPLE_DATE_FORMAT` and
-`STRING_BUILDER`. Grading those reports per finding, as the split-tier
-detectors below do, is how their primary finding gets VERDICT back. Their pairs still run and
-still gate the corpus; the evidence file keeps each removed line with the class that capped it.
+Six of those lost their tier to one secondary path beside a primary one: `LOCK_LEAKS`,
+`BLOCKING_QUEUE`, `THREAD_LEAKS`, `CALENDAR`, `SIMPLE_DATE_FORMAT` and `STRING_BUILDER`. Since
+#754 their reports grade each finding by its path, as the split-tier detectors below do, and the
+primary finding carries what its own evidence allows. Three get VERDICT back: a tracked thread
+`Thread.isAlive()` still answers for (`THREAD_LEAKS`, `OBSERVED`), and a shared calendar,
+formatter or builder with no common lock in the per-round lockset (`CALENDAR`,
+`SIMPLE_DATE_FORMAT`, `STRING_BUILDER`, `CONTEXTUAL`). Two get FACT, because their primary finding
+is arithmetic over recorded calls: an acquire with no release or a lock left held (`LOCK_LEAKS`),
+and an offer whose `false` was discarded (`BLOCKING_QUEUE`), which may also be a lossy queue by
+design. The secondary paths keep their grade: the 5 s hold, 90% of capacity and the auto mode's
+thread count stay PROMPT, the error findings of `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` stay
+PROMPT, and `CALENDAR`'s recorded error stays FACT. The detector-wide tiers do not move, since each
+still carries its weakest grade. Their pairs still run and still gate the corpus; the evidence file
+keeps each removed line with the class of the path that still caps the detector's tier.
 
 One detector the corpus measures in both directions stays `PROMPT`, and the reason is the
 detector's model rather than the pair. `CACHE_CONCURRENCY` asks the map's own type whether it
-synchronizes itself, so given one class both halves of a pair get the same answer by construction,
-and it consults no lock at all: a `HashMap` correctly guarded by the caller's own lock draws the
-same finding as a raced one. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the second, held because
+synchronizes itself, so given one class both halves of a pair get the same answer by construction.
+Only its read/write finding consults a lock: its stampede finding counts the threads that wrote one
+key in a round, so a `HashMap` correctly guarded by the caller's own lock draws that finding as a
+raced one does. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the second, held because
 `recordCheckThenAct` is the body saying a check-then-act happened and the detector only counted
 threads on the `(map, key)` site. Since 2026-09-25 it also asks whether one lock covered every
 call and whether the happens-before model orders them, so the `synchronized` twin of the firing
-body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818).
+body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818). A
+caller that passes the value it put, through the five-argument `recordCheckThenAct`, is silent
+when every caller put the same instance, which loses nothing (#827).
 `FILE_CHANNEL_POSITION_RACE` used to be the third. It judged single accesses, so threads that each
 made one self-contained `read(buffer)` or `write(buffer)` drew the finding, and `FileChannel` runs
 one operation involving the position at a time, so those lose nothing (#755). Since #819 the
@@ -178,23 +197,27 @@ pair seeks and reads one shared channel on every thread and differs only in
 
 **Verdict on one path, weaker on another: graded per finding.** `VAR_HANDLE_NON_ATOMIC_UPDATE`,
 `STATIC_INIT_DEADLOCK`, `CONFINED_ARENA_THREAD_ESCAPE`, `RECORD_MUTABLE_COMPONENT_LEAK`,
-`SHARED_MEMORY_SEGMENT_RACE`, `VIRTUAL_THREAD_POOLING` and `PLATFORM_THREAD_PER_TASK` each produce
-a verdict-grade finding on one path and a prompt-grade or advisory one on another. Their detector
-tier is still the weakest of those, because that is what a detector-level rating has to mean, but
-their reports implement `GradedFindings` and carry a tier on each finding, so `minTrust = VERDICT`
-acts on the recorded cycle, the lost update or the observed mutation without being held back by
-the note beside it. Before that, a verdict-only gate stayed green on every one of them.
+`SHARED_MEMORY_SEGMENT_RACE`, `VIRTUAL_THREAD_POOLING` and `PLATFORM_THREAD_PER_TASK`, and since
+#754 the six above, each produce a higher-grade finding on one path and a prompt-grade or advisory
+one on another. Their detector tier is still the weakest of those, because that is what a
+detector-level rating has to mean, but their reports implement `GradedFindings` and carry a tier
+on each finding, so `minTrust = VERDICT` acts on the lost update, the observed mutation or the
+refused thread without being held back by the note beside it. Before that, a verdict-only gate stayed green on every one of them.
 
-The grades were meant to be conservative: a finding becomes VERDICT only where its claim is
-something observed rather than inferred, such as the JVM refusing a thread access to a segment, or
-a probe reporting the thread kind a task actually ran on. Four reports grade by severity rather
-than by path, and so grade a finding decided from the test's own record calls as VERDICT too: an
-access after a recorded close (`CONFINED_ARENA_THREAD_ESCAPE`, `SHARED_MEMORY_SEGMENT_RACE`), a
-cycle of recorded init requests (`STATIC_INIT_DEADLOCK`) and two recorded executions on one
-virtual thread (`VIRTUAL_THREAD_POOLING`). Their evidence class is therefore `ASSERTED`, and the
-report path clamps each of their grades to FACT before the gate or the banner reads it, the
-JVM-answered ones included, until the grade follows the path. `VAR_HANDLE_NON_ATOMIC_UPDATE`,
-`RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK` keep their VERDICT grades.
+A finding becomes VERDICT only where its claim is something observed rather than inferred, such as
+the JVM refusing a thread access to a segment, or a probe reporting the thread kind a task actually
+ran on. Each grade follows the path that produced it and names that path's evidence, and the
+report path caps it by that evidence as well as by the detector's class (#753). Four reports used
+to grade by severity instead, and so graded a finding decided from the test's own record calls as
+VERDICT too, which forced their evidence class down to `ASSERTED` and clamped their JVM-answered
+findings to FACT with it. Now an access after a recorded close (`CONFINED_ARENA_THREAD_ESCAPE`,
+`SHARED_MEMORY_SEGMENT_RACE`), a cycle of recorded init requests (`STATIC_INIT_DEADLOCK`) and two
+recorded executions on one virtual thread (`VIRTUAL_THREAD_POOLING`) are FACT on `ASSERTED`
+evidence, while the JVM refusing a thread, a segment whose scope the JVM says is dead and a pool
+whose factory makes virtual threads are VERDICT on `OBSERVED` evidence. `STATIC_INIT_DEADLOCK`
+and `SHARED_MEMORY_SEGMENT_RACE` have no VERDICT path, so they stay `ASSERTED`.
+`VAR_HANDLE_NON_ATOMIC_UPDATE`, `RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK`
+keep their VERDICT grades.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,

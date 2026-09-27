@@ -3,6 +3,8 @@ package se.deversity.asynctest.diagnostics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -147,7 +149,88 @@ class ConfinedArenaThreadEscapeDetectorTest {
                 "Repeated analyze() on quiescent state must produce identical reports");
     }
 
+    // ---- grades follow the path, not the severity (#753) -----------------------------------
+
+    /** The name the report path clamps this detector's grades under. */
+    private static final String NAME = "ConfinedArenaThreadEscapeDetector";
+
+    @Test
+    void anAccessAfterACloseOnlyTheTestRecordedIsAFactNotAVerdict() {
+        FakeArena arena = new FakeArena();
+        FakeSegment seg = new FakeSegment();
+        detector.recordArena(arena, "parseBuffer", owner);
+        detector.recordAllocation(seg, arena, "parseBuffer", 64);
+        detector.recordClose(arena, owner);
+        detector.recordAccess(seg, "parseBuffer", owner, false);
+
+        List<GradedFindings.Grade> grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), "one finding, the use after close: " + grades);
+        GradedFindings.Grade grade = grades.get(0);
+        assertEquals(IssueSeverity.CRITICAL, grade.severity(), "the path changes the tier, not the severity");
+        assertEquals(TrustTier.FACT, grade.tier(),
+                "the JVM was not asked, so the recorded close is the whole evidence: " + grade);
+        assertEquals(DetectorTrust.Evidence.ASSERTED, grade.evidence(), grade.toString());
+        assertEquals(grades, DetectorTrust.clampToCap(NAME, grades),
+                "graded at its own evidence, nothing is left for the report path to lower");
+    }
+
+    @Test
+    void theRecordedOwnerAndTheRecordedCloserStayPrompts() {
+        FakeArena arena = new FakeArena();
+        FakeSegment seg = new FakeSegment();
+        detector.recordArena(arena, "parseBuffer", owner);
+        detector.recordAllocation(seg, arena, "parseBuffer", 64);
+        detector.recordAccess(seg, "parseBuffer", intruder, false);
+        detector.recordClose(arena, intruder);
+
+        List<GradedFindings.Grade> grades = detector.analyze().grades();
+        assertEquals(2, grades.size(), "the owner comparison and the wrong closer: " + grades);
+        for (GradedFindings.Grade grade : DetectorTrust.clampToCap(NAME, grades)) {
+            assertEquals(TrustTier.PROMPT, grade.tier(),
+                    "both compare recorded threads and the arena may be shared: " + grade);
+            assertEquals(DetectorTrust.Evidence.ASSERTED, grade.evidence(), grade.toString());
+        }
+    }
+
     // ---- JVM-answered path: needs a real confined arena ------------------------------------
+
+    @Test
+    void theJvmRefusingTheThreadIsAVerdictAfterTheClamp() throws Exception {
+        Object arena = newConfinedArena();
+        assumeTrue(arena != null, "FFM Arena.ofConfined() is not usable on this JDK");
+
+        Object segment = allocate(arena, 128);
+        detector.recordArena(arena, "native", Thread.currentThread());
+        detector.recordAllocation(segment, arena, "native", 128);
+        detector.recordAccess(segment, "native", new Thread(() -> { }, "other-carrier"), true);
+        close(arena);
+
+        List<GradedFindings.Grade> gated = DetectorTrust.clampToCap(NAME, detector.analyze().grades());
+        assertEquals(1, gated.size(), gated.toString());
+        assertEquals(TrustTier.VERDICT, gated.get(0).tier(),
+                "isAccessibleBy answered false, so the evidence cap must not lower it: " + gated);
+        assertEquals(DetectorTrust.Evidence.OBSERVED, gated.get(0).evidence(), gated.toString());
+    }
+
+    @Test
+    void aSegmentTheJvmSaysIsDeadIsAVerdictWithNoRecordedClose() throws Exception {
+        Object arena = newConfinedArena();
+        assumeTrue(arena != null, "FFM Arena.ofConfined() is not usable on this JDK");
+
+        Object segment = allocate(arena, 32);
+        detector.recordArena(arena, "native", Thread.currentThread());
+        detector.recordAllocation(segment, arena, "native", 32);
+        close(arena);
+        detector.recordAccess(segment, "native", Thread.currentThread(), false);
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(),
+                "scope().isAlive() answers false after the close the body never recorded: " + report);
+        List<GradedFindings.Grade> gated = DetectorTrust.clampToCap(NAME, report.grades());
+        assertEquals(1, gated.size(), gated.toString());
+        assertEquals(TrustTier.VERDICT, gated.get(0).tier(), gated.toString());
+        assertEquals(DetectorTrust.Evidence.OBSERVED, gated.get(0).evidence(), gated.toString());
+    }
 
     @Test
     void realConfinedSegmentTouchedByAnotherThreadIsCritical() throws Exception {

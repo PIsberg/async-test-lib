@@ -183,7 +183,7 @@ public class LockLeakDetector {
     /**
      * Report class for lock leak analysis.
      */
-    public static class LockLeakReport {
+    public static class LockLeakReport implements GradedFindings {
         private boolean enabled = true;
         final java.util.List<String> lockLeaks = new java.util.ArrayList<>();
         final java.util.List<String> heldLocks = new java.util.ArrayList<>();
@@ -201,6 +201,35 @@ public class LockLeakDetector {
          */
         public boolean hasIssues() {
             return !lockLeaks.isEmpty() || !heldLocks.isEmpty() || !excessiveHoldTimes.isEmpty();
+        }
+
+        /**
+         * One grade per finding, set by the path that produced it (#754).
+         *
+         * <p>An acquire with no matching release and a lock still marked held at analysis are
+         * arithmetic over the acquires and releases the test recorded: true as recorded, so each is
+         * a {@link TrustTier#FACT} on {@link DetectorTrust.Evidence#ASSERTED} evidence. A hold over
+         * five seconds is a threshold, and a slow critical section that does release is not a leak,
+         * so it stays a {@link TrustTier#PROMPT}. Before this the whole detector was rated by that
+         * threshold. Every grade keeps the severity the gate has always read for this report.
+         */
+        @Override
+        public java.util.List<GradedFindings.Grade> grades() {
+            if (!hasIssues()) {
+                return java.util.List.of();
+            }
+            IssueSeverity severity = DetectorDefaultSeverity.of(LockLeakDetector.class.getSimpleName(), toString());
+            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            for (String leak : lockLeaks) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.FACT, leak, DetectorTrust.Evidence.ASSERTED));
+            }
+            for (String held : heldLocks) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.FACT, held, DetectorTrust.Evidence.ASSERTED));
+            }
+            for (String slow : excessiveHoldTimes) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, slow, DetectorTrust.Evidence.HEURISTIC));
+            }
+            return java.util.List.copyOf(out);
         }
 
         @Override

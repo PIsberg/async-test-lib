@@ -162,6 +162,50 @@ class FileChannelPositionRaceDetectorTest {
         }
     }
 
+    /**
+     * #831: the per-thread seek slot held the channel until the thread's next seek, so a pooled
+     * worker kept it reachable across rounds. The round start clears every slot; seen from outside,
+     * a read after it relies on no seek made before it, with or without a round clock bound.
+     */
+    @Test
+    void aRoundStartForgetsEveryOpenSeek() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        d.recordImplicitPositionAccess(channel, "read");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "the seek belonged to the round before, so the read relies on nothing: " + d.analyze());
+    }
+
+    @Test
+    void aSeekMadeAfterARoundStartIsForgottenAtTheNextOne() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        d.recordImplicitPositionAccess(channel, "read");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "a thread whose slot one round start cleared is cleared again by the next: "
+                + d.analyze());
+    }
+
+    @Test
+    void aSeekAndItsReadAfterARoundStartAreStillASequence() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.markInvocationStart();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertTrue(d.analyze().hasIssues(),
+            "clearing the slot at the round start must not lose the round's own seek");
+    }
+
     @Test
     void positionalOnlyAccessAcrossThreadsIsNotFlagged() throws Exception {
         var d = new FileChannelPositionRaceDetector();
@@ -287,6 +331,254 @@ class FileChannelPositionRaceDetectorTest {
             "a private lock declared through HeldLocks is in the lockset like the channel's own "
                 + "monitor, so a seek-then-read held under it on every thread is guarded: "
                 + d.analyze());
+    }
+
+    /**
+     * #831: the lock is held at the seek and at the read, but not in between. Probing it at both
+     * ends read that as held across, so the one interleaving the lock was meant to rule out went
+     * unreported.
+     */
+    @Test
+    void aLockReleasedAndTakenAgainBetweenTheSeekAndTheReadDoesNotGuardIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        try (var held = HeldLocks.holding(lock)) {
+            d.recordImplicitPositionAccess(channel, "position");
+        }
+        try (var held = HeldLocks.holding(lock)) {
+            d.recordImplicitPositionAccess(channel, "read");
+        }
+        inAnotherThread(() -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        });
+        assertTrue(d.analyze().hasIssues(),
+            "the other thread's read, under the same lock, can run while the lock is released "
+                + "between this thread's seek and its read");
+    }
+
+    @Test
+    void aLockHeldAcrossTheSequenceGuardsItWhileAnotherIsReleasedAndTakenAgain() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object outer = new Object();
+        Object inner = new Object();
+        Runnable guarded = () -> {
+            try (var across = HeldLocks.holding(outer)) {
+                try (var held = HeldLocks.holding(inner)) {
+                    d.recordImplicitPositionAccess(channel, "position");
+                }
+                try (var held = HeldLocks.holding(inner)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "the outer lock was held from the seek to the read on both threads, so nothing lands "
+                + "between them: " + d.analyze());
+    }
+
+    @Test
+    void aLockTakenAgainInsideTheOneHeldAcrossTheSequenceStillGuardsIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var across = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "position");
+                try (var reentered = HeldLocks.holding(lock)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "a reentrant acquisition around the read leaves the outer hold in place: " + d.analyze());
+    }
+
+    /**
+     * With the agent attached, a woven {@code synchronized (channel)} enters and exits
+     * {@link HeldLocks} as well as the monitor, so a monitor left and entered again between the
+     * seek and the read is visible, although {@link Thread#holdsLock} answers true at both.
+     */
+    @Test
+    void theChannelsMonitorLeftAndEnteredAgainWhereTheAgentSeesItDoesNotGuardTheSequence()
+            throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        synchronized (channel) {
+            try (var woven = HeldLocks.holding(channel)) {
+                d.recordImplicitPositionAccess(channel, "position");
+            }
+        }
+        synchronized (channel) {
+            try (var woven = HeldLocks.holding(channel)) {
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        }
+        inAnotherThread(() -> {
+            synchronized (channel) {
+                try (var woven = HeldLocks.holding(channel)) {
+                    d.recordImplicitPositionAccess(channel, "read");
+                }
+            }
+        });
+        assertTrue(d.analyze().hasIssues(),
+            "the monitor was free between the seek and the read, and the agent saw it released");
+    }
+
+    @Test
+    void theChannelsMonitorHeldAcrossTheSequenceWhereTheAgentSeesItGuardsIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Runnable guarded = () -> {
+            synchronized (channel) {
+                try (var woven = HeldLocks.holding(channel)) {
+                    seekThenRead(d, channel);
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "one woven synchronized block around the seek and the read guards them: " + d.analyze());
+    }
+
+    /**
+     * #831: after one seek, a thread that keeps reading without seeking again relies on the seek
+     * for every read, since each starts where the one before left the cursor. Only the first read
+     * used to count, so a second read after the lock was let go looked self-contained.
+     */
+    @Test
+    void aSecondReadAfterOneSeekReliesOnItToo() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        try (var held = HeldLocks.holding(lock)) {
+            seekThenRead(d, channel);
+        }
+        try (var held = HeldLocks.holding(lock)) {
+            d.recordImplicitPositionAccess(channel, "read");
+        }
+        inAnotherThread(() -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "read");
+            }
+        });
+        assertTrue(d.analyze().hasIssues(),
+            "the second read continues from where the first left the cursor, and the other "
+                + "thread's read can move it while the lock is free between the two");
+    }
+
+    @Test
+    void aChainOfReadsAfterOneSeekUnderOneLockIsNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var held = HeldLocks.holding(lock)) {
+                seekThenRead(d, channel);
+                d.recordImplicitPositionAccess(channel, "read");
+                d.recordImplicitPositionAccess(channel, "write");
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "one lock held from the seek through every read and write relying on it: "
+                + d.analyze());
+    }
+
+    @Test
+    void seekingAgainUnderTheLockBeforeEachReadIsNotFlagged() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            for (int i = 0; i < 2; i++) {
+                try (var held = HeldLocks.holding(lock)) {
+                    seekThenRead(d, channel);
+                }
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "each read relies on the seek made under the same hold, not on the one before the "
+                + "lock was let go: " + d.analyze());
+    }
+
+    /**
+     * Decided and pinned (#831): a {@code position} call is always a seek and never the call
+     * relying on an earlier one. The label cannot tell {@code position()} from
+     * {@code position(long)}, and even {@code position()} after a write is as likely to start the
+     * next sequence as to ask where the write landed. Reading it as relying on the write would
+     * report this correct idiom, every access under the lock and a fresh seek before each read, so
+     * a {@code write(buffer)} then {@code position()} to learn where it landed stays unreported.
+     */
+    @Test
+    void aSeekAfterAnEarlierCallStartsASequenceRatherThanRelyingOnTheCall() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        Object lock = new Object();
+        Runnable guarded = () -> {
+            try (var held = HeldLocks.holding(lock)) {
+                d.recordImplicitPositionAccess(channel, "write");
+            }
+            try (var held = HeldLocks.holding(lock)) {
+                seekThenRead(d, channel);
+            }
+        };
+        guarded.run();
+        inAnotherThread(guarded);
+        assertFalse(d.analyze().hasIssues(),
+            "a position call after a self-contained write, under a lock taken again, is the "
+                + "next sequence's seek: " + d.analyze());
+    }
+
+    /**
+     * #831: operation names are free-form, and any call after a seek used to be taken as the I/O
+     * relying on it, so a {@code truncate} there was judged as a read or write at an offset the
+     * thread chose.
+     */
+    @Test
+    void aTruncateAfterASeekIsNotIoRelyingOnIt() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position");
+        d.recordImplicitPositionAccess(channel, "truncate");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read"));
+        assertFalse(d.analyze().hasIssues(),
+            "truncate(size) acts on the size whatever the cursor says, so nothing relied on the "
+                + "seek: " + d.analyze());
+    }
+
+    @Test
+    void aReadAfterASeekAndATruncateStillReliesOnTheSeek() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        d.recordImplicitPositionAccess(channel, "position(n)");
+        d.recordImplicitPositionAccess(channel, "truncate(size)");
+        d.recordImplicitPositionAccess(channel, "read(buf)");
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "read(buf)"));
+        assertTrue(d.analyze().hasIssues(),
+            "the truncate in between leaves the seek open, and the read relies on it");
+    }
+
+    @Test
+    void anotherThreadsTruncateCanLandInsideASequence() throws Exception {
+        var d = new FileChannelPositionRaceDetector();
+        Object channel = new Object();
+        seekThenRead(d, channel);
+        inAnotherThread(() -> d.recordImplicitPositionAccess(channel, "truncate"));
+        assertTrue(d.analyze().hasIssues(),
+            "a truncate below the cursor moves it, so another thread's truncate is a call that "
+                + "can land between the seek and the read");
     }
 
     @Test

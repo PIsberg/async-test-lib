@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state, thread)`, `recordCapturedRead(lambda, state, thread)`, owner-keyed `LazyInitRace` overloads,
   `recordIntegrate(name, state, thread)`, `ABAProblemDetector.recordRead(name, value)`,
   `recordRequestSent(client, request, name)`.
+- **`recordValuesUsed` and `recordCapturedRead` are in the accuracy eval and the examples (#788).**
+  Both were pinned only by their detectors' unit tests. `DetectorAccuracyEvalTest` gains the pairs:
+  optimistic values used after a `validate()` that latches force to fail fire, while the same failed
+  validation followed by a re-read under `readLock()`, and a use after a passing `validate()`, stay
+  silent; a captured read outside the writer's `synchronized (counter)` fires, the same read inside
+  it stays silent, and a reader recorded only through `recordExecution` is pinned as the false
+  negative `recordCapturedRead` exists for. `examples/62-optimistic-read-validation` and
+  `examples/76-stateful-lambda` each gain a both-directions `@Test` pair and a `@Disabled`
+  demonstration of the new record method.
 - **corpus-eval gains an `idioms` lane.** Correct user-code concurrency (a queue hand-off, volatile
   publication, `start`/`join`, an `AtomicInteger` counter, a latch, a pool checkout, guarded waits and
   more) runs with the agent attached and every detector on, each idiom beside its broken twin. A
@@ -34,6 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model does not see yet is a pinned row that flips visibly when fixed, as the `CompletableFuture`,
   executor submit/get, `Exchanger` and `AtomicReference` rows did (#741). The false positives fixed here were all found this
   way, by a throwaway probe; the lane keeps them from coming back.
+- **A detector's evidence class is checked against its code (#756).** `DetectorTrust.Evidence` is
+  declared by hand and caps the tier, so a detector that gained or lost a lockset kept a class it no
+  longer earned. `DetectorEvidenceMatchesCodeTest` reads each detector's source: a `CONTEXTUAL` row
+  whose detector reads no lockset, monitor probe or happens-before edge fails the build, and so does
+  a row other than `CONTEXTUAL` or `OBSERVED` whose detector reads one, unless the test names the
+  finding path that decides without it. On the current tree every row agrees; the six rows that read
+  a lockset on one path and are classified by a weaker one are named with that path. No tier moved.
+- **`Thread.join` weaving is tested with the agent attached (#743).** The four woven `join`
+  overloads were covered only by the table-resolution test, which proves a call site is matched and
+  not that the match orders anything. `ThreadJoinWeavingTest` has a child write a field its parent
+  reads: after each overload returned the pair is silent, and read before the join it is reported.
+  With the join entries removed from the weaver's table, all four joined cases report.
 
 ### Changed
 
@@ -53,6 +74,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other two at PROMPT. 32 VERDICT and 5 FACT rows moved down, and a graded finding is clamped to
   its detector's cap at run time. A build gating on `minTrust = VERDICT` now fails on fewer
   detectors, each of which it can stand behind.
+- **Graded findings take their tier from the path that produced them, not their severity (#753).**
+  `GradedFindings.Grade` gains an optional `evidence` component, and the report path caps a grade
+  by the evidence it names as well as by its detector's class, so a recorded path no longer drags
+  a JVM-answered one down with it. What changed tier, for a `minTrust` gate and for folding in a
+  passing run:
+  - `CONFINED_ARENA_THREAD_ESCAPE`: a thread `MemorySegment.isAccessibleBy` refuses goes from FACT
+    (clamped) to VERDICT. An access to a segment whose `scope().isAlive()` is false is VERDICT, and
+    is now reported at all: the liveness probe resolved `isAlive` on a non-exported JDK class and
+    never answered, so only a close the test recorded could raise the finding. An access after a
+    close only the test recorded stays FACT, now on its own `ASSERTED` evidence; the owner
+    comparison and the wrong closer stay PROMPT. The finding text says which close it rests on.
+  - `VIRTUAL_THREAD_POOLING`: a pool whose factory makes virtual threads goes from FACT (clamped)
+    to VERDICT; two recorded executions on one virtual thread stay FACT.
+  - `SHARED_MEMORY_SEGMENT_RACE` and `STATIC_INIT_DEADLOCK`: no tier changes. The access after a
+    recorded close and the recorded init cycle are FACT at the source instead of VERDICT clamped
+    to FACT, and the live init sample stays FACT.
+  `CONFINED_ARENA_THREAD_ESCAPE` and `VIRTUAL_THREAD_POOLING` are classified `OBSERVED` (was
+  `ASSERTED`); both detector-wide tiers stay PROMPT.
+- **Six more reports grade each finding by its path, so the primary finding is no longer rated by
+  a threshold or a recorded error beside it (#754).** Every grade keeps the severity the gate
+  already read for the report, and each detector-wide tier stays where it was. What changed tier:
+  - `THREAD_LEAKS`: a tracked thread `Thread.isAlive()` still answers for goes from PROMPT to
+    VERDICT (`OBSERVED`); the auto mode's `Thread.activeCount()` growth stays PROMPT.
+  - `CALENDAR`: a shared calendar with no common lock in the per-round lockset goes from FACT to
+    VERDICT (`CONTEXTUAL`); a recorded error stays FACT.
+  - `SIMPLE_DATE_FORMAT` and `STRING_BUILDER`: the shared formatter or builder goes from PROMPT to
+    VERDICT (`CONTEXTUAL`); the error findings stay PROMPT.
+  - `LOCK_LEAKS`: an acquire with no release and a lock left held go from PROMPT to FACT
+    (`ASSERTED`, since both count recorded calls); a hold over 5 s stays PROMPT.
+  - `BLOCKING_QUEUE`: an offer whose `false` was discarded goes from PROMPT to FACT (`ASSERTED`,
+    and a lossy queue may drop by design); saturation stays PROMPT.
+  A block holding one of the raised findings now prints in full in a passing run instead of
+  folding to one line, a `minTrust` gate at the new tier now fails on it, and a baseline accepts
+  these detectors' findings by their graded lines rather than by every line of the report. The
+  evidence classes follow the strongest path (`THREAD_LEAKS` `OBSERVED`, `CALENDAR`,
+  `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` `CONTEXTUAL`, `LOCK_LEAKS` and `BLOCKING_QUEUE`
+  `ASSERTED`), which takes the last three out of `DetectorEvidenceMatchesCodeTest`'s exemptions
+  (six to three).
 - **The trust banner no longer claims more than its weakest finding.** A block mixing a VERDICT and
   a PROMPT finding was headed "a finding means the code is wrong"; it now reads
   `trust=PROMPT..VERDICT` and lists each finding's tier.
@@ -114,7 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commented-out capped line, that is also registered or rated VERDICT; restoring the old header's
   hold fails it with `CONCURRENT_MAP_CHECK_THEN_ACT is held on its model and also registered`.
   Known limits, unchanged: a lock the library never saw leaves the finding standing, and callers
-  that all put the same value lose nothing and are still reported.
+  that all put the same value lose nothing and are still reported (the second is lifted for a
+  caller that says what it put, #827, under Fixed).
 - **`FILE_CHANNEL_POSITION_RACE` judges the seek-then-I/O sequence, and reaches `VERDICT`
   (#819).** It reported any two threads making implicit-position calls on one channel, so threads
   that each made one self-contained `read(buffer)` or `write(buffer)`, which `FileChannel` runs one
@@ -130,12 +190,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `position(n)` then `read(buffer)`, beside the same body under `synchronized (channel)`, and that
   pair is registered in `verdict-evidence-corpus`. Example 123 said one record lands on top of
   another and quoted a sentence the `FileChannel` javadoc does not contain; it now quotes the
-  javadoc and demonstrates a seek-then-read returning the wrong record. Not seen: a lock released
-  and taken again between the seek and the I/O, which reads as held across, and a self-contained
+  javadoc and demonstrates a seek-then-read returning the wrong record. Not seen: a self-contained
   call relying on where an earlier one left the cursor, such as `write(buffer)` then `position()`.
+- **The corpus measures the lock direction for `VAR_HANDLE_NON_ATOMIC_UPDATE` and
+  `SYSTEM_PROPERTY_MUTATION` (#771).** Both detectors stay silent when one lock covers every
+  access, and only unit tests said so: each corpus silent row separated on something else (an atomic
+  update, a per-thread key). The recording lane gains a silent twin for each that is its firing row
+  inside `synchronized` and nothing else, on the receiver's monitor and on `System.getProperties()`.
+  Both stay silent, and both fire with the `synchronized` removed. No tier moves:
+  `SYSTEM_PROPERTY_MUTATION` is already registered, and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades its
+  findings, which holds its pair back from promotion.
+- **`THREAD_LOCAL_RANDOM_MISUSE` is paired in the corpus recording lane, and its refusal is gone
+  (#761).** The idiom lane already paired it, but `DetectorCoverage` does not count that lane, so
+  the refusal written before the per-thread model still stood. The new pair uses one class and the
+  same two calls: a `current()` captured while the test class initialised and used by every worker
+  fires, and each worker calling `current()` itself stays silent. The pair is measured, not a
+  promotion: the detector decides from the body's own records, which caps it below `VERDICT`.
+  A lock released and taken again between the seek and the I/O read as held across until #831.
 
 ### Fixed
 
+- **`CONCURRENT_MAP_CHECK_THEN_ACT` excuses callers that all put the same instance (#827).**
+  `if (!map.containsKey(k)) map.put(k, Boolean.TRUE)` on two threads puts one instance twice, so
+  the map ends as `putIfAbsent` would leave it and nothing is lost, yet the pair was reported at
+  VERDICT/HIGH because the detector was never told what was put. The new overload
+  `recordCheckThenAct(map, key, value, operation, thread)` takes the value, and a site whose every
+  caller recorded the same instance is silent. Values are compared by identity: two new empty
+  lists are equal, yet the one the map dropped loses what its caller adds next, so
+  `NonAtomicConcurrentMapUpdateDetectorTest` pins that pair firing, along with callers putting
+  different values and a pair where one caller recorded no value. The four-argument overload has
+  no value and reports as before. The value is for the absent-check form only: after
+  `v = map.get(k); map.put(k, v + 1)` two equal puts are the lost update itself, and a check that
+  also gates other work, such as sending once, is a defect whatever is put; the javadoc says to
+  record those without the value.
+- **The agent attributes a thread the body starts, and a task it submits, to the run (#745).**
+  The telemetry bridge forwarded only the runner's workers, so a child thread a worker started and
+  a pool thread running a task a worker submitted had every field access dropped
+  (`runner.telemetry.unattributed`), and a race between a body and the thread it spawned passed
+  silent. A woven `Thread.start` now tells the bridge which thread started which, and a task
+  submitted to a JDK executor or to `CompletableFuture.supplyAsync`/`runAsync` carries a token its
+  wrapper publishes at the submit and around the task. The bridge forwards a thread started by a
+  forwarded one from its first access, and a pool thread only while it runs a task a forwarded
+  thread submitted. Attribution lives in the run's own bridge, so a thread that outlives its run,
+  or a pool shared across tests, gives a later run only what that run's workers hand it.
+  `SpawnedWorkAttributionWeavingTest` pins both directions end to end (an unjoined child's write
+  and an ungotten task's write are reported, the joined and gotten ones stay silent, and a
+  lingering child from the previous run contributes nothing), and the corpus idiom lane's
+  `start`/`join` and executor submit/get rows run on the woven path instead of the manual API.
+  Still dropped: a thread started in unwoven code or through a `Thread.Builder`, a task given to
+  `Executor.execute`, and a pool thread's work outside a wrapped task.
+- **`FILE_CHANNEL_POSITION_RACE` no longer counts a lock released and taken again between a seek
+  and its I/O as guarding them (#831).** The locks were probed at the seek and at the I/O, so a
+  thread that sought under a lock, let it go and took it again to read looked exactly like one
+  that held it across, and another thread's call under the same lock, which can run in the gap,
+  went unreported at `VERDICT`. `HeldLocks` now stamps every acquisition, the seek keeps the
+  thread's mark, and the I/O counts only the locks held without a break since it. That covers
+  declared locks and, with the agent attached, woven `synchronized` blocks and `Lock` calls; the
+  channel's own monitor left and entered again in code the agent does not weave still reads as
+  held across, since nothing reports its release. A lock held across the whole sequence still
+  guards it, with another lock released and taken again inside it or the same lock taken again
+  reentrantly around the read.
+- **`FILE_CHANNEL_POSITION_RACE`: every read or write after a seek relies on it, not only the
+  first (#831).** A thread that sought once and read twice, letting its lock go between the reads,
+  looked self-contained on the second read, though that read starts wherever a call in the gap
+  left the cursor. Every read or write a thread makes on the channel after a seek, in the same
+  round and until its next seek, is now judged as relying on it, under the locks held since the
+  seek. A `position` call stays a seek and is never judged as relying on the call before it: the
+  operation name cannot tell `position()` from `position(long)`, and reading it that way would
+  report a fresh seek under the lock before each read, which is correct. So `write(buffer)` then
+  `position()` to learn where it landed is still not reported, and a test pins that choice.
+- **`FILE_CHANNEL_POSITION_RACE`: only a read or a write relies on a seek (#831).** Operation names
+  are free-form, and any call after a seek was taken as the I/O relying on it, so a `truncate`
+  there was judged as a read or write at an offset the thread chose. Only a name starting with
+  `read` or `write` relies on a seek now; any other leaves the seek open and relies on nothing,
+  while another thread's `truncate`, which can move the cursor, still counts as a call that can
+  land inside a sequence. No caller, example or corpus row records `transferTo` or
+  `transferFrom`, which #819 dropped from the implicit-position list because they neither use nor
+  move the position; the record method's javadoc now says so.
+- **`FILE_CHANNEL_POSITION_RACE` lets go of the channel at each round start (#831).** A thread's
+  open seek lived in a per-thread slot that kept the channel reference until the thread sought
+  again, so a pooled worker that never did kept it reachable. `AsyncTestContext.markInvocationStart()`
+  now calls the detector's new `markInvocationStart()`, which clears every slot opened since the
+  last one; the seeks are linked through themselves, so listing one allocates nothing.
 - **A detector note that is not a finding now reaches the user (#816).** A report is printed only
   when `hasIssues()` is true, so a note in a report with no finding, such as
   `SynchronizedNonFinalDetector`'s undecided slot and the four-argument `recordLockObject` call

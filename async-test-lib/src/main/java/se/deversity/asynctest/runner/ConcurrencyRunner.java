@@ -596,19 +596,23 @@ public class ConcurrencyRunner {
                 } catch (RuntimeException e) {
                     log.warn("Telemetry bridge detach failed: {}", e.toString(), e);
                 }
-                // Accesses from threads the body started itself. The bridge cannot attribute them
-                // to a round, so it drops them - and a clean atomicity report then covers the
-                // workers and nothing else. Said at INFO, per test rather than once per JVM,
-                // because it is an observation about this test's body and not a property of the
-                // configuration: the reader has to know which test it applies to (#500).
+                // Accesses from threads the body handed work to in a way the agent does not see:
+                // a thread started in unwoven code, a task given to Executor.execute. A woven
+                // start or submit is attributed (#745). The bridge cannot attribute the rest to a
+                // round, so it drops them - and a clean atomicity report then covers the workers
+                // and their woven hand-offs and nothing else. Said at INFO, per test rather than
+                // once per JVM, because it is an observation about this test's body and not a
+                // property of the configuration: the reader has to know which test it applies to
+                // (#500).
                 long unattributed = telemetryBridge.droppedNonWorkerEvents();
                 if (unattributed > 0) {
                     log.info("runner.telemetry.unattributed test={} events={} "
-                            + "reason=\"the agent captured field accesses on threads this run did "
-                            + "not start, so they belong to no round and carry no atomicity "
-                            + "evidence\" hint=\"run the racing work on the @AsyncTest workers "
-                            + "themselves, or read a clean atomicity report as covering the "
-                            + "workers only\"",
+                            + "reason=\"the agent captured field accesses on threads that no "
+                            + "worker started or handed a task through a woven call, so they "
+                            + "belong to no round and carry no atomicity evidence\" "
+                            + "hint=\"start threads with Thread.start or submit tasks to a JDK "
+                            + "executor from the @AsyncTest workers, or read a clean atomicity "
+                            + "report as covering the workers only\"",
                         testMethod.getName(), unattributed);
                 }
             }

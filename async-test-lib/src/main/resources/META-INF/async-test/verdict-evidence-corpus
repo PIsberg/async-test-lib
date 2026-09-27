@@ -51,7 +51,8 @@
 #   idiom_synchronizedCheckThenAct_withoutTheMonitor firing), as do the detector's unit tests.
 #   What neither reaches: a lock the library never saw, which leaves the finding standing as it
 #   does for every lockset detector, and a check-then-act whose every caller puts the same value,
-#   which loses nothing and is still reported, because the detector is never told the value.
+#   which loses nothing and is still reported when recorded without the value. Since #827 a caller
+#   can pass it, and a site whose every caller put the same instance is silent.
 #
 # Blank lines and # comments are ignored.
 
@@ -206,9 +207,9 @@ CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition
 # recordPositionalAccess and decides nothing; PairEvidence.REVIEWED_DESPITE_SHAPE records that
 # reading. FileChannelPositionRaceDetectorTest pins both directions.
 #
-# What the pair does not reach: a lock released and taken again between the seek and the I/O,
-# which reads as held across and is not reported, and a self-contained call that relies on where
-# an earlier one left the cursor, such as write(buffer) then position(), which is no sequence.
+# What the pair does not reach: a self-contained call that relies on where an earlier one left
+# the cursor, such as write(buffer) then position(), which is no sequence. A lock released and
+# taken again between the seek and the I/O read as held across until #831; the unit test pins it.
 FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_fileChannel_seekThenReadUnderItsOwnMonitor
 
 # --- 2026-09-26: a pair is necessary, not sufficient.
@@ -221,6 +222,12 @@ FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_f
 # did not: ASSERTED, capped at FACT. For the rest it is a thread count or a threshold on one of the
 # paths that make a finding: CONTEXT_FREE or HEURISTIC, capped at PROMPT. Each line is kept here
 # with the class that capped it, so a detector whose model changes can be re-registered from it.
+#
+# Since #754, BLOCKING_QUEUE, SIMPLE_DATE_FORMAT, CALENDAR and STRING_BUILDER grade each finding by
+# its path, so the finding their pair exercises carries its own grade: VERDICT for the shared
+# formatter, calendar or builder, still PROMPT for the saturated queue. The class in brackets is
+# the weaker path that still caps the detector-wide tier, and a graded detector is not promoted on
+# a pair, so the lines stay.
 #
 #   CONCURRENT_MAP_COMPUTE_RECURSION = recorded_caffeineAsMap_recursiveMerge, recorded_caffeineAsMap_selfContainedMerge    [ASSERTED]
 #   SYNCHRONIZED_COLLECTION_ITERATION = recorded_synchronizedCollection_iteratedWithoutLock, recorded_synchronizedCollection_iteratedHoldingLock    [ASSERTED]

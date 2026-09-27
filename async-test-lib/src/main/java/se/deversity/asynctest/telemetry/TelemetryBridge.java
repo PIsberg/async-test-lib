@@ -47,6 +47,19 @@ import se.deversity.vibetags.annotations.AIKeepInSync;
  *       added without breaking this one.</li>
  * </ul>
  *
+ * <h2>Which threads are forwarded</h2>
+ * The worker threads the bridge is given, and the threads they hand work to (#745): a thread a
+ * forwarded thread starts through a woven {@code Thread.start}, from its first access, and a pool
+ * thread while it runs a task a forwarded thread submitted to a JDK executor or to
+ * {@code CompletableFuture.supplyAsync}/{@code runAsync}, and at no other time. Both are learned
+ * from events the hooks publish into the same ring as the accesses, ahead of anything the new
+ * thread or task publishes, and are judged on the drain side by this bridge alone. A bridge is one
+ * run, so a thread that outlives the run that started it, or a pool thread shared by several runs,
+ * contributes to a later run only what that run's own workers hand it. Anything else is dropped
+ * and counted ({@link #droppedNonWorkerEvents()}): a thread started in code the agent does not
+ * weave or through a {@code Thread.Builder}, and a task handed over by {@code Executor.execute}
+ * or to a non-JDK executor.
+ *
  * <h2>Thread safety</h2>
  * {@link #onEvent} runs on the single telemetry drain thread, while {@link #activate}
  * and {@link #close()} are called from test threads. The bridge holds its enabled state
@@ -100,14 +113,16 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     private volatile boolean active;
 
     /**
-     * Accesses dropped because the thread that made them is not one of the runner's workers.
+     * Accesses dropped because the thread that made them is neither one of the runner's workers
+     * nor one they handed work to.
      *
-     * <p>A test body that submits its racing work to its own executor, or starts
-     * {@code new Thread(...)}, produces accesses on threads the runner never registered, and the
-     * filter above discards them. That is the honest thing to do - the bridge cannot attribute
-     * them to a round - but a clean atomicity report then means "nothing was observed" rather
-     * than "nothing was wrong", and nothing used to say so. Counting them lets the runner
-     * announce the gap (#500).
+     * <p>A thread the body starts through a woven {@code Thread.start}, and a pool thread running a
+     * task the body submitted, are attributed (#745). Work handed over any other way, a thread
+     * started in unwoven code or a task passed to {@code Executor.execute}, produces accesses the
+     * bridge cannot attribute to the run, and it discards them. That is the honest thing to do,
+     * but a clean atomicity report then means "nothing was observed" rather than "nothing was
+     * wrong" for that work, and nothing used to say so. Counting them lets the runner announce the
+     * gap (#500).
      */
     private final java.util.concurrent.atomic.LongAdder droppedNonWorkerEvents =
             new java.util.concurrent.atomic.LongAdder();
@@ -152,6 +167,40 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
     }
 
+    /**
+     * Threads started by a thread this bridge forwards, forwarded as well (#745).
+     *
+     * <p>Only the drain thread touches it, from {@link #onEvent}. It lives and dies with this
+     * bridge, and a bridge is one run, so a thread that outlives the run that started it is
+     * forwarded to no later run: that run's bridge never saw it start.
+     */
+    private final Set<Long> startedThreads = new java.util.HashSet<>();
+
+    /**
+     * Tokens of the tasks a forwarded thread handed to an executor, until a thread begins them
+     * (#745). Drain thread only. A task an executor refused is never begun, and its token goes
+     * with the bridge.
+     */
+    private final Set<Long> submittedTasks = new java.util.HashSet<>();
+
+    /**
+     * The handed tasks each pool thread is running, for the threads running at least one of this
+     * run's (#745). A pool thread runs tasks for anyone, so it is forwarded while it runs one of
+     * this run's tasks and at no other time. Drain thread only.
+     */
+    private final java.util.Map<Long, TaskFrames> runningTasks = new java.util.HashMap<>();
+
+    /**
+     * One thread's nested handed tasks, innermost in the lowest bit, a bit set for a task of this
+     * run. A task runs inside another when an executor runs it on the submitting thread, or a
+     * fork-join worker helps while it waits; past 64 levels the outer bits are lost, which only
+     * stops forwarding.
+     */
+    private static final class TaskFrames {
+        long ours;
+        int depth;
+    }
+
     /** A read held back until its speculation is judged: the arguments it will be recorded with. */
     private record HeldRead(String field, long threadId, long lockFingerprint, int ownMonitor,
                             int methodMonitor, boolean volatileField, int constantTag, int identity,
@@ -191,10 +240,10 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * Creates a bridge and registers it as the {@link TelemetryRegistry} drain callback so
      * that agent field-access events begin flowing into {@code atomicityValidator}.
      *
-     * <p>Only events whose {@code threadId} is in {@code workerThreadIds} are forwarded;
-     * accesses from other application threads during the round are treated as noise for
-     * per-round analysis and dropped. The set is defensively copied
-     * ({@link Set#copyOf}) so later mutation of the caller's set has no effect.
+     * <p>Only events whose {@code threadId} is in {@code workerThreadIds}, or from a thread one of
+     * them handed work to (see the class javadoc), are forwarded; accesses from other application
+     * threads during the round are treated as noise for per-round analysis and dropped. The set is
+     * defensively copied ({@link Set#copyOf}) so later mutation of the caller's set has no effect.
      *
      * @param atomicityValidator the live detector to feed; must not be {@code null}
      * @param workerThreadIds    ids of the stress-test worker threads whose events should be
@@ -228,7 +277,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * a round's worker threads do not exist yet when the bridge has to be attached, and with
      * virtual threads each round brings new ones. The runner therefore passes a filter backed
      * by a concurrent set that each worker adds itself to as it starts, so a thread begins
-     * being observed the moment it joins the run.
+     * being observed the moment it joins the run. The threads the accepted ones hand work to are
+     * forwarded as well, as the class javadoc describes.
      *
      * <p>{@code workerFilter} is called on the telemetry drain thread, once per drained
      * event, so it must be thread-safe and cheap. A {@code Set::contains} on a concurrent
@@ -472,7 +522,11 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (!active) {
             return;
         }
-        if (!workerFilter.test(threadId)) {
+        if (qualifiedName != null && !qualifiedName.isEmpty() && qualifiedName.charAt(0) == '#'
+                && attribution(threadId, qualifiedName, lockFingerprint)) {
+            return;
+        }
+        if (!forwards(threadId)) {
             droppedNonWorkerEvents.increment();
             return;
         }
@@ -548,6 +602,75 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         recordField(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
                 identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, receiver,
                 stamp, round);
+    }
+
+    /**
+     * Takes in an event that says which thread works for which (#745), and returns whether it was
+     * one. Such an event is no access, so it is never counted as dropped.
+     *
+     * <p>Each is judged when it drains, against what this bridge forwards at that point in the
+     * ring, which is where the thread that published it stood when it did: a start or a submission
+     * made inside one of this run's tasks counts, one made after it ended does not.
+     */
+    private boolean attribution(long threadId, String name, long other) {
+        if (TelemetryRegistry.THREAD_STARTING.equals(name)) {
+            if (forwards(threadId)) {
+                startedThreads.add(other);
+            }
+            return true;
+        }
+        if (TelemetryRegistry.TASK_SUBMITTED.equals(name)) {
+            if (forwards(threadId)) {
+                submittedTasks.add(other);
+            }
+            return true;
+        }
+        if (TelemetryRegistry.TASK_STARTED.equals(name)) {
+            boolean ours = submittedTasks.remove(other);
+            TaskFrames frames = runningTasks.get(threadId);
+            if (frames == null && ours) {
+                frames = new TaskFrames();
+                runningTasks.put(threadId, frames);
+            }
+            // A thread with no task of ours running needs no frame for another run's task: its
+            // end finds no frame and changes nothing.
+            if (frames != null) {
+                frames.ours = frames.ours << 1 | (ours ? 1L : 0L);
+                frames.depth++;
+            }
+            return true;
+        }
+        if (TelemetryRegistry.TASK_ENDED.equals(name)) {
+            TaskFrames frames = runningTasks.get(threadId);
+            if (frames != null) {
+                frames.ours >>>= 1;
+                frames.depth--;
+                if (frames.depth == 0) {
+                    runningTasks.remove(threadId);
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * {@return whether this bridge forwards what {@code threadId} does now}: a worker the filter
+     * accepts, a thread one of them started, or a pool thread running a task one of them handed
+     * over (#745).
+     */
+    private boolean forwards(long threadId) {
+        if (workerFilter.test(threadId)) {
+            return true;
+        }
+        if (!startedThreads.isEmpty() && startedThreads.contains(threadId)) {
+            return true;
+        }
+        if (runningTasks.isEmpty()) {
+            return false;
+        }
+        TaskFrames frames = runningTasks.get(threadId);
+        return frames != null && (frames.ours & 1L) != 0;
     }
 
     /**
@@ -647,8 +770,10 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * {@return how many accesses were dropped because their thread is not a runner worker}
      *
      * <p>Non-zero means the agent saw field accesses this run cannot attribute: they came from
-     * threads the test body started itself. The atomicity evidence for those accesses is absent
-     * from the report, so a clean report covers the workers and nothing else.
+     * threads that are neither workers nor started or handed a task by one through a woven call
+     * (see the class javadoc). The atomicity evidence for those accesses is absent from the
+     * report, so a clean report covers the workers and the work they handed over, and nothing
+     * else.
      *
      * @since 1.11.2
      */

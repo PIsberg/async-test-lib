@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -131,6 +132,58 @@ class TaskSchedulerTest {
                 (task, name) -> detector.recordCapturedMutation(task, name, Thread.currentThread()));
     }
 
+    /**
+     * One writer beside a reader: the first thread brings a new peak and writes it, the second
+     * brings a sample below the peak and only reads. Recording only the write would put one
+     * thread on the capture and report nothing; recordCapturedRead puts the reader there too,
+     * and neither access held a lock.
+     */
+    @Test
+    void testStatefulLambdaDetector_peakReadBesideItsWriter_reports() throws Exception {
+        StatefulLambdaDetector detector = new StatefulLambdaDetector();
+        wirePeakTracker(detector);
+
+        // Started together and joined after, so nothing orders the read after the write: a join
+        // between them would, and the read would then be no race.
+        Thread writer = new Thread(() -> scheduler.peakTracker().accept(10), "writer");
+        Thread reader = new Thread(() -> scheduler.peakTracker().accept(0), "reader");
+        writer.start();
+        reader.start();
+        writer.join(2000);
+        reader.join(2000);
+
+        assertEquals(10, scheduler.peak(), "the reader's sample was below the peak, so only the writer wrote");
+        assertTrue(detector.analyze().hasIssues(),
+                "one thread wrote the captured peak and another read it, and no lock covered both");
+    }
+
+    /**
+     * And the other direction: callers that only read the peak, because nobody beats it, share
+     * nothing mutable. Concurrent reads of state nobody writes are no race.
+     */
+    @Test
+    void testStatefulLambdaDetector_readersWithNoWriter_isSilent() throws Exception {
+        StatefulLambdaDetector detector = new StatefulLambdaDetector();
+        wirePeakTracker(detector);
+
+        Thread first = new Thread(() -> scheduler.peakTracker().accept(0), "reader-1");
+        Thread second = new Thread(() -> scheduler.peakTracker().accept(0), "reader-2");
+        first.start();
+        second.start();
+        first.join(2000);
+        second.join(2000);
+
+        assertEquals(0, scheduler.peak(), "no sample beat the initial peak");
+        assertFalse(detector.analyze().hasIssues(), "two threads read, nobody wrote");
+    }
+
+    private void wirePeakTracker(StatefulLambdaDetector detector) {
+        scheduler.observePeakTracker(
+                task -> detector.recordExecution(task, "peak-tracker", Thread.currentThread()),
+                (task, peak) -> detector.recordCapturedRead(task, peak, Thread.currentThread()),
+                (task, peak) -> detector.recordCapturedMutation(task, "peak", peak, Thread.currentThread()));
+    }
+
     // -----------------------------------------------------------------------
     // Part 2: @AsyncTest — exposes shared mutable lambda capture
     // -----------------------------------------------------------------------
@@ -159,5 +212,28 @@ class TaskSchedulerTest {
                 (task, name) -> detector.recordCapturedMutation(task, name, Thread.currentThread()));
 
         scheduler.countingTask().run();
+    }
+
+    /**
+     * The quieter shape: eight threads feed samples to one peak tracker. Most calls only read
+     * the captured peak, and only a call with a new maximum writes it, so a round can hold a
+     * single writer. The reads are recorded with recordCapturedRead, which is what makes that
+     * round two threads on one capture instead of one.
+     *
+     * To see the detection:
+     * 1. Remove @Disabled
+     * 2. Run this test; it fails with
+     *      'peak-tracker' executed on N threads (...) with concurrent captured-state mutations
+     * 3. Fix: AtomicInteger.accumulateAndGet(sample, Math::max), or synchronized (peak) around
+     *    both the read and the write
+     */
+    @Disabled("Remove @Disabled to see a captured read racing its writer detected by StatefulLambdaDetector")
+    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
+            detectStatefulLambda = true, failOn = FailOn.LOW)
+    void test_concurrent_detectsPeakReadRacingItsWriter() {
+        StatefulLambdaDetector detector = AsyncTestContext.get().statefulLambdaDetector();
+        wirePeakTracker(detector);
+
+        scheduler.peakTracker().accept(ThreadLocalRandom.current().nextInt(1_000));
     }
 }

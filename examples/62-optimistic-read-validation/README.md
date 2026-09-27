@@ -24,11 +24,26 @@ by a concurrent writer, producing a torn read with inconsistent field values.
 `InventoryService.getStock()` calls `tryOptimisticRead()` and reads `stock` but
 never calls `lock.validate(stamp)` — the read is silently unsound.
 
+## Validating is not enough
+
+A `validate()` that returns false is the normal path under contention, not a bug: it tells the
+caller to re-read under the read lock. The bug is using the value anyway. The detector sees that
+only where the use is recorded, with `recordValuesUsed(lock, stamp, thread)`, passing the stamp
+the used value was read under:
+
+- after a failed `validate()`, using the value read under the optimistic stamp is reported;
+- re-reading under `readLock()` and passing that read-lock stamp is the fix, and is silent.
+
+`testOptimisticReadDetector_valueUsedAfterFailedValidate_reports` and
+`testOptimisticReadDetector_rereadUnderReadLockAfterFailedValidate_isSilent` show both, with a
+restock forced between the read and `validate()` so the validation fails every run.
+
 ## How to Reproduce
 
 Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 `InventoryServiceTest`. The `OptimisticReadValidationDetector` will report the
-missing validation call.
+missing validation call. Remove it from `test_concurrent_detectsValueUsedAfterFailedValidate`
+to see a value used after a failed `validate()` reported.
 
 ```
 @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectOptimisticReadValidation = true)

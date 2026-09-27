@@ -745,6 +745,16 @@ class CorpusRecordingLaneTest {
             ThreadLocal.withInitial(SHARED_SPLITTABLE::split);
 
     /**
+     * The thread that initialises this class, which the runner never uses as a worker: the one
+     * thread that called {@code current()} for {@link #CAPTURED_RANDOM}.
+     */
+    private static final Thread CAPTURING_THREAD = Thread.currentThread();
+
+    /** {@code ThreadLocalRandom.current()} kept in a field, the capture its javadoc rules out. */
+    private static final java.util.concurrent.ThreadLocalRandom CAPTURED_RANDOM =
+            java.util.concurrent.ThreadLocalRandom.current();
+
+    /**
      * A settings holder that records its own construction, start first and end last, and hands
      * itself to {@code onRegister} in between: a constructor that registers {@code this} with a
      * listener before it has assigned its field. The constructor safety pair builds one per body.
@@ -3152,6 +3162,16 @@ class CorpusRecordingLaneTest {
                 .recordSet("corpus.own." + self.threadId(), "v", self);
     }
 
+    /** The firing row's writers of one shared key, each holding the properties table's monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor() {
+        CorpusRecorder.countBodyExecution();
+        synchronized (System.getProperties()) {
+            AsyncTestContext.systemPropertyMutationDetector()
+                    .recordSet("corpus.shared.key", "v", Thread.currentThread());
+        }
+    }
+
     // --- WeakReferenceRace ---------------------------------------------------------------------
 
     /** A get recorded as having returned null where the caller expected its referent. */
@@ -3948,6 +3968,20 @@ class CorpusRecordingLaneTest {
         detector.recordAtomicUpdate(ATOMIC_HANDLE, ATOMIC_RECEIVER, "counter", self);
     }
 
+    /** The firing row's plain get and plain set, with every thread holding the receiver's monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_varHandle_plainGetThenPlainSetUnderTheReceiversMonitor() {
+        CorpusRecorder.countBodyExecution();
+        Thread self = Thread.currentThread();
+        var detector = AsyncTestContext.varHandleNonAtomicUpdateDetector();
+        synchronized (PLAIN_RECEIVER) {
+            detector.recordGet(PLAIN_HANDLE, PLAIN_RECEIVER, "counter",
+                    se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.PLAIN, self);
+            detector.recordSet(PLAIN_HANDLE, PLAIN_RECEIVER, "counter",
+                    se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector.Mode.PLAIN, self);
+        }
+    }
+
     // --- The thread-lifecycle family ------------------------------------------------------------
 
     /** Parks until reportAndGate releases it; the body of both parked threads. */
@@ -4139,6 +4173,34 @@ class CorpusRecordingLaneTest {
         detector.registerGenerator(mine, "confined-splittable");
         detector.recordAccess(mine, "confined-splittable", "nextInt");
         mine.nextInt();
+    }
+
+    // --- ThreadLocalRandomMisuse ---------------------------------------------------------------
+
+    /**
+     * The class-initialisation capture of {@code current()}, used by every worker.
+     *
+     * <p>The obtain is recorded for the thread that made it, the one that initialised this class;
+     * the worker drawing from the capture never called {@code current()} itself.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocalRandom_capturedOnAnotherThread() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadLocalRandomMisuseDetector();
+        detector.recordObtain(CAPTURED_RANDOM, "captured", CAPTURING_THREAD);
+        detector.recordUse(CAPTURED_RANDOM, Thread.currentThread());
+        CAPTURED_RANDOM.nextInt(100);
+    }
+
+    /** The same use, with the worker calling current() itself first: the documented idiom. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void recorded_threadLocalRandom_currentOnTheUsingThread() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.threadLocalRandomMisuseDetector();
+        java.util.concurrent.ThreadLocalRandom mine = java.util.concurrent.ThreadLocalRandom.current();
+        detector.recordObtain(mine, "per-thread", Thread.currentThread());
+        detector.recordUse(mine, Thread.currentThread());
+        mine.nextInt(100);
     }
 
     // --- The CompletableFuture protocol family --------------------------------------------------

@@ -42,10 +42,11 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p><strong>Two evidence paths.</strong>
  * <ul>
- *   <li><strong>Recorded wait-for graph (CRITICAL, a verdict).</strong> Instrument the static
+ *   <li><strong>Recorded wait-for graph (CRITICAL, graded a fact).</strong> Instrument the static
  *       initializers with {@link #recordInitStart}, {@link #recordInitRequest} and
  *       {@link #recordInitEnd}. A cycle in the resulting thread-waits-for-thread graph is a
- *       deadlock, not a slow start.</li>
+ *       deadlock, not a slow start, as far as the recording is right: every edge is a record call,
+ *       so the finding is graded {@link TrustTier#FACT} rather than a verdict.</li>
  *   <li><strong>Live thread sample (HIGH, corroborating).</strong> With no instrumentation at
  *       all, {@link #analyze()} samples the live threads once and looks for {@code <clinit>}
  *       frames in threads that are blocked or waiting. Two threads parked inside two different
@@ -216,7 +217,7 @@ public final class StaticInitDeadlockDetector {
                 + "a monitor and not an ownable synchronizer, so the platform's deadlock finder "
                 + "reports nothing while the JVM is fully wedged.",
                 cycle.size(), chain);
-            add(r, IssueSeverity.CRITICAL, msg, cycle.size());
+            add(r, IssueSeverity.CRITICAL, TrustTier.FACT, DetectorTrust.Evidence.ASSERTED, msg, cycle.size());
         }
 
         List<Parked> parked = liveSample();
@@ -229,7 +230,7 @@ public final class StaticInitDeadlockDetector {
                 who.append(String.format("'%s' (%s) inside %s",
                         p.threadName(), p.state(), simple(p.initializingClass())));
             }
-            add(r, IssueSeverity.HIGH, String.format(
+            add(r, IssueSeverity.HIGH, TrustTier.FACT, DetectorTrust.Evidence.OBSERVED, String.format(
                 "HIGH: %d threads are parked inside %d different class initializers — %s. That is "
                 + "the shape of a static-initialization deadlock. It is reported from a live "
                 + "stack sample rather than a recorded wait-for graph, so it could also be one "
@@ -434,7 +435,9 @@ public final class StaticInitDeadlockDetector {
         return dot < 0 ? className : className.substring(dot + 1);
     }
 
-    private static void add(Report r, IssueSeverity severity, String msg, int threadCount) {
+    private static void add(Report r, IssueSeverity severity, TrustTier tier, DetectorTrust.Evidence evidence,
+                            String msg, int threadCount) {
+        r.grades.add(new GradedFindings.Grade(severity, tier, msg, evidence));
         r.violations.add(msg);
         r.structuredViolations.add(new Violation(
                 "StaticInitDeadlock",
@@ -451,6 +454,8 @@ public final class StaticInitDeadlockDetector {
         public final List<String> violations = new ArrayList<>();
         /** The same findings as machine-readable {@link Violation} records. */
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Grades of the findings collected so far, in report order; see {@link #grades()}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
 
         /**
          * Checks if any issues were detected.
@@ -460,27 +465,19 @@ public final class StaticInitDeadlockDetector {
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         /**
-         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
-         * the same detector.
+         * One grade per finding, set by the path that produced it rather than by its severity.
          *
-         * <p>The recorded cycle is a verdict: a closed chain of classes each waiting on the next is a
-         * deadlock, not a suspicion. The corroborating sample states which threads were seen inside
-         * which initializer, which is true as far as it goes and leaves the conclusion to the
-         * reader, so it is a {@link TrustTier#FACT}.
+         * <p>Both are {@link TrustTier#FACT}s, for different reasons. The recorded cycle is
+         * CRITICAL, but every edge in it is a record call the initializers made, and nothing asked
+         * the JVM whether any thread is blocked, so it is a fact about the recording
+         * ({@link DetectorTrust.Evidence#ASSERTED}); grading it by severity made it a verdict until
+         * #753. The live sample is what the JVM's own stacks showed
+         * ({@link DetectorTrust.Evidence#OBSERVED}), twice, and it still leaves open one slow
+         * initializer that several threads are queued behind, so it stops at a fact too.
          */
         @Override
         public List<GradedFindings.Grade> grades() {
-            return structuredViolations.stream()
-                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
-                    .toList();
-        }
-
-        private static TrustTier tierOf(IssueSeverity severity) {
-            return switch (severity) {
-            case CRITICAL -> TrustTier.VERDICT;
-            case HIGH -> TrustTier.FACT;
-            default -> TrustTier.PROMPT;
-            };
+            return List.copyOf(grades);
         }
 
         @Override

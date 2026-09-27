@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
 
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
@@ -40,17 +41,38 @@ public interface GradedFindings {
     /**
      * What one finding is worth, on both axes the gate cares about.
      *
+     * <p>A detector that finds the same defect along two paths, one where the JVM answered and one
+     * where the test's own record call is the whole evidence, names on each grade the path that
+     * produced it. The report path then caps that grade at its own evidence as well as at the
+     * detector's ({@link DetectorTrust#clampToCap}), so one path's weaker evidence neither holds the
+     * other back nor rides along with it.
+     *
      * @param severity how bad this finding would be if it is real
      * @param tier     how far the library can stand behind it being real
      * @param summary  one line naming the finding, for the report line that explains the grade
+     * @param evidence what this finding was decided from (since 1.12.3); {@code null} leaves it to
+     *                 the reporting detector's evidence class, which caps it either way
      */
-    record Grade(IssueSeverity severity, TrustTier tier, String summary) {
+    record Grade(IssueSeverity severity, TrustTier tier, String summary,
+                 DetectorTrust.@Nullable Evidence evidence) {
 
         /** Validates the inputs. */
         public Grade {
             if (severity == null) throw new IllegalArgumentException("severity must not be null");
             if (tier == null) throw new IllegalArgumentException("tier must not be null");
             summary = (summary == null) ? "" : summary;
+        }
+
+        /**
+         * A grade that declares no evidence of its own, so the reporting detector's evidence class
+         * alone caps it.
+         *
+         * @param severity how bad this finding would be if it is real
+         * @param tier     how far the library can stand behind it being real
+         * @param summary  one line naming the finding, for the report line that explains the grade
+         */
+        public Grade(IssueSeverity severity, TrustTier tier, String summary) {
+            this(severity, tier, summary, null);
         }
     }
 }

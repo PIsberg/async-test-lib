@@ -96,8 +96,8 @@ public class HandOffPublicationBean {
     /**
      * Fills a parcel and submits a task that completes {@code future} with it; with
      * {@code fillAfter} the parcel is filled after the submission instead. The task runs on a
-     * pool thread, whose own accesses the agent does not report, so the parcel reaches the joiner
-     * through the pool thread's complete, which publishes what that thread received. A future
+     * pool thread and touches no field of the parcel, so the parcel reaches the joiner through
+     * the pool thread's complete, which publishes what that thread received. A future
      * rather than a queue, because a take out of a queue is an ownership hand-off the validator
      * judges on its own, edge or no edge.
      */

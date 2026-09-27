@@ -73,6 +73,9 @@ public final class HeldLocks {
     /** Depth cap. Beyond this the frame stops growing and the deepest locks go unrecorded. */
     private static final int MAX_DEPTH = 64;
 
+    /** The {@link #countOnlyHeldSince(long)} setting under which every held lock counts. */
+    static final long EVERY_ACQUISITION = Long.MAX_VALUE;
+
     /**
      * Per-thread lock stack. Not an {@code InheritableThreadLocal}: a lock held by the thread that
      * spawned a worker is not held by the worker, and inheriting it would invent guarding.
@@ -281,6 +284,42 @@ public final class HeldLocks {
     }
 
     /**
+     * {@return a mark in the calling thread's order of lock acquisitions: every lock it holds now
+     * was acquired at or before it, and every lock it acquires from now on, including one it
+     * releases and takes again, after it}
+     *
+     * <p>For a detector that judges two accesses as one unit, such as a seek and the read relying
+     * on it (#831). A lock guards the unit only if it was held without a break from the first
+     * access to the second, and probing it at both ends cannot tell that from a release and a new
+     * acquisition in between. The mark taken at the first access, passed to
+     * {@link #countOnlyHeldSince(long)} around the probe at the second, can.
+     */
+    static long acquisitionMark() {
+        return current().acquisitions;
+    }
+
+    /**
+     * Makes {@link #intersect} on the calling thread count only the locks this thread has held
+     * without a break since {@code mark}, until the returned setting is passed back.
+     *
+     * <p>The tracked instance's own monitor, which {@link Thread#holdsLock} answers for, counts
+     * when this frame has an entry for it acquired at or before the mark, and also when the frame
+     * has no entry for it at all: a {@code synchronized} block the agent did not weave never
+     * reaches this class, so whether that monitor was released in between cannot be seen, and it
+     * is taken as held across, as it was before the mark existed.
+     *
+     * @param mark a value {@link #acquisitionMark()} returned at the first access of the unit, or
+     *             {@link #EVERY_ACQUISITION} to count every held lock again
+     * @return the setting in force before this call, to restore in a {@code finally}
+     */
+    static long countOnlyHeldSince(long mark) {
+        Frame frame = current();
+        long previous = frame.heldSince;
+        frame.heldSince = mark;
+        return previous;
+    }
+
+    /**
      * {@return a value identifying the exact set of locks this thread currently holds, or 0 for
      * none}
      *
@@ -477,11 +516,15 @@ public final class HeldLocks {
      */
     static int[] intersect(int @Nullable [] candidate, Object self, boolean forWrite) {
         Frame frame = current();
+        long since = frame.heldSince;
         boolean selfHeld = Thread.holdsLock(self);
         int selfHash = selfHeld ? System.identityHashCode(self) : 0;
+        if (selfHeld && since != EVERY_ACQUISITION) {
+            selfHeld = frame.monitorHeldSince(selfHash, since);
+        }
 
         if (candidate == null) {
-            return frame.snapshot(selfHeld, selfHash, forWrite);
+            return frame.snapshot(selfHeld, selfHash, forWrite, since);
         }
         if (candidate.length == 0) {
             return candidate;
@@ -492,7 +535,8 @@ public final class HeldLocks {
         // the allocation-free one: a consistently guarded instance never copies its set again.
         int[] survivors = null;
         for (int hash : candidate) {
-            boolean stillHeld = (selfHeld && hash == selfHash) || frame.containsHash(hash, forWrite);
+            boolean stillHeld = (selfHeld && hash == selfHash)
+                    || frame.containsHash(hash, forWrite, since);
             if (stillHeld) {
                 if (survivors != null) {
                     survivors[kept] = hash;
@@ -519,7 +563,16 @@ public final class HeldLocks {
         private Object[] locks = new Object[8];
         private int[] hashes = new int[8];
         private boolean[] shared = new boolean[8];
+
+        /** When each entry was acquired: the value {@link #acquisitions} took at its push. */
+        private long[] acquiredAt = new long[8];
         private int depth;
+
+        /** How many acquisitions this frame has seen; see {@link HeldLocks#acquisitionMark()}. */
+        private long acquisitions;
+
+        /** The {@link HeldLocks#countOnlyHeldSince(long)} setting that {@code intersect} reads. */
+        private long heldSince = EVERY_ACQUISITION;
 
         /** How many entries are {@link Revocable}, so a frame without one never re-confirms. */
         private int revocable;
@@ -544,10 +597,13 @@ public final class HeldLocks {
                 locks = Arrays.copyOf(locks, locks.length * 2);
                 hashes = Arrays.copyOf(hashes, hashes.length * 2);
                 shared = Arrays.copyOf(shared, shared.length * 2);
+                acquiredAt = Arrays.copyOf(acquiredAt, acquiredAt.length * 2);
             }
             locks[depth] = lock;
             hashes[depth] = System.identityHashCode(lock);
             shared[depth] = isShared;
+            acquisitions++;
+            acquiredAt[depth] = acquisitions;
             depth++;
             if (lock instanceof Revocable) {
                 revocable++;
@@ -575,6 +631,7 @@ public final class HeldLocks {
             System.arraycopy(locks, at + 1, locks, at, depth - at - 1);
             System.arraycopy(hashes, at + 1, hashes, at, depth - at - 1);
             System.arraycopy(shared, at + 1, shared, at, depth - at - 1);
+            System.arraycopy(acquiredAt, at + 1, acquiredAt, at, depth - at - 1);
             depth--;
             locks[depth] = null;
             fingerprintsValid = false;
@@ -705,12 +762,38 @@ public final class HeldLocks {
 
         /** {@return whether {@code hash} is held in a mode that guards the given access kind} */
         boolean containsHash(int hash, boolean forWrite) {
+            return containsHash(hash, forWrite, EVERY_ACQUISITION);
+        }
+
+        /**
+         * {@return whether {@code hash} is held in a mode that guards the given access kind by an
+         * entry acquired at or before {@code since}}
+         */
+        boolean containsHash(int hash, boolean forWrite, long since) {
             for (int i = 0; i < depth; i++) {
-                if (hashes[i] == hash && !(forWrite && shared[i])) {
+                if (hashes[i] == hash && !(forWrite && shared[i]) && acquiredAt[i] <= since) {
                     return true;
                 }
             }
             return false;
+        }
+
+        /**
+         * {@return whether a monitor this thread holds, with identity hash {@code hash}, has been
+         * held since {@code since}: an entry for it acquired at or before then, or no entry for it
+         * at all, since a monitor entered in code the agent did not weave never gets one}
+         */
+        boolean monitorHeldSince(int hash, long since) {
+            boolean entered = false;
+            for (int i = 0; i < depth; i++) {
+                if (hashes[i] == hash) {
+                    if (acquiredAt[i] <= since) {
+                        return true;
+                    }
+                    entered = true;
+                }
+            }
+            return !entered;
         }
 
         /** {@return a fresh array of the held hashes, plus {@code selfHash} when held} */
@@ -720,10 +803,18 @@ public final class HeldLocks {
 
         /** {@return a fresh array of the hashes guarding the given access kind, plus self} */
         int[] snapshot(boolean selfHeld, int selfHash, boolean forWrite) {
-            boolean selfAlreadyIn = selfHeld && containsHash(selfHash, forWrite);
+            return snapshot(selfHeld, selfHash, forWrite, EVERY_ACQUISITION);
+        }
+
+        /**
+         * {@return a fresh array of the hashes guarding the given access kind whose entries were
+         * acquired at or before {@code since}, plus self}
+         */
+        int[] snapshot(boolean selfHeld, int selfHash, boolean forWrite, long since) {
+            boolean selfAlreadyIn = selfHeld && containsHash(selfHash, forWrite, since);
             int size = selfHeld && !selfAlreadyIn ? 1 : 0;
             for (int i = 0; i < depth; i++) {
-                if (!(forWrite && shared[i])) {
+                if (!(forWrite && shared[i]) && acquiredAt[i] <= since) {
                     size++;
                 }
             }
@@ -733,7 +824,7 @@ public final class HeldLocks {
             int[] out = new int[size];
             int at = 0;
             for (int i = 0; i < depth; i++) {
-                if (!(forWrite && shared[i])) {
+                if (!(forWrite && shared[i]) && acquiredAt[i] <= since) {
                     out[at] = hashes[i];
                     at++;
                 }

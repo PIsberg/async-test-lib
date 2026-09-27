@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -117,7 +118,8 @@ class StaticInitSampleSeesVirtualThreadsTest {
                 "both initializers must be entered before they wait on each other");
         Thread.sleep(400);      // and then park, each waiting for the other's class
 
-        String report = detector.analyze().toString();
+        StaticInitDeadlockDetector.Report analyzed = detector.analyze();
+        String report = analyzed.toString();
 
         if (VirtualThreadLockGraph.threadsWithState().isEmpty()) {
             return;     // this JDK's dump carries no state; nothing can be sampled here
@@ -126,6 +128,11 @@ class StaticInitSampleSeesVirtualThreadsTest {
                 "the sample must name at least one of the parked virtual threads. Neither "
                         + "getAllStackTraces() nor findDeadlockedThreads() would have found "
                         + "them. Report was: " + report);
+        // The sample is what the JVM's own stacks showed, and it says it could still be one slow
+        // initializer, so it is an observed fact rather than a verdict (#753).
+        assertEquals(List.of(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.FACT,
+                        analyzed.structuredViolations.get(0).message(), DetectorTrust.Evidence.OBSERVED)),
+                analyzed.grades(), report);
         first.interrupt();
         second.interrupt();
     }

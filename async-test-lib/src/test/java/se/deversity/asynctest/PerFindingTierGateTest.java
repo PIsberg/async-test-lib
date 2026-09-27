@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Pins the thing per-finding grades exist for: a verdict-grade finding failing a verdict-only gate
@@ -61,19 +62,45 @@ class PerFindingTierGateTest {
     }
 
     /**
-     * A grade above its detector's evidence cap must not reach the gate at that grade.
+     * A finding decided from the test's own record call must not reach a VERDICT-only gate, even
+     * from a detector whose other path can.
      *
-     * <p>{@code ConfinedArenaThreadEscapeDetector} grades every CRITICAL finding VERDICT, including
-     * an access after a close the body recorded, which is the test's own statement rather than
-     * anything the JVM answered. Its evidence class is therefore ASSERTED, capped at FACT, and the
-     * report path lowers the grade before {@code failOn} reads it.
+     * <p>{@code ConfinedArenaThreadEscapeDetector} reports an access after its arena closed on two
+     * paths: the JVM answering {@code scope().isAlive() = false}, and a close the body recorded,
+     * which is the test's own statement. Until #753 it graded both VERDICT by severity, so its
+     * evidence class had to be the recorded path's ASSERTED and the clamp held the JVM-answered
+     * verdicts at FACT too. Each grade now names its path's evidence: the detector is OBSERVED, and
+     * the recorded close is a FACT on its own evidence.
      */
     @Test
-    @DisplayName("a grade above its detector's evidence cap is clamped before the VERDICT-only gate")
+    @DisplayName("an access after a recorded close does not trip a VERDICT-only gate")
     void aGradeAboveTheEvidenceCapDoesNotTripAVerdictOnlyGate() {
-        assertEquals(TrustTier.FACT, DetectorTrust.evidenceOf(DetectorType.CONFINED_ARENA_THREAD_ESCAPE).cap(),
-                "the fixture below needs a graded detector whose cap is below VERDICT");
+        assertEquals(TrustTier.VERDICT, DetectorTrust.evidenceOf(DetectorType.CONFINED_ARENA_THREAD_ESCAPE).cap(),
+                "the detector's own cap admits VERDICT, so what holds this finding back is the "
+                        + "evidence its grade names");
         run(RecordedCloseUnderVerdictFloorDummy.class).assertStatistics(s -> s.started(1).succeeded(1).failed(0));
+    }
+
+    /**
+     * The other half of #753: the JVM-answered path of the same detector does fail a VERDICT-only
+     * gate. Before grades named their evidence this finding was clamped to FACT with the recorded
+     * one, and the gate below stayed green on a confinement violation the JVM itself reported.
+     */
+    @Test
+    @DisplayName("a confinement violation the JVM answered trips a VERDICT-only gate")
+    void aJvmAnsweredConfinementViolationTripsAVerdictOnlyGate() {
+        assumeTrue(confinedArenaUsable(), "FFM Arena.ofConfined() is not usable on this JDK");
+        Events tests = run(JvmRefusedAccessUnderVerdictFloorDummy.class);
+        tests.assertStatistics(s -> s.started(1).failed(1));
+
+        List<String> messages = tests.failed().stream()
+                .map(event -> event.getRequiredPayload(TestExecutionResult.class))
+                .map(result -> result.getThrowable().map(Throwable::getMessage).orElse(""))
+                .filter(Objects::nonNull)
+                .toList();
+        assertTrue(messages.stream().anyMatch(m -> m.contains("at or above failOn=")
+                        && m.contains("ConfinedArenaThreadEscapeDetector")),
+                "the failure must be the failOn gate naming the detector: " + messages);
     }
 
     @Test
@@ -159,6 +186,34 @@ class PerFindingTierGateTest {
                    detectAll = false, detectConfinedArenaThreadEscape = true)
         void accessAfterARecordedClose() {
             recordAccessAfterClose();
+        }
+    }
+
+    /** A real confined segment touched from a thread that does not own it, under a VERDICT-only gate. */
+    public static class JvmRefusedAccessUnderVerdictFloorDummy {
+        @AsyncTest(threads = 1, invocations = 1, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
+                   detectAll = false, detectConfinedArenaThreadEscape = true)
+        void touchAConfinedSegmentFromAnotherThread() throws Exception {
+            Class<?> arenaType = Class.forName("java.lang.foreign.Arena");
+            Object arena = arenaType.getMethod("ofConfined").invoke(null);
+            Object segment = arenaType.getMethod("allocate", long.class).invoke(arena, 16L);
+            ConfinedArenaThreadEscapeDetector detector = AsyncTestContext.confinedArenaThreadEscapeDetector();
+            detector.recordArena(arena, "native", Thread.currentThread());
+            detector.recordAllocation(segment, arena, "native", 16);
+            // A thread that owns nothing: the JVM answers isAccessibleBy = false for it.
+            detector.recordAccess(segment, "native", new Thread(() -> { }, "other-carrier"), true);
+            ((AutoCloseable) arena).close();
+        }
+    }
+
+    /** {@return whether this JDK has the final FFM API the JVM-answered path asks} */
+    private static boolean confinedArenaUsable() {
+        try {
+            Class.forName("java.lang.foreign.MemorySegment").getMethod("isAccessibleBy", Thread.class);
+            Class.forName("java.lang.foreign.Arena").getMethod("ofConfined");
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return false;
         }
     }
 

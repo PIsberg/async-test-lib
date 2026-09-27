@@ -3,6 +3,8 @@ package se.deversity.asynctest.diagnostics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -119,6 +121,39 @@ class SharedMemorySegmentRaceDetectorTest {
                 "Use-after-free is unconditional: " + report);
         assertTrue(report.toString().contains("after its arena was closed"),
                 "The report must name the use-after-free: " + report);
+    }
+
+    @Test
+    void accessAfterARecordedCloseIsGradedAFactNotAVerdict() {
+        detector.recordClose(segment, "ringBuffer");
+        detector.recordAccess(segment, "ringBuffer", 0, 8, false, t1);
+
+        List<GradedFindings.Grade> grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        GradedFindings.Grade grade = grades.get(0);
+        assertEquals(IssueSeverity.CRITICAL, grade.severity(), "the path changes the tier, not the severity");
+        assertEquals(TrustTier.FACT, grade.tier(),
+                "recordClose is the test saying the arena closed; nothing asked the JVM (#753): " + grade);
+        assertEquals(DetectorTrust.Evidence.ASSERTED, grade.evidence(), grade.toString());
+        assertEquals(grades, DetectorTrust.clampToCap("SharedMemorySegmentRaceDetector", grades),
+                "graded at its own evidence, nothing is left for the report path to lower");
+    }
+
+    @Test
+    void overlapFindingsStayPromptsWhateverTheirSeverity() {
+        detector.recordAccess(segment, "ringBuffer", 0, 8, true, t1, "lockA");
+        detector.recordAccess(segment, "ringBuffer", 4, 8, true, t2, "lockB");
+        detector.recordAccess(segment, "ringBuffer", 64, 8, true, t1);
+        detector.recordAccess(segment, "ringBuffer", 68, 8, true, t2);
+
+        List<GradedFindings.Grade> grades = detector.analyze().grades();
+        assertEquals(List.of(IssueSeverity.HIGH, IssueSeverity.MEDIUM),
+                grades.stream().map(GradedFindings.Grade::severity).toList(), grades.toString());
+        assertTrue(grades.stream().allMatch(g -> g.tier() == TrustTier.PROMPT),
+                "an overlap rests on the guards the test named, or none: " + grades);
+        assertEquals(List.of(DetectorTrust.Evidence.CONTEXTUAL, DetectorTrust.Evidence.CONTEXT_FREE),
+                grades.stream().map(GradedFindings.Grade::evidence).toList(),
+                "conflicting guards consulted declared locks, an unguarded overlap consulted none");
     }
 
     @Test

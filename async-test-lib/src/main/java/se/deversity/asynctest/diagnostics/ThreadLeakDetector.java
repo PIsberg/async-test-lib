@@ -232,7 +232,7 @@ public class ThreadLeakDetector {
     /**
      * Report of thread leak analysis.
      */
-    public static class ThreadLeakReport {
+    public static class ThreadLeakReport implements GradedFindings {
         private final List<ThreadLeakEvent> leaks;
         private final int totalTracked;
         private final int terminated;
@@ -260,6 +260,34 @@ public class ThreadLeakDetector {
          */
         public List<ThreadLeakEvent> getLeaks() {
             return List.copyOf(leaks);
+        }
+
+        /**
+         * One grade per finding, set by the path that produced it (#754).
+         *
+         * <p>A tracked thread the test started, never recorded as ended, and that
+         * {@link Thread#isAlive()} still answers for is a {@link TrustTier#VERDICT} on
+         * {@link DetectorTrust.Evidence#OBSERVED} evidence; it is the only path that carries its
+         * {@link Thread}. Growth of {@link Thread#activeCount()} in the opt-in auto mode counts every
+         * thread in the group, the test's or not, so it stays a {@link TrustTier#PROMPT}; before
+         * this the whole detector was rated by it. Every grade keeps the severity the gate has
+         * always read for this report.
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            if (leaks.isEmpty()) {
+                return List.of();
+            }
+            IssueSeverity severity = DetectorDefaultSeverity.of(ThreadLeakDetector.class.getSimpleName(), toString());
+            List<GradedFindings.Grade> out = new ArrayList<>(leaks.size());
+            for (ThreadLeakEvent leak : leaks) {
+                boolean tracked = leak.thread != null;
+                out.add(new GradedFindings.Grade(severity,
+                        tracked ? TrustTier.VERDICT : TrustTier.PROMPT,
+                        leak.threadName + ": " + leak.reason,
+                        tracked ? DetectorTrust.Evidence.OBSERVED : DetectorTrust.Evidence.HEURISTIC));
+            }
+            return List.copyOf(out);
         }
 
         @Override

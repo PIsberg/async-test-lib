@@ -456,4 +456,61 @@ public class CalendarDetectorTest {
             worker.join();
         }
     }
+
+    // ---- grades follow the path, not one tier for the detector (#754) ---------------------------
+
+    /** {@return the report's per-finding grades, failing if the report does not grade} */
+    private static java.util.List<GradedFindings.Grade> gradesOf(Object report) {
+        return assertInstanceOf(GradedFindings.class, report,
+                "the report must grade each finding by the path behind it: " + report).grades();
+    }
+
+    @Test
+    void unguardedSharingIsAVerdictAndARecordedErrorAFact() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        Runnable body = () -> {
+            for (int i = 0; i < 5; i++) {
+                cal.set(Calendar.DAY_OF_MONTH, i + 1);
+                detector.recordSet(cal, "shared-calendar");
+            }
+        };
+        Thread t1 = new Thread(body);
+        Thread t2 = new Thread(body);
+        t1.start(); t2.start(); t1.join(); t2.join();
+        detector.recordError(cal, "shared-calendar", "CorruptedDateException");
+
+        CalendarDetector.CalendarReport report = detector.analyze();
+        var grades = DetectorTrust.clampToCap("CalendarDetector", gradesOf(report));
+        assertEquals(java.util.List.of(TrustTier.VERDICT, TrustTier.FACT),
+                grades.stream().map(GradedFindings.Grade::tier).toList(),
+                "the shared calendar first, then the recorded error: " + grades);
+        assertEquals(java.util.List.of(DetectorTrust.Evidence.CONTEXTUAL, DetectorTrust.Evidence.ASSERTED),
+                grades.stream().map(GradedFindings.Grade::evidence).toList(),
+                "sharing is judged against the lockset, so the synchronized twin below is silent; "
+                        + "the error is the test's own recordError call: " + grades);
+        assertTrue(grades.stream().allMatch(g -> g.severity()
+                        == DetectorDefaultSeverity.of("CalendarDetector", report.toString())),
+                "the severity is the one the gate always read for this report: " + grades);
+    }
+
+    @Test
+    void theSynchronizedTwinCarriesNoGrade() throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = Calendar.getInstance();
+        Runnable body = () -> {
+            for (int i = 0; i < 5; i++) {
+                synchronized (cal) {
+                    cal.set(Calendar.DAY_OF_MONTH, i + 1);
+                    detector.recordSet(cal, "guarded-calendar");
+                }
+            }
+        };
+        Thread t1 = new Thread(body);
+        Thread t2 = new Thread(body);
+        t1.start(); t2.start(); t1.join(); t2.join();
+
+        assertEquals(java.util.List.of(), gradesOf(detector.analyze()),
+                "the same writes under the calendar's own monitor grade nothing");
+    }
 }

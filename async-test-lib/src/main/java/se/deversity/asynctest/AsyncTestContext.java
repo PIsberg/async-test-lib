@@ -962,6 +962,11 @@ public final class AsyncTestContext {
         if (abaProblemDetector != null) {
             abaProblemDetector.markInvocationStart();
         }
+        // A pooled worker's seek slot would otherwise hold its channel until that worker seeks
+        // again, if it ever does (#831).
+        if (fileChannelPositionRaceDetector != null) {
+            fileChannelPositionRaceDetector.markInvocationStart();
+        }
     }
 
     /**

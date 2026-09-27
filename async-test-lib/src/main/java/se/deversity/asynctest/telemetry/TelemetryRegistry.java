@@ -2789,6 +2789,91 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * The target an event carries when a thread is about to start another, with the child's id in
+     * the lock-fingerprint slot (#745); see {@link #OWNERSHIP_TAKEN} for why a reserved name.
+     */
+    static final String THREAD_STARTING = "#thread-starting";
+
+    /**
+     * The target an event carries when a thread hands a task to an executor, with the task's
+     * token in the lock-fingerprint slot (#745).
+     */
+    static final String TASK_SUBMITTED = "#task-submitted";
+
+    /** The target an event carries when a thread begins a handed task, with its token (#745). */
+    static final String TASK_STARTED = "#task-started";
+
+    /** The target an event carries when a thread has finished the handed task it began (#745). */
+    static final String TASK_ENDED = "#task-ended";
+
+    /**
+     * Records that the calling thread is about to start {@code child} (#745).
+     *
+     * <p>The bridge filters by thread, and the threads it knows are the runner's workers, so a
+     * thread a worker starts used to be dropped with every access it made. This event tells the
+     * bridge which thread started which: a thread started by one the bridge forwards is forwarded
+     * too, from its first access. Published before the start, so it drains ahead of anything the
+     * child publishes. Which run a thread belongs to is decided on the drain side, by the bridge of
+     * the run that sees this event, so nothing here is left behind on the thread for a later run
+     * to find.
+     *
+     * <p>Allocation-free and non-throwing like every other hook on this path.
+     *
+     * @param child the thread about to be started, not yet started; {@code null} records nothing
+     * @since 1.12.3
+     */
+    public static void threadStarting(@Nullable Thread child) {
+        if (child == null || STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), THREAD_STARTING, false, child.threadId());
+    }
+
+    /**
+     * Records that the calling thread hands the task {@code token} names to an executor (#745).
+     *
+     * <p>The executor starts its threads in code the agent does not weave, and the same thread runs
+     * tasks for anyone, so a pool thread is attributed per task rather than per thread: a task
+     * submitted by a thread the bridge forwards is forwarded while it runs, and nothing the thread
+     * does before or after it is.
+     *
+     * @param token the task's token, unique in the JVM; see {@link #taskStarted}
+     * @since 1.12.3
+     */
+    public static void taskSubmitted(long token) {
+        if (STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), TASK_SUBMITTED, false, token);
+    }
+
+    /**
+     * Records that the calling thread begins running the task {@code token} names (#745); must be
+     * followed by {@link #taskEnded()} on the same thread when the task ends, however it ends.
+     *
+     * @param token the token {@link #taskSubmitted} published for the task
+     * @since 1.12.3
+     */
+    public static void taskStarted(long token) {
+        if (STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), TASK_STARTED, false, token);
+    }
+
+    /**
+     * Records that the calling thread finished the task it began last (#745).
+     *
+     * @since 1.12.3
+     */
+    public static void taskEnded() {
+        if (STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), TASK_ENDED, false, 0L);
+    }
+
+    /**
      * Declares that a volatile write in the same method publishes {@code qualifiedName}.
      *
      * <p>Emitted by the weaver at the volatile write, once per plain field that method wrote before

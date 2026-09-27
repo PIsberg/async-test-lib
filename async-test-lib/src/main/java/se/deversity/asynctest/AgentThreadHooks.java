@@ -11,6 +11,7 @@ import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -81,6 +82,9 @@ public final class AgentThreadHooks {
     /**
      * Weaves {@link Thread#start()}.
      *
+     * <p>Besides the edge, the start tells the telemetry bridge that the child works for this
+     * thread, so a child a worker starts is attributed to the worker's run (#745).
+     *
      * @param receiver the thread to start
      */
     public static void threadStart(Thread receiver) {
@@ -92,6 +96,7 @@ public final class AgentThreadHooks {
         // a thread already running would be taken up by it as an edge that never existed.
         if (receiver.getState() == Thread.State.NEW) {
             HappensBefore.fork(receiver);
+            TelemetryRegistry.threadStarting(receiver);
         }
         receiver.start();
     }

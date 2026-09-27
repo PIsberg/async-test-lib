@@ -208,7 +208,7 @@ class DetectorTrustCoverageTest {
         GradedFindings.Grade prompt = new GradedFindings.Grade(IssueSeverity.MEDIUM, TrustTier.PROMPT, "owner");
 
         List<GradedFindings.Grade> clamped =
-                DetectorTrust.clampToCap("ConfinedArenaThreadEscapeDetector", List.of(verdict, prompt));
+                DetectorTrust.clampToCap("SharedMemorySegmentRaceDetector", List.of(verdict, prompt));
         assertEquals(List.of(new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.FACT, "closed"), prompt),
                 clamped, "an ASSERTED detector's VERDICT grade becomes FACT; severity and summary stay");
 
@@ -218,6 +218,32 @@ class DetectorTrustCoverageTest {
         assertEquals(TrustTier.PROMPT,
                 DetectorTrust.clampToCap("SomeThirdPartyDetector", List.of(verdict)).get(0).tier(),
                 "a detector the table does not know is capped at the PROMPT it resolves to");
+    }
+
+    /**
+     * A detector classified by its strongest path must not lend that path's cap to a finding its
+     * weaker path produced (#753). Before grades named their evidence the cap was per detector,
+     * so a detector with one JVM-answered path and one recorded path had to be classified by the
+     * recorded one, and the JVM-answered verdicts were clamped to FACT with it.
+     */
+    @Test
+    @DisplayName("a grade is capped by the evidence it names as well as by its detector's")
+    void clampActsPerGradeOnTheEvidenceEachNames() {
+        GradedFindings.Grade recorded = new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.VERDICT,
+                "closed", DetectorTrust.Evidence.ASSERTED);
+        GradedFindings.Grade observed = new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.VERDICT,
+                "refused", DetectorTrust.Evidence.OBSERVED);
+
+        assertEquals(List.of(new GradedFindings.Grade(IssueSeverity.CRITICAL, TrustTier.FACT, "closed",
+                                DetectorTrust.Evidence.ASSERTED), observed),
+                DetectorTrust.clampToCap("RecordMutableComponentLeakDetector", List.of(recorded, observed)),
+                "under an OBSERVED detector the recorded grade is capped at FACT and the observed one passes");
+        assertEquals(TrustTier.FACT,
+                DetectorTrust.clampToCap("SharedMemorySegmentRaceDetector", List.of(observed)).get(0).tier(),
+                "a grade's own evidence can only lower its detector's cap, never lift it");
+        assertEquals(TrustTier.PROMPT,
+                DetectorTrust.clampToCap("SomeThirdPartyDetector", List.of(observed)).get(0).tier(),
+                "a third-party grade claiming OBSERVED stays at the PROMPT an unknown detector gets");
     }
 
     @Test
@@ -307,9 +333,9 @@ class DetectorTrustCoverageTest {
     /**
      * The detectors that produce findings of different grades, and therefore have to grade them.
      *
-     * <p>Each is documented in {@code docs/DETECTOR_CATALOG.md} as verdict-grade on one path and
-     * weaker on another. A per-detector tier carries the weakest, so before per-finding grades a
-     * gate on {@code minTrust = VERDICT} missed their verdict-grade findings entirely. Dropping the
+     * <p>Each is documented in {@code docs/DETECTOR_CATALOG.md} as graded higher on one path than
+     * on another. A per-detector tier carries the weakest, so before per-finding grades a
+     * gate on {@code minTrust = VERDICT} or {@code FACT} missed their stronger findings entirely. Dropping the
      * interface from one of these would restore that false negative silently, which is what this
      * list is here to prevent.
      */
@@ -320,27 +346,36 @@ class DetectorTrustCoverageTest {
             "StaticInitDeadlockDetector",
             "VarHandleNonAtomicUpdateDetector",
             "SharedMemorySegmentRaceDetector",
-            "ConfinedArenaThreadEscapeDetector");
+            "ConfinedArenaThreadEscapeDetector",
+            // #754: a primary finding beside a threshold, a recorded error or an opt-in count.
+            "LockLeakDetector",
+            "BlockingQueueDetector",
+            "ThreadLeakDetector",
+            "CalendarDetector",
+            "SimpleDateFormatDetector",
+            "StringBuilderDetector");
 
     @Test
     @DisplayName("every split-tier detector grades its findings individually")
     void splitTierDetectorsGradeTheirFindings() {
         List<String> ungraded = new ArrayList<>();
         for (String detector : GRADED_DETECTORS) {
-            String reportClass = "se.deversity.asynctest.diagnostics." + detector + "$Report";
+            String detectorClass = "se.deversity.asynctest.diagnostics." + detector;
             try {
-                if (!GradedFindings.class.isAssignableFrom(Class.forName(reportClass))) {
+                // The report is whatever analyze() returns, which is not always a class named Report.
+                Class<?> report = Class.forName(detectorClass).getMethod("analyze").getReturnType();
+                if (!GradedFindings.class.isAssignableFrom(report)) {
                     ungraded.add(detector);
                 }
-            } catch (ClassNotFoundException e) {
-                fail("No report class " + reportClass + ". If the report was renamed, this list and "
-                        + "the catalog's trust-tier section both need to follow: " + e);
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                fail("No analyze() on " + detectorClass + ". If the detector or its report was "
+                        + "renamed, this list and the catalog's trust-tier section both need to follow: " + e);
             }
         }
         assertTrue(ungraded.isEmpty(),
-                "These detectors produce a verdict-grade finding and a weaker one, so their reports "
+                "These detectors produce a stronger finding and a weaker one, so their reports "
                         + "must implement GradedFindings. Without it the whole detector is judged at "
-                        + "its weakest tier and a minTrust = VERDICT gate stays green on findings the "
+                        + "its weakest tier and a minTrust gate stays green on findings the "
                         + "library can stand behind: " + ungraded);
     }
 

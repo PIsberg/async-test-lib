@@ -1530,7 +1530,7 @@ shape to add back:
 | `VIRTUAL_THREAD_PINNING` | every recorded pinning event is a finding; the platform-thread variant records nothing |
 | `THREAD_POOL_DEADLOCK` | any `nestedSubmissionCount > 0` fires, whatever the pool size |
 | `THIS_ESCAPE` | reports every instance with a non-empty escape set; the correct twin's calls are no-ops |
-| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, and the detector keyed on the instance, so every thread's correct `current()` fired. It now asks which threads recorded an obtain, so a pair is possible; it is not written yet |
+| `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, and the detector keyed on the instance, so every thread's correct `current()` fired. It now asks which threads recorded an obtain, and is paired further down (#761) |
 | `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` | `recordObtrude` is the only method and every entry is a violation |
 | `DEPRECATED_THREAD_API` | `recordApiUse` is the only method and every entry is a violation |
 
@@ -1553,7 +1553,8 @@ expectations are structural:
 agent-fed, 3 zero-config, leaving 125 recording-fed - and split into five refused for want of any
 documented contract plus the thirteen the triage rejected.
 
-The thirteen still stand and are tabulated above. The five did not. They were refused because no
+Twelve of the thirteen still stand and are tabulated above; `THREAD_LOCAL_RANDOM_MISUSE` was
+paired later (#761). The five did not. They were refused because no
 *corpus library* class documents a contract that reaches them, which is true and is the wrong
 question: `SHARED_CHECKSUM`, `SHARED_DEFLATER`, `SHARED_KDF`, `SHARED_TIMEZONE` and
 `SHARED_XML_PARSER` all key their state on instance identity, and the subject they want is the JDK
@@ -1814,16 +1815,42 @@ a confined one, which does not depend on the JDK's wording. But three of them ca
 is the same defect the netty `ByteBuf` note above refuses to leave unremarked. It is recorded in
 `Corpus`'s own comment and filed as #437.
 
+### Lock twins for two lockset detectors, and the `ThreadLocalRandom` refusal lifted (#771, #761)
+
+`VAR_HANDLE_NON_ATOMIC_UPDATE` and `SYSTEM_PROPERTY_MUTATION` stay silent when one lock covers
+every access, and until #771 only their unit tests said so. Each had a silent row, but it separated
+on something other than the lock: an atomic update in place of the plain set, and a key private to
+each thread. Each now has a third row that is its firing row inside a `synchronized` block and
+nothing else. `recorded_varHandle_plainGetThenPlainSetUnderTheReceiversMonitor` holds the
+receiver's monitor across the same plain get and plain set, on the same handle and receiver, and
+`recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor` holds
+`System.getProperties()` around the same shared-key write. Both stayed silent on their first run,
+and both fired with the `synchronized` removed, so the lock is what separates them.
+Neither moves a tier: `SYSTEM_PROPERTY_MUTATION` is already registered on its key-separated pair,
+and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades each finding, which `PairEvidence` holds back as
+`GRADED`.
+
+`THREAD_LOCAL_RANDOM_MISUSE` kept its refusal after its per-thread model landed and the idiom lane
+paired it, because `DetectorCoverage` counts the two pair lanes and lane one, not the idiom lane.
+The recording lane now pairs it on one class and the same two calls.
+`recorded_threadLocalRandom_capturedOnAnotherThread` uses the reference `current()` returned while
+the test class initialised, with the obtain recorded for the thread that made it;
+`recorded_threadLocalRandom_currentOnTheUsingThread` has each worker call `current()` first.
+`current()` returns one JVM-wide object, so both halves hand the detector the same instance and
+differ only in which thread obtained it, which is the defect. The refusal is deleted. The pair is
+measured but is not a promotion candidate: the detector decides from the body's own obtain and use
+records, so its evidence class caps it below `VERDICT`.
+
 ### Where the roster stands, derived rather than counted
 
 | | Detectors |
 |---|---|
-| Paired in the recording lane | 116 |
+| Paired in the recording lane | 117 |
 | Paired in the agent-pair lane | 16 |
 | ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
 | Paired by lane one over 139 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
-| **Total paired** | **131** |
-| Refused: every recorded event is a finding, so no silent twin can exist | 7 |
+| **Total paired** | **132** |
+| Refused: every recorded event is a finding, so no silent twin can exist | 6 |
 | Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
 | **Total** | **146** |
 
@@ -1841,15 +1868,15 @@ That is the property worth keeping, and it is no longer one this document assert
 detector that appears in no report and on no refusal list is a gap, and the build finds it - twice
 over, since a refusal that outlives its pair fails too.
 
-**What the fifteen refusals actually cost, which is less than the number suggests.** The library's
+**What the fourteen refusals actually cost, which is less than the number suggests.** The library's
 own `DetectorFiringContractTest` already requires every detector to have a test asserting a
 positive finding, so "can it fire" is gated for all 146 whether or not this corpus pairs them.
 What a corpus pair adds on top is the *other* direction: a case that goes through the same calls
 and must stay silent. That is the false-positive half, and it is the one no unit test tends to
 write, which is why it is worth a corpus at all.
 
-So the fifteen are not fifteen untested detectors. They are fifteen detectors whose
-false-positive half either provably cannot exist - seven whose every recorded event is a finding
+So the fourteen are not fourteen untested detectors. They are fourteen detectors whose
+false-positive half either provably cannot exist - six whose every recorded event is a finding
 by construction - or exists but cannot be asserted without the assertion resting on a clock, a
 core count or a GC pause. A row like that does not measure a detector; it measures the machine
 the build happened to run on, and it fails on somebody else's.
@@ -1902,9 +1929,9 @@ probe was not kept, so nothing would have noticed any of them coming back. The `
 broken twin: the same code with the synchronization removed or put in the wrong place. The agent is
 attached as `fields=true,collections=true` with Surefire's own classes excluded, as in lane one,
 and bodies record nothing, except in the rows `Corpus.idiomManualApiRows()` names with a reason:
-the idiom is invisible to every woven call site there, because the thread doing half of it is one
-the runner did not start and the agent drops (#500), or because `ThreadLocalRandom` and
-`java.util.Random` are not woven. `IdiomRowPremise` fails the lane if any other body touches
+the idiom is invisible to every woven call site there, because `ThreadLocalRandom` and
+`java.util.Random` are not woven, a check-then-act is no single call, or a pool hands out a holder
+around the instance a detector tracks. `IdiomRowPremise` fails the lane if any other body touches
 `AsyncTestContext`, and fails a named row whose body no longer does.
 
 **The bar on a correct row** is stricter than either pair lane's:
@@ -1943,6 +1970,14 @@ and an `AtomicReference` get acquires the store whose value it returned. In the 
 after (JDK 26, Windows 11), all four correct rows were silent with nothing at `FACT` or above, and
 their twins still drew `PROMPT`/`HIGH` from the detector they name; only the holder pool is left in
 `Corpus.idiomKnownGaps()`.
+
+**Two pairs moved to the woven path by #745.** The `Thread.start`/`join` and executor submit/get
+rows ran on the manual API in run L, recording both halves to `RaceConditionDetector`, because the
+agent dropped every access on a thread the runner did not start. The bridge now forwards a thread a
+worker starts, from its first access, and a pool thread while it runs a task a worker submitted.
+The four bodies record nothing and name `AtomicityValidator`. In the first full run after (JDK 26,
+Windows 11), both correct rows were silent with nothing at `FACT` or above, and both twins drew
+`PROMPT`/`HIGH` from `AtomicityValidator`. Run L's table below still shows the rows as they were.
 
 **What it found on its first run.** One seed row still drew a finding on the integration branch:
 a single writer bumping a volatile with a read-then-write while the other threads read it drew a
@@ -2024,9 +2059,9 @@ hand-off now names `AtomicityValidator`, and `SharedCollectionDetector` reports 
 **What it does not measure.** A correct row that other detectors question below `FACT` passes, and
 only the report says so. The idioms are the ones the probe and the model's documented limits named,
 not a survey of user code, so a clean lane is a floor under those shapes and no statement about any
-other. Rows whose idiom runs half on a thread the runner did not start are measured through the
-manual API, which tests the model and not the agent: until the agent can attribute such a thread's
-accesses to a round (#500), the woven path cannot see those idioms at all.
+other. Work a body hands to a thread in a way the agent does not see, a thread started in unwoven
+code or through a `Thread.Builder`, or a task given to `Executor.execute`, is still dropped, and no
+row measures it.
 
 ## Reproducing it
 

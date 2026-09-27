@@ -229,4 +229,53 @@ public class SimpleDateFormatDetectorTest {
         assertTrue(reportStr.contains("SIMPLE DATE FORMAT ISSUES DETECTED"), "Report should have header");
         assertTrue(reportStr.contains("Shared Formatter Instances"), "Report should mention shared formatters");
     }
+
+    // ---- grades follow the path, not one tier for the detector (#754) ---------------------------
+
+    /** {@return the report's per-finding grades, failing if the report does not grade} */
+    private static java.util.List<GradedFindings.Grade> gradesOf(Object report) {
+        return assertInstanceOf(GradedFindings.class, report,
+                "the report must grade each finding by the path behind it: " + report).grades();
+    }
+
+    @Test
+    void unguardedSharingIsAVerdictAndAnErrorWhileSharedAPrompt() {
+        SimpleDateFormatDetector detector = new SimpleDateFormatDetector();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        detector.registerFormatter(sdf, "shared-formatter");
+        detector.recordFormat(sdf, "shared-formatter");
+        onAnotherThread(() -> detector.recordFormat(sdf, "shared-formatter"));
+        detector.recordError(sdf, "shared-formatter", "NumberFormatException");
+
+        SimpleDateFormatDetector.SimpleDateFormatReport report = detector.analyze();
+        var grades = DetectorTrust.clampToCap("SimpleDateFormatDetector", gradesOf(report));
+        assertEquals(java.util.List.of(TrustTier.VERDICT, TrustTier.PROMPT),
+                grades.stream().map(GradedFindings.Grade::tier).toList(),
+                "the shared formatter first, then the error: " + grades);
+        assertEquals(java.util.List.of(DetectorTrust.Evidence.CONTEXTUAL, DetectorTrust.Evidence.CONTEXT_FREE),
+                grades.stream().map(GradedFindings.Grade::evidence).toList(),
+                "sharing is judged against the lockset, so the synchronized twin below is silent; "
+                        + "the error is blamed on sharing because two threads used the formatter at "
+                        + "some point in the run, guarded or not: " + grades);
+        assertTrue(grades.stream().allMatch(g -> g.severity()
+                        == DetectorDefaultSeverity.of("SimpleDateFormatDetector", report.toString())),
+                "the severity is the one the gate always read for this report: " + grades);
+    }
+
+    @Test
+    void theSynchronizedTwinCarriesNoGrade() {
+        SimpleDateFormatDetector detector = new SimpleDateFormatDetector();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        Runnable guarded = () -> {
+            synchronized (sdf) {
+                sdf.format(new java.util.Date(0));
+                detector.recordFormat(sdf, "guarded-formatter");
+            }
+        };
+        guarded.run();
+        onAnotherThread(guarded);
+
+        assertEquals(java.util.List.of(), gradesOf(detector.analyze()),
+                "the same formats under the formatter's own monitor grade nothing");
+    }
 }

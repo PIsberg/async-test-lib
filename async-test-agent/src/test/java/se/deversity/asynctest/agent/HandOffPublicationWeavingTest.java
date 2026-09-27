@@ -38,8 +38,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * agent does not see, because the test class is not woven. The only edge the model can know about
  * is the one the fixture's call makes, so a case asserts exactly that edge: the hand-off stays
  * silent, and its twin, the same accesses with the order broken, keeps its finding. An executor's
- * pool thread is not a worker, so its own accesses are dropped; what it contributes is the clock
- * it passes on.
+ * pool thread is not a worker; its accesses count only while it runs a task a worker submitted
+ * (#745), and what it contributes here is the clock it passes on.
  *
  * <p>Own class, because {@code selfAttach} is at most once per JVM and this one needs
  * {@code fields=true} and {@code collections=true}; {@code forkEvery=1} gives it its own JVM.

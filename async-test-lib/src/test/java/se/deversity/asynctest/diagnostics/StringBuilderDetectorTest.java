@@ -501,4 +501,54 @@ public class StringBuilderDetectorTest {
         assertTrue(report.contains("out: writes: 0 from 0 thread(s), reads: 1, errors: 0"),
                 "the read builder's line survives beside the written one's: " + report);
     }
+
+    // ---- grades follow the path, not one tier for the detector (#754) ---------------------------
+
+    /** {@return the report's per-finding grades, failing if the report does not grade} */
+    private static java.util.List<GradedFindings.Grade> gradesOf(Object report) {
+        return assertInstanceOf(GradedFindings.class, report,
+                "the report must grade each finding by the path behind it: " + report).grades();
+    }
+
+    @Test
+    void unguardedWritersInOneRoundAreAVerdictAndTheirErrorsAPrompt() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable appendThenFail = () -> {
+            detector.recordAppend(sb, "log");
+            detector.recordError(sb, "log", "StringIndexOutOfBoundsException");
+        };
+        round(scope, appendThenFail, appendThenFail);
+
+        StringBuilderDetector.StringBuilderReport report = detector.analyze();
+        var grades = DetectorTrust.clampToCap("StringBuilderDetector", gradesOf(report));
+        assertEquals(java.util.List.of(TrustTier.VERDICT, TrustTier.PROMPT),
+                grades.stream().map(GradedFindings.Grade::tier).toList(),
+                "the shared builder first, then its exceptions: " + grades);
+        assertEquals(java.util.List.of(DetectorTrust.Evidence.CONTEXTUAL, DetectorTrust.Evidence.CONTEXT_FREE),
+                grades.stream().map(GradedFindings.Grade::evidence).toList(),
+                "two writers are judged against the round's lockset; the exceptions are blamed on "
+                        + "sharing because several threads used the builder, whatever they held: " + grades);
+        assertTrue(grades.stream().allMatch(g -> g.severity()
+                        == DetectorDefaultSeverity.of("StringBuilderDetector", report.toString())),
+                "the severity is the one the gate always read for this report: " + grades);
+    }
+
+    @Test
+    void theSynchronizedTwinCarriesNoGrade() throws InterruptedException {
+        StringBuilderDetector detector = new StringBuilderDetector();
+        StringBuilder sb = new StringBuilder();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable guarded = () -> {
+            synchronized (sb) {
+                sb.append('x');
+                detector.recordAppend(sb, "log");
+            }
+        };
+        round(scope, guarded, guarded);
+
+        assertEquals(java.util.List.of(), gradesOf(detector.analyze()),
+                "the same writers under the builder's own monitor grade nothing");
+    }
 }

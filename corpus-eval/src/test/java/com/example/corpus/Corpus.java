@@ -2814,6 +2814,15 @@ final class Corpus {
                             + "contends, so what remains is a single-threaded mutation, which "
                             + "this detector deliberately does not report"),
 
+            new RecordingSubject("recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the firing row's six writers of one process-global key, each holding the "
+                            + "properties table's own monitor. The writes take turns, which is "
+                            + "how a set-and-restore shares a global property correctly, so the "
+                            + "one thing left is the hygiene note the detector gives any mutation"),
+
             // --- WeakReferenceRace: the referent can be collected between a null check and a
             //     use, and the pair differs by whether anything keeps it reachable.
 
@@ -3309,6 +3318,15 @@ final class Corpus {
                             + "compareAndSet and getAndAdd for. The pair separates on the "
                             + "access mode the caller chose"),
 
+            new RecordingSubject("recorded_varHandle_plainGetThenPlainSetUnderTheReceiversMonitor", JDK,
+                    "java.lang.invoke.VarHandle",
+                    DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the plain get and plain set of the firing row on the same handle and "
+                            + "receiver, with every thread holding the receiver's monitor across "
+                            + "both. The threads take turns, so no write can land between a read "
+                            + "and its write, and the monitor orders what plain mode does not"),
+
             // --- The thread-lifecycle family. Four detectors that watch what happens to a
             //     thread rather than to shared data: was it joined, did anyone hear it die, will
             //     it hold the JVM open, and was it built with the hygiene a pool needs.
@@ -3479,6 +3497,28 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "a generator per thread, which is what split() is for and what the javadoc "
                             + "prescribes. No instance is ever recorded from a second thread"),
+
+            // --- ThreadLocalRandomMisuse: current() returns one JVM-wide object, so the pair
+            //     cannot differ by instance. It differs by which thread called current().
+
+            new RecordingSubject("recorded_threadLocalRandom_capturedOnAnotherThread", JDK,
+                    "java.util.concurrent.ThreadLocalRandom",
+                    DetectorType.THREAD_LOCAL_RANDOM_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the reference current() returned while the test class initialised is used "
+                            + "by every worker thread, and none of them called current(). The "
+                            + "generator keeps its seed on the calling thread, and current() is "
+                            + "what seeds it, so each worker draws from a seed nobody set",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("recorded_threadLocalRandom_currentOnTheUsingThread", JDK,
+                    "java.util.concurrent.ThreadLocalRandom",
+                    DetectorType.THREAD_LOCAL_RANDOM_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same use, with each worker calling current() itself first. It gets "
+                            + "back the same object the capture holds, so the halves differ only "
+                            + "in which thread called current(), and here that is the thread "
+                            + "whose seed the draw uses"),
 
             // --- The CompletableFuture protocol family. Five detectors on the same class, each
             //     asking a different question about what the caller did with the pipeline: was
@@ -4336,7 +4376,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_threadStartJoin_ordersTheChildsWrite", JDK,
                     "java.lang.Thread",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the parent writes the input before start() and reads the output after "
                             + "join(). Thread.start orders the first and Thread.join the second, "
@@ -4344,7 +4384,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_threadStartJoin_readsBeforeTheJoin", JDK,
                     "java.lang.Thread",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same child with the parent reading its output before join(). Nothing "
                             + "orders the child's write against that read",
@@ -4553,7 +4593,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_executorSubmit_futureGetOrdersTheTask", JDK,
                     "java.util.concurrent.ExecutorService",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the input is written before submit() and the output read after get(). The "
                             + "java.util.concurrent package javadoc orders both: submission "
@@ -4561,7 +4601,7 @@ final class Corpus {
 
             new RecordingSubject("idiom_executorSubmit_readsBeforeTheGet", JDK,
                     "java.util.concurrent.ExecutorService",
-                    DetectorType.RACE_CONDITIONS, Contract.THREAD_SAFE,
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same task with the output read before get(), unordered with the "
                             + "task's write",
@@ -4679,19 +4719,6 @@ final class Corpus {
                             + "body"),
             Map.entry("idiom_sharedRandom_splittableDrawnByEveryThread",
                     "the twin of the row above, on the SplittableRandom recording API"),
-            Map.entry("idiom_threadStartJoin_ordersTheChildsWrite",
-                    "the agent drops accesses on a thread the runner did not start (#500), so the "
-                            + "child's half of the idiom is invisible to it; the body records both "
-                            + "halves to RaceConditionDetector, and the woven start and join are "
-                            + "the edges"),
-            Map.entry("idiom_threadStartJoin_readsBeforeTheJoin",
-                    "the twin of the row above, recording the same accesses the same way"),
-            Map.entry("idiom_executorSubmit_futureGetOrdersTheTask",
-                    "the pool thread is not a runner worker, so the agent drops the task's "
-                            + "accesses (#500); the body records both halves to "
-                            + "RaceConditionDetector"),
-            Map.entry("idiom_executorSubmit_readsBeforeTheGet",
-                    "the twin of the row above, recording the same accesses the same way"),
             Map.entry("idiom_digestHolderPool_checkoutDeclared",
                     "the woven take names the holder, not the digest the detector tracks, and a "
                             + "monitor is no edge (#747), so the taker declares the checkout with "

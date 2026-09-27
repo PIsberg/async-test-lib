@@ -65,14 +65,15 @@ d.recordImplicitPositionAccess(channel, "read(buf)");     // the read relying on
 assertTrue(d.analyze().hasIssues());
 ```
 
-An operation whose name starts with `position` opens a seek, and the same thread's next
-implicit-position call on that channel is the I/O relying on it. The finding needs such a
-sequence and another thread's implicit-position call that no common lock keeps out of it.
+An operation whose name starts with `position` opens a seek, and every read or write the same
+thread makes on that channel after it, until its next seek, is I/O relying on it. The finding
+needs such a sequence and another thread's implicit-position call that no common lock keeps out
+of it.
 Self-contained `read(buf)` / `write(buf)` calls with no seek before them are recorded but
 never reported on their own, and `recordPositionalAccess` registers the channel and never
 reports it. Holding the channel's own monitor, or a lock declared with
 `AsyncTestContext.holdingLock(...)`, across the seek and the I/O on every thread keeps it
-silent.
+silent; a lock let go and taken again between them does not.
 
 Inside `@AsyncTest`, grab it with `AsyncTestContext.fileChannelPositionRaceDetector()`,
 select it alone with `includes = { DetectorType.FILE_CHANNEL_POSITION_RACE }`, or drop it
