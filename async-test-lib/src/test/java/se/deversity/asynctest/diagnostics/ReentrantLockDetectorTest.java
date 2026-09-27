@@ -110,7 +110,12 @@ public class ReentrantLockDetectorTest {
         ReentrantLock lock = new ReentrantLock();
 
         detector.registerLock(lock, "testLock");
-        Thread leaker = new Thread(lock::lock, "leaker");
+        // The holder records its acquisition: a hold is judged only for the named thread
+        // recorded taking it (#848).
+        Thread leaker = new Thread(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, "leaker");
+        }, "leaker");
         leaker.start();
         leaker.join(10_000);
         detector.recordLockTimeout(lock);

@@ -227,38 +227,27 @@ public class LockLeakDetector {
      * unnamed virtual thread's, a name another live platform thread also carries is ambiguous, and
      * a name the recorded thread does not carry belongs to a thread that never recorded: finding
      * no live platform thread of that name says nothing about a virtual one, which no scan can
-     * list. Each stays at its recorded grade; {@code ReentrantLockDetector}'s own finding still
-     * reads the name alone. What remains is a virtual thread deliberately given the recorded
-     * thread's non-empty name.
+     * list. Each stays at its recorded grade. {@code ReentrantLockDetector} judges its own held-lock
+     * finding by the same rule, through the same code (#848). What remains is a virtual thread
+     * deliberately given the recorded thread's non-empty name.
      */
     private static @Nullable String confirmedHold(ReentrantLock lock, @Nullable Thread recorded,
                                                   Set<Thread> platformThreads) {
-        if (recorded == null || !lock.isLocked() || lock.isHeldByCurrentThread()) {
+        if (!lock.isLocked() || lock.isHeldByCurrentThread()) {
             return null;
         }
         String holderName = ReentrantLockDetector.holderNameOf(lock);
-        if (holderName == null || holderName.isEmpty() || !holderName.equals(recorded.getName())
-                || anotherLiveThreadIsNamed(holderName, recorded, platformThreads)) {
+        if (holderName == null) {
             return null;
         }
         ReentrantLockDetector.HolderState state = ReentrantLockDetector.holderState(
-                holderName, recorded, Set.of(), platformThreads);
-        if (state == ReentrantLockDetector.HolderState.WORKING) {
+                holderName, recorded, platformThreads);
+        if (state == null || state == ReentrantLockDetector.HolderState.WORKING) {
             return null;
         }
         return String.format(" - ReentrantLock.isLocked() confirms it: held by '%s', %s",
                 holderName, state == ReentrantLockDetector.HolderState.IDLE
                         ? "now idle in its pool" : "which has finished");
-    }
-
-    /** {@return whether a live platform thread other than {@code recorded} is also named {@code name}} */
-    private static boolean anotherLiveThreadIsNamed(String name, Thread recorded, Set<Thread> platformThreads) {
-        for (Thread thread : platformThreads) {
-            if (!thread.equals(recorded) && thread.isAlive() && name.equals(thread.getName())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

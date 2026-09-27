@@ -34,17 +34,19 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * <p>A hold is a leak only if its holder has stopped working (#609). The lock names its holder only
  * by name ({@code "Locked by thread X"}), and a name is not an identity: virtual threads are unnamed
- * by default, so every one of them is {@code ""}. So the holder is first the thread last recorded
- * acquiring the lock while holding it, when that thread has the name the lock gives; only failing
- * that is it looked up by name among the threads that recorded against the lock and the live
- * platform threads. The hold is reported when no thread of that name is alive (the
- * holder finished with the lock taken), or when every one that is sits idle in a pool
- * ({@code ThreadPoolExecutor.getTask}, {@code ForkJoinPool.awaitWork}), which is how a runner worker
- * or an executor thread looks once the task that took the lock has ended. A holder that is alive
- * and anywhere else may still release the lock, so its hold is printed as context and not judged.
- * The boundary: a virtual thread the body started, which never recorded against the lock and is
- * still working when analysis starts, cannot be found (virtual threads are not enumerable), so its
- * hold is reported as if the holder had finished.
+ * by default, so every one of them is {@code ""}. So a hold is judged only when the name can be
+ * nobody but the thread last recorded acquiring the lock while holding it
+ * ({@link #recordLockAcquired}): the name is not empty, it is that thread's, and no other live
+ * platform thread carries it (#843, #848). The hold is then reported when that thread has finished
+ * with the lock taken, or sits idle in a pool ({@code ThreadPoolExecutor.getTask},
+ * {@code ForkJoinPool.awaitWork}), which is how a runner worker or an executor thread looks once the
+ * task that took the lock has ended. A recorded holder that is alive and anywhere else may still
+ * release the lock, so its hold is printed as context. So is every hold whose name identifies no
+ * one: an unnamed virtual thread, a name another live platform thread shares, or a thread that
+ * never recorded taking the lock, which, if it is virtual, no scan can list to see whether it is
+ * still running. The runner names its workers, so a worker that records its acquisition and ends
+ * holding the lock is reported. What remains is a virtual thread deliberately given the recorded
+ * thread's non-empty name.
  *
  * <p><strong>What it records but does not report:</strong>
  * <ul>
@@ -158,7 +160,10 @@ public class ReentrantLockDetector {
      * <p>Call it while holding the lock, straight after acquiring. The lock is asked then which of
      * the threads that recorded against it are still queued, which is how a thread passed over by
      * another that barged ahead of it twice is seen (see
-     * {@link #recordStarvation(ReentrantLock, String, long)}).
+     * {@link #recordStarvation(ReentrantLock, String, long)}). The calling thread also becomes the
+     * lock's recorded holder until it records giving its last hold back, and a hold still taken at
+     * analysis is judged only for that thread, when it carries a non-empty name (see the class
+     * description).
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param threadName a label identifying the thread in the report
@@ -307,8 +312,13 @@ public class ReentrantLockDetector {
             if (platformThreads == null) {
                 platformThreads = Thread.getAllStackTraces().keySet();
             }
-            HolderState state = stateOf(holderName, lock, platformThreads);
-            if (state == HolderState.WORKING) {
+            Observed seen = observed.get(lock);
+            Thread recorded = seen != null ? seen.holder.get() : null;
+            HolderState state = holderState(holderName, recorded, platformThreads);
+            if (state == null) {
+                stillWorking.put(lock, holder + ", a thread the detector cannot identify: "
+                        + whyUnidentified(holderName, recorded));
+            } else if (state == HolderState.WORKING) {
                 stillWorking.put(lock, holder + ", still running");
             } else {
                 held.put(lock, holder + (state == HolderState.IDLE
@@ -322,49 +332,56 @@ public class ReentrantLockDetector {
     /** Where the thread holding a lock is when the run is analysed. */
     enum HolderState { GONE, IDLE, WORKING }
 
-    private HolderState stateOf(String holderName, ReentrantLock lock, Set<Thread> platformThreads) {
-        Observed seen = observed.get(lock);
-        return holderState(holderName, seen != null ? seen.holder.get() : null,
-                seen != null ? seen.threads : Set.of(), platformThreads);
-    }
-
     /**
-     * {@return where the thread the lock names as its holder is now}: the {@code recorded} holder
-     * itself when it carries that name, otherwise every alive thread of that name among
-     * {@code recordedThreads} and {@code platformThreads}. {@link LockLeakDetector} asks the same
-     * question of a leak it counted (#837), so the two cannot disagree about one hold.
+     * {@return where the thread the lock names as its holder is now, or {@code null} when the name
+     * does not identify it}. {@link LockLeakDetector} asks the same question of a leak it counted
+     * (#837), so the two cannot disagree about one hold.
+     *
+     * <p>The lock names its holder only by name, so the answer is the {@code recorded} thread's own
+     * state, and only when the name can be nobody else's (#843, #848): it is not empty, since every
+     * unnamed virtual thread is {@code ""}; it is the recorded thread's, since finding no live
+     * platform thread of a name says nothing about a virtual one, which no scan can list; and no
+     * other live platform thread carries it. A virtual thread deliberately given the recorded
+     * thread's non-empty name still passes, since nothing at analysis can list it.
      *
      * @param holderName      the holder's name as {@link #holderNameOf} read it from the lock
      * @param recorded        the thread last recorded acquiring the lock while holding it, or
      *                        {@code null} when none was
-     * @param recordedThreads threads that recorded against the lock, which may include virtual
-     *                        threads that {@code platformThreads} cannot list
-     * @param platformThreads the live platform threads, read once per analysis
+     * @param platformThreads the live platform threads, read once per analysis and searched for
+     *                        another thread with the holder's name
      */
-    static HolderState holderState(String holderName, @Nullable Thread recorded,
-                                   Set<Thread> recordedThreads, Set<Thread> platformThreads) {
-        if (recorded != null && holderName.equals(recorded.getName())) {
-            // The thread itself, not a name: another alive thread that shares the name, as every
-            // unnamed virtual thread does, is not the holder and must not excuse its hold.
-            if (!recorded.isAlive()) {
-                return HolderState.GONE;
-            }
-            return idleInAPool(recorded) ? HolderState.IDLE : HolderState.WORKING;
+    static @Nullable HolderState holderState(String holderName, @Nullable Thread recorded,
+                                             Set<Thread> platformThreads) {
+        if (recorded == null || holderName.isEmpty() || !holderName.equals(recorded.getName())
+                || anotherLiveThreadIsNamed(holderName, recorded, platformThreads)) {
+            return null;
         }
-        Set<Thread> candidates = Collections.newSetFromMap(new IdentityHashMap<>());
-        candidates.addAll(recordedThreads);
-        candidates.addAll(platformThreads);
-        boolean anyAlive = false;
-        for (Thread thread : candidates) {
-            if (!thread.isAlive() || !holderName.equals(thread.getName())) {
-                continue;
-            }
-            anyAlive = true;
-            if (!idleInAPool(thread)) {
-                return HolderState.WORKING;
+        if (!recorded.isAlive()) {
+            return HolderState.GONE;
+        }
+        return idleInAPool(recorded) ? HolderState.IDLE : HolderState.WORKING;
+    }
+
+    /** {@return whether a live platform thread other than {@code recorded} is also named {@code name}} */
+    private static boolean anotherLiveThreadIsNamed(String name, Thread recorded, Set<Thread> platformThreads) {
+        for (Thread thread : platformThreads) {
+            if (!thread.equals(recorded) && thread.isAlive() && name.equals(thread.getName())) {
+                return true;
             }
         }
-        return anyAlive ? HolderState.IDLE : HolderState.GONE;
+        return false;
+    }
+
+    /** {@return why {@link #holderState} could not tell who holds a lock named {@code holderName}} */
+    private static String whyUnidentified(String holderName, @Nullable Thread recorded) {
+        if (holderName.isEmpty()) {
+            return "every unnamed virtual thread is named \"\"";
+        }
+        if (recorded == null || !holderName.equals(recorded.getName())) {
+            return "it never recorded taking the lock, and a virtual thread cannot be listed to see "
+                    + "whether it is still running";
+        }
+        return "another live platform thread carries the same name";
     }
 
     /**
@@ -415,7 +432,7 @@ public class ReentrantLockDetector {
         private final Set<String> recordedWaits;
         /** Each lock held at analysis by a holder that stopped working, with that holder. */
         private final Map<ReentrantLock, String> heldLocks;
-        /** Each lock held at analysis by a holder still working, printed as context. */
+        /** Each lock held at analysis by a holder still working or not identified, printed as context. */
         private final Map<ReentrantLock, String> stillWorking;
 
         /**
@@ -536,12 +553,13 @@ public class ReentrantLockDetector {
             }
 
             if (!stillWorking.isEmpty()) {
-                sb.append("  Context - locks held at analysis by a thread still working (not judged):\n");
+                sb.append("  Context - locks held at analysis, not judged:\n");
                 stillWorking.forEach((lock, holder) -> sb.append("    - ").append(infoFor(lock).name)
                         .append(" (").append(holder).append(")\n"));
                 sb.append("""
-       The holder is alive and not idle in a pool, so it may still release the lock. A hold is a
-       leak once its holder has finished or gone back to its pool.
+       A holder still running may yet release the lock. The lock names its holder only by name, so a
+       hold is judged only for the named thread recorded taking it (recordLockAcquired), and is a
+       leak once that thread has finished or gone back to its pool.
 """);
             }
 
@@ -583,7 +601,7 @@ public class ReentrantLockDetector {
      *
      * <p>{@link #threads} is every thread that recorded against the lock, which is who
      * {@link ReentrantLock#hasQueuedThread(Thread)} can be asked about (the lock does not list its
-     * queue publicly) and where a virtual holder is found at analysis.
+     * queue publicly).
      */
     private static final class Observed {
         final Set<Thread> threads = ConcurrentHashMap.newKeySet();

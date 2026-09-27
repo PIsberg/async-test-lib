@@ -177,7 +177,10 @@ class ReentrantLockDetectorModelTest {
     void anUnregisteredTimedOutLockIsCheckedForALeakedHold() throws InterruptedException {
         ReentrantLockDetector detector = new ReentrantLockDetector();
         ReentrantLock lock = new ReentrantLock();
-        onAnotherThread(lock::lock); // taken and never given back
+        onAnotherThread(() -> {
+            lock.lock(); // taken and never given back
+            detector.recordLockAcquired(lock, "worker"); // recorded, but still never registered
+        });
         detector.recordLockTimeout(lock);
 
         ReentrantLockDetector.ReentrantLockReport report = detector.analyze();

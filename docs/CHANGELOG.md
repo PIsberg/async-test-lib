@@ -395,6 +395,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   idle in the runner's pool at analysis; the runner shuts its executor down first, and the virtual
   worker has ended. The workers that find the lock taken now join the holder's thread, bounded, so
   it has ended before the last round does.
+- **`REENTRANT_LOCK` judges a held lock only for the named thread recorded taking it (#848).** Its
+  held-at-analysis finding read the lock's holder name the way `LOCK_LEAKS` did before #843, and it
+  is a VERDICT. After an unnamed virtual thread recorded taking and releasing a lock, another
+  unnamed virtual thread that never recorded took it and kept working, and the lock's empty name
+  matched no live platform thread, so the detector reported "Locked by thread , which has
+  finished". A named virtual holder that never recorded read as finished the same way, and so did a
+  recorded thread that had ended while a live platform thread of the same name held the lock. The
+  detector now applies the #843 rule, through the same code `LOCK_LEAKS` uses: a hold is judged only
+  when the lock's holder name is not empty, is the name of the thread last recorded acquiring the
+  lock while holding it (`recordLockAcquired`), and no other live platform thread carries it.
+  Every other hold is printed as context, "a thread the detector cannot identify", with the
+  reason, and is not a finding. Behaviour change: a hold left by a thread that never recorded its
+  acquisition, or by an unnamed virtual thread, is no longer reported by this detector alone; with
+  `LOCK_LEAKS` enabled (the default) an unbalanced recorded pair is still reported there as a FACT.
+  The runner names its workers, so the documented shape, a worker that records its acquisition and
+  ends holding the lock, is still reported at VERDICT, and the corpus pair is unchanged.
 - **`ABA_PROBLEM` is fed by the agent, and a toggle that ran before the read is no longer an ABA
   there (#817).** Recorded by hand, two threads that swing a value A to B to A wholly before a
   third thread reads it, and record the swing after the read, leave exactly the records of a real
