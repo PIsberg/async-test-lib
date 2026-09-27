@@ -320,11 +320,29 @@ public class ReentrantLockDetector {
     }
 
     /** Where the thread holding a lock is when the run is analysed. */
-    private enum HolderState { GONE, IDLE, WORKING }
+    enum HolderState { GONE, IDLE, WORKING }
 
     private HolderState stateOf(String holderName, ReentrantLock lock, Set<Thread> platformThreads) {
         Observed seen = observed.get(lock);
-        Thread recorded = seen != null ? seen.holder.get() : null;
+        return holderState(holderName, seen != null ? seen.holder.get() : null,
+                seen != null ? seen.threads : Set.of(), platformThreads);
+    }
+
+    /**
+     * {@return where the thread the lock names as its holder is now}: the {@code recorded} holder
+     * itself when it carries that name, otherwise every alive thread of that name among
+     * {@code recordedThreads} and {@code platformThreads}. {@link LockLeakDetector} asks the same
+     * question of a leak it counted (#837), so the two cannot disagree about one hold.
+     *
+     * @param holderName      the holder's name as {@link #holderNameOf} read it from the lock
+     * @param recorded        the thread last recorded acquiring the lock while holding it, or
+     *                        {@code null} when none was
+     * @param recordedThreads threads that recorded against the lock, which may include virtual
+     *                        threads that {@code platformThreads} cannot list
+     * @param platformThreads the live platform threads, read once per analysis
+     */
+    static HolderState holderState(String holderName, @Nullable Thread recorded,
+                                   Set<Thread> recordedThreads, Set<Thread> platformThreads) {
         if (recorded != null && holderName.equals(recorded.getName())) {
             // The thread itself, not a name: another alive thread that shares the name, as every
             // unnamed virtual thread does, is not the holder and must not excuse its hold.
@@ -334,9 +352,7 @@ public class ReentrantLockDetector {
             return idleInAPool(recorded) ? HolderState.IDLE : HolderState.WORKING;
         }
         Set<Thread> candidates = Collections.newSetFromMap(new IdentityHashMap<>());
-        if (seen != null) {
-            candidates.addAll(seen.threads);
-        }
+        candidates.addAll(recordedThreads);
         candidates.addAll(platformThreads);
         boolean anyAlive = false;
         for (Thread thread : candidates) {

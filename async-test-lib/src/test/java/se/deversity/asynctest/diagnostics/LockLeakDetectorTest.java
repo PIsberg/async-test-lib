@@ -308,4 +308,151 @@ public class LockLeakDetectorTest {
 
         assertEquals(List.of(), gradesOf(detector.analyze()), "the correct twin grades nothing");
     }
+
+    // ---- the lock itself confirms the leak (#837) ------------------------------------------------
+
+    /** Takes {@code lock} on a thread of its own, records it and ends without unlocking. */
+    private static void leakOnAThreadThatEnds(LockLeakDetector detector, java.util.concurrent.locks.Lock lock,
+                                              String name) throws InterruptedException {
+        Thread leaker = new Thread(() -> {
+            lock.lock();
+            detector.recordLockAcquired(lock, name);
+        }, name + "-leaker");
+        leaker.start();
+        leaker.join();
+    }
+
+    @Test
+    void aLeakTheLockStillHoldsForAThreadThatEndedIsAVerdict() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        leakOnAThreadThatEnds(detector, lock, "orphaned");
+        assertTrue(lock.isLocked(), "precondition: a ReentrantLock outlives the thread that holds it");
+
+        LockLeakDetector.LockLeakReport report = detector.analyze();
+        List<GradedFindings.Grade> grades = DetectorTrust.clampToCap("LockLeakDetector", gradesOf(report));
+        assertEquals(2, grades.size(), "the imbalance and the lock still held: " + grades);
+        for (GradedFindings.Grade grade : grades) {
+            assertEquals(TrustTier.VERDICT, grade.tier(),
+                    "ReentrantLock.isLocked() says the hold outlived its holder, which is the JVM's "
+                            + "answer and not the recording's: " + grade);
+            assertEquals(DetectorTrust.Evidence.OBSERVED, grade.evidence(), grade.toString());
+        }
+        assertTrue(report.toString().contains("isLocked()"), "the report names what confirmed it: " + report);
+    }
+
+    @Test
+    void aPoolWorkerLeftIdleWithTheLockIsAVerdict() throws Exception {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            Thread worker = pool.submit(() -> {
+                lock.lock();
+                detector.recordLockAcquired(lock, "pooled");
+                return Thread.currentThread();
+            }).get();
+            waitUntilIdle(worker);
+
+            List<GradedFindings.Grade> grades = gradesOf(detector.analyze());
+            assertFalse(grades.isEmpty(), "the leak is reported");
+            assertTrue(grades.stream().allMatch(g -> g.tier() == TrustTier.VERDICT),
+                    "the task ended and its worker waits for the next one, holding the lock: " + grades);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void aHolderStillWorkingStaysAFact() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        java.util.concurrent.CountDownLatch holding = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread holder = new Thread(() -> {
+            lock.lock();
+            try {
+                detector.recordLockAcquired(lock, "busy");
+                holding.countDown();
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        }, "busy-holder");
+        holder.start();
+        try {
+            holding.await();
+            List<GradedFindings.Grade> grades = gradesOf(detector.analyze());
+            assertFalse(grades.isEmpty(), "the recorded imbalance is still reported");
+            for (GradedFindings.Grade grade : grades) {
+                assertEquals(TrustTier.FACT, grade.tier(),
+                        "a holder that is still running may yet release the lock: " + grade);
+                assertEquals(DetectorTrust.Evidence.ASSERTED, grade.evidence(), grade.toString());
+            }
+        } finally {
+            release.countDown();
+            holder.join();
+        }
+    }
+
+    @Test
+    void theAnalysingThreadsOwnHoldIsNotConfirmed() {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        lock.lock();
+        try {
+            detector.recordLockAcquired(lock, "mine");
+            List<GradedFindings.Grade> grades = gradesOf(detector.analyze());
+            assertFalse(grades.isEmpty(), grades.toString());
+            assertTrue(grades.stream().allMatch(g -> g.tier() == TrustTier.FACT),
+                    "the thread analysing is not done with its own hold: " + grades);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Test
+    void aLeakOnALockThatCannotBeAskedStaysAFact() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        java.util.concurrent.locks.Lock writeLock = new java.util.concurrent.locks.ReentrantReadWriteLock().writeLock();
+        leakOnAThreadThatEnds(detector, writeLock, "rw");
+
+        List<GradedFindings.Grade> grades = gradesOf(detector.analyze());
+        assertFalse(grades.isEmpty(), grades.toString());
+        assertTrue(grades.stream().allMatch(g -> g.tier() == TrustTier.FACT),
+                "only a ReentrantLock is asked whether it is still held: " + grades);
+    }
+
+    @Test
+    void aReleaseOnAThreadThatEndedCarriesNoGrade() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        Thread worker = new Thread(() -> {
+            lock.lock();
+            try {
+                detector.recordLockAcquired(lock, "tidy");
+            } finally {
+                lock.unlock();
+                detector.recordLockReleased(lock, "tidy");
+            }
+        }, "tidy-worker");
+        worker.start();
+        worker.join();
+
+        assertEquals(List.of(), gradesOf(detector.analyze()), "unlock in finally is the correct twin");
+    }
+
+    /** Waits until {@code worker} is parked waiting for its pool's next task. */
+    private static void waitUntilIdle(Thread worker) throws InterruptedException {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (ReentrantLockDetector.idleInAPool(worker)) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        fail("the pool worker never went idle");
+    }
 }

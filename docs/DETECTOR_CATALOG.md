@@ -170,7 +170,13 @@ formatter or builder with no common lock in the per-round lockset (`CALENDAR`,
 `SIMPLE_DATE_FORMAT`, `STRING_BUILDER`, `CONTEXTUAL`). Two get FACT, because their primary finding
 is arithmetic over recorded calls: an acquire with no release or a lock left held (`LOCK_LEAKS`),
 and an offer whose `false` was discarded (`BLOCKING_QUEUE`), which may also be a lossy queue by
-design. The secondary paths keep their grade: the 5 s hold, 90% of capacity and the auto mode's
+design. Since #837 `LOCK_LEAKS` asks a `ReentrantLock` too: a counted leak the lock still holds,
+for a holder that has ended or sits idle in its pool, is VERDICT on `OBSERVED` evidence, by the
+same holder test `REENTRANT_LOCK` uses, and the detector is classified `OBSERVED`. A holder still
+running, a lock that is free, and any other `Lock` keep the FACT. `BLOCKING_QUEUE` has no such
+probe: a discarded `false` is an event in the past that the queue's state at analysis cannot
+confirm, and a queue that drops on purpose would draw the same finding, so it stays FACT. The
+secondary paths keep their grade: the 5 s hold, 90% of capacity and the auto mode's
 thread count stay PROMPT, the error findings of `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` stay
 PROMPT, and `CALENDAR`'s recorded error stays FACT. The detector-wide tiers do not move, since each
 still carries its weakest grade. Their pairs still run and still gate the corpus; the evidence file

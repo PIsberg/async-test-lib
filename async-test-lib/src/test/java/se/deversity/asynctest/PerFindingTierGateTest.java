@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -127,6 +128,34 @@ class PerFindingTierGateTest {
     }
 
     /**
+     * A leaked {@code ReentrantLock} fails a VERDICT-only gate (#837). The recorded acquire with no
+     * release is arithmetic over the body's own record calls, a FACT on its own; the lock still
+     * held for a worker that went back to the runner's pool is the JVM's answer, and makes the
+     * leak a verdict.
+     */
+    @Test
+    @DisplayName("a lock leak the lock itself confirms trips a VERDICT-only gate")
+    void aLeakTheLockConfirmsTripsAVerdictOnlyGate() {
+        Events tests = run(LeakedLockUnderVerdictFloorDummy.class);
+        tests.assertStatistics(s -> s.started(1).failed(1));
+
+        List<String> messages = tests.failed().stream()
+                .map(event -> event.getRequiredPayload(TestExecutionResult.class))
+                .map(result -> result.getThrowable().map(Throwable::getMessage).orElse(""))
+                .filter(Objects::nonNull)
+                .toList();
+        assertTrue(messages.stream().anyMatch(m -> m.contains("at or above failOn=")
+                        && m.contains("LockLeakDetector")),
+                "the failure must be the failOn gate naming the detector: " + messages);
+    }
+
+    @Test
+    @DisplayName("a lock released in finally passes the same gate")
+    void aLockReleasedInFinallyPassesAVerdictOnlyGate() {
+        run(ReleasedLockUnderVerdictFloorDummy.class).assertStatistics(s -> s.started(1).succeeded(1).failed(0));
+    }
+
+    /**
      * A listener sees one {@code Violation} per report, and its {@code trustTier} is the
      * detector's, the weakest grade it can produce. Without the grades a listener, and so the
      * JSON output and corpus-eval's idiom lane, could not tell an observed mutation from a
@@ -201,6 +230,36 @@ class PerFindingTierGateTest {
             AsyncTestContext.recordMutableComponentLeakDetector()
                     .recordShared(order, "order", Thread.currentThread());
             order.id();
+        }
+    }
+
+    /** The first worker takes the lock and never gives it back; the others find it taken. */
+    public static class LeakedLockUnderVerdictFloorDummy {
+        private final ReentrantLock lock = new ReentrantLock();
+
+        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
+                   detectAll = false, detectLockLeaks = true)
+        void leaveTheLockTaken() {
+            if (lock.tryLock()) {
+                AsyncTestContext.lockLeakMonitor().recordLockAcquired(lock, "leaked");
+            }
+        }
+    }
+
+    /** The same body with the unlock in a finally, which is the correct twin. */
+    public static class ReleasedLockUnderVerdictFloorDummy {
+        private final ReentrantLock lock = new ReentrantLock();
+
+        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
+                   detectAll = false, detectLockLeaks = true)
+        void releaseTheLock() {
+            lock.lock();
+            try {
+                AsyncTestContext.lockLeakMonitor().recordLockAcquired(lock, "released");
+            } finally {
+                lock.unlock();
+                AsyncTestContext.lockLeakMonitor().recordLockReleased(lock, "released");
+            }
         }
     }
 

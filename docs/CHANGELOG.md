@@ -121,6 +121,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` `CONTEXTUAL`, `LOCK_LEAKS` and `BLOCKING_QUEUE`
   `ASSERTED`), which takes the last three out of `DetectorEvidenceMatchesCodeTest`'s exemptions
   (six to three).
+- **`LOCK_LEAKS`: a leak the `ReentrantLock` confirms is a VERDICT (#837).** An acquire with no
+  recorded release, and a lock recorded as held, were FACT on `ASSERTED` evidence whatever the lock
+  said. The detector now asks a `ReentrantLock` at analysis, with `REENTRANT_LOCK`'s holder test:
+  when `isLocked()` is still true, the analysing thread is not the holder, and the holder the lock
+  names has ended or waits idle in its pool, both of that lock's findings go from FACT to VERDICT
+  on `OBSERVED` evidence and say so in the text. A `minTrust = VERDICT` gate now fails on them,
+  and a passing run prints the block in full. A holder still running, a free lock whose counts
+  disagree with it, and a `Lock` that is not a `ReentrantLock` stay FACT; the 5 s hold stays
+  PROMPT and the detector-wide tier stays PROMPT. `LOCK_LEAKS` is classified `OBSERVED` (was
+  `ASSERTED`). `BLOCKING_QUEUE` stays at FACT: a discarded `false` cannot be confirmed from the
+  queue afterwards.
 - **The three oldest graded reports name the evidence of each finding (#837).**
   `VAR_HANDLE_NON_ATOMIC_UPDATE`, `RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK`
   graded by severity and named no evidence, so every grade fell back to the detector's class. Each
