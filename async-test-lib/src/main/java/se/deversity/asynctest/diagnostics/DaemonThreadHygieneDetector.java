@@ -74,14 +74,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code DaemonThreadHygieneObservabilityTest} pins both directions.
  *
  * <h2>With the agent it judges the decision instead of the flag</h2>
- * Attached with {@code collections=true}, the agent weaves {@code Thread.start()} and
- * {@code Thread.setDaemon(boolean)} through {@link AgentThreadHooks} (#731). A woven start
- * records the thread through {@link #recordObservedStart(Thread)}, and a thread started that
- * way is reported while alive unless a woven {@code setDaemon(true)} was seen on it, whatever
- * flag it inherited. The runner then does not announce the limitation. A decision made where
- * the agent does not weave, by {@code Thread.Builder.OfPlatform.daemon()} or in a class
- * outside {@code includes=}, is not seen, so such a thread started from woven code is
- * reported as undecided.
+ * Attached with {@code collections=true}, the agent weaves {@code Thread.start()},
+ * {@code Thread.setDaemon(boolean)}, a platform {@code Thread.Builder}'s {@code daemon} and
+ * {@code unstarted}, and every {@code new Thread} through {@link AgentThreadHooks} (#731, #737).
+ * A woven start of a thread the agent also saw constructed records it through
+ * {@link #recordObservedStart(Thread)}, and a thread started that way is reported while alive
+ * unless a woven {@code setDaemon(true)} or builder {@code daemon(true)} was seen for it,
+ * whatever flag it inherited. The runner then does not announce the limitation. A thread
+ * constructed where the agent does not weave, in a class outside {@code includes=}, may have
+ * been decided there, so a woven start records it as {@link #recordThread(Thread, String)}
+ * does and its flag decides: a non-daemon one is reported, a daemon one is not, even when
+ * nobody decided it.
  *
  * @since 1.6.0
  */
@@ -114,11 +117,13 @@ public final class DaemonThreadHygieneDetector {
     private final Map<Long, ThreadState> tracked = new ConcurrentHashMap<>();
 
     /**
-     * Record a thread at the moment a woven call site starts it.
+     * Record a thread at the moment a woven call site starts it, when the agent also saw it
+     * constructed.
      *
      * <p>Unlike {@link #recordThread(Thread, String)}, a daemon flag the thread inherited does
-     * not excuse it: only an explicit {@code setDaemon(true)} seen by the agent does. The
-     * agent's {@code Thread.start()} hook is the intended caller. A thread already recorded
+     * not excuse it: only an explicit {@code setDaemon(true)}, or {@code daemon(true)} on the
+     * builder that made it, seen by the agent does. The agent's {@code Thread.start()} hook is the
+     * intended caller. A thread already recorded
      * through {@code recordThread} keeps its label and site and is judged the same way.
      *
      * @param thread the thread being started (null-safe; ignored if {@code null})
@@ -154,7 +159,7 @@ public final class DaemonThreadHygieneDetector {
 
     /**
      * Analyze: a thread is flagged when it is still alive at analysis time and (1) is not
-     * daemon, or (2) was started by a woven call site with no observed {@code setDaemon}
+     * daemon, or (2) was constructed and started by woven call sites with no observed daemon
      * decision. The daemon flag is read here, not when the thread was recorded, because
      * {@code setDaemon} may legally run between {@code recordThread} and {@code start()} (#760).
      *
@@ -175,21 +180,22 @@ public final class DaemonThreadHygieneDetector {
             if (Boolean.TRUE.equals(explicit)) continue; // the decision this rule asks for
 
             // Daemon with no decision seen: inherited from a daemon creator, or set somewhere
-            // nothing watched. Only a woven start makes that a finding (#731); a manual recording
-            // keeps the old reading, daemon means JVM-exit-friendly. The flag is read now, not at
+            // nothing watched. Only a woven start of a thread woven code constructed makes that a
+            // finding (#731, #737); a manual recording keeps the old reading, daemon means
+            // JVM-exit-friendly. The flag is read now, not at
             // recording: setDaemon may run between recordThread and start() (#760), and after
             // start() it cannot change, so for a woven start this is the flag it started with.
             boolean inheritedDaemon = t.isDaemon() && explicit == null;
             if (inheritedDaemon && !s.observedAtStart) continue;
 
             String msg = String.format(inheritedDaemon
-                    ? "'%s' (thread name='%s', id=%d) was started without an observed "
-                            + "setDaemon call and is still alive at analysis time. It is daemon "
-                            + "here only because it inherited the flag from the runner's daemon "
-                            + "worker; started from a non-daemon thread such as main, the same "
-                            + "code creates a thread that blocks JVM exit. Call "
-                            + "thread.setDaemon(true) before start(), or ensure the thread "
-                            + "terminates before the test ends."
+                    ? "'%s' (thread name='%s', id=%d) was constructed and started with no "
+                            + "setDaemon or Thread.Builder daemon decision observed, and is still "
+                            + "alive at analysis time. It is daemon here because it inherited the "
+                            + "flag from the thread that created it; created from a non-daemon "
+                            + "thread such as main, the same code makes a thread that blocks JVM "
+                            + "exit. Call thread.setDaemon(true) before start(), or ensure the "
+                            + "thread terminates before the test ends."
                     : "'%s' (thread name='%s', id=%d) is non-daemon and still alive at "
                             + "analysis time — non-daemon threads block JVM exit. Call "
                             + "thread.setDaemon(true) before start(), or ensure the thread "

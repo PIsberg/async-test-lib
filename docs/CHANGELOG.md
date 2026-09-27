@@ -329,6 +329,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **With the agent, a daemon decision the agent could not see no longer reads as a missing one
+  (#737).** `DaemonThreadHygieneDetector` and `ThreadFactoryDetector` judged a daemon thread
+  undecided unless a woven `setDaemon(true)` was seen, so `Thread.ofPlatform().daemon().unstarted(r)`
+  started from woven code, a thread given `setDaemon(true)` in a class outside `includes=`, and a
+  factory there that did the same were all reported. The agent now weaves a platform builder's
+  `daemon(boolean)` and `daemon()` and `Thread.Builder.unstarted(Runnable)`, and carries the
+  builder's decision to the threads it makes, and it marks every thread a woven class constructs
+  (after a `new Thread(...)`, and after the superclass call in a `Thread` subclass's constructor,
+  `ThreadConstructionWeaver`). A missing decision is evidence only for a thread the agent saw
+  constructed; any other thread is judged by its flag, so a non-daemon one is still reported
+  wherever it was made. User-visible changes: a `Thread.Builder` start is now an observed start,
+  so a builder thread with no daemon decision left running is reported (before #737 it was
+  skipped), and a daemon thread constructed outside `includes=` with no decision anywhere is no
+  longer reported, the miss that makes the decided one safe. The finding's text no longer says
+  the flag came from "the runner's daemon worker", only from the thread that created it.
+  `DaemonDecisionWeavingTest` pins eight shapes end to end, `DaemonThreadFactoryWeavingTest` the
+  factory ones, `ThreadConstructionWeaverTest` that every construction shape still verifies and is
+  marked once. Still unseen: a decision made by a call into unwoven code on a thread woven code
+  constructed.
 - **`GathererConcurrencyMisuseDetector` no longer says a combiner-less gatherer loses results
   (#777).** The missing-combiner finding claimed that on a parallel stream "the per-thread states
   cannot be merged, results are lost". The JDK does not work that way: a gatherer whose combiner is
@@ -439,8 +458,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child. The agent now weaves `isAlive` like the joins: a `false` answer about a thread that ran
   acquires its clock, a `true` one orders nothing. `Thread.Builder.start(Runnable)` and
   `Thread.startVirtualThread(Runnable)` are woven too and fork and attribute the thread like a
-  woven `Thread.start`; they are not observed starts for `DAEMON_THREAD_HYGIENE`, because a
-  builder's `daemon(true)` is a decision the agent does not see. A task start and end now also
+  woven `Thread.start` (what a builder start means for `DAEMON_THREAD_HYGIENE` is #737's entry
+  below). A task start and end now also
   carry how many wrapped tasks the thread is running, so an end the ring gave up on no longer
   leaves the pool thread attributed to the run until the run ends: its next start or end ends the
   frames the bridge missed. `ThreadJoinWeavingTest` and `SpawnedWorkAttributionWeavingTest` pin
@@ -1128,10 +1147,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thread a woven call site starts is reported while alive unless a woven `setDaemon(true)` was seen
   on it, and a factory's daemon thread is reported as "daemon only by inheritance" when none was.
   The runner stops announcing `runner.detector.inert` for the daemon detector once the weave is
-  installed. Without the agent nothing changes. A decision made where the agent does not weave,
-  `Thread.Builder.OfPlatform.daemon()` or a class outside `includes=`, reads as undecided
-  (#737); a JDK factory is exempt for that reason. `DaemonThreadHygieneDetector` moves from
-  recording-only to agent-fed; it has no corpus agent pair yet (#736).
+  installed. Without the agent nothing changes. A builder's `daemon(true)` and a decision made in
+  a class outside `includes=` are handled since #737 (see its entry under Fixed).
+  `DaemonThreadHygieneDetector` moves from recording-only to agent-fed; it has no corpus agent
+  pair yet (#736).
 
 - **`DaemonThreadHygieneDetector` stopped being able to see a thread a test body creates, and
   said nothing about it (#730).** A thread inherits the daemon flag of the thread that created
