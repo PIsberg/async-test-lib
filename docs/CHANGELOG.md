@@ -90,6 +90,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keyed by the holder, state lasts the run and that second set or computation is reported, while
   contention and convoys are still judged per round. The name-only methods behave as before; a
   `null` holder falls back to them. No agent hook feeds these detectors.
+- **An identity-key gate that reads the bytecode (#803).** `DetectorStateIsKeyedByIdentityTest`
+  reads the source, so a hash stored in a field, returned by a helper longer than one `return`,
+  passed through a chain of helpers, or taken from `Object.hashCode()` of a type that does not
+  override it (a `Thread`, say) reached a map key unseen. `LibraryStateIsKeyedByIdentityTest`, in
+  `async-test-analysis` because ASM may not leave that module, follows the hash through the
+  library's class files: locals and branches, arithmetic, boxing, string building and records,
+  fields, helper returns and parameters, and lambdas. It is red on the old
+  `ABAProblemDetector` (line 191) and `OptimisticReadValidationDetector` (all four map calls), and
+  on a field, a two-statement helper and a `Thread.hashCode()` key the source gate passed. On the
+  current tree it finds no detector state keyed that way, and exempts 25 methods by name, each
+  with its reason: 19 that key a report map or set by the text it prints, where an unnamed
+  object's fallback name is `type@hash`; two in `LambdaLostUpdateDetector`, which groups by
+  rendered value on purpose; and four in `SpinLocks`, which keys by hash on purpose. The source
+  gate stays, since it also counts a hash inside a JDK call the bytecode gate does not follow. `async-test-analysis` now declares
+  `async-test-lib` at test scope; its main code still depends on nothing else.
 
 ### Changed
 

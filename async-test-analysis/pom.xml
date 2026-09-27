@@ -31,6 +31,15 @@
             <artifactId>asm</artifactId>
         </dependency>
 
+        <!-- Test scope only, and only as bytes: LibraryStateIsKeyedByIdentityTest reads the
+             library's class files to follow identity hashes into map keys (#803), which needs
+             ASM, and ASM may not leave this module. The main classes still cannot see the
+             library, and the dependency does not reach anyone who depends on this artifact. -->
+        <dependency>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-lib</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>

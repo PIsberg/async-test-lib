@@ -1,0 +1,165 @@
+package se.deversity.asynctest.analysis;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.net.JarURLConnection;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.stream.Stream;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Refuses a map or set in the library keyed by an identity hash, following the hash through the
+ * compiled classes (#803).
+ *
+ * <p>The library's {@code DetectorStateIsKeyedByIdentityTest} reads the source and follows the
+ * hash one statement, one local or one single-{@code return} helper; a hash stored in a field,
+ * passed through two helpers, or taken from {@code Object.hashCode()} of a class that does not
+ * override it went past it. This test runs {@link IdentityHashKeyScanner} over every class of the
+ * library as one set, so fields and helpers are followed across classes. It lives here, not in the
+ * library, because ASM may not leave this module (invariant 5); this module's tests reach the
+ * library's classes through a test-scope dependency and read them as bytes, loading none.
+ *
+ * <p>The source gate stays: it also counts a hash anywhere inside a key expression, including an
+ * argument to a JDK method this scanner does not pass a hash through.
+ */
+class LibraryStateIsKeyedByIdentityTest {
+
+    /** A class of the library that every build has, used to find where its classes are. */
+    private static final String ANCHOR = "se/deversity/asynctest/AsyncTest.class";
+
+    /** Well under the library's class count, so a scan that found the wrong place cannot pass. */
+    private static final int MIN_CLASSES = 500;
+
+    /**
+     * Report text: a map or set keyed by the display name or message a reader sees, where the
+     * fallback name of an unnamed object ends in its identity hash ({@code "queue@1b6d3586"}).
+     */
+    private static final String REPORT_TEXT = "keyed by the text the report prints, whose fallback name "
+            + "for an unnamed object ends in its identity hash: two unnamed objects whose hashes "
+            + "collide print one line, as two objects given the same name do, while the detector "
+            + "state behind the line is keyed by the object";
+
+    /** The lock table the agent's spinlock hooks share, keyed by hash on purpose. */
+    private static final String SPIN_LOCKS = "keys by hash plus a weak reference, so nothing is "
+            + "retained, and checks Lock.isFor on every lookup: a colliding second object goes "
+            + "undeclared, which can only report an access, never hide one";
+
+    /**
+     * Methods that key by an identity hash on purpose or where the merge is only in printed text,
+     * as {@code SourceFile#method}, each with a reason a reviewer can check against the method. Per
+     * method rather than per file, so a state map keyed by a hash elsewhere in the same file still
+     * fails.
+     */
+    private static final Map<String, String> DELIBERATE = Map.ofEntries(
+            Map.entry("SpinLocks.java#lockFor", SPIN_LOCKS),
+            Map.entry("SpinLocks.java#aboutToAcquire", SPIN_LOCKS),
+            Map.entry("SpinLocks.java#release", SPIN_LOCKS),
+            Map.entry("SpinLocks.java#declare", SPIN_LOCKS),
+            Map.entry("LambdaLostUpdateDetector.java#collide", "groups read-modify-writes by the "
+                    + "rendered value on purpose, so values that print alike are one group; the "
+                    + "identity hash is only the rendering of a value whose toString() throws"),
+            Map.entry("LambdaLostUpdateDetector.java#unaccountedReads", "counts reads and writes per "
+                    + "rendered value, the same grouping as collide"),
+            Map.entry("ABAProblemDetector.java#reportInto", REPORT_TEXT),
+            Map.entry("BlockingQueueDetector.java#analyze", REPORT_TEXT),
+            Map.entry("CalendarDetector.java#analyze", REPORT_TEXT),
+            Map.entry("CompletableFutureExceptionDetector.java#analyze", REPORT_TEXT),
+            Map.entry("ConcurrentModificationDetector.java#analyze", REPORT_TEXT),
+            Map.entry("CopyOnWriteCollectionDetector.java#analyze", REPORT_TEXT),
+            Map.entry("LatchMisuseDetector.java#analyze", REPORT_TEXT),
+            Map.entry("LockLeakDetector.java#analyze", REPORT_TEXT),
+            Map.entry("LockOrderValidator.java#validateLockOrder", REPORT_TEXT),
+            Map.entry("LockOrderValidator.java#detectDeadlockCycles", REPORT_TEXT),
+            Map.entry("ParallelStreamDetector.java#analyze", REPORT_TEXT),
+            Map.entry("RaceConditionDetector.java#analyzeRaceConditions", REPORT_TEXT),
+            Map.entry("ReentrantLockDetector.java#recordStarvation", REPORT_TEXT),
+            Map.entry("SharedCollectionDetector.java#analyze", REPORT_TEXT),
+            Map.entry("SharedRandomDetector.java#analyze", REPORT_TEXT),
+            Map.entry("SimpleDateFormatDetector.java#analyze", REPORT_TEXT),
+            Map.entry("ThreadLocalMonitor.java#analyzeThreadLocalLeaks", REPORT_TEXT),
+            Map.entry("TimerDetector.java#analyze", REPORT_TEXT),
+            Map.entry("WakeupDetector.java#describeInto", REPORT_TEXT));
+
+    @Test
+    @DisplayName("no library state is keyed by an identity hash, however the hash gets there")
+    void noIdentityHashKeys() {
+        List<byte[]> classes = libraryClasses();
+        assertTrue(classes.size() >= MIN_CLASSES, "found only " + classes.size() + " classes next to "
+                + ANCHOR + "; the scan is looking in the wrong place and would pass by scanning nothing");
+
+        Map<String, List<String>> offenders = new TreeMap<>();
+        for (IdentityHashKeyScanner.Finding f : IdentityHashKeyScanner.scan(classes,
+                LibraryStateIsKeyedByIdentityTest.class.getClassLoader())) {
+            offenders.computeIfAbsent(f.sourceFile() + "#" + f.method(), k -> new ArrayList<>()).add(f.toString());
+        }
+        Set<String> stale = new TreeSet<>(DELIBERATE.keySet());
+        stale.removeAll(offenders.keySet());
+        DELIBERATE.keySet().forEach(offenders::remove);
+
+        assertTrue(offenders.isEmpty(),
+                "these calls key a map or set by an identity hash, which merges two objects whose "
+                        + "hashes collide and silently attributes one's events to the other. Key by "
+                        + "IdentityKey instead (it caches the hash and compares referents with ==), or "
+                        + "by a value that is already unique, such as a thread id: " + offenders);
+        assertTrue(stale.isEmpty(),
+                "a method excused as deliberate no longer matches, so its exemption would only hide "
+                        + "the next key written there; remove it from DELIBERATE: " + stale);
+    }
+
+    /** {@return the bytes of every class in the library, read from its directory or its jar} */
+    private static List<byte[]> libraryClasses() {
+        URL anchor = LibraryStateIsKeyedByIdentityTest.class.getClassLoader().getResource(ANCHOR);
+        if (anchor == null) {
+            throw new IllegalStateException(ANCHOR + " is not on the test classpath; this module's "
+                    + "pom declares async-test-lib as a test dependency for this test");
+        }
+        List<byte[]> classes = new ArrayList<>();
+        try {
+            if ("jar".equals(anchor.getProtocol())) {
+                JarURLConnection connection = (JarURLConnection) anchor.openConnection();
+                connection.setUseCaches(false);
+                try (JarFile jar = new JarFile(Path.of(connection.getJarFileURL().toURI()).toFile())) {
+                    Enumeration<JarEntry> entries = jar.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry entry = entries.nextElement();
+                        if (entry.getName().endsWith(".class") && !entry.getName().endsWith("module-info.class")) {
+                            try (InputStream in = jar.getInputStream(entry)) {
+                                classes.add(in.readAllBytes());
+                            }
+                        }
+                    }
+                }
+            } else {
+                Path root = Path.of(anchor.toURI()).getParent().getParent().getParent().getParent();
+                try (Stream<Path> files = Files.walk(root)) {
+                    for (Path file : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".class")
+                            && !p.endsWith("module-info.class"))::iterator) {
+                        classes.add(Files.readAllBytes(file));
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not read the library's classes from " + anchor, e);
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("could not locate the library's classes from " + anchor, e);
+        }
+        return classes;
+    }
+}

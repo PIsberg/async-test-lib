@@ -40,6 +40,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code return}. A display label that prints an identity hash is fine and is not matched, as long
  * as it is never used as a key. A file that keys by the hash on purpose and tells a collision apart
  * itself is listed, with its reason, in {@code DELIBERATE}.
+ *
+ * <p>{@code LibraryStateIsKeyedByIdentityTest} in {@code async-test-analysis} follows the hash
+ * through the compiled classes instead: fields, helpers of any length and depth, parameters,
+ * lambdas and {@code Object.hashCode()} (#803). This test stays because it also counts a hash
+ * anywhere inside a key expression, including inside a JDK call that one does not follow.
  */
 class DetectorStateIsKeyedByIdentityTest {
 
