@@ -144,14 +144,15 @@ public class FalseSharingDetector {
 
         Map<String, Set<Integer>> writtenRounds = new HashMap<>();
         Map<String, Map<Integer, Set<Long>>> threadsByRound = threadsByRound(writtenRounds);
+        // Sorted, so a pair names its fields in the same order on every run and every JDK
         List<Map.Entry<String, FieldAccessInfo>> fields = new ArrayList<>(fieldAccess.entrySet());
+        fields.sort(Map.Entry.comparingByKey());
 
         // Find fields in same cache line accessed by different threads
         for (int i = 0; i < fields.size(); i++) {
             FieldAccessInfo field1 = fields.get(i).getValue();
             Map<Integer, Set<Long>> rounds1 = threadsByRound.getOrDefault(fields.get(i).getKey(), Map.of());
             Set<Integer> written1 = writtenRounds.getOrDefault(fields.get(i).getKey(), Set.of());
-            if (rounds1.values().stream().noneMatch(threads -> threads.size() >= 2)) continue;
 
             for (int j = i + 1; j < fields.size(); j++) {
                 FieldAccessInfo field2 = fields.get(j).getValue();
@@ -166,8 +167,12 @@ public class FalseSharingDetector {
                     long distance = Math.abs(offset1 - offset2);
                     
                     if (distance < CACHE_LINE_SIZE && distance > 0) {
-                        // Different threads accessing adjacent fields, within one round, one of them written
-                        if (differentThreadsInOneRound(rounds1, written1, rounds2, written2)) {
+                        // Different threads accessing adjacent fields, within one round, one of them
+                        // written. Each pair is visited once, so it is tried with either field as the
+                        // one with two or more threads: which of the two comes first is the order of
+                        // the keys, and the verdict must not depend on it (#839).
+                        if (differentThreadsInOneRound(rounds1, written1, rounds2, written2)
+                                || differentThreadsInOneRound(rounds2, written2, rounds1, written1)) {
                             FalseSharingReport.ContentionPair pair = new FalseSharingReport.ContentionPair(
                                 field1.fieldName, field2.fieldName, distance,
                                 field1.accessCount.get(), field2.accessCount.get()

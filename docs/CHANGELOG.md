@@ -785,6 +785,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the field, and a pair needs a write to one of its two fields in the round that put them on
   different threads. The three-argument overload counts as a write, so its callers keep their
   verdict; the report's two headings now say a write was involved.
+- **`FalseSharingDetector`'s pair verdict no longer depends on map iteration order (#839).** Behind
+  its experimental flag the pair line looked at each pair of adjacent fields once, in the order its
+  `ConcurrentHashMap` yielded them, and needed the field it met first to be the one with two or
+  more threads in a round. Two threads on one field beside a single thread on its neighbour
+  reported or not depending on which field name hashed first, so renaming a field, or a JDK with a
+  different map layout, could change the verdict. Each pair is now tried with either field in that
+  role, and pairs are taken in field-name order, so the report also names them the same way on
+  every run. User-visible: with the experimental property set, such a pair now reports in both
+  orders, where before it reported in one.
 - **Eight detectors consult the lock context they ignored.** ConcurrentModification (concurrent
   iteration), NonAtomicConcurrentMapUpdate, StatefulLambda, SystemPropertyMutation, VolatileArray and
   VarHandleNonAtomicUpdate reported the `synchronized` twin at VERDICT; they now need no lock common

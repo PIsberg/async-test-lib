@@ -752,6 +752,93 @@ class FalseSharingDetectorTest {
         }
     }
 
+    // ---- The pair verdict does not depend on which field the map yields first (#839) -------------
+    //
+    // Fields are held in a ConcurrentHashMap, whose iteration order follows the keys' hashes, not
+    // the order they were recorded in. The pair check looked at each pair once, and only with the
+    // field iterated first in the role that needs two or more threads, so one field with two
+    // threads beside one with a single thread reported or not depending on which of the two names
+    // hashed first. Each assignment of the roles below is a mirror image of the other, and they
+    // must share a verdict.
+
+    /**
+     * {@return the pair findings for one round in which two threads access {@code crowded} and one
+     * other thread accesses {@code lone}}
+     *
+     * @param crowded the field two threads access; {@code "a"} or {@code "b"} of {@link TwoCounters}
+     * @param lone the adjacent field one other thread accesses
+     * @param write whether every access is a store; with {@code false} every access is a load
+     */
+    private static int pairsForTwoThreadsBesideOne(String crowded, String lone, boolean write)
+            throws InterruptedException {
+        FalseSharingDetector detector = new FalseSharingDetector();
+        TwoCounters obj = new TwoCounters();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable onCrowded = () -> detector.recordFieldAccess(obj, crowded, int.class, write);
+        Runnable onLone = () -> detector.recordFieldAccess(obj, lone, int.class, write);
+        round(scope, onCrowded, onCrowded, onLone);
+        return detector.analyzeFalseSharing().falseSharedPairs.size();
+    }
+
+    @Test
+    void twoThreadsBesideOneReportTheSamePairWhicheverFieldHasTheTwo() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            int twoOnA = pairsForTwoThreadsBesideOne("a", "b", true);
+            int twoOnB = pairsForTwoThreadsBesideOne("b", "a", true);
+            assertAll(
+                    () -> assertEquals(1, twoOnA,
+                            "two threads wrote a while a third wrote b in the same round"),
+                    () -> assertEquals(1, twoOnB,
+                            "two threads wrote b while a third wrote a in the same round; the mirror "
+                                    + "image of the other workload must get its verdict"));
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void twoThreadsBesideOneOnlyReadingStaySilentWhicheverFieldHasTheTwo() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            int twoOnA = pairsForTwoThreadsBesideOne("a", "b", false);
+            int twoOnB = pairsForTwoThreadsBesideOne("b", "a", false);
+            assertAll(
+                    () -> assertEquals(0, twoOnA, "a and b were only read, so the line stayed Shared"),
+                    () -> assertEquals(0, twoOnB, "b and a were only read, so the line stayed Shared"));
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
+    @Test
+    void theSameTwoThreadsOnBothFieldsStaySilentWhicheverFieldComesFirst() throws InterruptedException {
+        System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+        try {
+            FalseSharingDetector detector = new FalseSharingDetector();
+            TwoCounters obj = new TwoCounters();
+            SelfGuard.Scope scope = new SelfGuard.Scope();
+            // Each thread writes both fields, one in each order: the line moves between the two
+            // cores, but that is true sharing of both fields, not two threads on different fields.
+            Runnable aThenB = () -> {
+                detector.recordFieldAccess(obj, "a", int.class, true);
+                detector.recordFieldAccess(obj, "b", int.class, true);
+            };
+            Runnable bThenA = () -> {
+                detector.recordFieldAccess(obj, "b", int.class, true);
+                detector.recordFieldAccess(obj, "a", int.class, true);
+            };
+            round(scope, aThenB, bThenA);
+
+            FalseSharingDetector.FalseSharingReport report = detector.analyzeFalseSharing();
+            assertTrue(report.falseSharedPairs.isEmpty(),
+                    "the same two threads wrote a and b, so neither field had threads the other "
+                            + "lacked: " + report);
+        } finally {
+            System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+        }
+    }
+
     static class TwoCounters {
         int a;
         int b;
