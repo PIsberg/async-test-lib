@@ -173,7 +173,9 @@ and an offer whose `false` was discarded (`BLOCKING_QUEUE`), which may also be a
 design. Since #837 `LOCK_LEAKS` asks a `ReentrantLock` too: a counted leak the lock still holds,
 for a holder that has ended or sits idle in its pool, is VERDICT on `OBSERVED` evidence, by the
 same holder test `REENTRANT_LOCK` uses, and the detector is classified `OBSERVED`. A holder still
-running, a lock that is free, and any other `Lock` keep the FACT. `BLOCKING_QUEUE` has no such
+running, a lock that is free, and any other `Lock` keep the FACT, and so does a holder the lock's
+name does not pin to the thread recorded acquiring it (#843): an unnamed virtual thread, a name
+another live thread shares, or a thread that never recorded. `BLOCKING_QUEUE` has no such
 probe: a discarded `false` is an event in the past that the queue's state at analysis cannot
 confirm, and a queue that drops on purpose would draw the same finding, so it stays FACT. The
 secondary paths keep their grade: the 5 s hold, 90% of capacity and the auto mode's

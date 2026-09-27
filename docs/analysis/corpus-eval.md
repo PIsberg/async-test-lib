@@ -723,7 +723,7 @@ now says its ground truth is the cached field set rather than a quote.
   exactly that. The next library someone points the agent at may hold a third.
 - **Detection is probabilistic, and the gate is built around that rather than excused by it.**
   `CorpusGates` fails the run when a documented-thread-safe class draws a VERDICT-tier HIGH or
-  CRITICAL finding, when fewer than 85% of the documented-unsafe subjects draw a finding, when
+  CRITICAL finding (a graded detector's finding at its own grade, since #843), when fewer than 85% of the documented-unsafe subjects draw a finding, when
   either `AtomicityValidator` or `SharedCollectionDetector` says nothing about any of them, when a
   detector reports that the feed table says cannot be fed, when the control lane hears from an
   agent-fed detector, and when something keeps publishing events after the last subject. It still

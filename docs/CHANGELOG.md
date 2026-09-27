@@ -295,6 +295,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both: a throwing detector fails strict mode and is logged and contained outside it, and
   `ThreadLocalCacheDegradationDetector`'s `MEDIUM` finding comes out `MEDIUM` through
   `spi.DetectorRegistry.build`.
+- **`LOCK_LEAKS` confirms a hold only when the lock's holder name is the recorded thread (#843).**
+  A `ReentrantLock` names its holder by thread name alone, and the #837 probe took that name at
+  its word. The lock's `held by ''` matched any unnamed virtual thread, so a counted leak whose
+  lock was now held by another, still running, unnamed virtual thread was graded VERDICT as "held
+  by '', which has finished". A name the recorded thread did not carry was looked up among the
+  live platform threads only, so a virtual holder that never recorded, and is still working, read
+  as ended; and a live platform thread sharing the recorded thread's name was ignored. Each of
+  these now stays FACT: the lock must name the thread this detector recorded acquiring it, by a
+  non-empty name no other live platform thread carries. A named thread that recorded and ended
+  holding the lock, the runner's own arrangement, is still a VERDICT. A virtual thread given the
+  recorded thread's exact name remains undetectable, since nothing at analysis can list it.
+- **corpus-eval reads the graded tier in every VERDICT bar (#843).** The agent-pair lane's
+  collateral bar and the documented-thread-safe false-positive count compared the detector's row
+  tier to VERDICT, so a verdict-grade finding from a lower-rated graded detector passed as the
+  weaker claim. Both now read `CorpusGates.claimedTier`, as the idiom lane has since #837, and the
+  report tables print that tier.
+- **The E2E lock tests wait for the holder to end instead of assuming it (#843).** Both fixtures
+  (`PerFindingTierGateTest`, `ReentrantLockHeldAtAnalysisRunTest`) described the leaking worker as
+  idle in the runner's pool at analysis; the runner shuts its executor down first, and the virtual
+  worker has ended. The workers that find the lock taken now join the holder's thread, bounded, so
+  it has ended before the last round does.
 - **`OptimisticReadValidationDetector` names a field in every never-validated finding (#826).**
   Once eight fields read under a stamp filled the name list, a field read after a passing
   `validate()` and never revalidated was reported as `data accessed (2 reads not named)`, naming

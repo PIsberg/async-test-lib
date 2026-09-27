@@ -400,7 +400,7 @@ final class CorpusGates {
                 }
             } else {
                 for (CorpusRecorder.Finding finding : fromOwn) {
-                    wrong.add(own + " reported " + finding.tier() + "/" + finding.severity()
+                    wrong.add(own + " reported " + claimedTier(finding) + "/" + finding.severity()
                             + " on " + subject.testMethod() + ", the correct idiom it names: "
                             + finding.evidence());
                 }
@@ -424,7 +424,10 @@ final class CorpusGates {
      * holding only a structural note is a prompt even from a detector whose other path is a
      * verdict. A graded detector's violation that arrives without grades, from a path that does
      * not pass them, is read at its cap: the most the runner could let it claim, which is the
-     * reading that cannot let a claim through the idiom bar.
+     * reading that cannot let a claim through a bar. Every tier bar in this module reads it: the
+     * idiom lane's FACT bar since #837, and the agent-pair collateral bar and the documented-safe
+     * false-positive count since #843, which until then read the row tier and so let a verdict-grade
+     * finding from a lower-rated detector through as the weaker claim.
      *
      * @param finding what a detector reported
      */
@@ -833,7 +836,7 @@ final class CorpusGates {
             if (!lane.failsOnAnyCollateral() && !isTheLibrarysStrongestClaim(finding)) {
                 continue;
             }
-            collateral.add(finding.detector() + " reported " + finding.tier() + "/"
+            collateral.add(finding.detector() + " reported " + claimedTier(finding) + "/"
                     + finding.severity() + " on " + finding.subject() + ", whose row states only "
                     + "that " + DetectorExposure.classOf(
                             Corpus.pairByTestMethod(lane, finding.subject()).detector())
@@ -859,7 +862,7 @@ final class CorpusGates {
      * @param finding what a detector reported
      */
     private static boolean isTheLibrarysStrongestClaim(CorpusRecorder.Finding finding) {
-        return finding.tier() == TrustTier.VERDICT
+        return claimedTier(finding) == TrustTier.VERDICT
                 && (finding.severity() == IssueSeverity.HIGH
                         || finding.severity() == IssueSeverity.CRITICAL);
     }

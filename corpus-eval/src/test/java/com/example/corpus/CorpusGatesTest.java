@@ -504,6 +504,27 @@ class CorpusGatesTest {
                 CorpusLane.AGENT_PAIRS));
     }
 
+    /**
+     * The agent-pair bar reads the tier the runner gated on, as the idiom lane does since #837. A
+     * graded detector's violation carries its detector's row tier, the weakest grade it can
+     * produce, so a verdict-grade finding from a PROMPT-rated detector passed this bar as a prompt
+     * (#843).
+     */
+    @Test
+    @DisplayName("a graded VERDICT finding from a PROMPT-rated detector fails the agent-pair bar")
+    void aGradedVerdictCollateralFindingInTheAgentPairLaneFails() {
+        RecordingSubject silent = aSilentRow(CorpusLane.AGENT_PAIRS);
+        DetectorType graded = DetectorType.LOCK_LEAKS;
+        assertTrue(silent.detector() != graded && PairEvidence.carriesPerFindingGrades(graded),
+                "precondition: the collateral detector grades its findings and is not the row's own");
+        assertThrows(AssertionFailedError.class,
+                () -> CorpusGates.noCollateralFindingOnASilentRow(
+                        List.of(new CorpusRecorder.Finding(silent.testMethod(), DetectorExposure.classOf(graded),
+                                IssueSeverity.CRITICAL, TrustTier.PROMPT, "leak the lock confirmed", "-",
+                                TrustTier.VERDICT)),
+                        CorpusLane.AGENT_PAIRS));
+    }
+
     @Test
     @DisplayName("a VERDICT finding on a firing row passes, since a second true positive is not noise")
     void aCollateralFindingOnAFiringRowPasses() {

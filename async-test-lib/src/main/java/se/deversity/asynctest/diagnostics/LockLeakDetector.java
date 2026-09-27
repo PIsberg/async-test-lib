@@ -220,16 +220,25 @@ public class LockLeakDetector {
      * held lock, asked through the same code (#837). A holder still running may yet release the
      * lock, and a lock whose recorded counts disagree with it (the acquire and release recorded
      * in different places) is not held at all; both keep the recorded finding at its recorded
-     * grade. The boundary is the same as that detector's: an unnamed virtual thread that never
-     * recorded against the lock cannot be told from one that did.
+     * grade.
+     *
+     * <p>The lock names its holder only by name, so the hold is confirmed only when that name can
+     * be nobody but the thread this detector recorded acquiring it (#843). An empty name is every
+     * unnamed virtual thread's, a name another live platform thread also carries is ambiguous, and
+     * a name the recorded thread does not carry belongs to a thread that never recorded: finding
+     * no live platform thread of that name says nothing about a virtual one, which no scan can
+     * list. Each stays at its recorded grade; {@code ReentrantLockDetector}'s own finding still
+     * reads the name alone. What remains is a virtual thread deliberately given the recorded
+     * thread's non-empty name.
      */
     private static @Nullable String confirmedHold(ReentrantLock lock, @Nullable Thread recorded,
                                                   Set<Thread> platformThreads) {
-        if (!lock.isLocked() || lock.isHeldByCurrentThread()) {
+        if (recorded == null || !lock.isLocked() || lock.isHeldByCurrentThread()) {
             return null;
         }
         String holderName = ReentrantLockDetector.holderNameOf(lock);
-        if (holderName == null) {
+        if (holderName == null || holderName.isEmpty() || !holderName.equals(recorded.getName())
+                || anotherLiveThreadIsNamed(holderName, recorded, platformThreads)) {
             return null;
         }
         ReentrantLockDetector.HolderState state = ReentrantLockDetector.holderState(
@@ -240,6 +249,16 @@ public class LockLeakDetector {
         return String.format(" - ReentrantLock.isLocked() confirms it: held by '%s', %s",
                 holderName, state == ReentrantLockDetector.HolderState.IDLE
                         ? "now idle in its pool" : "which has finished");
+    }
+
+    /** {@return whether a live platform thread other than {@code recorded} is also named {@code name}} */
+    private static boolean anotherLiveThreadIsNamed(String name, Thread recorded, Set<Thread> platformThreads) {
+        for (Thread thread : platformThreads) {
+            if (!thread.equals(recorded) && thread.isAlive() && name.equals(thread.getName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -278,8 +297,9 @@ public class LockLeakDetector {
          * threshold. Every grade keeps the severity the gate has always read for this report.
          *
          * <p>Since #837 a {@code ReentrantLock} is also asked at analysis. When it is still locked
-         * and the holder it names has ended or waits idle in its pool, the leak is what the JVM
-         * says rather than what was recorded, and both of that lock's findings are a
+         * and the holder it names, which must be the thread recorded acquiring it (#843), has ended
+         * or waits idle in its pool, the leak is what the JVM says rather than what was recorded,
+         * and both of that lock's findings are a
          * {@link TrustTier#VERDICT} on {@link DetectorTrust.Evidence#OBSERVED} evidence. The
          * correct twin, {@code unlock()} in a {@code finally}, leaves the lock free and the counts
          * balanced, and draws neither.

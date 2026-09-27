@@ -62,6 +62,26 @@ class CorpusReportTest {
                 unsafe));
     }
 
+    /**
+     * A graded finding is judged at the grade the runner gated on, not at its detector's row tier,
+     * which is the weakest grade the detector can produce (#843).
+     */
+    @Test
+    @DisplayName("isFalsePositive: a graded VERDICT finding from a PROMPT-rated detector counts")
+    void isFalsePositiveReadsTheGradedTier() {
+        Subject safe = new Subject("safe_method", "lib", "SafeClass", Contract.THREAD_SAFE, "safe", "Safe.java:1");
+        String graded = DetectorExposure.classOf(DetectorType.LOCK_LEAKS);
+
+        assertTrue(CorpusReport.isFalsePositive(
+                new CorpusRecorder.Finding("safe_method", graded, IssueSeverity.CRITICAL, TrustTier.PROMPT,
+                        "leak the lock confirmed", "ev", TrustTier.VERDICT),
+                safe));
+        assertFalse(CorpusReport.isFalsePositive(
+                new CorpusRecorder.Finding("safe_method", graded, IssueSeverity.CRITICAL, TrustTier.PROMPT,
+                        "leak counted", "ev", TrustTier.FACT),
+                safe));
+    }
+
     @Test
     @DisplayName("recordingSummary: computes stated outcomes correctly for recording lane")
     void recordingSummaryReflectsOutcomes() {

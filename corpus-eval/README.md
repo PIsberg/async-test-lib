@@ -78,7 +78,8 @@ by the test body itself is reported. It runs in the attached lane only.
    thrown exception that the eval counts rather than fails on, and `safeOperation(...)` otherwise.
 4. Add the library to `docs/DEPENDENCIES.md` (section 6) with the reason it earns a row.
 5. Run it. `CorpusGates` fails if a method has no row, if a row has no method, if a
-   documented-thread-safe subject draws a VERDICT-tier HIGH or CRITICAL finding, if a detector the
+   documented-thread-safe subject draws a VERDICT-tier HIGH or CRITICAL finding (a graded
+   detector's finding at its own grade), if a detector the
    feed table says cannot be fed reports anyway, or if the control lane hears from the agent-fed
    pair.
 6. Keep what it drew. Decide the rows before the first run, and do not drop a documented-safe

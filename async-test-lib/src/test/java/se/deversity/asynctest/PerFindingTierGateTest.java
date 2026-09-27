@@ -11,11 +11,13 @@ import se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.TrustTier;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -130,8 +132,9 @@ class PerFindingTierGateTest {
     /**
      * A leaked {@code ReentrantLock} fails a VERDICT-only gate (#837). The recorded acquire with no
      * release is arithmetic over the body's own record calls, a FACT on its own; the lock still
-     * held for a worker that went back to the runner's pool is the JVM's answer, and makes the
-     * leak a verdict.
+     * held for a worker thread that has ended is the JVM's answer, and makes the leak a verdict.
+     * The runner shuts its executor down before it analyses, so the holder is never idle in a pool
+     * there: it has ended, and the dummy waits for that rather than assuming it (#843).
      */
     @Test
     @DisplayName("a lock leak the lock itself confirms trips a VERDICT-only gate")
@@ -233,15 +236,29 @@ class PerFindingTierGateTest {
         }
     }
 
-    /** The first worker takes the lock and never gives it back; the others find it taken. */
+    /**
+     * The first worker takes the lock and never gives it back; the others find it taken.
+     *
+     * <p>The verdict rests on the holder having stopped by the time the runner analyses. Each
+     * virtual worker runs one body and ends, and the ones that find the lock taken wait for the
+     * holder's thread to end, bounded, so the second round cannot finish before it has: the holder
+     * is terminated at analysis by construction rather than by how fast it was scheduled (#843).
+     */
     public static class LeakedLockUnderVerdictFloorDummy {
         private final ReentrantLock lock = new ReentrantLock();
+        private final AtomicReference<Thread> holder = new AtomicReference<>();
 
         @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectLockLeaks = true)
-        void leaveTheLockTaken() {
+                   detectAll = false, detectLockLeaks = true, useVirtualThreads = true)
+        void leaveTheLockTaken() throws InterruptedException {
             if (lock.tryLock()) {
                 AsyncTestContext.lockLeakMonitor().recordLockAcquired(lock, "leaked");
+                holder.set(Thread.currentThread());
+                return;
+            }
+            Thread taken = holder.get();
+            if (taken != null && !taken.join(Duration.ofSeconds(10))) {
+                throw new AssertionError("the thread holding the lock never ended: " + taken.getState());
             }
         }
     }

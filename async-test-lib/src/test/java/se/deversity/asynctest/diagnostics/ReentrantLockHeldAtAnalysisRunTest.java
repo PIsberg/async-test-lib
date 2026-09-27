@@ -10,7 +10,9 @@ import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.E2E;
 import se.deversity.asynctest.FailOn;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,10 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The held-at-analysis finding through the real runner, both directions (#589).
  *
  * <p>The unit tests analyse on the test's own thread after a worker has finished. The runner
- * analyses once its workers are done with the round, on a thread that is not one of them, and a
- * pool worker that leaked a hold is still alive and idle at that point. This pins that the lock is
- * reported under that arrangement, which is what {@code examples/66-reentrant-lock} claims, and that
- * the fixed twin, whose tryLock timeouts are handled, passes a {@code failOn = LOW} gate.
+ * analyses on a thread that is not one of its workers, after it has shut its executor down, so the
+ * virtual worker that leaked a hold has ended by then. The fixture waits for that thread to end
+ * rather than relying on how quickly it is scheduled (#843). This pins that the lock is reported
+ * under that arrangement, which is what {@code examples/66-reentrant-lock} claims, and that the
+ * fixed twin, whose tryLock timeouts are handled, passes a {@code failOn = LOW} gate.
  */
 @E2E
 class ReentrantLockHeldAtAnalysisRunTest {
@@ -62,27 +65,37 @@ class ReentrantLockHeldAtAnalysisRunTest {
                 .testEvents();
     }
 
-    /** The CounterService shape: the first worker in re-enters the lock and never releases the extra hold. */
+    /**
+     * The CounterService shape: the first worker in re-enters the lock and never releases the extra
+     * hold. The workers that back off wait, bounded, for the holder's thread to end, so it has ended
+     * before the last round does. The lock is per instance, so a rerun in the same JVM starts free.
+     */
     static class LeakFixture {
 
-        static final ReentrantLock LOCK = new ReentrantLock();
+        private final ReentrantLock lock = new ReentrantLock();
+        private final AtomicReference<Thread> holder = new AtomicReference<>();
 
         @AsyncTest(threads = 4, invocations = 2, timeoutMs = 20_000, detectAll = false,
                 detectDeadlocks = false, detectReentrantLockIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+                failOn = FailOn.LOW, licenseMockMode = true, useVirtualThreads = true)
         void increment() throws InterruptedException {
             ReentrantLockDetector detector = AsyncTestContext.reentrantLockDetector();
-            detector.registerLock(LOCK, "leaky-counter-lock");
-            if (LOCK.tryLock(100, TimeUnit.MILLISECONDS)) {
-                detector.recordLockAcquired(LOCK, Thread.currentThread().getName());
+            detector.registerLock(lock, "leaky-counter-lock");
+            if (lock.tryLock(100, TimeUnit.MILLISECONDS)) {
+                detector.recordLockAcquired(lock, Thread.currentThread().getName());
                 try {
-                    LOCK.lock(); // validate() re-enters and never unlocks
+                    lock.lock(); // validate() re-enters and never unlocks
                 } finally {
-                    detector.recordLockReleased(LOCK, Thread.currentThread().getName());
-                    LOCK.unlock();
+                    detector.recordLockReleased(lock, Thread.currentThread().getName());
+                    lock.unlock();
                 }
+                holder.set(Thread.currentThread());
             } else {
-                detector.recordLockTimeout(LOCK); // the other workers back off, correctly
+                detector.recordLockTimeout(lock); // the other workers back off, correctly
+                Thread taken = holder.get();
+                if (taken != null && !taken.join(Duration.ofSeconds(10))) {
+                    throw new AssertionError("the thread holding the lock never ended: " + taken.getState());
+                }
             }
         }
     }
