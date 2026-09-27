@@ -3,8 +3,9 @@ package se.deversity.asynctest;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import java.util.WeakHashMap;
+import java.util.concurrent.ThreadFactory;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
@@ -18,9 +19,10 @@ import se.deversity.vibetags.annotations.AIContract;
 /**
  * Hooks for {@link Thread#start()}, {@link Thread#join()}, {@link Thread#isAlive()} and
  * {@link Thread#setDaemon(boolean)}, for the starts through {@link Thread.Builder#start} and
- * {@link Thread#startVirtualThread}, for a platform builder's {@code daemon} decision and
- * {@link Thread.Builder#unstarted}, and for a thread constructed in woven code, making thread
- * starts, joins and explicit daemon decisions visible to detectors.
+ * {@link Thread#startVirtualThread}, for a platform builder's {@code daemon} decision,
+ * {@link Thread.Builder#unstarted} and {@link Thread.Builder#factory}, and for a thread
+ * constructed in woven code, making thread starts, joins and explicit daemon decisions visible to
+ * detectors.
  *
  * <h2>Why these need the agent</h2>
  *
@@ -37,13 +39,20 @@ import se.deversity.vibetags.annotations.AIContract;
  * <p>A {@code setDaemon} call in a woven class, or {@code daemon(...)} on a platform
  * {@code Thread.Builder} in a woven class, carried to the threads that builder then makes. The
  * absence of one is only evidence for a thread the agent saw constructed (#737): a
- * {@code new Thread}, a {@code Thread} subclass's constructor, or a builder's {@code unstarted} or
- * {@code start}, in a woven class. A thread constructed anywhere else, inside the JDK or in a class
- * outside {@code includes=}, may have been decided where nothing watched, so
+ * {@code new Thread}, a {@code Thread} subclass's constructor, a builder's {@code unstarted} or
+ * {@code start}, or a {@code newThread} on a factory a builder's {@code factory()} made (#856), in
+ * a woven class. A thread constructed anywhere else, inside the JDK or in a class outside
+ * {@code includes=}, may have been decided where nothing watched, so
  * {@link #constructedInWovenCode(Thread)} is {@code false} for it and it is judged by its flag
- * alone. A decision made where nothing is woven on a thread woven code constructed is still
- * invisible. {@link #isThreadWeavingInstalled()} gates every use of the absence of a decision, so
+ * alone. {@link #isThreadWeavingInstalled()} gates every use of the absence of a decision, so
  * without the agent nothing changes.
+ *
+ * <p>A decision made where nothing is woven, on a thread woven code constructed, shows only when
+ * it changed the flag (#856). A new thread takes the flag of the thread constructing it, which is
+ * recorded with the construction ({@link #inheritedDaemon(Thread)}); a woven start that finds a
+ * different flag, and no woven decision, was preceded by a decision somewhere else, and is judged
+ * by that flag. One that confirmed the inherited flag, a {@code setDaemon(true)} in unwoven code on
+ * a thread a daemon worker constructed, leaves nothing to see and still reads as no decision.
  *
  * <h2>Ordering</h2>
  *
@@ -58,7 +67,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @since 1.12.3
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon and threadBuilderUnstarted) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged. threadConstructed replaces nothing and runs inside user constructors, so it performs no call and must not throw. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon, threadBuilderUnstarted and threadBuilderFactory, and threadFactoryNewThread) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged; threadFactoryNewThread returns what the factory returned, null included. threadConstructed replaces nothing and runs inside user constructors, so it performs no call and must not throw. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
 public final class AgentThreadHooks {
 
     /** Explicit {@code setDaemon} decisions seen by a woven call site, by thread identity. */
@@ -72,9 +81,20 @@ public final class AgentThreadHooks {
     private static final Map<Thread.Builder, Boolean> BUILDER_DAEMON =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    /** Platform threads the agent saw constructed in a woven class, by identity. */
-    private static final Set<Thread> CONSTRUCTED_IN_WOVEN_CODE =
-            Collections.newSetFromMap(Collections.synchronizedMap(new WeakHashMap<>()));
+    /**
+     * Platform threads the agent saw constructed in a woven class, by identity, with the daemon
+     * flag of the thread that constructed each, which is the flag it inherited.
+     */
+    private static final Map<Thread, Boolean> CONSTRUCTED_IN_WOVEN_CODE =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * Factories a woven {@code factory()} call took from a platform builder, by identity, with the
+     * daemon decision a woven call site gave the builder by then, if any: the factory applies the
+     * builder's settings as they were when it was made.
+     */
+    private static final Map<ThreadFactory, Optional<Boolean>> BUILDER_FACTORIES =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Whether the agent installed the thread substitutions in this JVM. */
     private static volatile boolean threadWeavingInstalled;
@@ -111,14 +131,15 @@ public final class AgentThreadHooks {
      * <p>Only a thread the agent also saw constructed is an observed start for
      * {@link DaemonThreadHygieneDetector}: one constructed where nothing is woven may have been
      * given {@code setDaemon(true)} there, so it is recorded the way a hand recording is, and its
-     * flag speaks for it (#737).
+     * flag speaks for it (#737). So is one whose flag is no longer the one it inherited with no
+     * woven decision seen, since something unwoven decided it (#856).
      *
      * @param receiver the thread to start
      */
     public static void threadStart(Thread receiver) {
         DaemonThreadHygieneDetector detector = AsyncTestContext.currentDaemonThreadHygieneDetector();
         if (detector != null) {
-            if (CONSTRUCTED_IN_WOVEN_CODE.contains(receiver)) {
+            if (observedUndecidedOrDecided(receiver)) {
                 detector.recordObservedStart(receiver);
             } else {
                 detector.recordThread(receiver, null);
@@ -126,6 +147,16 @@ public final class AgentThreadHooks {
         }
         forkAndAttribute(receiver);
         receiver.start();
+    }
+
+    /**
+     * {@return whether the agent saw {@code thread} constructed and either saw its daemon decision
+     * or can tell none was made: its flag is still the one it inherited}
+     */
+    private static boolean observedUndecidedOrDecided(Thread thread) {
+        Boolean inherited = CONSTRUCTED_IN_WOVEN_CODE.get(thread);
+        return inherited != null
+                && (EXPLICIT_DAEMON.containsKey(thread) || thread.isDaemon() == inherited);
     }
 
     /**
@@ -138,7 +169,7 @@ public final class AgentThreadHooks {
      *               the reference the constructor initialised
      */
     public static void threadConstructed(Thread thread) {
-        CONSTRUCTED_IN_WOVEN_CODE.add(thread);
+        CONSTRUCTED_IN_WOVEN_CODE.put(thread, Thread.currentThread().isDaemon());
     }
 
     /**
@@ -148,7 +179,20 @@ public final class AgentThreadHooks {
      * @param thread the thread to check
      */
     public static boolean constructedInWovenCode(Thread thread) {
-        return CONSTRUCTED_IN_WOVEN_CODE.contains(thread);
+        return CONSTRUCTED_IN_WOVEN_CODE.containsKey(thread);
+    }
+
+    /**
+     * {@return the daemon flag {@code thread} inherited from the thread that constructed it, when
+     * the agent saw it constructed in a woven class, or {@code null}}
+     *
+     * <p>A flag that differs from this with no woven decision seen was decided where nothing is
+     * woven (#856).
+     *
+     * @param thread the thread to check
+     */
+    public static @Nullable Boolean inheritedDaemon(Thread thread) {
+        return CONSTRUCTED_IN_WOVEN_CODE.get(thread);
     }
 
     /**
@@ -191,11 +235,55 @@ public final class AgentThreadHooks {
     public static Thread threadBuilderUnstarted(Thread.Builder receiver, Runnable task) {
         Thread thread = receiver.unstarted(task);
         if (!thread.isVirtual()) {
-            Boolean daemon = BUILDER_DAEMON.get(receiver);
-            if (daemon != null) {
-                EXPLICIT_DAEMON.put(thread, daemon);
+            constructedWithDecision(thread, BUILDER_DAEMON.get(receiver));
+        }
+        return thread;
+    }
+
+    /**
+     * Marks {@code thread} constructed in woven code, with the decision a woven call site gave the
+     * builder behind it, if any.
+     */
+    private static void constructedWithDecision(Thread thread, @Nullable Boolean daemon) {
+        if (daemon != null) {
+            EXPLICIT_DAEMON.put(thread, daemon);
+        }
+        CONSTRUCTED_IN_WOVEN_CODE.put(thread, Thread.currentThread().isDaemon());
+    }
+
+    /**
+     * Weaves {@link Thread.Builder#factory()} (#856). A platform builder's factory makes its
+     * threads inside the JDK, where nothing is woven, so the factory is remembered here with the
+     * builder's daemon decision as it stands, which is what the JDK copies into the factory.
+     *
+     * @param receiver the builder the call site invoked
+     * @return the factory the builder returned
+     */
+    public static ThreadFactory threadBuilderFactory(Thread.Builder receiver) {
+        ThreadFactory factory = receiver.factory();
+        if (receiver instanceof Thread.Builder.OfPlatform) {
+            BUILDER_FACTORIES.put(factory, Optional.ofNullable(BUILDER_DAEMON.get(receiver)));
+        }
+        return factory;
+    }
+
+    /**
+     * Weaves {@link ThreadFactory#newThread(Runnable)} (#856): a thread from a factory a woven
+     * {@code factory()} call took from a platform builder counts as constructed in the woven class
+     * that called this, and takes the builder's daemon decision, as a builder's {@code unstarted}
+     * does. Any other factory is only called.
+     *
+     * @param receiver the factory the call site invoked
+     * @param task     what the thread will run
+     * @return the thread the factory returned, which a factory may leave {@code null}
+     */
+    public static @Nullable Thread threadFactoryNewThread(ThreadFactory receiver, Runnable task) {
+        Thread thread = receiver.newThread(task);
+        if (thread != null && !thread.isVirtual()) {
+            Optional<Boolean> decision = BUILDER_FACTORIES.get(receiver);
+            if (decision != null) {
+                constructedWithDecision(thread, decision.orElse(null));
             }
-            CONSTRUCTED_IN_WOVEN_CODE.add(thread);
         }
         return thread;
     }

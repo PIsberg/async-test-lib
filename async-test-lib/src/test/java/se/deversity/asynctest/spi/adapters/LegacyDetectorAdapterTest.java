@@ -12,7 +12,9 @@ import se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.asynctest.spi.Detector;
 import se.deversity.asynctest.spi.DetectorRegistry;
+import se.deversity.asynctest.spi.adapters.fixture.HiddenDetectorClass;
 import se.deversity.asynctest.spi.adapters.fixture.HiddenReportDetector;
+import se.deversity.asynctest.spi.adapters.fixture.HiddenStructuredReportDetector;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -186,10 +188,51 @@ class LegacyDetectorAdapterTest {
     }
 
     @Test
-    @DisplayName("strict: a report the adapter cannot reach fails the build instead of reporting nothing (#847)")
-    void strictModeFailsAReportTheAdapterCannotReach() {
+    @DisplayName("strict: a report type that is not public is read when its package is open to the library (#851)")
+    void aNonPublicReportIsReadWhereItsPackageIsOpen() {
         System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
         Detector adapter = new LegacyDetectorAdapter<>(new HiddenReportDetector(), DetectorType.DEADLOCKS, "Hidden");
+
+        List<List<Violation>> result = new ArrayList<>();
+        String written = captureStdErr(() -> result.add(adapter.analyze()));
+
+        assertEquals(List.of("[HIGH] a finding behind a report type that is not public"),
+                result.get(0).stream().map(Violation::message).toList(),
+                "the class path is open to the library, so the finding comes out: " + result.get(0));
+        assertEquals("", written, "a report the adapter could read is not a failure");
+    }
+
+    @Test
+    @DisplayName("strict: a detector class that is not public is called when its package is open to the library (#851)")
+    void aNonPublicDetectorClassIsCalledWhereItsPackageIsOpen() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+        Detector adapter = new LegacyDetectorAdapter<>(HiddenDetectorClass.create(), DetectorType.DEADLOCKS, "HiddenClass");
+
+        List<Violation> violations = adapter.analyze();
+
+        assertEquals(1, violations.size(), "a detector nested in a test class is still read: " + violations);
+        assertEquals(IssueSeverity.MEDIUM, violations.get(0).severity(), "graded by its text: " + violations);
+    }
+
+    @Test
+    @DisplayName("a structured list on a report type that is not public keeps its severity where the package is open (#851)")
+    void aNonPublicStructuredListIsReadWhereItsPackageIsOpen() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+        Detector adapter = new LegacyDetectorAdapter<>(new HiddenStructuredReportDetector(), DetectorType.DEADLOCKS, "HiddenStructured");
+
+        List<Violation> violations = adapter.analyze();
+
+        assertEquals(List.of(IssueSeverity.MEDIUM), violations.stream().map(Violation::severity).toList(),
+                "the detector's own MEDIUM, not the text's HIGH: " + violations);
+        assertEquals("the finding at the severity the detector chose", violations.get(0).message());
+    }
+
+    @Test
+    @DisplayName("strict: a report in a named module that does not open its package fails the build instead of reporting nothing (#847)")
+    void strictModeFailsAReportTheAdapterCannotReach() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+        Object closed = ClosedFixtureModule.newInstance(HiddenReportDetector.class);
+        Detector adapter = new LegacyDetectorAdapter<>(closed, DetectorType.DEADLOCKS, "Hidden");
 
         AssertionError raised = assertThrows(AssertionError.class, adapter::analyze,
                 "a report whose hasIssues() the adapter may not call reports nothing, which looks like a clean run");
@@ -204,7 +247,8 @@ class LegacyDetectorAdapterTest {
     @DisplayName("not strict: an unreachable report is contained and writes the policy's line")
     void outsideStrictModeAnUnreachableReportIsLogged() {
         System.clearProperty(DetectorFailurePolicy.STRICT_PROPERTY);
-        Detector adapter = new LegacyDetectorAdapter<>(new HiddenReportDetector(), DetectorType.DEADLOCKS, "Hidden");
+        Object closed = ClosedFixtureModule.newInstance(HiddenReportDetector.class);
+        Detector adapter = new LegacyDetectorAdapter<>(closed, DetectorType.DEADLOCKS, "Hidden");
 
         List<List<Violation>> result = new ArrayList<>();
         String written = captureStdErr(() -> result.add(adapter.analyze()));
@@ -213,6 +257,20 @@ class LegacyDetectorAdapterTest {
         assertTrue(written.contains("[AsyncTest] Detector HiddenReportDetector failed during analysis and was skipped: "
                         + "java.lang.IllegalAccessException"),
                 "the line names the detector and the refused access: " + written);
+    }
+
+    @Test
+    @DisplayName("strict: a structured list the library may not read falls back to the text and is not called empty (#851)")
+    void anUnreadableStructuredListFallsBackToTheText() {
+        System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");
+        Object closed = ClosedFixtureModule.newInstance(HiddenStructuredReportDetector.class);
+        Detector adapter = new LegacyDetectorAdapter<>(closed, DetectorType.DEADLOCKS, "HiddenStructured");
+
+        List<Violation> violations = adapter.analyze();
+
+        assertEquals(1, violations.size(), "the finding still comes out, from its text: " + violations);
+        assertEquals("[HIGH] the same finding written as text", violations.get(0).message());
+        assertEquals(IssueSeverity.HIGH, violations.get(0).severity(), "graded by the text it came from");
     }
 
     @Test

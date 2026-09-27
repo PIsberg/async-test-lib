@@ -64,6 +64,16 @@ public final class SiteCapture {
             "SiteCapture",
     };
 
+    /**
+     * The package and name prefix of the library's agent hooks, {@code AgentSharedInstanceHooks}
+     * and its siblings. A woven call site reaches a detector through one of them, so without this
+     * rule the report named the hook's line instead of the user's (#853).
+     */
+    private static final String AGENT_HOOKS_PREFIX = "se.deversity.asynctest.Agent";
+
+    /** Name suffix that, with {@link #AGENT_HOOKS_PREFIX}, marks a hook rather than a test of one. */
+    private static final String AGENT_HOOKS_SUFFIX = "Hooks";
+
     private SiteCapture() {}
 
     /**
@@ -80,19 +90,45 @@ public final class SiteCapture {
     }
 
     private static boolean isUserFrame(StackFrame f) {
-        String cls = f.getClassName();
+        return !isFrameworkClass(f.getClassName());
+    }
+
+    /**
+     * Whether a frame in {@code cls} is skipped when looking for the user caller.
+     *
+     * @param cls the frame's binary class name, as {@link StackFrame#getClassName()} gives it
+     * @return true when the frame belongs to the library, the JDK or a test framework
+     */
+    static boolean isFrameworkClass(String cls) {
         for (String prefix : FRAMEWORK_PREFIXES) {
-            if (cls.startsWith(prefix)) return false;
+            if (cls.startsWith(prefix)) return true;
         }
+        if (isAgentHook(cls)) return true;
         // Detectors live in the diagnostics package and have a known set of
         // class-name suffixes. We must not surface a detector's own frame as
         // the "user site" of an access it recorded.
         int lastDot = cls.lastIndexOf('.');
         String simple = lastDot < 0 ? cls : cls.substring(lastDot + 1);
         for (String suffix : FRAMEWORK_SUFFIXES) {
-            if (simple.endsWith(suffix)) return false;
+            if (simple.endsWith(suffix)) return true;
         }
-        return true;
+        return false;
+    }
+
+    /**
+     * A top-level {@code Agent*Hooks} class of the library's root package, or a class nested in
+     * one. The prefix alone would be wider than the hooks: this package also holds the library's
+     * own tests ({@code AgentSharedInstanceHooksTest}), whose frames are the caller a site test
+     * expects. Allocates nothing, since it runs once per frame of every walk.
+     */
+    private static boolean isAgentHook(String cls) {
+        int start = AGENT_HOOKS_PREFIX.length();
+        if (!cls.startsWith(AGENT_HOOKS_PREFIX) || cls.indexOf('.', start) >= 0) {
+            return false;
+        }
+        int nested = cls.indexOf('$', start);
+        int end = nested < 0 ? cls.length() : nested;
+        return cls.startsWith(AGENT_HOOKS_SUFFIX, end - AGENT_HOOKS_SUFFIX.length());
     }
 
     /**

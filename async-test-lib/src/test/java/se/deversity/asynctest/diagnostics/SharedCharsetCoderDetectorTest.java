@@ -127,7 +127,7 @@ class SharedCharsetCoderDetectorTest {
             }
         });
 
-        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording an encoder the detector "
+        assertTrue(bytes < RecordPathAllocation.CEILING, "recording an encoder the detector "
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }

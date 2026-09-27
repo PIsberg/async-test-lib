@@ -181,6 +181,37 @@ class LockOrderValidatorTest {
                 "a -> first and second -> a involve three distinct locks and cannot deadlock: " + report);
     }
 
+    /** Each colliding lock inverted against {@code a} is its own pair, printed on its own line. */
+    @Test
+    void twoInversionsOnLocksSharingAnIdentityHashPrintAsTwoLines() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        java.util.List<Object> colliding = IdentityCollisions.pair(Object::new);
+        Object a = new Object();
+        for (Object lock : colliding) {
+            nestOnNewThread(validator, a, lock);
+            nestOnNewThread(validator, lock, a);
+        }
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(2, report.inconsistentOrderings.size(),
+                "{a, first} and {a, second} are two inversions, even though first and second share "
+                        + "an identity hash (#854): " + report);
+        assertEquals(3, report.potentialDeadlockCycles.size(),
+                "a, first and second are each on a cycle: " + report);
+    }
+
+    private static void nestOnNewThread(LockOrderValidator validator, Object outer, Object inner)
+            throws InterruptedException {
+        Thread thread = new Thread(() -> {
+            validator.recordLockAcquisition(outer);
+            validator.recordLockAcquisition(inner);
+            validator.recordLockRelease(inner);
+            validator.recordLockRelease(outer);
+        });
+        thread.start();
+        thread.join();
+    }
+
     /** The same shape on one lock is the real inversion, and still fires. */
     @Test
     void theSameLockTakenBothWaysRoundStillFires() throws InterruptedException {

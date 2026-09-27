@@ -66,6 +66,23 @@ runner.detector.note test=… detector=SynchronizedNonFinalDetector notes=1 note
 One event per distinct note, at most three per detector per run; `notes=` is the total. A note
 beside a finding stays in that report's text and is not logged again. Nothing here fails a test.
 
+Only a note that asks you to change a recording or a registration is logged, because it is the
+one thing that stops the detector from deciding anything. A note that is background for a finding
+(context that correct code produces too) stays in the report text and is not logged on a clean run.
+The decision per detector (#816):
+
+| Detector | Logged on a run with no finding | Background only, not logged |
+|---|---|---|
+| `SynchronizedNonFinalDetector` | an undecided slot, naming the `recordLockObject(lock, fieldId, ownerClass, owner)` call that decides it | nothing else |
+| `ConditionVariableDetector` | recorded awaits still open on a condition registered without its lock (register it with `registerCondition(lock, condition, ready, name)`); threads parked with no predicate registered; a predicate that threw; a registered lock that did not make the condition | an idle consumer, a signal with nobody waiting, a wakeup with no recorded signal (a spurious wakeup reads the same), a lock held or contended at analysis, an await abandoned in an earlier round or left without its exit |
+| `ExchangerDetector` | ends recorded on a thread that recorded no start there, which close nothing, per exchanger | recorded timeouts and interrupts, interrupts after the round timed out, `null` payloads |
+| `ReentrantLockDetector` | a lock held at analysis by a thread that never recorded taking it (call `recordLockAcquired` on the thread that takes it); the waits recorded with the lock-less `recordStarvation(threadName, waitTimeMs)`, counted in one note | a holder still running, a wait the lock did not corroborate, `tryLock()` timeouts |
+| `PhaserDetector` | nothing | a terminated phaser, a timed wait whose phase advanced later |
+| `WakeupDetector`, `SharedByteBufferDetector` | nothing | a notify with nobody waiting, and absolute-only buffer access from many threads, both what correct code does |
+| `CyclicBarrierDetector`, `ABAProblemDetector`, `LockDowngradeDetector`, `BlockingQueueDetector` | nothing | their context (what broke a barrier, A-B-A cycles, downgrade-shaped sequences, queue context) is printed only inside a finding |
+
+The SPI path (`LegacyDetectorAdapter`) carries no notes.
+
 ## 8. Troubleshooting
 
 | Symptom | Likely cause & fix |

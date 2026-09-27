@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Generic SPI {@link Detector} that wraps a legacy detector instance and projects
@@ -30,17 +31,20 @@ import java.util.Map;
  * <p>Detectors whose report does not follow the canonical shape
  * ({@code analyze() → Report{hasIssues(), toString()}}) silently return an empty
  * list — they continue to work via the legacy {@code DetectorRegistry} path; the
- * SPI registry simply has no structured view of them. A detector that has the shape
- * but whose report method or {@code hasIssues()} sits on a class this package may not
- * call into, such as a report type that is not public, is not shapeless: it is reported
- * as a failure below, since it would otherwise look clean whatever it recorded (#847).
+ * SPI registry simply has no structured view of them. The detector class and its report
+ * type need not be public: the adapter makes their methods accessible wherever their
+ * package is open to this library, as the class path always is (#851). A detector that
+ * has the shape but whose report method or {@code hasIssues()} stays out of reach, in a
+ * named module that does not open its package, is not shapeless: it is reported as a
+ * failure below, since it would otherwise look clean whatever it recorded (#847).
  *
  * <p>A report with issues that keeps a public {@code structuredViolations} list hands
  * over those {@link Violation}s as they are, at the severities the detector chose, which
  * are the ones the {@code failOn} gate reads. A report without one becomes a single
  * {@link Violation} carrying its {@code toString()}, at the severity
  * {@link DetectorDefaultSeverity#of(String, String)} gives that text. Before 1.12.3 every
- * finding came out {@code HIGH} (#841).
+ * finding came out {@code HIGH} (#841). A report whose list this library may not read is
+ * treated as one without a list, and strict mode does not call that list empty (#851).
  *
  * <p>A detector that throws from its report method, its report's {@code hasIssues()} or
  * {@code toString()}, or whose report cannot be reached, is contained the way the registry
@@ -94,6 +98,13 @@ public final class LegacyDetectorAdapter<D> implements Detector {
         this.analyzeMethod = resolvedAnalyze;
         this.analyzeMethodLookupFailure = resolvedFailure;
         this.hasIssuesMethod = (resolvedAnalyze == null) ? null : findHasIssues(resolvedAnalyze.getReturnType());
+        // A third-party detector class or report type need not be public: one nested in a test
+        // class usually is not. Where its package is open to this library, as the class path is,
+        // this lets the calls through, as JUnit does for the test methods themselves (#851). Where
+        // it is not, it answers false and changes nothing, so analyze() still reports the
+        // IllegalAccessException (#847). It cannot open anything the detector's module keeps closed.
+        if (resolvedAnalyze != null) resolvedAnalyze.trySetAccessible();
+        if (hasIssuesMethod != null) hasIssuesMethod.trySetAccessible();
     }
 
     /**
@@ -151,13 +162,15 @@ public final class LegacyDetectorAdapter<D> implements Detector {
             // reads from the same report (DetectorDefaultSeverity.of). Grading the text HIGH here
             // instead made this path disagree with the gate for every detector that rates below
             // HIGH (#841).
-            List<Violation> structured = structuredFindings(report);
-            if (!structured.isEmpty()) return structured;
+            Optional<List<Violation>> structured = structuredFindings(report);
+            if (structured.isPresent() && !structured.get().isEmpty()) return structured.get();
 
             String text = String.valueOf(report);
             // As DetectorRegistry.ifIssue: a report type that keeps the list and left it empty
-            // fails this build's tests, and changes nothing anywhere else.
-            DetectorFailurePolicy.structuredFindingsMissing(delegateName(), report);
+            // fails this build's tests, and changes nothing anywhere else. A list this library may
+            // not read is not an empty one, so strict mode would name the wrong fault; the finding
+            // still comes out, graded by its text (#851).
+            if (structured.isPresent()) DetectorFailurePolicy.structuredFindingsMissing(delegateName(), report);
             return List.of(new Violation(
                     detectorName,
                     DetectorDefaultSeverity.of(detectorName, text),
@@ -174,7 +187,8 @@ public final class LegacyDetectorAdapter<D> implements Detector {
         } catch (IllegalAccessException | RuntimeException | StackOverflowError e) {
             // The report's toString() threw, or its structured list did. Or the detector has the
             // canonical shape but its report method or the report's hasIssues() is declared on a
-            // class this package may not call into (IllegalAccessException), so whatever it
+            // class this package may not call into even after trySetAccessible, in a module that
+            // does not open its package (IllegalAccessException), so whatever it
             // records never reaches this path: returned silently before #847, which read exactly
             // like a clean detector.
             return detectorFailed(e);
@@ -212,29 +226,33 @@ public final class LegacyDetectorAdapter<D> implements Detector {
 
     /**
      * {@return the {@link Violation}s in {@code report}'s public {@code structuredViolations} list,
-     * or an empty list when its type keeps none or the list is empty}
+     * an empty list when its type keeps none or the list is empty, and no list at all when its
+     * type keeps one this library may not read}
      *
      * <p>Read by name, as {@link DetectorDefaultSeverity#structuredIn} reads it for the gate, since
-     * the built-in reports share no interface.
+     * the built-in reports share no interface. The list may sit on a report type that is not
+     * public; it is read wherever that type's package is open to this library, and nowhere else.
      *
      * @param report a report that has issues
      */
-    private static List<Violation> structuredFindings(Object report) throws IllegalAccessException {
+    private static Optional<List<Violation>> structuredFindings(Object report) throws IllegalAccessException {
         Field field;
         try {
             field = report.getClass().getField(DetectorDefaultSeverity.STRUCTURED_FIELD);
         } catch (NoSuchFieldException textOnly) {
-            return List.of();
+            return Optional.of(List.of());
         }
-        if (!(field.canAccess(report) || field.trySetAccessible())
-                || !(field.get(report) instanceof List<?> findings)) {
-            return List.of();
+        if (!(field.canAccess(report) || field.trySetAccessible())) {
+            return Optional.empty();
+        }
+        if (!(field.get(report) instanceof List<?> findings)) {
+            return Optional.of(List.of());
         }
         List<Violation> out = new ArrayList<>(findings.size());
         for (Object finding : findings) {
             if (finding instanceof Violation v) out.add(v);
         }
-        return List.copyOf(out);
+        return Optional.of(List.copyOf(out));
     }
 
     /**

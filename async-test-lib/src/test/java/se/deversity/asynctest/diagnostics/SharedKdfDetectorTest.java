@@ -157,7 +157,7 @@ class SharedKdfDetectorTest {
             }
         });
 
-        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a KDF the detector "
+        assertTrue(bytes < RecordPathAllocation.CEILING, "recording a KDF the detector "
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }

@@ -27,6 +27,16 @@ final class RecordPathAllocation {
     /** Calls measured. */
     static final int MEASURED_CALLS = 10_000;
 
+    /**
+     * The most bytes a record path may allocate over {@value #MEASURED_CALLS} measured calls: 8 per
+     * call. The regressions these tests exist for cost a whole object per call, 16 bytes or more,
+     * so 160,000 or more here, and a stack walk costs about 1,152 per call. A path that allocates
+     * nothing per call can still read a one-off amount that depends on the JIT and the platform:
+     * 12,688 bytes on JDK 25 on Linux in CI, after the warm-up above. A ceiling of one byte per call
+     * failed on that one-off; this one absorbs it and still fails at half the smallest regression.
+     */
+    static final long CEILING = 8L * MEASURED_CALLS;
+
     private RecordPathAllocation() {
     }
 

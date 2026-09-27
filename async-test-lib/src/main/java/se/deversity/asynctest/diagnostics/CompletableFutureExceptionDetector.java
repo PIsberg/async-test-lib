@@ -56,8 +56,8 @@ public class CompletableFutureExceptionDetector {
         volatile @Nullable Exception lastException = null;
         final AtomicInteger getJoinCalls = new AtomicInteger(0);
 
-        FutureState(CompletableFuture<?> future, String name) {
-            this.name = name != null ? name : "future@" + System.identityHashCode(future);
+        FutureState(String name) {
+            this.name = name != null ? name : ReportSections.unnamed("future");
         }
     }
 
@@ -76,7 +76,7 @@ public class CompletableFutureExceptionDetector {
         }
         // computeIfAbsent, not put: re-declaring a future already tracked would discard whether
         // a handler had been registered on it, which is the whole finding.
-        futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(future, name));
+        futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(name));
     }
 
     /**

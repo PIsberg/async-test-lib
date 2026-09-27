@@ -78,6 +78,23 @@ class IdentityKeyTest {
     }
 
     @Test
+    @DisplayName("a lookup key finds a weakly keyed instance, and only that instance (#807)")
+    void lookupFindsAWeaklyKeyedInstance() {
+        String one = new String("map");
+        String two = new String("map");
+        Map<IdentityKey.Weak, String> state = new ConcurrentHashMap<>();
+        state.put(new IdentityKey.Weak(one, null), "one");
+
+        assertEquals("one", state.get(IdentityKey.lookup(one)),
+                "the strong lookup key names the weak key's referent");
+        assertNull(state.get(IdentityKey.lookup(two)), "an equal instance is another key");
+        assertEquals(new IdentityKey.Weak(one, null), new IdentityKey(one), "equal both ways");
+        assertEquals(new IdentityKey(one), new IdentityKey.Weak(one, null), "equal both ways");
+        assertNotEquals(new IdentityKey(two), new IdentityKey.Weak(one, null));
+        IdentityKey.forgetLookup();
+    }
+
+    @Test
     @DisplayName("a worker leaving its run keeps no instance it looked up (#812)")
     void unbindingReleasesTheLookedUpInstance() throws InterruptedException {
         WeakReference<Object> instance = lookedUpAndDropped();

@@ -3,6 +3,7 @@ package se.deversity.asynctest.agent;
 import com.example.agentfixture.BuilderThreadFactory;
 import com.example.agentfixture.DaemonDecidingThreadFactory;
 import com.example.agentfixture.InheritingThreadFactory;
+import com.example.agentfixture.UnwovenConfiguredThreadFactory;
 import com.example.unwovenfixture.UnwovenDaemonThreadFactory;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.BeforeAll;
@@ -110,14 +111,44 @@ class DaemonThreadFactoryWeavingTest {
                         + "thread is daemon only because the calling worker was. Report: " + report);
     }
 
+    @Test
+    void aWovenThreadMadeDaemonByUnwovenCodeOnANonDaemonThreadIsNotReported()
+            throws InterruptedException {
+        ThreadFactoryDetector.ThreadFactoryReport report = createOn(false,
+                new UnwovenConfiguredThreadFactory(), "unwoven-configured");
+
+        assertFalse(report.hasIssues(),
+                "the thread inherited false from the non-daemon caller and is daemon now, so "
+                        + "something decided it, in unwoven code the agent cannot see (#856). "
+                        + "Report: " + report);
+    }
+
+    @Test
+    void aWovenThreadMadeDaemonByUnwovenCodeOnADaemonWorkerIsStillReported()
+            throws InterruptedException {
+        ThreadFactoryDetector.ThreadFactoryReport report =
+                createOnDaemonWorker(new UnwovenConfiguredThreadFactory(), "unwoven-confirmed");
+
+        assertTrue(report.hasIssues() && report.toString().contains("daemon only by inheritance"),
+                "a known false positive (#856): setDaemon(true) in unwoven code leaves the flag the "
+                        + "thread inherited from the daemon worker, so nothing tells the decision "
+                        + "from none. Report: " + report);
+    }
+
     /** Calls the factory on a daemon thread, as a runner worker would (#479). */
     private static ThreadFactoryDetector.ThreadFactoryReport createOnDaemonWorker(
             ThreadFactory factory, String name) throws InterruptedException {
+        return createOn(true, factory, name);
+    }
+
+    /** Calls the factory on a thread with the given daemon flag. */
+    private static ThreadFactoryDetector.ThreadFactoryReport createOn(
+            boolean daemon, ThreadFactory factory, String name) throws InterruptedException {
         ThreadFactoryDetector detector = new ThreadFactoryDetector();
         detector.registerFactory(factory, name);
         Thread worker = new Thread(() -> detector.recordThreadCreated(factory, name,
-                factory.newThread(() -> { })), "daemon-runner-worker");
-        worker.setDaemon(true);
+                factory.newThread(() -> { })), daemon ? "daemon-runner-worker" : "non-daemon-caller");
+        worker.setDaemon(daemon);
         worker.start();
         worker.join();
         return detector.analyze();

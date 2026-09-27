@@ -79,6 +79,7 @@ you are editing here.
     <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Unless an entry carries an explicit path, its file is .claude/rules/{path, every non-alphanumeric character replaced by &#39;-&#39;}.md. Consult the file before modifying an element.</note>
     <element path="se.deversity.asynctest.AgentCollectionHooks"/>
     <element path="se.deversity.asynctest.AgentConcurrencyUtilHooks"/>
+    <element path="se.deversity.asynctest.AgentConstructionHooks"/>
     <element path="se.deversity.asynctest.AgentGcHooks"/>
     <element path="se.deversity.asynctest.AgentLockHooks"/>
     <element path="se.deversity.asynctest.AgentMonitorHooks"/>

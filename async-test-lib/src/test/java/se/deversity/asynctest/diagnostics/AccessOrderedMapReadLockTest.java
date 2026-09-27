@@ -23,7 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * is a private field of {@code java.util}; the library reads it only when {@code java.util} is
  * already open to it and never opens it itself, so these scenarios run twice: in a child JVM
  * started with {@code --add-opens java.base/java.util=ALL-UNNAMED}, where the order is known, and
- * in this JVM, where it is not.
+ * in this JVM, where it is not. The agent supplies the order on a default JVM for a map a woven
+ * class builds with the three-argument constructor, so the scenarios run a third time here with
+ * each map's order reported the way the woven call reports it.
  *
  * <p>Whether a {@link java.util.Calendar} has fields left to compute is private {@code java.util}
  * state too, read on the same terms. A calendar {@code set()} before its first recorded access
@@ -69,16 +71,16 @@ class AccessOrderedMapReadLockTest {
     }
 
     /**
-     * Without the opening the order is unknown, and every map keeps the verdict it had: gets alone
-     * in a round still count as writes for the round rule, and a read lock still guards a get. The
-     * second is the part of #807 that stays open.
+     * Without the opening, and without the agent having seen the map built, the order is unknown,
+     * and every map keeps the verdict it had: gets alone in a round still count as writes for the
+     * round rule, and a read lock still guards a get.
      */
     @Test
     void withJavaUtilClosedEveryLinkedHashMapKeepsItsEarlierVerdict() throws Exception {
         assertFalse(LinkedHashMap.class.getModule().isOpen("java.util", SelfGuard.class.getModule()),
                 "this scenario needs a JVM that does not open java.util to the library");
 
-        Map<String, Boolean> seen = Probe.run();
+        Map<String, Boolean> seen = Probe.run(false);
 
         assertEquals(Boolean.TRUE, seen.get("lruCacheGetsAloneBesideAPut"), seen.toString());
         assertEquals(Boolean.TRUE, seen.get("insertionCacheGetsAloneBesideAPut"),
@@ -101,6 +103,42 @@ class AccessOrderedMapReadLockTest {
         assertEquals(Boolean.FALSE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
                 "an unrecorded set() on a calendar whose fields were all computed cannot be seen "
                         + "without reading java.util, so the read lock still guards the gets: " + seen);
+        assertEquals(Boolean.FALSE, seen.get("calendarCompletedBeforeFirstRecordGetsUnderOneReadLock"),
+                seen.toString());
+    }
+
+    /**
+     * Still closed, but each map's order reported as the agent reports a woven
+     * {@code LinkedHashMap(int, float, boolean)} call (#807): every map is judged as it is with
+     * {@code java.util} open. A calendar's pending fields are not something the agent sees, so
+     * those two keep the closed JVM's verdict.
+     */
+    @Test
+    void withJavaUtilClosedAnOrderTheAgentSawBuiltIsKnown() throws Exception {
+        assertFalse(LinkedHashMap.class.getModule().isOpen("java.util", SelfGuard.class.getModule()),
+                "this scenario needs a JVM that does not open java.util to the library");
+
+        Map<String, Boolean> seen = Probe.run(true);
+
+        assertEquals(Boolean.TRUE, seen.get("lruCacheGetsUnderOneReadLock"),
+                "the agent saw the map built in access order, so its gets relink it and one read "
+                        + "lock over them guards nothing: " + seen);
+        assertEquals(Boolean.FALSE, seen.get("insertionCacheGetsUnderOneReadLock"), seen.toString());
+        assertEquals(Boolean.TRUE, seen.get("lruCacheGetsAloneBesideAPut"), seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("insertionCacheGetsAloneBesideAPut"),
+                "a map the agent saw built in insertion order only reads on a get (#787): " + seen);
+        assertEquals(Boolean.TRUE, seen.get("lruCollectionGetsUnderOneReadLock"), seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("insertionCollectionGetsUnderOneReadLock"),
+                "the read-write idiom on an insertion-ordered map: " + seen);
+        assertEquals(Boolean.FALSE, seen.get("lruCollectionContainsKeyUnderOneReadLock"),
+                seen.toString());
+        assertEquals(Boolean.TRUE, seen.get("lruCollectionGetsAloneInOneRound"), seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("insertionCollectionGetsAloneInOneRound"),
+                seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("lruCollectionGetsUnderItsMonitorInOneRound"),
+                seen.toString());
+        assertEquals(Boolean.FALSE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
+                seen.toString());
         assertEquals(Boolean.FALSE, seen.get("calendarCompletedBeforeFirstRecordGetsUnderOneReadLock"),
                 seen.toString());
     }
@@ -136,14 +174,21 @@ class AccessOrderedMapReadLockTest {
         private Probe() {
         }
 
+        /**
+         * Whether each map's order is reported as a woven three-argument constructor call reports
+         * it, as the agent does for a map built in a woven class.
+         */
+        private static boolean asWoven;
+
         public static void main(String[] args) throws InterruptedException {
-            for (Map.Entry<String, Boolean> scenario : run().entrySet()) {
+            for (Map.Entry<String, Boolean> scenario : run(false).entrySet()) {
                 System.out.println(PREFIX + scenario.getKey() + "=" + scenario.getValue());
             }
             System.out.flush();
         }
 
-        static Map<String, Boolean> run() throws InterruptedException {
+        static Map<String, Boolean> run(boolean reportOrders) throws InterruptedException {
+            asWoven = reportOrders;
             Map<String, Boolean> seen = new TreeMap<>();
             seen.put("lruCacheGetsUnderOneReadLock", cacheGetsUnderOneReadLock(lru()));
             seen.put("insertionCacheGetsUnderOneReadLock", cacheGetsUnderOneReadLock(insertion()));
@@ -188,11 +233,21 @@ class AccessOrderedMapReadLockTest {
         }
 
         private static Map<String, String> lru() {
-            return new LinkedHashMap<>(16, 0.75f, true);
+            return built(new LinkedHashMap<>(16, 0.75f, true), true);
         }
 
         private static Map<String, String> insertion() {
-            return new LinkedHashMap<>();
+            return built(new LinkedHashMap<>(), false);
+        }
+
+        /** {@return {@code map}, its order reported through the agent's hooks when {@link #asWoven}} */
+        private static Map<String, String> built(LinkedHashMap<String, String> map,
+                                                 boolean accessOrder) {
+            if (asWoven) {
+                se.deversity.asynctest.AgentConstructionHooks.linkedHashMapAccessOrder(accessOrder);
+                se.deversity.asynctest.AgentConstructionHooks.linkedHashMapConstructed(map);
+            }
+            return map;
         }
 
         /** A put under the write lock in one round, then two gets under the read lock in the next. */

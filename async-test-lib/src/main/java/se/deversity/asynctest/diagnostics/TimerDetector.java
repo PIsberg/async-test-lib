@@ -225,7 +225,7 @@ public class TimerDetector {
      */
     public void registerTimer(java.util.Timer timer, String name) {
         if (timer == null) return;
-        timers.putIfAbsent(new IdentityKey(timer), new TimerState(label(timer, name)));
+        timers.putIfAbsent(new IdentityKey(timer), new TimerState(label(name)));
     }
 
     /**
@@ -424,12 +424,12 @@ public class TimerDetector {
         return false;
     }
 
-    private static String label(java.util.Timer timer, String name) {
-        return name != null ? name : "timer@" + System.identityHashCode(timer);
+    private static String label(String name) {
+        return name != null ? name : ReportSections.unnamed("timer");
     }
 
     private TimerState resolve(java.util.Timer timer, String name) {
-        return timers.computeIfAbsent(new IdentityKey(timer), k -> new TimerState(label(timer, name)));
+        return timers.computeIfAbsent(new IdentityKey(timer), k -> new TimerState(label(name)));
     }
 
     /**

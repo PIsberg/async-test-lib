@@ -30,7 +30,9 @@ a single `StackWalker.walk` and returns the first non-framework `StackFrame` as 
 `Site(className, methodName, fileName, lineNumber)` record. Framework frames are
 filtered by package prefix (`runner.`, `extension.`, `benchmark.`, JDK reflection,
 `java.util.concurrent`, JUnit, Gradle) and class-name suffix (`Detector`,
-`Monitor`, `Validator`, `SiteCapture`). Detectors that adopt the helper add
+`Monitor`, `Validator`, `SiteCapture`), and so are the library's agent hooks, a
+top-level `se.deversity.asynctest.Agent*Hooks` class or one nested in it, through
+which a woven call reaches its detector (#853). Detectors that adopt the helper add
 `Set<SiteCapture.Site>` to their per-instance state; the `Set` dedupes by
 `(class, line)`. The walk allocates over 1,100 bytes, so a detector captures once
 per key, not per access: `SharedMessageDigestDetector` keeps the site of each

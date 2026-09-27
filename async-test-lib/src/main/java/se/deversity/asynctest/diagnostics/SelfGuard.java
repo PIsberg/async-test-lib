@@ -64,9 +64,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * this rule ({@code TrackedInstance.readWrites}). A read the detector knows writes is recorded as a
  * write, so it needs an exclusive lock as well (#807): a {@code get} on a map known to be
  * access-ordered ({@link #relinksOnGet(Object)}), and a {@code Calendar} get after a recorded
- * {@code set}. Where that is not known, the lockset judges the read as a read, so a read lock held
- * over it guards it. A {@link java.util.WeakHashMap} read expunges cleared entries, but the JDK
- * serializes that among readers, so it is a read (see {@code readWrites}).
+ * {@code set}. A map's order is known where {@code java.util} is open to the library, or where the
+ * agent saw the map built ({@link #linkedHashMapBuilt(Object, boolean)}). Where
+ * it is not known, the lockset judges the read as a read, so a read lock held over it guards it. A
+ * {@link java.util.WeakHashMap} read expunges cleared entries, but the JDK serializes that among
+ * readers, so it is a read (see {@code readWrites}).
  *
  * <p>Within a round the verdict is also per owner. A pool that hands an instance out through a
  * queue gives it to one thread at a time, and a take is the edge between one owner's accesses
@@ -98,8 +100,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * made after the access, which would order the access after something it raced with. So such an
  * access never takes an instance over, and one after a hand-off is ordered after none of them.
  *
- * <p>Public only so that {@code AsyncTestContext} can own and bind the {@link Scope}; everything
- * else here is package-private and belongs to the detectors.
+ * <p>Public only so that {@code AsyncTestContext} can own and bind the {@link Scope}, and so that
+ * the agent's construction hook can report a map's order; everything else here is package-private
+ * and belongs to the detectors.
  *
  * @since 1.12.3
  */
@@ -126,10 +129,12 @@ public final class SelfGuard {
      * {@link java.util.LinkedHashMap} in access order, the usual LRU cache, which relinks the entry
      * it returns (#807)}
      *
-     * <p>The order is a private field of {@code java.util}, read only when that package is already
-     * open to this library, for example by {@code --add-opens java.base/java.util=ALL-UNNAMED}; the
-     * library never opens it. Otherwise the order is unknown and this is {@code false}, so a read
-     * lock held over the {@code get} still guards it, as it did before the order could be read.
+     * <p>The order is a private field of {@code java.util}, read when that package is already open
+     * to this library, for example by {@code --add-opens java.base/java.util=ALL-UNNAMED}; the
+     * library never opens it. On a default JVM the agent supplies it instead, for a map built in a
+     * woven class by the three-argument constructor, the only one that can set access order.
+     * Otherwise the order is unknown and this is {@code false}, so a read lock held over the
+     * {@code get} still guards it, as it did before the order could be read.
      *
      * @param map the map a {@code get} or {@code getOrDefault} reads
      */
@@ -138,7 +143,25 @@ public final class SelfGuard {
     }
 
     /**
-     * Reads a {@link java.util.LinkedHashMap}'s order, where {@code java.util} lets it be read.
+     * Records the order a woven {@code new LinkedHashMap(int, float, boolean)}, or a subclass's
+     * call to that superclass constructor, gave {@code map} (#807).
+     *
+     * <p>The agent's construction hook is the caller. Held weakly: a map the code under test drops
+     * is not kept alive for having been seen.
+     *
+     * @param map         the {@code LinkedHashMap} just built; {@code null} is ignored
+     * @param accessOrder the constructor's third argument: {@code true} for access order, in which
+     *                    a {@code get} relinks the entry it returns
+     */
+    public static void linkedHashMapBuilt(@Nullable Object map, boolean accessOrder) {
+        if (map != null) {
+            LinkedHashMapOrder.record(map, accessOrder);
+        }
+    }
+
+    /**
+     * Reads a {@link java.util.LinkedHashMap}'s order, where {@code java.util} lets it be read or
+     * the agent saw the map built.
      */
     static final class LinkedHashMapOrder {
 
@@ -154,6 +177,19 @@ public final class SelfGuard {
         /** The private {@code accessOrder} field, or {@code null} when it cannot be read. */
         private static final @Nullable Field ACCESS_ORDER = accessOrderField();
 
+        /**
+         * The order of each map the agent saw built, by identity; {@code true} for access order.
+         * Keyed by {@link IdentityKey.Weak}, and looked up with the calling thread's
+         * {@link IdentityKey#lookup} key, which equals it and which a detector's record path has
+         * just made for the same map, so a lookup allocates nothing. Typed by {@code Object} for
+         * that reason: the two key classes are equal to each other, not one class.
+         */
+        private static final Map<Object, Boolean> BUILT = new ConcurrentHashMap<>();
+
+        /** Where the keys of {@link #BUILT} go once their map is collected. */
+        private static final java.lang.ref.ReferenceQueue<Object> COLLECTED =
+                new java.lang.ref.ReferenceQueue<>();
+
         private LinkedHashMapOrder() {
         }
 
@@ -163,15 +199,37 @@ public final class SelfGuard {
          * @param map the object whose order is asked for
          */
         static int of(@Nullable Object map) {
+            if (!(map instanceof java.util.LinkedHashMap)) {
+                return UNKNOWN;
+            }
             Field field = ACCESS_ORDER;
-            if (field == null || !(map instanceof java.util.LinkedHashMap)) {
+            if (field != null) {
+                try {
+                    return field.getBoolean(map) ? ACCESS : INSERTION;
+                } catch (IllegalAccessException e) { // NOPMD - unreadable here, the agent may know it
+                    // fall through to what the agent saw
+                }
+            }
+            if (BUILT.isEmpty()) {
                 return UNKNOWN;
             }
-            try {
-                return field.getBoolean(map) ? ACCESS : INSERTION;
-            } catch (IllegalAccessException e) { // NOPMD - an unreadable order is an unknown one
-                return UNKNOWN;
+            Boolean accessOrder = BUILT.get(IdentityKey.lookup(map));
+            return accessOrder == null ? UNKNOWN : accessOrder ? ACCESS : INSERTION;
+        }
+
+        /**
+         * Records the order the agent saw a map built with, first dropping the entries of maps
+         * that have been collected.
+         *
+         * @param map         the map just built
+         * @param accessOrder whether it is in access order
+         */
+        static void record(Object map, boolean accessOrder) {
+            for (java.lang.ref.Reference<?> gone = COLLECTED.poll(); gone != null;
+                    gone = COLLECTED.poll()) {
+                BUILT.remove(gone);
             }
+            BUILT.put(new IdentityKey.Weak(map, COLLECTED), accessOrder);
         }
 
         private static @Nullable Field accessOrderField() {
@@ -644,10 +702,11 @@ public final class SelfGuard {
          * unlinked entry's {@code next} for a traversal standing on it, and never returns a
          * cleared entry's value, so readers alone do not race (#807). Whether a
          * {@code LinkedHashMap} is access-ordered is private to {@code java.util}, so every one
-         * counts unless {@link LinkedHashMapOrder} could read it as insertion-ordered, which
-         * keeps the verdict one whose order is unknown had before #787. Only the round rule reads
-         * this: the lockset still judges the access as a read, so a read lock held over it guards
-         * it, unless the detector knew the read writes and recorded it as a write (#807).
+         * counts unless {@link LinkedHashMapOrder} knows it is insertion-ordered, from the field or
+         * from the agent, which keeps the verdict one whose order is unknown had before #787.
+         * Only the round rule reads this: the lockset still judges the access as a read, so a read
+         * lock held over it guards it, unless the detector knew the read writes and recorded it as
+         * a write (#807).
          *
          * @param instance the instance being read
          */

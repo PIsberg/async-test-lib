@@ -56,9 +56,15 @@ public class LockLeakDetector {
          * Held for the detector's lifetime, which is one run.
          */
         volatile @Nullable Thread holder;
+        /**
+         * Every thread that registered or recorded against the lock, so that a live one carrying the
+         * holder's name is seen even when it is virtual and no scan can list it (#855). Held for the
+         * detector's lifetime, which is one run.
+         */
+        final Set<Thread> threads = ConcurrentHashMap.newKeySet();
 
-        LockState(Lock lock, String name) {
-            this.name = name != null ? name : "lock@" + System.identityHashCode(lock);
+        LockState(String name) {
+            this.name = name != null ? name : ReportSections.unnamed("lock");
         }
     }
 
@@ -80,7 +86,8 @@ public class LockLeakDetector {
         // against the same lock. A put() would install a fresh LockState each time, wiping the
         // acquire/release counts — so an acquire leaked by an earlier invocation would be
         // erased before analysis ever saw it.
-        locks.computeIfAbsent(new IdentityKey(lock), ignored -> new LockState(lock, name));
+        locks.computeIfAbsent(new IdentityKey(lock), ignored -> new LockState(name))
+                .threads.add(Thread.currentThread());
     }
 
     /**
@@ -97,9 +104,10 @@ public class LockLeakDetector {
         // and install a LockState, and the loser's increments then land on an orphaned object
         // that analysis never sees.
         LockState state = locks.computeIfAbsent(new IdentityKey(lock),
-                                                ignored -> new LockState(lock, name));
+                                                ignored -> new LockState(name));
         state.acquireCount.incrementAndGet();
         state.acquiringThreads.add(Thread.currentThread().threadId());
+        state.threads.add(Thread.currentThread());
         state.currentlyHeld = true;
         if (lock instanceof ReentrantLock reentrant && reentrant.isHeldByCurrentThread()) {
             state.holder = Thread.currentThread();
@@ -125,10 +133,11 @@ public class LockLeakDetector {
             // Auto-register atomically. get-then-put let two threads racing on the same lock
             // each keep a private state whose releasingThreads held one id, so cross-thread
             // acquire/release imbalance became invisible under contention.
-            state = locks.computeIfAbsent(id, k -> new LockState(lock, name));
+            state = locks.computeIfAbsent(id, k -> new LockState(name));
         }
         state.releaseCount.incrementAndGet();
         state.releasingThreads.add(Thread.currentThread().threadId());
+        state.threads.add(Thread.currentThread());
         state.currentlyHeld = false;
 
         // Calculate hold time
@@ -161,7 +170,7 @@ public class LockLeakDetector {
                 if (platformThreads == null) {
                     platformThreads = Thread.getAllStackTraces().keySet();
                 }
-                confirmed = confirmedHold(lock, state.holder, platformThreads);
+                confirmed = confirmedHold(lock, state.holder, platformThreads, state.threads);
             }
 
             // Check for lock leaks (more acquires than releases)
@@ -224,15 +233,16 @@ public class LockLeakDetector {
      *
      * <p>The lock names its holder only by name, so the hold is confirmed only when that name can
      * be nobody but the thread this detector recorded acquiring it (#843). An empty name is every
-     * unnamed virtual thread's, a name another live platform thread also carries is ambiguous, and
-     * a name the recorded thread does not carry belongs to a thread that never recorded: finding
-     * no live platform thread of that name says nothing about a virtual one, which no scan can
-     * list. Each stays at its recorded grade. {@code ReentrantLockDetector} judges its own held-lock
-     * finding by the same rule, through the same code (#848). What remains is a virtual thread
-     * deliberately given the recorded thread's non-empty name.
+     * unnamed virtual thread's, a name another live platform thread or another live thread that
+     * registered or recorded against the lock also carries is ambiguous (#855), and a name the
+     * recorded thread does not carry belongs to a thread that never recorded: finding no live
+     * platform thread of that name says nothing about a virtual one, which no scan can list. Each
+     * stays at its recorded grade. {@code ReentrantLockDetector} judges its own held-lock finding by
+     * the same rule, through the same code (#848). What remains is a virtual thread that never
+     * recorded against the lock and carries the recorded thread's non-empty name.
      */
     private static @Nullable String confirmedHold(ReentrantLock lock, @Nullable Thread recorded,
-                                                  Set<Thread> platformThreads) {
+                                                  Set<Thread> platformThreads, Set<Thread> recordedThreads) {
         if (!lock.isLocked() || lock.isHeldByCurrentThread()) {
             return null;
         }
@@ -241,7 +251,7 @@ public class LockLeakDetector {
             return null;
         }
         ReentrantLockDetector.HolderState state = ReentrantLockDetector.holderState(
-                holderName, recorded, platformThreads);
+                holderName, recorded, platformThreads, recordedThreads);
         if (state == null || state == ReentrantLockDetector.HolderState.WORKING) {
             return null;
         }

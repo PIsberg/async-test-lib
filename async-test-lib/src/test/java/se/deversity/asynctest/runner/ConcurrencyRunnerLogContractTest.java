@@ -13,10 +13,15 @@ import org.slf4j.LoggerFactory;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
+import se.deversity.asynctest.diagnostics.ConditionVariableDetector;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
 
 import java.util.List;
+import java.util.concurrent.Exchanger;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -459,6 +464,97 @@ class ConcurrencyRunnerLogContractTest {
                 .recordLockObject(mine, "lock", ReassignedStaticLockDummy.class);
             Holder holder = new Holder();
             AsyncTestContext.synchronizedNonFinalDetector().recordLockObject(holder.lock, "lock", Holder.class);
+        }
+    }
+
+    /** The single note event a passing run of {@code dummy} logs for {@code detector}. */
+    private String theOneNoteOf(Class<?> dummy, String detector) {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(dummy))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> notes = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.detector.note"))
+            .toList();
+        assertEquals(1, notes.size(),
+            "one note, logged once per run however many workers and rounds recorded it (#816). Got: "
+                + events());
+        assertSame(Level.INFO, notes.get(0).getLevel(), "a note is not a finding, so INFO, never WARN");
+        String message = notes.get(0).getFormattedMessage();
+        assertTrue(message.contains("detector=" + detector + " notes=1 note=\""),
+            "the event names the detector and the one note it wrote: " + message);
+        return message;
+    }
+
+    @Test
+    @DisplayName("a condition registered without its lock and left waiting is noted in a passing run")
+    void aConditionRegisteredWithoutItsLockIsNoted() {
+        String message = theOneNoteOf(LockLessConditionDummy.class, "ConditionVariableDetector");
+        assertTrue(message.contains("registered without its lock")
+                && message.contains("registerCondition(lock, condition, ready, name)"),
+            "the note names the registration that lets the lock confirm the waits: " + message);
+    }
+
+    @Test
+    @DisplayName("an exchange end recorded with no start is noted in a passing run")
+    void anExchangeEndWithNoStartIsNoted() {
+        String message = theOneNoteOf(EndWithoutStartDummy.class, "ExchangerDetector");
+        assertTrue(message.contains("note=\"swap: 4 end(s)")
+                && message.contains("record the start and the end on the calling thread"),
+            "the note names the exchanger, counts the ends and says how to record them: " + message);
+    }
+
+    @Test
+    @DisplayName("waits recorded with no lock named are noted once in a passing run")
+    void lockLessStarvationWaitsAreNotedOnce() {
+        String message = theOneNoteOf(LockLessStarvationDummy.class, "ReentrantLockDetector");
+        assertTrue(message.contains("note=\"4 wait(s)")
+                && message.contains("recordStarvation(lock, threadName, waitTimeMs)"),
+            "four recorded waits are one note that counts them and names the overload that judges "
+                + "them, not four lines: " + message);
+    }
+
+    /** A condition registered without its lock; each worker records an await it then skips. */
+    static class LockLessConditionDummy {
+        static final ReentrantLock LOCK = new ReentrantLock();
+        static final Condition READY = LOCK.newCondition();
+
+        @AsyncTest(threads = 2, invocations = 2, detectAll = false, detectConditionVariableIssues = true,
+                useVirtualThreads = true)
+        void lockLess() {
+            ConditionVariableDetector monitor = AsyncTestContext.conditionVariableDetector();
+            monitor.registerCondition(READY, "ready");
+            monitor.recordAwait(READY, "ready"); // recorded before the predicate check, which held
+        }
+    }
+
+    /** Pairs of workers exchange and record the completion, but never the start. */
+    static class EndWithoutStartDummy {
+        static final Exchanger<String> EXCHANGER = new Exchanger<>();
+
+        @AsyncTest(threads = 2, invocations = 2, detectAll = false, detectExchangerIssues = true)
+        void endOnly() throws Exception {
+            String received = EXCHANGER.exchange("mine", 10, TimeUnit.SECONDS);
+            AsyncTestContext.exchangerDetector().recordExchangeComplete(EXCHANGER, "swap", received);
+        }
+    }
+
+    /** Each worker times its wait for a lock and records it with no lock named. */
+    static class LockLessStarvationDummy {
+        static final ReentrantLock LOCK = new ReentrantLock();
+
+        @AsyncTest(threads = 2, invocations = 2, detectAll = false, detectReentrantLockIssues = true)
+        void timed() {
+            long start = System.nanoTime();
+            LOCK.lock();
+            try {
+                long waitedMs = Math.max(1, (System.nanoTime() - start) / 1_000_000);
+                AsyncTestContext.reentrantLockDetector().recordStarvation(Thread.currentThread().getName(), waitedMs);
+            } finally {
+                LOCK.unlock();
+            }
         }
     }
 }

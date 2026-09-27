@@ -51,8 +51,9 @@ public class ParallelStreamDetector {
         final AtomicBoolean hasSideEffects = new AtomicBoolean(false);
         volatile @Nullable Long firstAccessTime = null;
 
+        // Never null: every record method returns early on a null stream name, and the name is the key.
         StreamState(String name) {
-            this.name = name != null ? name : "stream@" + System.identityHashCode(this);
+            this.name = name;
         }
     }
 

@@ -253,6 +253,31 @@ public class ExchangerDetector {
             return false;
         }
 
+        /**
+         * {@return one note per exchanger with ends recorded on a thread that recorded no start
+         * there, naming the exchanger and how to record the exchange instead}
+         *
+         * <p>Such an end closed nothing, so an exchange recorded that way can never be found
+         * orphaned: the recording is what needs changing. The runner logs these when
+         * {@link #hasIssues()} is {@code false}, since the report itself is printed only when it has
+         * a finding (#816). Timeouts, interrupts and {@code null} payloads are how correct code
+         * leaves or uses an exchange, and stay in the report text.
+         *
+         * @since 1.12.3
+         */
+        public List<String> notes() {
+            List<String> notes = new ArrayList<>();
+            for (ExchangerInfo c : exchangers) {
+                int unmatched = c.unmatchedEnds.get();
+                if (unmatched > 0) {
+                    notes.add(c.name + ": " + unmatched + " end(s) recorded with no start recorded on "
+                            + "that thread, so they ended no exchange; record the start and the end on "
+                            + "the calling thread");
+                }
+            }
+            return notes;
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();

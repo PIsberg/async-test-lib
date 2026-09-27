@@ -53,8 +53,8 @@ public class SimpleDateFormatDetector {
         final Map<String, AtomicInteger> methodCounts = new ConcurrentHashMap<>();
         volatile @Nullable Long firstAccessTime = null;
 
-        FormatterState(SimpleDateFormat formatter, String name) {
-            this.name = name != null ? name : "formatter@" + System.identityHashCode(formatter);
+        FormatterState(String name) {
+            this.name = name != null ? name : ReportSections.unnamed("formatter");
         }
     }
 
@@ -74,7 +74,7 @@ public class SimpleDateFormatDetector {
         if (!enabled || formatter == null) {
             return;
         }
-        formatters.putIfAbsent(new IdentityKey(formatter), new FormatterState(formatter, name));
+        formatters.putIfAbsent(new IdentityKey(formatter), new FormatterState(name));
     }
 
     /**
@@ -115,8 +115,7 @@ public class SimpleDateFormatDetector {
             // saw null, both built a state and the second put discarded the first, so each
             // thread counted itself alone and the "> 1 thread" test in analyze() never
             // tripped - the detector went silent under exactly the contention it looks for.
-            final String label = name != null ? name : "formatter@" + key.hashCode();
-            state = formatters.computeIfAbsent(key, k -> new FormatterState(formatter, label));
+            state = formatters.computeIfAbsent(key, k -> new FormatterState(name));
         }
         // The thread that hit the error was using the formatter, so it counts toward the
         // sharing the error finding now requires (#501).
@@ -135,8 +134,7 @@ public class SimpleDateFormatDetector {
         FormatterState state = formatters.get(key);
         if (state == null) {
             // Auto-register atomically - see recordError() for why get-then-put lost records.
-            final String label = name != null ? name : "formatter@" + key.hashCode();
-            state = formatters.computeIfAbsent(key, k -> new FormatterState(formatter, label));
+            state = formatters.computeIfAbsent(key, k -> new FormatterState(name));
         }
         state.noteAccess(formatter);
 

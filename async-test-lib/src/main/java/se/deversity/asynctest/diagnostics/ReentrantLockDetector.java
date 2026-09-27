@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -37,16 +38,34 @@ import java.util.concurrent.locks.ReentrantLock;
  * by default, so every one of them is {@code ""}. So a hold is judged only when the name can be
  * nobody but the thread last recorded acquiring the lock while holding it
  * ({@link #recordLockAcquired}): the name is not empty, it is that thread's, and no other live
- * platform thread carries it (#843, #848). The hold is then reported when that thread has finished
+ * platform thread, nor any other live thread that recorded against the lock, carries it (#843,
+ * #848, #855). The hold is then reported when that thread has finished
  * with the lock taken, or sits idle in a pool ({@code ThreadPoolExecutor.getTask},
  * {@code ForkJoinPool.awaitWork}), which is how a runner worker or an executor thread looks once the
  * task that took the lock has ended. A recorded holder that is alive and anywhere else may still
  * release the lock, so its hold is printed as context. So is every hold whose name identifies no
- * one: an unnamed virtual thread, a name another live platform thread shares, or a thread that
+ * one: an unnamed virtual thread, a name another live thread shares, or a thread that
  * never recorded taking the lock, which, if it is virtual, no scan can list to see whether it is
  * still running. The runner names its workers, so a worker that records its acquisition and ends
- * holding the lock is reported. What remains is a virtual thread deliberately given the recorded
- * thread's non-empty name.
+ * holding the lock is reported. What remains is a virtual thread that never recorded against the
+ * lock and carries the recorded thread's non-empty name.
+ *
+ * <p>An unidentified hold is context rather than a finding of any grade (#855), although it misses
+ * a real leak: a helper that re-enters the lock and keeps the extra hold on an unnamed virtual
+ * thread, or on a thread that never recorded taking the lock, balances the recorded counts, so
+ * {@link LockLeakDetector} has nothing to count either. A finding needs something correct code
+ * cannot show, and here nothing is left. The runner guarantees only that its own workers have
+ * finished when it analyses, and it names them; an unidentified holder is therefore a thread
+ * outside that guarantee, one the body or the code under test started and nobody has joined, which
+ * may legitimately still be working. For each shape the leak leaves exactly what correct code
+ * leaves: an unnamed thread that recorded its pair inside a hold it later gave back where nothing
+ * records, followed by another unnamed thread still working under the lock; or this run's worker,
+ * which registered the lock and ended without taking it, while a same-named worker of another run
+ * in parallel holds a shared lock. Even a {@code FACT} grade trips a {@code failOn} gate, and would
+ * then fail correct code whenever such a holder happened to be inside its critical section at
+ * analysis. Name the thread and record the acquisition, as the runner's workers do, and the hold
+ * is judged; a hold by a named thread that never recorded taking the lock says so in
+ * {@link ReentrantLockReport#notes()}, which the runner logs on a clean run (#816).
  *
  * <p><strong>What it records but does not report:</strong>
  * <ul>
@@ -81,6 +100,8 @@ public class ReentrantLockDetector {
     private final Set<String> observedStarvation = ConcurrentHashMap.newKeySet();
     /** Recorded waits nothing corroborated: context. */
     private final Set<String> recordedWaits = ConcurrentHashMap.newKeySet();
+    /** How many of those waits named no lock, so could never be judged: a note for the caller (#816). */
+    private final AtomicInteger locklessWaits = new AtomicInteger();
 
     /**
      * Where to send acquire and release records, or {@code null} to keep them as context only.
@@ -116,10 +137,20 @@ public class ReentrantLockDetector {
         }
     }
 
-    /** {@return the registered name of {@code lock}, or a stable fallback} */
+    /**
+     * The name each unregistered lock is printed under, numbered the first time one is needed.
+     * {@code ReentrantLock} keeps {@code Object}'s equality, so keys are identities.
+     */
+    private final Map<ReentrantLock, String> unnamed = new ConcurrentHashMap<>();
+
+    /**
+     * {@return the registered name of {@code lock}, or a fallback kept for it} The fallback was
+     * the identity hash, which two locks share often enough that their lines merged (#854).
+     */
     private String nameOf(ReentrantLock lock) {
         LockInfo info = lockRegistry.get(lock);
-        return info != null ? info.name : "ReentrantLock@" + System.identityHashCode(lock);
+        return info != null ? info.name
+                : unnamed.computeIfAbsent(lock, l -> ReportSections.unnamed("ReentrantLock"));
     }
 
     /** {@return what has been seen on {@code lock}, created on first use} */
@@ -242,6 +273,7 @@ public class ReentrantLockDetector {
      */
     public void recordStarvation(String threadName, long waitTimeMs) {
         if (waitTimeMs <= 0) return;
+        locklessWaits.incrementAndGet();
         recordedWaits.add(threadName + " (waited " + waitTimeMs + "ms; no lock named, so nothing "
                 + "could corroborate it)");
     }
@@ -298,6 +330,7 @@ public class ReentrantLockDetector {
         // The holder is read now, while it is the evidence, not when the report is printed.
         Map<ReentrantLock, String> held = new LinkedHashMap<>();
         Map<ReentrantLock, String> stillWorking = new LinkedHashMap<>();
+        List<String> unjudgedHolds = new ArrayList<>();
         Set<Thread> platformThreads = null;
         for (ReentrantLock lock : known) {
             if (!lock.isLocked() || lock.isHeldByCurrentThread() || leftToLeakReporter(lock)) {
@@ -314,10 +347,16 @@ public class ReentrantLockDetector {
             }
             Observed seen = observed.get(lock);
             Thread recorded = seen != null ? seen.holder.get() : null;
-            HolderState state = holderState(holderName, recorded, platformThreads);
+            HolderState state = holderState(holderName, recorded, platformThreads,
+                    seen != null ? seen.threads : Set.of());
             if (state == null) {
                 stillWorking.put(lock, holder + ", a thread the detector cannot identify: "
                         + whyUnidentified(holderName, recorded));
+                if (neverRecordedTaking(holderName, recorded)) {
+                    unjudgedHolds.add(nameOf(lock) + ": " + holder + " at analysis, a thread that never "
+                            + "recorded taking it, so the hold cannot be judged a leak; call "
+                            + "recordLockAcquired(lock, threadName) on the thread that takes the lock");
+                }
             } else if (state == HolderState.WORKING) {
                 stillWorking.put(lock, holder + ", still running");
             } else {
@@ -326,7 +365,7 @@ public class ReentrantLockDetector {
             }
         }
         return new ReentrantLockReport(lockRegistry, timeouts, observedStarvation, recordedWaits,
-                held, stillWorking);
+                held, stillWorking, unjudgedHolds, locklessWaits.get());
     }
 
     /** Where the thread holding a lock is when the run is analysed. */
@@ -341,19 +380,24 @@ public class ReentrantLockDetector {
      * state, and only when the name can be nobody else's (#843, #848): it is not empty, since every
      * unnamed virtual thread is {@code ""}; it is the recorded thread's, since finding no live
      * platform thread of a name says nothing about a virtual one, which no scan can list; and no
-     * other live platform thread carries it. A virtual thread deliberately given the recorded
-     * thread's non-empty name still passes, since nothing at analysis can list it.
+     * other live thread carries it, whether a platform thread or one that recorded against the lock,
+     * which is how a live virtual thread of the same name is seen (#855). A virtual thread that never
+     * recorded against the lock and carries the recorded thread's non-empty name still passes, since
+     * nothing at analysis can list it.
      *
      * @param holderName      the holder's name as {@link #holderNameOf} read it from the lock
      * @param recorded        the thread last recorded acquiring the lock while holding it, or
      *                        {@code null} when none was
      * @param platformThreads the live platform threads, read once per analysis and searched for
      *                        another thread with the holder's name
+     * @param recordedThreads every thread that registered or recorded against the lock, virtual ones
+     *                        included, searched the same way; empty when none did
      */
     static @Nullable HolderState holderState(String holderName, @Nullable Thread recorded,
-                                             Set<Thread> platformThreads) {
+                                             Set<Thread> platformThreads, Set<Thread> recordedThreads) {
         if (recorded == null || holderName.isEmpty() || !holderName.equals(recorded.getName())
-                || anotherLiveThreadIsNamed(holderName, recorded, platformThreads)) {
+                || anotherLiveThreadIsNamed(holderName, recorded, platformThreads)
+                || anotherLiveThreadIsNamed(holderName, recorded, recordedThreads)) {
             return null;
         }
         if (!recorded.isAlive()) {
@@ -362,9 +406,9 @@ public class ReentrantLockDetector {
         return idleInAPool(recorded) ? HolderState.IDLE : HolderState.WORKING;
     }
 
-    /** {@return whether a live platform thread other than {@code recorded} is also named {@code name}} */
-    private static boolean anotherLiveThreadIsNamed(String name, Thread recorded, Set<Thread> platformThreads) {
-        for (Thread thread : platformThreads) {
+    /** {@return whether a live thread among {@code threads} other than {@code recorded} is also named {@code name}} */
+    private static boolean anotherLiveThreadIsNamed(String name, Thread recorded, Set<Thread> threads) {
+        for (Thread thread : threads) {
             if (!thread.equals(recorded) && thread.isAlive() && name.equals(thread.getName())) {
                 return true;
             }
@@ -377,11 +421,20 @@ public class ReentrantLockDetector {
         if (holderName.isEmpty()) {
             return "every unnamed virtual thread is named \"\"";
         }
-        if (recorded == null || !holderName.equals(recorded.getName())) {
+        if (neverRecordedTaking(holderName, recorded)) {
             return "it never recorded taking the lock, and a virtual thread cannot be listed to see "
                     + "whether it is still running";
         }
-        return "another live platform thread carries the same name";
+        return "another live thread carries the same name";
+    }
+
+    /**
+     * {@return whether the named holder of a lock is not the thread last recorded taking it, which
+     * a {@code recordLockAcquired} call on the holder would settle}; an empty name identifies no one
+     * whatever is recorded, so it is never this case
+     */
+    private static boolean neverRecordedTaking(String holderName, @Nullable Thread recorded) {
+        return !holderName.isEmpty() && (recorded == null || !holderName.equals(recorded.getName()));
     }
 
     /**
@@ -434,6 +487,10 @@ public class ReentrantLockDetector {
         private final Map<ReentrantLock, String> heldLocks;
         /** Each lock held at analysis by a holder still working or not identified, printed as context. */
         private final Map<ReentrantLock, String> stillWorking;
+        /** The holds among {@link #stillWorking} whose holder never recorded taking the lock (#816). */
+        private final List<String> unjudgedHolds;
+        /** How many recorded waits named no lock (#816). */
+        private final int locklessWaits;
 
         /**
          * Creates a ReentrantLockReport with no held locks.
@@ -452,7 +509,8 @@ public class ReentrantLockDetector {
             Set<ReentrantLock> timeoutLocks,
             Set<String> starvationThreads
         ) {
-            this(lockRegistry, countOnce(timeoutLocks), Set.of(), starvationThreads, Map.of(), Map.of());
+            this(lockRegistry, countOnce(timeoutLocks), Set.of(), starvationThreads, Map.of(), Map.of(),
+                    List.of(), 0);
         }
 
         private ReentrantLockReport(
@@ -461,7 +519,9 @@ public class ReentrantLockDetector {
             Set<String> observedStarvation,
             Set<String> recordedWaits,
             Map<ReentrantLock, String> heldLocks,
-            Map<ReentrantLock, String> stillWorking
+            Map<ReentrantLock, String> stillWorking,
+            List<String> unjudgedHolds,
+            int locklessWaits
         ) {
             this.lockRegistry = Collections.unmodifiableMap(new HashMap<>(lockRegistry));
             this.timeouts = Collections.unmodifiableMap(new HashMap<>(timeouts));
@@ -469,6 +529,8 @@ public class ReentrantLockDetector {
             this.recordedWaits = Collections.unmodifiableSet(new HashSet<>(recordedWaits));
             this.heldLocks = Collections.unmodifiableMap(new LinkedHashMap<>(heldLocks));
             this.stillWorking = Collections.unmodifiableMap(new LinkedHashMap<>(stillWorking));
+            this.unjudgedHolds = List.copyOf(unjudgedHolds);
+            this.locklessWaits = locklessWaits;
         }
 
         private static Map<ReentrantLock, Integer> countOnce(Set<ReentrantLock> locks) {
@@ -485,6 +547,32 @@ public class ReentrantLockDetector {
          */
         public boolean hasIssues() {
             return !heldLocks.isEmpty() || !observedStarvation.isEmpty();
+        }
+
+        /**
+         * {@return the notes that ask the caller to change a recording: one per lock held at
+         * analysis by a thread that never recorded taking it, and one counting the waits recorded
+         * with no lock named}
+         *
+         * <p>Each is something this detector could have judged had it been recorded differently:
+         * the hold with {@code recordLockAcquired} on the holder, the waits with
+         * {@link ReentrantLockDetector#recordStarvation(ReentrantLock, String, long)}. The runner
+         * logs these when {@link #hasIssues()} is {@code false}, since the report itself is printed
+         * only when it has a finding (#816). A holder still running, a wait the lock did not
+         * corroborate and a {@code tryLock()} timeout are background, and stay in the report text.
+         *
+         * @since 1.12.3
+         */
+        public List<String> notes() {
+            if (locklessWaits == 0) {
+                return unjudgedHolds;
+            }
+            List<String> notes = new ArrayList<>(unjudgedHolds);
+            notes.add(locklessWaits + " wait(s) recorded with recordStarvation(threadName, waitTimeMs), "
+                    + "which names no lock, so none could be judged; pass the lock, "
+                    + "recordStarvation(lock, threadName, waitTimeMs), to have a thread seen barging "
+                    + "past the waiter confirm starvation");
+            return notes;
         }
 
         /**

@@ -75,8 +75,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <h2>With the agent it judges the decision instead of the flag</h2>
  * Attached with {@code collections=true}, the agent weaves {@code Thread.start()},
- * {@code Thread.setDaemon(boolean)}, a platform {@code Thread.Builder}'s {@code daemon} and
- * {@code unstarted}, and every {@code new Thread} through {@link AgentThreadHooks} (#731, #737).
+ * {@code Thread.setDaemon(boolean)}, a platform {@code Thread.Builder}'s {@code daemon},
+ * {@code unstarted} and {@code factory}, the {@code newThread} of such a factory, and every
+ * {@code new Thread} through {@link AgentThreadHooks} (#731, #737, #856).
  * A woven start of a thread the agent also saw constructed records it through
  * {@link #recordObservedStart(Thread)}, and a thread started that way is reported while alive
  * unless a woven {@code setDaemon(true)} or builder {@code daemon(true)} was seen for it,
@@ -84,7 +85,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * constructed where the agent does not weave, in a class outside {@code includes=}, may have
  * been decided there, so a woven start records it as {@link #recordThread(Thread, String)}
  * does and its flag decides: a non-daemon one is reported, a daemon one is not, even when
- * nobody decided it.
+ * nobody decided it. The same holds for a thread woven code constructed whose flag is no longer
+ * the one it inherited from its constructing thread, with no woven decision seen: something
+ * unwoven decided it (#856). A {@code setDaemon(true)} in unwoven code on a thread a daemon worker
+ * constructed changes nothing visible, and that thread is still reported as undecided.
  *
  * @since 1.6.0
  */

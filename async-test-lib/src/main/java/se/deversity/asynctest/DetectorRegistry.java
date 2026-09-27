@@ -718,7 +718,8 @@ final class DetectorRegistry {
                 BlockingQueueDetector.BlockingQueueReport::hasIssues, out);
         ifIssue(conditionVariableDetector,
                 ConditionVariableDetector::analyze,
-                ConditionVariableDetector.ConditionVariableReport::hasIssues, out);
+                ConditionVariableDetector.ConditionVariableReport::hasIssues,
+                ConditionVariableDetector.ConditionVariableReport::notes, out);
         ifIssue(simpleDateFormatDetector,
                 SimpleDateFormatDetector::analyze,
                 SimpleDateFormatDetector.SimpleDateFormatReport::hasIssues, out);
@@ -736,7 +737,8 @@ final class DetectorRegistry {
                 CyclicBarrierDetector.CyclicBarrierReport::hasIssues, out);
         ifIssue(reentrantLockDetector,
                 ReentrantLockDetector::analyze,
-                ReentrantLockDetector.ReentrantLockReport::hasIssues, out);
+                ReentrantLockDetector.ReentrantLockReport::hasIssues,
+                ReentrantLockDetector.ReentrantLockReport::notes, out);
         ifIssue(volatileArrayDetector,
                 VolatileArrayDetector::analyze,
                 VolatileArrayDetector.VolatileArrayReport::hasIssues, out);
@@ -767,7 +769,8 @@ final class DetectorRegistry {
                 StampedLockDetector.StampedLockReport::hasIssues, out);
         ifIssue(exchangerDetector,
                 ExchangerDetector::analyze,
-                ExchangerDetector.ExchangerReport::hasIssues, out);
+                ExchangerDetector.ExchangerReport::hasIssues,
+                ExchangerDetector.ExchangerReport::notes, out);
         ifIssue(scheduledExecutorDetector,
                 ScheduledExecutorDetector::analyze,
                 ScheduledExecutorDetector.ScheduledExecutorReport::hasIssues, out);

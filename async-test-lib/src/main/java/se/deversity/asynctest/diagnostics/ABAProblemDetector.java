@@ -567,7 +567,7 @@ public class ABAProblemDetector {
         private final List<Object[]> findings = new ArrayList<>();
 
         private AgentSlot(IdentityKey atomic) {
-            this.label = atomic.toString();
+            this.label = ReportSections.unnamed(atomic.referent().getClass().getSimpleName());
         }
 
         /** A thread's last read of the atomic and what happened to that value since. */

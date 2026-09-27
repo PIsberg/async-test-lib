@@ -625,4 +625,27 @@ public class RaceConditionDetectorTest {
         assertEquals(viaAnalyzeRaceConditions.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeRaceConditions.toString(), viaAnalyze.toString());
     }
+
+    @Test
+    void racesOnTwoObjectsSharingAnIdentityHashPrintAsTwoLines() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        List<Object> colliding = IdentityCollisions.pair(Object::new);
+        // One source line for every write, so the two objects' lines differ only in the object.
+        Runnable writeBoth = () -> {
+            for (Object shared : colliding) {
+                detector.recordFieldWrite(shared, "value");
+            }
+        };
+        Thread t1 = new Thread(writeBoth);
+        Thread t2 = new Thread(writeBoth);
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+
+        RaceConditionDetector.RaceConditionReport report = detector.analyzeRaceConditions();
+        assertEquals(2, report.potentialRaces.size(),
+                "two objects raced on are two lines, even when their identity hashes collide (#854): "
+                        + report);
+    }
 }

@@ -207,6 +207,31 @@ class AgentSharedInstanceHooksTest {
                 "one MessageDigest per thread, through the same hooks, is correct code");
     }
 
+    @Test
+    @DisplayName("the site of a MessageDigest finding fed through the hooks is the caller's line, not the hook's")
+    void messageDigestSiteNamesTheCallerNotTheHook() {
+        // #853: the stack under the detector's walk is the hook, then the woven caller. The report
+        // named AgentSharedInstanceHooks.recordDigest, a line the reader cannot change.
+        AsyncTestContext shared = newContext();
+        MessageDigest one = sha256();
+        onTwoThreads(shared, true, () -> updateFromTheCallersLine(one));
+        List<se.deversity.asynctest.diagnostics.SiteCapture.Site> sites = with(shared,
+                () -> AsyncTestContext.sharedMessageDigestDetector().analyze().structuredViolations)
+                .get(0).sites();
+
+        assertFalse(sites.isEmpty(), "the finding must name at least one access site");
+        for (var site : sites) {
+            assertEquals(AgentSharedInstanceHooksTest.class.getName() + ".updateFromTheCallersLine",
+                    site.className() + "." + site.methodName(),
+                    "an agent-fed site must be the line that called the digest, found " + site.render());
+        }
+    }
+
+    /** The one line in this class that feeds the digest, standing in for a woven call site. */
+    private static void updateFromTheCallersLine(MessageDigest md) {
+        AgentSharedInstanceHooks.update(md, PAYLOAD);
+    }
+
     /** Every digest hook once, on {@code md}. */
     private static void digestEverything(MessageDigest md) throws Exception {
         AgentSharedInstanceHooks.update(md, PAYLOAD);

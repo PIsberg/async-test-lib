@@ -72,7 +72,7 @@ public class BlockingQueueDetector {
 
         QueueState(BlockingQueue<?> queue, @Nullable String name, int capacity) {
             this.queue = queue;
-            this.name = name != null ? name : "queue@" + System.identityHashCode(queue);
+            this.name = name != null ? name : ReportSections.unnamed("queue");
             this.capacity = new AtomicInteger(capacity);
         }
     }

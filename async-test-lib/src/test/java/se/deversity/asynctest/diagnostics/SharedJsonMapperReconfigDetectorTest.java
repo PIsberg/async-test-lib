@@ -466,7 +466,7 @@ class SharedJsonMapperReconfigDetectorTest {
 
         long bytes = RecordPathAllocation.measuredBytes(() -> d.recordUse(mapper));
 
-        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a use of a mapper the "
+        assertTrue(bytes < RecordPathAllocation.CEILING, "recording a use of a mapper the "
                 + "detector already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " uses");
     }

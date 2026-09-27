@@ -404,4 +404,80 @@ class LazyCollectionMisuseDetectorTest {
         assertTrue(d.analyze().violations.stream().anyMatch(v -> v.contains("Element Object@")),
             d.analyze().toString());
     }
+
+    // ---- Name-keyed dependency edges are per round (#852) ----
+
+    @Test
+    void aFreshCollectionPerRoundUnderAReusedNameIsNoCycleAcrossRounds() {
+        // Each round builds its own List.ofLazy under "GRID". In the first, element 0 reads
+        // element 1; in the second, element 1 reads element 0. Each collection has a one-way
+        // dependency, and nothing can deadlock.
+        var d = new LazyCollectionMisuseDetector();
+        Thread t = Thread.currentThread();
+        d.markInvocationStart();
+        d.recordComputeStart("GRID", 0, t);
+        d.recordComputeStart("GRID", 1, t);
+        d.recordComputeEnd("GRID", 1, t, "b");
+        d.recordComputeEnd("GRID", 0, t, "a");
+
+        d.markInvocationStart();
+        d.recordComputeStart("GRID", 1, t);
+        d.recordComputeStart("GRID", 0, t);
+        d.recordComputeEnd("GRID", 0, t, "a");
+        d.recordComputeEnd("GRID", 1, t, "b");
+
+        var report = d.analyze();
+        assertFalse(report.violations.stream().anyMatch(v -> v.contains("in a cycle")),
+            "two rounds' one-way dependencies are not one cycle: " + report);
+        assertTrue(report.violations.stream().anyMatch(v -> v.contains("GRID[0] -> GRID[1]")
+                && v.contains("GRID[1] -> GRID[0]")),
+            "each round's nesting is still the warning: " + report);
+    }
+
+    @Test
+    void aCycleWithinOneRoundStillFiresAfterTheRoundCloses() {
+        var d = new LazyCollectionMisuseDetector();
+        Thread t = Thread.currentThread();
+        d.markInvocationStart();
+        d.recordComputeStart("GRID", 0, t);
+        d.recordComputeStart("GRID", 1, t);
+        d.recordComputeEnd("GRID", 1, t, "b");
+        d.recordComputeEnd("GRID", 0, t, "a");
+        d.recordComputeStart("GRID", 1, t);
+        d.recordComputeStart("GRID", 0, t);
+        d.recordComputeEnd("GRID", 0, t, "a");
+        d.recordComputeEnd("GRID", 1, t, "b");
+
+        d.markInvocationStart();   // a clean round follows; the cycle belongs to the one before
+        d.recordComputeStart("GRID", 0, t);
+        d.recordComputeEnd("GRID", 0, t, "a");
+
+        var report = d.analyze();
+        assertTrue(report.structuredViolations.stream()
+                .anyMatch(v -> "circularElementDependency".equals(v.attributes().get("issue"))
+                        && v.severity() == IssueSeverity.CRITICAL),
+            "a cycle inside one round is the deadlock: " + report);
+    }
+
+    @Test
+    void aStaticCollectionsDependencyEdgesLastTheRun() {
+        // One collection passed in both rounds: its elements, and so its edges, outlive the round.
+        var d = new LazyCollectionMisuseDetector();
+        Object grid = new Object();
+        Thread t = Thread.currentThread();
+        d.markInvocationStart();
+        d.recordComputeStart(grid, "GRID", 0, t);
+        d.recordComputeStart(grid, "GRID", 1, t);
+        d.recordComputeEnd(grid, "GRID", 1, t, "b");
+        d.recordComputeEnd(grid, "GRID", 0, t, "a");
+
+        d.markInvocationStart();
+        d.recordComputeStart(grid, "GRID", 1, t);
+        d.recordComputeStart(grid, "GRID", 0, t);
+        d.recordComputeEnd(grid, "GRID", 0, t, "a");
+        d.recordComputeEnd(grid, "GRID", 1, t, "b");
+
+        var report = d.analyze();
+        assertTrue(report.violations.stream().anyMatch(v -> v.contains("in a cycle")), report.toString());
+    }
 }

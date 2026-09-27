@@ -321,7 +321,7 @@ public class SharedCollectionDetectorTest {
         });
 
         long accesses = 2L * RecordPathAllocation.MEASURED_CALLS;
-        assertTrue(bytes < accesses, "recording a collection the detector already tracks allocated "
+        assertTrue(bytes < 2 * RecordPathAllocation.CEILING, "recording a collection the detector already tracks allocated "
                 + bytes + " bytes over " + accesses + " accesses; a state lookup or a thread-id "
                 + "set started allocating per access");
     }

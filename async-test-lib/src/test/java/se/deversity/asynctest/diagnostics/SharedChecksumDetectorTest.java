@@ -146,7 +146,7 @@ class SharedChecksumDetectorTest {
             }
         });
 
-        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a checksum the detector "
+        assertTrue(bytes < RecordPathAllocation.CEILING, "recording a checksum the detector "
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }

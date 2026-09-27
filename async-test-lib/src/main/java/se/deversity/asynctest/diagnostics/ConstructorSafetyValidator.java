@@ -1,5 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
+import java.lang.ref.Reference;
+import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -9,6 +11,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
 
 /**
  * Validates that objects are fully constructed before being shared across threads.
@@ -44,7 +49,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       construction nested inside a running constructor starts deeper and closes nothing.
  *       What the stack cannot tell apart is the window between the later constructor starting
  *       and its start being recorded, or a later constructor of the class that records no
- *       start: a read made there still counts against the earlier instance.</li>
+ *       start: without the agent, a read made there still counts against the earlier
+ *       instance.</li>
+ *   <li>With the agent attached with {@code collections=true}, a constructor of a woven class
+ *       records the end itself as it returns, when it is the constructor of the object's own class
+ *       (#791). That closes both windows above: the earlier instance's constructor has returned.
+ *       A {@code this(...)} delegation reopens the construction its callee's return closed, since
+ *       the delegating constructor goes on, and a superclass constructor's return closes nothing,
+ *       since the subclass's body has not run. An end recorded by hand stays authoritative.</li>
  * </ul>
  */
 public class ConstructorSafetyValidator {
@@ -96,7 +108,17 @@ public class ConstructorSafetyValidator {
         final Set<String> constructorOwners;
         /** Where the constructor frame sat on that stack, counted from the bottom, at the start. */
         final int constructorDepth;
+        /** The object's own class, the one whose constructor's return ends the construction. */
+        final Class<?> type;
+        /** The key this construction is open under in {@link #OPEN_BY_INSTANCE}. */
+        final IdentityKey.Weak openKey;
         volatile boolean constructionComplete = false;
+        /**
+         * Whether the completion came from a woven constructor return rather than a record or the
+         * stack, so that a {@code this(...)} delegation may reopen it. Touched only by the
+         * constructing thread, which is the thread every constructor of the object runs on.
+         */
+        volatile boolean closedByWovenReturn;
         /** Accesses made before construction finished, by a thread other than the constructor's. */
         final AtomicInteger accessesDuringConstruction = new AtomicInteger(0);
         /**
@@ -114,6 +136,8 @@ public class ConstructorSafetyValidator {
             this.constructingThread = new WeakReference<>(constructing);
             this.constructorOwners = constructorOwners(object.getClass());
             this.constructorDepth = constructorDepth;
+            this.type = object.getClass();
+            this.openKey = new IdentityKey.Weak(object, COLLECTED);
         }
 
         /** Whether a constructor of the object's class is on the constructing thread's stack now. */
@@ -139,6 +163,28 @@ public class ConstructorSafetyValidator {
         volatile boolean accessedByAnotherThreadDuringConstruction = false;
     }
     
+    /**
+     * The constructions any validator is tracking, by instance, for the agent's woven constructor
+     * returns (#791), which have no validator to ask. Keyed by {@link IdentityKey.Weak}, so a
+     * collected object leaves, and looked up with the thread's {@link IdentityKey#lookup} key,
+     * which equals it; typed by {@code Object} because the two key classes are not one.
+     */
+    private static final Map<Object, ObjectState> OPEN_BY_INSTANCE = new ConcurrentHashMap<>();
+
+    /** Where the keys of {@link #OPEN_BY_INSTANCE} go once their object is collected. */
+    private static final ReferenceQueue<Object> COLLECTED = new ReferenceQueue<>();
+
+    /**
+     * Whether some validator tracked a construction of a class, so a woven return of any other
+     * class looks nothing up. Computed once per class a woven constructor returns in.
+     */
+    private static final ClassValue<AtomicInteger> TRACKED_TYPES = new ClassValue<>() {
+        @Override
+        protected AtomicInteger computeValue(Class<?> type) {
+            return new AtomicInteger();
+        }
+    };
+
     private final Map<IdentityKey, ObjectState> objects = new ConcurrentHashMap<>();
     /**
      * Per constructing thread, its recorded constructions not yet seen to end, innermost on top.
@@ -165,6 +211,10 @@ public class ConstructorSafetyValidator {
         if (objects.putIfAbsent(new IdentityKey(object), state) != null) {
             return; // a superclass or subclass constructor of the same object recorded it first
         }
+        expungeCollected();
+        TRACKED_TYPES.get(state.type).lazySet(1);
+        // The latest validator to track an object answers its woven return; each removes its own.
+        OPEN_BY_INSTANCE.put(state.openKey, state);
         // A construction this thread started at the same depth or deeper has returned: the frame
         // it ran in was popped for this one to sit there. Without this, a pooled thread inside a
         // later instance's constructor of the same class read as still building the earlier one
@@ -173,9 +223,76 @@ public class ConstructorSafetyValidator {
         Deque<ObjectState> open = openConstructions.computeIfAbsent(
                 current.threadId(), k -> new ArrayDeque<>());
         while (!open.isEmpty() && open.peek().constructorDepth >= depth) {
-            open.pop().constructionComplete = true;
+            close(open.pop());
         }
         open.push(state);
+    }
+
+    /** Ends a construction for good: recorded, closed by a later start, or seen off the stack. */
+    private static void close(ObjectState state) {
+        state.constructionComplete = true;
+        state.closedByWovenReturn = false;
+        OPEN_BY_INSTANCE.remove(state.openKey, state);
+    }
+
+    private static void expungeCollected() {
+        for (Reference<?> gone = COLLECTED.poll(); gone != null; gone = COLLECTED.poll()) {
+            OPEN_BY_INSTANCE.remove(gone);
+        }
+    }
+
+    /**
+     * Called by the agent right before a constructor of a woven class returns (#791): when it is
+     * the constructor of the object's own class, the construction a validator tracks for the object
+     * has ended. Not for callers: a hand-recorded end is {@link #recordConstructionEnd(Object)}.
+     *
+     * <p>Runs for every object a woven class builds, so while nothing is tracked it is a check of
+     * an empty map, and for a class nobody tracks a class-value read, neither of which allocates.
+     *
+     * @param instance       the object the returning constructor built; {@code null} is ignored
+     * @param declaringClass the binary name of the class declaring that constructor
+     */
+    @API(status = Status.INTERNAL, since = "1.12.3")
+    public static void constructorReturned(Object instance, String declaringClass) {
+        ObjectState state = openFor(instance, declaringClass);
+        if (state != null && !state.constructionComplete) {
+            state.constructionComplete = true;
+            state.closedByWovenReturn = true;
+        }
+    }
+
+    /**
+     * Called by the agent right after a {@code this(...)} delegation in a constructor of a woven
+     * class (#791): the delegated-to constructor's return ended a construction the delegating
+     * constructor goes on with, so it is open again. Only a construction that return ended is
+     * reopened; one ended by hand or by the stack stays ended.
+     *
+     * @param instance       the object under construction; {@code null} is ignored
+     * @param declaringClass the binary name of the class declaring both constructors
+     */
+    @API(status = Status.INTERNAL, since = "1.12.3")
+    public static void constructorResumed(Object instance, String declaringClass) {
+        ObjectState state = openFor(instance, declaringClass);
+        if (state != null && state.closedByWovenReturn) {
+            state.closedByWovenReturn = false;
+            state.constructionComplete = false;
+        }
+    }
+
+    /**
+     * {@return the tracked construction of {@code instance}, when {@code declaringClass} is its own
+     * class, or {@code null}}
+     */
+    private static @org.jspecify.annotations.Nullable ObjectState openFor(
+            @org.jspecify.annotations.Nullable Object instance, String declaringClass) {
+        if (instance == null || OPEN_BY_INSTANCE.isEmpty()) {
+            return null;
+        }
+        Class<?> type = instance.getClass();
+        if (TRACKED_TYPES.get(type).get() == 0 || !type.getName().equals(declaringClass)) {
+            return null;
+        }
+        return OPEN_BY_INSTANCE.get(IdentityKey.lookup(instance));
     }
     
     /**
@@ -189,7 +306,7 @@ public class ConstructorSafetyValidator {
         IdentityKey id = new IdentityKey(object);
         ObjectState state = objects.get(id);
         if (state != null) {
-            state.constructionComplete = true;
+            close(state);
         }
     }
     
@@ -239,7 +356,7 @@ public class ConstructorSafetyValidator {
         if (state.constructorStillRunning()) {
             return false;
         }
-        state.constructionComplete = true;
+        close(state);
         return true;
     }
 
@@ -295,6 +412,9 @@ public class ConstructorSafetyValidator {
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
+        for (ObjectState state : objects.values()) {
+            OPEN_BY_INSTANCE.remove(state.openKey, state);
+        }
         objects.clear();
         openConstructions.clear();
     }

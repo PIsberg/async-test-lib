@@ -99,12 +99,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fields, helper returns and parameters, and lambdas. It is red on the old
   `ABAProblemDetector` (line 191) and `OptimisticReadValidationDetector` (all four map calls), and
   on a field, a two-statement helper and a `Thread.hashCode()` key the source gate passed. On the
-  current tree it finds no detector state keyed that way, and exempts 25 methods by name, each
-  with its reason: 19 that key a report map or set by the text it prints, where an unnamed
-  object's fallback name is `type@hash`; two in `LambdaLostUpdateDetector`, which groups by
-  rendered value on purpose; and four in `SpinLocks`, which keys by hash on purpose. The source
+  current tree it finds no detector state keyed that way, and exempts six methods by name, each
+  with its reason: two in `LambdaLostUpdateDetector`, which groups by rendered value on purpose,
+  and four in `SpinLocks`, which keys by hash on purpose. It exempted 19 more when it landed,
+  which keyed a report map or set by the text it prints; #854 fixed those. The source
   gate stays, since it also counts a hash inside a JDK call the bytecode gate does not follow. `async-test-analysis` now declares
   `async-test-lib` at test scope; its main code still depends on nothing else.
+- **`GathererConcurrencyMisuseDetector` sees one state shared by several streams at once (#846).**
+  A combiner-less gatherer whose initializer returns one captured object to streams running at the
+  same time races on it, and the detector could not see it: the three-argument `recordIntegrate`
+  skips a gatherer without a combiner, because the JDK hands such a gatherer's single state between
+  threads in order (#777), so a state on two threads proves nothing. The new
+  `recordIntegrateEnter(name, state, thread)` and `recordIntegrateExit(name, state)` record when an
+  integration starts and ends, and two integrations of one state in progress at once on two threads
+  is reported as the existing `HIGH` shared-state finding, for any registered gatherer. The JDK
+  never overlaps integrations of one state, so its hand-off stays silent. JDK 24+ tests pin both
+  with a real `Gatherer` by reflection: two parallel streams sharing an initializer's state fire
+  (and one of them emits the other's elements, which the three-argument overload missed), one
+  parallel stream handing its state across threads does not. On JDK 21 those two are skipped; two
+  thread-level tests pin the same pair there. The existing findings and their severities are
+  unchanged.
 
 ### Changed
 
@@ -329,6 +343,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An agent-fed `SharedMessageDigest` finding names the user's line, not the library's hook
+  (#853).** With the agent attached, a woven `update()` or `digest()` reaches the detector through
+  `AgentSharedInstanceHooks`, and `SiteCapture` skipped detector frames but not the root-package
+  `Agent*Hooks` classes, so every access site read
+  `AgentSharedInstanceHooks.recordDigest(AgentSharedInstanceHooks.java:354)`. `SiteCapture` now
+  also skips a top-level `se.deversity.asynctest.Agent*Hooks` class and the classes nested in it;
+  a user class named `*Hooks` and the library's own `Agent*HooksTest` classes stay user frames.
+  `AgentSharedInstanceHooksTest` pins the site end to end through the hook, `SiteCaptureTest` the
+  rule for all eight hook classes in both directions.
+
+- **A lazy collection rebuilt each round under one name no longer reads as a dependency cycle
+  (#852).** `LazyCollectionMisuseDetector`'s name-only record methods closed an element's state at
+  each round start (#498) but kept its dependency edges for the run, so a fresh `List.ofLazy` per
+  round under a reused name, whose element 0 read element 1 in one round and element 1 read 0 in
+  the next, was reported as a CRITICAL circular dependency. The round start now judges the
+  name-keyed edges it closes and keeps only the cycles and one-way edges they held, so a cycle
+  still has to form inside one round. A collection passed to the #776 overloads keeps its edges
+  for the run, and outside a run, with no round start, the whole run is still one round. Pinned by
+  `LazyCollectionMisuseDetectorTest` (the cross-round case, a same-round cycle that survives the
+  round closing, and a static collection's cross-round cycle).
+- **Two unnamed objects whose identity hashes collide no longer print as one report line (#854).**
+  Nineteen report paths (ABA, BlockingQueue, Calendar, CompletableFutureException,
+  ConcurrentModification, CopyOnWriteCollection, LatchMisuse, LockLeak, LockOrder twice,
+  RaceCondition, ReentrantLock, SharedCollection, SharedRandom, SimpleDateFormat, ThreadLocal,
+  Timer and Wakeup, plus ParallelStream, whose fallback was unreachable and is gone) named an
+  object the test gave no name by its type and identity hash, then keyed a report map or set by
+  that name, so two such objects sharing a hash came out as one line.
+  The detector state behind the line was already kept per object, so no verdict changed. An
+  unnamed object is now labelled once, where its state is created or where a report first names
+  it, with a number no other label has had (`ReportSections.unnamed`, `queue@3`), and a named
+  object keeps its name. User-visible: the digits after `@` in such a label are that number, not
+  the identity hash, so a baseline fingerprint (which reads `@` and digits as `@#`) still matches.
+  Two labels change shape: an unnamed thread-local is `ThreadLocal@n` (was `ThreadLocal-hash`),
+  and a latch registered with a null or blank name is `CountDownLatch@n` (was plain
+  `CountDownLatch`, which merged every such latch); a baseline entry for either must be
+  re-recorded. `LibraryStateIsKeyedByIdentityTest` drops the 19 exemptions, so a report key built
+  from an identity hash is red again.
+
+- **With the agent, two more daemon decisions are seen (#856).** A thread from a
+  `Thread.Builder`'s `factory()` was not marked constructed, so a missing daemon decision on it was
+  never judged: the agent now weaves `Thread.Builder.factory()` and `ThreadFactory.newThread`, and a
+  thread a woven `newThread` gets from a builder's factory counts as constructed in woven code and
+  carries the builder's woven `daemon(...)` decision, as `unstarted` does. And a daemon decision
+  made by a call into unwoven code on a thread woven code constructed read as missing: the library
+  now records the flag the thread inherited from its constructing thread, and a woven start, or a
+  `ThreadFactoryDetector` recording, that finds a different flag with no woven decision takes the
+  flag as decided. User-visible: a builder-factory thread with no daemon decision left running is
+  reported by `DaemonThreadHygieneDetector`, and a thread built on a non-daemon thread and made
+  daemon in unwoven code is no longer reported by it or by `ThreadFactoryDetector`. Still reported,
+  as a known false positive: `setDaemon(true)` in unwoven code on a thread a daemon worker
+  constructed, which leaves the inherited flag unchanged. `DaemonDecisionWeavingTest` pins the
+  three new shapes end to end, `DaemonThreadFactoryWeavingTest` both factory directions,
+  `AgentThreadHooksTest` the hooks. The `AsyncTestAgent` guardrail note now names every weaver and
+  what each inserts, instead of "neither weaver".
+- **With the agent, `ConstructorSafetyValidator` knows when a constructor returned (#791).** After
+  #778 two cases still counted a read of an earlier, already published instance as an escape,
+  because the stack held a constructor of its class: a pooled thread inside the next constructor
+  before it recorded its start, and a later constructor that records no start. With
+  `collections=true` the agent now inserts a call before every `RETURN` of every constructor in a
+  woven class (`ConstructionWeaver`, `AgentConstructionHooks.constructorReturned`), which ends the
+  construction when the returning constructor is the object's own class's, and one after a
+  `this(...)` delegation (`constructorResumed`), which reopens what the callee's return ended. A
+  superclass constructor's return ends nothing, an end recorded by hand is never reopened, and a
+  class in a named module that cannot read the library is not woven. User-visible: both cases are
+  silent with the agent, and a construction whose end nobody recorded no longer shows as "started
+  but never completed" once its constructor returned. The hook costs every woven construction a
+  check of an empty map while nothing is tracked, 0 bytes measured for a class nobody tracks,
+  24 bytes for an instance of a tracked class. `ConstructorExitWeavingTest` pins the two silent
+  cases and three escapes that still fire (in the same constructor, after a delegation returned,
+  after a superclass constructor returned) through real weaving; `ConstructorSafetyValidatorTest`
+  the same through the hooks, and `ConstructionWeaverTest` that every return and delegation
+  shape verifies and reports once.
+- **With the agent, LRU gets under one read lock are reported on a default JVM (#807).** A `get` on
+  an access-ordered `LinkedHashMap` relinks the entry, so it needs the exclusive lock, but the
+  order is a private `java.util` field the library could read only with
+  `--add-opens java.base/java.util=ALL-UNNAMED`, so on a default JVM every such get counted as a
+  read and a read lock guarded it. With `collections=true` the agent now weaves the three-argument
+  constructor in a woven class (`ConstructionWeaver`): the order argument goes to
+  `AgentConstructionHooks` before the call and the built map after it, for a
+  `new LinkedHashMap<>(capacity, loadFactor, accessOrder)` and for a subclass's
+  `super(capacity, loadFactor, accessOrder)`, the usual LRU cache. `SelfGuard` keeps the order
+  weakly by identity. User-visible: `SharedCollectionDetector` and `CacheConcurrencyDetector`
+  report LRU gets under one read lock on such a map, and a map seen built insertion-ordered gets
+  the #787 round rule, so gets alone beside a put in another round stay silent.
+  `AccessOrderedMapWeavingTest` pins both LRU shapes firing end to end, its `Spares` twin both
+  insertion-ordered shapes silent beside a firing control, `ConstructionWeaverTest` that every
+  construction shape verifies and reports once with its order. Still unknown: a map built by a
+  constructor reference, reflection, or in a class outside `includes=`.
 - **With the agent, a daemon decision the agent could not see no longer reads as a missing one
   (#737).** `DaemonThreadHygieneDetector` and `ThreadFactoryDetector` judged a daemon thread
   undecided unless a woven `setDaemon(true)` was seen, so `Thread.ofPlatform().daemon().unstarted(r)`
@@ -367,6 +469,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that shape, now at `LOW`, and says what it costs: the gather stage runs sequentially and the
   parallel stream buys it nothing. A shared-state race stays `HIGH` and sets the report's severity
   when both are present. On JDK 21 the two new tests are skipped by assumption.
+- **The SPI bridge reads a third-party detector whose class or report type is not public (#851).**
+  After #847, a detector wrapped in `LegacyDetectorAdapter` whose class or report type was not
+  public, such as one nested in a test class, failed the build under strict mode, or wrote a
+  `failed during analysis` line and reported nothing, although the library could have read it.
+  The adapter now calls `trySetAccessible` on the report method and `hasIssues()`, as it already
+  did for `structuredViolations` and as `DetectorFailurePolicy` does for `hasIssues()`, so such a
+  detector's findings come out wherever its package is open to the library, which the class path
+  always is. It opens nothing a module keeps closed: in a named module that does not open the
+  package, the report method or `hasIssues()` is still refused and reported as #847 describes, and
+  a `structuredViolations` list there that the library may not read gives way to the text finding
+  graded by its text, which strict mode no longer calls an empty list. Built-in detectors are all
+  public and see no change. `LegacyDetectorAdapterTest` pins each outcome with fixtures in another
+  package, loaded once from the class path and once into a named module built in the test that
+  exports the package without opening it.
 - **The SPI bridge reports a detector whose report it cannot reach (#847).** `LegacyDetectorAdapter`
   calls each built-in detector's report method and the report's `hasIssues()` reflectively from
   another package. A report type it may not call into, such as one that is not public, raised an
@@ -438,6 +554,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LOCK_LEAKS` enabled (the default) an unbalanced recorded pair is still reported there as a FACT.
   The runner names its workers, so the documented shape, a worker that records its acquisition and
   ends holding the lock, is still reported at VERDICT, and the corpus pair is unchanged.
+- **`REENTRANT_LOCK` and `LOCK_LEAKS` see a live virtual thread that shares the recorded holder's
+  name (#855).** The #843 rule refused a holder name that another live platform thread also
+  carries, but no scan lists virtual threads, so a thread from a virtual factory with a fixed name
+  was missed. A correct helper that re-entered the lock, recorded its own pair and gave every hold
+  back left its thread the recorded holder; when another thread of the same name, which registered
+  the lock and took it without recording, was still working at analysis, `REENTRANT_LOCK` reported
+  "Locked by thread pooled, which has finished" at VERDICT, and `LOCK_LEAKS` raised an unbalanced
+  pair to VERDICT the same way. The rule now also refuses a name carried by any other live thread
+  that registered or recorded against the lock, virtual ones included, and the hold is context.
+  Not changed, on purpose: a hold whose name identifies no one stays context rather than becoming
+  a FACT. A balanced re-entry leak by an unnamed virtual thread, or by a thread that never recorded
+  its acquisition, leaves exactly the evidence correct code leaves while a holder the runner does
+  not join is still working, and two tests now pin each leak against its correct twin. Name the
+  thread and record the acquisition, as the runner's workers do, to have the hold judged.
 - **`ABA_PROBLEM` is fed by the agent, and a toggle that ran before the read is no longer an ABA
   there (#817).** Recorded by hand, two threads that swing a value A to B to A wholly before a
   third thread reads it, and record the swing after the read, leave exactly the records of a real
@@ -610,8 +740,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   such notes at INFO as `runner.detector.note test=… detector=… notes=… note="…"`, once per run,
   at most three per detector, and `ConcurrencyRunnerLogContractTest` pins the event. A note is
   not a finding: it fails nothing, and a note beside a finding stays in the report text as before.
-  Only `SynchronizedNonFinalDetector` hands its notes out so far
-  (`SynchronizedNonFinalReport.notes()`).
+  `SynchronizedNonFinalDetector` hands its notes out through `SynchronizedNonFinalReport.notes()`.
+- **The notes that ask for a different recording now reach the log from three more detectors
+  (#816).** `ConditionVariableReport.notes()`, `ExchangerReport.notes()` and
+  `ReentrantLockReport.notes()` hand out, and the runner logs as `runner.detector.note` on a run
+  with no finding: recorded awaits still open on a condition registered without its lock (the
+  stranded consumer `DetectorAccuracyEvalTest` pins as a false negative), parked threads with no
+  predicate or a predicate that threw, and a registered lock that did not make the condition; an
+  exchange end recorded on a thread with no start there; a lock held at analysis by a thread that
+  never recorded taking it, and the waits recorded with the lock-less `recordStarvation`, counted in
+  one note. Each is something the detector cannot decide until the caller records it differently,
+  and before this a passing run said nothing about it. Background for a finding (an idle consumer,
+  a signal with no waiter, a handled timeout, a holder still running) stays in the report text, and
+  Phaser, CyclicBarrier, ABA and LockDowngrade context is not logged at all; the decision per
+  detector is in [docs/agent/diagnostics.md](agent/diagnostics.md#when-a-detector-leaves-a-note).
+  The lock-less condition note now names `registerCondition(lock, condition, ready, name)`.
 - **A report with issues carries a structured finding, and a gate checks it (#774).** The `failOn`
   gate reads a finding's severity from the report's `structuredViolations` list first and guesses
   from the text only when the list is empty, but nothing checked that a report that fired had

@@ -116,4 +116,32 @@ class LatchMisuseDetectorTest {
         assertTrue(report.hasIssues());
         assertFalse(report.missingCountDowns.isEmpty());
     }
+
+    @Test
+    void twoObservedLatchesSharingAnIdentityHashPrintAsTwoLines() {
+        for (java.util.concurrent.CountDownLatch latch : IdentityCollisions.pair(
+                () -> new java.util.concurrent.CountDownLatch(1))) {
+            detector.observeLatch(latch);
+            detector.recordAwait(latch);
+        }
+
+        LatchMisuseDetector.LatchMisuseReport report = detector.analyze();
+        assertEquals(2, report.missingCountDowns.size(),
+                "two latches the agent saw are two lines, even when their identity hashes collide "
+                        + "(#854): " + report.missingCountDowns);
+    }
+
+    @Test
+    void twoLatchesRegisteredWithoutANamePrintAsTwoLines() {
+        for (int i = 0; i < 2; i++) {
+            Object latch = new Object();
+            detector.registerLatch(latch, i == 0 ? null : " ", 1);
+            detector.recordAwait(latch);
+        }
+
+        LatchMisuseDetector.LatchMisuseReport report = detector.analyze();
+        assertEquals(2, report.missingCountDowns.size(),
+                "a latch registered with no name is labelled apart from every other one: "
+                        + report.missingCountDowns);
+    }
 }

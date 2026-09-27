@@ -154,7 +154,7 @@ public class CacheConcurrencyDetector {
         
         // Probe the locks first, while the caller is still inside whatever region it is in. A get
         // on an access-ordered LinkedHashMap relinks the entry, so it needs the exclusive lock a
-        // put does, where the map's order can be read (#807).
+        // put does, where the map's order is known (#807).
         state.noteAccess(cache, SelfGuard.relinksOnGet(cache));
         state.readCount.incrementAndGet();
         state.readerThreads.add(Thread.currentThread().threadId());

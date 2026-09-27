@@ -1336,7 +1336,7 @@ public class SharedMessageDigestDetectorTest {
             }
         });
 
-        assertTrue(bytes < RecordPathAllocation.MEASURED_CALLS, "recording a digest the detector "
+        assertTrue(bytes < RecordPathAllocation.CEILING, "recording a digest the detector "
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses; the call site is walked again");
     }

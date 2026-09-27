@@ -81,7 +81,7 @@ public class CopyOnWriteCollectionDetector {
         IdentityKey key = new IdentityKey(collection);
         String type = collection.getClass().getSimpleName();
         collections.putIfAbsent(key,
-                new CoWState(name != null ? name : type + "@" + key.hashCode(), type));
+                new CoWState(name != null ? name : ReportSections.unnamed(type), type));
     }
 
     /**
@@ -109,7 +109,7 @@ public class CopyOnWriteCollectionDetector {
     private CoWState resolve(Object collection, String name) {
         return collections.computeIfAbsent(new IdentityKey(collection), k -> {
             String type = collection.getClass().getSimpleName();
-            return new CoWState(name != null ? name : type + "@" + k.hashCode(), type);
+            return new CoWState(name != null ? name : ReportSections.unnamed(type), type);
         });
     }
 

@@ -67,7 +67,7 @@ public class CalendarDetector {
         final AtomicBoolean fieldsPending;
 
         CalendarState(Calendar calendar, String name) {
-            this.name = name != null ? name : "calendar@" + System.identityHashCode(calendar);
+            this.name = name != null ? name : ReportSections.unnamed("calendar");
             this.fieldsPending = new AtomicBoolean(PendingFields.of(calendar));
         }
     }

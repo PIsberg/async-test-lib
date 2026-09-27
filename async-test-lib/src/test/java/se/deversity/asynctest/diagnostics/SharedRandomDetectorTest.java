@@ -105,19 +105,38 @@ public class SharedRandomDetectorTest {
     }
 
     @Test
-    void testAutoRegistrationFallsBackToIdentityNameWhenNameIsNull() {
+    void testAutoRegistrationFallsBackToANumberedNameWhenNameIsNull() {
         SharedRandomDetector detector = new SharedRandomDetector();
         Random random = new Random();
 
-        // Record without explicit registration and without a name - should fall back to "random@<identity>"
+        // Record without explicit registration and without a name - should fall back to "random@<n>"
         detector.recordRandomAccess(random, null, "nextInt");
+        detector.recordRandomAccess(random, null, "nextLong");
 
         SharedRandomDetector.SharedRandomReport report = detector.analyze();
 
         assertNotNull(report);
-        String expectedFallbackName = "random@" + System.identityHashCode(random);
-        assertTrue(report.randomActivity.containsKey(expectedFallbackName),
-            "Auto-registered state with a null name should fall back to the identity-based name");
+        assertEquals(1, report.randomActivity.size(), "one instance is one entry: " + report.randomActivity);
+        String label = report.randomActivity.keySet().iterator().next();
+        assertTrue(label.matches("random@\\d+"),
+            "Auto-registered state with a null name should fall back to a numbered name: " + label);
+        assertEquals(se.deversity.asynctest.report.Baseline.fingerprint(
+                "random@" + System.identityHashCode(random)),
+            se.deversity.asynctest.report.Baseline.fingerprint(label),
+            "a baseline recorded under the identity-hash label still matches the numbered one");
+    }
+
+    @Test
+    void twoUnnamedRandomsSharingAnIdentityHashPrintAsTwoRandoms() {
+        SharedRandomDetector detector = new SharedRandomDetector();
+        for (Random random : IdentityCollisions.pair(Random::new)) {
+            detector.recordRandomAccess(random, null, "nextInt");
+        }
+
+        SharedRandomDetector.SharedRandomReport report = detector.analyze();
+        assertEquals(2, report.randomActivity.size(),
+            "two instances recorded without a name are two entries, even when their identity "
+                + "hashes collide (#854): " + report.randomActivity.keySet());
     }
 
     @Test
