@@ -1005,6 +1005,48 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- A check-then-act whose callers all put one instance (#827, #833) ----------------------
+
+    private static final Rounds<Object> GENERATIONS = new Rounds<>(Object::new);
+    private static final ConcurrentMap<String, Object> CURRENT = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, Object> RACED_CURRENT = new ConcurrentHashMap<>();
+
+    /**
+     * Every thread of a round installs the round's one generation object under a key the whole run
+     * shares, with get-then-put and no lock. The value is chosen without reading the map and every
+     * caller of the round puts the same instance, so whichever put lands last the map holds what
+     * {@code putIfAbsent} would have left. The generation changes every round, so the row also
+     * pins that the excuse is judged per round. Manual API: the detector is told what was put.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance() {
+        correct(() -> {
+            Object generation = GENERATIONS.next().shared();
+            AsyncTestContext.nonAtomicConcurrentMapUpdateDetector().recordCheckThenAct(
+                    CURRENT, "generation", generation, "install-generation", Thread.currentThread());
+            if (CURRENT.get("generation") != generation) {
+                CURRENT.put("generation", generation);
+            }
+        });
+    }
+
+    /**
+     * The same get-then-put with each caller building its own generation object, so a caller can
+     * install its object and have another caller's put drop it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_checkThenAct_everyCallerPutsItsOwnInstance() {
+        broken(() -> {
+            Object generation = new Object();
+            AsyncTestContext.nonAtomicConcurrentMapUpdateDetector().recordCheckThenAct(
+                    RACED_CURRENT, "generation", generation, "install-generation",
+                    Thread.currentThread());
+            if (RACED_CURRENT.get("generation") != generation) {
+                RACED_CURRENT.put("generation", generation);
+            }
+        });
+    }
+
     private static DigestHolder checkOut(Deque<DigestHolder> pool) throws InterruptedException {
         synchronized (pool) {
             while (pool.isEmpty()) {

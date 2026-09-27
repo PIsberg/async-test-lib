@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -157,6 +158,8 @@ public final class PlatformThreadPerTaskDetector {
                             + " OS thread with no upper bound; this is the workload virtual threads exist"
                             + " for (JEP 444)",
                     label);
+            r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.VERDICT, msg,
+                    DetectorTrust.Evidence.OBSERVED));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "PlatformThreadPerTask",
@@ -180,6 +183,8 @@ public final class PlatformThreadPerTaskDetector {
                             + " created) — short-lived one-task platform threads are churn; virtual threads"
                             + " make thread-per-task the cheap default",
                     created.size(), terminated, virtualThreadsCreated.get());
+            r.grades.add(new GradedFindings.Grade(IssueSeverity.MEDIUM, TrustTier.ADVISORY, msg,
+                    DetectorTrust.Evidence.HEURISTIC));
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "PlatformThreadPerTask",
@@ -192,38 +197,30 @@ public final class PlatformThreadPerTaskDetector {
                             "virtualThreadsCreated", virtualThreadsCreated.get()),
                     Instant.now()));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. {@code hasIssues()} drives the SPI sweep. */
     public static final class Report implements GradedFindings {
         public final List<String> violations = new ArrayList<>();
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Grades of the findings collected so far, in report order; see {@link #grades()}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
 
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         /**
-         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
-         * the same detector.
+         * One grade per finding, set by the path that produced it rather than by its severity.
          *
-         * <p>The executor finding is a verdict: a probe task reports the thread kind it actually ran on, so
-         * "this executor gave every task its own platform thread" is observed rather than inferred.
-         * The churn finding is a threshold over platform-thread creations and says nothing about
-         * correctness, which is what {@link TrustTier#ADVISORY} means.
+         * <p>The executor finding is a verdict: a probe task reports the thread kind it actually ran
+         * on, so "this executor gave every task its own platform thread" is
+         * {@link DetectorTrust.Evidence#OBSERVED} rather than inferred. The churn finding is a
+         * creation count against a threshold, {@link DetectorTrust.Evidence#HEURISTIC}, and says
+         * nothing about correctness, which is what {@link TrustTier#ADVISORY} means.
          */
         @Override
         public List<GradedFindings.Grade> grades() {
-            return structuredViolations.stream()
-                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
-                    .toList();
-        }
-
-        private static TrustTier tierOf(IssueSeverity severity) {
-            return switch (severity) {
-            case HIGH -> TrustTier.VERDICT;
-            case MEDIUM -> TrustTier.ADVISORY;
-            default -> TrustTier.PROMPT;
-            };
+            return List.copyOf(grades);
         }
 
         @Override

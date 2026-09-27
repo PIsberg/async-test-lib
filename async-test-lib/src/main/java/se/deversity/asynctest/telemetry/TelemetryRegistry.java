@@ -320,8 +320,8 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * {@link #volatileStore(Object, int, String)} for a reference field, compared by the stored
-     * object's identity hash so the model never holds the object itself.
+     * {@link #volatileStore(Object, int, String)} for a reference field, the stored object compared
+     * by identity through a weak reference, so the model keeps nothing alive (#813).
      *
      * @param owner the object the field belongs to, the declaring class for a static field
      * @param value the reference the write stores
@@ -330,7 +330,7 @@ public final class TelemetryRegistry {
      */
     public static void volatileStore(@Nullable Object owner, @Nullable Object value, String field) {
         if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(owner, field, System.identityHashCode(value));
+            HappensBefore.releaseVolatileReference(owner, field, value);
         }
     }
 
@@ -398,8 +398,8 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * {@link #volatileLoad(Object, int, String)} for a reference field, compared by the returned
-     * object's identity hash.
+     * {@link #volatileLoad(Object, int, String)} for a reference field, the returned object
+     * compared by identity with the one each release stored (#813).
      *
      * @param owner the object the field belongs to, the declaring class for a static field
      * @param value the reference the read returned
@@ -408,7 +408,7 @@ public final class TelemetryRegistry {
      */
     public static void volatileLoad(@Nullable Object owner, @Nullable Object value, String field) {
         if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(owner, field, System.identityHashCode(value));
+            HappensBefore.acquireVolatileReference(owner, field, value);
         }
     }
 
@@ -508,6 +508,35 @@ public final class TelemetryRegistry {
      */
     public static void monitorEntered(Object monitor) {
         HeldLocks.acquired(monitor);
+    }
+
+    /**
+     * Records that the calling thread has entered a {@code synchronized} method holding
+     * {@code monitor}: {@code this}, or the class for a static method.
+     *
+     * <p>Woven at the entry of every {@code synchronized} method, which takes its monitor from an
+     * access flag and so has no {@code MONITORENTER} for {@link #monitorEntered} to see (#822).
+     * With it the monitor counts in whatever the method calls: a helper, another object's method,
+     * a static method, a lambda body. Nothing is woven on an exception leaving the method, so
+     * {@code HeldLocks} re-confirms the entry with {@link Thread#holdsLock} whenever the set is
+     * read. Like {@link #monitorEntered}, deliberately does not check {@link #stop()}.
+     *
+     * @param monitor the monitor the method holds
+     * @since 1.12.3
+     */
+    public static void methodMonitorEntered(Object monitor) {
+        HeldLocks.methodMonitorAcquired(monitor);
+    }
+
+    /**
+     * Records that the calling thread is returning from the {@code synchronized} method whose
+     * entry {@link #methodMonitorEntered} recorded, woven before each of its return instructions.
+     *
+     * @param monitor the monitor the method holds
+     * @since 1.12.3
+     */
+    public static void methodMonitorExited(Object monitor) {
+        HeldLocks.methodMonitorReleased(monitor);
     }
 
     /**
@@ -2306,7 +2335,7 @@ public final class TelemetryRegistry {
      */
     private static void slotStored(AtomicReference<Object> slot, @Nullable Object value) {
         if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+            HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, value);
         }
     }
 
@@ -2323,7 +2352,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
         Object value = slot.get();
         if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+            HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         }
         return value;
     }
@@ -2339,7 +2368,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
         Object value = slot.getAcquire();
         if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(slot, SLOT_VALUE, System.identityHashCode(value));
+            HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         }
         return value;
     }

@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 
 /**
@@ -305,7 +306,7 @@ public class RaceConditionDetector {
             }
         }
 
-        return report;
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**

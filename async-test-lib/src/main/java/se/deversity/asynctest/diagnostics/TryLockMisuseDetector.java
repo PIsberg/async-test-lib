@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -116,7 +117,7 @@ public final class TryLockMisuseDetector {
                 Instant.now()
             ));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     public static final class Report {

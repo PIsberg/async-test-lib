@@ -39,6 +39,12 @@ public class VolatilePublicationBean {
     /** A static volatile, whose hooks name the declaring class as the owner. */
     private static volatile boolean staticReady;
 
+    /** A volatile several writers store distinct values to (#813). */
+    private volatile int version;
+
+    /** A volatile reference, whose values are objects (#813). */
+    private volatile Object slot;
+
     public VolatilePublicationBean() {
         for (int i = 0; i < spare.length; i++) {
             spare[i] = new Node();
@@ -154,6 +160,48 @@ public class VolatilePublicationBean {
     /** Reads the static {@code staticReady}, then updates {@code data}; returns what it read. */
     public boolean bumpDataAfterStaticReady() {
         boolean seen = staticReady;
+        data = data + 1;
+        return seen;
+    }
+
+    /** Writes {@code data}, then publishes it with a volatile write of {@code version}. */
+    public void publishVersion(int value, int stamp) {
+        data = value;
+        version = stamp;
+    }
+
+    /** Reads {@code version}, then updates {@code data}; returns what it read. */
+    public int bumpDataAfterVersion() {
+        return bumpDataAfterVersion(() -> { });
+    }
+
+    /** Reads {@code version}, runs {@code between}, then updates {@code data}; returns what it read. */
+    public int bumpDataAfterVersion(Runnable between) {
+        int seen = version;
+        between.run();
+        data = data + 1;
+        return seen;
+    }
+
+    /** Writes {@code data} and nothing else. */
+    public void writeData(int value) {
+        data = value;
+    }
+
+    /** Stores {@code value} in the volatile {@code slot}. */
+    public void publishSlot(Object value) {
+        slot = value;
+    }
+
+    /** Writes {@code data}, then publishes it with a volatile write of {@code slot}. */
+    public void publishDataInSlot(int value, Object stored) {
+        data = value;
+        slot = stored;
+    }
+
+    /** Reads {@code slot}, then updates {@code data}; returns what it read. */
+    public Object bumpDataAfterSlot() {
+        Object seen = slot;
         data = data + 1;
         return seen;
     }

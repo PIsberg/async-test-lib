@@ -1823,7 +1823,8 @@ final class Corpus {
             // The correct use of a ConcurrentMap has no check-then-act to record, so that twin is
             // unrecordable. The recordable correct twin is a check-then-act every caller makes
             // under one lock, which the detector's lockset (2026-09-25) keeps silent: the idiom
-            // lane's idiom_synchronizedCheckThenAct_* pair, and why it is VERDICT (#818).
+            // lane's idiom_synchronizedCheckThenAct_* pair, why it is VERDICT (#818), and the pair
+            // its evidence line names (#828).
             // recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys is the silent row that
             // does exercise the model, on the same class as the firing row.
             // --- JdbcConnectionShared: a pool is the documented fix, and used to be reported
@@ -4691,6 +4692,23 @@ final class Corpus {
                     "the same point read after tryOptimisticRead and used with no validate. "
                             + "Nothing says the reads were consistent, so they are plain reads "
                             + "racing the writer's",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "six threads of a round run get-then-put on one key with no lock, each "
+                            + "putting the round's one generation object. Every put is the same "
+                            + "instance, so none is lost (#827); the object changes every round, "
+                            + "and rounds never overlap (#833)"),
+
+            new RecordingSubject("idiom_checkThenAct_everyCallerPutsItsOwnInstance", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same get-then-put with each caller building its own object, so one "
+                            + "caller's put can drop the object another caller just installed",
                     IssueSeverity.HIGH)
     );
 
@@ -4724,7 +4742,12 @@ final class Corpus {
                             + "monitor is no edge (#747), so the taker declares the checkout with "
                             + "AsyncTestContext.ownershipTaken, as the API documents for this shape"),
             Map.entry("idiom_digestHolderPool_declaredButPeeked",
-                    "the twin of the row above, making the same declaration")
+                    "the twin of the row above, making the same declaration"),
+            Map.entry("idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance",
+                    "a check-then-act is no single call, and only the caller knows what it put, "
+                            + "so the body records the pair with its value"),
+            Map.entry("idiom_checkThenAct_everyCallerPutsItsOwnInstance",
+                    "the twin of the row above, recording the same pair the same way")
     );
 
     /**
@@ -4850,14 +4873,17 @@ final class Corpus {
                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(DetectorType.class)));
     }
 
-    /** {@return the pair-lane subject for {@code testMethod}, from either lane, or {@code null}} */
+    /** {@return the subject for {@code testMethod} from any lane of rows, or {@code null}} */
     static RecordingSubject recordingByTestMethod(String testMethod) {
-        // Both pair lanes, not just the recording one. Searching only RECORDING_SUBJECTS silently
-        // restricted META-INF/async-test/verdict-evidence-corpus to recording rows: an agent-lane
-        // pair could not back a tier at all, because the gate resolving the file's ids would
-        // report the row as not existing. Both lanes are held to their stated outcomes per
-        // subject on every run, so both can be evidence.
-        return java.util.stream.Stream.concat(RECORDING_SUBJECTS.stream(), AGENT_SUBJECTS.stream())
+        // Every lane of rows, not just the recording one. Searching only RECORDING_SUBJECTS
+        // silently restricted META-INF/async-test/verdict-evidence-corpus to recording rows: an
+        // agent-lane pair could not back a tier at all, because the gate resolving the file's ids
+        // would report the row as not existing. The idiom lane was left out the same way, so a
+        // detector whose lock pair lives there could only cite a weaker one (#828). All three
+        // lanes hold their rows to their stated outcomes on every run; the two kinds of idiom row
+        // that lane does not hold to silence are refused as a silent half by CorpusGates.
+        return java.util.stream.Stream.of(RECORDING_SUBJECTS, AGENT_SUBJECTS, IDIOM_SUBJECTS)
+                .flatMap(List::stream)
                 .filter(subject -> subject.testMethod().equals(testMethod))
                 .findFirst()
                 .orElse(null);

@@ -58,13 +58,15 @@ exactly one detector:
     agent has no lock model. Either option installs it: `collections=true` weaves monitors without
     field instructions, because recording an access without knowing what lock covered it is how a
     correctly guarded `HashMap` gets reported as racing.
-  - **`synchronized` methods are answered at the access, not by weaving.** A `synchronized`
-    *method* carries the `ACC_SYNCHRONIZED` flag and contains no `MONITORENTER` instruction, so
-    there is nothing to weave; instead each woven field access passes its receiver, whose monitor
-    is probed with `Thread.holdsLock`, and the monitor of the enclosing synchronized method
-    outright. A field guarded by its owner's synchronized methods is not reported; one guarded by
-    *another* object's synchronized method, with none of its accesses on that object's own
-    methods, still is.
+  - **`synchronized` methods are woven at entry and return.** A `synchronized` *method* carries
+    the `ACC_SYNCHRONIZED` flag and contains no `MONITORENTER` instruction, so the weaver declares
+    its monitor at the method's entry and releases it before each return (#822); an exception
+    leaving the method releases nothing woven, and the lockset re-confirms such an entry with
+    `Thread.holdsLock` whenever it is read. Each woven field access also passes its receiver, whose
+    monitor is probed with `Thread.holdsLock`, and the monitor of the enclosing synchronized method
+    outright. A field guarded by its owner's synchronized methods is not reported, and neither is
+    one guarded by *another* object's synchronized method that every access runs under, in a
+    helper, a static method or a lambda body it calls.
 - **`VisibilityMonitor` — not routed.** Its analysis is value-equality based, so an access
   stream with no values carries no signal for it; worse, it rejects `null` values. Should a
   future agent version capture values, a value-aware overload can be added without breaking

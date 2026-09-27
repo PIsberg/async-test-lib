@@ -189,7 +189,11 @@ public final class DetectorTrust {
      * probe are verdicts, while a use after a recorded close and two recorded executions on one
      * thread are {@link Evidence#ASSERTED} facts. Memory-segment race and static-init deadlock stay
      * {@link Evidence#ASSERTED}, since neither has a finding above FACT: the one close either sees is
-     * a recorded one, and a cycle of recorded init requests is the recording's claim.
+     * a recorded one, and a cycle of recorded init requests is the recording's claim. Lock leak is
+     * {@link Evidence#OBSERVED} since #837: a counted leak the {@code ReentrantLock} still holds for
+     * a holder that has stopped working is a verdict, and the counts alone stay facts. Blocking queue
+     * stays {@link Evidence#ASSERTED}: a discarded {@code false} is an event in the past that no
+     * probe of the queue at analysis can confirm, and a lossy queue may drop by design.
      *
      * <p>The column is written by hand, and {@code DetectorEvidenceMatchesCodeTest} checks the part
      * of it the code shows: a {@link Evidence#CONTEXTUAL} row whose detector reads no lockset,
@@ -217,7 +221,7 @@ public final class DetectorTrust {
             row(DetectorType.VIRTUAL_THREAD_PINNING, "VirtualThreadPinningDetector", "VirtualThreadPinning", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.THREAD_POOL_DEADLOCK, "ThreadPoolDeadlockDetector", "ThreadPoolDeadlock", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.FACT, Evidence.ASSERTED),
-            row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.ADVISORY, Evidence.HEURISTIC),
             row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.VERDICT, Evidence.OBSERVED),

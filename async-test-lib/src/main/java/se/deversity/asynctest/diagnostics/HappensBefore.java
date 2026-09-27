@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -91,14 +92,15 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>A volatile read finds the write it saw by the value it returned, among the field's last
- *       two releases; a release precedes its store, so the one before the latest is what a read
- *       returns while a later writer has released and not yet stored. A value both of them stored,
- *       a flag set to {@code true} twice, takes the later release, which orders a read made in
- *       that window after the later writer too; a value neither stored, because two later writers
- *       were in that window at once, acquires nothing. A reference is compared by its identity
- *       hash, so two stored objects sharing one read as the same value. A volatile write inside a
- *       constructor is not woven, so it publishes nothing. Two fields of one object sharing a
- *       simple name, a field and the one it shadows, share a clock.
+ *       four releases from the latest back; a release precedes its store, so an earlier one is
+ *       what a read returns while later writers have released and not yet stored (#813). A value
+ *       two of them stored, a flag set to {@code true} twice, takes the later release, which
+ *       orders a read made in that window after the later writer too; a value none of the four
+ *       stored, because four later writers were in that window at once, acquires nothing. A
+ *       reference is matched by identity, through a weak reference the release record holds, so
+ *       an object sharing another's identity hash is not taken for it (#813). A volatile write
+ *       inside a constructor is not woven, so it publishes nothing. Two fields of one object
+ *       sharing a simple name, a field and the one it shadows, share a clock.
  *   <li>A withdrawn release was visible for the length of the refused call, and one another
  *       thread folded into its own release in that time stays. An {@code addAll} into a queue
  *       that implements it itself, a {@code LinkedBlockingDeque} or a
@@ -216,7 +218,7 @@ public final class HappensBefore {
      */
     @API(status = Status.INTERNAL)
     public static void releaseVolatile(@Nullable Object owner, String field) {
-        releaseVolatile(owner, field, 0L, false);
+        releaseVolatile(owner, field, 0L, false, null, false);
     }
 
     /**
@@ -232,20 +234,43 @@ public final class HappensBefore {
      * @param owner the object the field belongs to, the declaring class for a static field;
      *              {@code null} is ignored
      * @param field the field's name, qualified or simple
-     * @param value the value stored: a primitive's bits, or a reference's identity hash
+     * @param value the value stored: a primitive's bits, or a reference's identity hash, which
+     *              {@link #releaseVolatileReference} improves on
      */
     @API(status = Status.INTERNAL)
     public static void releaseVolatile(@Nullable Object owner, String field, long value) {
-        releaseVolatile(owner, field, value, true);
+        releaseVolatile(owner, field, value, true, null, false);
+    }
+
+    /**
+     * The release half of a volatile write of a reference, which the agent's hook does: as
+     * {@link #releaseVolatile(Object, String, long)} with the object's identity hash, and the
+     * object itself compared by identity, so a read of another object that shares the hash does
+     * not take this release (#813).
+     *
+     * <p>The object is referred to weakly, by the record the release allocates anyway, so this
+     * allocates nothing more than the hash form and keeps nothing alive the program stored.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field;
+     *              {@code null} is ignored
+     * @param field the field's name, qualified or simple
+     * @param value the object stored, {@code null} included
+     * @since 1.12.3
+     */
+    @API(status = Status.INTERNAL)
+    public static void releaseVolatileReference(@Nullable Object owner, String field,
+                                                @Nullable Object value) {
+        releaseVolatile(owner, field, System.identityHashCode(value), true, value, true);
     }
 
     private static void releaseVolatile(@Nullable Object owner, String field, long value,
-                                        boolean known) {
+                                        boolean known, @Nullable Object stored,
+                                        boolean reference) {
         if (owner == null) {
             return;
         }
         ThreadClock me = CLOCKS.get();
-        fieldClock(me, owner, field).release(me.current, value, known);
+        fieldClock(me, owner, field).release(me.current, value, known, stored, reference);
         // A volatile field's release is never withdrawn, and it ends the window of the last one.
         me.forgetRelease();
         me.published = true;
@@ -277,17 +302,18 @@ public final class HappensBefore {
      * that stored {@code value} published, which under the Java memory model is every release of
      * the field up to and including that write, and nothing a later write published (#742).
      *
-     * <p>The write is found by its value among the field's last two releases: the latest, and the
-     * one before it, which is what a read returns when a later writer has released and not yet
-     * stored. A value neither of them stored acquires nothing. Taken into the thread's clock, so
-     * every later access of the thread is ordered, whatever object it is on: a node read through
-     * a volatile {@code next} included (#804). Allocation-free unless the thread's clock learns
-     * something, and for a field the thread has not used recently a lookup.
+     * <p>The write is found by its value among the field's last four releases, from the latest
+     * back: a read returns an earlier release's value while later writers have released and not
+     * yet stored (#813). A value none of them stored acquires nothing. Taken into the thread's
+     * clock, so every later access of the thread is ordered, whatever object it is on: a node read
+     * through a volatile {@code next} included (#804). Allocation-free unless the thread's clock
+     * learns something, and for a field the thread has not used recently a lookup.
      *
      * @param owner the object the field belongs to, the declaring class for a static field;
      *              {@code null} is ignored
      * @param field the field's name, qualified or simple
-     * @param value the value read: a primitive's bits, or a reference's identity hash
+     * @param value the value read: a primitive's bits, or a reference's identity hash, which
+     *              {@link #acquireVolatileReference} improves on
      */
     @API(status = Status.INTERNAL)
     public static void acquireVolatile(@Nullable Object owner, String field, long value) {
@@ -295,7 +321,30 @@ public final class HappensBefore {
             return;
         }
         ThreadClock me = CLOCKS.get();
-        acquireStamp(me, fieldClock(me, owner, field).publishedBy(value));
+        acquireStamp(me, fieldClock(me, owner, field).publishedBy(value, null, false));
+    }
+
+    /**
+     * The acquire half of a volatile read of a reference, which the agent's hook does: as
+     * {@link #acquireVolatile(Object, String, long)}, matching a release made by
+     * {@link #releaseVolatileReference} only when it stored this very object, so an object that
+     * merely shares its identity hash orders nothing (#813).
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field;
+     *              {@code null} is ignored
+     * @param field the field's name, qualified or simple
+     * @param value the object read, {@code null} included
+     * @since 1.12.3
+     */
+    @API(status = Status.INTERNAL)
+    public static void acquireVolatileReference(@Nullable Object owner, String field,
+                                                @Nullable Object value) {
+        if (owner == null) {
+            return;
+        }
+        ThreadClock me = CLOCKS.get();
+        acquireStamp(me, fieldClock(me, owner, field)
+                .publishedBy(System.identityHashCode(value), value, true));
     }
 
     /** Merges {@code theirs} into {@code me}; {@code null} is nothing to merge. */
@@ -735,14 +784,21 @@ public final class HappensBefore {
 
         /**
          * Merges {@code mine} into what the field published, as the release of a write of
-         * {@code value}. Lock-free, for the reason {@link SyncClock#field} gives.
+         * {@code value}, or of the object {@code stored} when {@code reference}. Lock-free, for
+         * the reason {@link SyncClock#field} gives.
          */
-        void release(Stamp mine, long value, boolean known) {
+        void release(Stamp mine, long value, boolean known, @Nullable Object stored,
+                     boolean reference) {
             for (;;) {
                 Release seen = latest;
-                Release next = seen == null ? new Release(mine, value, known, null, 0L, false)
-                        : seen.then(mine, value, known);
-                if (next == seen || LATEST.compareAndSet(this, seen, next)) { // NOPMD CompareObjectsWithEquals - then returns its receiver when nothing changed
+                Release next = seen == null
+                        ? new Release(mine, value, known, stored, reference, null)
+                        : seen.then(mine, value, known, stored, reference);
+                if (next == seen) { // NOPMD CompareObjectsWithEquals - then returns its receiver when nothing changed
+                    return;
+                }
+                if (LATEST.compareAndSet(this, seen, next)) {
+                    next.trim();
                     return;
                 }
             }
@@ -754,10 +810,13 @@ public final class HappensBefore {
             return release == null ? null : release.stamp;
         }
 
-        /** {@return what the write that stored {@code value} published; {@code null} for none} */
-        @Nullable Stamp publishedBy(long value) {
+        /**
+         * {@return what the write that stored {@code value} published, or the object
+         * {@code read} when {@code byReference}; {@code null} for none}
+         */
+        @Nullable Stamp publishedBy(long value, @Nullable Object read, boolean byReference) {
             Release release = latest;
-            return release == null ? null : release.publishedBy(value);
+            return release == null ? null : release.publishedBy(value, read, byReference);
         }
 
         /** {@return whether this is the clock of {@code object}'s field {@code name}} */
@@ -774,62 +833,104 @@ public final class HappensBefore {
 
     /**
      * One release of a volatile field: everything published up to and including the write of
-     * {@code value}, and the same for the release before it.
+     * {@code value}, linked to the releases before it, the latest {@value #KEPT} of them kept.
      *
-     * <p>Two, not one, because a release precedes its write: between a later writer's release and
-     * its store, a read still returns the earlier value, and must take the earlier release. The
-     * value is a primitive's bits or a reference's identity hash, so the model never holds what
-     * the program stored. Immutable.
+     * <p>More than one, because a release precedes its write: between a later writer's release
+     * and its store, a read still returns the earlier value, and must take the earlier release.
+     * With two kept, two later writers in that window at once left a read of the earlier value
+     * nothing to take, which reported the read's later accesses as racing that write (#813).
+     *
+     * <p>The value is a primitive's bits or a reference's identity hash. A reference is also held
+     * by this record, weakly, as the {@link WeakReference} it is, so a read is matched to the
+     * object it returned and not to another object sharing its hash (#813), with no allocation
+     * beyond the record a release makes anyway and without keeping alive anything the program
+     * stored. A stored object that has been collected cannot be the object a read holds. Immutable
+     * but for {@link #previous}, which is only ever cleared.
      */
-    private static final class Release {
+    private static final class Release extends WeakReference<Object> {
+
+        /** How many releases of a field a read looks back over, the latest included. */
+        static final int KEPT = 4;
 
         /** Everything the field's releases published, up to and including this one. */
         final Stamp stamp;
 
-        /** The value this release's write stores, when {@link #known}. */
+        /** The value this release's write stores, when {@link #known}: bits, or an identity hash. */
         final long value;
 
         /** Whether the writer said what it stores; a release that did not matches every read. */
         final boolean known;
 
-        /** The same three for the release before this one; {@code previous} is {@code null} for none. */
-        final @Nullable Stamp previous;
+        /** Whether the value is an object, which this record then refers to weakly. */
+        final boolean reference;
 
-        final long previousValue;
+        /**
+         * The release before this one; {@code null} for none, and cleared once
+         * {@link #KEPT} later releases follow it, so a field keeps at most that many. A read
+         * racing the clearing sees the link or {@code null}, and either is a release it may take
+         * or none; nothing is written here otherwise.
+         */
+        @Nullable Release previous;
 
-        final boolean previousKnown;
-
-        Release(Stamp stamp, long value, boolean known, @Nullable Stamp previous,
-                long previousValue, boolean previousKnown) {
+        Release(Stamp stamp, long value, boolean known, @Nullable Object stored, boolean reference,
+                @Nullable Release previous) {
+            super(reference ? stored : null);
             this.stamp = stamp;
             this.value = value;
             this.known = known;
+            this.reference = reference;
             this.previous = previous;
-            this.previousValue = previousValue;
-            this.previousKnown = previousKnown;
         }
 
         /**
          * {@return the release that follows this one when a thread with clock {@code mine} writes
-         * {@code nextValue}; this very release when that changes nothing}
+         * {@code nextValue}, the object {@code nextStored} when {@code nextReference}; this very
+         * release when that changes nothing}
          */
-        Release then(Stamp mine, long nextValue, boolean nextKnown) {
+        Release then(Stamp mine, long nextValue, boolean nextKnown, @Nullable Object nextStored,
+                     boolean nextReference) {
             Stamp merged = stamp.join(mine, NO_OWNER);
-            if (merged == stamp && nextValue == value && nextKnown == known) { // NOPMD CompareObjectsWithEquals - join returns its receiver when nothing changed
+            if (merged == stamp && nextValue == value && nextKnown == known // NOPMD CompareObjectsWithEquals - join returns its receiver when nothing changed
+                    && nextReference == reference && (!reference || refersTo(nextStored))) {
                 return this;
             }
-            return new Release(merged, nextValue, nextKnown, stamp, value, known);
+            return new Release(merged, nextValue, nextKnown, nextStored, nextReference, this);
         }
 
-        /** {@return what the release whose write stored {@code read} published; {@code null} for none} */
-        @Nullable Stamp publishedBy(long read) {
-            if (!known || value == read) {
-                return stamp;
+        /** Clears the link past the {@value #KEPT}th release, counting this one as the first. */
+        void trim() {
+            Release last = this;
+            for (int i = 1; i < KEPT && last != null; i++) {
+                last = last.previous;
             }
-            if (previous != null && (!previousKnown || previousValue == read)) {
-                return previous;
+            if (last != null) {
+                last.previous = null;
+            }
+        }
+
+        /**
+         * {@return what the latest kept release that stored {@code read} published, or that
+         * stored the object {@code readObject} when {@code byReference}; {@code null} for none}
+         *
+         * <p>The latest that matches, because a read returns the value last stored, and a later
+         * release with the same value is the write the read saw unless that writer has not
+         * stored yet (the #813 limit a value stored twice keeps).
+         */
+        @Nullable Stamp publishedBy(long read, @Nullable Object readObject, boolean byReference) {
+            Release release = this;
+            for (int i = 0; i < KEPT && release != null; i++) {
+                if (release.matches(read, readObject, byReference)) {
+                    return release.stamp;
+                }
+                release = release.previous;
             }
             return null;
+        }
+
+        /** {@return whether this release stored what the read returned; one without a value matches all} */
+        private boolean matches(long read, @Nullable Object readObject, boolean byReference) {
+            return !known
+                    || value == read && (!reference || !byReference || refersTo(readObject));
         }
     }
 

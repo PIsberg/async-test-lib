@@ -66,7 +66,8 @@ check something".
 | **ADVISORY** | A performance or hygiene note, not a correctness claim. | Read it, gate on nothing |
 
 **The tier is in the code, not in this document.** `DetectorTrust` classifies all 146, the runner
-prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute, and
+prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute (and,
+for a report that grades its findings, each finding's tier in report order as `findingTiers`), and
 `@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
 `DetectorTrustCoverageTest` fails the build if a detector is unclassified, if a row names a
 detector class the factories do not construct, if anything reaches VERDICT without naming
@@ -169,7 +170,13 @@ formatter or builder with no common lock in the per-round lockset (`CALENDAR`,
 `SIMPLE_DATE_FORMAT`, `STRING_BUILDER`, `CONTEXTUAL`). Two get FACT, because their primary finding
 is arithmetic over recorded calls: an acquire with no release or a lock left held (`LOCK_LEAKS`),
 and an offer whose `false` was discarded (`BLOCKING_QUEUE`), which may also be a lossy queue by
-design. The secondary paths keep their grade: the 5 s hold, 90% of capacity and the auto mode's
+design. Since #837 `LOCK_LEAKS` asks a `ReentrantLock` too: a counted leak the lock still holds,
+for a holder that has ended or sits idle in its pool, is VERDICT on `OBSERVED` evidence, by the
+same holder test `REENTRANT_LOCK` uses, and the detector is classified `OBSERVED`. A holder still
+running, a lock that is free, and any other `Lock` keep the FACT. `BLOCKING_QUEUE` has no such
+probe: a discarded `false` is an event in the past that the queue's state at analysis cannot
+confirm, and a queue that drops on purpose would draw the same finding, so it stays FACT. The
+secondary paths keep their grade: the 5 s hold, 90% of capacity and the auto mode's
 thread count stay PROMPT, the error findings of `SIMPLE_DATE_FORMAT` and `STRING_BUILDER` stay
 PROMPT, and `CALENDAR`'s recorded error stays FACT. The detector-wide tiers do not move, since each
 still carries its weakest grade. Their pairs still run and still gate the corpus; the evidence file
@@ -186,7 +193,8 @@ threads on the `(map, key)` site. Since 2026-09-25 it also asks whether one lock
 call and whether the happens-before model orders them, so the `synchronized` twin of the firing
 body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818). A
 caller that passes the value it put, through the five-argument `recordCheckThenAct`, is silent
-when every caller put the same instance, which loses nothing (#827).
+when every caller of a round put the same instance, which loses nothing (#827, judged per round
+since #833).
 `FILE_CHANNEL_POSITION_RACE` used to be the third. It judged single accesses, so threads that each
 made one self-contained `read(buffer)` or `write(buffer)` drew the finding, and `FileChannel` runs
 one operation involving the position at a time, so those lose nothing (#755). Since #819 the
@@ -215,9 +223,17 @@ findings to FACT with it. Now an access after a recorded close (`CONFINED_ARENA_
 recorded executions on one virtual thread (`VIRTUAL_THREAD_POOLING`) are FACT on `ASSERTED`
 evidence, while the JVM refusing a thread, a segment whose scope the JVM says is dead and a pool
 whose factory makes virtual threads are VERDICT on `OBSERVED` evidence. `STATIC_INIT_DEADLOCK`
-and `SHARED_MEMORY_SEGMENT_RACE` have no VERDICT path, so they stay `ASSERTED`.
+and `SHARED_MEMORY_SEGMENT_RACE` have no VERDICT path, so they stay `ASSERTED`. For the segment
+race none can be added by asking the scope (#837): a Java access to a closed arena's segment
+throws `IllegalStateException` at the access, so the JVM has already answered it, while
+`scope().isAlive()` read when the access is recorded, after the fact, is false for a correct
+access that another thread's close followed, and a segment reinterpreted from a raw address has
+a global scope that is always alive.
 `VAR_HANDLE_NON_ATOMIC_UPDATE`, `RECORD_MUTABLE_COMPONENT_LEAK` and `PLATFORM_THREAD_PER_TASK`
-keep their VERDICT grades.
+keep their VERDICT grades, and since #837 name their evidence too: the lost update and the
+plain-mode note `CONTEXTUAL`, since both are decided after the lockset; the observed mutation and
+the probed executor `OBSERVED`; the structural note `CONTEXT_FREE` and the churn count `HEURISTIC`.
+`DetectorEvidenceMatchesCodeTest` fails the build on a built-in grade that names none.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,

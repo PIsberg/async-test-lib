@@ -3,6 +3,7 @@ package com.example.corpus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -59,6 +60,63 @@ class EveryDetectorIsPairedOrRefusedTest {
                         + "once and revisited by nothing, so a stale one reads as a standing "
                         + "limitation long after the limitation is gone - delete the entry: "
                         + names(both));
+    }
+
+    /**
+     * #761 paired THREAD_LOCAL_RANDOM_MISUSE in the idiom lane and its refusal stood, because
+     * {@link DetectorCoverage#paired()} read only the other lanes. The refused detector here is
+     * paired by a synthetic idiom pair and nothing else, which is that case.
+     */
+    @Test
+    @DisplayName("a pair in the idiom lane counts, so a refusal cannot outlive it there")
+    void anIdiomLanePairCounts() {
+        DetectorType refused = DetectorCoverage.refused().keySet().iterator().next();
+        List<RecordingSubject> idioms = List.of(
+                idiomRow("idiom_synthetic_correct", refused, RecordingSubject.Expectation.MUST_STAY_SILENT),
+                idiomRow("idiom_synthetic_broken", refused, RecordingSubject.Expectation.MUST_FIRE));
+
+        Set<DetectorType> paired = DetectorCoverage.paired(
+                lane -> lane == CorpusLane.IDIOMS ? idioms : List.of());
+
+        assertTrue(paired.contains(refused),
+                refused + " has both directions in the idiom lane and is not counted as paired, so "
+                        + "noRefusalOutlivesItsPair cannot see its refusal go stale: " + names(paired));
+    }
+
+    /**
+     * An idiom twin may name another detector than its correct row (a shared Random's LOW note
+     * beside a SplittableRandom that fires), and a known gap is a correct row that still fires, so
+     * neither is half of a pair for the detector it names.
+     */
+    @Test
+    @DisplayName("an idiom row without its other direction in that lane pairs nothing")
+    void anIdiomRowWithoutItsOtherDirectionPairsNothing() {
+        List<DetectorType> refused = List.copyOf(DetectorCoverage.refused().keySet());
+        DetectorType silentOnly = refused.get(0);
+        DetectorType fireOnly = refused.get(1);
+        DetectorType noteOnly = refused.get(2);
+        List<RecordingSubject> idioms = List.of(
+                idiomRow("idiom_synthetic_correct", silentOnly, RecordingSubject.Expectation.MUST_STAY_SILENT),
+                idiomRow("idiom_synthetic_broken", fireOnly, RecordingSubject.Expectation.MUST_FIRE),
+                new RecordingSubject("idiom_synthetic_note", "jdk:java.base", "java.lang.Object",
+                        noteOnly, Contract.THREAD_SAFE, RecordingSubject.Expectation.MUST_STAY_SILENT,
+                        "synthetic", IssueSeverity.LOW),
+                idiomRow("idiom_synthetic_noteTwin", noteOnly, RecordingSubject.Expectation.MUST_FIRE));
+
+        Set<DetectorType> paired = DetectorCoverage.paired(
+                lane -> lane == CorpusLane.IDIOMS ? idioms : List.of());
+
+        assertTrue(!paired.contains(silentOnly) && !paired.contains(fireOnly)
+                        && !paired.contains(noteOnly),
+                "a detector with one direction in the idiom lane, or a note where the silent half "
+                        + "should be, is counted as paired: " + names(paired));
+    }
+
+    private static RecordingSubject idiomRow(String method,
+                                             DetectorType detector,
+                                             RecordingSubject.Expectation expectation) {
+        return new RecordingSubject(method, "jdk:java.base", "java.lang.Object", detector,
+                Contract.THREAD_SAFE, expectation, "synthetic");
     }
 
     @Test

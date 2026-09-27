@@ -1057,6 +1057,97 @@ public class SharedMessageDigestDetectorTest {
                 "the late use is ordered after no hand-off, so it may overlap the unlocked set-up");
     }
 
+    // ---- A chain in which every hand-off matters (#830) ----------------------------------------
+    //
+    // A hand-off is kept apart only while a fallback gains something from it: the owners after it
+    // hold a lock the owner before it did not, or it keeps a write out. So eight hand-offs that all
+    // matter need an owner holding seven declared locks, one more per owner down the chain: owners
+    // 0 and 1 hold none, owner k holds the first k - 1, up to all seven from owner 8 on. Past that,
+    // a new hand-off absorbed the one before it, and a late use ordered after the absorbed one fell
+    // back one further, onto an owner holding one lock fewer.
+
+    /**
+     * {@return whether a chain of ten owners holding more declared locks each reports a late use
+     * under one of those locks}
+     *
+     * @param after    the owner whose hand-off the late thread is ordered after, -1 for none
+     * @param lateLock the index of the one declared lock the late thread holds, -1 for none
+     */
+    private static boolean nestedLocksChainReported(int after, int lateLock) throws Exception {
+        final int owners = 9;
+        Object[] locks = new Object[7];
+        for (int i = 0; i < locks.length; i++) {
+            locks[i] = new Object();
+        }
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch[owners + 1];
+        for (int i = 0; i <= owners; i++) {
+            handedOver[i] = new java.util.concurrent.CountDownLatch(1);
+        }
+        var lastDone = new java.util.concurrent.CountDownLatch(1);
+        Runnable[] bodies = new Runnable[owners + 2];
+        bodies[0] = setUpAndHandOver(md, handedOver[0]);
+        for (int i = 1; i <= owners; i++) {
+            int owner = i;
+            bodies[owner] = () -> {
+                awaitWoven(handedOver[owner - 1]);
+                useUnder(md, locks, 0, Math.max(0, Math.min(owner, 8) - 1));
+                se.deversity.asynctest.AgentConcurrencyUtilHooks.countDown(handedOver[owner]);
+                if (owner == owners) {
+                    lastDone.countDown();
+                }
+            };
+        }
+        bodies[owners + 1] = () -> {
+            if (after >= 0) {
+                awaitWoven(handedOver[after]);
+            }
+            await(lastDone);
+            if (lateLock >= 0) {
+                useUnder(md, locks, lateLock, lateLock + 1);
+            } else {
+                use(md);
+            }
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, bodies);
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    /** Uses {@code md} holding {@code locks[from]} to {@code locks[to - 1]}, each declared. */
+    private static void useUnder(MessageDigest md, Object[] locks, int from, int to) {
+        if (from >= to) {
+            use(md);
+            return;
+        }
+        synchronized (locks[from]) {
+            try (var held = AsyncTestContext.holdingLock(locks[from])) {
+                useUnder(md, locks, from + 1, to);
+            }
+        }
+    }
+
+    @Test
+    void aGuardedUseOrderedAfterAHandOffInAChainThatAllMattersIsJudgedFromIt() throws Exception {
+        // The late use holds the seventh lock and is ordered after owner 7's hand-off, so it may
+        // overlap owners 8 and 9 only, both of which hold that lock. Absorbed into owner 8's
+        // hand-off, owner 7's fell back to owner 6's and brought in owner 7, which never held it.
+        assertFalse(nestedLocksChainReported(7, 6),
+                "the late use is ordered after owner 7, and owners 8 and 9 held the lock it holds");
+    }
+
+    @Test
+    void aLateUseThatMayOverlapAnOwnerWithoutItsLockInAChainThatAllMattersStillFires()
+            throws Exception {
+        assertTrue(nestedLocksChainReported(6, 6),
+                "the late use is not ordered after owner 7, which never held the seventh lock");
+        assertTrue(nestedLocksChainReported(7, -1),
+                "the late use holds no lock and may overlap owners 8 and 9");
+        assertTrue(nestedLocksChainReported(-1, 6),
+                "the late use is ordered after no hand-off, so it may overlap the unlocked set-up");
+    }
+
     // ---- A use recorded for another thread carries no clock (#792) -----------------------------
     //
     // The recording API names the thread an access is attributed to, and the caller need not be
@@ -1102,7 +1193,7 @@ public class SharedMessageDigestDetectorTest {
     // ordered after A's hand-off but not after B, then reported A's set-up.
 
     /** Starts more threads than a clock keeps, each releasing one object, and acquires it. */
-    private static void learnOfMoreThreadsThanAClockKeeps() {
+    static void learnOfMoreThreadsThanAClockKeeps() {
         Object crowd = new Object();
         Thread[] threads = new Thread[HappensBefore.MAX_ENTRIES + 8];
         for (int i = 0; i < threads.length; i++) {
@@ -1165,6 +1256,60 @@ public class SharedMessageDigestDetectorTest {
     void anUnguardedUseNextToAnOwnerWhoseClockDroppedTheHandOffStillFires() throws Exception {
         assertTrue(droppedClockReported(false),
                 "C holds no lock and may overlap B");
+    }
+
+    // ---- A non-owner whose clock dropped the hand-off (#830) -----------------------------------
+    //
+    // The owner's shortcut above rests on program order: its own access follows the one with which
+    // it took the digest over. A thread that never owned it has no such access, and its clock is
+    // the only record that it is ordered after the hand-off. Once that clock has dropped the
+    // previous owner, nothing left says so, and C falls back to the whole window and reports A's
+    // unlocked set-up beside B's and its own guarded uses. Known conservative, and pinned so a
+    // change to it is deliberate: only a clock that keeps more threads would find the edge again.
+
+    private static boolean nonOwnerDroppedClockReported(boolean crowd) throws Exception {
+        AsyncTestContext ctx = digestContext();
+        MessageDigest md = sha256();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        var ownerUsed = new java.util.concurrent.CountDownLatch(1);
+        var setUpThread = new java.util.concurrent.atomic.AtomicLong();
+        var forgotSetUp = new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable setUp = setUpAndHandOver(md, handedOver);
+        Runnable a = () -> {
+            setUpThread.set(Thread.currentThread().threadId());
+            setUp.run();
+        };
+        Runnable b = () -> {
+            awaitWoven(handedOver);
+            useGuarded(md);
+            ownerUsed.countDown();
+        };
+        Runnable c = () -> {
+            awaitWoven(handedOver);
+            if (crowd) {
+                learnOfMoreThreadsThanAClockKeeps();
+            }
+            forgotSetUp.set(HappensBefore.current().countOf(setUpThread.get()) == 0);
+            await(ownerUsed);
+            useGuarded(md);
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, a, b, c);
+        assertEquals(crowd, forgotSetUp.get(),
+                "precondition: C's clock dropped the set-up thread exactly when it met the crowd");
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void aGuardedNonOwnerOrderedAfterTheHandOffIsNotSharing() throws Exception {
+        assertFalse(nonOwnerDroppedClockReported(false),
+                "C is ordered after A's unlocked set-up and may overlap only B's guarded use");
+    }
+
+    @Test
+    void aNonOwnerWhoseClockDroppedTheHandOffFallsBackToTheWholeWindow() throws Exception {
+        assertTrue(nonOwnerDroppedClockReported(true),
+                "conservative: C's clock no longer shows that it follows A's set-up");
     }
 
     private static void await(java.util.concurrent.CountDownLatch latch) {

@@ -120,6 +120,90 @@ class HeldLocksTest {
     }
 
     @Test
+    @DisplayName("a synchronized method's monitor is held until its return, or until the thread lets go (#822)")
+    void methodMonitorIsConfirmedAgainstTheMonitorItself() {
+        Object monitor = new Object();
+        synchronized (monitor) {
+            HeldLocks.methodMonitorAcquired(monitor);
+            assertTrue(HeldLocks.holds(monitor), "held while the method runs");
+            HeldLocks.methodMonitorReleased(monitor);
+            assertFalse(HeldLocks.holds(monitor), "the return released it");
+
+            HeldLocks.methodMonitorAcquired(monitor);
+        }
+        assertFalse(HeldLocks.holds(monitor),
+                "An exception left the method, so no return released the entry. The thread no "
+                        + "longer holds the monitor, and keeping the entry would make every later "
+                        + "access on this thread look guarded by it");
+        assertFalse(HeldLocks.anyHeld(), "and nothing else is left behind");
+    }
+
+    @Test
+    @DisplayName("a block and a method on one monitor each release their own entry (#822)")
+    void methodMonitorAndBlockEntryAreReleasedApart() {
+        Object monitor = new Object();
+        synchronized (monitor) {
+            HeldLocks.acquired(monitor);
+            HeldLocks.methodMonitorAcquired(monitor);
+            // The method threw: no methodMonitorReleased. The block's release follows.
+            HeldLocks.released(monitor);
+            assertTrue(HeldLocks.holds(monitor), "the thread still holds the monitor here");
+        }
+        assertFalse(HeldLocks.holds(monitor),
+                "The block's release took the block's entry, which nothing re-confirms, and the "
+                        + "method's lost entry went once the monitor was let go. Had the block "
+                        + "released the method's entry, its own would have stayed for good");
+
+        HeldLocks.acquired(monitor);
+        HeldLocks.methodMonitorReleased(monitor);
+        assertTrue(HeldLocks.holds(monitor), "a method's release never takes a block's entry");
+        HeldLocks.released(monitor);
+    }
+
+    @Test
+    @DisplayName("entering, reading under and leaving a synchronized method allocates nothing (#822)")
+    void methodMonitorPathIsAllocationFree() {
+        var mx = java.lang.management.ManagementFactory.getThreadMXBean();
+        org.junit.jupiter.api.Assumptions.assumeTrue(mx instanceof com.sun.management.ThreadMXBean,
+                "needs the HotSpot ThreadMXBean for per-thread allocation counters");
+        var bean = (com.sun.management.ThreadMXBean) mx;
+        org.junit.jupiter.api.Assumptions.assumeTrue(bean.isThreadAllocatedMemorySupported()
+                        && bean.isThreadAllocatedMemoryEnabled(),
+                "thread allocation accounting is off on this JVM");
+        Object monitor = new Object();
+        Object outer = new Object();
+        long id = Thread.currentThread().threadId();
+        long sink = enterReadAndLeave(monitor, outer, 20_000);
+        long before = bean.getThreadAllocatedBytes(id);
+        sink += enterReadAndLeave(monitor, outer, 100_000);
+        long allocated = bean.getThreadAllocatedBytes(id) - before;
+
+        assertTrue(allocated < 100_000L,
+                "100,000 synchronized-method entries, each with a fingerprint read that re-confirms "
+                        + "both method monitors and a return, allocated " + allocated + " bytes "
+                        + "(sink " + sink + "). The smallest object per entry would be 1,600,000: "
+                        + "the woven entry, the read and the return run on every synchronized "
+                        + "method call in woven code and must stay allocation-free");
+    }
+
+    /** Enters {@code outer} and then {@code monitor} as synchronized methods, reads, and leaves. */
+    private static long enterReadAndLeave(Object monitor, Object outer, int times) {
+        long sink = 0L;
+        for (int i = 0; i < times; i++) {
+            synchronized (outer) {
+                HeldLocks.methodMonitorAcquired(outer);
+                synchronized (monitor) {
+                    HeldLocks.methodMonitorAcquired(monitor);
+                    sink += HeldLocks.lockFingerprint(true);
+                    HeldLocks.methodMonitorReleased(monitor);
+                }
+                HeldLocks.methodMonitorReleased(outer);
+            }
+        }
+        return sink;
+    }
+
+    @Test
     @DisplayName("a revocable lock that throws when asked counts as released (#558)")
     void revocableLockThatCannotAnswerIsDropped() {
         HeldLocks.Revocable broken = () -> {

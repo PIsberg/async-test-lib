@@ -154,4 +154,51 @@ class PlatformThreadPerTaskDetectorTest {
         String second = detector.analyze().toString();
         assertEquals(first, second, "analyze() must be idempotent on quiescent state");
     }
+
+    /**
+     * Each finding names the evidence of the path behind it (#837). The executor finding is the
+     * thread kind a probe task actually ran on; the churn finding is a count against a threshold.
+     */
+    @Test
+    void aProbedPlatformExecutorIsAVerdictOnObservedEvidence() {
+        try (ExecutorService perTask = Executors.newThreadPerTaskExecutor(Thread.ofPlatform().factory())) {
+            detector.registerExecutor(perTask, "platform-per-task");
+        }
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(IssueSeverity.HIGH, grades.get(0).severity(), grades.toString());
+        assertEquals(TrustTier.VERDICT, grades.get(0).tier(), grades.toString());
+        assertEquals(DetectorTrust.Evidence.OBSERVED, grades.get(0).evidence(),
+                "the probe task reported the thread it ran on: " + grades);
+        assertEquals(grades, DetectorTrust.clampToCap("PlatformThreadPerTaskDetector", grades),
+                "graded at its own evidence, nothing is left for the report path to lower");
+    }
+
+    @Test
+    void churnIsAnAdvisoryOnHeuristicEvidence() throws InterruptedException {
+        detector.setChurnThreshold(2);
+        for (int i = 0; i < 2; i++) {
+            Thread t = new Thread(() -> { }, "graded-churn-" + i);
+            detector.recordThreadCreated(t);
+            t.start();
+            t.join();
+        }
+
+        var grades = detector.analyze().grades();
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(IssueSeverity.MEDIUM, grades.get(0).severity(), grades.toString());
+        assertEquals(TrustTier.ADVISORY, grades.get(0).tier(), grades.toString());
+        assertEquals(DetectorTrust.Evidence.HEURISTIC, grades.get(0).evidence(),
+                "a creation count crossing a threshold is a number, not an observation: " + grades);
+    }
+
+    @Test
+    void theVirtualPerTaskExecutorCarriesNoGrade() {
+        try (ExecutorService perTask = Executors.newVirtualThreadPerTaskExecutor()) {
+            detector.registerExecutor(perTask, "virtual-per-task");
+        }
+
+        assertEquals(List.of(), detector.analyze().grades(), "a silent report grades nothing");
+    }
 }

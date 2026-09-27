@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -281,6 +282,125 @@ class VolatilePublicationWeavingTest {
                 "The static volatile's hooks name the declaring class as the owner on both sides, "
                         + "so the read of the value the writer stored orders data. Findings were: "
                         + findings);
+    }
+
+    /** The {@code version} field as the weaver names it to the hooks. */
+    private static final String VERSION = "com.example.agentfixture.VolatilePublicationBean.version";
+
+    /** The {@code slot} field as the weaver names it to the hooks. */
+    private static final String SLOT = "com.example.agentfixture.VolatilePublicationBean.slot";
+
+    /**
+     * Runs {@code release} on a thread of its own and waits for it. It stands for a writer between
+     * a volatile write's release and its store: the call the weaver emits right before the store,
+     * with nothing stored after it. No instruction separates the two in woven code, so this is the
+     * only way to hold a writer in that window.
+     */
+    private static void pendingWriter(Runnable release) throws InterruptedException {
+        Thread writer = new Thread(release, "pending-writer");
+        writer.start();
+        writer.join(10_000);
+    }
+
+    @Test
+    @DisplayName("a read of a value two later writers are about to replace still acquires its write (#813)")
+    void aReadBehindTwoPendingWritersAcquiresTheWriteItSaw() throws InterruptedException {
+        VolatilePublicationBean bean = new VolatilePublicationBean();
+        int[] seen = new int[1];
+        List<String> findings = findings(() -> bean.publishVersion(5, 1), writerRuns -> {
+            writerRuns.run();
+            try {
+                pendingWriter(() -> TelemetryRegistry.volatileStore(bean, 2, VERSION));
+                pendingWriter(() -> TelemetryRegistry.volatileStore(bean, 3, VERSION));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            seen[0] = bean.bumpDataAfterVersion();
+        });
+
+        assertEquals(1, seen[0], "neither pending writer stored, so the read returned 1");
+        assertFalse(mentions(findings, ".data"),
+                "The read returned 1, the value the writer stored after writing data, so it "
+                        + "synchronizes with that write however many later writers have released "
+                        + "and not yet stored. A finding means the read looked only at the last two "
+                        + "releases, both pending, and acquired nothing. Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a read of a value no release stored acquires nothing behind pending writers (#813)")
+    void aReadOfAValueNoReleaseStoredAcquiresNothing() throws InterruptedException {
+        VolatilePublicationBean bean = new VolatilePublicationBean();
+        int[] seen = {-1};
+        List<String> findings = findings(() -> bean.publishVersion(5, 1), writerRuns -> {
+            try {
+                pendingWriter(() -> TelemetryRegistry.volatileStore(bean, 2, VERSION));
+                pendingWriter(() -> TelemetryRegistry.volatileStore(bean, 3, VERSION));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            // The writer publishes after the read and before the update.
+            seen[0] = bean.bumpDataAfterVersion(writerRuns);
+        });
+
+        assertEquals(0, seen[0], "the read came before the writer stored");
+        assertTrue(mentions(findings, ".data"),
+                "The read returned 0, the initial value, which none of the releases it could see "
+                        + "stored, so it acquires nothing and the update of data races with the "
+                        + "writer's write. Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a reference read acquires the write of that object, not one sharing its identity hash (#813)")
+    void aReadOfOneObjectDoesNotAcquireAnotherWithItsHash() throws InterruptedException {
+        Object[] pair = collidingPair();
+        VolatilePublicationBean bean = new VolatilePublicationBean();
+        bean.publishSlot(pair[0]);
+        Object[] seen = new Object[1];
+        List<String> findings = findings(() -> {
+            bean.writeData(5);
+            // Released and not yet stored: a later writer of pair[1], which shares pair[0]'s hash.
+            TelemetryRegistry.volatileStore(bean, pair[1], SLOT);
+        }, writerRuns -> {
+            writerRuns.run();
+            seen[0] = bean.bumpDataAfterSlot();
+        });
+
+        assertSame(pair[0], seen[0], "the pending write never stored, so the read returned pair[0]");
+        assertTrue(mentions(findings, ".data"),
+                "The read returned pair[0], which the writer never published, so nothing orders "
+                        + "the writer's data write before the reader's update. Silence means the "
+                        + "read acquired the release of pair[1] because the two objects share an "
+                        + "identity hash. Findings were: " + findings);
+
+        VolatilePublicationBean published = new VolatilePublicationBean();
+        published.publishSlot(pair[0]);
+        List<String> silent = findings(() -> published.publishDataInSlot(5, pair[1]), writerRuns -> {
+            writerRuns.run();
+            seen[0] = published.bumpDataAfterSlot();
+        });
+        assertSame(pair[1], seen[0], "the read returned the object the writer stored");
+        assertFalse(mentions(silent, ".data"),
+                "The read returned pair[1], stored after data was written, so data is published "
+                        + "though an older release stored an object with the same hash. Findings "
+                        + "were: " + silent);
+    }
+
+    /**
+     * {@return two distinct objects with the same identity hash}
+     *
+     * <p>Identity hashes are 31 bits on HotSpot, so a collision turns up after tens of thousands of
+     * objects by the birthday bound.
+     */
+    private static Object[] collidingPair() {
+        java.util.Map<Integer, Object> byHash = new java.util.HashMap<>();
+        for (int i = 0; i < 20_000_000; i++) {
+            Object candidate = new Object();
+            Object earlier = byHash.putIfAbsent(System.identityHashCode(candidate), candidate);
+            if (earlier != null) {
+                return new Object[] {earlier, candidate};
+            }
+        }
+        throw new org.opentest4j.TestAbortedException("no identity-hash collision found");
     }
 
     @Test

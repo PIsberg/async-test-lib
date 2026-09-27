@@ -526,7 +526,42 @@ final class FieldAccessWeaver {
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, hook,
                         "(Ljava/lang/Object;)V", false);
             }
+            if (opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN && methodMonitorLoadable()) {
+                // The release half of visitCode's entry: the monitor, then a call consuming it,
+                // above the value being returned, which the return then finds where it was.
+                pushMethodMonitor();
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "methodMonitorExited",
+                        "(Ljava/lang/Object;)V", false);
+            }
             super.visitInsn(opcode);
+        }
+
+        /**
+         * Declares the monitor of a {@code synchronized} method at its entry, the way
+         * {@link #visitInsn} declares a block's at its {@code MONITORENTER} (#822).
+         *
+         * <p>The flag takes the monitor before the first instruction runs, so the lockset holds it
+         * for the whole body and everything the body calls: a helper, another object's method, a
+         * static method or a lambda body, none of which can name this monitor themselves. Each
+         * return releases it again. A load and a static call consuming it, no branch and no
+         * handler, so only {@code maxStack} grows. An exception leaving the method passes no
+         * return and releases nothing here; catching it would take a handler, and a handler needs
+         * frames. {@code HeldLocks} re-confirms such an entry with {@code Thread.holdsLock}
+         * whenever the set is read instead.
+         */
+        @Override
+        public void visitCode() {
+            super.visitCode();
+            if (methodMonitorLoadable()) {
+                pushMethodMonitor();
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "methodMonitorEntered",
+                        "(Ljava/lang/Object;)V", false);
+            }
+        }
+
+        /** {@return whether this is a {@code synchronized} method whose monitor can be loaded} */
+        private boolean methodMonitorLoadable() {
+            return methodSynchronized && (!methodStatic || classConstantsUsable);
         }
         @Override
         public void visitIntInsn(int opcode, int operand) {

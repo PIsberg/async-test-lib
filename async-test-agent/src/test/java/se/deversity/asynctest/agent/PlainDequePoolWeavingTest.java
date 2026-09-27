@@ -2,6 +2,7 @@ package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.PlainDequePoolBean;
 import com.example.agentfixture.PlainDequePoolBean.Item;
+import com.example.agentfixture.SynchronizedMethodCacheBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -34,8 +35,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * the pool's lock serialises it. The agent sees a {@code synchronized} block's monitor through the
  * woven instruction, and a {@code synchronized} method's, which comes from the access flag, because
  * the weaver hands it to the queue hooks (#796), also where the method delegates the queue call to
- * a helper. A side that holds no lock therefore holds none, and shares none with the other side
- * (#751). These cases pin what each shape amounts to end to end, with the item used unlocked
+ * a helper, and declares it at the method's entry, so it counts wherever the method's callees make
+ * the queue call (#822). A side that holds no lock therefore holds none, and shares none with the
+ * other side (#751). SharedCollectionDetector, which judges the deque itself, sees the same locks. These cases pin what each shape amounts to end to end, with the item used unlocked
  * between a give-back and the next borrow on two threads, in the order the drain sees it.
  *
  * <p>Separate class because {@code selfAttach} is at-most-once per JVM and this class needs
@@ -152,6 +154,126 @@ class PlainDequePoolWeavingTest {
                         + "though neither call site sits in a synchronized method (#751)");
         assertFalse(reports(PlainDequePoolBean::giveBackThroughAHelper, PlainDequePoolBean::borrow),
                 "a helper on the give-back side and the monitor straight on the borrow (#751)");
+    }
+
+    @Test
+    void aPoolLockedOnlyFurtherUpTheCallStackStaysSilentAndItsBrokenTwinsFire() throws Exception {
+        assertFalse(reports(PlainDequePoolBean::giveBackToABucket,
+                        PlainDequePoolBean::borrowFromABucket),
+                "the queue calls run in the bucket's own methods, which pass the bucket as their "
+                        + "monitor, and only the pool's synchronized methods further up the stack "
+                        + "hold a lock. Both sides hold the pool's monitor all the same (#822)");
+        assertFalse(reports(PlainDequePoolBean::giveBackThroughAStaticHelper,
+                        PlainDequePoolBean::borrowThroughAStaticHelper),
+                "the queue calls run in static helpers, which have no this to pass, called from "
+                        + "the pool's synchronized methods (#822)");
+        assertFalse(reports(PlainDequePoolBean::giveBackThroughALambda,
+                        PlainDequePoolBean::borrowThroughALambda),
+                "the queue calls run in non-capturing lambdas, static methods of their own, called "
+                        + "from the pool's synchronized methods (#822)");
+        assertTrue(reports(PlainDequePoolBean::giveBackToABucket,
+                        PlainDequePoolBean::borrowFromABucketUnguarded),
+                "the give-back holds the pool's monitor and the borrow holds nothing (#822)");
+        assertTrue(reports(PlainDequePoolBean::giveBackThroughAStaticHelper,
+                        PlainDequePoolBean::borrowThroughAStaticHelperUnguarded),
+                "the give-back holds the pool's monitor and the borrow holds nothing (#822)");
+        assertTrue(reports(PlainDequePoolBean::giveBackThroughALambda,
+                        PlainDequePoolBean::borrowThroughALambdaUnguarded),
+                "the give-back holds the pool's monitor and the borrow holds nothing (#822)");
+    }
+
+    @Test
+    void aSynchronizedMethodLeftByAnExceptionNoLongerGuards() throws Exception {
+        assertTrue(reports(PlainDequePoolBean::giveBackUnguardedAfterAFailure,
+                        PlainDequePoolBean::borrow),
+                "the give-back offered after a synchronized method on the pool had thrown, so it "
+                        + "held nothing: no return released the method's monitor, and the lockset "
+                        + "must still not count it (#822)");
+        assertTrue(reports(PlainDequePoolBean::giveBackUnguardedAfterAFailureInsideABlock,
+                        PlainDequePoolBean::borrow),
+                "the method threw inside a synchronized block on the pool; the block's release "
+                        + "must take the block's entry and the lost method entry must go as well "
+                        + "(#822)");
+        assertTrue(collectionReports(PlainDequePoolBean::giveBackUnguardedAfterAFailure,
+                        PlainDequePoolBean::borrow),
+                "the deque was offered to with no lock held after the failure (#822)");
+    }
+
+    @Test
+    void sharedCollectionSeesTheMonitorOfASynchronizedMethod() throws Exception {
+        assertFalse(collectionReports(PlainDequePoolBean::giveBack, PlainDequePoolBean::borrow),
+                "the deque is offered and polled only inside the pool's synchronized methods, so "
+                        + "the pool's monitor guards every access to it (#822)");
+        assertFalse(collectionReports(PlainDequePoolBean::giveBack,
+                        PlainDequePoolBean::borrowInBlock),
+                "a synchronized method on one side and a synchronized block on the pool on the "
+                        + "other hold the same monitor (#822)");
+        assertFalse(collectionReports(PlainDequePoolBean::giveBackThroughAHelper,
+                        PlainDequePoolBean::borrowThroughAHelper),
+                "the queue calls run in helpers the synchronized methods call (#822)");
+        assertFalse(collectionReports(PlainDequePoolBean::giveBackToABucket,
+                        PlainDequePoolBean::borrowFromABucket),
+                "the queue calls run in another object's methods, under the pool's synchronized "
+                        + "methods (#822)");
+        assertFalse(collectionReports((pool, item) -> PlainDequePoolBean.giveBackToTheSharedPool(item),
+                        pool -> PlainDequePoolBean.borrowFromTheSharedPool()),
+                "both sides hold the class through static synchronized methods (#822)");
+        assertTrue(collectionReports(PlainDequePoolBean::giveBack,
+                        PlainDequePoolBean::borrowUnderAnotherLock),
+                "the give-back holds the pool's monitor and the borrow another lock, so no lock "
+                        + "is common to both writes of the deque (#822)");
+        assertTrue(collectionReports(PlainDequePoolBean::giveBack,
+                        PlainDequePoolBean::borrowUnguarded),
+                "the borrow writes the deque holding nothing (#822)");
+    }
+
+    @Test
+    void sharedCollectionSeesTheMonitorOfASynchronizedMethodOnAMap() throws Exception {
+        assertFalse(mapReports(SynchronizedMethodCacheBean::record, SynchronizedMethodCacheBean::record),
+                "every get and put of the map runs inside the bean's synchronized method (#822)");
+        assertTrue(mapReports(SynchronizedMethodCacheBean::record,
+                        SynchronizedMethodCacheBean::recordUnguarded),
+                "the second thread reads and writes the map holding nothing (#822)");
+    }
+
+    /**
+     * Actor 1 gives a fresh item back, actor 2 borrows it. {@return whether
+     * SharedCollectionDetector reported a deque}
+     */
+    private static boolean collectionReports(BiConsumer<PlainDequePoolBean, Item> giveBack,
+                                             Function<PlainDequePoolBean, Item> borrow)
+            throws Exception {
+        PlainDequePoolBean pool = new PlainDequePoolBean();
+        return sharedCollectionReports(
+                () -> giveBack.accept(pool, PlainDequePoolBean.newItem()),
+                () -> PlainDequePoolBean.use(borrow.apply(pool)));
+    }
+
+    /** Actor 1 and actor 2 each count one key. {@return whether SharedCollectionDetector reported} */
+    private static boolean mapReports(BiConsumer<SynchronizedMethodCacheBean, String> first,
+                                      BiConsumer<SynchronizedMethodCacheBean, String> second)
+            throws Exception {
+        SynchronizedMethodCacheBean cache = new SynchronizedMethodCacheBean();
+        return sharedCollectionReports(() -> first.accept(cache, "key"),
+                () -> second.accept(cache, "key"));
+    }
+
+    /**
+     * Runs {@code first} on actor 1 and then {@code second} on actor 2, both with one invocation
+     * context installed. {@return whether its SharedCollectionDetector reported anything}
+     */
+    private static boolean sharedCollectionReports(Runnable first, Runnable second) throws Exception {
+        AsyncTestContext context = new AsyncTestContext(
+                AsyncTestConfig.builder().detectSharedCollections(true).build());
+        SharedCollectionDetector[] detector = new SharedCollectionDetector[1];
+        try (Actors actors = new Actors()) {
+            actors.run(1, () -> withContext(context, () -> {
+                detector[0] = AsyncTestContext.sharedCollectionDetector();
+                first.run();
+            }));
+            actors.run(2, () -> withContext(context, second));
+        }
+        return detector[0].analyze().hasIssues();
     }
 
     /** Runs {@code body} with {@code context} installed on the calling thread. */

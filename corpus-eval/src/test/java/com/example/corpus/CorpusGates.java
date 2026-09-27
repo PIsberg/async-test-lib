@@ -416,17 +416,22 @@ final class CorpusGates {
     /**
      * {@return the strongest tier {@code finding} can carry once the runner has clamped it}
      *
-     * <p>A listener sees a {@code Violation}, which carries no grade, and {@link CorpusRecorder}
-     * stamps it with the detector's row tier. For most detectors that is the tier the runner gates
-     * on. A detector whose report grades each finding can put one above its row tier, up to its
-     * evidence cap, and the runner lowers anything past the cap
-     * ({@code DetectorTrust.clampToCap}). Which grade a given violation got is not visible here,
-     * so a graded detector's finding is read at its cap: the most the runner could let it claim,
-     * which is the reading that cannot let a claim through the idiom bar.
+     * <p>A listener sees one {@code Violation} per report, and {@link CorpusRecorder} stamps it with
+     * the detector's row tier. For most detectors that is the tier the runner gates on. A detector
+     * whose report grades each finding can put one above its row tier, up to its evidence cap, and
+     * the runner lowers anything past the cap ({@code DetectorTrust.clampToCap}). Since #837 the
+     * violation carries those clamped grades, and the strongest of them is the claim: a report
+     * holding only a structural note is a prompt even from a detector whose other path is a
+     * verdict. A graded detector's violation that arrives without grades, from a path that does
+     * not pass them, is read at its cap: the most the runner could let it claim, which is the
+     * reading that cannot let a claim through the idiom bar.
      *
      * @param finding what a detector reported
      */
     static TrustTier claimedTier(CorpusRecorder.Finding finding) {
+        if (finding.gradedTier() != null) {
+            return finding.gradedTier();
+        }
         return DetectorExposure.typeOf(finding.detector())
                 .filter(PairEvidence::carriesPerFindingGrades)
                 .map(type -> DetectorTrust.capOfDetector(finding.detector()))
@@ -524,7 +529,8 @@ final class CorpusGates {
      * <p>A name in a file is not evidence. This resolves every line against the rows it names and
      * fails if one is missing, points at a different detector, or has drifted to the wrong
      * expectation. The pairs themselves are held to their outcomes every run by
-     * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, so between the two the tier cannot
+     * {@link #everySubjectGotTheOutcomeItsRecordedCallsOblige}, and an idiom row's correct half by
+     * {@link #everyCorrectIdiomDrewNothingWorthFailingOn}, so between the two the tier cannot
      * outlive the measurement that earned it.
      */
     static void everyCorpusBackedVerdictResolvesToItsPair() {
@@ -598,6 +604,18 @@ final class CorpusGates {
         if (subject.expectation() != expected) {
             problems.add(id + " is cited as the " + expected + " half for " + detector
                     + " but is declared " + subject.expectation());
+        }
+        if (expected == RecordingSubject.Expectation.MUST_STAY_SILENT) {
+            // Two kinds of correct row are not held to silence by their lane, so neither is the
+            // silent half of a pair: a known gap still draws its detector's finding, and a row
+            // that pins a severity expects its detector's note.
+            if (Corpus.idiomKnownGaps().containsKey(id)) {
+                problems.add(id + " is a known gap: " + detector + " still reports on it");
+            }
+            if (subject.expectedSeverity() != null) {
+                problems.add(id + " expects a " + subject.expectedSeverity() + " note from "
+                        + detector + ", so it is not silent");
+            }
         }
         return problems;
     }

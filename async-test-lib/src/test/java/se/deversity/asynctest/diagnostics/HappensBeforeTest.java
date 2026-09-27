@@ -144,6 +144,58 @@ class HappensBeforeTest {
     }
 
     @Test
+    @DisplayName("a read behind three pending writers takes the write it saw; behind four, the limit (#813)")
+    void aReadLooksBackOverTheLastFourReleases() throws InterruptedException {
+        Object holder = new Object();
+        Recorded stored = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.state", 1L));
+        for (long pending = 2L; pending <= 4L; pending++) {
+            long value = pending;
+            onNewThread(() -> { }, false,
+                    () -> HappensBefore.releaseVolatile(holder, "Holder.state", value));
+        }
+        Recorded behindThree = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.state", 1L), false, () -> { });
+        onNewThread(() -> { }, false,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.state", 5L));
+        Recorded behindFour = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.state", 1L), false, () -> { });
+
+        assertTrue(ordered(stored, behindThree),
+                "three later writers released and none stored, so the field still holds 1 and the "
+                        + "read synchronizes with the write that stored it");
+        assertFalse(ordered(stored, behindFour),
+                "the documented limit: the field keeps its last four releases, and with four "
+                        + "writers in the window at once the one that stored 1 is gone, so the read "
+                        + "acquires nothing, which can only add a finding");
+    }
+
+    @Test
+    @DisplayName("a reference read takes the release of that object only, not of one sharing its hash (#813)")
+    void aReferenceIsMatchedByIdentity() throws InterruptedException {
+        Object holder = new Object();
+        Object stored = new Object();
+        Object other = new Object();
+        long sharedHash = System.identityHashCode(stored);
+        Recorded writer = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatileReference(holder, "Holder.ref", stored));
+        Recorded sawStored = onNewThread(
+                () -> HappensBefore.acquireVolatileReference(holder, "Holder.ref", stored), false,
+                () -> { });
+        Recorded sawOther = onNewThread(
+                () -> HappensBefore.acquireVolatileReference(holder, "Holder.ref", other), false,
+                () -> { });
+        Recorded byHashOnly = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.ref", sharedHash), false,
+                () -> { });
+
+        assertTrue(ordered(writer, sawStored), "the read returned the object the write stored");
+        assertFalse(ordered(writer, sawOther), "another object, whatever its hash, was not stored");
+        assertTrue(ordered(writer, byHashOnly),
+                "a caller that has only the hash keeps the hash comparison it had");
+    }
+
+    @Test
     @DisplayName("a release that did not say what it stored matches any value read")
     void aReleaseWithoutAValueMatchesEveryRead() throws InterruptedException {
         Object holder = new Object();

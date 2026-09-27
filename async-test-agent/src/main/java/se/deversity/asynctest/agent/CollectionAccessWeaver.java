@@ -1696,14 +1696,15 @@ final class CollectionAccessWeaver {
                             && descriptor.equals(target.callSiteDescriptor())
                             && owner.equals(target.receiverType().getInternalName())) {
                         // Inside a synchronized method the monitor is held and no instruction
-                        // says so: ACC_SYNCHRONIZED is an access flag, so HeldLocks cannot know.
-                        // The weaver does know, statically, so it names the monitor instead of
-                        // asking - this for an instance method, the class for a static one.
+                        // says so: ACC_SYNCHRONIZED is an access flag. The weaver knows,
+                        // statically, so it names the monitor instead of asking - this for an
+                        // instance method, the class for a static one - and the report names the
+                        // method's own lock. FieldAccessWeaver also declares it to HeldLocks at
+                        // the method's entry and returns (#822), which is what reaches the
+                        // method's callees.
                         //
                         // One extra value on the stack, no branch and no exception handler, which
-                        // is exactly what COMPUTE_MAXS without COMPUTE_FRAMES allows. Teaching
-                        // the lockset instead would need a push on entry and a pop on every exit
-                        // including the exceptional one, and that needs frames.
+                        // is exactly what COMPUTE_MAXS without COMPUTE_FRAMES allows.
                         if (enclosingIsSynchronized && target.hasSynchronizedVariant()) {
                             loadEnclosingMonitor();
                             super.visitMethodInsn(Opcodes.INVOKESTATIC,

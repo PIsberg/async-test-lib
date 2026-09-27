@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -236,11 +237,11 @@ public final class VarHandleNonAtomicUpdateDetector {
                     + SelfGuard.REPORT_NOTE + ".",
                     s.label, lost));
                 for (String d : s.details) msg.append("\n      * ").append(d);
-                add(r, s, IssueSeverity.HIGH, msg.toString());
+                add(r, s, IssueSeverity.HIGH, TrustTier.VERDICT, msg.toString());
             }
 
             if (s.sawPlainAccess.get() && s.sawPlainWrite.get()) {
-                add(r, s, IssueSeverity.MEDIUM, String.format(
+                add(r, s, IssueSeverity.MEDIUM, TrustTier.PROMPT, String.format(
                     "MEDIUM: '%s' was accessed by %d threads (%s) using the plain VarHandle access "
                     + "mode, including at least one write.%s Plain get/set carries no ordering or "
                     + "visibility guarantee even when the underlying field is declared volatile, "
@@ -254,10 +255,15 @@ public final class VarHandleNonAtomicUpdateDetector {
                         : ""));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
-    private static void add(Report r, State s, IssueSeverity severity, String msg) {
+    /**
+     * Adds one finding. Both rules are decided only after {@code sharedAndUnguarded()} found no
+     * lock common to every access, so each grade names {@link DetectorTrust.Evidence#CONTEXTUAL}.
+     */
+    private static void add(Report r, State s, IssueSeverity severity, TrustTier tier, String msg) {
+        r.grades.add(new GradedFindings.Grade(severity, tier, msg, DetectorTrust.Evidence.CONTEXTUAL));
         r.violations.add(msg);
         r.structuredViolations.add(new Violation(
                 "VarHandleNonAtomicUpdate",
@@ -274,6 +280,8 @@ public final class VarHandleNonAtomicUpdateDetector {
         public final List<String> violations = new ArrayList<>();
         /** The same findings as machine-readable {@link Violation} records. */
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Grades of the findings collected so far, in report order; see {@link #grades()}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
 
         /**
          * Checks if any issues were detected.
@@ -283,25 +291,17 @@ public final class VarHandleNonAtomicUpdateDetector {
         public boolean hasIssues() { return !violations.isEmpty(); }
 
         /**
-         * One grade per finding, so a verdict-grade finding is not held back by a weaker one from
-         * the same detector.
+         * One grade per finding, set by the path that produced it rather than by its severity.
          *
-         * <p>A recorded get-then-set pair on the same variable from two threads is a lost update, which is
-         * a verdict. Plain-mode sharing is reported because it might be a bug, and it stays a prompt:
-         * the detector cannot see whether something else establishes the ordering.
+         * <p>A recorded get-then-set pair on the same variable from two threads is a lost update,
+         * which is a verdict. Plain-mode sharing is reported because it might be a bug, and it
+         * stays a prompt: the detector cannot see whether something else establishes the ordering.
+         * Both are decided after the lockset, so both grades name
+         * {@link DetectorTrust.Evidence#CONTEXTUAL}.
          */
         @Override
         public List<GradedFindings.Grade> grades() {
-            return structuredViolations.stream()
-                    .map(v -> new GradedFindings.Grade(v.severity(), tierOf(v.severity()), v.message()))
-                    .toList();
-        }
-
-        private static TrustTier tierOf(IssueSeverity severity) {
-            return switch (severity) {
-            case HIGH -> TrustTier.VERDICT;
-            default -> TrustTier.PROMPT;
-            };
+            return List.copyOf(grades);
         }
 
         @Override

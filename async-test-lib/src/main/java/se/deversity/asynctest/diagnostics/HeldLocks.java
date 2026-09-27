@@ -43,7 +43,10 @@ import org.jspecify.annotations.Nullable;
  * <p>With the agent attached, locks arrive on their own. Since 1.9.6 the weaver instruments
  * {@code MONITORENTER} and {@code MONITOREXIT} and routes them here through
  * {@code TelemetryRegistry.monitorEntered}, so a plain {@code synchronized} block in instrumented
- * code counts as a held lock with no declaration at all. With {@code collections=true} the woven
+ * code counts as a held lock with no declaration at all. A {@code synchronized} method has no such
+ * instruction, so the weaver calls {@link #methodMonitorAcquired(Object)} at its entry and
+ * {@link #methodMonitorReleased(Object)} before each return, and its monitor counts in everything
+ * the method calls (#822). With {@code collections=true} the woven
  * {@code Lock.lock()}/{@code unlock()} call sites feed the same stack through
  * {@code AgentLockHooks}, read-write views resolved to their owner and read views marked shared,
  * so a {@link java.util.concurrent.locks.ReentrantLock} needs no declaration either. What still
@@ -169,7 +172,7 @@ public final class HeldLocks {
      */
     public static void acquired(@Nullable Object lock, boolean shared) {
         if (lock != null) {
-            FRAMES.get().push(lock, shared);
+            FRAMES.get().push(lock, shared, false);
         }
     }
 
@@ -198,6 +201,49 @@ public final class HeldLocks {
     public static void released(@Nullable Object lock, boolean shared) {
         if (lock != null) {
             FRAMES.get().pop(lock, shared);
+        }
+    }
+
+    /**
+     * Declares that the calling thread has entered a {@code synchronized} method holding
+     * {@code monitor}: {@code this} for an instance method, the class for a static one.
+     *
+     * <p>A {@code synchronized} method takes its monitor from an access flag, so no instruction
+     * says so, and the woven code this is called from sits at the method's entry (#822). Its
+     * matching {@link #methodMonitorReleased(Object)} is woven before each return, but nothing is
+     * woven on an exception leaving the method: that would need a handler, and a handler needs
+     * stack map frames the weaver does not compute. So the entry is re-confirmed with
+     * {@link Thread#holdsLock(Object)} whenever this thread's set is read, as a
+     * {@link Revocable} lock is, and one the thread no longer holds leaves the set. An entry kept
+     * after its release would make every later access on this thread look guarded, which hides a
+     * race; one dropped while still held, as by a stale entry's removal while an outer frame holds
+     * the same monitor, can only report an access that was guarded.
+     *
+     * <p>Being inside the method is proof the monitor is held, so a lock taken this way counts
+     * wherever the thread goes from there: in a helper, in another object's method, in a static
+     * method or a lambda body the {@code synchronized} method calls.
+     *
+     * @param monitor the monitor the method holds; {@code null} is ignored
+     * @since 1.12.3
+     */
+    public static void methodMonitorAcquired(@Nullable Object monitor) {
+        if (monitor != null) {
+            FRAMES.get().push(monitor, false, true);
+        }
+    }
+
+    /**
+     * Declares that the calling thread is returning from the {@code synchronized} method whose
+     * entry {@link #methodMonitorAcquired(Object)} declared, releasing the most recent such entry
+     * for {@code monitor} and no {@code synchronized} block's, so a block on the same object keeps
+     * its own. A release with no matching entry is ignored.
+     *
+     * @param monitor the monitor the method held; {@code null} is ignored
+     * @since 1.12.3
+     */
+    public static void methodMonitorReleased(@Nullable Object monitor) {
+        if (monitor != null) {
+            FRAMES.get().popMethodMonitor(monitor);
         }
     }
 
@@ -566,6 +612,9 @@ public final class HeldLocks {
 
         /** When each entry was acquired: the value {@link #acquisitions} took at its push. */
         private long[] acquiredAt = new long[8];
+
+        /** Whether each entry is a {@code synchronized} method's monitor (#822). */
+        private boolean[] ofMethod = new boolean[8];
         private int depth;
 
         /** How many acquisitions this frame has seen; see {@link HeldLocks#acquisitionMark()}. */
@@ -574,7 +623,10 @@ public final class HeldLocks {
         /** The {@link HeldLocks#countOnlyHeldSince(long)} setting that {@code intersect} reads. */
         private long heldSince = EVERY_ACQUISITION;
 
-        /** How many entries are {@link Revocable}, so a frame without one never re-confirms. */
+        /**
+         * How many entries are re-confirmed when the set is read, a {@link Revocable} lock or a
+         * {@code synchronized} method's monitor, so a frame without one never re-confirms.
+         */
         private int revocable;
 
         /**
@@ -589,7 +641,11 @@ public final class HeldLocks {
         private boolean fingerprintsValid;
         private int registeredGeneration;
 
-        void push(Object lock, boolean isShared) {
+        void push(Object lock, boolean isShared, boolean isMethodMonitor) {
+            if (depth == MAX_DEPTH && revocable > 0) {
+                // A full frame may be full of method monitors an exception left behind (#822).
+                dropRevoked();
+            }
             if (depth == MAX_DEPTH) {
                 return;
             }
@@ -598,25 +654,27 @@ public final class HeldLocks {
                 hashes = Arrays.copyOf(hashes, hashes.length * 2);
                 shared = Arrays.copyOf(shared, shared.length * 2);
                 acquiredAt = Arrays.copyOf(acquiredAt, acquiredAt.length * 2);
+                ofMethod = Arrays.copyOf(ofMethod, ofMethod.length * 2);
             }
             locks[depth] = lock;
             hashes[depth] = System.identityHashCode(lock);
             shared[depth] = isShared;
+            ofMethod[depth] = isMethodMonitor;
             acquisitions++;
             acquiredAt[depth] = acquisitions;
             depth++;
-            if (lock instanceof Revocable) {
+            if (isMethodMonitor || lock instanceof Revocable) {
                 revocable++;
             }
             fingerprintsValid = false;
         }
 
         void pop(Object lock, boolean isShared) {
-            int at = indexOf(lock, isShared);
+            int at = indexOf(lock, isShared, false);
             if (at < 0) {
                 // A release in the other mode still refers to this lock: a caller that acquired
                 // without a mode and releases with one, or the reverse, must not leak an entry.
-                at = indexOf(lock);
+                at = indexOf(lock, isShared, true);
                 if (at < 0) {
                     return;
                 }
@@ -624,28 +682,45 @@ public final class HeldLocks {
             removeAt(at);
         }
 
+        /** Removes the topmost {@code synchronized}-method entry for {@code monitor}, if any. */
+        @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"})
+        void popMethodMonitor(Object monitor) {
+            for (int i = depth - 1; i >= 0; i--) {
+                if (ofMethod[i] && locks[i] == monitor) {
+                    removeAt(i);
+                    return;
+                }
+            }
+        }
+
         private void removeAt(int at) {
-            if (locks[at] instanceof Revocable) {
+            if (ofMethod[at] || locks[at] instanceof Revocable) {
                 revocable--;
             }
             System.arraycopy(locks, at + 1, locks, at, depth - at - 1);
             System.arraycopy(hashes, at + 1, hashes, at, depth - at - 1);
             System.arraycopy(shared, at + 1, shared, at, depth - at - 1);
             System.arraycopy(acquiredAt, at + 1, acquiredAt, at, depth - at - 1);
+            System.arraycopy(ofMethod, at + 1, ofMethod, at, depth - at - 1);
             depth--;
             locks[depth] = null;
             fingerprintsValid = false;
         }
 
         /**
-         * Removes every revocable entry this thread no longer holds.
+         * Removes every revocable entry this thread no longer holds: a {@link Revocable} lock
+         * that says so, and a {@code synchronized} method's monitor {@link Thread#holdsLock}
+         * no longer finds, which is one an exception carried out of its method (#822).
          *
          * <p>A lock that cannot answer is treated as released: keeping it would be the direction
          * that hides a race, and dropping it at worst reports an access that was guarded.
          */
         void dropRevoked() {
             for (int i = depth - 1; i >= 0; i--) {
-                if (locks[i] instanceof Revocable lock && !confirmHeld(lock)) {
+                boolean released = ofMethod[i]
+                        ? !Thread.holdsLock(locks[i])
+                        : locks[i] instanceof Revocable lock && !confirmHeld(lock);
+                if (released) {
                     removeAt(i);
                 }
             }
@@ -677,11 +752,17 @@ public final class HeldLocks {
             return -1;
         }
 
-        /** {@return the topmost index holding {@code lock} in the given mode, or -1} */
+        /**
+         * {@return the topmost index holding {@code lock} in the given mode, or in either mode
+         * when {@code anyMode}, other than a {@code synchronized} method's entry, or -1}
+         *
+         * <p>A method's entry is left to {@link #popMethodMonitor}: a block on the same object
+         * releasing it would leave the block's own entry behind, which nothing re-confirms (#822).
+         */
         @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"})
-        int indexOf(Object lock, boolean isShared) {
+        int indexOf(Object lock, boolean isShared, boolean anyMode) {
             for (int i = depth - 1; i >= 0; i--) {
-                if (locks[i] == lock && shared[i] == isShared) {
+                if (locks[i] == lock && (anyMode || shared[i] == isShared) && !ofMethod[i]) {
                     return i;
                 }
             }

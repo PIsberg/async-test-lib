@@ -1,6 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -265,7 +266,8 @@ public final class RecordMutableComponentLeakDetector {
 
             if (!mutated.isEmpty()) {
                 r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.VERDICT,
-                        "observed mutation of a shared record's component: " + s.label));
+                        "observed mutation of a shared record's component: " + s.label,
+                        DetectorTrust.Evidence.OBSERVED));
                 add(r, s, IssueSeverity.HIGH, String.format(
                     "HIGH: record '%s' (%s) was touched by %d threads (%s) and %d of its "
                     + "components were mutated during the run: %s. A record's fields are final, "
@@ -278,7 +280,8 @@ public final class RecordMutableComponentLeakDetector {
             }
             if (!structural.isEmpty()) {
                 r.grades.add(new GradedFindings.Grade(IssueSeverity.MEDIUM, TrustTier.PROMPT,
-                        "structural risk in a shared record: " + s.label));
+                        "structural risk in a shared record: " + s.label,
+                        DetectorTrust.Evidence.CONTEXT_FREE));
                 add(r, s, IssueSeverity.MEDIUM, String.format(
                     "MEDIUM: record '%s' (%s) is shared by %d threads and carries mutable "
                     + "component(s): %s. Nothing wrote through them during this run, so this is a "
@@ -296,7 +299,7 @@ public final class RecordMutableComponentLeakDetector {
                 + "were not examined. The findings above are a lower bound.",
                 MAX_INSTANCES, drops));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Is this value's runtime type mutable in a way that matters for sharing? */
@@ -361,6 +364,11 @@ public final class RecordMutableComponentLeakDetector {
          * detector as one thing meant the verdict inherited the prompt's tier: a build gating on
          * {@code minTrust = VERDICT} would not have failed on shared mutable state that was
          * actually seen being mutated.
+         *
+         * <p>Each grade names its path's evidence (#837): the mutation is read back from the
+         * component itself, {@link DetectorTrust.Evidence#OBSERVED}; the structural note is two
+         * threads recorded touching the record, which a record shared under a lock draws as well,
+         * {@link DetectorTrust.Evidence#CONTEXT_FREE}.
          */
         @Override
         public List<GradedFindings.Grade> grades() {

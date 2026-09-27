@@ -260,4 +260,69 @@ public class AtomicNonAtomicUpdateDetectorTest {
         assertTrue(handOffBetweenTwoLocksReported(false),
             "nothing orders the second get+set after the first, and their locks differ");
     }
+
+    // ---- An owner whose clock dropped the hand-off (#821, #830) --------------------------------
+    //
+    // A clock keeps at most HappensBefore.MAX_ENTRIES threads. B takes the counter over from A,
+    // then learns of more threads than that, so its clock no longer knows A. B's next get+set
+    // still follows the hand-off in program order, after the one that took the counter over, so
+    // its lockset is judged from the hand-off, as SharedMessageDigestDetectorTest pins for the
+    // digest. Checked against B's clock instead, it fell back to the whole round and read A's
+    // lock and B's as two locks in one round.
+
+    /**
+     * {@return whether A's get+set under one lock, then B's under another after an ordered
+     * hand-off, then B's again once B's clock dropped A, reports}
+     *
+     * @param guardedLater whether B's later get+set holds the lock B took the counter over under,
+     *                     rather than none
+     */
+    private static boolean droppedClockReported(boolean guardedLater) throws Exception {
+        var ctx = updateContext();
+        AtomicInteger counter = new AtomicInteger();
+        var handedOver = new java.util.concurrent.CountDownLatch(1);
+        var aThread = new AtomicLong();
+        var forgotA = new java.util.concurrent.atomic.AtomicBoolean();
+        Object bLock = new Object();
+        Runnable first = getThenSetUnder(new Object(), counter);
+        Runnable bTakes = getThenSetUnder(bLock, counter);
+        Runnable bLater = guardedLater ? getThenSetUnder(bLock, counter) : () -> {
+            var d = se.deversity.asynctest.AsyncTestContext.atomicNonAtomicUpdateDetector();
+            int v = counter.get();
+            d.recordGet(counter, "counter", Thread.currentThread());
+            counter.set(v + 1);
+            d.recordSet(counter, "counter", Thread.currentThread());
+        };
+        ctx.markInvocationStart();
+        runWorkers(ctx, () -> {
+            aThread.set(Thread.currentThread().threadId());
+            first.run();
+            se.deversity.asynctest.AgentConcurrencyUtilHooks.countDown(handedOver);
+        }, () -> {
+            try {
+                se.deversity.asynctest.AgentConcurrencyUtilHooks.await(handedOver);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            bTakes.run();
+            SharedMessageDigestDetectorTest.learnOfMoreThreadsThanAClockKeeps();
+            forgotA.set(HappensBefore.current().countOf(aThread.get()) == 0);
+            bLater.run();
+        });
+        assertTrue(forgotA.get(), "precondition: B's clock dropped A");
+        return detectorOf(ctx).analyze().hasIssues();
+    }
+
+    @Test
+    void anOwnerWhoseClockDroppedTheHandOffStillJudgesFromIt() throws Exception {
+        assertFalse(droppedClockReported(true),
+            "every get+set of B's holds B's lock and follows A's in program order after the hand-off");
+    }
+
+    @Test
+    void anUnguardedGetThenSetByAnOwnerWhoseClockDroppedTheHandOffStillFires() throws Exception {
+        assertTrue(droppedClockReported(false),
+            "B's later get+set holds no lock; the hand-off excuses A's lock, not a missing one");
+    }
 }

@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,6 +50,12 @@ public class LockLeakDetector {
         final AtomicInteger maxHoldTimeMs = new AtomicInteger(0);
         volatile boolean currentlyHeld = false;
         volatile @Nullable Long lastAcquireTime = null;
+        /**
+         * The thread last recorded acquiring a {@code ReentrantLock} while holding it, so that
+         * analysis can ask that thread, rather than a name, whether it is done with the lock.
+         * Held for the detector's lifetime, which is one run.
+         */
+        volatile @Nullable Thread holder;
 
         LockState(Lock lock, String name) {
             this.name = name != null ? name : "lock@" + System.identityHashCode(lock);
@@ -94,6 +101,9 @@ public class LockLeakDetector {
         state.acquireCount.incrementAndGet();
         state.acquiringThreads.add(Thread.currentThread().threadId());
         state.currentlyHeld = true;
+        if (lock instanceof ReentrantLock reentrant && reentrant.isHeldByCurrentThread()) {
+            state.holder = Thread.currentThread();
+        }
         long now = System.currentTimeMillis();
         state.lastAcquireTime = now;
         state.threadAcquireTime.put(Thread.currentThread().threadId(), now);
@@ -137,26 +147,46 @@ public class LockLeakDetector {
     public LockLeakReport analyze() {
         LockLeakReport report = new LockLeakReport();
         report.enabled = enabled;
+        Set<Thread> platformThreads = null;
 
-        for (LockState state : locks.values()) {
+        for (Map.Entry<IdentityKey, LockState> entry : locks.entrySet()) {
+            LockState state = entry.getValue();
             int acquires = state.acquireCount.get();
             int releases = state.releaseCount.get();
+            boolean leaked = acquires > releases;
+            // The lock is asked only about a leak the counts already show, so a confirmation can
+            // raise a finding's grade and never make one.
+            String confirmed = null;
+            if ((leaked || state.currentlyHeld) && entry.getKey().referent() instanceof ReentrantLock lock) {
+                if (platformThreads == null) {
+                    platformThreads = Thread.getAllStackTraces().keySet();
+                }
+                confirmed = confirmedHold(lock, state.holder, platformThreads);
+            }
 
             // Check for lock leaks (more acquires than releases)
-            if (acquires > releases) {
-                report.lockLeaks.add(String.format(
+            if (leaked) {
+                String leak = String.format(
                     "%s: acquired %d times but released only %d times (%d potential leaks)",
-                    state.name, acquires, releases, acquires - releases));
+                    state.name, acquires, releases, acquires - releases);
+                report.lockLeaks.add(confirmed == null ? leak : leak + confirmed);
+                if (confirmed != null) {
+                    report.observed.add(leak + confirmed);
+                }
             }
 
             // Check for currently held locks at analysis time
             if (state.currentlyHeld) {
-                long holdTimeMs = state.lastAcquireTime != null 
-                    ? System.currentTimeMillis() - state.lastAcquireTime 
+                long holdTimeMs = state.lastAcquireTime != null
+                    ? System.currentTimeMillis() - state.lastAcquireTime
                     : 0;
-                report.heldLocks.add(String.format(
+                String held = String.format(
                     "%s: lock is currently held (last acquired %dms ago)",
-                    state.name, holdTimeMs));
+                    state.name, holdTimeMs);
+                report.heldLocks.add(confirmed == null ? held : held + confirmed);
+                if (confirmed != null) {
+                    report.observed.add(held + confirmed);
+                }
             }
 
             // Check for excessive hold times
@@ -181,6 +211,38 @@ public class LockLeakDetector {
     }
 
     /**
+     * {@return what the lock itself says about a leak the counts show, as a suffix for the finding,
+     * or {@code null} when it does not confirm it}
+     *
+     * <p>A hold is confirmed when {@link ReentrantLock#isLocked()} is still true, the analysing
+     * thread is not the holder, and the holder the lock names has stopped working: it has ended, or
+     * it waits in its pool for the next task. That is {@code ReentrantLockDetector}'s test for a
+     * held lock, asked through the same code (#837). A holder still running may yet release the
+     * lock, and a lock whose recorded counts disagree with it (the acquire and release recorded
+     * in different places) is not held at all; both keep the recorded finding at its recorded
+     * grade. The boundary is the same as that detector's: an unnamed virtual thread that never
+     * recorded against the lock cannot be told from one that did.
+     */
+    private static @Nullable String confirmedHold(ReentrantLock lock, @Nullable Thread recorded,
+                                                  Set<Thread> platformThreads) {
+        if (!lock.isLocked() || lock.isHeldByCurrentThread()) {
+            return null;
+        }
+        String holderName = ReentrantLockDetector.holderNameOf(lock);
+        if (holderName == null) {
+            return null;
+        }
+        ReentrantLockDetector.HolderState state = ReentrantLockDetector.holderState(
+                holderName, recorded, Set.of(), platformThreads);
+        if (state == ReentrantLockDetector.HolderState.WORKING) {
+            return null;
+        }
+        return String.format(" - ReentrantLock.isLocked() confirms it: held by '%s', %s",
+                holderName, state == ReentrantLockDetector.HolderState.IDLE
+                        ? "now idle in its pool" : "which has finished");
+    }
+
+    /**
      * Report class for lock leak analysis.
      */
     public static class LockLeakReport implements GradedFindings {
@@ -193,6 +255,8 @@ public class LockLeakDetector {
          * share a name, and filed under it the second one's line overwrote the first's (#789).
          */
         final java.util.List<String> threadActivity = new java.util.ArrayList<>();
+        /** The leak and held-lock findings the lock itself confirmed; see {@link #grades()}. */
+        final Set<String> observed = new java.util.HashSet<>();
 
         /**
          * Check if any issues were detected.
@@ -212,6 +276,13 @@ public class LockLeakDetector {
          * five seconds is a threshold, and a slow critical section that does release is not a leak,
          * so it stays a {@link TrustTier#PROMPT}. Before this the whole detector was rated by that
          * threshold. Every grade keeps the severity the gate has always read for this report.
+         *
+         * <p>Since #837 a {@code ReentrantLock} is also asked at analysis. When it is still locked
+         * and the holder it names has ended or waits idle in its pool, the leak is what the JVM
+         * says rather than what was recorded, and both of that lock's findings are a
+         * {@link TrustTier#VERDICT} on {@link DetectorTrust.Evidence#OBSERVED} evidence. The
+         * correct twin, {@code unlock()} in a {@code finally}, leaves the lock free and the counts
+         * balanced, and draws neither.
          */
         @Override
         public java.util.List<GradedFindings.Grade> grades() {
@@ -221,15 +292,22 @@ public class LockLeakDetector {
             IssueSeverity severity = DetectorDefaultSeverity.of(LockLeakDetector.class.getSimpleName(), toString());
             java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
             for (String leak : lockLeaks) {
-                out.add(new GradedFindings.Grade(severity, TrustTier.FACT, leak, DetectorTrust.Evidence.ASSERTED));
+                out.add(gradeOf(severity, leak));
             }
             for (String held : heldLocks) {
-                out.add(new GradedFindings.Grade(severity, TrustTier.FACT, held, DetectorTrust.Evidence.ASSERTED));
+                out.add(gradeOf(severity, held));
             }
             for (String slow : excessiveHoldTimes) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, slow, DetectorTrust.Evidence.HEURISTIC));
             }
             return java.util.List.copyOf(out);
+        }
+
+        /** {@return a leak or held-lock finding's grade: observed if the lock confirmed it, else as recorded} */
+        private GradedFindings.Grade gradeOf(IssueSeverity severity, String finding) {
+            return observed.contains(finding)
+                    ? new GradedFindings.Grade(severity, TrustTier.VERDICT, finding, DetectorTrust.Evidence.OBSERVED)
+                    : new GradedFindings.Grade(severity, TrustTier.FACT, finding, DetectorTrust.Evidence.ASSERTED);
         }
 
         @Override

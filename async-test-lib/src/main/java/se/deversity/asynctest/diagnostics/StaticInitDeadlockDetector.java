@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
@@ -238,7 +239,7 @@ public final class StaticInitDeadlockDetector {
                 + "initializers with recordInitStart/recordInitRequest to get a definite answer.",
                 parked.size(), classes.size(), who), parked.size());
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /**

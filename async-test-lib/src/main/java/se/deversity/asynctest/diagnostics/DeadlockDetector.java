@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 
 /**
@@ -344,11 +345,11 @@ public class DeadlockDetector {
         if (current != null) {
             for (long id : current) {
                 if (!preexistingDeadlockedThreads.contains(id)) {
-                    return new DeadlockReport(true);
+                    return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(true));
                 }
             }
         }
-        return new DeadlockReport(false, freshVirtualCycles());
+        return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(false, freshVirtualCycles()));
     }
 
     /**

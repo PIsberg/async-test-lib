@@ -61,13 +61,15 @@ so a graded report without a list keeps its table entry and grades at the severi
 
 Keep the list, and fill it wherever the text gains a line. `StructuredViolationCoverageTest` fails
 on a detector whose report has no `structuredViolations` field unless it is pinned in that test's
-text-only allow-list, which only shrinks, so a new detector needs the field. It also drives every
-detector outside that list and fails when a report with issues comes back with an empty list, so
-add one entry to its `PATHS` per place the new report writes a finding. The same check runs on
-every report that enters a run's findings: under `async-test.strict-detectors`, which this build's
-tests set, `DetectorRegistry.ifIssue` throws for a report with issues and an empty list, so any test
-that makes the detector fire through the runner or the registry is a driver as well (#802). It only
-sees the paths some test reaches, so the `PATHS` entries are still needed.
+text-only allow-list, which only shrinks, so a new detector needs the field. Return the report
+through `DetectorFailurePolicy.checkedReport(this, r)`, as the template does; the same test fails a
+structured detector whose source does not. Under `async-test.strict-detectors`, which this build's
+tests set, that call throws for a report with issues and an empty list, so every test that obtains
+the report is a driver: the detector's own unit tests that call `analyze()`, and any test that fires
+it through the runner or the registry, where `DetectorRegistry.ifIssue` checks it again (#802,
+#829). Give the detector one entry in the test's `PATHS`, which drives it even if its unit tests
+change. The check only sees the paths some test reaches, so write a firing unit test for each place
+the report writes a finding.
 
 ## Tests are part of the change
 

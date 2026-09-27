@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 /**
@@ -28,7 +29,8 @@ import java.util.List;
  *
  * <p>The same switch holds the built-in reports to their own structured findings: a report type
  * that keeps a {@code structuredViolations} list and has issues with that list empty fails the build
- * under it, and changes nothing outside it ({@link #structuredFindingsMissing}).
+ * under it, and changes nothing outside it ({@link #structuredFindingsMissing}), checked where the
+ * detector builds the report ({@link #checkedReport}) and again where the registry takes it in.
  *
  * @since 1.7.0
  */
@@ -80,8 +82,9 @@ public final class DetectorFailurePolicy {
      * breaks that promise for this finding: the gate falls back to guessing from the text, which
      * can land on a different severity than the detector chose on its other paths (#774). A
      * hand-kept list of drivers found the paths known in #774 and cannot find one added later, so
-     * the check runs here, where every report enters the findings, and every test in this build
-     * that makes a detector fire is a driver for it (#802).
+     * the check runs where every report enters the findings (#802) and where every structured
+     * detector builds one ({@link #checkedReport}, #829), and every test in this build that makes a
+     * detector fire is a driver for it.
      *
      * <p>Only under {@value #STRICT_PROPERTY}. Everywhere else it returns at once and writes
      * nothing: the finding is still reported with its text, and a consumer's build has no use for
@@ -103,6 +106,49 @@ public final class DetectorFailurePolicy {
             + " the one the detector states on its other paths. Add a Violation beside the text"
             + " line, at the severity the text resolves to. Strict mode (" + STRICT_PROPERTY
             + ") fails the build; consumers see the finding unchanged. Report: " + report);
+    }
+
+    /**
+     * Returns the report a detector has just built, after holding it to its own structured findings.
+     *
+     * <p>{@link #structuredFindingsMissing} runs where the registry takes a report in, so on its own
+     * it saw only the detectors some test fires through the registry, a minority of those that keep
+     * the list (#829). A detector's own unit tests call {@code analyze()} and read the report
+     * directly, and so does the no-context {@code Phase1DetectorSet.printReports()}. Every
+     * report-building method of a detector that keeps the list returns through this, so any caller
+     * that obtains a report with issues is a driver, whichever path produced the finding.
+     *
+     * <p>Only under {@value #STRICT_PROPERTY}. Everywhere else it returns {@code report} without
+     * reading it, and nothing about the report changes under strict mode either.
+     *
+     * @param detector the detector that built the report; the failure names its simple class name
+     * @param report   the report about to be returned, whose type keeps a public
+     *                 {@code structuredViolations} list and answers {@code hasIssues()}
+     * @param <R>      the report type
+     * @return {@code report}, the same instance
+     * @throws AssertionError under strict mode, when the report has issues and its list holds no
+     *                        {@code Violation}
+     * @since 1.12.3
+     */
+    public static <R> R checkedReport(Object detector, R report) {
+        if (Boolean.getBoolean(STRICT_PROPERTY) && keepsStructuredFindings(report)
+                && hasIssues(report) && DetectorDefaultSeverity.structuredIn(report).isEmpty()) {
+            structuredFindingsMissing(detector.getClass().getSimpleName(), report);
+        }
+        return report;
+    }
+
+    /** {@return what {@code report}'s public {@code hasIssues()} answers} */
+    private static boolean hasIssues(Object report) {
+        try {
+            Method answer = report.getClass().getMethod("hasIssues");
+            answer.trySetAccessible();
+            return Boolean.TRUE.equals(answer.invoke(report));
+        } catch (ReflectiveOperationException unreadable) {
+            throw new AssertionError("Report " + report.getClass().getName() + " keeps "
+                + DetectorDefaultSeverity.STRUCTURED_FIELD + " but has no callable hasIssues(), so"
+                + " strict mode cannot tell whether it has findings", unreadable);
+        }
     }
 
     /** {@return whether {@code report}'s type declares the public structured list} */

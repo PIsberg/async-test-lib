@@ -821,7 +821,10 @@ another's, is silent, so the recorded call names an operation that is correct on
 the finding is the detector's own. It was registered as `VERDICT` evidence on 2026-09-07 by the
 shape rule, before that change, while the evidence file's header still argued it out; #818 re-read
 it against the lockset, kept the registration, and made the file's held detectors a list its gate
-checks. The idiom lane's `idiom_synchronizedCheckThenAct_*` pair separates on the lock itself.
+checks. The idiom lane's `idiom_synchronizedCheckThenAct_*` pair separates on the lock itself,
+and since #828 it is the pair the registration names: the evidence file may cite idiom rows, and
+`CorpusGates` resolves them as it resolves the others, refusing as a silent half a known gap or a
+correct row that expects a note, which that lane does not hold to silence.
 
 | Detector | Must fire | ...did | Must stay silent | ...did |
 |---|---:|---:|---:|---:|
@@ -1826,9 +1829,10 @@ receiver's monitor across the same plain get and plain set, on the same handle a
 `recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor` holds
 `System.getProperties()` around the same shared-key write. Both stayed silent on their first run,
 and both fired with the `synchronized` removed, so the lock is what separates them.
-Neither moves a tier: `SYSTEM_PROPERTY_MUTATION` is already registered on its key-separated pair,
-and `VAR_HANDLE_NON_ATOMIC_UPDATE` grades each finding, which `PairEvidence` holds back as
-`GRADED`.
+Neither moves a tier: `SYSTEM_PROPERTY_MUTATION` was already registered, on its key-separated
+pair, and its line now names the lock twin, the silent half that differs from the firing row in
+the defect alone (#836); `VAR_HANDLE_NON_ATOMIC_UPDATE` grades each finding, which `PairEvidence`
+holds back as `GRADED`.
 
 `THREAD_LOCAL_RANDOM_MISUSE` kept its refusal after its per-thread model landed and the idiom lane
 paired it, because `DetectorCoverage` counts the two pair lanes and lane one, not the idiom lane.
@@ -1839,7 +1843,9 @@ the test class initialised, with the obtain recorded for the thread that made it
 `current()` returns one JVM-wide object, so both halves hand the detector the same instance and
 differ only in which thread obtained it, which is the defect. The refusal is deleted. The pair is
 measured but is not a promotion candidate: the detector decides from the body's own obtain and use
-records, so its evidence class caps it below `VERDICT`.
+records, so its evidence class caps it below `VERDICT`. Since #836 `DetectorCoverage` counts the
+idiom lane as well, for a detector with a firing row there and a correct row the lane holds to
+silence, so a refusal cannot outlive a pair in that lane either.
 
 ### Where the roster stands, derived rather than counted
 
@@ -1936,8 +1942,10 @@ around the instance a detector tracks. `IdiomRowPremise` fails the lane if any o
 
 **The bar on a correct row** is stricter than either pair lane's:
 
-- nothing at `FACT` tier or above from any detector. A graded detector's finding is read at its
-  evidence cap, the most the runner's clamp lets it claim, because a listener sees no grade;
+- nothing at `FACT` tier or above from any detector. A graded detector's report is read at the
+  strongest of its findings' tiers, as the runner clamped them and passed them to listeners in
+  `findingTiers` (#837); one that arrives without them is read at its evidence cap, the most the
+  clamp lets it claim;
 - nothing at any tier from the detector the row names. The seed false positives were mostly
   `PROMPT`-tier `AtomicityValidator` findings, which the tier bar alone would let back in;
 - a row that pins a severity expects a note instead: the shared `java.util.Random` row must draw
@@ -2048,6 +2056,16 @@ is no edge, so `idiom_digestHolderPool_checkedOutUnderALock` is a known gap. Its
 after the take and must stay silent. Both have broken twins over `peek()`, one undeclared and one
 declared, which must still fire: a declaration cannot turn every thread using one digest at once
 into a hand-off.
+
+**A check-then-act that puts one instance (#827, #833).** Two rows were added after run L, both on
+the manual API with the value overload of `recordCheckThenAct`. In
+`idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance` every thread of a round runs get-then-put
+on one key with no lock, each putting the round's one generation object, so no put is lost and the
+row must stay silent. The object changes every round, so the row also fails if the same-instance
+excuse is judged across the run rather than per round; against the detector before #833 it drew
+`VERDICT`/`HIGH`. Its twin, `idiom_checkThenAct_everyCallerPutsItsOwnInstance`, has each caller
+build its own object and must fire at `HIGH`. In the first full run with #833 the correct row was
+silent with nothing at `FACT` or above, and the twin drew `VERDICT`/`HIGH`.
 
 The "FACT or above" column is empty on every correct row. The only findings at that tier are on
 twins, from the `VERDICT` detectors whose twin they are. Below `FACT`, no detector other than a

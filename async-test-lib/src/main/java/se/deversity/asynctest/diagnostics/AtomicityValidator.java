@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.jspecify.annotations.Nullable;
+import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 
 /**
@@ -1449,7 +1450,7 @@ public class AtomicityValidator {
             }
         }
 
-        return report;
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /** {@return how many distinct threads wrote in {@code accesses}} */
