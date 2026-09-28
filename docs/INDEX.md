@@ -131,7 +131,7 @@ the order the pieces appear in a run, not alphabetical.
 | [quality-gates/review-lanes.md](quality-gates/review-lanes.md) | The guardrail jobs and the AI review lanes behind the invariants |
 | [architecture/guardrails.md](architecture/guardrails.md) | How the `@AI*` guardrails are generated, the three vibetags config files, and why Gradle needs `-Avibetags.root` |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Every third-party library, why it is used, and how far it travels toward a consumer's classpath |
-| [WORKFLOW.md](WORKFLOW.md) | Development workflow |
+| [WORKFLOW.md](WORKFLOW.md) | Running the load-tests subproject, capturing release baselines, and what `load-tests.yml` runs in CI |
 | [architecture/diagrams.md](architecture/diagrams.md) | C4, sequence, class, activity and deployment diagrams + PlantUML sources |
 | [diagrams/README.md](diagrams/README.md) | The PlantUML sources and their rendered PNGs, one row per diagram |
 | [diagrams/GENERATE_DIAGRAMS.md](diagrams/GENERATE_DIAGRAMS.md) | Rendering the PlantUML sources locally (CLI, server or IDE plugin) |
