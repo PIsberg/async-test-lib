@@ -19,7 +19,7 @@ repositories {
 }
 
 // MUST match the version in the parent's gradle.properties / pom.xml.
-val asyncTestVersion = "1.12.2"
+val asyncTestVersion = "1.12.3"
 val junitVersion = "6.1.3"
 
 dependencies {

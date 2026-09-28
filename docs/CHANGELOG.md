@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.3] - 2026-09-28
+
 ### Added
 
 - **One happens-before model for the field detectors** (`diagnostics.HappensBefore`, experimental):
