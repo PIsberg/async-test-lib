@@ -308,11 +308,15 @@ public final class AgentCollectionHooks {
             } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
                 // addAll below reads the same source and reports what is wrong with it.
             }
+            boolean completed = false;
             try {
-                return receiver.addAll(elements);
-            } catch (RuntimeException partWay) {
-                withdrawWhatDidNotGoIn(receiver, elements);
-                throw partWay;
+                boolean changed = receiver.addAll(elements);
+                completed = true;
+                return changed;
+            } finally {
+                if (!completed) {
+                    withdrawWhatDidNotGoIn(receiver, elements);
+                }
             }
         }
         return receiver.addAll(elements);
