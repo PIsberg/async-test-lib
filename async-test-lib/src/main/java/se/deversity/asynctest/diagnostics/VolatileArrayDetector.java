@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
@@ -189,7 +194,9 @@ public class VolatileArrayDetector {
                 unguarded.add(info);
             }
         }
-        return new VolatileArrayReport(unguarded);
+        VolatileArrayReport report801 = new VolatileArrayReport(unguarded);
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -213,6 +220,23 @@ public class VolatileArrayDetector {
          */
         public boolean hasIssues() {
             return !problematicArrays.isEmpty();
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (ArrayInfo info : problematicArrays) {
+                structuredViolations.add(new Violation("VolatileArray", severity,
+                        info.name + " (" + info.componentType.getSimpleName() + "[]): volatile covers the array reference, not its elements", List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

@@ -60,16 +60,12 @@ public final class DetectorDefaultSeverity {
 
     private static final Map<DetectorType, IssueSeverity> DECLARED = Map.ofEntries(
             entry(DetectorType.LIVELOCKS, IssueSeverity.CRITICAL),
-            entry(DetectorType.ASYNC_PIPELINE, IssueSeverity.HIGH),
             entry(DetectorType.READ_WRITE_LOCK_FAIRNESS, IssueSeverity.MEDIUM),
             entry(DetectorType.CONDITION_VARIABLES, IssueSeverity.HIGH),
             entry(DetectorType.REENTRANT_LOCK, IssueSeverity.HIGH),
-            entry(DetectorType.VOLATILE_ARRAY, IssueSeverity.HIGH),
             entry(DetectorType.MISSED_SIGNAL, IssueSeverity.CRITICAL),
             entry(DetectorType.EXCHANGER, IssueSeverity.CRITICAL),
             entry(DetectorType.SCHEDULED_EXECUTOR, IssueSeverity.MEDIUM),
-            entry(DetectorType.SLEEP_IN_LOCK, IssueSeverity.MEDIUM),
-            entry(DetectorType.UNBOUNDED_QUEUE, IssueSeverity.MEDIUM),
             entry(DetectorType.THREAD_STARVATION, IssueSeverity.MEDIUM)
     );
 

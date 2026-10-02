@@ -95,11 +95,9 @@ class StructuredViolationCoverageTest {
             "ABAProblemDetector",
             "CompletableFutureCompletionLeakDetector",
             "ConditionVariableDetector", "ConstructorSafetyValidator", "ExchangerDetector",
-            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
-            "PipelineMonitor", "ReadWriteLockMonitor",
-            "ReentrantLockDetector", "ScheduledExecutorDetector", "SleepInLockDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
-            "UnboundedQueueDetector",
-            "VirtualThreadCarrierExhaustionDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector");
+            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector", "ReadWriteLockMonitor",
+            "ReentrantLockDetector", "ScheduledExecutorDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
+            "VirtualThreadCarrierExhaustionDetector", "VirtualThreadPinningDetector");
 
     /**
      * Detectors whose structured severity must equal what their text alone resolves to.
@@ -1215,6 +1213,35 @@ class StructuredViolationCoverageTest {
         } finally {
             release.countDown();
         }
+            }),
+            // ---- structured in #801, batch 13 ----
+            new Path("SleepInLockDetector", "a sleep while holding a monitor", () -> {
+        var d = new SleepInLockDetector();
+        d.startMonitoring();
+        Object monitor = new Object();
+        synchronized (monitor) {
+            d.recordSleep(100, monitor);
+        }
+        return d.analyze();
+            }),
+            new Path("UnboundedQueueDetector", "a queue created without a bound", () -> {
+        var d = new UnboundedQueueDetector();
+        d.recordQueueCreation(new java.util.concurrent.LinkedBlockingQueue<String>(), "unbounded-queue", -1);
+        return d.analyze();
+            }),
+            new Path("VolatileArrayDetector", "one array element written by two threads", () -> {
+        var d = new VolatileArrayDetector();
+        int[] array = new int[2];
+        d.registerArray(array, "shared-array", int.class);
+        onTwoThreads(() -> d.recordElementWrite(array, 0, "shared-array"),
+                () -> d.recordElementWrite(array, 0, "shared-array"));
+        return d.analyze();
+            }),
+            new Path("PipelineMonitor", "an event published and never processed", () -> {
+        var d = new PipelineMonitor();
+        d.registerStage("ingest");
+        d.recordEventPublished("ingest", "evt-1");
+        return d.analyze();
             }));
 
     /**
@@ -1303,7 +1330,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("CyclicBarrierDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("PhaserDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("WaitTimeoutDetector", IssueSeverity.CRITICAL),
-            java.util.Map.entry("ThreadLeakDetector", IssueSeverity.MEDIUM));
+            java.util.Map.entry("ThreadLeakDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("SleepInLockDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("UnboundedQueueDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("VolatileArrayDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("PipelineMonitor", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")
