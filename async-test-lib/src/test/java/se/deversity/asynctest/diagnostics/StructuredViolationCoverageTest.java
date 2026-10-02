@@ -92,18 +92,16 @@ class StructuredViolationCoverageTest {
      * {@code DetectorSeverityMarkerTest} will then call redundant).
      */
     private static final Set<String> TEXT_ONLY = Set.of(
-            "ABAProblemDetector", "AtomicNonAtomicUpdateDetector", "BlockingQueueDetector",
-            "BoxedPrimitiveLockDetector", "BusyWaitDetector", "CacheConcurrencyDetector",
+            "ABAProblemDetector", "AtomicNonAtomicUpdateDetector", "BlockingQueueDetector", "BusyWaitDetector", "CacheConcurrencyDetector",
             "CalendarDetector", "CompletableFutureChainDetector",
             "CompletableFutureCommonPoolBlockingDetector",
             "CompletableFutureCompletionLeakDetector", "CompletableFutureExceptionDetector",
             "ConcurrentMapComputeRecursionDetector", "ConcurrentModificationDetector",
             "ConditionVariableDetector", "ConstructorSafetyValidator",
-            "CopyOnWriteCollectionDetector", "CountDownLatchDetector", "CyclicBarrierDetector",
-            "DeprecatedThreadApiDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
-            "ExecutorDeadlockDetector", "ExecutorShutdownDetector", "ExplicitGcDetector",
+            "CopyOnWriteCollectionDetector", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
+            "ExecutorDeadlockDetector", "ExecutorShutdownDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
-            "ForkJoinTaskBlockingDetector", "FutureBlockingDetector", "FutureIgnoredDetector",
+            "ForkJoinTaskBlockingDetector", "FutureBlockingDetector",
             "GathererConcurrencyMisuseDetector", "HttpClientConcurrencyDetector",
             "InheritableThreadLocalMisuseDetector", "InterruptMonitor",
             "InterruptSwallowingDetector", "LatchMisuseDetector", "LazyConstantMisuseDetector",
@@ -112,20 +110,19 @@ class StructuredViolationCoverageTest {
             "MdcContextLeakDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
             "MutableMapKeyDetector", "NestedMonitorLockoutDetector",
             "OptimisticReadValidationDetector", "ParallelStreamDetector", "PhaserDetector",
-            "PipelineMonitor", "PublicLockExposureDetector", "ReadWriteLockMonitor",
+            "PipelineMonitor", "ReadWriteLockMonitor",
             "ReentrantLockDetector", "ResourceLeakDetector", "ScheduledExecutorDetector",
             "ScopedValueMisuseDetector", "SemaphoreMisuseDetector", "SharedCollectionDetector",
             "SharedDecimalFormatDetector", "SharedFormatterDetector", "SharedMatcherDetector",
-            "SharedRandomDetector", "SharedTimeZoneDetector", "SharedXmlParserDetector",
+            "SharedRandomDetector", "SharedXmlParserDetector",
             "SimpleDateFormatDetector", "SleepInLockDetector", "StableValueMisuseDetector",
             "StampedLockDetector", "StatefulLambdaDetector", "StreamClosingDetector",
             "StringBuilderDetector", "StructuredConcurrencyMisuseDetector",
             "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector",
-            "SynchronizedNonFinalDetector", "SynchronizedOnLiteralDetector", "SynchronizerMonitor",
-            "SystemPropertyMutationDetector", "ThreadFactoryDetector", "ThreadLeakDetector",
+            "SynchronizedNonFinalDetector", "SynchronizerMonitor", "ThreadFactoryDetector", "ThreadLeakDetector",
             "ThreadLocalContaminationDetector", "ThreadLocalMonitor", "ThreadPoolDeadlockDetector",
             "ThreadPoolMonitor", "ThreadStarvationDetector", "TimerDetector",
-            "UnboundedQueueDetector", "UncaughtExceptionHandlerDetector",
+            "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
             "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector",
             "VisibilityMonitor", "VolatileArrayDetector", "WaitTimeoutDetector", "WakeupDetector",
@@ -602,7 +599,96 @@ class StructuredViolationCoverageTest {
                 onTwoThreads(() -> d.recordAccess(map, "weak-cache", Thread.currentThread()),
                         () -> d.recordAccess(map, "weak-cache", Thread.currentThread()));
                 return d.analyze();
+            }),
+            // ---- structured in #801, batch 1 ----
+            new Path("SynchronizedOnLiteralDetector", "a String literal used as a monitor", () -> {
+                var d = new SynchronizedOnLiteralDetector();
+                d.recordMonitorAcquired("LOCK", Thread.currentThread(), "ctx");
+                return d.analyze();
+            }),
+            new Path("BoxedPrimitiveLockDetector", "a cached Integer used as a monitor", () -> {
+                var d = new BoxedPrimitiveLockDetector();
+                d.recordLockAcquire(Integer.valueOf(1), Thread.currentThread(), "loc");
+                return d.analyze();
+            }),
+            new Path("ExplicitGcDetector", "System.gc() from a worker", () -> {
+                var d = new ExplicitGcDetector();
+                d.recordGcInvocation(Thread.currentThread(), "loc");
+                return d.analyze();
+            }),
+            new Path("DeprecatedThreadApiDetector", "Thread.stop called", () -> {
+                var d = new DeprecatedThreadApiDetector();
+                d.recordApiUse("Thread.stop", Thread.currentThread());
+                return d.analyze();
+            }),
+            new Path("SystemPropertyMutationDetector", "one property set from two threads", () -> {
+                var d = new SystemPropertyMutationDetector();
+                onTwoThreads(() -> d.recordSet("k", "a", Thread.currentThread()),
+                        () -> d.recordSet("k", "b", Thread.currentThread()));
+                return d.analyze();
+            }),
+            new Path("PublicLockExposureDetector", "synchronized(this) on a published object", () -> {
+                var d = new PublicLockExposureDetector();
+                Object exposed = new Object();
+                d.recordSynchronizedOnThis(exposed, Thread.currentThread(), "Foo");
+                d.recordObjectPublished(exposed, "a static field");
+                return d.analyze();
+            }),
+            new Path("FutureIgnoredDetector", "a future never inspected", () -> {
+                var d = new FutureIgnoredDetector();
+                d.recordSubmit(new Object(), "task", Thread.currentThread());
+                return d.analyze();
+            }),
+            new Path("SharedTimeZoneDetector", "one TimeZone mutated from two threads", () -> {
+                var d = new SharedTimeZoneDetector();
+                var tz = java.util.TimeZone.getTimeZone("UTC");
+                onTwoThreads(() -> d.recordMutation(tz, "setRawOffset", Thread.currentThread()),
+                        () -> d.recordMutation(tz, "setRawOffset", Thread.currentThread()));
+                return d.analyze();
+            }),
+            new Path("UncaughtExceptionHandlerDetector", "a thread died with no handler", () -> {
+                var d = new UncaughtExceptionHandlerDetector();
+                Thread died = new Thread(() -> { });
+                d.recordThreadStart(died);
+                d.recordUncaughtException(died, new IllegalStateException("boom"));
+                return d.analyze();
             }));
+
+    /**
+     * The severity each detector structured in #801 resolved to from its text before, measured with
+     * a probe over the drivers above on the commit that added them: no report carried a marker, so
+     * each was its {@code DetectorDefaultSeverity} entry, which the migration then deleted. The
+     * structured findings must state the same, or the change moved what a {@code failOn} gate fails
+     * on.
+     */
+    private static final java.util.Map<String, IssueSeverity> SEVERITY_KEPT_IN_801 = java.util.Map.of(
+            "SynchronizedOnLiteralDetector", IssueSeverity.HIGH,
+            "BoxedPrimitiveLockDetector", IssueSeverity.HIGH,
+            "ExplicitGcDetector", IssueSeverity.LOW,
+            "DeprecatedThreadApiDetector", IssueSeverity.HIGH,
+            "SystemPropertyMutationDetector", IssueSeverity.HIGH,
+            "PublicLockExposureDetector", IssueSeverity.HIGH,
+            "FutureIgnoredDetector", IssueSeverity.HIGH,
+            "SharedTimeZoneDetector", IssueSeverity.HIGH,
+            "UncaughtExceptionHandlerDetector", IssueSeverity.HIGH);
+
+    @Test
+    @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")
+    void structuredSeverityKeptFrom801() {
+        List<String> moved = new ArrayList<>();
+        for (Path path : PATHS) {
+            IssueSeverity before = SEVERITY_KEPT_IN_801.get(path.detector());
+            if (before == null) {
+                continue;
+            }
+            Optional<IssueSeverity> structured = DetectorDefaultSeverity.structuredIn(drive(path));
+            if (structured.isEmpty() || structured.get() != before) {
+                moved.add(path + ": was " + before + ", structured says "
+                        + structured.map(Enum::name).orElse("nothing"));
+            }
+        }
+        assertTrue(moved.isEmpty(), "a #801 migration changed what a failOn gate fails on: " + moved);
+    }
 
     @Test
     @DisplayName("every detector's report keeps structured findings, or is pinned as text-only")

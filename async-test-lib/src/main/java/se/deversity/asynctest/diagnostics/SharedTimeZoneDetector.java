@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -75,21 +78,26 @@ public class SharedTimeZoneDetector {
         SharedTimeZoneReport r = new SharedTimeZoneReport();
         for (TzState s : timezones.values()) {
             if (s.sharedAndUnguarded()) {
-                r.violations.add(String.format(
+                String finding = String.format(
                         "TimeZone instance mutated from %d threads (%s) via '%s' — "
                                 + "unsynchronized concurrent mutations corrupt date/time arithmetic"
                                 + SelfGuard.REPORT_NOTE,
                         s.threadCount(),
                         String.join(", ", s.threadNames()),
-                        s.firstOperation));
+                        s.firstOperation);
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("SharedTimeZone", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class SharedTimeZoneReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

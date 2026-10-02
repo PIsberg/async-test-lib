@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -70,17 +74,22 @@ public class DeprecatedThreadApiDetector {
     public DeprecatedThreadApiReport analyze() {
         DeprecatedThreadApiReport r = new DeprecatedThreadApiReport();
         for (ApiUseEvent e : events) {
-            r.violations.add(String.format(
+            String finding = String.format(
                     "Thread '%s' called deprecated API '%s' — "
                             + "this method is unsafe and was removed/deprecated in Java 20+",
-                    e.threadName, e.apiName));
+                    e.threadName, e.apiName);
+            r.violations.add(finding);
+            r.structuredViolations.add(new Violation("DeprecatedThreadApi", IssueSeverity.HIGH,
+                    finding, List.of(), Map.of(), Instant.now()));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class DeprecatedThreadApiReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Duration;
@@ -191,17 +194,22 @@ public class BoxedPrimitiveLockDetector {
                     : "Thread '%s' synchronized on %s at [%s] — "
                             + "this is a JVM-global shared instance; any code using the same "
                             + "value as a lock will accidentally share your monitor";
-            r.violations.add(String.format(template, e.threadName, e.reason, e.location));
+            String finding = String.format(template, e.threadName, e.reason, e.location);
+            r.violations.add(finding);
+            r.structuredViolations.add(new Violation("BoxedPrimitiveLock", IssueSeverity.HIGH,
+                    finding, List.of(), Map.of(), Instant.now()));
             if (e.valueBased) {
                 r.hasValueBasedIssues = true;
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class BoxedPrimitiveLockReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         private boolean hasValueBasedIssues;
 
         /**
