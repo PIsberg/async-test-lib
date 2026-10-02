@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   class threw `IllegalAccessError` out of user code. The read edge is now given in every mode;
   `java.util.concurrent.atomic` is still opened only under `fields=true`.
 
+- **A secret-gated CI lane now skips its job, not its steps (#868).** `inquisitor.yml` and
+  `instruction-evals.yml` gated every step on an env flag for whether their secret was set, so
+  without the secret the job ran, skipped everything, and reported success, which branch protection
+  reads as a passed check. Each now has a preflight job whose output gates the lane's job, and
+  `WorkflowSecretGateTest` refuses any `if:` that reads a secret-presence env variable.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

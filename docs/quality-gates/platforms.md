@@ -72,7 +72,10 @@ green, just later.
 
 **Skipped is not passed.** Every lane that can lack credit (Inquisitor, Copilot, evals) says
 SKIPPED in its step summary when it does; a green job with a SKIPPED summary is a job that did not
-run, and the required-checks list only contains lanes that cannot skip. Since 2026-09-17 the
+run, and the required-checks list only contains lanes that cannot skip. A lane gated on a secret
+skips the job, not its steps: a preflight job reports whether the secret is set and the lane's job
+runs only on that output, so a missing secret shows the job as skipped rather than green (#868,
+pinned by `WorkflowSecretGateTest`). A job-level `if:` cannot read `secrets` directly. Since 2026-09-17 the
 required checks on `main` are: `Build Maven Project (21)`, `Build Maven Project (25)`,
 `Gradle Test Suite (21)`, `Test Suite (21, ubuntu-latest)`, `Guardrail Drift`,
 `Locked Files Guard`, `Architecture Diagram Drift`, `E2E Tests` and `Corpus Eval`. Branch
