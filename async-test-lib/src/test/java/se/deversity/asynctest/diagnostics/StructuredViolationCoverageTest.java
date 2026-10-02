@@ -96,15 +96,13 @@ class StructuredViolationCoverageTest {
             "CompletableFutureCompletionLeakDetector",
             "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
-            "GathererConcurrencyMisuseDetector",
-            "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LazyConstantMisuseDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
+            "GathererConcurrencyMisuseDetector", "LazyConstantMisuseDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
             "OptimisticReadValidationDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
             "ReentrantLockDetector", "ScheduledExecutorDetector",
-            "ScopedValueMisuseDetector", "SharedCollectionDetector", "SleepInLockDetector", "StableValueMisuseDetector",
+            "ScopedValueMisuseDetector", "SleepInLockDetector", "StableValueMisuseDetector",
             "StampedLockDetector", "StructuredConcurrencyMisuseDetector",
-            "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector",
-            "SynchronizedNonFinalDetector", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
+            "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
             "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
             "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector",
@@ -994,6 +992,43 @@ class StructuredViolationCoverageTest {
         d.recordIterationStarted(list, "concurrent-list");
         d.recordModificationDuringIteration(list, "concurrent-list", "add");
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 8 ----
+            new Path("InheritableThreadLocalMisuseDetector", "an inheritable value read on a pooled thread", () -> {
+        var d = new InheritableThreadLocalMisuseDetector();
+        var context = new InheritableThreadLocal<String>();
+        Thread pooled = new Thread(() -> {
+            d.registerPoolThread(Thread.currentThread());
+            context.set("leaked-value");
+            d.recordGet(context, "USER_CONTEXT");
+        });
+        pooled.start();
+        try {
+            pooled.join();
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+        return d.analyze();
+            }),
+            new Path("InterruptMonitor", "an interrupt caught and swallowed", () -> {
+        var d = new InterruptMonitor();
+        d.recordInterruptException(new InterruptedException("swallowed"));
+        return d.analyze();
+            }),
+            new Path("SharedCollectionDetector", "an ArrayList written by two threads", () -> {
+        var d = new SharedCollectionDetector();
+        var list = new java.util.ArrayList<String>();
+        d.registerCollection(list, "shared-list", "ArrayList");
+        onTwoThreads(() -> d.recordWrite(list, "shared-list", "add"),
+                () -> d.recordWrite(list, "shared-list", "add"));
+        return d.analyze();
+            }),
+            new Path("SynchronizedNonFinalDetector", "one owner synchronizing on two monitors", () -> {
+        var d = new SynchronizedNonFinalDetector();
+        Object owner = new Object();
+        d.recordLockObject(new Object(), "lock", Object.class, owner);
+        d.recordLockObject(new Object(), "lock", Object.class, owner);
+        return d.analyze();
             }));
 
     /**
@@ -1057,7 +1092,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("CompletableFutureChainDetector", IssueSeverity.HIGH),
             java.util.Map.entry("CompletableFutureExceptionDetector", IssueSeverity.HIGH),
             java.util.Map.entry("ConcurrentMapComputeRecursionDetector", IssueSeverity.HIGH),
-            java.util.Map.entry("ConcurrentModificationDetector", IssueSeverity.HIGH));
+            java.util.Map.entry("ConcurrentModificationDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("InheritableThreadLocalMisuseDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("InterruptMonitor", IssueSeverity.HIGH),
+            java.util.Map.entry("SharedCollectionDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SynchronizedNonFinalDetector", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

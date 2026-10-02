@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * and will produce data corruption or {@link java.util.ConcurrentModificationException}
  * when mutated concurrently without synchronization:
  * <ul>
- *   <li>{@code java.util.ArrayList}</li>
+ *   <li>{@code ArrayList}</li>
  *   <li>{@code java.util.HashMap} / {@code java.util.LinkedHashMap}</li>
  *   <li>{@code java.util.HashSet} / {@code java.util.LinkedHashSet}</li>
  *   <li>{@code java.util.LinkedList}</li>
@@ -239,7 +244,21 @@ public class SharedCollectionDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.concurrentWriteViolations) {
+                report.structuredViolations.add(new Violation("SharedCollection", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.mixedAccessViolations) {
+                report.structuredViolations.add(new Violation("SharedCollection", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     // ---- Report ----------------------------------------------------------------
@@ -249,8 +268,12 @@ public class SharedCollectionDetector {
      */
     public static class SharedCollectionReport {
 
-        final java.util.List<String> concurrentWriteViolations = new java.util.ArrayList<>();
-        final java.util.List<String> mixedAccessViolations     = new java.util.ArrayList<>();
+        final List<String> concurrentWriteViolations = new ArrayList<>();
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> mixedAccessViolations     = new ArrayList<>();
         final Map<String, String>    collectionActivity        = new ConcurrentHashMap<>();
 
         /**
