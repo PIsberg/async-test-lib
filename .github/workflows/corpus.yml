@@ -101,7 +101,6 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
 
       - name: Set up Java (retry after a transient resolver failure)
         if: steps.setup-java.outcome == 'failure'
@@ -109,7 +108,20 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
+
+      # setup-java's cache: maven is one entry shared by every job, keyed on the pom hashes and
+      # never saved again after a hit, so the corpus libraries came from Central on every run
+      # (#890). The library itself is never cached: each run installs it from source, and a cached
+      # build of the same version must not stand in for it.
+      - name: Cache this job's Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/se/deversity
+          key: maven-${{ runner.os }}-corpus-eval-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-corpus-eval-
 
       - name: Install library to local Maven repository
         run: mvn -DskipTests clean install

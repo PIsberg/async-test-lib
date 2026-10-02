@@ -62,6 +62,74 @@ class WorkflowMavenCacheTest {
                         + "Fewer means the scan stopped matching, which is not a pass.");
     }
 
+    /**
+     * The Maven builds whose dependencies no other job resolves: the examples (the Kotlin compiler
+     * among them, 60 MB), the corpus (Guava, Jackson, HikariCP and more) and the language fixtures
+     * (four compilers).
+     */
+    private static final List<String> OWN_DEPENDENCY_SETS = List.of(
+            "-f examples/pom.xml", "-f corpus-eval/pom.xml", "-f consumer-fixture-langs/pom.xml");
+
+    @Test
+    @DisplayName("#890: a job with a dependency set of its own caches it under a key of its own")
+    void aJobWithItsOwnDependenciesHasItsOwnCache() {
+        List<String> shared = new ArrayList<>();
+        int matched = 0;
+        for (Path file : yamlFiles(repoRoot().resolve(".github/workflows"))) {
+            String relative = repoRoot().relativize(file).toString().replace('\\', '/');
+            for (List<String> job : jobsOf(readLines(file))) {
+                String body = String.join("\n", job);
+                if (OWN_DEPENDENCY_SETS.stream().noneMatch(body::contains) || !body.contains("mvn ")) {
+                    continue;
+                }
+                matched++;
+                // setup-java keys cache: maven on the pom hashes alone, one key for every job, and
+                // never saves after a hit: whichever job saved first decides what this one gets.
+                if (!body.contains("uses: actions/cache") || body.contains("cache: maven")) {
+                    shared.add(relative + ": " + job.get(0).strip());
+                }
+            }
+        }
+        assertTrue(shared.isEmpty(),
+                "These jobs resolve dependencies no other job does, but restore setup-java's shared "
+                        + "cache: maven entry, which another job filled and nothing refreshes, so "
+                        + "they download their own set from Central on every run (#890). Cache "
+                        + "~/.m2/repository with actions/cache under a key of their own:\n  "
+                        + String.join("\n  ", shared));
+        assertTrue(matched >= 4,
+                "Matched " + matched + " jobs building the examples, the corpus or the language "
+                        + "fixtures; there are at least four. Fewer means the scan stopped matching.");
+    }
+
+    @Test
+    @DisplayName("#890: a cached Maven repository never carries this library's own artifacts")
+    void aCachedRepositoryExcludesTheLibrary() {
+        List<String> carrying = new ArrayList<>();
+        int caches = 0;
+        for (Path file : yamlFiles(repoRoot().resolve(".github/workflows"))) {
+            String relative = repoRoot().relativize(file).toString().replace('\\', '/');
+            for (List<String> job : jobsOf(readLines(file))) {
+                String body = String.join("\n", job);
+                if (!body.contains("uses: actions/cache")) {
+                    continue;
+                }
+                caches++;
+                // A restored build of the same version would satisfy the examples before the
+                // source build replaced it, if that install were ever skipped or failed part way.
+                if (!body.contains("!~/.m2/repository/se/deversity")) {
+                    carrying.add(relative + ": " + job.get(0).strip());
+                }
+            }
+        }
+        assertTrue(carrying.isEmpty(),
+                "These jobs cache ~/.m2/repository without excluding !~/.m2/repository/se/deversity, "
+                        + "so a cached build of the library could stand in for the one built from "
+                        + "this commit:\n  " + String.join("\n  ", carrying));
+        assertTrue(caches >= 4,
+                "Matched " + caches + " jobs with an actions/cache step; the jobs with a dependency "
+                        + "set of their own are at least four. Fewer means the scan stopped matching.");
+    }
+
     /** The lines of each job under {@code jobs:}, its key line first. */
     private static List<List<String>> jobsOf(List<String> lines) {
         List<List<String>> jobs = new ArrayList<>();
@@ -82,7 +150,8 @@ class WorkflowMavenCacheTest {
                 current = new ArrayList<>();
                 jobs.add(current);
             }
-            if (current != null) {
+            // A comment may name what it explains ("cache: maven"); only the YAML itself counts.
+            if (current != null && !line.strip().startsWith("#")) {
                 current.add(line);
             }
         }
