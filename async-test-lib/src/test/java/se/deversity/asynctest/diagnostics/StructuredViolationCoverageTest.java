@@ -92,26 +92,22 @@ class StructuredViolationCoverageTest {
      * {@code DetectorSeverityMarkerTest} will then call redundant).
      */
     private static final Set<String> TEXT_ONLY = Set.of(
-            "ABAProblemDetector", "BlockingQueueDetector", "BusyWaitDetector", "CacheConcurrencyDetector",
-            "CalendarDetector", "CompletableFutureChainDetector",
+            "ABAProblemDetector", "BlockingQueueDetector", "BusyWaitDetector", "CacheConcurrencyDetector", "CompletableFutureChainDetector",
             "CompletableFutureCompletionLeakDetector", "CompletableFutureExceptionDetector",
             "ConcurrentMapComputeRecursionDetector", "ConcurrentModificationDetector",
-            "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector", "ExecutorShutdownDetector",
+            "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
             "GathererConcurrencyMisuseDetector", "HttpClientConcurrencyDetector",
             "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LazyConstantMisuseDetector",
             "LazyInitRaceDetector", "LivelockDetector", "LockLeakDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
             "OptimisticReadValidationDetector", "ParallelStreamDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
-            "ReentrantLockDetector", "ResourceLeakDetector", "ScheduledExecutorDetector",
-            "ScopedValueMisuseDetector", "SemaphoreMisuseDetector", "SharedCollectionDetector",
-            "SharedRandomDetector",
-            "SimpleDateFormatDetector", "SleepInLockDetector", "StableValueMisuseDetector",
-            "StampedLockDetector", "StreamClosingDetector",
-            "StringBuilderDetector", "StructuredConcurrencyMisuseDetector",
+            "ReentrantLockDetector", "ScheduledExecutorDetector",
+            "ScopedValueMisuseDetector", "SharedCollectionDetector", "SleepInLockDetector", "StableValueMisuseDetector",
+            "StampedLockDetector", "StreamClosingDetector", "StructuredConcurrencyMisuseDetector",
             "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector",
             "SynchronizedNonFinalDetector", "SynchronizerMonitor", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadLocalMonitor", "ThreadPoolDeadlockDetector",
-            "ThreadPoolMonitor", "ThreadStarvationDetector", "TimerDetector",
+            "ThreadPoolMonitor", "ThreadStarvationDetector",
             "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
             "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector",
@@ -825,6 +821,73 @@ class StructuredViolationCoverageTest {
             d.recordLockRelease(b);
         });
         return d.validateLockOrder();
+            }),
+            // ---- structured in #801, batch 5 ----
+            new Path("CalendarDetector", "one calendar set and read by two threads", () -> {
+        var d = new CalendarDetector();
+        var cal = java.util.Calendar.getInstance(java.util.Locale.ROOT);
+        d.registerCalendar(cal, "shared-calendar");
+        onTwoThreads(() -> d.recordSet(cal, "shared-calendar"), () -> d.recordGet(cal, "shared-calendar"));
+        return d.analyze();
+            }),
+            new Path("StringBuilderDetector", "one builder appended to by two threads", () -> {
+        var d = new StringBuilderDetector();
+        var sb = new StringBuilder();
+        d.registerBuilder(sb, "shared-builder");
+        onTwoThreads(() -> d.recordAppend(sb, "shared-builder"), () -> d.recordAppend(sb, "shared-builder"));
+        return d.analyze();
+            }),
+            new Path("SimpleDateFormatDetector", "one formatter used by two threads", () -> {
+        var d = new SimpleDateFormatDetector();
+        var sdf = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
+        d.registerFormatter(sdf, "shared-formatter");
+        onTwoThreads(() -> d.recordFormat(sdf, "shared-formatter"), () -> d.recordFormat(sdf, "shared-formatter"));
+        return d.analyze();
+            }),
+            new Path("SharedRandomDetector", "one Random used by two threads", () -> {
+        var d = new SharedRandomDetector();
+        var random = new java.util.Random(1);
+        d.registerRandom(random, "shared-random");
+        onTwoThreads(() -> d.recordRandomAccess(random, "shared-random", "nextInt"),
+                () -> d.recordRandomAccess(random, "shared-random", "nextInt"));
+        return d.analyze();
+            }),
+            new Path("ResourceLeakDetector", "a resource opened and never closed", () -> {
+        var d = new ResourceLeakDetector();
+        Object resource = new Object();
+        d.registerResource(resource, "leaky-resource", "Connection");
+        d.recordResourceOpened(resource, "leaky-resource");
+        return d.analyze();
+            }),
+            new Path("SemaphoreMisuseDetector", "two acquires, one release", () -> {
+        var d = new SemaphoreMisuseDetector();
+        var semaphore = new java.util.concurrent.Semaphore(2);
+        d.registerSemaphore(semaphore, "leaky-pool", 2);
+        d.recordAcquire(semaphore, "leaky-pool");
+        d.recordAcquire(semaphore, "leaky-pool");
+        d.recordRelease(semaphore, "leaky-pool");
+        return d.analyze();
+            }),
+            new Path("ExecutorShutdownDetector", "an executor never shut down", () -> {
+        var d = new ExecutorShutdownDetector();
+        // No task ever runs on it, so it starts no thread.
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        d.recordExecutorCreated(executor, "leaking-pool");
+        d.recordTaskSubmitted(executor);
+        return d.analyze();
+            }),
+            new Path("TimerDetector", "a timer task that threw", () -> {
+        var d = new TimerDetector();
+        var timer = new java.util.Timer("probe-timer", true);
+        try {
+            d.registerTimer(timer, "probe-timer");
+            d.recordTaskSchedule(timer, "probe-timer", "failing-task");
+            d.recordTaskRun(timer, "probe-timer", "failing-task");
+            d.recordTaskException(timer, "probe-timer", "failing-task", new RuntimeException("boom"));
+            return d.analyze();
+        } finally {
+            timer.cancel();
+        }
             }));
 
     /**
@@ -865,7 +928,15 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("LockDowngradeDetector", IssueSeverity.HIGH),
             java.util.Map.entry("WakeupDetector", IssueSeverity.HIGH),
             java.util.Map.entry("VisibilityMonitor", IssueSeverity.HIGH),
-            java.util.Map.entry("LockOrderValidator", IssueSeverity.CRITICAL));
+            java.util.Map.entry("LockOrderValidator", IssueSeverity.CRITICAL),
+            java.util.Map.entry("CalendarDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("StringBuilderDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SimpleDateFormatDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SharedRandomDetector", IssueSeverity.LOW),
+            java.util.Map.entry("ResourceLeakDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("SemaphoreMisuseDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ExecutorShutdownDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("TimerDetector", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")
