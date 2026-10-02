@@ -14,6 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ThreadLocalMonitor {
 
+    /** Distinct ThreadLocal values one thread may retain before it is reported accumulating (#756). */
+    private static final int RETAINED_VALUES_THRESHOLD = 5;
+
     private static class ThreadLocalState {
         final String threadLocalName;
         /** Threads that touched this thread-local in the round in progress; folded at each round start. */
@@ -184,7 +187,7 @@ public class ThreadLocalMonitor {
         }
 
         for (Map.Entry<Long, Set<ThreadLocalState>> entry : threadLocalsByThread.entrySet()) {
-            if (entry.getValue().size() > 5) {
+            if (entry.getValue().size() > RETAINED_VALUES_THRESHOLD) {
                 report.threadLocalAccumulation.add(String.format(
                     "Thread %d retained %d distinct ThreadLocal values",
                     entry.getKey(),

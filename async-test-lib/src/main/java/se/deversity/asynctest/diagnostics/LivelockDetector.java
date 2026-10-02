@@ -42,6 +42,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * instead, and says so.
  */
 public class LivelockDetector {
+
+    /** State changes within the last {@value #RECENT_SNAPSHOTS} snapshots that read as rapid cycling (#756). */
+    private static final int STATE_CHANGE_THRESHOLD = 5;
+
+    /** How many of the latest snapshots the state changes are counted over. */
+    private static final int RECENT_SNAPSHOTS = 10;
     
     private static final class ThreadSnapshot {
         final String threadName;
@@ -162,10 +168,10 @@ public class LivelockDetector {
     }
     
     private boolean isRapidStateChanger(List<ThreadSnapshot> snapshots) {
-        if (snapshots.size() < 10) return false;
+        if (snapshots.size() < RECENT_SNAPSHOTS) return false;
         
         // Count state changes in recent snapshots
-        int recent = Math.min(10, snapshots.size());
+        int recent = Math.min(RECENT_SNAPSHOTS, snapshots.size());
         int stateChanges = 0;
         
         for (int i = snapshots.size() - recent; i < snapshots.size() - 1; i++) {
@@ -174,8 +180,7 @@ public class LivelockDetector {
             }
         }
         
-        // 5+ state changes in 10 snapshots suggests rapid cycling (potential livelock)
-        return stateChanges >= 5;
+        return stateChanges >= STATE_CHANGE_THRESHOLD;
     }
     
     private boolean madeProgress(List<ThreadSnapshot> snapshots) {

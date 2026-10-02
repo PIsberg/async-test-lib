@@ -35,6 +35,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class StreamClosingDetector {
 
+    /** Streams open at once above which the run is reported at risk of exhausting resources (#756). */
+    private static final int CONCURRENT_OPEN_THRESHOLD = 100;
+
     private static class StreamState {
         final String name;
         final long openTime;
@@ -157,7 +160,7 @@ public class StreamClosingDetector {
         }
 
         // Check for too many concurrent open streams
-        if (maxConcurrentOpen.get() > 100) {
+        if (maxConcurrentOpen.get() > CONCURRENT_OPEN_THRESHOLD) {
             report.resourceExhaustionRisk.add(String.format(
                 "High concurrent open streams: %d (may cause resource exhaustion)",
                 maxConcurrentOpen.get()));

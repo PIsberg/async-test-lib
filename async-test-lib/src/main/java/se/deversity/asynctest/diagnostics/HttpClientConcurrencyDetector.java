@@ -47,6 +47,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class HttpClientConcurrencyDetector {
 
+    /** Concurrent requests on one client above which the connection pool may run out (#756). */
+    private static final int POOL_EXHAUSTION_REQUESTS_THRESHOLD = 50;
+
     private static class ClientState {
         final String name;
         final AtomicInteger requestCount = new AtomicInteger(0);
@@ -236,7 +239,7 @@ public class HttpClientConcurrencyDetector {
             }
 
             // Check for potential connection pool exhaustion
-            if (client.maxConcurrentRequests.get() > 50) {
+            if (client.maxConcurrentRequests.get() > POOL_EXHAUSTION_REQUESTS_THRESHOLD) {
                 report.poolExhaustionRisk.add(String.format(
                     "%s: high concurrent request count (%d) may exhaust connection pool",
                     client.name, client.maxConcurrentRequests.get()));

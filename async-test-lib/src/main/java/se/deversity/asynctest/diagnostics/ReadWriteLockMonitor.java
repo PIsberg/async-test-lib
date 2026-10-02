@@ -19,6 +19,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Unfair lock distribution
  */
 public class ReadWriteLockMonitor {
+
+    /** Write-lock wait, in milliseconds, past which a reader-heavy lock counts a writer starvation (#756). */
+    private static final long WRITER_STARVATION_WAIT_THRESHOLD_MS = 100;
+
+    /** Reads per write above which a lock is reported reader-dominated. */
+    private static final double READER_DOMINANCE_RATIO_THRESHOLD = 10;
+
+    /** Longest write wait, in milliseconds, above which a lock is reported. */
+    private static final long LONG_WRITE_WAIT_THRESHOLD_MS = 50;
     
     private static class LockState {
         final String lockName;
@@ -104,7 +113,7 @@ public class ReadWriteLockMonitor {
         state.currentWriter = Thread.currentThread().threadId();
         
         // Check for writer starvation (lots of readers, high write wait time)
-        if (waitTimeMs > 100 && state.readLockCount.get() > state.writeLockCount.get() * 2) {
+        if (waitTimeMs > WRITER_STARVATION_WAIT_THRESHOLD_MS && state.readLockCount.get() > state.writeLockCount.get() * 2) {
             state.writerStarvations.incrementAndGet();
         }
     }
@@ -143,7 +152,7 @@ public class ReadWriteLockMonitor {
             
             // Check for reader/writer imbalance
             double ratio = reads / (double) Math.max(1, writes);
-            if (ratio > 10) {
+            if (ratio > READER_DOMINANCE_RATIO_THRESHOLD) {
                 report.readerDominatedLocks.add(String.format(Locale.ROOT,
                     "%s: %.1fx more reads than writes (may cause writer starvation)",
                     state.lockName, ratio
@@ -160,7 +169,7 @@ public class ReadWriteLockMonitor {
             }
             
             // Check for long write waits
-            if (state.maxWriteWaitTime > 50) {
+            if (state.maxWriteWaitTime > LONG_WRITE_WAIT_THRESHOLD_MS) {
                 report.longWriteWaits.add(String.format(Locale.ROOT,
                     "%s: Max write wait time %dms",
                     state.lockName, state.maxWriteWaitTime

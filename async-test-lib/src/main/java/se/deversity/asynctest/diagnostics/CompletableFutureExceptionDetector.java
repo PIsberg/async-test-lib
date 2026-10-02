@@ -46,6 +46,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class CompletableFutureExceptionDetector {
 
+    /** How old, in milliseconds, an incomplete future without a handler must be to be reported (#756). */
+    private static final long MISSING_HANDLER_AGE_THRESHOLD_MS = 100;
+
     private static class FutureState {
         final String name;
         final long createdTime = System.nanoTime();
@@ -155,7 +158,7 @@ public class CompletableFutureExceptionDetector {
             // Check for futures without any exception handler registered
             if (!state.completed && !state.exceptionHandlerRegistered) {
                 long ageMs = (System.nanoTime() - state.createdTime) / 1_000_000;
-                if (ageMs > 100) { // Only report if future is older than 100ms
+                if (ageMs > MISSING_HANDLER_AGE_THRESHOLD_MS) {
                     report.missingHandlers.add(String.format(
                         "%s: no exception handler registered (age: %dms, created by thread %d)",
                         state.name, ageMs, state.creatorThreadId));

@@ -17,6 +17,9 @@ import java.util.concurrent.ScheduledExecutorService;
  */
 public class ScheduledExecutorDetector {
 
+    /** Task duration, in milliseconds, above which a scheduled task is reported long-running (#756). */
+    private static final long LONG_RUNNING_TASK_THRESHOLD_MS = 1000;
+
     private final Map<ScheduledExecutorService, ExecutorInfo> executorRegistry = new ConcurrentHashMap<>();
     private final Set<ScheduledExecutorService> notShutdownExecutors = ConcurrentHashMap.newKeySet();
     private final Set<String> longRunningTasks = ConcurrentHashMap.newKeySet();
@@ -81,7 +84,7 @@ public class ScheduledExecutorDetector {
         ExecutorInfo info = executorRegistry.get(executor);
         if (info != null) {
             info.recordTaskComplete(taskName, durationMs);
-            if (durationMs > 1000) {  // More than 1 second
+            if (durationMs > LONG_RUNNING_TASK_THRESHOLD_MS) {
                 longRunningTasks.add(executorName + ":" + taskName + " (" + durationMs + "ms)");
             }
         }

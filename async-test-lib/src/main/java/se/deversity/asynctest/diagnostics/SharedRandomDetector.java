@@ -38,6 +38,12 @@ import org.jspecify.annotations.Nullable;
  */
 public class SharedRandomDetector {
 
+    /** Accesses a shared Random needs before its rate is judged for contention (#756). */
+    private static final int CONTENTION_ACCESS_THRESHOLD = 100;
+
+    /** Accesses per second above which a shared Random is reported contended. */
+    private static final double CONTENTION_RATE_THRESHOLD = 10_000;
+
     private static class RandomState {
         final String name;
         final AtomicInteger accessCount = new AtomicInteger(0);
@@ -141,9 +147,9 @@ public class SharedRandomDetector {
             // Check for high contention (many accesses in short time)
             if (state.firstAccessTime != null && state.lastAccessTime != null) {
                 long duration = state.lastAccessTime - state.firstAccessTime;
-                if (duration > 0 && state.accessCount.get() > 100) {
+                if (duration > 0 && state.accessCount.get() > CONTENTION_ACCESS_THRESHOLD) {
                     double accessesPerSecond = state.accessCount.get() * 1000.0 / duration;
-                    if (accessesPerSecond > 10000) { // More than 10k accesses/second
+                    if (accessesPerSecond > CONTENTION_RATE_THRESHOLD) {
                         report.highContention.add(String.format(Locale.ROOT,
                             "%s: high contention detected (%.0f accesses/sec)",
                             state.name, accessesPerSecond));

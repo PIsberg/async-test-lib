@@ -64,6 +64,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 )
 public final class VirtualThreadPoolingDetector {
 
+    /** Tasks one virtual thread must run before it reads as pooled rather than one per task (#756). */
+    private static final int POOLED_TASKS_THRESHOLD = 2;
+
     private static final class ExecutorInfo {
         final String name;
         final String executorClass;
@@ -191,7 +194,7 @@ public final class VirtualThreadPoolingDetector {
         for (Map.Entry<Long, ThreadTasks> entry : tasksPerVirtualThread.entrySet()) {
             ThreadTasks tasks = entry.getValue();
             int count = tasks.taskCount.get();
-            if (count < 2) {
+            if (count < POOLED_TASKS_THRESHOLD) {
                 continue;
             }
             String via = tasks.executorNames.isEmpty()

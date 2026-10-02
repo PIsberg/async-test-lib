@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every `HEURISTIC` detector names its threshold, and the evidence gate requires it (#756).**
+  Eleven `HEURISTIC` detectors wrote the number their findings turn on as a bare literal, which
+  `DetectorEvidenceMatchesCodeTest` cannot see, so nothing tied the class to the code. Each now names
+  it (`LONG_TASK_THRESHOLD_MS`, `STATE_CHANGE_THRESHOLD` and so on), and the gate's seventh rule fails
+  a `HEURISTIC` row whose detector names none. No threshold value changed.
+
 - **A `LinkedBlockingDeque.addAll` that overflows part way no longer publishes what it refused
   (#806).** A queue with its own `addAll` keeps that call under the agent, and the hook released
   every element first and withdrew nothing when the call threw, so a write to a refused element read

@@ -78,6 +78,14 @@ public class VirtualThreadCarrierExhaustionDetector {
     }
 
     /**
+     * {@return how many virtual threads blocked at once read as exhausting the carriers: one per
+     * carrier, since a pinned virtual thread holds its carrier while it blocks (#756)}
+     */
+    private int exhaustionThreshold() {
+        return carrierCount;
+    }
+
+    /**
      * Record that the specified thread is entering a blocking operation.
      *
      * @param reason  description of the blocking operation
@@ -90,7 +98,7 @@ public class VirtualThreadCarrierExhaustionDetector {
         int current = concurrentlyBlocked.incrementAndGet();
         peakConcurrentlyBlocked.updateAndGet(max -> Math.max(max, current));
 
-        if (current >= carrierCount) {
+        if (current >= exhaustionThreshold()) {
             exhaustionEvents.incrementAndGet();
             exhaustionDetails.add(String.format(
                 "Carrier exhaustion risk: %d virtual threads concurrently blocked "

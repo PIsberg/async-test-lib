@@ -20,6 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Long-running tasks blocking others
  */
 public class ThreadPoolMonitor {
+
+    /** Longest task duration, in milliseconds, above which a pool is reported for blocking tasks (#756). */
+    private static final long LONG_TASK_THRESHOLD_MS = 10_000;
     
     private static class PoolState {
         final String poolName;
@@ -165,7 +168,7 @@ public class ThreadPoolMonitor {
                 ));
             }
             
-            if (state.maxTaskDuration > 10000) {
+            if (state.maxTaskDuration > LONG_TASK_THRESHOLD_MS) {
                 report.longRunningTasks.add(String.format(
                     "%s: Max task duration %dms (may block other tasks)",
                     state.poolName, state.maxTaskDuration
