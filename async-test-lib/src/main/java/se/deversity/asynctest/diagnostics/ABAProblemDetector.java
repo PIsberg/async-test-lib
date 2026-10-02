@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
@@ -435,7 +438,8 @@ public class ABAProblemDetector {
             slot.reportInto(report);
         }
         
-        return report;
+        report.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     private static NavigableMap<Long, CASAttempt> successfulBySeq(AtomicValueHistory history) {
@@ -837,6 +841,23 @@ public class ABAProblemDetector {
             return !successfulABACases.isEmpty();
         }
         
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (String cas : successfulABACases) {
+                structuredViolations.add(new Violation("ABAProblem", severity,
+                        cas, List.of(), Map.of(), Instant.now()));
+            }
+        }
+
         @Override
         public String toString() {
             if (!hasIssues()) {

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -139,7 +142,8 @@ public class FalseSharingDetector {
         // detector must stay silent rather than report pairs it cannot substantiate.
         // Recording still ran, so setting the property and re-analyzing needs no re-run.
         if (!Boolean.getBoolean(EXPERIMENTAL_PROPERTY)) {
-            return report;
+            report.fillStructuredViolations();
+            return DetectorFailurePolicy.checkedReport(this, report);
         }
 
         Map<String, Set<Integer>> writtenRounds = new HashMap<>();
@@ -187,7 +191,8 @@ public class FalseSharingDetector {
         // Analyze contention patterns from history
         analyzeContentionPatterns(report, threadsByRound);
 
-        return report;
+        report.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -381,6 +386,28 @@ public class FalseSharingDetector {
             return !falseSharedPairs.isEmpty() || !highContentionFields.isEmpty();
         }
         
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (ContentionPair pair : falseSharedPairs) {
+                structuredViolations.add(new Violation("FalseSharing", severity,
+                        pair.field1 + " <-> " + pair.field2 + ": same cache line, " + pair.distanceInBytes + " bytes apart",
+                        List.of(), Map.of(), Instant.now()));
+            }
+            for (String field : highContentionFields) {
+                structuredViolations.add(new Violation("FalseSharing", severity,
+                        field + ": written while other threads were on it", List.of(), Map.of(), Instant.now()));
+            }
+        }
+
         @Override
         public String toString() {
             if (!hasIssues()) {

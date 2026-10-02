@@ -92,9 +92,7 @@ class StructuredViolationCoverageTest {
      * {@code DetectorSeverityMarkerTest} will then call redundant).
      */
     private static final Set<String> TEXT_ONLY = Set.of(
-            "ABAProblemDetector",
-            "ConditionVariableDetector", "ConstructorSafetyValidator",
-            "FalseSharingDetector", "LivelockDetector",
+            "ConditionVariableDetector",
             "ReentrantLockDetector", "ThreadPoolDeadlockDetector", "VirtualThreadPinningDetector");
 
     /**
@@ -1310,14 +1308,83 @@ class StructuredViolationCoverageTest {
                 reader.start();
                 reader.join();
                 return d.analyze();
+            }),
+            // ---- structured in #801, batch 16 ----
+            new Path("ABAProblemDetector", "a CAS that succeeded across an A-B-A", () -> {
+                var d = new ABAProblemDetector();
+                d.recordRead("head", "A");
+                Thread toggler = new Thread(() -> {
+                    d.recordValueChange("head", "A", "B");
+                    d.recordValueChange("head", "B", "A");
+                }, "toggler");
+                toggler.start();
+                toggler.join();
+                d.recordCASAttempt("head", "A", "C", true, "A");
+                return d.analyze();
+            }),
+            new Path("ConstructorSafetyValidator", "an object read by another thread mid-construction", () -> {
+                var d = new ConstructorSafetyValidator();
+                new ConstructorSafetySubject(d, self -> ConstructorSafetySubject.onAnotherThread(
+                        () -> d.recordFieldAccess(self, "name", System.nanoTime())), true);
+                return d.validateConstructorSafety();
+            }),
+            new Path("FalseSharingDetector", "two fields in one cache line, experimental flag on", () -> {
+                System.setProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY, "true");
+                try {
+                    var d = new FalseSharingDetector();
+                    var obj = new FalseSharingDetectorTest.TwoCounters();
+                    for (String field : new String[] {"a", "a", "b", "b"}) {
+                        Thread t = new Thread(() -> d.recordFieldAccess(obj, field, int.class), "on-" + field);
+                        t.start();
+                        t.join();
+                    }
+                    return d.analyze();
+                } finally {
+                    System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
+                }
+            }),
+            new Path("LivelockDetector", "a thread changing state every snapshot", () -> {
+                var d = new LivelockDetector();
+                // A worker that steps between WAITING and TIMED_WAITING once per snapshot: ten
+                // snapshots, a state change between each pair, and no RUNNABLE among them.
+                var step = new java.util.concurrent.atomic.AtomicInteger();
+                Thread worker = new Thread(() -> {
+                    d.captureSnapshot();
+                    for (int i = 0; i < 10; i++) {
+                        while (step.get() == i) {
+                            if (i % 2 == 0) {
+                                java.util.concurrent.locks.LockSupport.park();
+                            } else {
+                                java.util.concurrent.locks.LockSupport.parkNanos(60_000_000_000L);
+                            }
+                        }
+                    }
+                }, "livelock-worker");
+                worker.setDaemon(true);
+                worker.start();
+                for (int i = 0; i < 10; i++) {
+                    Thread.State expected = i % 2 == 0 ? Thread.State.WAITING : Thread.State.TIMED_WAITING;
+                    long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+                    while (worker.getState() != expected) {
+                        if (System.nanoTime() > deadline) {
+                            throw new AssertionError("the worker never reached " + expected + " at step " + i);
+                        }
+                        Thread.onSpinWait();
+                    }
+                    d.captureSnapshot();
+                    step.incrementAndGet();
+                    java.util.concurrent.locks.LockSupport.unpark(worker);
+                }
+                worker.join(10_000);
+                return d.analyze();
             }));
 
     /**
      * The severity each detector structured in #801 resolved to from its text before, measured with
-     * a probe over the drivers above on the commit that added them: no report carried a marker, so
-     * each was its {@code DetectorDefaultSeverity} entry, which the migration then deleted. The
-     * structured findings must state the same, or the change moved what a {@code failOn} gate fails
-     * on.
+     * a probe over the drivers above on the commit that added them: the severity marker in the
+     * report's text where it carried one, else its {@code DetectorDefaultSeverity} entry, which the
+     * migration then deleted. The structured findings must state the same, or the change moved what
+     * a {@code failOn} gate fails on.
      */
     private static final java.util.Map<String, IssueSeverity> SEVERITY_KEPT_IN_801 = java.util.Map.ofEntries(
             java.util.Map.entry("SynchronizedOnLiteralDetector", IssueSeverity.HIGH),
@@ -1410,7 +1477,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("ExchangerDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("CompletableFutureCompletionLeakDetector", IssueSeverity.HIGH),
             java.util.Map.entry("MissedSignalDetector", IssueSeverity.CRITICAL),
-            java.util.Map.entry("MemoryOrderingMonitor", IssueSeverity.HIGH));
+            java.util.Map.entry("MemoryOrderingMonitor", IssueSeverity.HIGH),
+            java.util.Map.entry("ABAProblemDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ConstructorSafetyValidator", IssueSeverity.HIGH),
+            java.util.Map.entry("FalseSharingDetector", IssueSeverity.LOW),
+            java.util.Map.entry("LivelockDetector", IssueSeverity.CRITICAL));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

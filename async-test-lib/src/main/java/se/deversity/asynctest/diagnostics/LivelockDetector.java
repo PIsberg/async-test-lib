@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
@@ -137,7 +140,8 @@ public class LivelockDetector {
             }
         }
         
-        return report;
+        report.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -233,6 +237,32 @@ public class LivelockDetector {
             return !starvedThreads.isEmpty() || !livelockCandidates.isEmpty() || !noProgressThreads.isEmpty();
         }
         
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.CRITICAL);
+            for (String thread : starvedThreads) {
+                structuredViolations.add(new Violation("Livelock", severity,
+                        thread + ": starved, never got CPU time", List.of(), Map.of(), Instant.now()));
+            }
+            for (String thread : livelockCandidates) {
+                structuredViolations.add(new Violation("Livelock", severity,
+                        thread + ": livelock candidate, changing state without progress",
+                        List.of(), Map.of(), Instant.now()));
+            }
+            for (String thread : noProgressThreads) {
+                structuredViolations.add(new Violation("Livelock", severity,
+                        thread + ": no progress", List.of(), Map.of(), Instant.now()));
+            }
+        }
+
         @Override
         public String toString() {
             if (!hasIssues()) {
