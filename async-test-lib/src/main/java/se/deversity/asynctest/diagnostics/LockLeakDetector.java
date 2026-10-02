@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -216,7 +221,25 @@ public class LockLeakDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.CRITICAL);
+            for (String finding : report.lockLeaks) {
+                report.structuredViolations.add(new Violation("LockLeak", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.heldLocks) {
+                report.structuredViolations.add(new Violation("LockLeak", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.excessiveHoldTimes) {
+                report.structuredViolations.add(new Violation("LockLeak", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -265,14 +288,16 @@ public class LockLeakDetector {
      */
     public static class LockLeakReport implements GradedFindings {
         private boolean enabled = true;
-        final java.util.List<String> lockLeaks = new java.util.ArrayList<>();
-        final java.util.List<String> heldLocks = new java.util.ArrayList<>();
-        final java.util.List<String> excessiveHoldTimes = new java.util.ArrayList<>();
+        final List<String> lockLeaks = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> heldLocks = new ArrayList<>();
+        final List<String> excessiveHoldTimes = new ArrayList<>();
         /**
          * One line per lock object, named but not keyed by the name: two locks may
          * share a name, and filed under it the second one's line overwrote the first's (#789).
          */
-        final java.util.List<String> threadActivity = new java.util.ArrayList<>();
+        final List<String> threadActivity = new ArrayList<>();
         /** The leak and held-lock findings the lock itself confirmed; see {@link #grades()}. */
         final Set<String> observed = new java.util.HashSet<>();
 
@@ -304,12 +329,12 @@ public class LockLeakDetector {
          * balanced, and draws neither.
          */
         @Override
-        public java.util.List<GradedFindings.Grade> grades() {
+        public List<GradedFindings.Grade> grades() {
             if (!hasIssues()) {
-                return java.util.List.of();
+                return List.of();
             }
             IssueSeverity severity = DetectorDefaultSeverity.of(LockLeakDetector.class.getSimpleName(), toString());
-            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            List<GradedFindings.Grade> out = new ArrayList<>();
             for (String leak : lockLeaks) {
                 out.add(gradeOf(severity, leak));
             }
@@ -319,7 +344,7 @@ public class LockLeakDetector {
             for (String slow : excessiveHoldTimes) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, slow, DetectorTrust.Evidence.HEURISTIC));
             }
-            return java.util.List.copyOf(out);
+            return List.copyOf(out);
         }
 
         /** {@return a leak or held-lock finding's grade: observed if the lock confirmed it, else as recorded} */

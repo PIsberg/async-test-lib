@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +70,7 @@ public class StreamClosingDetector {
 
     private final Map<IdentityKey, StreamState> openStreams = new ConcurrentHashMap<>();
     private final List<CrossThreadCloseEvent> crossThreadCloseEvents =
-        java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        java.util.Collections.synchronizedList(new ArrayList<>());
     private final AtomicInteger totalOpened = new AtomicInteger(0);
     private final AtomicInteger totalClosed = new AtomicInteger(0);
     private final AtomicInteger maxConcurrentOpen = new AtomicInteger(0);
@@ -166,7 +170,25 @@ public class StreamClosingDetector {
                 maxConcurrentOpen.get()));
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.MEDIUM);
+            for (String finding : report.unclosedStreams) {
+                report.structuredViolations.add(new Violation("StreamClosing", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.crossThreadClosing) {
+                report.structuredViolations.add(new Violation("StreamClosing", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.resourceExhaustionRisk) {
+                report.structuredViolations.add(new Violation("StreamClosing", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -177,9 +199,11 @@ public class StreamClosingDetector {
         int totalOpened;
         int totalClosed;
         int maxConcurrentOpen;
-        final List<String> unclosedStreams = new java.util.ArrayList<>();
-        final List<String> crossThreadClosing = new java.util.ArrayList<>();
-        final List<String> resourceExhaustionRisk = new java.util.ArrayList<>();
+        final List<String> unclosedStreams = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> crossThreadClosing = new ArrayList<>();
+        final List<String> resourceExhaustionRisk = new ArrayList<>();
 
         /**
          * Check if any issues were detected.

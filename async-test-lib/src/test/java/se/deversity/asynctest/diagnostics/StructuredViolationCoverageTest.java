@@ -97,17 +97,15 @@ class StructuredViolationCoverageTest {
             "ConcurrentMapComputeRecursionDetector", "ConcurrentModificationDetector",
             "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
-            "GathererConcurrencyMisuseDetector", "HttpClientConcurrencyDetector",
-            "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LazyConstantMisuseDetector",
-            "LazyInitRaceDetector", "LivelockDetector", "LockLeakDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
-            "OptimisticReadValidationDetector", "ParallelStreamDetector", "PhaserDetector",
+            "GathererConcurrencyMisuseDetector",
+            "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LazyConstantMisuseDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
+            "OptimisticReadValidationDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
             "ReentrantLockDetector", "ScheduledExecutorDetector",
             "ScopedValueMisuseDetector", "SharedCollectionDetector", "SleepInLockDetector", "StableValueMisuseDetector",
-            "StampedLockDetector", "StreamClosingDetector", "StructuredConcurrencyMisuseDetector",
+            "StampedLockDetector", "StructuredConcurrencyMisuseDetector",
             "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector",
-            "SynchronizedNonFinalDetector", "SynchronizerMonitor", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadLocalMonitor", "ThreadPoolDeadlockDetector",
-            "ThreadPoolMonitor", "ThreadStarvationDetector",
+            "SynchronizedNonFinalDetector", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
             "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
             "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector",
@@ -888,6 +886,65 @@ class StructuredViolationCoverageTest {
         } finally {
             timer.cancel();
         }
+            }),
+            // ---- structured in #801, batch 6 ----
+            new Path("StreamClosingDetector", "a stream opened and never closed", () -> {
+        var d = new StreamClosingDetector();
+        d.recordStreamOpened(new java.io.ByteArrayInputStream(new byte[0]), "unclosed-stream");
+        return d.analyze();
+            }),
+            new Path("ThreadPoolMonitor", "a pool rejected a task", () -> {
+        var d = new ThreadPoolMonitor();
+        Object executor = new Object();
+        d.registerPool(executor, "pool", 1, 1, 1);
+        d.recordTaskRejected(executor, "overloaded");
+        return d.analyze();
+            }),
+            new Path("ThreadLocalMonitor", "a ThreadLocal set and never removed", () -> {
+        var d = new ThreadLocalMonitor();
+        d.recordThreadLocalInit(new ThreadLocal<String>(), "leaked-context");
+        return d.analyze();
+            }),
+            new Path("SynchronizerMonitor", "one thread arrived twice", () -> {
+        var d = new SynchronizerMonitor();
+        Object barrier = new Object();
+        d.registerSynchronizer(barrier, 2);
+        d.recordBarrierArrival(barrier);
+        d.recordBarrierArrival(barrier);
+        return d.analyze();
+            }),
+            new Path("ParallelStreamDetector", "a stateful forEach on a parallel stream", () -> {
+        var d = new ParallelStreamDetector();
+        d.recordParallelStream("stateful-stream");
+        d.recordStatefulOperation("stateful-stream", "forEach");
+        return d.analyze();
+            }),
+            new Path("LazyInitRaceDetector", "two threads initialised one field", () -> {
+        var d = new LazyInitRaceDetector();
+        Runnable init = () -> {
+            d.recordNullCheck("Singleton.instance", true, false);
+            d.recordInitialization("Singleton.instance");
+        };
+        onTwoThreads(init, init);
+        return d.analyze();
+            }),
+            new Path("LockLeakDetector", "a lock still held at analysis", () -> {
+        var d = new LockLeakDetector();
+        var lock = new java.util.concurrent.locks.ReentrantLock();
+        d.registerLock(lock, "leaky-lock");
+        lock.lock();
+        try {
+            d.recordLockAcquired(lock, "leaky-lock");
+            return d.analyze();
+        } finally {
+            lock.unlock();
+        }
+            }),
+            new Path("HttpClientConcurrencyDetector", "a request sent and never completed", () -> {
+        var d = new HttpClientConcurrencyDetector();
+        d.recordClientCreated(new Object(), "test-client");
+        d.recordRequestSent(new Object(), "api-call");
+        return d.analyze();
             }));
 
     /**
@@ -936,7 +993,15 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("ResourceLeakDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("SemaphoreMisuseDetector", IssueSeverity.HIGH),
             java.util.Map.entry("ExecutorShutdownDetector", IssueSeverity.MEDIUM),
-            java.util.Map.entry("TimerDetector", IssueSeverity.HIGH));
+            java.util.Map.entry("TimerDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("StreamClosingDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("ThreadPoolMonitor", IssueSeverity.MEDIUM),
+            java.util.Map.entry("ThreadLocalMonitor", IssueSeverity.MEDIUM),
+            java.util.Map.entry("SynchronizerMonitor", IssueSeverity.CRITICAL),
+            java.util.Map.entry("ParallelStreamDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("LazyInitRaceDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("LockLeakDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("HttpClientConcurrencyDetector", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

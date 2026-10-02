@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -242,7 +245,21 @@ public class LazyInitRaceDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.races) {
+                report.structuredViolations.add(new Violation("LazyInitRace", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.visibilityRisks) {
+                report.structuredViolations.add(new Violation("LazyInitRace", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     // ---- Internal ----------------------------------------------------------
@@ -268,6 +285,10 @@ public class LazyInitRaceDetector {
     public static class LazyInitRaceReport {
 
         final List<String> races          = new ArrayList<>();
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+
+        public final List<Violation> structuredViolations = new ArrayList<>();
         final List<String> visibilityRisks = new ArrayList<>();
 
         /**

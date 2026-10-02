@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
@@ -253,7 +256,25 @@ public class HttpClientConcurrencyDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.pendingRequests) {
+                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.uncompletedRequests) {
+                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.poolExhaustionRisk) {
+                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -262,6 +283,8 @@ public class HttpClientConcurrencyDetector {
     public static class HttpClientConcurrencyReport {
         private boolean enabled = true;
         final List<String> pendingRequests = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         final List<String> uncompletedRequests = new ArrayList<>();
         final List<String> poolExhaustionRisk = new ArrayList<>();
         /**

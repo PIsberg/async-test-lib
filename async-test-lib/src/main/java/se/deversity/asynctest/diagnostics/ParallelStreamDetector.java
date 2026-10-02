@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -198,7 +203,25 @@ public class ParallelStreamDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.statefulLambdas) {
+                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.nonThreadSafeCollectors) {
+                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.sideEffects) {
+                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -206,10 +229,12 @@ public class ParallelStreamDetector {
      */
     public static class ParallelStreamReport {
         private boolean enabled = true;
-        final java.util.List<String> statefulLambdas = new java.util.ArrayList<>();
-        final java.util.List<String> nonThreadSafeCollectors = new java.util.ArrayList<>();
-        final java.util.List<String> sideEffects = new java.util.ArrayList<>();
-        final java.util.List<String> parallelExecution = new java.util.ArrayList<>();
+        final List<String> statefulLambdas = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> nonThreadSafeCollectors = new ArrayList<>();
+        final List<String> sideEffects = new ArrayList<>();
+        final List<String> parallelExecution = new ArrayList<>();
         final Map<String, String> streamActivity = new ConcurrentHashMap<>();
 
         /**
