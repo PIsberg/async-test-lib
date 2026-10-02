@@ -856,4 +856,25 @@ class AgentHappensBeforeFeedTest {
                 "the reader read the token out of a slot the writer never set, so it received "
                         + "nothing the writer published through its own slot");
     }
+
+    /**
+     * A stopped telemetry registry stops the event ring, not the happens-before model.
+     *
+     * <p>{@code TelemetryRegistry.stop()} runs at JVM shutdown, and in tests that stand in for
+     * the agent. It left a flag that every woven hand-off checked before telling the model, so in
+     * any JVM where it had run once, every later hand-off went unrecorded and read as a race. That
+     * is what kept the weekly mutation gate red from 2026-09-27: pitest runs every test class in
+     * one JVM, and a test that stopped the registry ran before this class, whose woven cases then
+     * all failed. Surefire gives each class its own JVM and never saw it.
+     */
+    @Test
+    @DisplayName("a stopped telemetry registry does not switch off the happens-before feed")
+    void aStoppedRegistryStillOrdersWovenHandOffs() throws InterruptedException {
+        TelemetryRegistry.start(null);
+        TelemetryRegistry.stop();
+        assertFalse(handOffReported(true), "a woven queue hand-off, after the registry stopped");
+        assertFalse(slotReported(SlotShape.SET_THEN_GET),
+                "an AtomicReference set and get, after the registry stopped");
+        assertFalse(volatileFlagReported("Box.ready", 1), "a volatile publication, after the registry stopped");
+    }
 }

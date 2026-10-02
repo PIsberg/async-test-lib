@@ -96,6 +96,11 @@ TelemetryRegistry.stop();              // flush + stop the drain thread
 if it is. `setCallback(callback)` swaps the callback without touching the running/stopped
 state. The registry holds a single callback — the last writer wins.
 
+`stop()` ends event delivery only. The happens-before edges the woven hooks report (queue
+hand-offs, volatile and `AtomicReference` publication) go to the library's own in-memory model,
+which needs no drain, so they keep ordering later runs in the same JVM. Until #891 a `stop()`
+switched those off too, for the rest of the JVM, and every later woven hand-off read as a race.
+
 > The agent's `premain`/`agentmain`/`selfAttach` install path calls `TelemetryRegistry.start()`
 > with a **no-op** callback, so out of the box drained events are simply discarded. You must
 > register a `TelemetryBridge` or a custom callback to see anything.

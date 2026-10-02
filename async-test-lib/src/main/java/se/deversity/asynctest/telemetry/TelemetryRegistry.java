@@ -62,6 +62,12 @@ public final class TelemetryRegistry {
      * thread will ever exist again, so {@link #recordAccess(long, String, boolean)}
      * discards instead of filling a ring nobody empties (see its Javadoc for why that
      * distinction is load-bearing during JVM shutdown).
+     *
+     * <p>It guards the ring and nothing else. The happens-before model is in memory and needs no
+     * drain, so the hooks update it whatever this says: when it also gated their releases and
+     * acquires, one stop() in a JVM, from a test standing in for the agent, left every later woven
+     * hand-off unrecorded, and kept the weekly mutation gate red, since pitest runs every test
+     * class in one JVM (#891).
      */
     private static final AtomicBoolean STOPPED = new AtomicBoolean(false);
 
@@ -274,9 +280,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, int value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(owner, field, value);
-        }
+        HappensBefore.releaseVolatile(owner, field, value);
     }
 
     /**
@@ -288,9 +292,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, long value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(owner, field, value);
-        }
+        HappensBefore.releaseVolatile(owner, field, value);
     }
 
     /**
@@ -302,9 +304,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, float value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(owner, field, Float.floatToRawIntBits(value));
-        }
+        HappensBefore.releaseVolatile(owner, field, Float.floatToRawIntBits(value));
     }
 
     /**
@@ -316,9 +316,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, double value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.releaseVolatile(owner, field, Double.doubleToRawLongBits(value));
-        }
+        HappensBefore.releaseVolatile(owner, field, Double.doubleToRawLongBits(value));
     }
 
     /**
@@ -331,9 +329,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, @Nullable Object value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.releaseVolatileReference(owner, field, value);
-        }
+        HappensBefore.releaseVolatileReference(owner, field, value);
     }
 
     /**
@@ -352,9 +348,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, int value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(owner, field, value);
-        }
+        HappensBefore.acquireVolatile(owner, field, value);
     }
 
     /**
@@ -366,9 +360,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, long value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(owner, field, value);
-        }
+        HappensBefore.acquireVolatile(owner, field, value);
     }
 
     /**
@@ -380,9 +372,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, float value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(owner, field, Float.floatToRawIntBits(value));
-        }
+        HappensBefore.acquireVolatile(owner, field, Float.floatToRawIntBits(value));
     }
 
     /**
@@ -394,9 +384,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, double value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.acquireVolatile(owner, field, Double.doubleToRawLongBits(value));
-        }
+        HappensBefore.acquireVolatile(owner, field, Double.doubleToRawLongBits(value));
     }
 
     /**
@@ -409,9 +397,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, @Nullable Object value, String field) {
-        if (!STOPPED.get()) {
-            HappensBefore.acquireVolatileReference(owner, field, value);
-        }
+        HappensBefore.acquireVolatileReference(owner, field, value);
     }
 
     /**
@@ -2021,12 +2007,13 @@ public final class TelemetryRegistry {
         // thread's next access rather than whenever the ring drains. Allocation-free unless the
         // run tracks some instance; see SelfGuard.Scope.ownershipTaken.
         SelfGuard.Scope.ownershipTaken(taken);
-        if (STOPPED.get()) {
-            return;
-        }
         // The acquire half of a hand-off, where the container's contract makes one (HappensBefore).
+        // Before the STOPPED check, which guards only the ring below (#891).
         if (HappensBefore.publishesElements(container)) {
             HappensBefore.acquire(taken);
+        }
+        if (STOPPED.get()) {
+            return;
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_TAKEN, ordersNothing,
@@ -2130,13 +2117,17 @@ public final class TelemetryRegistry {
      */
     public static void ownershipOffered(@Nullable Object offered, @Nullable Object container,
                                         @Nullable Object monitor) {
-        if (offered == null || container == null || STOPPED.get()) {
+        if (offered == null || container == null) {
             return;
         }
         // The release half: published before the container accepts the element, so every take
-        // that can return it finds the release.
+        // that can return it finds the release. Not behind STOPPED, which guards the ring below:
+        // the model is in memory and needs no drain (#891).
         if (HappensBefore.publishesElements(container)) {
             HappensBefore.release(offered);
+        }
+        if (STOPPED.get()) {
+            return;
         }
         boolean ordersNothing = ordersNothing(container);
         BUFFER.publish(Thread.currentThread().threadId(), OWNERSHIP_OFFERED, ordersNothing,
@@ -2356,9 +2347,7 @@ public final class TelemetryRegistry {
      * than per stored object, so the same object read out of another slot receives nothing.
      */
     private static void slotStored(AtomicReference<Object> slot, @Nullable Object value) {
-        if (!STOPPED.get()) {
-            HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, value);
-        }
+        HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, value);
     }
 
     /**
@@ -2374,9 +2363,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.get() : aba.get(slot);
-        if (!STOPPED.get()) {
-            HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
-        }
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         return value;
     }
 
@@ -2391,9 +2378,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.getAcquire() : aba.getAcquire(slot);
-        if (!STOPPED.get()) {
-            HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
-        }
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
         return value;
     }
 
