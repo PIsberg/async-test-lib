@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged, so baseline fingerprints (`async-test-worker-#`) still match. Within a run the numbers
   no longer start at 0.
 
+- **A woven class in a named module now links to a module-path library in every agent mode
+  (#862).** Woven code calls into the library, and the JVM's own read edge for a transformed class
+  reaches only the unnamed module of the agent's loader. With the library on a module path (the
+  automatic module `se.deversity.asynctest`) or in another loader, only `fields=true` added the
+  edge, so under `collections=true` or the default accessor weaving the first woven call in such a
+  class threw `IllegalAccessError` out of user code. The read edge is now given in every mode;
+  `java.util.concurrent.atomic` is still opened only under `fields=true`.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

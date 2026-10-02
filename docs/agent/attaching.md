@@ -321,6 +321,15 @@ your build. It needs the `async-test-agent` artifact on the test classpath; if i
 the JVM forbids self-attachment, the runner logs `runner.agent.attach.failed` once and continues
 without instrumentation rather than failing the suite.
 
+**Named modules.** Woven code calls into the library, so a woven class in a named module has to
+read the library's module. The JVM gives every transformed class a read edge to the unnamed module
+of the agent's loader, which covers a library on the class path. For a library on a module path
+(the automatic module `se.deversity.asynctest`) or in another loader, the agent adds the edge to
+the copy the woven class's loader resolves, in every mode
+([#862](https://github.com/PIsberg/async-test-lib/issues/862)). Before that fix only `fields=true`
+added it, and the first woven call under `collections=true` or the default accessor weaving threw
+`IllegalAccessError`.
+
 **Robustness.** Parsing never throws (an exception in `premain` would abort JVM startup).
 Whitespace is trimmed, empty entries are skipped, keys are matched **case-insensitively**,
 and **unknown keys are ignored**. A `null` or blank argument leaves the default behavior
