@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -146,12 +149,14 @@ public class VirtualThreadCarrierExhaustionDetector {
             }
         }
 
-        return new CarrierExhaustionReport(
+        CarrierExhaustionReport report801 = new CarrierExhaustionReport(
             details,
             peakConcurrentlyBlocked.get(),
             exhaustionEvents.get(),
             carrierCount
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     private static int availableCarriers() {
@@ -200,6 +205,23 @@ public class VirtualThreadCarrierExhaustionDetector {
          * {@return the carrier count}
          */
         public int          getCarrierCount()         { return carrierCount; }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (String detail : exhaustionDetails) {
+                structuredViolations.add(new Violation("VirtualThreadCarrierExhaustion", severity,
+                        detail, List.of(), Map.of(), Instant.now()));
+            }
+        }
 
         @Override
         public String toString() {

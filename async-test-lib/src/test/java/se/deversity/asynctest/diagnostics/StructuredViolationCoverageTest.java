@@ -95,9 +95,8 @@ class StructuredViolationCoverageTest {
             "ABAProblemDetector",
             "CompletableFutureCompletionLeakDetector",
             "ConditionVariableDetector", "ConstructorSafetyValidator", "ExchangerDetector",
-            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector", "ReadWriteLockMonitor",
-            "ReentrantLockDetector", "ScheduledExecutorDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
-            "VirtualThreadCarrierExhaustionDetector", "VirtualThreadPinningDetector");
+            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
+            "ReentrantLockDetector", "ThreadPoolDeadlockDetector", "VirtualThreadPinningDetector");
 
     /**
      * Detectors whose structured severity must equal what their text alone resolves to.
@@ -1242,6 +1241,43 @@ class StructuredViolationCoverageTest {
         d.registerStage("ingest");
         d.recordEventPublished("ingest", "evt-1");
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 14 ----
+            new Path("ThreadStarvationDetector", "a task that waited past the threshold", () -> {
+        var d = new ThreadStarvationDetector();
+        // No task ever runs on it, so it starts no thread.
+        d.registerExecutor(java.util.concurrent.Executors.newSingleThreadExecutor(), "pool", 1);
+        d.setStarvationThresholdMs(10);
+        d.recordTaskStart("pool", System.nanoTime() - 1_000_000_000L);
+        return d.analyze();
+            }),
+            new Path("VirtualThreadCarrierExhaustionDetector", "as many blocked virtual threads as carriers", () -> {
+        var d = new VirtualThreadCarrierExhaustionDetector(1);
+        d.recordBlockingStart("lock-1", Thread.ofVirtual().unstarted(() -> { }));
+        return d.analyze();
+            }),
+            new Path("ReadWriteLockMonitor", "twenty reads per write", () -> {
+        var d = new ReadWriteLockMonitor();
+        Object lock = new Object();
+        d.registerLock(lock, "read-heavy");
+        for (int i = 0; i < 20; i++) {
+            d.recordReadLockAcquired(lock, 0L);
+            d.recordReadLockReleased(lock);
+        }
+        d.recordWriteLockAcquired(lock, 0L);
+        d.recordWriteLockReleased(lock);
+        return d.analyze();
+            }),
+            new Path("ScheduledExecutorDetector", "an executor never shut down", () -> {
+        var d = new ScheduledExecutorDetector();
+        var executor = java.util.concurrent.Executors.newScheduledThreadPool(1);
+        try {
+            d.registerExecutor(executor, "never-shut-down", 1);
+            d.recordSchedule(executor, "never-shut-down", "task1");
+            return d.analyze();
+        } finally {
+            executor.shutdownNow();
+        }
             }));
 
     /**
@@ -1334,7 +1370,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("SleepInLockDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("UnboundedQueueDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("VolatileArrayDetector", IssueSeverity.HIGH),
-            java.util.Map.entry("PipelineMonitor", IssueSeverity.HIGH));
+            java.util.Map.entry("PipelineMonitor", IssueSeverity.HIGH),
+            java.util.Map.entry("ThreadStarvationDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("VirtualThreadCarrierExhaustionDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ReadWriteLockMonitor", IssueSeverity.MEDIUM),
+            java.util.Map.entry("ScheduledExecutorDetector", IssueSeverity.MEDIUM));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")
