@@ -27,7 +27,7 @@ import java.util.Optional;
  * three said anything and the default said HIGH. That made {@code failOn = HIGH} close to "fail on
  * anything", which is the same as no gate at all.
  *
- * <p>Every one of those detectors now states its severity here, chosen against
+ * <p>From 1.9.7 every one of those detectors stated its severity here, chosen against
  * {@link IssueSeverity}'s own definitions: {@code CRITICAL} where the report's primary claim is
  * that something will not make progress, {@code HIGH} where it claims corruption or an incorrect
  * result, {@code MEDIUM} for degradation and leaks, {@code LOW} for an inefficiency. Where two
@@ -43,9 +43,10 @@ import java.util.Optional;
  *
  * <p><strong>The table is empty.</strong> Since #801 every built-in detector keeps its findings as
  * {@link Violation}s at the severity its text used to resolve to, so none falls back to an entry
- * here. {@link #of(DetectorType)} stays for callers and yields empty for every type; a detector
- * added without a structured severity of its own still fails {@code DetectorSeverityMarkerTest}
- * unless it marks its text or regains an entry.
+ * here; the structured severities are the ones this table, or a marker, gave them. {@link
+ * #of(DetectorType)} stays for callers and yields empty for every type; a detector added without
+ * a structured severity of its own still fails {@code DetectorSeverityMarkerTest} unless it marks
+ * its text or regains an entry.
  *
  * <p>Third-party detectors arriving through the SPI are not in this table and keep the historical
  * {@code HIGH} default. The library has no basis for ranking somebody else's finding.
