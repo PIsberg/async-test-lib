@@ -61,9 +61,7 @@ public final class DetectorDefaultSeverity {
     private static final Map<DetectorType, IssueSeverity> DECLARED = Map.ofEntries(
             entry(DetectorType.LIVELOCKS, IssueSeverity.CRITICAL),
             entry(DetectorType.CONDITION_VARIABLES, IssueSeverity.HIGH),
-            entry(DetectorType.REENTRANT_LOCK, IssueSeverity.HIGH),
-            entry(DetectorType.MISSED_SIGNAL, IssueSeverity.CRITICAL),
-            entry(DetectorType.EXCHANGER, IssueSeverity.CRITICAL)
+            entry(DetectorType.REENTRANT_LOCK, IssueSeverity.HIGH)
     );
 
     private DetectorDefaultSeverity() { }

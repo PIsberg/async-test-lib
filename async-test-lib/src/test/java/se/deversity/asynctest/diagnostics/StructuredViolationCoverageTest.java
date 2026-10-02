@@ -93,9 +93,8 @@ class StructuredViolationCoverageTest {
      */
     private static final Set<String> TEXT_ONLY = Set.of(
             "ABAProblemDetector",
-            "CompletableFutureCompletionLeakDetector",
-            "ConditionVariableDetector", "ConstructorSafetyValidator", "ExchangerDetector",
-            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
+            "ConditionVariableDetector", "ConstructorSafetyValidator",
+            "FalseSharingDetector", "LivelockDetector",
             "ReentrantLockDetector", "ThreadPoolDeadlockDetector", "VirtualThreadPinningDetector");
 
     /**
@@ -1278,6 +1277,36 @@ class StructuredViolationCoverageTest {
         } finally {
             executor.shutdownNow();
         }
+            }),
+            // ---- structured in #801, batch 15 ----
+            new Path("ExchangerDetector", "an exchange started and never ended", () -> {
+        var d = new ExchangerDetector();
+        var exchanger = new java.util.concurrent.Exchanger<String>();
+        d.registerExchanger(exchanger, "orphaned-exchanger");
+        d.recordExchangeStart(exchanger, "orphaned-exchanger");
+        return d.analyze();
+            }),
+            new Path("CompletableFutureCompletionLeakDetector", "a future created and never completed", () -> {
+        var d = new CompletableFutureCompletionLeakDetector();
+        d.recordFutureCreated(new java.util.concurrent.CompletableFuture<String>(), "leaked-future");
+        return d.analyze();
+            }),
+            new Path("MissedSignalDetector", "a wait after a notify nobody heard", () -> {
+        var d = new MissedSignalDetector();
+        d.recordNotify("dataReady");
+        d.recordWait("dataReady");
+        d.recordWakeup("dataReady");
+        return d.analyze();
+            }),
+            new Path("MemoryOrderingMonitor", "a read disagreeing with the preceding write", () -> {
+        var d = new MemoryOrderingMonitor();
+        Thread writer = new Thread(() -> d.recordWrite("flag", true), "writer");
+        writer.start();
+        writer.join();
+        Thread reader = new Thread(() -> d.recordRead("flag", false), "reader");
+        reader.start();
+        reader.join();
+        return d.analyze();
             }));
 
     /**
@@ -1374,7 +1403,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("ThreadStarvationDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("VirtualThreadCarrierExhaustionDetector", IssueSeverity.HIGH),
             java.util.Map.entry("ReadWriteLockMonitor", IssueSeverity.MEDIUM),
-            java.util.Map.entry("ScheduledExecutorDetector", IssueSeverity.MEDIUM));
+            java.util.Map.entry("ScheduledExecutorDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("ExchangerDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("CompletableFutureCompletionLeakDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("MissedSignalDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("MemoryOrderingMonitor", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

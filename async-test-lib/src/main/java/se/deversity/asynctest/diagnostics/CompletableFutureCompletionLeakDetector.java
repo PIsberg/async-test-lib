@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -144,7 +147,9 @@ public class CompletableFutureCompletionLeakDetector {
      */
     public CompletionLeakReport analyze() {
         if (!enabled) {
-            return new CompletionLeakReport(Collections.emptyList());
+            CompletionLeakReport report801 = new CompletionLeakReport(Collections.emptyList());
+            report801.fillStructuredViolations();
+            return DetectorFailurePolicy.checkedReport(this, report801);
         }
 
         List<LeakedFuture> leaked = new ArrayList<>();
@@ -160,7 +165,9 @@ public class CompletableFutureCompletionLeakDetector {
             }
         }
 
-        return new CompletionLeakReport(leaked);
+        CompletionLeakReport report801 = new CompletionLeakReport(leaked);
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -249,6 +256,25 @@ public class CompletableFutureCompletionLeakDetector {
          */
         public int getLeakCount() {
             return leakedFutures.size();
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (LeakedFuture lf : leakedFutures) {
+                structuredViolations.add(new Violation("CompletableFutureCompletionLeak", severity,
+                        lf.name + " (created by thread #" + lf.creatorThreadId + ", " + lf.ageMillis
+                                + "ms ago) never completed",
+                        List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Eighty-seven more detectors state each finding's severity instead of leaving it to their text (#801).**
+- **Ninety-one more detectors state each finding's severity instead of leaving it to their text (#801).**
   `SynchronizedOnLiteral`, `BoxedPrimitiveLock`, `ExplicitGc`, `DeprecatedThreadApi`,
   `SystemPropertyMutation`, `PublicLockExposure`, `FutureIgnored`, `SharedTimeZone` and
   `UncaughtExceptionHandler` reports now carry a `structuredViolations` list, so the `failOn` gate,
@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SleepInLock` and `UnboundedQueue` (MEDIUM).
   A fourteenth batch of four: `VirtualThreadCarrierExhaustion` (HIGH, marked), and `ThreadStarvation`,
   `ReadWriteLockMonitor` and `ScheduledExecutor` (MEDIUM).
+  A fifteenth batch of four: `Exchanger` (CRITICAL, marked), `MissedSignal` (CRITICAL), and
+  `CompletableFutureCompletionLeak` and `MemoryOrderingMonitor` (HIGH, marked).
 
 - **Every `HEURISTIC` detector names its threshold, and the evidence gate requires it (#756).**
   Eleven `HEURISTIC` detectors wrote the number their findings turn on as a bare literal, which
