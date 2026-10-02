@@ -321,10 +321,8 @@ public class ThreadPoolDeadlockDetector {
                     NestedSubmissionSnapshot snapshot = snapshots.get(j);
                     sb.append("\n      Nested submission #").append(j + 1)
                       .append(" (active tasks: ").append(snapshot.activeTasksAtTime).append("):");
-                    if (snapshot.stackTrace != null && snapshot.stackTrace.length > 3) {
-                        for (int k = 3; k < Math.min(6, snapshot.stackTrace.length); k++) {
-                            sb.append("\n        at ").append(snapshot.stackTrace[k]);
-                        }
+                    for (StackTraceElement frame : SiteCapture.userFrames(snapshot.stackTrace, 3)) {
+                        sb.append("\n        at ").append(frame);
                     }
                 }
             }

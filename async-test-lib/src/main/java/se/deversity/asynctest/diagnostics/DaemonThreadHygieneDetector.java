@@ -156,7 +156,7 @@ public final class DaemonThreadHygieneDetector {
         long id = thread.threadId();
         if (tracked.containsKey(id)) return; // first-registration wins, like SharedMessageDigestDetector
         String effectiveLabel = (label != null) ? label : thread.getName();
-        StackTraceElement site = firstUserFrame(Thread.currentThread().getStackTrace());
+        StackTraceElement site = SiteCapture.firstUserFrame(Thread.currentThread().getStackTrace());
         tracked.putIfAbsent(id,
                 new ThreadState(id, effectiveLabel, thread.getName(), observedAtStart, site));
     }
@@ -238,18 +238,6 @@ public final class DaemonThreadHygieneDetector {
         for (int i = 0; i < n; i++) {
             Thread t = all[i];
             if (t != null && t.threadId() == id && t.isAlive()) return t;
-        }
-        return null;
-    }
-
-    private static @Nullable StackTraceElement firstUserFrame(StackTraceElement[] frames) {
-        for (StackTraceElement f : frames) {
-            String cls = f.getClassName();
-            if (cls.startsWith("java.") || cls.startsWith("jdk.")) continue;
-            if (cls.startsWith("se.deversity.asynctest.Agent")) continue;
-            if (cls.startsWith("se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector")) continue;
-            if (cls.endsWith("Detector") || cls.endsWith("Monitor") || cls.endsWith("Validator")) continue;
-            return f;
         }
         return null;
     }

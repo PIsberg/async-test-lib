@@ -187,7 +187,7 @@ subprojects {
         jvmArgs("-Djdk.attach.allowAttachSelf=true")
         // Keep JaCoCo off the named-module fixture: its instrumentation gives the module a read
         // edge to the class path before the agent attaches, which voids
-        // NamedModuleUpdaterWeavingTest's premise (#668). Mirrors the pom's prepare-agent excludes.
+        // the NamedModule*WeavingTest premises (#668, #862). Mirrors the pom's prepare-agent excludes.
         extensions.configure<JacocoTaskExtension> { excludes = listOf("com.example.namedfixture.*") }
 
         finalizedBy(tasks.named("jacocoTestReport"))

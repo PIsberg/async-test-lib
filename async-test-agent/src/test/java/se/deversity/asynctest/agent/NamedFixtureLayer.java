@@ -42,8 +42,17 @@ final class NamedFixtureLayer {
 
     /** {@return a new layer holding the fixture module, its loader delegating to the test's} */
     static ModuleLayer fixture() {
+        return fixture(NamedFixtureLayer.class.getClassLoader());
+    }
+
+    /**
+     * {@return a new layer holding the fixture module, its loader delegating to {@code parent}}; a
+     * {@link #library()} loader as the parent makes the fixture resolve the library from a named
+     * module, as on a module path, instead of from a class path (#862)
+     */
+    static ModuleLayer fixture(ClassLoader parent) {
         return define(ModuleDescriptor.newModule(MODULE).exports(PACKAGE).build(),
-                classesOf(NamedFixtureLayer.class));
+                classesOf(NamedFixtureLayer.class), parent);
     }
 
     /** {@return a new layer holding a copy of the library as an automatic module} */
@@ -67,10 +76,11 @@ final class NamedFixtureLayer {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        return define(ModuleDescriptor.newAutomaticModule(LIBRARY_MODULE).packages(packages).build(), base);
+        return define(ModuleDescriptor.newAutomaticModule(LIBRARY_MODULE).packages(packages).build(), base,
+                NamedFixtureLayer.class.getClassLoader());
     }
 
-    private static ModuleLayer define(ModuleDescriptor descriptor, Path root) {
+    private static ModuleLayer define(ModuleDescriptor descriptor, Path root, ClassLoader parent) {
         ModuleReference reference = new ModuleReference(descriptor, root.toUri()) {
             @Override
             public ModuleReader open() {
@@ -91,7 +101,7 @@ final class NamedFixtureLayer {
         ModuleLayer boot = ModuleLayer.boot();
         Configuration configuration =
                 boot.configuration().resolve(finder, ModuleFinder.of(), Set.of(descriptor.name()));
-        return boot.defineModulesWithOneLoader(configuration, NamedFixtureLayer.class.getClassLoader());
+        return boot.defineModulesWithOneLoader(configuration, parent);
     }
 
     private static Path classesOf(Class<?> type) {

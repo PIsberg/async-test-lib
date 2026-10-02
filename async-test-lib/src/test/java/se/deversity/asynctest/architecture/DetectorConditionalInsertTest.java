@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -48,7 +49,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class DetectorConditionalInsertTest {
 
-    /** How far after a null check the matching insert is still taken to belong to it. */
+    /**
+     * How far after a lookup its null check and insert are still taken to belong to it. The window
+     * also stops at the end of the block holding the lookup, so a put in the next method is not
+     * read as this one's insert (#863).
+     */
     private static final int WINDOW = 800;
 
     private static final Pattern GET_ASSIGNMENT =
@@ -71,7 +76,47 @@ class DetectorConditionalInsertTest {
                         + String.join("\n  ", offences));
     }
 
-    /** The get / null-check / put form. */
+    @Test
+    void aReadOnlyMethodFollowedByAnInsertingMethodIsNotAConditionalInsert() {
+        // #863: the lookup and its null check end with peek(); the put belongs to record(), which
+        // inserts unconditionally. A window that crossed the method boundary read the two as one.
+        String source = """
+                class Fixture {
+                    Integer peek(String key) {
+                        Integer value = MAP.get(key);
+                        if (value == null) {
+                            return 0;
+                        }
+                        return value;
+                    }
+
+                    void record(String key) {
+                        MAP.put(key, 1);
+                    }
+                }
+                """;
+        assertEquals(List.of(), getThenPut(Path.of("Fixture.java"), source),
+                "a put in the next method does not depend on this method's lookup");
+    }
+
+    @Test
+    void theGetNullCheckPutShapeIsStillFlagged() {
+        String source = """
+                class Fixture {
+                    void record(String key) {
+                        Integer value = MAP.get(key);
+                        if (value == null) {
+                            value = 0;
+                            MAP.put(key, value);
+                        }
+                    }
+                }
+                """;
+        assertEquals(1, getThenPut(Path.of("Fixture.java"), source).size(),
+                "the shape the gate exists for must still fail it");
+    }
+
+    /** The get / null-check / put form, looked for only up to the end of the lookup's block. */
     private static List<String> getThenPut(Path file, String source) {
         List<String> offences = new ArrayList<>();
         Matcher assignment = GET_ASSIGNMENT.matcher(source);
@@ -79,7 +124,7 @@ class DetectorConditionalInsertTest {
             String variable = assignment.group(1);
             String receiver = assignment.group(2);
             String tail = source.substring(assignment.end(),
-                    Math.min(source.length(), assignment.end() + WINDOW));
+                    Math.min(endOfBlock(source, assignment.end()), assignment.end() + WINDOW));
 
             Matcher nullCheck = Pattern.compile("if\\s*\\(\\s*" + Pattern.quote(variable)
                     + "\\s*==\\s*null\\s*\\)").matcher(tail);
@@ -116,6 +161,25 @@ class DetectorConditionalInsertTest {
             }
             from = close;
         }
+    }
+
+    /**
+     * {@return the index of the brace closing the block that contains {@code from}, or the source
+     * length}; a put after it belongs to other code, such as the next method (#863)
+     *
+     * <p>Comments and literals are masked before this runs, so every brace counted is code.
+     */
+    private static int endOfBlock(String source, int from) {
+        int depth = 0;
+        for (int i = from; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '{') {
+                depth++;
+            } else if (c == '}' && --depth < 0) {
+                return i;
+            }
+        }
+        return source.length();
     }
 
     private static int matchingParen(String source, int openIndex) {

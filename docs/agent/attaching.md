@@ -231,7 +231,9 @@ Three limits worth knowing before switching it on:
   whether it held: the field reads in between count as reads under the lock in shared mode when
   `validate` returned `true`, are dropped when it returned `false`, since the caller discards what
   it read, and count as plain reads when nothing validated them before the thread's next
-  speculation, its next write or the end of the round (#740). A lock acquired only inside unwoven
+  speculation on the same lock, its next write or the end of the round (#740). A speculation on
+  a second lock nests inside the first instead of closing it, and reads it validates are judged
+  by the enclosing one's `validate` as well (#823). A lock acquired only inside unwoven
   code still needs `AsyncTestContext.holdingLock(...)`.
 - **Spinlocks and hand-offs are exclusion too (with `fields=true`).** A won
   `VarHandle.compareAndSet(this, 0, 1)` on an `int` field is a spinlock: the weaver replaces the
@@ -320,6 +322,15 @@ attach the agent itself at the start of the run, so you do not have to resolve t
 your build. It needs the `async-test-agent` artifact on the test classpath; if it is missing, or
 the JVM forbids self-attachment, the runner logs `runner.agent.attach.failed` once and continues
 without instrumentation rather than failing the suite.
+
+**Named modules.** Woven code calls into the library, so a woven class in a named module has to
+read the library's module. The JVM gives every transformed class a read edge to the unnamed module
+of the agent's loader, which covers a library on the class path. For a library on a module path
+(the automatic module `se.deversity.asynctest`) or in another loader, the agent adds the edge to
+the copy the woven class's loader resolves, in every mode
+([#862](https://github.com/PIsberg/async-test-lib/issues/862)). Before that fix only `fields=true`
+added it, and the first woven call under `collections=true` or the default accessor weaving threw
+`IllegalAccessError`.
 
 **Robustness.** Parsing never throws (an exception in `premain` would abort JVM startup).
 Whitespace is trimmed, empty entries are skipped, keys are matched **case-insensitively**,

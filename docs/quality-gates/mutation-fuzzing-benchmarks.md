@@ -69,6 +69,12 @@ libFuzzer's `INITED` line in the log, which appears only after the target class 
 initial corpus has run. A finding stays an artifact; a toolchain or classpath failure is a red job.
 The assertion caught defects 2 and 3 on its first two runs.
 
+The CLI archive is checked against a SHA-256 recorded in the workflow before anything in it runs
+([#867](https://github.com/PIsberg/async-test-lib/issues/867)): a release asset can be replaced
+behind an unchanged URL, and this binary executes against the library's classes. Bumping the CLI
+version means recording the new archive's hash in the same edit. `WorkflowDownloadIntegrityTest`
+fails any workflow step that downloads a release asset without `sha256sum -c`.
+
 The first genuine run executed 7,382,051 inputs in 121 s (61,008 exec/s), grew coverage from 29 to
 699 features, and found no defect in `AsyncTestConfig.Builder`. It instruments the config surface
 itself — `AsyncTestConfig`, `AsyncTestConfig$Builder`, `FailOn`, `DetectorType` — not merely the

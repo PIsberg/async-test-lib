@@ -12,3 +12,14 @@ repos:
   hooks:
   - id: end-of-file-fixer
   - id: trailing-whitespace
+# The CI Guardrail Drift check, locally (#869). Runs a clean test-compile, so only when a file
+# that can change the guardrails is staged. Whitespace-only differences are ignored here, since a
+# regeneration on another OS can differ from CI's in those alone; CI stays byte-exact.
+- repo: local
+  hooks:
+  - id: guardrail-drift
+    name: guardrail files match the @AI* annotations
+    entry: sh tools/guardrail-drift.sh --ignore-whitespace
+    language: system
+    pass_filenames: false
+    files: '(\.java|CLAUDE\.md|GEMINI\.md|AGENTS\.md|\.claudeignore|\.vibetags-[a-z-]+)$|(^|/)\.claude/rules/|^\.gemini/'

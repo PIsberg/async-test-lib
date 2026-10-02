@@ -108,6 +108,39 @@ public final class DetectorFailurePolicy {
             + ") fails the build; consumers see the finding unchanged. Report: " + report);
     }
 
+    /** Report types already named by {@link #structuredFindingsUnreadable}; a ClassValue retains no loader. */
+    private static final ClassValue<java.util.concurrent.atomic.AtomicBoolean> UNREADABLE_SAID =
+            new ClassValue<>() {
+                @Override
+                protected java.util.concurrent.atomic.AtomicBoolean computeValue(Class<?> type) {
+                    return new java.util.concurrent.atomic.AtomicBoolean();
+                }
+            };
+
+    /**
+     * Says, once per report type, that a report's {@code structuredViolations} list could not be
+     * read, so its findings were graded from their text (#859).
+     *
+     * <p>A third-party report whose list sits on a type in a package not open to this library still
+     * reports: the finding comes out of its text (#851). But the severities its author chose are not
+     * the ones the {@code failOn} gate sees, and without this line nothing said so. Written in every
+     * mode and never thrown: the library cannot tell a deliberate closed module from an oversight,
+     * and the finding itself is not lost.
+     *
+     * @param detectorName simple class name of the detector that produced the report
+     * @param reportType   the report's class, whose list was refused
+     * @since 1.12.4
+     */
+    public static void structuredFindingsUnreadable(String detectorName, Class<?> reportType) {
+        if (UNREADABLE_SAID.get(reportType).compareAndSet(false, true)) {
+            System.err.println("[AsyncTest] Detector " + detectorName + " keeps a "
+                + DetectorDefaultSeverity.STRUCTURED_FIELD + " list on " + reportType.getName()
+                + " that this library may not read, because its package is not open to it; its"
+                + " findings are graded from their text instead of the severities it states. Open"
+                + " the package to the library's module to have them read.");
+        }
+    }
+
     /**
      * Returns the report a detector has just built, after holding it to its own structured findings.
      *

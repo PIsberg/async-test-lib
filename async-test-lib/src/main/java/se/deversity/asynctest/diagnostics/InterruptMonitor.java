@@ -108,8 +108,8 @@ public class InterruptMonitor {
     }
 
     private String inferCallSite() {
-        StackTraceElement[] trace = Thread.currentThread().getStackTrace();
-        return trace.length > 3 ? trace[3].toString() : "unknown";
+        StackTraceElement site = SiteCapture.firstUserFrame(Thread.currentThread().getStackTrace());
+        return site != null ? site.toString() : "unknown";
     }
     /**
      * Analyses what has been recorded about interrupt handling and builds the report for it.

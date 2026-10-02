@@ -497,6 +497,61 @@ class ConcurrencyRunnerTest {
         }
     }
 
+    /** Set by {@link NameCollectingFixture}; one set per run. */
+    private static final java.util.Set<String> COLLECTED_WORKER_NAMES =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    static final class NameCollectingFixture {
+        private void collectWorkerName() {
+            COLLECTED_WORKER_NAMES.add(Thread.currentThread().getName());
+        }
+    }
+
+    /**
+     * #861: a detector that identifies a lock's holder by thread name (ReentrantLockDetector) reads
+     * a same-named worker of another @AsyncTest running in parallel as its own. While every run
+     * numbered its workers from 0, this run's finished async-test-worker-0 and another run's live
+     * async-test-worker-0 holding a shared static lock were one name, and the hold read as a leak.
+     */
+    @Test
+    void twoRunsNeverShareAWorkerName() throws Throwable {
+        String previousLicense = System.getProperty("license.mock.mode");
+        System.setProperty("license.mock.mode", "true");
+        try {
+            for (boolean virtualThreads : new boolean[] {false, true}) {
+                java.util.List<java.util.Set<String>> runs = new java.util.ArrayList<>();
+                for (int run = 0; run < 2; run++) {
+                    COLLECTED_WORKER_NAMES.clear();
+                    AsyncTestConfig config = AsyncTestConfig.builder()
+                            .threads(2).invocations(1).useVirtualThreads(virtualThreads)
+                            .timeoutMs(10_000).detectAll(false).detectDeadlocks(false)
+                            .build();
+                    NameCollectingFixture fixture = new NameCollectingFixture();
+                    Method method = NameCollectingFixture.class.getDeclaredMethod("collectWorkerName");
+                    se.deversity.asynctest.runner.ConcurrencyRunner.execute(
+                            new FakeInvocationContext(fixture, method, List.of()), config);
+                    runs.add(new java.util.HashSet<>(COLLECTED_WORKER_NAMES));
+                }
+                assertFalse(runs.get(0).isEmpty(), "the premise: the first run's workers ran");
+                assertFalse(runs.get(1).isEmpty(), "the premise: the second run's workers ran");
+                java.util.Set<String> shared = new java.util.HashSet<>(runs.get(0));
+                shared.retainAll(runs.get(1));
+                assertEquals(java.util.Set.of(), shared,
+                        "a worker name must identify one run's worker, or a name-based holder check "
+                                + "confirms another run's worker as this run's (virtualThreads="
+                                + virtualThreads + ", runs=" + runs + ")");
+                for (java.util.Set<String> names : runs) {
+                    for (String name : names) {
+                        assertTrue(name.startsWith("async-test-worker-"),
+                                "the harness prefix stays, for thread dumps and the quiesce dump: " + name);
+                    }
+                }
+            }
+        } finally {
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
     private static void restoreProperty(String key, String previousValue) {
         if (previousValue == null) {
             System.clearProperty(key);

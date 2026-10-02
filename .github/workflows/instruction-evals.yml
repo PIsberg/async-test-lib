@@ -49,11 +49,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A job-level if: cannot read secrets, so the token's presence travels as this job's output and
+  # the evals job is gated on it. Gating each step instead reported a green job whose steps did
+  # nothing, which reads as a pass (#868).
+  preflight:
+    name: Check for the Copilot token
+    runs-on: ubuntu-latest
+    outputs:
+      has-token: ${{ steps.token.outputs.has-token }}
+    steps:
+      - name: Harden the runner (Block egress, allowlist only)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+
+      - name: Report whether the token is configured
+        id: token
+        env:
+          HAS_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN != '' }}
+        run: |
+          echo "has-token=$HAS_TOKEN" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "SKIPPED: COPILOT_GITHUB_TOKEN secret is not configured; the instruction evals did not run. Skipped is not passed." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Instruction evals skipped: COPILOT_GITHUB_TOKEN secret is not configured. Skipped is not passed."
+          fi
+
   evals:
     name: Instruction Evals (Copilot)
+    needs: preflight
+    if: needs.preflight.outputs.has-token == 'true'
     runs-on: ubuntu-latest
-    env:
-      HAVE_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN != '' }}
     steps:
       # Sandboxed like every agent lane: ephemeral runner, one single-purpose secret, egress
       # BLOCKED except GitHub, the Copilot API and npm for the CLI install. Extend the list
@@ -76,21 +104,12 @@ jobs:
             registry.npmjs.org:443
             results-receiver.actions.githubusercontent.com:443
 
-      - name: Note when the token is absent
-        if: env.HAVE_TOKEN != 'true'
-        run: |
-          echo "SKIPPED: COPILOT_GITHUB_TOKEN secret is not configured; the instruction evals did not run. Skipped is not passed." >> "$GITHUB_STEP_SUMMARY"
-          echo "::notice::Instruction evals skipped: COPILOT_GITHUB_TOKEN secret is not configured. Skipped is not passed."
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.HAVE_TOKEN == 'true'
 
       - name: Install the Copilot CLI
-        if: env.HAVE_TOKEN == 'true'
         run: npm install -g @github/copilot
 
       - name: Run the task bank (advisory)
-        if: env.HAVE_TOKEN == 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           ENGINE: copilot
@@ -114,7 +133,7 @@ jobs:
           exit 0
 
       - name: Upload trial logs
-        if: env.HAVE_TOKEN == 'true' && always()
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: instruction-eval-results

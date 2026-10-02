@@ -31,6 +31,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A woven class in a named module must also read the library's module for its woven call sites
  * to link, so such a module gets that read edge, and no access to {@code java.util.concurrent.atomic}.
+ * The edge is given in every weaving mode ({@link #letRead}), not only under field weaving: the
+ * collection, monitor and construction hooks and the accessor Advice all call the library too, and
+ * the JVM's own edge for a transformed class reaches only the unnamed module of the agent's loader,
+ * which is not where the library sits on a module path or in a sibling loader (#862).
  *
  * <p>The bound: a loader that cannot resolve {@code TelemetryRegistry} at all (a bundle that
  * reaches the library only through a thread context loader or a service lookup) opens nothing, and
@@ -85,8 +89,8 @@ final class UpdaterAccess {
         if (loader == null) {
             return;
         }
-        Module named = woven != null && woven.isNamed() ? woven : null;
-        if (HANDLED.contains(loader) && (named == null || READING.contains(named))) {
+        letRead(inst, loader, woven);
+        if (HANDLED.contains(loader)) {
             return;
         }
         // The loader is marked only afterwards: marking it first would let a concurrent transform
@@ -102,15 +106,33 @@ final class UpdaterAccess {
                 inst.redefineModule(javaBase, Set.of(), Map.of(),
                         Map.of(ATOMIC_PACKAGE, Set.of(library)), Set.of(), Map.of());
             }
-            if (named != null && !named.canRead(library)) {
-                inst.redefineModule(named, Set.of(library), Map.of(), Map.of(), Set.of(), Map.of());
-            }
         } catch (ClassNotFoundException | RuntimeException | LinkageError e) { // NOPMD - see the class javadoc
             // Unresolved updaters report rather than hide; see the class javadoc.
         }
         HANDLED.add(loader);
-        if (named != null) {
-            READING.add(named);
+    }
+
+    /**
+     * Lets {@code woven}, when it is a named module, read the module of the library copy
+     * {@code loader} resolves, which its woven call sites link to; opens nothing.
+     *
+     * @param inst   the agent's instrumentation
+     * @param loader the loader of a class about to be woven; {@code null} (bootstrap) does nothing
+     * @param woven  the module of that class, or {@code null} when not known
+     */
+    static void letRead(Instrumentation inst, @Nullable ClassLoader loader, @Nullable Module woven) {
+        if (loader == null || woven == null || !woven.isNamed() || READING.contains(woven)) {
+            return;
         }
+        try {
+            Module library = Class.forName(LIBRARY_ENTRY, false, loader).getModule();
+            if (!woven.canRead(library)) {
+                inst.redefineModule(woven, Set.of(library), Map.of(), Map.of(), Set.of(), Map.of());
+            }
+        } catch (ClassNotFoundException | RuntimeException | LinkageError e) { // NOPMD - see the class javadoc
+            // A call site that cannot link fails in the woven class, as it would without the agent
+            // trying; an exception here would cost the class its weaving or abort premain.
+        }
+        READING.add(woven);
     }
 }

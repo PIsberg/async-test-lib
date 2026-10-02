@@ -98,3 +98,9 @@ Measured against the two recordings in #483, 35 differing raw lines come out ide
 request now means the demo's output changed.
 
 Dispatch it by hand before a release, when what the demo prints is the actual question.
+
+What it records is a real `mvn test` of `tools/demo`, driven by `tools/demo-commands.sh`, so the
+output is whatever the current library prints for that test. An older VHS tape
+(`docs/demo.tape`) replayed a hand-written `docs/demo/run.sh` instead. Nothing ran it any more,
+and it showed echoed text rather than the library's output and an outdated detector count, so
+it was removed (#772).

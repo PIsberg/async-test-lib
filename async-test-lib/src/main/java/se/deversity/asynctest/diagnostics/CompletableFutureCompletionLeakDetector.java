@@ -271,11 +271,11 @@ public class CompletableFutureCompletionLeakDetector {
                   .append(" ").append(lf.ageMillis).append("ms ago");
 
                 // Show top 5 stack frames from creation point
-                if (lf.creationStackTrace != null && lf.creationStackTrace.length > 3) {
+                List<StackTraceElement> frames = SiteCapture.userFrames(lf.creationStackTrace, 5);
+                if (!frames.isEmpty()) {
                     sb.append("\n      Creation stack trace:");
-                    int framesToShow = Math.min(5, lf.creationStackTrace.length - 2);
-                    for (int j = 2; j < 2 + framesToShow; j++) {
-                        sb.append("\n        at ").append(lf.creationStackTrace[j]);
+                    for (StackTraceElement frame : frames) {
+                        sb.append("\n        at ").append(frame);
                     }
                 }
             }

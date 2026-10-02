@@ -388,10 +388,11 @@ public class SleepInLockDetector {
                     sb.append("      Lock: ").append(event.lockName).append("\n");
                     sb.append("      Problem: Sleeping while holding a lock causes unnecessary contention\n");
                     sb.append("      Fix: Release lock before sleeping, or use wait()/notify() or Condition\n");
-                    if (event.stackTrace != null && event.stackTrace.length > 3) {
+                    List<StackTraceElement> frames = SiteCapture.userFrames(event.stackTrace, 4);
+                    if (!frames.isEmpty()) {
                         sb.append("      Stack trace:\n");
-                        for (int j = 3; j < Math.min(7, event.stackTrace.length); j++) {
-                            sb.append("        at ").append(event.stackTrace[j]).append("\n");
+                        for (StackTraceElement frame : frames) {
+                            sb.append("        at ").append(frame).append("\n");
                         }
                     }
                 }

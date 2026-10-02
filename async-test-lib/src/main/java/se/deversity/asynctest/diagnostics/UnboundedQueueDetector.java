@@ -285,10 +285,11 @@ public class UnboundedQueueDetector {
                         sb.append("      Capacity: ").append(event.capacity).append("\n");
                     }
                     sb.append("      Fix: ").append(event.fixSuggestion).append("\n");
-                    if (event.creationStack != null && event.creationStack.length > 3) {
+                    List<StackTraceElement> frames = SiteCapture.userFrames(event.creationStack, 3);
+                    if (!frames.isEmpty()) {
                         sb.append("      Created at:\n");
-                        for (int j = 3; j < Math.min(6, event.creationStack.length); j++) {
-                            sb.append("        at ").append(event.creationStack[j]).append("\n");
+                        for (StackTraceElement frame : frames) {
+                            sb.append("        at ").append(frame).append("\n");
                         }
                     }
                 }

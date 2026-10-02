@@ -15,9 +15,22 @@ import java.util.Locale;
  */
 public class ConfinedStatefulJdkBean {
 
-    /** {@return the year, from a calendar this call owns} */
+    /**
+     * {@return the year, from a calendar this call owns}, moved first through every mutator the
+     * agent weaves (#820), so the confined direction covers them too
+     */
     public int year() {
-        return Calendar.getInstance(Locale.ROOT).get(Calendar.YEAR);
+        Calendar mine = Calendar.getInstance(Locale.ROOT);
+        mine.add(Calendar.DAY_OF_MONTH, 1);
+        mine.roll(Calendar.MONTH, 1);
+        mine.roll(Calendar.HOUR_OF_DAY, true);
+        mine.setTimeInMillis(86_400_000L);
+        mine.setTime(new java.util.Date(0L));
+        mine.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        mine.clear(Calendar.HOUR_OF_DAY);
+        mine.clear();
+        mine.setTimeInMillis(System.currentTimeMillis());
+        return mine.get(Calendar.YEAR);
     }
 
     /** {@return text built by a builder this call owns} */

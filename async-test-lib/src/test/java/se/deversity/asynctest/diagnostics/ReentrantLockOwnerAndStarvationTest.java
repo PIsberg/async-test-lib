@@ -608,7 +608,8 @@ class ReentrantLockOwnerAndStarvationTest {
     @DisplayName("#855: a hold left by a named thread that never recorded taking it reads exactly like another run's worker of that name still holding it, so both are context")
     void aLeakByAThreadThatNeverRecordedItsAcquisitionReadsLikeAnotherRunsWorker() throws InterruptedException {
         // The leak: a worker registers the lock, as a body does, takes it without recording that, and
-        // ends holding it. The runner names its virtual workers async-test-worker-N from 0, per run.
+        // ends holding it. The runner numbers its workers JVM-wide (#861), but any other thread may
+        // carry the same name, and a virtual one cannot be listed to rule that out.
         ReentrantLockDetector leakDetector = new ReentrantLockDetector();
         ReentrantLock leakLock = new ReentrantLock();
         Thread leaker = Thread.ofVirtual().name("async-test-worker-3").start(() -> {

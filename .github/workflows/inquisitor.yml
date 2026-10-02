@@ -4,8 +4,8 @@
 # committed rule is violated. The gating is deliberately dumb bash over files the reviewer
 # writes; the model never decides its own exit code.
 #
-# Runs only when the ANTHROPIC_API_KEY secret exists; otherwise every step is skipped and
-# the summary says SKIPPED, which is not a pass. The job is intentionally not in the
+# Runs only when the ANTHROPIC_API_KEY secret exists; otherwise the preflight job's summary
+# says SKIPPED and the review job is reported skipped, which is not a pass. The job is intentionally not in the
 # required-checks set while it earns trust; promote it once its verdict record justifies
 # blocking merges. copilot-review.yml is the always-available advisory lane meanwhile.
 #
@@ -36,14 +36,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A job-level if: cannot read secrets, so the key's presence travels as this job's output and
+  # the review job is gated on it. Gating each step instead skipped every step and still reported
+  # the job as a green pass, which a required check reads as passed: a missing or expired key
+  # would then let a pull request through instead of blocking it (#868).
+  preflight:
+    name: Check for the API key
+    runs-on: ubuntu-latest
+    outputs:
+      has-key: ${{ steps.key.outputs.has-key }}
+    steps:
+      - name: Harden the runner (Block egress, allowlist only)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+
+      - name: Report whether the key is configured
+        id: key
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          echo "has-key=$HAS_KEY" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "SKIPPED: ANTHROPIC_API_KEY secret is not configured; no review ran." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Inquisitor skipped: ANTHROPIC_API_KEY secret is not configured. Skipped is not passed."
+          fi
+
   inquisitor:
     name: Adversarial Review
+    needs: preflight
+    if: needs.preflight.outputs.has-key == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    env:
-      HAVE_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       # The agent lane runs sandboxed: ephemeral runner, no ambient secrets beyond its own
       # API key, and egress BLOCKED except the endpoints the job demonstrably needs. If a
@@ -64,19 +93,11 @@ jobs:
             raw.githubusercontent.com:443
             registry.npmjs.org:443
 
-      - name: Note when the key is absent
-        if: env.HAVE_KEY != 'true'
-        run: |
-          echo "SKIPPED: ANTHROPIC_API_KEY secret is not configured; no review ran." >> "$GITHUB_STEP_SUMMARY"
-          echo "::notice::Inquisitor skipped: ANTHROPIC_API_KEY secret is not configured. Skipped is not passed."
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.HAVE_KEY == 'true'
         with:
           fetch-depth: 0
 
       - name: Run the Inquisitor
-        if: env.HAVE_KEY == 'true'
         uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -90,7 +111,6 @@ jobs:
             --allowedTools "Read,Grep,Glob,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
 
       - name: Publish the verdict (deterministic gate)
-        if: env.HAVE_KEY == 'true'
         run: |
           if [ ! -f inquisitor-report.md ]; then
             echo "::error::The Inquisitor produced no report. That is a harness failure, not an all-clear."

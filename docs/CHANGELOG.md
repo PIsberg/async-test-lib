@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Worker thread names no longer repeat across runs (#861).** Every run numbered its workers
+  `async-test-worker-0` upward, so two `@AsyncTest` methods running in parallel had workers of the
+  same name. `ReentrantLockDetector` confirms a lock's holder by name, and could report a lock as
+  held by this run's finished `async-test-worker-3` when the live holder was the other run's
+  `async-test-worker-3`. Workers are now numbered JVM-wide; the `async-test-worker-N` format is
+  unchanged, so baseline fingerprints (`async-test-worker-#`) still match. Within a run the numbers
+  no longer start at 0.
+
+- **A woven class in a named module now links to a module-path library in every agent mode
+  (#862).** Woven code calls into the library, and the JVM's own read edge for a transformed class
+  reaches only the unnamed module of the agent's loader. With the library on a module path (the
+  automatic module `se.deversity.asynctest`) or in another loader, only `fields=true` added the
+  edge, so under `collections=true` or the default accessor weaving the first woven call in such a
+  class threw `IllegalAccessError` out of user code. The read edge is now given in every mode;
+  `java.util.concurrent.atomic` is still opened only under `fields=true`.
+
+- **A secret-gated CI lane now skips its job, not its steps (#868).** `inquisitor.yml` and
+  `instruction-evals.yml` gated every step on an env flag for whether their secret was set, so
+  without the secret the job ran, skipped everything, and reported success, which branch protection
+  reads as a passed check. Each now has a preflight job whose output gates the lane's job, and
+  `WorkflowSecretGateTest` refuses any `if:` that reads a secret-presence env variable.
+
+- **The fuzzing workflow checks the Jazzer CLI's SHA-256 before running it (#867).** The archive
+  was downloaded by a versioned URL and executed against the library's classes with no check of its
+  bytes, and a release asset can be replaced behind an unchanged URL. `WorkflowDownloadIntegrityTest`
+  now requires `sha256sum -c` in every workflow step that downloads a release asset.
+
+- **A printed stack starts at the caller's line, not the agent hook that fed the detector (#858).**
+  `SleepInLockDetector`, `ThreadLeakDetector`, `UnboundedQueueDetector`,
+  `CompletableFutureCompletionLeakDetector` and `ThreadPoolDeadlockDetector` printed a stack from a
+  fixed second or third frame, and `BusyWaitDetector` and `InterruptMonitor` named that frame as the call
+  site. That is the caller only on a direct call: through the agent, a sleep-in-lock report opened
+  at `AgentSleepHooks.recordHeld`. All seven, and `DaemonThreadHygieneDetector`'s own filter, now
+  take the first user frame by `SiteCapture`'s rule, which also skips a class nested in a detector
+  (`ThreadLeakDetector$ThreadState`) for every reported site.
+
+- **`DetectorAccuracyEvalTest` covers `LazyCollectionMisuseDetector` (#852).** A dependency cycle
+  across two threads, recorded through the overloads that take the collection, must produce the
+  cycle finding, and the same reads made after each computation returned must stay silent. The
+  detector's thread-safety note now says what #776 and #852 changed: state is keyed by the
+  collection's identity when it is passed, and name-keyed edges last one round.
+
+- **A third-party report whose `structuredViolations` list cannot be read now says so (#859).**
+  The SPI adapter grades such a finding from its text, which keeps it, but nothing told the author
+  the severities it chose were ignored, not even under strict mode. One stderr line per report type
+  now names the type and the fix (open its package to the library), in every mode, without failing.
+
+- **Guardrail drift can fail before a push (#869).** The CI Guardrail Drift check moved into
+  `tools/guardrail-drift.sh`, and `.pre-commit-config.yaml` runs the same script as a local
+  `guardrail-drift` hook whenever a file that can change the guardrails is staged. The hook ignores
+  whitespace-only differences, which a regeneration on another OS can produce; CI stays byte-exact.
+  `GuardrailDriftWiringTest` holds both callers to the one script.
+
+- **`LazyInitValidator.markInvocationStart()` closes a round (#764).** The validator kept one
+  state per field name for the whole run, so a holder built per round and initialised once per
+  round by a different thread added up to "multiple initializations across threads". The new method
+  keeps the round's findings for `analyze()` and drops its state; `reset()` also forgets closed
+  rounds. The runner does not wire this class, so a test that drives it across rounds calls the
+  method itself.
+
+- **An optimistic read on a second `StampedLock` no longer closes the first (#823).** Under the
+  agent, `tryOptimisticRead` on another lock while one speculation was open delivered the first's
+  reads as plain reads, so a reader that validated both, correctly, was reported against the
+  writer. Speculations now nest per thread (up to 8): a validated inner one hands its reads, under
+  its lock, to the enclosing one, and a new speculation closes only an open one on the same lock.
+
+- **The agent records every `Calendar` mutator, not only `get` and `set` (#820).** With
+  `collections=true`, a shared calendar moved by `add`, `roll`, `clear`, `setTime`,
+  `setTimeInMillis` or `setTimeZone` produced no record at all. Those call sites are now woven, and
+  each hook records the call the way its effect calls for, so a `setTime` under the write lock leaves
+  the gets after it reads.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

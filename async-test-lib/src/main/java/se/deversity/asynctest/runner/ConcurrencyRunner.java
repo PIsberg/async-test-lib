@@ -181,6 +181,16 @@ public class ConcurrencyRunner {
     private static final String WORKER_THREAD_PREFIX = "async-test-worker-";
 
     /**
+     * Numbers workers JVM-wide, so no two runs share a worker name (#861). A detector that
+     * identifies a lock's holder by thread name otherwise reads another parallel run's live
+     * {@code async-test-worker-0} as this run's finished one. A number, not a run id in the name,
+     * because a baseline fingerprint masks digits and committed lines read
+     * {@code async-test-worker-#}.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong WORKER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
      * Runs {@code testMethod} N×M times (see the class Javadoc), scaling
      * {@link AsyncTestConfig#timeoutMs} by {@link #resolveTimeoutMultiplier()} before it
      * becomes the effective budget for the overall deadline, each round's timeout, and —
@@ -382,9 +392,9 @@ public class ConcurrencyRunner {
         // and the quiesce stack dump read as the harness's own workers instead of
         // anonymous pool-N-thread-M entries.
         ExecutorService executor = config.useVirtualThreads
-            ? Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name(WORKER_THREAD_PREFIX, 0).factory())
-            : Executors.newFixedThreadPool(actualThreads, namedWorkerFactory());
+            ? Executors.newThreadPerTaskExecutor(namedWorkerFactory(Thread.ofVirtual().factory()))
+            : Executors.newFixedThreadPool(actualThreads,
+                namedWorkerFactory(Executors.defaultThreadFactory()));
 
         // setAccessible once per test, not once per invocation round
         Method testMethod = invocationContext.getExecutable();
@@ -1234,9 +1244,8 @@ public class ConcurrencyRunner {
     }
 
     /**
-     * Names platform worker threads {@code async-test-worker-N} and makes them daemon. A fresh
-     * factory (and counter) per {@link #execute} call keeps numbering stable within a run without
-     * any cross-run shared state.
+     * Names worker threads {@code async-test-worker-N}, N from {@link #WORKER_SEQUENCE} so a name
+     * never repeats across runs, and makes platform workers daemon (virtual ones always are).
      *
      * <p><strong>Daemon is load-bearing.</strong> A worker blocked on a monitor cannot be
      * interrupted out of it - not by {@code shutdownNow}, not by anything - so a test body that
@@ -1255,12 +1264,11 @@ public class ConcurrencyRunner {
      * reports what is still stuck, so results are gathered before the test method returns; a
      * daemon worker that outlives the JVM is by definition one that was never going to finish.
      */
-    private static java.util.concurrent.ThreadFactory namedWorkerFactory() {
-        java.util.concurrent.ThreadFactory defaults = Executors.defaultThreadFactory();
-        java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
+    private static java.util.concurrent.ThreadFactory namedWorkerFactory(
+            java.util.concurrent.ThreadFactory base) {
         return runnable -> {
-            Thread thread = defaults.newThread(runnable);
-            thread.setName(WORKER_THREAD_PREFIX + seq.getAndIncrement());
+            Thread thread = base.newThread(runnable);
+            thread.setName(WORKER_THREAD_PREFIX + WORKER_SEQUENCE.getAndIncrement());
             thread.setDaemon(true);
             return thread;
         };
