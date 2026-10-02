@@ -163,7 +163,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * first rather than closing it. Only the drain thread touches it, from {@link #onEvent} and
      * {@link #onFlush}, so it needs no synchronization; {@link #close()} never reads it.
      */
-    private final java.util.Map<Long, java.util.ArrayDeque<Speculation>> speculations =
+    private final java.util.Map<Long, java.util.Deque<Speculation>> speculations =
             new java.util.HashMap<>();
 
     /** One thread's optimistic read in progress: the lock's identity and the reads so far. */
@@ -558,7 +558,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             // One still open on the same lock was never validated, so its reads, and those of
             // any opened inside it, were used as read. One open on another lock stays open: the
             // new one nests inside it (#823).
-            java.util.ArrayDeque<Speculation> open =
+            java.util.Deque<Speculation> open =
                     speculations.computeIfAbsent(threadId, id -> new java.util.ArrayDeque<>());
             Speculation same = innermostOn(open, identity);
             if (same != null) {
@@ -566,7 +566,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                 do {
                     closed = open.pop();
                     deliver(closed, false);
-                } while (closed != same);
+                } while (!closed.equals(same));
             }
             if (open.size() >= MAX_NESTED_SPECULATIONS) {
                 deliver(open.removeLast(), false);
@@ -577,7 +577,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (TelemetryRegistry.OPTIMISTIC_READ_VALIDATED.equals(qualifiedName)) {
             // The write slot carries the answer. A validate on a lock this thread has no
             // speculation on judges nothing the bridge held back.
-            java.util.ArrayDeque<Speculation> open = speculations.get(threadId);
+            java.util.Deque<Speculation> open = speculations.get(threadId);
             if (open == null) {
                 return;
             }
@@ -603,7 +603,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         if (!speculations.isEmpty()) {
             // Anything but a read ends this thread's speculations first, so their reads stay
             // ahead of what followed them.
-            java.util.ArrayDeque<Speculation> open = speculations.get(threadId);
+            java.util.Deque<Speculation> open = speculations.get(threadId);
             if (open != null && !isWrite && !qualifiedName.startsWith("#")) {
                 Speculation innermost = open.peek();
                 if (innermost != null && innermost.reads.size() < MAX_SPECULATIVE_READS) {
@@ -613,7 +613,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                     return;
                 }
             }
-            java.util.ArrayDeque<Speculation> ended = speculations.remove(threadId);
+            java.util.Deque<Speculation> ended = speculations.remove(threadId);
             if (ended != null) {
                 for (Speculation speculation : ended) {
                     deliver(speculation, false);
@@ -784,15 +784,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                 stamp, round));
     }
 
-    /**
-     * Delivers a closed speculation's reads (#740). When its {@code validate} held, no write lock
-     * was taken while they ran, so they saw what a reader holding the lock in shared mode sees,
-     * and they are recorded with that lock added; a failed {@code validate} never reaches here,
-     * because the caller discards what it read. Otherwise they were used as read and are recorded
-     * exactly as they were made.
-     */
     /** {@return the innermost of {@code open} on {@code lock}, or {@code null}} */
-    private static @Nullable Speculation innermostOn(java.util.ArrayDeque<Speculation> open, int lock) {
+    private static @Nullable Speculation innermostOn(java.util.Deque<Speculation> open, int lock) {
         for (Speculation speculation : open) {
             if (speculation.lock == lock) {
                 return speculation;
@@ -802,13 +795,13 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     }
 
     /** {@return the speculation {@code inner} was opened inside, or {@code null} for the outermost} */
-    private static @Nullable Speculation enclosing(java.util.ArrayDeque<Speculation> open, Speculation inner) {
+    private static @Nullable Speculation enclosing(java.util.Deque<Speculation> open, Speculation inner) {
         boolean found = false;
         for (Speculation speculation : open) {
             if (found) {
                 return speculation;
             }
-            found = speculation == inner;
+            found = speculation.equals(inner);
         }
         return null;
     }
@@ -829,6 +822,13 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
     }
 
+    /**
+     * Delivers a closed speculation's reads (#740). When its {@code validate} held, no write lock
+     * was taken while they ran, so they saw what a reader holding the lock in shared mode sees,
+     * and they are recorded with that lock added; a failed {@code validate} never reaches here,
+     * because the caller discards what it read. Otherwise they were used as read and are recorded
+     * exactly as they were made.
+     */
     private void deliver(Speculation speculation, boolean validated) {
         for (HeldRead read : speculation.reads) {
             record(read, validated
@@ -855,7 +855,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (active) {
-            for (java.util.ArrayDeque<Speculation> open : speculations.values()) {
+            for (java.util.Deque<Speculation> open : speculations.values()) {
                 for (Speculation speculation : open) {
                     deliver(speculation, false);
                 }
