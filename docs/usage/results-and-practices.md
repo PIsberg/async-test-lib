@@ -24,6 +24,10 @@ in full, and each PROMPT or ADVISORY report prints as a single line:
 [AsyncTest] 1 PROMPT/ADVISORY report(s) shown as one line each; rerun with -Dasync-test.report.full=true to print them in full
 ```
 
+The count and the headline are the report's findings, from its graded findings or else its
+structured ones, never its "Why" or "Fix" bullets; only a third-party report that keeps neither is
+counted by its bullets.
+
 Pass `-Dasync-test.report.full=true` to print every report in full. A report that fails the build
 always prints in full, and so does every report of a test that failed or timed out, because there
 a prompt is a candidate cause. Listeners, and the JSON, JUnit XML and SARIF output, receive the full

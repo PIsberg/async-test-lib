@@ -1147,6 +1147,7 @@ final class DetectorRegistry {
 
         lastGrades = out.grades();
         lastSeverities = out.severities();
+        lastMessages = out.messages();
         lastNotes = out.notes();
         return out.reports();
     }
@@ -1179,6 +1180,17 @@ final class DetectorRegistry {
      */
     Map<String, se.deversity.asynctest.diagnostics.IssueSeverity> lastSeverities() {
         return lastSeverities;
+    }
+
+    /** Structured finding messages from the last analysis pass; see {@link #lastMessages()}. */
+    private Map<String, List<String>> lastMessages = Map.of();
+
+    /**
+     * {@return the messages of each report's structured findings from the most recent
+     * {@link #analyzeAllNamed()} pass, keyed by detector; absent where a report keeps none}
+     */
+    Map<String, List<String>> lastMessages() {
+        return lastMessages;
     }
 
     /**
@@ -1226,9 +1238,16 @@ final class DetectorRegistry {
         try {
             R report = analyze.apply(detector);
             if (Boolean.TRUE.equals(hasIssues.apply(report))) {
-                se.deversity.asynctest.diagnostics.IssueSeverity structured =
-                        se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredIn(report)
-                                .orElse(null);
+                List<se.deversity.asynctest.report.Violation> findings =
+                        se.deversity.asynctest.diagnostics.DetectorDefaultSeverity.structuredFindingsIn(report);
+                se.deversity.asynctest.diagnostics.IssueSeverity structured = null;
+                List<String> messages = new ArrayList<>(findings.size());
+                for (se.deversity.asynctest.report.Violation finding : findings) {
+                    messages.add(finding.message());
+                    if (structured == null || finding.severity().compareTo(structured) < 0) {
+                        structured = finding.severity();
+                    }
+                }
                 // A grade above the detector's evidence cap is lowered here, the one place grades
                 // enter the sink, so the failOn gate, the banner and findingGrades() all read the
                 // tier the evidence can carry rather than the one the report named.
@@ -1236,7 +1255,7 @@ final class DetectorRegistry {
                         report instanceof se.deversity.asynctest.diagnostics.GradedFindings graded
                                 ? se.deversity.asynctest.diagnostics.DetectorTrust.clampToCap(name, graded.grades())
                                 : null,
-                        structured);
+                        structured, messages);
                 if (structured == null) {
                     // One check per report, never per access: a structured report whose list
                     // stayed empty on this path fails this build's tests, and nothing else (#802).

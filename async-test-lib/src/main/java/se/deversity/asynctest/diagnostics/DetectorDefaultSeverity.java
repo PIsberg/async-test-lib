@@ -11,6 +11,7 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.report.Violation;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -131,26 +132,48 @@ public final class DetectorDefaultSeverity {
      */
     @API(status = Status.EXPERIMENTAL)
     public static Optional<IssueSeverity> structuredIn(@Nullable Object report) {
+        IssueSeverity worst = null;
+        for (Violation v : structuredFindingsIn(report)) {
+            if (worst == null || v.severity().compareTo(worst) < 0) {
+                worst = v.severity();
+            }
+        }
+        return Optional.ofNullable(worst);
+    }
+
+    /**
+     * {@return a report's structured findings, in its order; empty when it keeps none}
+     *
+     * <p>Read from the same {@code structuredViolations} field as {@link #structuredIn}. The
+     * runner's one-line summary of a folded block counts and heads with these, because a report's
+     * text also lists context and advice as bullets, and counting those read advice as a finding
+     * (#773).
+     *
+     * @param report a detector's report object; {@code null} yields empty
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public static List<Violation> structuredFindingsIn(@Nullable Object report) {
         if (report == null) {
-            return Optional.empty();
+            return List.of();
         }
         try {
             Field field = report.getClass().getField(STRUCTURED_FIELD);
             if (!List.class.isAssignableFrom(field.getType())
                     || !(field.canAccess(report) || field.trySetAccessible())) {
-                return Optional.empty();
+                return List.of();
             }
-            IssueSeverity worst = null;
+            List<Violation> found = new ArrayList<>();
             if (field.get(report) instanceof List<?> findings) {
                 for (Object finding : findings) {
-                    if (finding instanceof Violation v && (worst == null || v.severity().compareTo(worst) < 0)) {
-                        worst = v.severity();
+                    if (finding instanceof Violation v) {
+                        found.add(v);
                     }
                 }
             }
-            return Optional.ofNullable(worst);
+            return List.copyOf(found);
         } catch (NoSuchFieldException | IllegalAccessException | RuntimeException ignored) {
-            return Optional.empty();
+            return List.of();
         }
     }
 

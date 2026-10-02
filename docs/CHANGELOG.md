@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A folded console line could lead with advice and count it as findings (#773).** A passing
+  run prints each PROMPT or ADVISORY report as one line, `findings=N: <headline>`. For a report
+  without graded findings, N and the headline came from the report's `"  - "` bullets, which
+  also carry its "Why" and "Fix" text: an unbounded queue created four times printed
+  `findings=3: Use a bounded queue: ...`. Measured over the structured-coverage drivers, 45 of the
+  folding reports disagreed with their findings. The line now reads the report's structured
+  findings, which every built-in detector keeps since #801 (`findings=4: unbounded-queue:
+  Unbounded queue created`); only a third-party report with none is still read by its bullets.
+  New, experimental: `DetectorDefaultSeverity.structuredFindingsIn(report)` and
+  `AsyncTestContext.findingMessages()`.
 - **Examples 114 and 117 taught the label-only record calls (#852).** `StableValueMisuse` and
   `LazyConstantMisuse` gained holder-taking overloads in #776, and the catalog says to prefer them,
   but both examples and their READMEs still keyed every record by the label `"CONFIG"`, which

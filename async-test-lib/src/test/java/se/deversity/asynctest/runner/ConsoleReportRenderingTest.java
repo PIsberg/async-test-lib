@@ -60,6 +60,20 @@ class ConsoleReportRenderingTest {
     }
 
     @Test
+    @DisplayName("#773: the folded line counts and heads with the report's findings, not its bullets")
+    void foldedLineReadsTheStructuredFindings() {
+        String err = run(UnboundedQueueDummy.class, new ConcurrentHashMap<>());
+
+        String folded = err.lines().filter(l -> l.contains("UnboundedQueueDetector trust="))
+                .findFirst().orElse("");
+        // Four body executions create four queues, which the report numbers [1] to [4] and follows
+        // with "Fix" advice as bullets. Counting bullets said findings=3 and headed the line with
+        // the first piece of advice.
+        assertTrue(folded.contains("findings=4: unbounded-queue: Unbounded queue created"), err);
+        assertFalse(folded.contains("Use a bounded queue"), "advice is not a finding: " + folded);
+    }
+
+    @Test
     @DisplayName("a verdict-grade block still prints in full")
     void verdictBlockPrintsInFull() {
         String err = run(VerdictDummy.class, new ConcurrentHashMap<>());
@@ -109,6 +123,16 @@ class ConsoleReportRenderingTest {
         void shareWithoutMutating() {
             AsyncTestContext.recordMutableComponentLeakDetector()
                     .recordShared(order, "order", Thread.currentThread());
+        }
+    }
+
+    /** A queue created without a bound in every body execution: PROMPT-grade findings, plus advice. */
+    public static class UnboundedQueueDummy {
+        @AsyncTest(threads = 2, invocations = 2, licenseMockMode = true,
+                   includes = {DetectorType.UNBOUNDED_QUEUE})
+        void createUnboundedQueue() {
+            AsyncTestContext.unboundedQueueDetector().recordQueueCreation(
+                    new java.util.concurrent.LinkedBlockingQueue<String>(), "unbounded-queue", -1);
         }
     }
 
