@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
@@ -238,8 +243,10 @@ public class PhaserDetector {
                 stalled.putIfAbsent(phaser, stall);
             }
         }
-        return new PhaserReport(phaserRegistry, stalled, lateArrivals, terminatedPhasers,
+        PhaserReport report801 = new PhaserReport(phaserRegistry, stalled, lateArrivals, terminatedPhasers,
                 advancedAfterTimeout);
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -357,6 +364,27 @@ public class PhaserDetector {
         private PhaserInfo infoFor(Phaser phaser) {
             PhaserInfo info = phaserRegistry.get(phaser);
             return info != null ? info : new PhaserInfo("<unregistered phaser>", 0);
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.CRITICAL);
+            for (Phaser phaser : lateArrivals) {
+                structuredViolations.add(new Violation("Phaser", severity,
+                        infoFor(phaser).name + " (created for " + infoFor(phaser).parties + " parties; " + infoFor(phaser).describeActivity() + ")", List.of(), Map.of(), Instant.now()));
+            }
+            for (Map.Entry<Phaser, String> entry : stalledPhasers.entrySet()) {
+                structuredViolations.add(new Violation("Phaser", severity,
+                        infoFor(entry.getKey()).name + " (" + entry.getValue() + ")", List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

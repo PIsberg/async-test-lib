@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -308,13 +313,15 @@ public class CyclicBarrierDetector {
      */
     public CyclicBarrierReport analyze() {
         collectStranded(false);
-        return new CyclicBarrierReport(
+        CyclicBarrierReport report801 = new CyclicBarrierReport(
             barrierRegistry,
             timedOutBarriers,
             brokenBarriers,
             reusedBarriers,
             strandedBarriers
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -553,6 +560,27 @@ public class CyclicBarrierDetector {
                 return "; a break was recorded earlier, by a party or a reset() with parties waiting";
             }
             return "; the break was not recorded: a party timed out, was interrupted, or the barrier action threw";
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.CRITICAL);
+            for (CyclicBarrier barrier : reuseAfterBrokenBarriers) {
+                structuredViolations.add(new Violation("CyclicBarrier", severity,
+                        infoFor(barrier).name + " (" + infoFor(barrier).parties + " parties; a party arrived again at a barrier it had already seen broken, with no reset() in between)", List.of(), Map.of(), Instant.now()));
+            }
+            for (Map.Entry<CyclicBarrier, Integer> entry : strandedBarriers.entrySet()) {
+                structuredViolations.add(new Violation("CyclicBarrier", severity,
+                        infoFor(entry.getKey()).name + " (" + entry.getValue() + " parties waiting; left a party short with untimed waiters parked)", List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

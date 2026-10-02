@@ -94,12 +94,12 @@ class StructuredViolationCoverageTest {
     private static final Set<String> TEXT_ONLY = Set.of(
             "ABAProblemDetector",
             "CompletableFutureCompletionLeakDetector",
-            "ConditionVariableDetector", "ConstructorSafetyValidator", "CyclicBarrierDetector", "ExchangerDetector",
-            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector", "PhaserDetector",
+            "ConditionVariableDetector", "ConstructorSafetyValidator", "ExchangerDetector",
+            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
-            "ReentrantLockDetector", "ScheduledExecutorDetector", "SleepInLockDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
+            "ReentrantLockDetector", "ScheduledExecutorDetector", "SleepInLockDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
             "UnboundedQueueDetector",
-            "VirtualThreadCarrierExhaustionDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector");
+            "VirtualThreadCarrierExhaustionDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector");
 
     /**
      * Detectors whose structured severity must equal what their text alone resolves to.
@@ -1168,6 +1168,53 @@ class StructuredViolationCoverageTest {
             throw new IllegalStateException(e);
         }
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 12 ----
+            new Path("CyclicBarrierDetector", "a party arrived again at a broken barrier", () -> {
+        var d = new CyclicBarrierDetector();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        try {
+            barrier.await(1, java.util.concurrent.TimeUnit.NANOSECONDS);
+        } catch (Exception broken) {
+            // The timed-out await breaks the barrier, which is the premise.
+        }
+        d.registerBarrier(barrier, "reused-after-broken", 2);
+        d.recordArrival(barrier);
+        d.recordBroken(barrier);
+        d.recordAwait(barrier);
+        return d.analyze();
+            }),
+            new Path("PhaserDetector", "a phaser one party short", () -> {
+        var d = new PhaserDetector();
+        var phaser = new java.util.concurrent.Phaser(2);
+        d.registerPhaser(phaser, "short-phaser", 2);
+        d.recordArrive(phaser);
+        d.recordTimeout(phaser);
+        return d.analyze();
+            }),
+            new Path("WaitTimeoutDetector", "a wait() with no timeout", () -> {
+        var d = new WaitTimeoutDetector();
+        d.recordInfiniteWait(new Object(), "infiniteLock", "worker-1");
+        return d.analyze();
+            }),
+            new Path("ThreadLeakDetector", "a started thread still alive at analysis", () -> {
+        var d = new ThreadLeakDetector();
+        var release = new java.util.concurrent.CountDownLatch(1);
+        Thread leaked = new Thread(() -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "leaked-worker");
+        leaked.setDaemon(true);
+        leaked.start();
+        try {
+            d.recordThreadStart(leaked, "leaked-worker");
+            return d.analyze();
+        } finally {
+            release.countDown();
+        }
             }));
 
     /**
@@ -1252,7 +1299,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("StructuredTaskScopeMisuseDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("ThreadFactoryDetector", IssueSeverity.HIGH),
             java.util.Map.entry("VirtualThreadContextLeakDetector", IssueSeverity.HIGH),
-            java.util.Map.entry("VirtualThreadCpuBoundTaskDetector", IssueSeverity.MEDIUM));
+            java.util.Map.entry("VirtualThreadCpuBoundTaskDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("CyclicBarrierDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("PhaserDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("WaitTimeoutDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("ThreadLeakDetector", IssueSeverity.MEDIUM));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

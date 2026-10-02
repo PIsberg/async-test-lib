@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,7 +95,9 @@ public class WaitTimeoutDetector {
      * @return the findings this detector collected during the run
      */
     public WaitTimeoutReport analyze() {
-        return new WaitTimeoutReport(waitEvents, infiniteWaits);
+        WaitTimeoutReport report801 = new WaitTimeoutReport(waitEvents, infiniteWaits);
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -118,6 +125,23 @@ public class WaitTimeoutDetector {
          */
         public boolean hasIssues() {
             return !infiniteWaits.isEmpty();
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.CRITICAL);
+            for (WaitInfo info : infiniteWaits) {
+                structuredViolations.add(new Violation("WaitTimeout", severity,
+                        "Monitor '" + info.monitorName + "': wait() called without a timeout", List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override
