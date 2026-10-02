@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Worker thread names no longer repeat across runs (#861).** Every run numbered its workers
+  `async-test-worker-0` upward, so two `@AsyncTest` methods running in parallel had workers of the
+  same name. `ReentrantLockDetector` confirms a lock's holder by name, and could report a lock as
+  held by this run's finished `async-test-worker-3` when the live holder was the other run's
+  `async-test-worker-3`. Workers are now numbered JVM-wide; the `async-test-worker-N` format is
+  unchanged, so baseline fingerprints (`async-test-worker-#`) still match. Within a run the numbers
+  no longer start at 0.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added
