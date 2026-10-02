@@ -519,13 +519,14 @@ When contributing new examples:
 
 ## CI Integration
 
-All examples run in CI to ensure they compile and pass with `@Test`:
+The `E2E Tests` workflow (`.github/workflows/e2e-tests.yml`) installs the library from source,
+then runs the examples as one reactor split across four shards: every example on a push to `main`
+and on the nightly schedule, only the changed ones on a pull request. Each shard runs, in effect:
 ```yaml
-- name: Run example tests
-  run: |
-    for dir in example-*/; do
-      mvn -Dmaven.repo.local=.m2/repository -f "$dir/pom.xml" test
-    done
+- name: Install library to local Maven repository
+  run: mvn -DskipTests clean install
+- name: Run this shard's examples
+  run: mvn -f examples/pom.xml -pl "$modules" test -T 1C -fae "-Dasync-test.strict-detectors=true"
 ```
 
 ## Phase 12: Operational & Hygiene Concurrency Issues (New in 0.10.0)

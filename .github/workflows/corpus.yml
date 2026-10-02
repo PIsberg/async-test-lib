@@ -101,7 +101,6 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
 
       - name: Set up Java (retry after a transient resolver failure)
         if: steps.setup-java.outcome == 'failure'
@@ -109,14 +108,23 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
 
-      - name: Prepare local Maven repository
-        shell: bash
-        run: mkdir -p .m2/repository
+      # setup-java's cache: maven is one entry shared by every job, keyed on the pom hashes and
+      # never saved again after a hit, so the corpus libraries came from Central on every run
+      # (#890). The library itself is never cached: each run installs it from source, and a cached
+      # build of the same version must not stand in for it.
+      - name: Cache this job's Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/se/deversity
+          key: maven-${{ runner.os }}-corpus-eval-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-corpus-eval-
 
       - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+        run: mvn -DskipTests clean install
 
       # Measures what the detectors report on third-party classes whose javadoc states a
       # thread-safety contract. One `mvn test` runs all six lanes CorpusLane declares, each as
@@ -125,7 +133,7 @@ jobs:
       # gates that must hold every run live in CorpusGates; the numbers are in the uploaded
       # reports, one set per JDK.
       - name: Run corpus eval
-        run: mvn "-Dmaven.repo.local=.m2/repository" -f corpus-eval/pom.xml test
+        run: mvn -f corpus-eval/pom.xml test
 
       - name: Upload corpus eval report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

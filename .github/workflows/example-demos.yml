@@ -73,13 +73,26 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
 
       - name: Check the report script against known input
         # Before spending two hours on 148 modules three times over. This job's entire output is
         # the sentence "nothing passed", which is worthless if the parser has quietly stopped
         # recognising surefire's shape - the same failure mode as the demonstrations themselves.
         run: python3 .github/scripts/disabled_demo_report.py . --self-test
+
+      # setup-java's cache: maven is one entry shared by every job, keyed on the pom hashes and
+      # never saved again after a hit, so every example's dependencies came from Central on every
+      # run (#890). The library itself is never cached: each run installs it from source, and a
+      # cached build of the same version must not stand in for it.
+      - name: Cache this job's Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/se/deversity
+          key: maven-${{ runner.os }}-example-demos-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-example-demos-
 
       - name: Install the library
         # The examples resolve async-test-lib from ~/.m2, not from the reactor, so this is not

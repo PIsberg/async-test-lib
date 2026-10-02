@@ -117,12 +117,8 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Prepare local Maven repository
-        shell: bash
-        run: mkdir -p .m2/repository
-      
       - name: Run library tests and install artifact
-        run: mvn "-Dmaven.repo.local=.m2/repository" clean install
+        run: mvn clean install
 
       - name: Check coverage file exists
         shell: bash
