@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **E2E Tests had been red on `main` since 2026-09-24 (#884).** The Kotlin example needs
+  `kotlin-compiler-embeddable` (60 MB), and Central began serving that download on the runners as
+  a redirect to `release-assets.githubusercontent.com`, which the `examples-all` and
+  `examples-changed` jobs' harden-runner allowlists did not name, so Maven failed with
+  "Connection refused" in `Examples Reactor (shard 0/4)` on every run. Both lists admit it now,
+  and `HardenRunnerEndpointsTest` requires it on every blocking job that builds the examples
+  with Maven.
 - **Ninety-nine more detectors state each finding's severity instead of leaving it to their text (#801).**
   `SynchronizedOnLiteral`, `BoxedPrimitiveLock`, `ExplicitGc`, `DeprecatedThreadApi`,
   `SystemPropertyMutation`, `PublicLockExposure`, `FutureIgnored`, `SharedTimeZone` and
