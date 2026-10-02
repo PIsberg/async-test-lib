@@ -681,632 +681,635 @@ class StructuredViolationCoverageTest {
             }),
             // ---- structured in #801, batch 3 ----
             new Path("AtomicNonAtomicUpdateDetector", "a get then set on one atomic", () -> {
-        var d = new AtomicNonAtomicUpdateDetector();
-        Object atomic = new java.util.concurrent.atomic.AtomicInteger();
-        d.recordGet(atomic, "counter", Thread.currentThread());
-        d.recordSet(atomic, "counter", Thread.currentThread());
-        return d.analyze();
+                var d = new AtomicNonAtomicUpdateDetector();
+                Object atomic = new java.util.concurrent.atomic.AtomicInteger();
+                d.recordGet(atomic, "counter", Thread.currentThread());
+                d.recordSet(atomic, "counter", Thread.currentThread());
+                return d.analyze();
             }),
             new Path("CopyOnWriteCollectionDetector", "a write-only copy-on-write list", () -> {
-        var d = new CopyOnWriteCollectionDetector();
-        Object list = new java.util.concurrent.CopyOnWriteArrayList<>();
-        d.registerCollection(list, "events");
-        for (int i = 0; i < 50; i++) {
-            d.recordWrite(list, "events");
-        }
-        return d.analyze();
+                var d = new CopyOnWriteCollectionDetector();
+                Object list = new java.util.concurrent.CopyOnWriteArrayList<>();
+                d.registerCollection(list, "events");
+                for (int i = 0; i < 50; i++) {
+                    d.recordWrite(list, "events");
+                }
+                return d.analyze();
             }),
             new Path("ExecutorDeadlockDetector", "the only worker waits on a queued sibling", () -> {
-        var d = new ExecutorDeadlockDetector();
-        Object pool = new Object();
-        d.registerExecutor(pool, "pool", 1);
-        d.recordTaskSubmitted(pool);
-        d.recordTaskSubmitted(pool);
-        d.recordTaskStarted(pool);
-        d.recordWaitingOnSibling(pool);
-        return d.analyze();
+                var d = new ExecutorDeadlockDetector();
+                Object pool = new Object();
+                d.registerExecutor(pool, "pool", 1);
+                d.recordTaskSubmitted(pool);
+                d.recordTaskSubmitted(pool);
+                d.recordTaskStarted(pool);
+                d.recordWaitingOnSibling(pool);
+                return d.analyze();
             }),
             new Path("FutureBlockingDetector", "the only worker blocks on a future", () -> {
-        var d = new FutureBlockingDetector();
-        Object pool = new Object();
-        d.registerExecutor(pool, "pool", 1);
-        d.recordTaskSubmitted(pool);
-        d.recordTaskSubmitted(pool);
-        d.recordTaskStarted(pool);
-        d.recordBlockingWait(pool);
-        return d.analyze();
+                var d = new FutureBlockingDetector();
+                Object pool = new Object();
+                d.registerExecutor(pool, "pool", 1);
+                d.recordTaskSubmitted(pool);
+                d.recordTaskSubmitted(pool);
+                d.recordTaskStarted(pool);
+                d.recordBlockingWait(pool);
+                return d.analyze();
             }),
             new Path("LockContentionDetector", "every acquire contended", () -> {
-        var d = new LockContentionDetector();
-        Object lock = new Object();
-        for (int i = 0; i < 5; i++) {
-            d.recordAcquireAttempt(lock, "lock");
-            d.recordContention(lock, "lock");
-        }
-        return d.analyze();
+                var d = new LockContentionDetector();
+                Object lock = new Object();
+                for (int i = 0; i < 5; i++) {
+                    d.recordAcquireAttempt(lock, "lock");
+                    d.recordContention(lock, "lock");
+                }
+                return d.analyze();
             }),
             new Path("ForkJoinTaskBlockingDetector", "a join inside a ForkJoinTask", () -> {
-        var d = new ForkJoinTaskBlockingDetector();
-        d.recordForkJoinTaskEntered(Thread.currentThread());
-        d.recordBlockingCallAttempted(Thread.currentThread(), "join");
-        return d.analyze();
+                var d = new ForkJoinTaskBlockingDetector();
+                d.recordForkJoinTaskEntered(Thread.currentThread());
+                d.recordBlockingCallAttempted(Thread.currentThread(), "join");
+                return d.analyze();
             }),
             new Path("NestedMonitorLockoutDetector", "a sleep while holding a monitor", () -> {
-        var d = new NestedMonitorLockoutDetector();
-        d.recordMonitorAcquired(new Object());
-        d.recordBlockingOperationAttempted("Thread.sleep");
-        return d.analyze();
+                var d = new NestedMonitorLockoutDetector();
+                d.recordMonitorAcquired(new Object());
+                d.recordBlockingOperationAttempted("Thread.sleep");
+                return d.analyze();
             }),
             new Path("ThreadLocalContaminationDetector", "a value set by the previous task is read", () -> {
-        var d = new ThreadLocalContaminationDetector();
-        Object tl = new ThreadLocal<>();
-        d.recordNewTask(Thread.currentThread(), "first");
-        d.recordSet(Thread.currentThread(), tl, "REQUEST_ID");
-        d.recordNewTask(Thread.currentThread(), "second");
-        d.recordGet(Thread.currentThread(), tl, "REQUEST_ID", true);
-        return d.analyze();
+                var d = new ThreadLocalContaminationDetector();
+                Object tl = new ThreadLocal<>();
+                d.recordNewTask(Thread.currentThread(), "first");
+                d.recordSet(Thread.currentThread(), tl, "REQUEST_ID");
+                d.recordNewTask(Thread.currentThread(), "second");
+                d.recordGet(Thread.currentThread(), tl, "REQUEST_ID", true);
+                return d.analyze();
             }),
             // ---- structured in #801, batch 4 ----
             new Path("MutableMapKeyDetector", "a key mutated after insertion", () -> {
-        var d = new MutableMapKeyDetector();
-        Object key = new StringBuilder("before");
-        d.recordKeyInserted(new java.util.HashMap<>(), key, "index");
-        d.recordKeyMutation(key, "value", "before", "after");
-        return d.analyze();
+                var d = new MutableMapKeyDetector();
+                Object key = new StringBuilder("before");
+                d.recordKeyInserted(new java.util.HashMap<>(), key, "index");
+                d.recordKeyMutation(key, "value", "before", "after");
+                return d.analyze();
             }),
             new Path("LatchMisuseDetector", "an await on a latch counted down short", () -> {
-        var d = new LatchMisuseDetector();
-        Object latch = new Object();
-        d.registerLatch(latch, "ready", 3);
-        d.recordCountDown(latch);
-        d.recordAwait(latch);
-        return d.analyze();
+                var d = new LatchMisuseDetector();
+                Object latch = new Object();
+                d.registerLatch(latch, "ready", 3);
+                d.recordCountDown(latch);
+                d.recordAwait(latch);
+                return d.analyze();
             }),
             new Path("LockDowngradeDetector", "a write lock attempted under the read lock", () -> {
-        var d = new LockDowngradeDetector();
-        var lock = new java.util.concurrent.locks.ReentrantReadWriteLock();
-        lock.readLock().lock();
-        d.recordReadLockAcquired(lock, "rw");
-        try {
-            d.recordWriteLockAcquired(lock, "rw");
-        } finally {
-            lock.readLock().unlock();
-            d.recordReadLockReleased(lock, "rw");
-        }
-        return d.analyze();
+                var d = new LockDowngradeDetector();
+                var lock = new java.util.concurrent.locks.ReentrantReadWriteLock();
+                lock.readLock().lock();
+                d.recordReadLockAcquired(lock, "rw");
+                try {
+                    d.recordWriteLockAcquired(lock, "rw");
+                } finally {
+                    lock.readLock().unlock();
+                    d.recordReadLockReleased(lock, "rw");
+                }
+                return d.analyze();
             }),
             new Path("WakeupDetector", "a wait that never ended", () -> {
-        var d = new WakeupDetector();
-        Object monitor = new Object();
-        d.recordWaitEnter(monitor);
-        d.recordWaitExit(monitor, false);
-        return d.analyze();
+                var d = new WakeupDetector();
+                Object monitor = new Object();
+                d.recordWaitEnter(monitor);
+                d.recordWaitExit(monitor, false);
+                return d.analyze();
             }),
             new Path("VisibilityMonitor", "two threads saw different values", () -> {
-        var d = new VisibilityMonitor();
-        d.markInvocationStart();
-        onTwoThreads(() -> d.recordFieldAccess("Holder.ref", "initialized"),
-                () -> d.recordFieldAccess("Holder.ref", null));
-        return d.analyze();
+                var d = new VisibilityMonitor();
+                d.markInvocationStart();
+                onTwoThreads(() -> d.recordFieldAccess("Holder.ref", "initialized"),
+                        () -> d.recordFieldAccess("Holder.ref", null));
+                return d.analyze();
             }),
             new Path("LockOrderValidator", "two locks taken in both orders", () -> {
-        var d = new LockOrderValidator();
-        Object a = new Object();
-        Object b = new Object();
-        onTwoThreads(() -> {
-            d.recordLockAcquisition(a);
-            d.recordLockAcquisition(b);
-            d.recordLockRelease(b);
-            d.recordLockRelease(a);
-        }, () -> {
-            d.recordLockAcquisition(b);
-            d.recordLockAcquisition(a);
-            d.recordLockRelease(a);
-            d.recordLockRelease(b);
-        });
-        return d.validateLockOrder();
+                var d = new LockOrderValidator();
+                Object a = new Object();
+                Object b = new Object();
+                onTwoThreads(() -> {
+                    d.recordLockAcquisition(a);
+                    d.recordLockAcquisition(b);
+                    d.recordLockRelease(b);
+                    d.recordLockRelease(a);
+                }, () -> {
+                    d.recordLockAcquisition(b);
+                    d.recordLockAcquisition(a);
+                    d.recordLockRelease(a);
+                    d.recordLockRelease(b);
+                });
+                return d.validateLockOrder();
             }),
             // ---- structured in #801, batch 5 ----
             new Path("CalendarDetector", "one calendar set and read by two threads", () -> {
-        var d = new CalendarDetector();
-        var cal = java.util.Calendar.getInstance(java.util.Locale.ROOT);
-        d.registerCalendar(cal, "shared-calendar");
-        onTwoThreads(() -> d.recordSet(cal, "shared-calendar"), () -> d.recordGet(cal, "shared-calendar"));
-        return d.analyze();
+                var d = new CalendarDetector();
+                var cal = java.util.Calendar.getInstance(java.util.Locale.ROOT);
+                d.registerCalendar(cal, "shared-calendar");
+                onTwoThreads(() -> d.recordSet(cal, "shared-calendar"), () -> d.recordGet(cal, "shared-calendar"));
+                return d.analyze();
             }),
             new Path("StringBuilderDetector", "one builder appended to by two threads", () -> {
-        var d = new StringBuilderDetector();
-        var sb = new StringBuilder();
-        d.registerBuilder(sb, "shared-builder");
-        onTwoThreads(() -> d.recordAppend(sb, "shared-builder"), () -> d.recordAppend(sb, "shared-builder"));
-        return d.analyze();
+                var d = new StringBuilderDetector();
+                var sb = new StringBuilder();
+                d.registerBuilder(sb, "shared-builder");
+                onTwoThreads(() -> d.recordAppend(sb, "shared-builder"), () -> d.recordAppend(sb, "shared-builder"));
+                return d.analyze();
             }),
             new Path("SimpleDateFormatDetector", "one formatter used by two threads", () -> {
-        var d = new SimpleDateFormatDetector();
-        var sdf = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
-        d.registerFormatter(sdf, "shared-formatter");
-        onTwoThreads(() -> d.recordFormat(sdf, "shared-formatter"), () -> d.recordFormat(sdf, "shared-formatter"));
-        return d.analyze();
+                var d = new SimpleDateFormatDetector();
+                var sdf = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
+                d.registerFormatter(sdf, "shared-formatter");
+                onTwoThreads(() -> d.recordFormat(sdf, "shared-formatter"),
+                        () -> d.recordFormat(sdf, "shared-formatter"));
+                return d.analyze();
             }),
             new Path("SharedRandomDetector", "one Random used by two threads", () -> {
-        var d = new SharedRandomDetector();
-        var random = new java.util.Random(1);
-        d.registerRandom(random, "shared-random");
-        onTwoThreads(() -> d.recordRandomAccess(random, "shared-random", "nextInt"),
-                () -> d.recordRandomAccess(random, "shared-random", "nextInt"));
-        return d.analyze();
+                var d = new SharedRandomDetector();
+                var random = new java.util.Random(1);
+                d.registerRandom(random, "shared-random");
+                onTwoThreads(() -> d.recordRandomAccess(random, "shared-random", "nextInt"),
+                        () -> d.recordRandomAccess(random, "shared-random", "nextInt"));
+                return d.analyze();
             }),
             new Path("ResourceLeakDetector", "a resource opened and never closed", () -> {
-        var d = new ResourceLeakDetector();
-        Object resource = new Object();
-        d.registerResource(resource, "leaky-resource", "Connection");
-        d.recordResourceOpened(resource, "leaky-resource");
-        return d.analyze();
+                var d = new ResourceLeakDetector();
+                Object resource = new Object();
+                d.registerResource(resource, "leaky-resource", "Connection");
+                d.recordResourceOpened(resource, "leaky-resource");
+                return d.analyze();
             }),
             new Path("SemaphoreMisuseDetector", "two acquires, one release", () -> {
-        var d = new SemaphoreMisuseDetector();
-        var semaphore = new java.util.concurrent.Semaphore(2);
-        d.registerSemaphore(semaphore, "leaky-pool", 2);
-        d.recordAcquire(semaphore, "leaky-pool");
-        d.recordAcquire(semaphore, "leaky-pool");
-        d.recordRelease(semaphore, "leaky-pool");
-        return d.analyze();
+                var d = new SemaphoreMisuseDetector();
+                var semaphore = new java.util.concurrent.Semaphore(2);
+                d.registerSemaphore(semaphore, "leaky-pool", 2);
+                d.recordAcquire(semaphore, "leaky-pool");
+                d.recordAcquire(semaphore, "leaky-pool");
+                d.recordRelease(semaphore, "leaky-pool");
+                return d.analyze();
             }),
             new Path("ExecutorShutdownDetector", "an executor never shut down", () -> {
-        var d = new ExecutorShutdownDetector();
-        // No task ever runs on it, so it starts no thread.
-        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
-        d.recordExecutorCreated(executor, "leaking-pool");
-        d.recordTaskSubmitted(executor);
-        return d.analyze();
+                var d = new ExecutorShutdownDetector();
+                // No task ever runs on it, so it starts no thread.
+                var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+                d.recordExecutorCreated(executor, "leaking-pool");
+                d.recordTaskSubmitted(executor);
+                return d.analyze();
             }),
             new Path("TimerDetector", "a timer task that threw", () -> {
-        var d = new TimerDetector();
-        var timer = new java.util.Timer("probe-timer", true);
-        try {
-            d.registerTimer(timer, "probe-timer");
-            d.recordTaskSchedule(timer, "probe-timer", "failing-task");
-            d.recordTaskRun(timer, "probe-timer", "failing-task");
-            d.recordTaskException(timer, "probe-timer", "failing-task", new RuntimeException("boom"));
-            return d.analyze();
-        } finally {
-            timer.cancel();
-        }
+                var d = new TimerDetector();
+                var timer = new java.util.Timer("probe-timer", true);
+                try {
+                    d.registerTimer(timer, "probe-timer");
+                    d.recordTaskSchedule(timer, "probe-timer", "failing-task");
+                    d.recordTaskRun(timer, "probe-timer", "failing-task");
+                    d.recordTaskException(timer, "probe-timer", "failing-task", new RuntimeException("boom"));
+                    return d.analyze();
+                } finally {
+                    timer.cancel();
+                }
             }),
             // ---- structured in #801, batch 6 ----
             new Path("StreamClosingDetector", "a stream opened and never closed", () -> {
-        var d = new StreamClosingDetector();
-        d.recordStreamOpened(new java.io.ByteArrayInputStream(new byte[0]), "unclosed-stream");
-        return d.analyze();
+                var d = new StreamClosingDetector();
+                d.recordStreamOpened(new java.io.ByteArrayInputStream(new byte[0]), "unclosed-stream");
+                return d.analyze();
             }),
             new Path("ThreadPoolMonitor", "a pool rejected a task", () -> {
-        var d = new ThreadPoolMonitor();
-        Object executor = new Object();
-        d.registerPool(executor, "pool", 1, 1, 1);
-        d.recordTaskRejected(executor, "overloaded");
-        return d.analyze();
+                var d = new ThreadPoolMonitor();
+                Object executor = new Object();
+                d.registerPool(executor, "pool", 1, 1, 1);
+                d.recordTaskRejected(executor, "overloaded");
+                return d.analyze();
             }),
             new Path("ThreadLocalMonitor", "a ThreadLocal set and never removed", () -> {
-        var d = new ThreadLocalMonitor();
-        d.recordThreadLocalInit(new ThreadLocal<String>(), "leaked-context");
-        return d.analyze();
+                var d = new ThreadLocalMonitor();
+                d.recordThreadLocalInit(new ThreadLocal<String>(), "leaked-context");
+                return d.analyze();
             }),
             new Path("SynchronizerMonitor", "one thread arrived twice", () -> {
-        var d = new SynchronizerMonitor();
-        Object barrier = new Object();
-        d.registerSynchronizer(barrier, 2);
-        d.recordBarrierArrival(barrier);
-        d.recordBarrierArrival(barrier);
-        return d.analyze();
+                var d = new SynchronizerMonitor();
+                Object barrier = new Object();
+                d.registerSynchronizer(barrier, 2);
+                d.recordBarrierArrival(barrier);
+                d.recordBarrierArrival(barrier);
+                return d.analyze();
             }),
             new Path("ParallelStreamDetector", "a stateful forEach on a parallel stream", () -> {
-        var d = new ParallelStreamDetector();
-        d.recordParallelStream("stateful-stream");
-        d.recordStatefulOperation("stateful-stream", "forEach");
-        return d.analyze();
+                var d = new ParallelStreamDetector();
+                d.recordParallelStream("stateful-stream");
+                d.recordStatefulOperation("stateful-stream", "forEach");
+                return d.analyze();
             }),
             new Path("LazyInitRaceDetector", "two threads initialised one field", () -> {
-        var d = new LazyInitRaceDetector();
-        Runnable init = () -> {
-            d.recordNullCheck("Singleton.instance", true, false);
-            d.recordInitialization("Singleton.instance");
-        };
-        onTwoThreads(init, init);
-        return d.analyze();
+                var d = new LazyInitRaceDetector();
+                Runnable init = () -> {
+                    d.recordNullCheck("Singleton.instance", true, false);
+                    d.recordInitialization("Singleton.instance");
+                };
+                onTwoThreads(init, init);
+                return d.analyze();
             }),
             new Path("LockLeakDetector", "a lock still held at analysis", () -> {
-        var d = new LockLeakDetector();
-        var lock = new java.util.concurrent.locks.ReentrantLock();
-        d.registerLock(lock, "leaky-lock");
-        lock.lock();
-        try {
-            d.recordLockAcquired(lock, "leaky-lock");
-            return d.analyze();
-        } finally {
-            lock.unlock();
-        }
+                var d = new LockLeakDetector();
+                var lock = new java.util.concurrent.locks.ReentrantLock();
+                d.registerLock(lock, "leaky-lock");
+                lock.lock();
+                try {
+                    d.recordLockAcquired(lock, "leaky-lock");
+                    return d.analyze();
+                } finally {
+                    lock.unlock();
+                }
             }),
             new Path("HttpClientConcurrencyDetector", "a request sent and never completed", () -> {
-        var d = new HttpClientConcurrencyDetector();
-        d.recordClientCreated(new Object(), "test-client");
-        d.recordRequestSent(new Object(), "api-call");
-        return d.analyze();
+                var d = new HttpClientConcurrencyDetector();
+                d.recordClientCreated(new Object(), "test-client");
+                d.recordRequestSent(new Object(), "api-call");
+                return d.analyze();
             }),
             // ---- structured in #801, batch 7 ----
             new Path("BlockingQueueDetector", "an offer refused by a full queue", () -> {
-        var d = new BlockingQueueDetector();
-        var queue = new java.util.concurrent.ArrayBlockingQueue<String>(1);
-        d.registerQueue(queue, "full-queue", 1);
-        d.recordOffer(queue, "full-queue", queue.offer("a"));
-        d.recordOffer(queue, "full-queue", queue.offer("b"));
-        return d.analyze();
+                var d = new BlockingQueueDetector();
+                var queue = new java.util.concurrent.ArrayBlockingQueue<String>(1);
+                d.registerQueue(queue, "full-queue", 1);
+                d.recordOffer(queue, "full-queue", queue.offer("a"));
+                d.recordOffer(queue, "full-queue", queue.offer("b"));
+                return d.analyze();
             }),
             new Path("BusyWaitDetector", "a spin loop past the threshold", () -> {
-        var d = new BusyWaitDetector();
-        d.reportSpinLoop("hot-path-loop", 1_000_000L);
-        return d.analyze();
+                var d = new BusyWaitDetector();
+                d.reportSpinLoop("hot-path-loop", 1_000_000L);
+                return d.analyze();
             }),
             new Path("CacheConcurrencyDetector", "a HashMap cache read and written by two threads", () -> {
-        var d = new CacheConcurrencyDetector();
-        var cache = new java.util.HashMap<String, String>();
-        d.registerCache(cache, "unsafe-cache");
-        onTwoThreads(() -> d.recordGet(cache, "unsafe-cache", "key1"),
-                () -> d.recordPut(cache, "unsafe-cache", "key2", "value2"));
-        return d.analyze();
+                var d = new CacheConcurrencyDetector();
+                var cache = new java.util.HashMap<String, String>();
+                d.registerCache(cache, "unsafe-cache");
+                onTwoThreads(() -> d.recordGet(cache, "unsafe-cache", "key1"),
+                        () -> d.recordPut(cache, "unsafe-cache", "key2", "value2"));
+                return d.analyze();
             }),
             new Path("CompletableFutureChainDetector", "a future never joined", () -> {
-        var d = new CompletableFutureChainDetector();
-        d.recordFutureCreated(java.util.concurrent.CompletableFuture.completedFuture("test"), "unjoined-future");
-        return d.analyze();
+                var d = new CompletableFutureChainDetector();
+                d.recordFutureCreated(java.util.concurrent.CompletableFuture.completedFuture("test"),
+                        "unjoined-future");
+                return d.analyze();
             }),
             new Path("CompletableFutureExceptionDetector", "a future completed exceptionally with no handler", () -> {
-        var d = new CompletableFutureExceptionDetector();
-        var future = new java.util.concurrent.CompletableFuture<String>();
-        d.recordFutureCreated(future, "unhandled-task");
-        future.completeExceptionally(new RuntimeException("test error"));
-        d.recordFutureCompleted(future, "unhandled-task", false);
-        return d.analyze();
+                var d = new CompletableFutureExceptionDetector();
+                var future = new java.util.concurrent.CompletableFuture<String>();
+                d.recordFutureCreated(future, "unhandled-task");
+                future.completeExceptionally(new RuntimeException("test error"));
+                d.recordFutureCompleted(future, "unhandled-task", false);
+                return d.analyze();
             }),
             new Path("ConcurrentMapComputeRecursionDetector", "a compute on a key inside its own compute", () -> {
-        var d = new ConcurrentMapComputeRecursionDetector();
-        var map = new java.util.concurrent.ConcurrentHashMap<String, String>();
-        d.recordComputeStart(map, "key", Thread.currentThread(), "cache");
-        d.recordComputeStart(map, "key", Thread.currentThread(), "cache");
-        return d.analyze();
+                var d = new ConcurrentMapComputeRecursionDetector();
+                var map = new java.util.concurrent.ConcurrentHashMap<String, String>();
+                d.recordComputeStart(map, "key", Thread.currentThread(), "cache");
+                d.recordComputeStart(map, "key", Thread.currentThread(), "cache");
+                return d.analyze();
             }),
             new Path("ConcurrentModificationDetector", "a list modified while iterated", () -> {
-        var d = new ConcurrentModificationDetector();
-        var list = new java.util.ArrayList<String>();
-        d.registerCollection(list, "concurrent-list");
-        d.recordIterationStarted(list, "concurrent-list");
-        d.recordModificationDuringIteration(list, "concurrent-list", "add");
-        return d.analyze();
+                var d = new ConcurrentModificationDetector();
+                var list = new java.util.ArrayList<String>();
+                d.registerCollection(list, "concurrent-list");
+                d.recordIterationStarted(list, "concurrent-list");
+                d.recordModificationDuringIteration(list, "concurrent-list", "add");
+                return d.analyze();
             }),
             // ---- structured in #801, batch 8 ----
             new Path("InheritableThreadLocalMisuseDetector", "an inheritable value read on a pooled thread", () -> {
-        var d = new InheritableThreadLocalMisuseDetector();
-        var context = new InheritableThreadLocal<String>();
-        Thread pooled = new Thread(() -> {
-            d.registerPoolThread(Thread.currentThread());
-            context.set("leaked-value");
-            d.recordGet(context, "USER_CONTEXT");
-        });
-        pooled.start();
-        try {
-            pooled.join();
-        } catch (InterruptedException e) {
-            throw new IllegalStateException(e);
-        }
-        return d.analyze();
+                var d = new InheritableThreadLocalMisuseDetector();
+                var context = new InheritableThreadLocal<String>();
+                Thread pooled = new Thread(() -> {
+                    d.registerPoolThread(Thread.currentThread());
+                    context.set("leaked-value");
+                    d.recordGet(context, "USER_CONTEXT");
+                });
+                pooled.start();
+                try {
+                    pooled.join();
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+                return d.analyze();
             }),
             new Path("InterruptMonitor", "an interrupt caught and swallowed", () -> {
-        var d = new InterruptMonitor();
-        d.recordInterruptException(new InterruptedException("swallowed"));
-        return d.analyze();
+                var d = new InterruptMonitor();
+                d.recordInterruptException(new InterruptedException("swallowed"));
+                return d.analyze();
             }),
             new Path("SharedCollectionDetector", "an ArrayList written by two threads", () -> {
-        var d = new SharedCollectionDetector();
-        var list = new java.util.ArrayList<String>();
-        d.registerCollection(list, "shared-list", "ArrayList");
-        onTwoThreads(() -> d.recordWrite(list, "shared-list", "add"),
-                () -> d.recordWrite(list, "shared-list", "add"));
-        return d.analyze();
+                var d = new SharedCollectionDetector();
+                var list = new java.util.ArrayList<String>();
+                d.registerCollection(list, "shared-list", "ArrayList");
+                onTwoThreads(() -> d.recordWrite(list, "shared-list", "add"),
+                        () -> d.recordWrite(list, "shared-list", "add"));
+                return d.analyze();
             }),
             new Path("SynchronizedNonFinalDetector", "one owner synchronizing on two monitors", () -> {
-        var d = new SynchronizedNonFinalDetector();
-        Object owner = new Object();
-        d.recordLockObject(new Object(), "lock", Object.class, owner);
-        d.recordLockObject(new Object(), "lock", Object.class, owner);
-        return d.analyze();
+                var d = new SynchronizedNonFinalDetector();
+                Object owner = new Object();
+                d.recordLockObject(new Object(), "lock", Object.class, owner);
+                d.recordLockObject(new Object(), "lock", Object.class, owner);
+                return d.analyze();
             }),
             // ---- structured in #801, batch 9 ----
             new Path("OptimisticReadValidationDetector", "data read under a stamp never validated", () -> {
-        var d = new OptimisticReadValidationDetector();
-        var lock = new java.util.concurrent.locks.StampedLock();
-        long stamp = lock.tryOptimisticRead();
-        d.recordOptimisticReadStarted(lock, stamp, Thread.currentThread());
-        d.recordDataAccessed(lock, stamp, Thread.currentThread(), "sharedY");
-        return d.analyze();
+                var d = new OptimisticReadValidationDetector();
+                var lock = new java.util.concurrent.locks.StampedLock();
+                long stamp = lock.tryOptimisticRead();
+                d.recordOptimisticReadStarted(lock, stamp, Thread.currentThread());
+                d.recordDataAccessed(lock, stamp, Thread.currentThread(), "sharedY");
+                return d.analyze();
             }),
             new Path("SynchronizedCollectionIterationDetector", "a synchronized wrapper with no recorded lock", () -> {
-        var d = new SynchronizedCollectionIterationDetector();
-        var list = java.util.Collections.synchronizedList(new java.util.ArrayList<String>());
-        d.recordWrapperCreated(list, "my-list");
-        d.recordIterationStarted(list, Thread.currentThread(), false);
-        return d.analyze();
+                var d = new SynchronizedCollectionIterationDetector();
+                var list = java.util.Collections.synchronizedList(new java.util.ArrayList<String>());
+                d.recordWrapperCreated(list, "my-list");
+                d.recordIterationStarted(list, Thread.currentThread(), false);
+                return d.analyze();
             }),
             new Path("WeakReferenceRaceDetector", "a referent collected between two threads' gets", () -> {
-        var d = new WeakReferenceRaceDetector();
-        Object referent = new Object();
-        var ref = new java.lang.ref.WeakReference<Object>(referent);
-        d.recordGet(ref, "ref", referent, Thread.currentThread());
-        Thread other = new Thread(() -> d.recordGet(ref, "ref", null, Thread.currentThread()));
-        other.start();
-        try {
-            other.join();
-        } catch (InterruptedException e) {
-            throw new IllegalStateException(e);
-        }
-        return d.analyze();
+                var d = new WeakReferenceRaceDetector();
+                Object referent = new Object();
+                var ref = new java.lang.ref.WeakReference<Object>(referent);
+                d.recordGet(ref, "ref", referent, Thread.currentThread());
+                Thread other = new Thread(() -> d.recordGet(ref, "ref", null, Thread.currentThread()));
+                other.start();
+                try {
+                    other.join();
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+                return d.analyze();
             }),
             new Path("CountDownLatchDetector", "a latch that timed out short of zero", () -> {
-        var d = new CountDownLatchDetector();
-        var latch = new java.util.concurrent.CountDownLatch(2);
-        d.registerLatch(latch, "workers-done", 2);
-        d.recordCountDown(latch);
-        d.recordTimeout(latch);
-        return d.analyze();
+                var d = new CountDownLatchDetector();
+                var latch = new java.util.concurrent.CountDownLatch(2);
+                d.registerLatch(latch, "workers-done", 2);
+                d.recordCountDown(latch);
+                d.recordTimeout(latch);
+                return d.analyze();
             }),
             // ---- structured in #801, batch 10 ----
             new Path("DoubleCheckedLockingDetector", "a non-volatile double-checked field", () -> {
-        var d = new DoubleCheckedLockingDetector();
-        d.registerDCL("brokenInstance", false, true, true, true);
-        return d.analyze();
+                var d = new DoubleCheckedLockingDetector();
+                d.registerDCL("brokenInstance", false, true, true, true);
+                return d.analyze();
             }),
             new Path("FinalFieldMutationDetector", "a final field written reflectively", () -> {
-        var d = new FinalFieldMutationDetector();
-        d.recordMutation("Config.MAX_RETRIES", Thread.currentThread());
-        return d.analyze();
+                var d = new FinalFieldMutationDetector();
+                d.recordMutation("Config.MAX_RETRIES", Thread.currentThread());
+                return d.analyze();
             }),
             new Path("ForkJoinPoolDetector", "a forked task never joined", () -> {
-        var d = new ForkJoinPoolDetector();
-        var pool = new java.util.concurrent.ForkJoinPool(1);
-        try {
-            d.registerPool(pool, "fork-pool", 1);
-            d.recordFork(pool, "fork-pool", "task1");
-            d.recordForkWithoutJoin("fork-pool", "task1");
-            return d.analyze();
-        } finally {
-            pool.shutdownNow();
-        }
+                var d = new ForkJoinPoolDetector();
+                var pool = new java.util.concurrent.ForkJoinPool(1);
+                try {
+                    d.registerPool(pool, "fork-pool", 1);
+                    d.recordFork(pool, "fork-pool", "task1");
+                    d.recordForkWithoutJoin("fork-pool", "task1");
+                    return d.analyze();
+                } finally {
+                    pool.shutdownNow();
+                }
             }),
             new Path("GathererConcurrencyMisuseDetector", "a combiner-less gatherer integrated on two threads", () -> {
-        var d = new GathererConcurrencyMisuseDetector();
-        d.registerGatherer("g", false, true);
-        onTwoThreads(() -> d.recordIntegrate("g", Thread.currentThread()),
-                () -> d.recordIntegrate("g", Thread.currentThread()));
-        return d.analyze();
+                var d = new GathererConcurrencyMisuseDetector();
+                d.registerGatherer("g", false, true);
+                onTwoThreads(() -> d.recordIntegrate("g", Thread.currentThread()),
+                        () -> d.recordIntegrate("g", Thread.currentThread()));
+                return d.analyze();
             }),
             new Path("LazyConstantMisuseDetector", "a supplier re-entered on its own thread", () -> {
-        var d = new LazyConstantMisuseDetector();
-        d.recordComputeStart("CONFIG", Thread.currentThread());
-        d.recordComputeStart("CONFIG", Thread.currentThread());
-        return d.analyze();
+                var d = new LazyConstantMisuseDetector();
+                d.recordComputeStart("CONFIG", Thread.currentThread());
+                d.recordComputeStart("CONFIG", Thread.currentThread());
+                return d.analyze();
             }),
             new Path("ScopedValueMisuseDetector", "a get with no binding", () -> {
-        var d = new ScopedValueMisuseDetector();
-        d.recordGetCalled("USER_ID", Thread.currentThread());
-        return d.analyze();
+                var d = new ScopedValueMisuseDetector();
+                d.recordGetCalled("USER_ID", Thread.currentThread());
+                return d.analyze();
             }),
             new Path("StableValueMisuseDetector", "a read before any set", () -> {
-        var d = new StableValueMisuseDetector();
-        d.recordRead("CONFIG", Thread.currentThread());
-        return d.analyze();
+                var d = new StableValueMisuseDetector();
+                d.recordRead("CONFIG", Thread.currentThread());
+                return d.analyze();
             }),
             new Path("StampedLockDetector", "an optimistic read whose validate failed", () -> {
-        var d = new StampedLockDetector();
-        var lock = new java.util.concurrent.locks.StampedLock();
-        d.registerLock(lock, "stamped");
-        long stamp = lock.tryOptimisticRead();
-        d.recordOptimisticRead(lock, "stamped", stamp);
-        long write = lock.writeLock();
-        d.recordOptimisticValidation(lock, "stamped", stamp, false);
-        lock.unlockWrite(write);
-        return d.analyze();
+                var d = new StampedLockDetector();
+                var lock = new java.util.concurrent.locks.StampedLock();
+                d.registerLock(lock, "stamped");
+                long stamp = lock.tryOptimisticRead();
+                d.recordOptimisticRead(lock, "stamped", stamp);
+                long write = lock.writeLock();
+                d.recordOptimisticValidation(lock, "stamped", stamp, false);
+                lock.unlockWrite(write);
+                return d.analyze();
             }),
             // ---- structured in #801, batch 11 ----
             new Path("StructuredConcurrencyMisuseDetector", "a scope joined and never closed", () -> {
-        var d = new StructuredConcurrencyMisuseDetector();
-        String scope = d.recordScopeOpened("ShutdownOnSuccess");
-        d.recordSubtaskForked(scope);
-        d.recordJoinCalled(scope);
-        return d.analyze();
+                var d = new StructuredConcurrencyMisuseDetector();
+                String scope = d.recordScopeOpened("ShutdownOnSuccess");
+                d.recordSubtaskForked(scope);
+                d.recordJoinCalled(scope);
+                return d.analyze();
             }),
             new Path("StructuredTaskScopeMisuseDetector", "a fork after the join", () -> {
-        var d = new StructuredTaskScopeMisuseDetector();
-        Thread owner = Thread.currentThread();
-        d.recordScopeOpened("s", owner);
-        d.recordFork("s", "a", owner);
-        d.recordJoin("s", owner);
-        d.recordFork("s", "b", owner);
-        return d.analyze();
+                var d = new StructuredTaskScopeMisuseDetector();
+                Thread owner = Thread.currentThread();
+                d.recordScopeOpened("s", owner);
+                d.recordFork("s", "a", owner);
+                d.recordJoin("s", owner);
+                d.recordFork("s", "b", owner);
+                return d.analyze();
             }),
             new Path("ThreadFactoryDetector", "a factory thread with no exception handler", () -> {
-        var d = new ThreadFactoryDetector();
-        java.util.concurrent.ThreadFactory factory = r -> new Thread(r, "no-handler");
-        d.registerFactory(factory, "badFactory");
-        d.recordThreadCreated(factory, "badFactory", factory.newThread(() -> { }));
-        return d.analyze();
+                var d = new ThreadFactoryDetector();
+                java.util.concurrent.ThreadFactory factory = r -> new Thread(r, "no-handler");
+                d.registerFactory(factory, "badFactory");
+                d.recordThreadCreated(factory, "badFactory", factory.newThread(() -> { }));
+                return d.analyze();
             }),
             new Path("VirtualThreadContextLeakDetector", "a ThreadLocal set on a virtual thread and never removed", () -> {
-        var d = new VirtualThreadContextLeakDetector();
-        Thread vt = Thread.ofVirtual().start(() -> d.recordThreadLocalSet("REQUEST_ID", Thread.currentThread()));
-        try {
-            vt.join();
-        } catch (InterruptedException e) {
-            throw new IllegalStateException(e);
-        }
-        return d.analyze();
+                var d = new VirtualThreadContextLeakDetector();
+                Thread vt = Thread.ofVirtual().start(
+                        () -> d.recordThreadLocalSet("REQUEST_ID", Thread.currentThread()));
+                try {
+                    vt.join();
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+                return d.analyze();
             }),
             new Path("VirtualThreadCpuBoundTaskDetector", "a virtual-thread task over a zero threshold", () -> {
-        var d = new VirtualThreadCpuBoundTaskDetector(0);
-        Thread vt = Thread.ofVirtual().start(() -> {
-            String id = d.recordTaskStart("busy-task");
-            long until = System.nanoTime() + 2_000_000L;
-            while (System.nanoTime() < until) {
-                Thread.onSpinWait();
-            }
-            d.recordTaskEnd(id);
-        });
-        try {
-            vt.join();
-        } catch (InterruptedException e) {
-            throw new IllegalStateException(e);
-        }
-        return d.analyze();
+                var d = new VirtualThreadCpuBoundTaskDetector(0);
+                Thread vt = Thread.ofVirtual().start(() -> {
+                    String id = d.recordTaskStart("busy-task");
+                    long until = System.nanoTime() + 2_000_000L;
+                    while (System.nanoTime() < until) {
+                        Thread.onSpinWait();
+                    }
+                    d.recordTaskEnd(id);
+                });
+                try {
+                    vt.join();
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+                return d.analyze();
             }),
             // ---- structured in #801, batch 12 ----
             new Path("CyclicBarrierDetector", "a party arrived again at a broken barrier", () -> {
-        var d = new CyclicBarrierDetector();
-        var barrier = new java.util.concurrent.CyclicBarrier(2);
-        try {
-            barrier.await(1, java.util.concurrent.TimeUnit.NANOSECONDS);
-        } catch (Exception broken) {
-            // The timed-out await breaks the barrier, which is the premise.
-        }
-        d.registerBarrier(barrier, "reused-after-broken", 2);
-        d.recordArrival(barrier);
-        d.recordBroken(barrier);
-        d.recordAwait(barrier);
-        return d.analyze();
+                var d = new CyclicBarrierDetector();
+                var barrier = new java.util.concurrent.CyclicBarrier(2);
+                try {
+                    barrier.await(1, java.util.concurrent.TimeUnit.NANOSECONDS);
+                } catch (Exception broken) {
+                    // The timed-out await breaks the barrier, which is the premise.
+                }
+                d.registerBarrier(barrier, "reused-after-broken", 2);
+                d.recordArrival(barrier);
+                d.recordBroken(barrier);
+                d.recordAwait(barrier);
+                return d.analyze();
             }),
             new Path("PhaserDetector", "a phaser one party short", () -> {
-        var d = new PhaserDetector();
-        var phaser = new java.util.concurrent.Phaser(2);
-        d.registerPhaser(phaser, "short-phaser", 2);
-        d.recordArrive(phaser);
-        d.recordTimeout(phaser);
-        return d.analyze();
+                var d = new PhaserDetector();
+                var phaser = new java.util.concurrent.Phaser(2);
+                d.registerPhaser(phaser, "short-phaser", 2);
+                d.recordArrive(phaser);
+                d.recordTimeout(phaser);
+                return d.analyze();
             }),
             new Path("WaitTimeoutDetector", "a wait() with no timeout", () -> {
-        var d = new WaitTimeoutDetector();
-        d.recordInfiniteWait(new Object(), "infiniteLock", "worker-1");
-        return d.analyze();
+                var d = new WaitTimeoutDetector();
+                d.recordInfiniteWait(new Object(), "infiniteLock", "worker-1");
+                return d.analyze();
             }),
             new Path("ThreadLeakDetector", "a started thread still alive at analysis", () -> {
-        var d = new ThreadLeakDetector();
-        var release = new java.util.concurrent.CountDownLatch(1);
-        Thread leaked = new Thread(() -> {
-            try {
-                release.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }, "leaked-worker");
-        leaked.setDaemon(true);
-        leaked.start();
-        try {
-            d.recordThreadStart(leaked, "leaked-worker");
-            return d.analyze();
-        } finally {
-            release.countDown();
-        }
+                var d = new ThreadLeakDetector();
+                var release = new java.util.concurrent.CountDownLatch(1);
+                Thread leaked = new Thread(() -> {
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }, "leaked-worker");
+                leaked.setDaemon(true);
+                leaked.start();
+                try {
+                    d.recordThreadStart(leaked, "leaked-worker");
+                    return d.analyze();
+                } finally {
+                    release.countDown();
+                }
             }),
             // ---- structured in #801, batch 13 ----
             new Path("SleepInLockDetector", "a sleep while holding a monitor", () -> {
-        var d = new SleepInLockDetector();
-        d.startMonitoring();
-        Object monitor = new Object();
-        synchronized (monitor) {
-            d.recordSleep(100, monitor);
-        }
-        return d.analyze();
+                var d = new SleepInLockDetector();
+                d.startMonitoring();
+                Object monitor = new Object();
+                synchronized (monitor) {
+                    d.recordSleep(100, monitor);
+                }
+                return d.analyze();
             }),
             new Path("UnboundedQueueDetector", "a queue created without a bound", () -> {
-        var d = new UnboundedQueueDetector();
-        d.recordQueueCreation(new java.util.concurrent.LinkedBlockingQueue<String>(), "unbounded-queue", -1);
-        return d.analyze();
+                var d = new UnboundedQueueDetector();
+                d.recordQueueCreation(new java.util.concurrent.LinkedBlockingQueue<String>(), "unbounded-queue", -1);
+                return d.analyze();
             }),
             new Path("VolatileArrayDetector", "one array element written by two threads", () -> {
-        var d = new VolatileArrayDetector();
-        int[] array = new int[2];
-        d.registerArray(array, "shared-array", int.class);
-        onTwoThreads(() -> d.recordElementWrite(array, 0, "shared-array"),
-                () -> d.recordElementWrite(array, 0, "shared-array"));
-        return d.analyze();
+                var d = new VolatileArrayDetector();
+                int[] array = new int[2];
+                d.registerArray(array, "shared-array", int.class);
+                onTwoThreads(() -> d.recordElementWrite(array, 0, "shared-array"),
+                        () -> d.recordElementWrite(array, 0, "shared-array"));
+                return d.analyze();
             }),
             new Path("PipelineMonitor", "an event published and never processed", () -> {
-        var d = new PipelineMonitor();
-        d.registerStage("ingest");
-        d.recordEventPublished("ingest", "evt-1");
-        return d.analyze();
+                var d = new PipelineMonitor();
+                d.registerStage("ingest");
+                d.recordEventPublished("ingest", "evt-1");
+                return d.analyze();
             }),
             // ---- structured in #801, batch 14 ----
             new Path("ThreadStarvationDetector", "a task that waited past the threshold", () -> {
-        var d = new ThreadStarvationDetector();
-        // No task ever runs on it, so it starts no thread.
-        d.registerExecutor(java.util.concurrent.Executors.newSingleThreadExecutor(), "pool", 1);
-        d.setStarvationThresholdMs(10);
-        d.recordTaskStart("pool", System.nanoTime() - 1_000_000_000L);
-        return d.analyze();
+                var d = new ThreadStarvationDetector();
+                // No task ever runs on it, so it starts no thread.
+                d.registerExecutor(java.util.concurrent.Executors.newSingleThreadExecutor(), "pool", 1);
+                d.setStarvationThresholdMs(10);
+                d.recordTaskStart("pool", System.nanoTime() - 1_000_000_000L);
+                return d.analyze();
             }),
             new Path("VirtualThreadCarrierExhaustionDetector", "as many blocked virtual threads as carriers", () -> {
-        var d = new VirtualThreadCarrierExhaustionDetector(1);
-        d.recordBlockingStart("lock-1", Thread.ofVirtual().unstarted(() -> { }));
-        return d.analyze();
+                var d = new VirtualThreadCarrierExhaustionDetector(1);
+                d.recordBlockingStart("lock-1", Thread.ofVirtual().unstarted(() -> { }));
+                return d.analyze();
             }),
             new Path("ReadWriteLockMonitor", "twenty reads per write", () -> {
-        var d = new ReadWriteLockMonitor();
-        Object lock = new Object();
-        d.registerLock(lock, "read-heavy");
-        for (int i = 0; i < 20; i++) {
-            d.recordReadLockAcquired(lock, 0L);
-            d.recordReadLockReleased(lock);
-        }
-        d.recordWriteLockAcquired(lock, 0L);
-        d.recordWriteLockReleased(lock);
-        return d.analyze();
+                var d = new ReadWriteLockMonitor();
+                Object lock = new Object();
+                d.registerLock(lock, "read-heavy");
+                for (int i = 0; i < 20; i++) {
+                    d.recordReadLockAcquired(lock, 0L);
+                    d.recordReadLockReleased(lock);
+                }
+                d.recordWriteLockAcquired(lock, 0L);
+                d.recordWriteLockReleased(lock);
+                return d.analyze();
             }),
             new Path("ScheduledExecutorDetector", "an executor never shut down", () -> {
-        var d = new ScheduledExecutorDetector();
-        var executor = java.util.concurrent.Executors.newScheduledThreadPool(1);
-        try {
-            d.registerExecutor(executor, "never-shut-down", 1);
-            d.recordSchedule(executor, "never-shut-down", "task1");
-            return d.analyze();
-        } finally {
-            executor.shutdownNow();
-        }
+                var d = new ScheduledExecutorDetector();
+                var executor = java.util.concurrent.Executors.newScheduledThreadPool(1);
+                try {
+                    d.registerExecutor(executor, "never-shut-down", 1);
+                    d.recordSchedule(executor, "never-shut-down", "task1");
+                    return d.analyze();
+                } finally {
+                    executor.shutdownNow();
+                }
             }),
             // ---- structured in #801, batch 15 ----
             new Path("ExchangerDetector", "an exchange started and never ended", () -> {
-        var d = new ExchangerDetector();
-        var exchanger = new java.util.concurrent.Exchanger<String>();
-        d.registerExchanger(exchanger, "orphaned-exchanger");
-        d.recordExchangeStart(exchanger, "orphaned-exchanger");
-        return d.analyze();
+                var d = new ExchangerDetector();
+                var exchanger = new java.util.concurrent.Exchanger<String>();
+                d.registerExchanger(exchanger, "orphaned-exchanger");
+                d.recordExchangeStart(exchanger, "orphaned-exchanger");
+                return d.analyze();
             }),
             new Path("CompletableFutureCompletionLeakDetector", "a future created and never completed", () -> {
-        var d = new CompletableFutureCompletionLeakDetector();
-        d.recordFutureCreated(new java.util.concurrent.CompletableFuture<String>(), "leaked-future");
-        return d.analyze();
+                var d = new CompletableFutureCompletionLeakDetector();
+                d.recordFutureCreated(new java.util.concurrent.CompletableFuture<String>(), "leaked-future");
+                return d.analyze();
             }),
             new Path("MissedSignalDetector", "a wait after a notify nobody heard", () -> {
-        var d = new MissedSignalDetector();
-        d.recordNotify("dataReady");
-        d.recordWait("dataReady");
-        d.recordWakeup("dataReady");
-        return d.analyze();
+                var d = new MissedSignalDetector();
+                d.recordNotify("dataReady");
+                d.recordWait("dataReady");
+                d.recordWakeup("dataReady");
+                return d.analyze();
             }),
             new Path("MemoryOrderingMonitor", "a read disagreeing with the preceding write", () -> {
-        var d = new MemoryOrderingMonitor();
-        Thread writer = new Thread(() -> d.recordWrite("flag", true), "writer");
-        writer.start();
-        writer.join();
-        Thread reader = new Thread(() -> d.recordRead("flag", false), "reader");
-        reader.start();
-        reader.join();
-        return d.analyze();
+                var d = new MemoryOrderingMonitor();
+                Thread writer = new Thread(() -> d.recordWrite("flag", true), "writer");
+                writer.start();
+                writer.join();
+                Thread reader = new Thread(() -> d.recordRead("flag", false), "reader");
+                reader.start();
+                reader.join();
+                return d.analyze();
             }));
 
     /**
