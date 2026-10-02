@@ -56,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the severities it chose were ignored, not even under strict mode. One stderr line per report type
   now names the type and the fix (open its package to the library), in every mode, without failing.
 
+- **Guardrail drift can fail before a push (#869).** The CI Guardrail Drift check moved into
+  `tools/guardrail-drift.sh`, and `.pre-commit-config.yaml` runs the same script as a local
+  `guardrail-drift` hook whenever a file that can change the guardrails is staged. The hook ignores
+  whitespace-only differences, which a regeneration on another OS can produce; CI stays byte-exact.
+  `GuardrailDriftWiringTest` holds both callers to the one script.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

@@ -62,31 +62,11 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # test-compile, not compile: the processor also runs over the test sources, and the
-      # generated files describe both. A gate that only compiled main would pass a tree whose
-      # test-source annotations had drifted.
-      - name: Regenerate the guardrail files from the annotations
-        run: mvn -B -q clean test-compile -Djacoco.skip=true
-
-      - name: Fail if the committed guardrail files differ from the regenerated ones
-        run: |
-          # Scoped to the generated files. Build outputs elsewhere are gitignored, but a
-          # tracked build artifact appearing here would be a real finding too.
-          paths="CLAUDE.md GEMINI.md AGENTS.md .claudeignore .vibetags-roles .vibetags-root-index .gemini
-                 .vibetags-mod-async-test-lib .vibetags-mod-async-test-agent .vibetags-mod-async-test-analysis
-                 async-test-lib/CLAUDE.md async-test-lib/.claudeignore async-test-lib/.vibetags-roles async-test-lib/.claude/rules
-                 async-test-agent/CLAUDE.md async-test-agent/.claude/rules
-                 async-test-analysis/CLAUDE.md async-test-analysis/.claude/rules"
-          # shellcheck disable=SC2086
-          if [ -n "$(git status --porcelain -- $paths)" ]; then
-            echo "::error::Guardrail files are out of date with the annotations. Run a clean build (mvn clean test-compile) and commit the regenerated files; never edit inside VIBETAGS-START/END by hand."
-            # shellcheck disable=SC2086
-            git status --porcelain -- $paths
-            # shellcheck disable=SC2086
-            git --no-pager diff -- $paths
-            exit 1
-          fi
-          echo "Guardrail files regenerate byte-for-byte to the committed files."
+      # The regeneration, the path list and the diff live in one script that the local
+      # pre-commit hook runs too, so the two cannot disagree on which files count (#869).
+      # No options here: CI is byte-exact.
+      - name: Regenerate the guardrail files and fail if they differ from the committed ones
+        run: sh tools/guardrail-drift.sh
 
   locked-files:
     name: Locked Files Guard
