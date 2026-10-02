@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -292,7 +295,7 @@ public class StructuredTaskScopeMisuseDetector {
      * @return a report describing detected issues
      */
     public StructuredTaskScopeMisuseReport analyze() {
-        return new StructuredTaskScopeMisuseReport(
+        StructuredTaskScopeMisuseReport report801 = new StructuredTaskScopeMisuseReport(
             new ArrayList<>(forkAfterJoinReports),
             new ArrayList<>(resultBeforeJoinReports),
             new ArrayList<>(confinementReports),
@@ -302,6 +305,8 @@ public class StructuredTaskScopeMisuseDetector {
             totalScopes.get(),
             totalForks.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -313,6 +318,39 @@ public class StructuredTaskScopeMisuseDetector {
         private final List<String> confinementIssues;
         private final List<String> missingJoinIssues;
         private final List<String> resultAfterTimeoutIssues;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : forkAfterJoinIssues) {
+                    structuredViolations.add(new Violation("StructuredTaskScopeMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : resultBeforeJoinIssues) {
+                    structuredViolations.add(new Violation("StructuredTaskScopeMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : confinementIssues) {
+                    structuredViolations.add(new Violation("StructuredTaskScopeMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : missingJoinIssues) {
+                    structuredViolations.add(new Violation("StructuredTaskScopeMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : resultAfterTimeoutIssues) {
+                    structuredViolations.add(new Violation("StructuredTaskScopeMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final List<String> timeoutSwallowedWarnings;
         private final int totalScopes;
         private final int totalForks;

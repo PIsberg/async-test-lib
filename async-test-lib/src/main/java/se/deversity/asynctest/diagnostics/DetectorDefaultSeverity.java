@@ -71,7 +71,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.PHASER, IssueSeverity.CRITICAL),
             entry(DetectorType.EXCHANGER, IssueSeverity.CRITICAL),
             entry(DetectorType.SCHEDULED_EXECUTOR, IssueSeverity.MEDIUM),
-            entry(DetectorType.THREAD_FACTORY, IssueSeverity.HIGH),
             entry(DetectorType.THREAD_LEAKS, IssueSeverity.MEDIUM),
             entry(DetectorType.SLEEP_IN_LOCK, IssueSeverity.MEDIUM),
             entry(DetectorType.UNBOUNDED_QUEUE, IssueSeverity.MEDIUM),

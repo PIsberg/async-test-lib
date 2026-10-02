@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -169,13 +172,15 @@ public class VirtualThreadContextLeakDetector {
             }
         }
 
-        return new VirtualThreadContextLeakReport(
+        VirtualThreadContextLeakReport report801 = new VirtualThreadContextLeakReport(
             leakReports,
             new ArrayList<>(inheritableInVirtualReports),
             highCountWarnings,
             totalSets.get(),
             totalRemoves.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     // ---- Helpers ----
@@ -190,6 +195,27 @@ public class VirtualThreadContextLeakDetector {
     public static class VirtualThreadContextLeakReport {
         private final List<String> leaks;
         private final List<String> inheritableInVirtualIssues;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : leaks) {
+                    structuredViolations.add(new Violation("VirtualThreadContextLeak", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : inheritableInVirtualIssues) {
+                    structuredViolations.add(new Violation("VirtualThreadContextLeak", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final List<String> highCountWarnings;
         private final int totalSets;
         private final int totalRemoves;

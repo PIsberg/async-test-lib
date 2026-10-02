@@ -97,11 +97,9 @@ class StructuredViolationCoverageTest {
             "ConditionVariableDetector", "ConstructorSafetyValidator", "CyclicBarrierDetector", "ExchangerDetector",
             "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
-            "ReentrantLockDetector", "ScheduledExecutorDetector", "SleepInLockDetector", "StructuredConcurrencyMisuseDetector",
-            "StructuredTaskScopeMisuseDetector", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
+            "ReentrantLockDetector", "ScheduledExecutorDetector", "SleepInLockDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
             "UnboundedQueueDetector",
-            "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
-            "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector");
+            "VirtualThreadCarrierExhaustionDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector");
 
     /**
      * Detectors whose structured severity must equal what their text alone resolves to.
@@ -1119,6 +1117,57 @@ class StructuredViolationCoverageTest {
         d.recordOptimisticValidation(lock, "stamped", stamp, false);
         lock.unlockWrite(write);
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 11 ----
+            new Path("StructuredConcurrencyMisuseDetector", "a scope joined and never closed", () -> {
+        var d = new StructuredConcurrencyMisuseDetector();
+        String scope = d.recordScopeOpened("ShutdownOnSuccess");
+        d.recordSubtaskForked(scope);
+        d.recordJoinCalled(scope);
+        return d.analyze();
+            }),
+            new Path("StructuredTaskScopeMisuseDetector", "a fork after the join", () -> {
+        var d = new StructuredTaskScopeMisuseDetector();
+        Thread owner = Thread.currentThread();
+        d.recordScopeOpened("s", owner);
+        d.recordFork("s", "a", owner);
+        d.recordJoin("s", owner);
+        d.recordFork("s", "b", owner);
+        return d.analyze();
+            }),
+            new Path("ThreadFactoryDetector", "a factory thread with no exception handler", () -> {
+        var d = new ThreadFactoryDetector();
+        java.util.concurrent.ThreadFactory factory = r -> new Thread(r, "no-handler");
+        d.registerFactory(factory, "badFactory");
+        d.recordThreadCreated(factory, "badFactory", factory.newThread(() -> { }));
+        return d.analyze();
+            }),
+            new Path("VirtualThreadContextLeakDetector", "a ThreadLocal set on a virtual thread and never removed", () -> {
+        var d = new VirtualThreadContextLeakDetector();
+        Thread vt = Thread.ofVirtual().start(() -> d.recordThreadLocalSet("REQUEST_ID", Thread.currentThread()));
+        try {
+            vt.join();
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+        return d.analyze();
+            }),
+            new Path("VirtualThreadCpuBoundTaskDetector", "a virtual-thread task over a zero threshold", () -> {
+        var d = new VirtualThreadCpuBoundTaskDetector(0);
+        Thread vt = Thread.ofVirtual().start(() -> {
+            String id = d.recordTaskStart("busy-task");
+            long until = System.nanoTime() + 2_000_000L;
+            while (System.nanoTime() < until) {
+                Thread.onSpinWait();
+            }
+            d.recordTaskEnd(id);
+        });
+        try {
+            vt.join();
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+        return d.analyze();
             }));
 
     /**
@@ -1198,7 +1247,12 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("LazyConstantMisuseDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("ScopedValueMisuseDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("StableValueMisuseDetector", IssueSeverity.CRITICAL),
-            java.util.Map.entry("StampedLockDetector", IssueSeverity.HIGH));
+            java.util.Map.entry("StampedLockDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("StructuredConcurrencyMisuseDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("StructuredTaskScopeMisuseDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("ThreadFactoryDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("VirtualThreadContextLeakDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("VirtualThreadCpuBoundTaskDetector", IssueSeverity.MEDIUM));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")
