@@ -75,6 +75,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   writer. Speculations now nest per thread (up to 8): a validated inner one hands its reads, under
   its lock, to the enclosing one, and a new speculation closes only an open one on the same lock.
 
+- **The agent records every `Calendar` mutator, not only `get` and `set` (#820).** With
+  `collections=true`, a shared calendar moved by `add`, `roll`, `clear`, `setTime`,
+  `setTimeInMillis` or `setTimeZone` produced no record at all. Those call sites are now woven, and
+  each hook records the call the way its effect calls for, so a `setTime` under the write lock leaves
+  the gets after it reads.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

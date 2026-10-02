@@ -267,6 +267,15 @@ class AgentSharedInstanceHooksTest {
         AgentSharedInstanceHooks.set(cal, Calendar.YEAR, 2020);
         AgentSharedInstanceHooks.set(cal, 2021, Calendar.SEPTEMBER, 2);
         AgentSharedInstanceHooks.set(cal, 2022, Calendar.SEPTEMBER, 2, 10, 30);
+        // The mutators woven since #820, before the last set so the year ends at 2026.
+        AgentSharedInstanceHooks.add(cal, Calendar.DAY_OF_MONTH, 1);
+        AgentSharedInstanceHooks.roll(cal, Calendar.MONTH, 1);
+        AgentSharedInstanceHooks.roll(cal, Calendar.HOUR_OF_DAY, true);
+        AgentSharedInstanceHooks.setTimeInMillis(cal, 0L);
+        AgentSharedInstanceHooks.setTime(cal, new java.util.Date(0L));
+        AgentSharedInstanceHooks.setTimeZone(cal, java.util.TimeZone.getTimeZone("UTC"));
+        AgentSharedInstanceHooks.clear(cal, Calendar.HOUR_OF_DAY);
+        AgentSharedInstanceHooks.clear(cal);
         AgentSharedInstanceHooks.set(cal, 2026, Calendar.SEPTEMBER, 2, 10, 30, 0);
     }
 
@@ -394,7 +403,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(41, hooks,
+        assertEquals(49, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "

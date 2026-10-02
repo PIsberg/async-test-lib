@@ -444,6 +444,17 @@ final class CollectionAccessWeaver {
                     int.class, int.class, int.class, int.class, int.class),
             Entry.call(Calendar.class, "set", "set",
                     int.class, int.class, int.class, int.class, int.class, int.class),
+            // Every other mutator moves the calendar too, and on the agent path none of them was
+            // recorded: a shared calendar driven by add or setTime was invisible (#820). The hook
+            // records each the way its effect on the fields calls for.
+            Entry.call(Calendar.class, "add", "add", int.class, int.class),
+            Entry.call(Calendar.class, "roll", "roll", int.class, int.class),
+            Entry.call(Calendar.class, "roll", "roll", int.class, boolean.class),
+            Entry.call(Calendar.class, "clear", "clear"),
+            Entry.call(Calendar.class, "clear", "clear", int.class),
+            Entry.call(Calendar.class, "setTime", "setTime", java.util.Date.class),
+            Entry.call(Calendar.class, "setTimeInMillis", "setTimeInMillis", long.class),
+            Entry.call(Calendar.class, "setTimeZone", "setTimeZone", java.util.TimeZone.class),
             // StringBuilder is final, and every append overload reads count, writes the array
             // and writes count back. The weaver matches an exact descriptor, so listing only two
             // of them left a shared builder appended to with a char - or an Object, or a

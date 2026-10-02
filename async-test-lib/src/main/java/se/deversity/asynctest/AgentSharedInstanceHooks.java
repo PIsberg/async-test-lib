@@ -443,6 +443,120 @@ public final class AgentSharedInstanceHooks {
     }
 
     /**
+     * Weaves {@code Calendar.add(int, int)} (#820).
+     *
+     * <p>Recorded with the field, so an add to a field below {@code MONTH}, which the JDK carries
+     * out as a {@code setTimeInMillis}, leaves the next {@code get} a read.
+     *
+     * @param receiver the calendar
+     * @param field    the field to add to
+     * @param amount   the amount to add
+     */
+    public static void add(Calendar receiver, int field, int amount) {
+        CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
+        if (detector != null) {
+            detector.recordAdd(receiver, receiver.getClass().getName(), field);
+        }
+        receiver.add(field, amount);
+    }
+
+    /**
+     * Weaves {@code Calendar.roll(int, int)} (#820): recorded as an add that leaves the fields to
+     * recompute, which is conservative for a roll of an hour field.
+     *
+     * @param receiver the calendar
+     * @param field    the field to roll
+     * @param amount   the signed amount to roll by
+     */
+    public static void roll(Calendar receiver, int field, int amount) {
+        recordCalendarAdd(receiver);
+        receiver.roll(field, amount);
+    }
+
+    /**
+     * Weaves {@code Calendar.roll(int, boolean)} (#820), recorded as {@link #roll(Calendar, int, int)} is.
+     *
+     * @param receiver the calendar
+     * @param field    the field to roll
+     * @param up       whether to roll up rather than down
+     */
+    public static void roll(Calendar receiver, int field, boolean up) {
+        recordCalendarAdd(receiver);
+        receiver.roll(field, up);
+    }
+
+    /**
+     * Weaves {@code Calendar.clear()} (#820): every field is left unset, so the next {@code get}
+     * recomputes them, as after a {@code set}.
+     *
+     * @param receiver the calendar
+     */
+    public static void clear(Calendar receiver) {
+        recordCalendarSet(receiver);
+        receiver.clear();
+    }
+
+    /**
+     * Weaves {@code Calendar.clear(int)} (#820), recorded as {@link #clear(Calendar)} is.
+     *
+     * @param receiver the calendar
+     * @param field    the field to clear
+     */
+    public static void clear(Calendar receiver, int field) {
+        recordCalendarSet(receiver);
+        receiver.clear(field);
+    }
+
+    /**
+     * Weaves {@code Calendar.setTime(Date)} (#820): a write that computes every field at once, so
+     * the next {@code get} only reads.
+     *
+     * @param receiver the calendar
+     * @param date     the time to set
+     */
+    public static void setTime(Calendar receiver, java.util.Date date) {
+        recordCalendarSetTime(receiver);
+        receiver.setTime(date);
+    }
+
+    /**
+     * Weaves {@code Calendar.setTimeInMillis(long)} (#820), recorded as {@link #setTime} is.
+     *
+     * @param receiver the calendar
+     * @param millis   the time to set, in milliseconds since the epoch
+     */
+    public static void setTimeInMillis(Calendar receiver, long millis) {
+        recordCalendarSetTime(receiver);
+        receiver.setTimeInMillis(millis);
+    }
+
+    /**
+     * Weaves {@code Calendar.setTimeZone(TimeZone)} (#820): the fields are left to recompute in
+     * the new zone, so the next {@code get} writes them, as after a {@code set}.
+     *
+     * @param receiver the calendar
+     * @param zone     the time zone to set
+     */
+    public static void setTimeZone(Calendar receiver, java.util.TimeZone zone) {
+        recordCalendarSet(receiver);
+        receiver.setTimeZone(zone);
+    }
+
+    private static void recordCalendarAdd(Calendar receiver) {
+        CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
+        if (detector != null) {
+            detector.recordAdd(receiver, receiver.getClass().getName());
+        }
+    }
+
+    private static void recordCalendarSetTime(Calendar receiver) {
+        CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
+        if (detector != null) {
+            detector.recordSetTime(receiver, receiver.getClass().getName());
+        }
+    }
+
+    /**
      * Weaves {@code StringBuilder.append(String)}.
      *
      * @param receiver the builder

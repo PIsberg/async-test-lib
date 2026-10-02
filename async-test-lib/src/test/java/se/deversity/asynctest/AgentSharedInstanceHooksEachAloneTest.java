@@ -175,6 +175,9 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == Locale.class) {
             return Locale.ROOT;
         }
+        if (type == java.util.TimeZone.class) {
+            return java.util.TimeZone.getTimeZone("UTC");
+        }
         if (type == Object[].class) {
             return new Object[] {"x"};
         }
