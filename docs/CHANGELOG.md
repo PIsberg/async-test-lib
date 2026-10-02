@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rounds. The runner does not wire this class, so a test that drives it across rounds calls the
   method itself.
 
+- **An optimistic read on a second `StampedLock` no longer closes the first (#823).** Under the
+  agent, `tryOptimisticRead` on another lock while one speculation was open delivered the first's
+  reads as plain reads, so a reader that validated both, correctly, was reported against the
+  writer. Speculations now nest per thread (up to 8): a validated inner one hands its reads, under
+  its lock, to the enclosing one, and a new speculation closes only an open one on the same lock.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

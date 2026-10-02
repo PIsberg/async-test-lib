@@ -596,6 +596,77 @@ class TelemetryBridgeTest {
                         + "the end of the run (#740)");
     }
 
+    /**
+     * The point's writer as in {@link #optimisticReadReported}, and a reader that opens a second
+     * speculation on an unrelated lock while the first is still open, then validates each (#823).
+     *
+     * @param outerHolds whether the point's lock validates; a writer runs in between when not
+     * @return whether AtomicityValidator reported the point's field
+     */
+    private static boolean nestedOptimisticReadReported(boolean outerHolds) throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock pointLock = new java.util.concurrent.locks.StampedLock();
+        java.util.concurrent.locks.StampedLock other = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        java.util.concurrent.ExecutorService readerThread =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        Runnable write = () -> {
+            long me = Thread.currentThread().threadId();
+            long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(pointLock);
+            try {
+                TelemetryRegistry.recordAccess(point, null, null, me, "Point.x", true, false,
+                        Integer.MIN_VALUE, false, false);
+                point.x++;
+            } finally {
+                se.deversity.asynctest.AgentLockHooks.unlockWrite(pointLock, stamp);
+            }
+        };
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(write);
+            writer.start();
+            writer.join();
+            long[] stamps = new long[2];
+            readerThread.submit(() -> {
+                stamps[0] = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(pointLock);
+                TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                        "Point.x", false, false, Integer.MIN_VALUE, false, false);
+                stamps[1] = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(other);
+                se.deversity.asynctest.AgentLockHooks.validate(other, stamps[1]);
+            }).get(10, TimeUnit.SECONDS);
+            if (!outerHolds) {
+                Thread second = new Thread(write);
+                second.start();
+                second.join();
+            }
+            boolean[] used = new boolean[1];
+            readerThread.submit(() -> {
+                used[0] = se.deversity.asynctest.AgentLockHooks.validate(pointLock, stamps[0]);
+            }).get(10, TimeUnit.SECONDS);
+            assertEquals(outerHolds, used[0], "the premise: the point's validate holds only with no writer");
+            TelemetryRegistry.flush();
+            return av.analyzeAtomicity().unsafeFieldAccesses.stream()
+                    .anyMatch(line -> line.startsWith("Point.x"));
+        } finally {
+            readerThread.shutdownNow();
+        }
+    }
+
+    @Test
+    void aSecondLocksSpeculationNestsInsteadOfClosingTheFirst() throws Exception {
+        assertFalse(nestedOptimisticReadReported(true),
+                "the point was read under its lock's optimistic stamp, a speculation on another "
+                        + "lock opened and closed inside it, and the point's validate then held. The "
+                        + "read is one a shared-mode reader would have made; closing the outer "
+                        + "speculation when the inner one opened delivered it as a plain read (#823)");
+    }
+
+    @Test
+    void aNestedSpeculationsFailedOuterValidationStillDropsItsReads() throws Exception {
+        assertFalse(nestedOptimisticReadReported(false),
+                "the point's validate failed, so the reader discards what it read under that "
+                        + "stamp, nested speculation or not; a read nobody uses is no access (#740)");
+    }
+
     @Test
     void aPollFromAConcurrentQueueIsAnOwnershipHandOffWithOrWithoutALock()
             throws InterruptedException {

@@ -231,7 +231,9 @@ Three limits worth knowing before switching it on:
   whether it held: the field reads in between count as reads under the lock in shared mode when
   `validate` returned `true`, are dropped when it returned `false`, since the caller discards what
   it read, and count as plain reads when nothing validated them before the thread's next
-  speculation, its next write or the end of the round (#740). A lock acquired only inside unwoven
+  speculation on the same lock, its next write or the end of the round (#740). A speculation on
+  a second lock nests inside the first instead of closing it, and reads it validates are judged
+  by the enclosing one's `validate` as well (#823). A lock acquired only inside unwoven
   code still needs `AsyncTestContext.holdingLock(...)`.
 - **Spinlocks and hand-offs are exclusion too (with `fields=true`).** A won
   `VarHandle.compareAndSet(this, 0, 1)` on an `int` field is a spinlock: the weaver replaces the
