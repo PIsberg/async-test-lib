@@ -94,13 +94,10 @@ class StructuredViolationCoverageTest {
     private static final Set<String> TEXT_ONLY = Set.of(
             "ABAProblemDetector",
             "CompletableFutureCompletionLeakDetector",
-            "ConditionVariableDetector", "ConstructorSafetyValidator", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
-            "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
-            "GathererConcurrencyMisuseDetector", "LazyConstantMisuseDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector", "PhaserDetector",
+            "ConditionVariableDetector", "ConstructorSafetyValidator", "CyclicBarrierDetector", "ExchangerDetector",
+            "FalseSharingDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
-            "ReentrantLockDetector", "ScheduledExecutorDetector",
-            "ScopedValueMisuseDetector", "SleepInLockDetector", "StableValueMisuseDetector",
-            "StampedLockDetector", "StructuredConcurrencyMisuseDetector",
+            "ReentrantLockDetector", "ScheduledExecutorDetector", "SleepInLockDetector", "StructuredConcurrencyMisuseDetector",
             "StructuredTaskScopeMisuseDetector", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
             "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
@@ -1065,6 +1062,63 @@ class StructuredViolationCoverageTest {
         d.recordCountDown(latch);
         d.recordTimeout(latch);
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 10 ----
+            new Path("DoubleCheckedLockingDetector", "a non-volatile double-checked field", () -> {
+        var d = new DoubleCheckedLockingDetector();
+        d.registerDCL("brokenInstance", false, true, true, true);
+        return d.analyze();
+            }),
+            new Path("FinalFieldMutationDetector", "a final field written reflectively", () -> {
+        var d = new FinalFieldMutationDetector();
+        d.recordMutation("Config.MAX_RETRIES", Thread.currentThread());
+        return d.analyze();
+            }),
+            new Path("ForkJoinPoolDetector", "a forked task never joined", () -> {
+        var d = new ForkJoinPoolDetector();
+        var pool = new java.util.concurrent.ForkJoinPool(1);
+        try {
+            d.registerPool(pool, "fork-pool", 1);
+            d.recordFork(pool, "fork-pool", "task1");
+            d.recordForkWithoutJoin("fork-pool", "task1");
+            return d.analyze();
+        } finally {
+            pool.shutdownNow();
+        }
+            }),
+            new Path("GathererConcurrencyMisuseDetector", "a combiner-less gatherer integrated on two threads", () -> {
+        var d = new GathererConcurrencyMisuseDetector();
+        d.registerGatherer("g", false, true);
+        onTwoThreads(() -> d.recordIntegrate("g", Thread.currentThread()),
+                () -> d.recordIntegrate("g", Thread.currentThread()));
+        return d.analyze();
+            }),
+            new Path("LazyConstantMisuseDetector", "a supplier re-entered on its own thread", () -> {
+        var d = new LazyConstantMisuseDetector();
+        d.recordComputeStart("CONFIG", Thread.currentThread());
+        d.recordComputeStart("CONFIG", Thread.currentThread());
+        return d.analyze();
+            }),
+            new Path("ScopedValueMisuseDetector", "a get with no binding", () -> {
+        var d = new ScopedValueMisuseDetector();
+        d.recordGetCalled("USER_ID", Thread.currentThread());
+        return d.analyze();
+            }),
+            new Path("StableValueMisuseDetector", "a read before any set", () -> {
+        var d = new StableValueMisuseDetector();
+        d.recordRead("CONFIG", Thread.currentThread());
+        return d.analyze();
+            }),
+            new Path("StampedLockDetector", "an optimistic read whose validate failed", () -> {
+        var d = new StampedLockDetector();
+        var lock = new java.util.concurrent.locks.StampedLock();
+        d.registerLock(lock, "stamped");
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticRead(lock, "stamped", stamp);
+        long write = lock.writeLock();
+        d.recordOptimisticValidation(lock, "stamped", stamp, false);
+        lock.unlockWrite(write);
+        return d.analyze();
             }));
 
     /**
@@ -1136,7 +1190,15 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("OptimisticReadValidationDetector", IssueSeverity.HIGH),
             java.util.Map.entry("SynchronizedCollectionIterationDetector", IssueSeverity.HIGH),
             java.util.Map.entry("WeakReferenceRaceDetector", IssueSeverity.HIGH),
-            java.util.Map.entry("CountDownLatchDetector", IssueSeverity.CRITICAL));
+            java.util.Map.entry("CountDownLatchDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("DoubleCheckedLockingDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("FinalFieldMutationDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ForkJoinPoolDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("GathererConcurrencyMisuseDetector", IssueSeverity.LOW),
+            java.util.Map.entry("LazyConstantMisuseDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("ScopedValueMisuseDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("StableValueMisuseDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("StampedLockDetector", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

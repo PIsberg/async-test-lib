@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -126,11 +131,13 @@ public class ForkJoinPoolDetector {
      * @return the findings this detector collected during the run
      */
     public ForkJoinPoolReport analyze() {
-        return new ForkJoinPoolReport(
+        ForkJoinPoolReport report801 = new ForkJoinPoolReport(
             forkedWithoutJoin,
             exceptionsInTasks,
             taskStealCount.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -139,6 +146,27 @@ public class ForkJoinPoolDetector {
     public static class ForkJoinPoolReport {
         private final Set<String> forkedWithoutJoin;
         private final Set<String> exceptionsInTasks;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : forkedWithoutJoin) {
+                    structuredViolations.add(new Violation("ForkJoinPool", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : exceptionsInTasks) {
+                    structuredViolations.add(new Violation("ForkJoinPool", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final int taskStealCount;
         /**
          * Creates a ForkJoinPoolReport.
