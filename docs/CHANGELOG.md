@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `LinkedBlockingDeque.addAll` that overflows part way no longer publishes what it refused
+  (#806).** A queue with its own `addAll` keeps that call under the agent, and the hook released
+  every element first and withdrew nothing when the call threw, so a write to a refused element read
+  as ordered for a consumer that never received it through the queue. When such a call throws, every
+  element the queue does not hold afterwards now withdraws its release.
+
 - **Worker thread names no longer repeat across runs (#861).** Every run numbered its workers
   `async-test-worker-0` upward, so two `@AsyncTest` methods running in parallel had workers of the
   same name. `ReentrantLockDetector` confirms a lock's holder by name, and could report a lock as

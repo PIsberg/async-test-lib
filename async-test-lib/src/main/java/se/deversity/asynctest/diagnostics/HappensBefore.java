@@ -104,10 +104,10 @@ import org.jspecify.annotations.Nullable;
  *       sharing a simple name, a field and the one it shadows, share a clock.
  *   <li>A withdrawn release was visible for the length of the refused call, and one another
  *       thread folded into its own release in that time stays. An {@code addAll} into a queue
- *       that implements it itself, a {@code LinkedBlockingDeque} or a
- *       {@code ConcurrentLinkedQueue}, and throws part way withdraws nothing; one that inherits
- *       {@code AbstractQueue}'s is offered element by element and withdraws the refused one
- *       (#806).
+ *       that inherits {@code AbstractQueue}'s is offered element by element and withdraws the
+ *       refused one. One into a queue that implements it itself, a {@code LinkedBlockingDeque} or
+ *       a {@code ConcurrentLinkedQueue}, releases the batch first and, when it throws part way,
+ *       withdraws every element the queue does not hold afterwards, judged by identity (#806).
  *   <li>A clock keeps at most 256 threads. Past that the entries of the lowest
  *       thread ids go, which loses edges and never adds one; a thread never loses its own.
  *   <li>A submitted task's end is found by the future its submitter was handed, among the last

@@ -267,7 +267,9 @@ public final class AgentCollectionHooks {
      * {@code BlockingQueue} in the JDK among them, is filled here one {@code add} at a time, which
      * is what its own {@code addAll} does, so an element it refuses withdraws its release and the
      * ones after it are never offered (#806). A queue with an {@code addAll} of its own keeps it,
-     * and an exception out of that withdraws nothing.
+     * since it may link the batch in a way no loop here reproduces; when that call throws part way,
+     * as {@code LinkedBlockingDeque}'s does past its capacity, every offered element the queue
+     * does not hold afterwards withdraws its release ({@link #withdrawWhatDidNotGoIn}).
      *
      * @param receiver the collection
      * @param elements the elements to add
@@ -306,8 +308,38 @@ public final class AgentCollectionHooks {
             } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
                 // addAll below reads the same source and reports what is wrong with it.
             }
+            try {
+                return receiver.addAll(elements);
+            } catch (RuntimeException partWay) {
+                withdrawWhatDidNotGoIn(receiver, elements);
+                throw partWay;
+            }
         }
         return receiver.addAll(elements);
+    }
+
+    /**
+     * Withdraws the release of every element of {@code elements} that {@code queue} does not hold,
+     * after its own {@code addAll} threw part way (#806).
+     *
+     * <p>Held is judged by identity, by walking the queue. An element a consumer already took
+     * reads as not held, and withdrawing its release then changes nothing, because the take has
+     * acquired it already. An element equal to one the queue held before, but not the same object,
+     * reads as not held and is withdrawn, which is right. Runs only on the exception path; what
+     * the walk throws is dropped, and the caller sees the original exception.
+     */
+    private static void withdrawWhatDidNotGoIn(Collection<Object> queue, Collection<? extends Object> elements) {
+        try {
+            java.util.Set<Object> held = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            held.addAll(queue);
+            for (Object element : elements) {
+                if (!held.contains(element)) {
+                    TelemetryRegistry.ownershipRefused(element, queue);
+                }
+            }
+        } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
+            // A queue that cannot be walked now keeps every release, as it did before #806.
+        }
     }
 
     /**

@@ -489,8 +489,12 @@ class AgentHappensBeforeFeedTest {
      */
     private static boolean batchElementReported(boolean readTheAcceptedOne)
             throws InterruptedException {
+        return batchElementReported(readTheAcceptedOne, new ArrayBlockingQueue<>(1));
+    }
+
+    private static boolean batchElementReported(boolean readTheAcceptedOne, BlockingQueue<Object> queue)
+            throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();
-        BlockingQueue<Object> queue = new ArrayBlockingQueue<>(1);
         Box accepted = new Box();
         Box refused = new Box();
         Map<Object, Object> registry = new ConcurrentHashMap<>();
@@ -544,6 +548,20 @@ class AgentHappensBeforeFeedTest {
                         + "consumer through nothing: the addAll must not have released it");
         assertFalse(batchElementReported(true),
                 "the queue took the first box and the consumer took it out: the hand-off orders them");
+    }
+
+    @Test
+    @DisplayName("a queue with its own addAll that takes only part of the batch publishes only that part (#806)")
+    void aPartlyRefusedOwnAddAllPublishesOnlyWhatWentIn() throws InterruptedException {
+        // LinkedBlockingDeque links the whole batch at once when it fits, and when it does not,
+        // falls back to adding one at a time and throws at the first that does not fit. The hook
+        // keeps that call, so before #806's rest it released every element up front and withdrew
+        // nothing when the call threw.
+        assertTrue(batchElementReported(false, new java.util.concurrent.LinkedBlockingDeque<>(1)),
+                "the deque refused the second box, so the producer's write of it reached the "
+                        + "consumer through nothing: the addAll must not have released it");
+        assertFalse(batchElementReported(true, new java.util.concurrent.LinkedBlockingDeque<>(1)),
+                "the deque took the first box and the consumer took it out: the hand-off orders them");
     }
 
     /** How the reader below reaches the box a writer completed a future with. */
