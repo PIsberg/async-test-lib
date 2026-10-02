@@ -114,6 +114,65 @@ class DetectorAccuracyEvalTest {
                         + "occurrence is again diagnosed from nothing");
     }
 
+    // ---- LazyCollectionMisuseDetector (#852) ----
+
+    /**
+     * Two threads each compute one element of one lazy collection, and each mapping function
+     * computes the other element inside its own: element 0's reads 1 and 1's reads 0. The JDK breaks
+     * that cycle only when one thread holds both; spread across two it is a deadlock. Recorded
+     * through the overloads that take the collection itself (#776), which the eval did not cover.
+     */
+    @Test
+    @DisplayName("lazy collection: a dependency cycle across two threads fires (true positive)")
+    void lazyCollectionFiresOnACrossThreadCycle() throws InterruptedException {
+        LazyCollectionMisuseDetector detector = new LazyCollectionMisuseDetector();
+        Object grid = new Object();
+        onTwoThreads(
+                () -> computeWithin(detector, grid, 0, 1),
+                () -> computeWithin(detector, grid, 1, 0));
+
+        LazyCollectionMisuseDetector.Report report = detector.analyze();
+        assertTrue(report.structuredViolations.stream()
+                        .anyMatch(v -> "circularElementDependency".equals(v.attributes().get("issue"))),
+                "element 0's mapping function computes 1 and 1's computes 0; a lazy-collection "
+                        + "detector that misses a cycle misses the deadlock it exists for. Each element "
+                        + "is also computed twice, so the cycle finding itself is asserted: " + report);
+    }
+
+    @Test
+    @DisplayName("lazy collection: the same reads made after each computation ends stay silent")
+    void lazyCollectionStaysSilentWhenReadsFollowTheComputations() throws InterruptedException {
+        LazyCollectionMisuseDetector detector = new LazyCollectionMisuseDetector();
+        Object grid = new Object();
+        onTwoThreads(
+                () -> computeThenRead(detector, grid, 0, 1),
+                () -> computeThenRead(detector, grid, 1, 0));
+
+        assertFalse(detector.analyze().hasIssues(),
+                "each element is computed once, by one thread, and read by the other only after its "
+                        + "computation returned; nothing waits on anything: " + detector.analyze());
+    }
+
+    /** Computes element {@code outer} of {@code grid}, whose mapping function computes {@code inner}. */
+    private static void computeWithin(LazyCollectionMisuseDetector d, Object grid, int outer, int inner) {
+        Thread me = Thread.currentThread();
+        d.recordGet(grid, "grid", outer, me);
+        d.recordComputeStart(grid, "grid", outer, me);
+        d.recordGet(grid, "grid", inner, me);
+        d.recordComputeStart(grid, "grid", inner, me);
+        d.recordComputeEnd(grid, "grid", inner, me, "cell" + inner);
+        d.recordComputeEnd(grid, "grid", outer, me, "cell" + outer);
+    }
+
+    /** Computes element {@code own} of {@code grid}, then reads {@code other} once that has returned. */
+    private static void computeThenRead(LazyCollectionMisuseDetector d, Object grid, int own, int other) {
+        Thread me = Thread.currentThread();
+        d.recordGet(grid, "grid", own, me);
+        d.recordComputeStart(grid, "grid", own, me);
+        d.recordComputeEnd(grid, "grid", own, me, "cell" + own);
+        d.recordGet(grid, "grid", other, me);
+    }
+
     // ---- RaceConditionDetector ----
 
     @Test

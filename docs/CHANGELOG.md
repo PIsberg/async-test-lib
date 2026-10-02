@@ -45,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   take the first user frame by `SiteCapture`'s rule, which also skips a class nested in a detector
   (`ThreadLeakDetector$ThreadState`) for every reported site.
 
+- **`DetectorAccuracyEvalTest` covers `LazyCollectionMisuseDetector` (#852).** A dependency cycle
+  across two threads, recorded through the overloads that take the collection, must produce the
+  cycle finding, and the same reads made after each computation returned must stay silent. The
+  detector's thread-safety note now says what #776 and #852 changed: state is keyed by the
+  collection's identity when it is passed, and name-keyed edges last one round.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

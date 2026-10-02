@@ -230,7 +230,7 @@ a performance budget) are annotated individually and appear below.
 
 ### se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector
 - **Strategy**: OTHER
-- **Note**: One state object per collection name and element key in a ConcurrentHashMap; counters are atomics and waiter sets are concurrent. The per-thread stack of in-flight computations is an ArrayDeque per thread id, so each is touched by exactly one thread and needs no synchronisation. Dependency edges accumulate in a synchronized LinkedHashSet and are walked once in analyze(), after the run has quiesced.
+- **Note**: One state object per collection and element key in a ConcurrentHashMap, the collection keyed by its identity when the caller passes it and by its name otherwise; counters are atomics and waiter sets are concurrent. The per-thread stack of in-flight computations is an ArrayDeque per thread id, so each is touched by exactly one thread and needs no synchronisation. Dependency edges accumulate in a synchronized LinkedHashSet. Name-keyed edges are walked and dropped at each round start (markInvocationStart, #852), after the previous round's workers finished; identity-keyed edges last the run and are walked in analyze(), after it has quiesced.
 
 ### se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector
 - **Strategy**: OTHER
