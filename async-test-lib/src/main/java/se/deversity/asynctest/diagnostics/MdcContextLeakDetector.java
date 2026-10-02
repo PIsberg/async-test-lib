@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -89,18 +92,23 @@ public class MdcContextLeakDetector {
             Set<String> leaked = new LinkedHashSet<>(snap.endMdc.keySet());
             leaked.removeAll(snap.startMdc.keySet());
             if (!leaked.isEmpty()) {
-                r.violations.add(String.format(
+                String finding = String.format(
                         "Thread '%s' left %d MDC key(s) behind after task completion: %s — "
                                 + "these will contaminate the next task run on this thread",
-                        snap.threadName, leaked.size(), leaked));
+                        snap.threadName, leaked.size(), leaked);
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("MdcContextLeak", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class MdcContextLeakReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

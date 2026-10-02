@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -160,7 +163,21 @@ public class BusyWaitDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.MEDIUM);
+            for (String finding : report.busyWaitLoops) {
+                report.structuredViolations.add(new Violation("BusyWait", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.tightLoops) {
+                report.structuredViolations.add(new Violation("BusyWait", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     private static void addToReport(BusyWaitReport report, long threadId, SpinEvent event) {
@@ -213,6 +230,8 @@ public class BusyWaitDetector {
     public static class BusyWaitReport {
         /** Loops that spun waiting for a condition instead of blocking. */
         public final Set<String> busyWaitLoops = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Loops that spun with no back-off at all. */
         public final Set<String> tightLoops = new HashSet<>();
         /** Nanoseconds of CPU time spent spinning rather than blocking. */

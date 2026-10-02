@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
@@ -42,6 +45,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * instead, and says so.
  */
 public class LivelockDetector {
+
+    /** State changes within the last {@value #RECENT_SNAPSHOTS} snapshots that read as rapid cycling (#756). */
+    private static final int STATE_CHANGE_THRESHOLD = 5;
+
+    /** How many of the latest snapshots the state changes are counted over. */
+    private static final int RECENT_SNAPSHOTS = 10;
     
     private static final class ThreadSnapshot {
         final String threadName;
@@ -131,7 +140,8 @@ public class LivelockDetector {
             }
         }
         
-        return report;
+        report.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -162,10 +172,10 @@ public class LivelockDetector {
     }
     
     private boolean isRapidStateChanger(List<ThreadSnapshot> snapshots) {
-        if (snapshots.size() < 10) return false;
+        if (snapshots.size() < RECENT_SNAPSHOTS) return false;
         
         // Count state changes in recent snapshots
-        int recent = Math.min(10, snapshots.size());
+        int recent = Math.min(RECENT_SNAPSHOTS, snapshots.size());
         int stateChanges = 0;
         
         for (int i = snapshots.size() - recent; i < snapshots.size() - 1; i++) {
@@ -174,8 +184,7 @@ public class LivelockDetector {
             }
         }
         
-        // 5+ state changes in 10 snapshots suggests rapid cycling (potential livelock)
-        return stateChanges >= 5;
+        return stateChanges >= STATE_CHANGE_THRESHOLD;
     }
     
     private boolean madeProgress(List<ThreadSnapshot> snapshots) {
@@ -228,6 +237,32 @@ public class LivelockDetector {
             return !starvedThreads.isEmpty() || !livelockCandidates.isEmpty() || !noProgressThreads.isEmpty();
         }
         
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.CRITICAL);
+            for (String thread : starvedThreads) {
+                structuredViolations.add(new Violation("Livelock", severity,
+                        thread + ": starved, never got CPU time", List.of(), Map.of(), Instant.now()));
+            }
+            for (String thread : livelockCandidates) {
+                structuredViolations.add(new Violation("Livelock", severity,
+                        thread + ": livelock candidate, changing state without progress",
+                        List.of(), Map.of(), Instant.now()));
+            }
+            for (String thread : noProgressThreads) {
+                structuredViolations.add(new Violation("Livelock", severity,
+                        thread + ": no progress", List.of(), Map.of(), Instant.now()));
+            }
+        }
+
         @Override
         public String toString() {
             if (!hasIssues()) {

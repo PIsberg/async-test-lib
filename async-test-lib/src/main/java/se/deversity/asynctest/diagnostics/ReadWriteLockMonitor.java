@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashSet;
@@ -19,6 +24,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Unfair lock distribution
  */
 public class ReadWriteLockMonitor {
+
+    /** Write-lock wait, in milliseconds, past which a reader-heavy lock counts a writer starvation (#756). */
+    private static final long WRITER_STARVATION_WAIT_THRESHOLD_MS = 100;
+
+    /** Reads per write above which a lock is reported reader-dominated. */
+    private static final double READER_DOMINANCE_RATIO_THRESHOLD = 10;
+
+    /** Longest write wait, in milliseconds, above which a lock is reported. */
+    private static final long LONG_WRITE_WAIT_THRESHOLD_MS = 50;
     
     private static class LockState {
         final String lockName;
@@ -104,7 +118,7 @@ public class ReadWriteLockMonitor {
         state.currentWriter = Thread.currentThread().threadId();
         
         // Check for writer starvation (lots of readers, high write wait time)
-        if (waitTimeMs > 100 && state.readLockCount.get() > state.writeLockCount.get() * 2) {
+        if (waitTimeMs > WRITER_STARVATION_WAIT_THRESHOLD_MS && state.readLockCount.get() > state.writeLockCount.get() * 2) {
             state.writerStarvations.incrementAndGet();
         }
     }
@@ -143,7 +157,7 @@ public class ReadWriteLockMonitor {
             
             // Check for reader/writer imbalance
             double ratio = reads / (double) Math.max(1, writes);
-            if (ratio > 10) {
+            if (ratio > READER_DOMINANCE_RATIO_THRESHOLD) {
                 report.readerDominatedLocks.add(String.format(Locale.ROOT,
                     "%s: %.1fx more reads than writes (may cause writer starvation)",
                     state.lockName, ratio
@@ -160,7 +174,7 @@ public class ReadWriteLockMonitor {
             }
             
             // Check for long write waits
-            if (state.maxWriteWaitTime > 50) {
+            if (state.maxWriteWaitTime > LONG_WRITE_WAIT_THRESHOLD_MS) {
                 report.longWriteWaits.add(String.format(Locale.ROOT,
                     "%s: Max write wait time %dms",
                     state.lockName, state.maxWriteWaitTime
@@ -176,7 +190,9 @@ public class ReadWriteLockMonitor {
             }
         }
         
-        return report;
+        report.fillStructuredViolations();
+        
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -242,6 +258,27 @@ public class ReadWriteLockMonitor {
             return !readerDominatedLocks.isEmpty() || !starvedWriters.isEmpty();
         }
         
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.MEDIUM);
+            for (String issue : readerDominatedLocks) {
+                structuredViolations.add(new Violation("ReadWriteLockMonitor", severity,
+                        issue, List.of(), Map.of(), Instant.now()));
+            }
+            for (String issue : starvedWriters) {
+                structuredViolations.add(new Violation("ReadWriteLockMonitor", severity,
+                        issue, List.of(), Map.of(), Instant.now()));
+            }
+        }
+
         @Override
         public String toString() {
             if (!hasFairnessIssues()) {

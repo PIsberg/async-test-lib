@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
@@ -406,7 +410,8 @@ public class ConstructorSafetyValidator {
             }
         }
         
-        return report;
+        report.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
     /**
      * Clears recorded the observation so this instance can be reused for the next run.
@@ -450,6 +455,28 @@ public class ConstructorSafetyValidator {
             return !unsafeObjects.isEmpty() || !fieldsAccessedDuringConstruction.isEmpty();
         }
         
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (String issue : unsafeObjects) {
+                structuredViolations.add(new Violation("ConstructorSafetyValidator", severity,
+                        issue, List.of(), Map.of(), Instant.now()));
+            }
+            for (String field : fieldsAccessedDuringConstruction) {
+                structuredViolations.add(new Violation("ConstructorSafetyValidator", severity,
+                        field + ": accessed by another thread during construction",
+                        List.of(), Map.of(), Instant.now()));
+            }
+        }
+
         @Override
         public String toString() {
             if (!hasIssues()) {

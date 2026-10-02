@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -395,7 +398,7 @@ public class LazyConstantMisuseDetector {
      * @return a report describing detected issues
      */
     public LazyConstantMisuseReport analyze() {
-        return new LazyConstantMisuseReport(
+        LazyConstantMisuseReport report801 = new LazyConstantMisuseReport(
             new ArrayList<>(reentrantIssues),
             new ArrayList<>(nullValueIssues),
             new ArrayList<>(multipleComputeIssues),
@@ -404,6 +407,8 @@ public class LazyConstantMisuseDetector {
             totalGets.get(),
             totalComputes.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -414,6 +419,35 @@ public class LazyConstantMisuseDetector {
         private final List<String> nullValueIssues;
         private final List<String> multipleComputeIssues;
         private final List<String> nonDeterministicIssues;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : reentrantIssues) {
+                    structuredViolations.add(new Violation("LazyConstantMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : nullValueIssues) {
+                    structuredViolations.add(new Violation("LazyConstantMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : multipleComputeIssues) {
+                    structuredViolations.add(new Violation("LazyConstantMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : nonDeterministicIssues) {
+                    structuredViolations.add(new Violation("LazyConstantMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final List<String> convoyWarnings;
         private final int totalGets;
         private final int totalComputes;

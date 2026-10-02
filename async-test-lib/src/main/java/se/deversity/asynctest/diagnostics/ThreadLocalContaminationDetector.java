@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -98,12 +101,18 @@ public class ThreadLocalContaminationDetector {
     public ThreadLocalContaminationReport analyze() {
         ThreadLocalContaminationReport r = new ThreadLocalContaminationReport();
         r.contaminations.addAll(contaminations);
-        return r;
+        for (String finding : contaminations) {
+            r.structuredViolations.add(new Violation("ThreadLocalContamination", IssueSeverity.HIGH,
+                    finding, List.of(), Map.of(), Instant.now()));
+        }
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class ThreadLocalContaminationReport {
         final List<String> contaminations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

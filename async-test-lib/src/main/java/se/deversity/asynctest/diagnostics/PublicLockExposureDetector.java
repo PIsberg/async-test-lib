@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -72,18 +75,23 @@ public class PublicLockExposureDetector {
             if (publishedObjects.contains(id)) {
                 String name = objectNames.getOrDefault(id, "object@" + id.hashCode());
                 String ctx  = publishContexts.getOrDefault(id, "external code");
-                r.violations.add(String.format(
+                String finding = String.format(
                     "%s uses synchronized(this) but is publicly exposed via %s — "
                     + "external callers can acquire its lock, causing unintended coupling or deadlock",
-                    name, ctx));
+                    name, ctx);
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("PublicLockExposure", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class PublicLockExposureReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

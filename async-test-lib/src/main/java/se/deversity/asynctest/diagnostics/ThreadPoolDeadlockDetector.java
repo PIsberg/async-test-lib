@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -164,7 +167,9 @@ public class ThreadPoolDeadlockDetector {
      */
     public ThreadPoolDeadlockReport analyze() {
         if (!enabled) {
-            return new ThreadPoolDeadlockReport(Collections.emptyList(), 0);
+            ThreadPoolDeadlockReport report801 = new ThreadPoolDeadlockReport(Collections.emptyList(), 0);
+            report801.fillStructuredViolations();
+            return DetectorFailurePolicy.checkedReport(this, report801);
         }
 
         List<PoolDeadlockRisk> risks = new ArrayList<>();
@@ -180,7 +185,9 @@ public class ThreadPoolDeadlockDetector {
             }
         }
 
-        return new ThreadPoolDeadlockReport(risks, deadlockRiskCount.get());
+        ThreadPoolDeadlockReport report801 = new ThreadPoolDeadlockReport(risks, deadlockRiskCount.get());
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -290,6 +297,25 @@ public class ThreadPoolDeadlockDetector {
 
         public boolean hasDeadlockRisk() {
             return !risks.isEmpty();
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (PoolDeadlockRisk risk : risks) {
+                structuredViolations.add(new Violation("ThreadPoolDeadlock", severity,
+                        risk.poolName + ": " + risk.nestedSubmissionCount
+                                + " nested submission(s) into a pool of " + risk.poolSize,
+                        List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

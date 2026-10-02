@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.text.SimpleDateFormat;
 import java.util.Map;
 import java.util.Set;
@@ -206,7 +211,21 @@ public class SimpleDateFormatDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.sharedFormatters) {
+                report.structuredViolations.add(new Violation("SimpleDateFormat", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.formattingErrors) {
+                report.structuredViolations.add(new Violation("SimpleDateFormat", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -214,8 +233,10 @@ public class SimpleDateFormatDetector {
      */
     public static class SimpleDateFormatReport implements GradedFindings {
         private boolean enabled = true;
-        final java.util.List<String> sharedFormatters = new java.util.ArrayList<>();
-        final java.util.List<String> formattingErrors = new java.util.ArrayList<>();
+        final List<String> sharedFormatters = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> formattingErrors = new ArrayList<>();
         final Map<String, String> methodBreakdown = new ConcurrentHashMap<>();
         final Map<String, String> formatterActivity = new ConcurrentHashMap<>();
 
@@ -241,19 +262,19 @@ public class SimpleDateFormatDetector {
          * always read for this report.
          */
         @Override
-        public java.util.List<GradedFindings.Grade> grades() {
+        public List<GradedFindings.Grade> grades() {
             if (!hasIssues()) {
-                return java.util.List.of();
+                return List.of();
             }
             IssueSeverity severity = DetectorDefaultSeverity.of(SimpleDateFormatDetector.class.getSimpleName(), toString());
-            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            List<GradedFindings.Grade> out = new ArrayList<>();
             for (String shared : sharedFormatters) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.VERDICT, shared, DetectorTrust.Evidence.CONTEXTUAL));
             }
             for (String error : formattingErrors) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, error, DetectorTrust.Evidence.CONTEXT_FREE));
             }
-            return java.util.List.copyOf(out);
+            return List.copyOf(out);
         }
 
         @Override

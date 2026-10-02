@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.reflect.Field;
@@ -198,7 +201,17 @@ public class SynchronizedNonFinalDetector {
             report.unattributed.add(undecided(slot.fieldId, classSlot, field != null, monitors));
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.violations) {
+                report.structuredViolations.add(new Violation("SynchronizedNonFinal", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -246,6 +259,10 @@ public class SynchronizedNonFinalDetector {
     public static class SynchronizedNonFinalReport {
 
         final List<String> violations = new ArrayList<>();
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Monitor changes recorded without an owner: undecidable, so notes rather than findings. */
         final List<String> unattributed = new ArrayList<>();
 

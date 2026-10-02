@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -187,7 +190,9 @@ public class FinalFieldMutationDetector {
             }
         }
 
-        return new FinalFieldMutationReport(mutationIssues, racingReaderIssues, concurrentWriteIssues);
+        FinalFieldMutationReport report801 = new FinalFieldMutationReport(mutationIssues, racingReaderIssues, concurrentWriteIssues);
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -195,6 +200,23 @@ public class FinalFieldMutationDetector {
      */
     public static class FinalFieldMutationReport {
         private final List<String> mutationIssues;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : mutationIssues) {
+                    structuredViolations.add(new Violation("FinalFieldMutation", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final List<String> racingReaderIssues;
         private final List<String> concurrentWriteIssues;
 

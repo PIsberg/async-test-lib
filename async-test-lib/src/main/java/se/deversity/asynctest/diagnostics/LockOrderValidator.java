@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Collection;
@@ -161,7 +166,21 @@ public class LockOrderValidator {
         // Detect potential deadlock cycles
         detectDeadlockCycles(threadLockOrders.values(), report);
         
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.CRITICAL);
+            for (String finding : report.inconsistentOrderings) {
+                report.structuredViolations.add(new Violation("LockOrderValidator", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.potentialDeadlockCycles) {
+                report.structuredViolations.add(new Violation("LockOrderValidator", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
     
     private void detectDeadlockCycles(Collection<LockSequence> sequences, LockOrderReport report) {
@@ -224,6 +243,8 @@ public class LockOrderValidator {
     public static class LockOrderReport {
         /** Lock pairs acquired in one order by one thread and the reverse by another. */
         public final Set<String> inconsistentOrderings = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Cycles in the observed lock-acquisition graph. */
         public final Set<String> potentialDeadlockCycles = new HashSet<>();
         

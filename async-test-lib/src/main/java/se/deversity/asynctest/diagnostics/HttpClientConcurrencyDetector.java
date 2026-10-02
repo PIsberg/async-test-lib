@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
@@ -46,6 +49,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }</pre>
  */
 public class HttpClientConcurrencyDetector {
+
+    /** Concurrent requests on one client above which the connection pool may run out (#756). */
+    private static final int POOL_EXHAUSTION_REQUESTS_THRESHOLD = 50;
 
     private static class ClientState {
         final String name;
@@ -236,7 +242,7 @@ public class HttpClientConcurrencyDetector {
             }
 
             // Check for potential connection pool exhaustion
-            if (client.maxConcurrentRequests.get() > 50) {
+            if (client.maxConcurrentRequests.get() > POOL_EXHAUSTION_REQUESTS_THRESHOLD) {
                 report.poolExhaustionRisk.add(String.format(
                     "%s: high concurrent request count (%d) may exhaust connection pool",
                     client.name, client.maxConcurrentRequests.get()));
@@ -250,7 +256,25 @@ public class HttpClientConcurrencyDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.pendingRequests) {
+                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.uncompletedRequests) {
+                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.poolExhaustionRisk) {
+                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -259,6 +283,8 @@ public class HttpClientConcurrencyDetector {
     public static class HttpClientConcurrencyReport {
         private boolean enabled = true;
         final List<String> pendingRequests = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         final List<String> uncompletedRequests = new ArrayList<>();
         final List<String> poolExhaustionRisk = new ArrayList<>();
         /**

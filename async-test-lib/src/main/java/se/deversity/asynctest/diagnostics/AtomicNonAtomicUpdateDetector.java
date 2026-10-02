@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -117,17 +120,22 @@ public class AtomicNonAtomicUpdateDetector {
             // in each round loses no update. A single thread's get+set still counts, as it always
             // has: the pattern is the finding, and the next thread only has to arrive.
             if (s.nonAtomicUpdates.get() > 0 && s.sawUnguardedRound()) {
-                r.violations.add(String.format("%s: %d non-atomic get+set sequence(s) detected" + SelfGuard.REPORT_NOTE,
-                    s.name, s.nonAtomicUpdates.get()));
+                String finding = String.format("%s: %d non-atomic get+set sequence(s) detected" + SelfGuard.REPORT_NOTE,
+                    s.name, s.nonAtomicUpdates.get());
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("AtomicNonAtomicUpdate", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
                 r.details.addAll(s.details);
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class AtomicNonAtomicUpdateReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         final List<String> details    = new ArrayList<>();
 
         /**

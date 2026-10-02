@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashSet;
@@ -181,22 +186,27 @@ public class FutureBlockingDetector {
             // Waits recorded off the pool's own threads can outnumber it; the pool has maxThreads.
             int blocked = Math.min(state.saturatedBlocked.get(), state.maxThreads);
             if (blocked > 0) {
-                report.starvationRisks.add(String.format(Locale.ROOT,
+                String finding = String.format(Locale.ROOT,
                     "%s: %d/%d workers blocked waiting on futures while %d task(s) remain queued",
                     state.name,
                     blocked,
                     state.maxThreads,
                     state.queuedWhenSaturated
-                ));
+                );
+                report.starvationRisks.add(finding);
+                report.structuredViolations.add(new Violation("FutureBlocking", IssueSeverity.CRITICAL,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
 
-        return report;
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     public static class FutureBlockingReport {
         /** Blocking calls made from a pool thread, which can exhaust the pool. */
         public final Set<String> starvationRisks = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

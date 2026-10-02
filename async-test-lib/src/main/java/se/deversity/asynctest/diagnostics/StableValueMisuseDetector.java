@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -379,7 +382,7 @@ public class StableValueMisuseDetector {
      * @return a report describing detected issues
      */
     public StableValueMisuseReport analyze() {
-        return new StableValueMisuseReport(
+        StableValueMisuseReport report801 = new StableValueMisuseReport(
             new ArrayList<>(readBeforeSetReports),
             new ArrayList<>(doubleSetReports),
             new ArrayList<>(reentrantReports),
@@ -387,6 +390,8 @@ public class StableValueMisuseDetector {
             totalReads.get(),
             totalSets.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -396,6 +401,31 @@ public class StableValueMisuseDetector {
         private final List<String> readBeforeSetIssues;
         private final List<String> doubleSetIssues;
         private final List<String> reentrantIssues;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : readBeforeSetIssues) {
+                    structuredViolations.add(new Violation("StableValueMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : doubleSetIssues) {
+                    structuredViolations.add(new Violation("StableValueMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : reentrantIssues) {
+                    structuredViolations.add(new Violation("StableValueMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final List<String> contentionWarnings;
         private final int totalReads;
         private final int totalSets;

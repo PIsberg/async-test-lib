@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -90,18 +93,23 @@ public class SynchronizedOnLiteralDetector {
     public SynchronizedOnLiteralReport analyze() {
         SynchronizedOnLiteralReport r = new SynchronizedOnLiteralReport();
         for (LiteralUsage u : literals.values()) {
-            r.violations.add(String.format(
+            String finding = String.format(
                 "synchronized on %s (acquired from %d thread(s)%s) — "
                 + "this monitor may be shared JVM-wide, causing unintended coupling and potential deadlock",
                 u.description, u.threadIds.size(),
-                u.contexts.isEmpty() ? "" : " in: " + String.join(", ", u.contexts)));
+                u.contexts.isEmpty() ? "" : " in: " + String.join(", ", u.contexts));
+            r.violations.add(finding);
+            r.structuredViolations.add(new Violation("SynchronizedOnLiteral", IssueSeverity.HIGH,
+                    finding, List.of(), Map.of(), Instant.now()));
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class SynchronizedOnLiteralReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

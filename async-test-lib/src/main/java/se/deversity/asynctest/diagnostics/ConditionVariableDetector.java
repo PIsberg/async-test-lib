@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -520,7 +525,8 @@ public class ConditionVariableDetector {
             }
         }
 
-        return report;
+        report.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     private static void analyze(ConditionState state, ConditionVariableReport report) {
@@ -632,31 +638,31 @@ public class ConditionVariableDetector {
     public static class ConditionVariableReport {
         private boolean enabled = true;
         /** The findings: threads parked while their registered predicate holds (#643, #666). */
-        final java.util.List<String> stuckWaiters = new java.util.ArrayList<>();
+        final List<String> stuckWaiters = new ArrayList<>();
         /**
          * Notes, not findings: awaits that returned as woken with no recorded signal behind them,
          * decided from the body's own records alone (#666).
          */
-        final java.util.List<String> unsignalledWakeups = new java.util.ArrayList<>();
+        final List<String> unsignalledWakeups = new ArrayList<>();
         /** Notes, not findings: a signal with nobody waiting is normal predicate-guarded code. */
-        final java.util.List<String> signalsWithNoWaiter = new java.util.ArrayList<>();
+        final List<String> signalsWithNoWaiter = new ArrayList<>();
         /**
          * Notes, not findings: waiters nothing confirms are stuck. Recorded awaits the registered
          * lock does not show parked, locks that could not be read (#592), threads parked with no
          * predicate registered, recorded awaits on a condition registered without its lock, and
          * awaits abandoned in an earlier round (#666).
          */
-        final java.util.List<String> unconfirmedWaits = new java.util.ArrayList<>();
+        final List<String> unconfirmedWaits = new ArrayList<>();
         /**
          * The unconfirmed waits that only the caller can settle, by registering the condition's own
          * lock or a predicate that does not throw (#816); each is also in {@link #unconfirmedWaits}.
          */
-        private final java.util.List<String> callerNotes = new java.util.ArrayList<>();
+        private final List<String> callerNotes = new ArrayList<>();
         /**
          * One line per condition object, named but not keyed by the name: two conditions may
          * share a name, and filed under it the second one's line overwrote the first's (#789).
          */
-        final java.util.List<String> threadActivity = new java.util.ArrayList<>();
+        final List<String> threadActivity = new ArrayList<>();
 
         /**
          * Check if any issues were detected.
@@ -689,8 +695,25 @@ public class ConditionVariableDetector {
          *
          * @since 1.12.3
          */
-        public java.util.List<String> notes() {
-            return java.util.List.copyOf(callerNotes);
+        public List<String> notes() {
+            return List.copyOf(callerNotes);
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (String waiter : stuckWaiters) {
+                structuredViolations.add(new Violation("ConditionVariable", severity,
+                        waiter, List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

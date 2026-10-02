@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -76,18 +79,23 @@ public class FutureIgnoredDetector {
         FutureIgnoredReport r = new FutureIgnoredReport();
         for (SubmitRecord rec : submits.values()) {
             if (!rec.inspected) {
-                r.violations.add(String.format(
+                String finding = String.format(
                         "Future for task '%s' submitted by thread '%s' was never inspected — "
                                 + "exceptions thrown by the task are silently swallowed",
-                        rec.taskName, rec.submitterThreadName));
+                        rec.taskName, rec.submitterThreadName);
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("FutureIgnored", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class FutureIgnoredReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

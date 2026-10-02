@@ -9,6 +9,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Ninety-nine more detectors state each finding's severity instead of leaving it to their text (#801).**
+  `SynchronizedOnLiteral`, `BoxedPrimitiveLock`, `ExplicitGc`, `DeprecatedThreadApi`,
+  `SystemPropertyMutation`, `PublicLockExposure`, `FutureIgnored`, `SharedTimeZone` and
+  `UncaughtExceptionHandler` reports now carry a `structuredViolations` list, so the `failOn` gate,
+  JSON and SARIF read the severity each finding states. The severities are the ones their text
+  resolved to before (HIGH, and LOW for `ExplicitGc`), measured per report and pinned in
+  `StructuredViolationCoverageTest`, so no gate fails on anything new.
+  A second batch of eight followed: `CompletableFutureCommonPoolBlocking` (MEDIUM),
+  `InterruptSwallowing`, `MdcContextLeak`, `SharedDecimalFormat`, `SharedFormatter`,
+  `SharedMatcher`, `SharedXmlParser` and `StatefulLambda` (HIGH), measured and pinned the same way.
+  A third batch of eight: `AtomicNonAtomicUpdate` and `ThreadLocalContamination` (HIGH),
+  `CopyOnWriteCollection`, `LockContention` and `ForkJoinTaskBlocking` (MEDIUM), and
+  `ExecutorDeadlock`, `FutureBlocking` and `NestedMonitorLockout` (CRITICAL).
+  A fourth batch of six with several sections each: `MutableMapKey`, `LockDowngrade`, `Wakeup`
+  and `VisibilityMonitor` (HIGH), `LatchMisuse` and `LockOrderValidator` (CRITICAL). Their findings
+  take the severity the report's own text resolves to, a marker in it or the value the table
+  declared, which is what the gate read before.
+  A fifth batch of eight the same way: `Calendar`, `StringBuilder`, `SimpleDateFormat`,
+  `SemaphoreMisuse` and `Timer` (HIGH), `ResourceLeak` and `ExecutorShutdown` (MEDIUM), and
+  `SharedRandom`, whose text marks it LOW.
+  A sixth batch of eight: `HttpClientConcurrency`, `LazyInitRace` and `ParallelStream` (HIGH),
+  `StreamClosing`, `ThreadLocalMonitor` and `ThreadPoolMonitor` (MEDIUM), and `LockLeak` and
+  `SynchronizerMonitor` (CRITICAL).
+  A seventh batch of seven: `CacheConcurrency`, `CompletableFutureChain`,
+  `CompletableFutureException`, `ConcurrentMapComputeRecursion` and `ConcurrentModification`
+  (HIGH), and `BlockingQueue` and `BusyWait` (MEDIUM).
+  An eighth batch of four, all HIGH: `InheritableThreadLocalMisuse`, `InterruptMonitor`,
+  `SharedCollection` and `SynchronizedNonFinal`.
+  A ninth batch of four: `OptimisticReadValidation`, `SynchronizedCollectionIteration` and
+  `WeakReferenceRace` (HIGH), and `CountDownLatch` (CRITICAL), whose report is built from latch sets,
+  so its findings are worded as its text lines.
+  A tenth batch of eight whose reports are built from string lists: `DoubleCheckedLocking`,
+  `FinalFieldMutation`, `ForkJoinPool` and `StampedLock` (HIGH), `LazyConstantMisuse`,
+  `ScopedValueMisuse` and `StableValueMisuse` (CRITICAL, marked in their text) and
+  `GathererConcurrencyMisuse` (LOW, marked in its text).
+  An eleventh batch of five: `StructuredConcurrencyMisuse`, `ThreadFactory` and
+  `VirtualThreadContextLeak` (HIGH), `StructuredTaskScopeMisuse` (CRITICAL) and
+  `VirtualThreadCpuBoundTask` (MEDIUM).
+  A twelfth batch of four, whose reports hold objects rather than text lines, each finding worded as
+  its text line: `CyclicBarrier`, `Phaser` and `WaitTimeout` (CRITICAL) and `ThreadLeak` (MEDIUM).
+  A thirteenth batch of four the same way: `PipelineMonitor` and `VolatileArray` (HIGH), and
+  `SleepInLock` and `UnboundedQueue` (MEDIUM).
+  A fourteenth batch of four: `VirtualThreadCarrierExhaustion` (HIGH, marked), and `ThreadStarvation`,
+  `ReadWriteLockMonitor` and `ScheduledExecutor` (MEDIUM).
+  A fifteenth batch of four: `Exchanger` (CRITICAL, marked), `MissedSignal` (CRITICAL), and
+  `CompletableFutureCompletionLeak` and `MemoryOrderingMonitor` (HIGH, marked).
+  A sixteenth batch of four: `Livelock` (CRITICAL), `ABAProblem` and `ConstructorSafetyValidator`
+  (HIGH, marked), and `FalseSharing` (LOW, marked, and still only with its experimental flag on).
+  A seventeenth and last batch of four: `ConditionVariable` and `ReentrantLock` (HIGH, declared),
+  `ThreadPoolDeadlock` (HIGH, marked) and `VirtualThreadPinning` (MEDIUM, marked). Every built-in
+  detector now keeps structured findings: the text-only register in
+  `StructuredViolationCoverageTest` is empty and stays as the ratchet, and the
+  `DetectorDefaultSeverity` table is empty, so `DetectorDefaultSeverity.of(DetectorType)` yields
+  empty for every type.
+
+- **Every `HEURISTIC` detector names its threshold, and the evidence gate requires it (#756).**
+  Eleven `HEURISTIC` detectors wrote the number their findings turn on as a bare literal, which
+  `DetectorEvidenceMatchesCodeTest` cannot see, so nothing tied the class to the code. Each now names
+  it (`LONG_TASK_THRESHOLD_MS`, `STATE_CHANGE_THRESHOLD` and so on), and the gate's seventh rule fails
+  a `HEURISTIC` row whose detector names none. No threshold value changed.
+
+- **A `LinkedBlockingDeque.addAll` that overflows part way no longer publishes what it refused
+  (#806).** A queue with its own `addAll` keeps that call under the agent, and the hook released
+  every element first and withdrew nothing when the call threw, so a write to a refused element read
+  as ordered for a consumer that never received it through the queue. When such a call throws, every
+  element the queue does not hold afterwards now withdraws its release.
+
 - **Worker thread names no longer repeat across runs (#861).** Every run numbered its workers
   `async-test-worker-0` upward, so two `@AsyncTest` methods running in parallel had workers of the
   same name. `ReentrantLockDetector` confirms a lock's holder by name, and could report a lock as

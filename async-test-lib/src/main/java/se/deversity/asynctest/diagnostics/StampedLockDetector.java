@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -297,7 +302,9 @@ public class StampedLockDetector {
                         + "while another reader held the lock, leaving fewer readers than recorded holds)");
             }
         }
-        return new StampedLockReport(unvalidated, notReleased, releasedTwice);
+        StampedLockReport report801 = new StampedLockReport(unvalidated, notReleased, releasedTwice);
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -352,6 +359,31 @@ public class StampedLockDetector {
         private final Set<String> unvalidatedOptimisticReads;
         private final Set<String> stampNotReleased;
         private final Set<String> readHoldsReleasedTwice;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : unvalidatedOptimisticReads) {
+                    structuredViolations.add(new Violation("StampedLock", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : stampNotReleased) {
+                    structuredViolations.add(new Violation("StampedLock", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : readHoldsReleasedTwice) {
+                    structuredViolations.add(new Violation("StampedLock", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         /**
          * Creates a StampedLockReport.
          *

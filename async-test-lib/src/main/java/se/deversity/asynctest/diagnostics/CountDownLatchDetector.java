@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,11 +97,13 @@ public class CountDownLatchDetector {
     public CountDownLatchReport analyze() {
         Set<CountDownLatch> unresolvedTimeouts = new HashSet<>(timedOutLatches);
         unresolvedTimeouts.removeAll(succeededLatches);
-        return new CountDownLatchReport(
+        CountDownLatchReport report = new CountDownLatchReport(
             latchRegistry,
             unresolvedTimeouts,
             extraCountDownLatches
         );
+        report.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -106,6 +113,8 @@ public class CountDownLatchDetector {
         private final Map<CountDownLatch, LatchInfo> latchRegistry;
         private final Set<CountDownLatch> timedOutLatches;
         private final Set<CountDownLatch> extraCountDownLatches;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /**
          * Creates a CountDownLatchReport.
          *
@@ -121,6 +130,27 @@ public class CountDownLatchDetector {
             this.latchRegistry = Collections.unmodifiableMap(new HashMap<>(latchRegistry));
             this.timedOutLatches = Collections.unmodifiableSet(new HashSet<>(timedOutLatches));
             this.extraCountDownLatches = Collections.unmodifiableSet(new HashSet<>(extraCountDownLatches));
+        }
+
+        /** Adds a Violation per finding, worded as its text line (#801); once, from {@code analyze()}. */
+        void fillStructuredViolations() {
+            if (hasIssues()) {
+                // The severity the failOn gate read from this text before #801: a marker in it,
+                // else the value DetectorDefaultSeverity declared for the detector.
+                IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.CRITICAL);
+                for (CountDownLatch latch : this.timedOutLatches) {
+                    LatchInfo info = infoFor(latch);
+                    structuredViolations.add(new Violation("CountDownLatch", severity,
+                            info.name + " (expected " + info.initialCount + " countDown() calls, but await() timed out)",
+                            List.of(), Map.of(), Instant.now()));
+                }
+                for (CountDownLatch latch : this.extraCountDownLatches) {
+                    LatchInfo info = infoFor(latch);
+                    structuredViolations.add(new Violation("CountDownLatch", severity,
+                            info.name + " (initial count: " + info.initialCount + ", but countDown() called more times)",
+                            List.of(), Map.of(), Instant.now()));
+                }
+            }
         }
 
         /**

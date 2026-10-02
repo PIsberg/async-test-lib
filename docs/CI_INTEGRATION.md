@@ -240,8 +240,9 @@ the report files always get the full text.
 
 Severity is now worth gating on, which it was not before 1.9.7. Until then 86 of the 142
 detectors set no severity at all and `IssueSeverity.fromReport` returned `HIGH` for every one of
-them, so `failOn = HIGH` was close to "fail on anything". Every detector now states a severity,
-in its structured findings, in its report text or in `DetectorDefaultSeverity`, and
+them, so `failOn = HIGH` was close to "fail on anything". Every detector now states a severity
+per finding in its structured findings (since #801; before that some stated it in their report
+text or in `DetectorDefaultSeverity`, and they kept that severity), and
 `DetectorSeverityMarkerTest` fails the build if one does not. If you are upgrading and your gate
 suddenly passes, read the changelog: nineteen of them that used to arrive as `HIGH` now declare
 `MEDIUM` or `LOW`, and since 1.12.3 the gate reads the severity a detector put in its structured

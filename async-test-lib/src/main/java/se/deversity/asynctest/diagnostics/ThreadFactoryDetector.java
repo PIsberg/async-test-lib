@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -101,11 +106,13 @@ public class ThreadFactoryDetector {
      * @return the findings this detector collected during the run
      */
     public ThreadFactoryReport analyze() {
-        return new ThreadFactoryReport(
+        ThreadFactoryReport report801 = new ThreadFactoryReport(
             missingExceptionHandler,
             nonDaemonThreads,
             unnamedThreads
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -115,6 +122,31 @@ public class ThreadFactoryDetector {
         private final Set<String> missingExceptionHandler;
         private final Set<String> nonDaemonThreads;
         private final Set<String> unnamedThreads;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : missingExceptionHandler) {
+                    structuredViolations.add(new Violation("ThreadFactory", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : nonDaemonThreads) {
+                    structuredViolations.add(new Violation("ThreadFactory", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : unnamedThreads) {
+                    structuredViolations.add(new Violation("ThreadFactory", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         /**
          * Creates a ThreadFactoryReport.
          *

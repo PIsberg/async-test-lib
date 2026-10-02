@@ -15,8 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static java.util.Map.entry;
-
 /**
  * The severity a detector's findings carry when its own report does not say.
  *
@@ -42,6 +40,12 @@ import static java.util.Map.entry;
  * {@code DetectorSeverityMarkerTest} fails on an entry for a detector that marks its own reports,
  * so the table can only shrink as the detectors improve.
  *
+ * <p><strong>The table is empty.</strong> Since #801 every built-in detector keeps its findings as
+ * {@link Violation}s at the severity its text used to resolve to, so none falls back to an entry
+ * here. {@link #of(DetectorType)} stays for callers and yields empty for every type; a detector
+ * added without a structured severity of its own still fails {@code DetectorSeverityMarkerTest}
+ * unless it marks its text or regains an entry.
+ *
  * <p>Third-party detectors arriving through the SPI are not in this table and keep the historical
  * {@code HIGH} default. The library has no basis for ranking somebody else's finding.
  *
@@ -58,89 +62,8 @@ import static java.util.Map.entry;
 @API(status = Status.EXPERIMENTAL)
 public final class DetectorDefaultSeverity {
 
-    private static final Map<DetectorType, IssueSeverity> DECLARED = Map.ofEntries(
-            entry(DetectorType.VISIBILITY, IssueSeverity.HIGH),
-            entry(DetectorType.LIVELOCKS, IssueSeverity.CRITICAL),
-            entry(DetectorType.WAKEUP_ISSUES, IssueSeverity.HIGH),
-            entry(DetectorType.LOCK_ORDER, IssueSeverity.CRITICAL),
-            entry(DetectorType.SYNCHRONIZERS, IssueSeverity.CRITICAL),
-            entry(DetectorType.THREAD_POOL, IssueSeverity.MEDIUM),
-            entry(DetectorType.ASYNC_PIPELINE, IssueSeverity.HIGH),
-            entry(DetectorType.READ_WRITE_LOCK_FAIRNESS, IssueSeverity.MEDIUM),
-            entry(DetectorType.SEMAPHORE, IssueSeverity.HIGH),
-            entry(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, IssueSeverity.HIGH),
-            entry(DetectorType.CONCURRENT_MODIFICATIONS, IssueSeverity.HIGH),
-            entry(DetectorType.LOCK_LEAKS, IssueSeverity.CRITICAL),
-            entry(DetectorType.BLOCKING_QUEUE, IssueSeverity.MEDIUM),
-            entry(DetectorType.CONDITION_VARIABLES, IssueSeverity.HIGH),
-            entry(DetectorType.SIMPLE_DATE_FORMAT, IssueSeverity.HIGH),
-            entry(DetectorType.PARALLEL_STREAMS, IssueSeverity.HIGH),
-            entry(DetectorType.RESOURCE_LEAKS, IssueSeverity.MEDIUM),
-            entry(DetectorType.COUNTDOWN_LATCH, IssueSeverity.CRITICAL),
-            entry(DetectorType.CYCLIC_BARRIER, IssueSeverity.CRITICAL),
-            entry(DetectorType.REENTRANT_LOCK, IssueSeverity.HIGH),
-            entry(DetectorType.VOLATILE_ARRAY, IssueSeverity.HIGH),
-            entry(DetectorType.DOUBLE_CHECKED_LOCKING, IssueSeverity.HIGH),
-            entry(DetectorType.WAIT_TIMEOUT, IssueSeverity.CRITICAL),
-            entry(DetectorType.LOCK_CONTENTION, IssueSeverity.MEDIUM),
-            entry(DetectorType.SYNCHRONIZED_NON_FINAL, IssueSeverity.HIGH),
-            entry(DetectorType.MISSED_SIGNAL, IssueSeverity.CRITICAL),
-            entry(DetectorType.LAZY_INIT_RACE, IssueSeverity.HIGH),
-            entry(DetectorType.PHASER, IssueSeverity.CRITICAL),
-            entry(DetectorType.STAMPED_LOCK, IssueSeverity.HIGH),
-            entry(DetectorType.EXCHANGER, IssueSeverity.CRITICAL),
-            entry(DetectorType.SCHEDULED_EXECUTOR, IssueSeverity.MEDIUM),
-            entry(DetectorType.FORK_JOIN_POOL, IssueSeverity.HIGH),
-            entry(DetectorType.THREAD_FACTORY, IssueSeverity.HIGH),
-            entry(DetectorType.THREAD_LOCAL_LEAKS, IssueSeverity.MEDIUM),
-            entry(DetectorType.BUSY_WAITING, IssueSeverity.MEDIUM),
-            entry(DetectorType.INTERRUPT_MISHANDLING, IssueSeverity.HIGH),
-            entry(DetectorType.THREAD_LEAKS, IssueSeverity.MEDIUM),
-            entry(DetectorType.SLEEP_IN_LOCK, IssueSeverity.MEDIUM),
-            entry(DetectorType.UNBOUNDED_QUEUE, IssueSeverity.MEDIUM),
-            entry(DetectorType.THREAD_STARVATION, IssueSeverity.MEDIUM),
-            entry(DetectorType.CALENDAR, IssueSeverity.HIGH),
-            entry(DetectorType.SHARED_COLLECTIONS, IssueSeverity.HIGH),
-            entry(DetectorType.TIMER, IssueSeverity.HIGH),
-            entry(DetectorType.COPY_ON_WRITE_COLLECTIONS, IssueSeverity.MEDIUM),
-            entry(DetectorType.STRING_BUILDER, IssueSeverity.HIGH),
-            entry(DetectorType.HTTP_CLIENT, IssueSeverity.HIGH),
-            entry(DetectorType.STREAM_CLOSING, IssueSeverity.MEDIUM),
-            entry(DetectorType.CACHE_CONCURRENCY, IssueSeverity.HIGH),
-            entry(DetectorType.COMPLETABLEFUTURE_CHAIN, IssueSeverity.HIGH),
-            entry(DetectorType.EXECUTOR_SHUTDOWN, IssueSeverity.MEDIUM),
-            entry(DetectorType.MUTABLE_MAP_KEY, IssueSeverity.HIGH),
-            entry(DetectorType.NESTED_MONITOR_LOCKOUT, IssueSeverity.CRITICAL),
-            entry(DetectorType.LOCK_DOWNGRADE, IssueSeverity.HIGH),
-            entry(DetectorType.INHERITABLE_THREAD_LOCAL, IssueSeverity.HIGH),
-            entry(DetectorType.THREAD_LOCAL_CONTAMINATION, IssueSeverity.HIGH),
-            entry(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, IssueSeverity.HIGH),
-            entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, IssueSeverity.HIGH),
-            entry(DetectorType.SHARED_FORMATTER, IssueSeverity.HIGH),
-            entry(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, IssueSeverity.HIGH),
-            entry(DetectorType.SYNCHRONIZED_ON_LITERAL, IssueSeverity.HIGH),
-            entry(DetectorType.PUBLIC_LOCK_EXPOSURE, IssueSeverity.HIGH),
-            entry(DetectorType.FORK_JOIN_TASK_BLOCKING, IssueSeverity.MEDIUM),
-            entry(DetectorType.OPTIMISTIC_READ_VALIDATION, IssueSeverity.HIGH),
-            entry(DetectorType.CF_COMMON_POOL_BLOCKING, IssueSeverity.MEDIUM),
-            entry(DetectorType.SHARED_MATCHER, IssueSeverity.HIGH),
-            entry(DetectorType.SHARED_DECIMAL_FORMAT, IssueSeverity.HIGH),
-            entry(DetectorType.WEAK_REFERENCE_RACE, IssueSeverity.HIGH),
-            entry(DetectorType.STATEFUL_LAMBDA, IssueSeverity.HIGH),
-            entry(DetectorType.INTERRUPT_SWALLOWING, IssueSeverity.HIGH),
-            entry(DetectorType.MDC_CONTEXT_LEAK, IssueSeverity.HIGH),
-            entry(DetectorType.SYSTEM_PROPERTY_MUTATION, IssueSeverity.HIGH),
-            entry(DetectorType.FUTURE_IGNORED, IssueSeverity.HIGH),
-            entry(DetectorType.EXPLICIT_GC, IssueSeverity.LOW),
-            entry(DetectorType.DEPRECATED_THREAD_API, IssueSeverity.HIGH),
-            entry(DetectorType.SHARED_XML_PARSER, IssueSeverity.HIGH),
-            entry(DetectorType.BOXED_PRIMITIVE_LOCK, IssueSeverity.HIGH),
-            entry(DetectorType.SHARED_TIMEZONE, IssueSeverity.HIGH),
-            entry(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, IssueSeverity.HIGH),
-            entry(DetectorType.LATCH_MISUSE, IssueSeverity.CRITICAL),
-            entry(DetectorType.EXECUTOR_DEADLOCK, IssueSeverity.CRITICAL),
-            entry(DetectorType.FUTURE_BLOCKING, IssueSeverity.CRITICAL)
-    );
+    /** Empty since #801: every built-in detector now states each finding's severity itself. */
+    private static final Map<DetectorType, IssueSeverity> DECLARED = Map.of();
 
     private DetectorDefaultSeverity() { }
 

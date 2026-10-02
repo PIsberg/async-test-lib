@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
@@ -349,12 +352,14 @@ public class GathererConcurrencyMisuseDetector {
      * @return a report describing detected issues
      */
     public GathererConcurrencyMisuseReport analyze() {
-        return new GathererConcurrencyMisuseReport(
+        GathererConcurrencyMisuseReport report801 = new GathererConcurrencyMisuseReport(
             new ArrayList<>(missingCombinerReports),
             new ArrayList<>(sharedStateReports),
             gatherers.size(),
             totalIntegrations.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -363,6 +368,27 @@ public class GathererConcurrencyMisuseDetector {
     public static class GathererConcurrencyMisuseReport {
         private final List<String> missingCombinerIssues;
         private final List<String> sharedStateIssues;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : missingCombinerIssues) {
+                    structuredViolations.add(new Violation("GathererConcurrencyMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : sharedStateIssues) {
+                    structuredViolations.add(new Violation("GathererConcurrencyMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final int totalGatherers;
         private final int totalIntegrations;
 

@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -72,7 +77,9 @@ public class DoubleCheckedLockingDetector {
      * @return the findings this detector collected during the run
      */
     public DoubleCheckedLockingReport analyze() {
-        return new DoubleCheckedLockingReport(dclRegistry, brokenDCLs);
+        DoubleCheckedLockingReport report801 = new DoubleCheckedLockingReport(dclRegistry, brokenDCLs);
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -81,6 +88,23 @@ public class DoubleCheckedLockingDetector {
     public static class DoubleCheckedLockingReport {
         private final Map<String, DCLInfo> dclRegistry;
         private final Set<String> brokenDCLs;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : brokenDCLs) {
+                    structuredViolations.add(new Violation("DoubleCheckedLocking", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         /**
          * Creates a DoubleCheckedLockingReport.
          *

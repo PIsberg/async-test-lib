@@ -24,8 +24,9 @@ The numbered detector entries live in [`detector-catalog/`](detector-catalog/), 
 ## Severity
 
 Every detector states a severity, and the code is where it is stated. The severities a detector
-puts in its structured findings (`Violation`) win; then a marker in its report text; the rest
-declare one in `DetectorDefaultSeverity`. Nothing is inferred any
+puts in its structured findings (`Violation`) win; then a marker in its report text; then an entry
+in `DetectorDefaultSeverity`. Since #801 every detector here keeps structured findings, at the
+severity its text or its table entry gave before, so the table is empty. Nothing is inferred any
 more: until #291 a detector that wrote no marker had its severity guessed by
 `IssueSeverity.fromReport`, which returned `HIGH`, and 86 of the 142 wrote none, so `failOn = HIGH`
 failed on a resource left open exactly as it failed on a lost update.
@@ -129,7 +130,7 @@ detector's source: a `CONTEXTUAL` row whose detector reads no lockset, monitor p
 happens-before edge fails, and so does a row other than `CONTEXTUAL` or `OBSERVED` whose detector
 reads one, unless the test names the finding path that decides without it. It names these rows
 that way today, each with that path: `CONCURRENT_MODIFICATIONS`, `ATOMICITY_VIOLATIONS` and
-`CACHE_CONCURRENCY`. Four more checks separate the other classes as far as the source shows them.
+`CACHE_CONCURRENCY`. Five more checks separate the other classes as far as the source shows them.
 An `OBSERVED` row needs a detector the agent or the JVM feeds, or one that asks a live object for
 its state (`isLocked`, `Thread.isAlive`, `CyclicBarrier.isBroken`, a thread dump, reflection on the
 instance). A detector the agent or the JVM feeds and that is classified below `OBSERVED` and
@@ -139,10 +140,12 @@ thresholds over thread dumps, `STATIC_INIT_DEADLOCK` for having no grade above F
 detector's class must be one its grades name. And an ungraded detector above `HEURISTIC`'s cap that
 names a threshold must say why the threshold decides no finding: `VIRTUAL_THREAD_CONTEXT_LEAKS`,
 `SCOPED_VALUE`, `STABLE_VALUE_MISUSE` and `LAZY_CONSTANT_MISUSE` each print a warning section when a
-count crosses one, and their `hasIssues()` does not read it. Every list of named rows may only
-shrink. What stays undecided: a JDK query in a lower class (asking whether the recording thread is
-virtual is not observing the finding), a threshold written as a bare literal, and whether a finding
-is the record call itself (`ASSERTED`) or a thread count over records (`CONTEXT_FREE`).
+count crosses one, and their `hasIssues()` does not read it. A `HEURISTIC` row's detector names
+its threshold, an identifier containing `THRESHOLD`, since a number over what was recorded is what
+that class says decides it (#756). Every list of named rows may only shrink. What stays undecided:
+a JDK query in a lower class (asking whether the recording thread is virtual is not observing the
+finding), and whether a finding is the record call itself (`ASSERTED`) or a thread count over
+records (`CONTEXT_FREE`).
 
 | Evidence | The detector decides from | Highest tier |
 |---|---|---|

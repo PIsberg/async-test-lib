@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -132,11 +137,14 @@ public class CopyOnWriteCollectionDetector {
             double writeRatio = (double) writes / total;
 
             if (writes >= MIN_WRITE_COUNT_FOR_RATIO_CHECK && writeRatio > WRITE_RATIO_THRESHOLD) {
-                report.writeHeavyViolations.add(String.format(
+                String finding = String.format(
                         "%s (%s): %.0f%% write ratio (%d writes, %d reads) — "
                         + "copy-on-write overhead is O(n) per write; consider ConcurrentHashMap.newKeySet() or ConcurrentLinkedQueue",
                         state.name, state.collectionType,
-                        writeRatio * 100, writes, reads));
+                        writeRatio * 100, writes, reads);
+                report.writeHeavyViolations.add(finding);
+                report.structuredViolations.add(new Violation("CopyOnWriteCollection", IssueSeverity.MEDIUM,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
 
             report.collectionActivity.put(state.name, String.format(
@@ -144,7 +152,7 @@ public class CopyOnWriteCollectionDetector {
                     reads, writes, writeRatio * 100));
         }
 
-        return report;
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     // ---- Report ----------------------------------------------------------------
@@ -155,7 +163,9 @@ public class CopyOnWriteCollectionDetector {
     public static class CopyOnWriteReport {
 
         int totalCollections = 0;
-        final java.util.List<String> writeHeavyViolations = new java.util.ArrayList<>();
+        final List<String> writeHeavyViolations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         final Map<String, String>    collectionActivity   = new ConcurrentHashMap<>();
 
         /**

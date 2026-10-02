@@ -164,8 +164,10 @@ public class LockContentionDetectorTest {
         }
         LockContentionDetector.LockContentionReport report = detector.analyze();
         assertTrue(report.hasIssues());
+        // What the failOn gate reads: the structured severity first, then the text (#801).
         assertEquals(IssueSeverity.MEDIUM,
-            DetectorDefaultSeverity.of("LockContentionDetector", report.toString()),
-            "the bare word HIGH in the report text shadowed the MEDIUM the table declares");
+            DetectorDefaultSeverity.of("LockContentionDetector", report.toString(),
+                DetectorDefaultSeverity.structuredIn(report).orElse(null)),
+            "the bare word HIGH in the report text must not decide a hot lock's severity: MEDIUM");
     }
 }

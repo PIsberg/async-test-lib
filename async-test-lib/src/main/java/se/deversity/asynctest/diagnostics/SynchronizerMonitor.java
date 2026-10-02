@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -123,7 +128,21 @@ public class SynchronizerMonitor {
             }
         }
         
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.CRITICAL);
+            for (String finding : report.incompleteBarriers) {
+                report.structuredViolations.add(new Violation("SynchronizerMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.duplicateArrivals) {
+                report.structuredViolations.add(new Violation("SynchronizerMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -156,6 +175,8 @@ public class SynchronizerMonitor {
     public static class SynchronizerReport {
         /** Barriers that never had all their parties arrive. */
         public final Set<String> incompleteBarriers = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Parties that arrived at a synchronizer more than once in a cycle. */
         public final Set<String> duplicateArrivals = new HashSet<>();
         

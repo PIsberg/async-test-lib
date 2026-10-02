@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -128,11 +131,14 @@ public class SystemPropertyMutationDetector {
             KeyGuard guard = guards.get(key);
             boolean unguarded = guard == null || guard.sawUnguardedSharing();
             if (threadIds.size() > 1 && unguarded) {
-                r.violations.add(String.format(
+                String finding = String.format(
                         "Property '%s' mutated from %d threads (%s) — "
                                 + "concurrent property mutation causes non-deterministic "
                                 + "configuration and test pollution" + SelfGuard.REPORT_NOTE,
-                        key, threadIds.size(), String.join(", ", threadNames)));
+                        key, threadIds.size(), String.join(", ", threadNames));
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("SystemPropertyMutation", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             } else if (threadIds.size() > 1) {
                 // One lock covered every write, so the threads took turns. The hygiene question
                 // a single-threaded mutation raises still applies.
@@ -150,12 +156,14 @@ public class SystemPropertyMutationDetector {
                         first.threadName));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class SystemPropertyMutationReport {
         final List<String> violations             = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         final List<String> singleThreadMutations  = new ArrayList<>();
 
         /**

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -13,6 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Monitors ThreadLocal lifecycle usage to detect leaks and poor cleanup.
  */
 public class ThreadLocalMonitor {
+
+    /** Distinct ThreadLocal values one thread may retain before it is reported accumulating (#756). */
+    private static final int RETAINED_VALUES_THRESHOLD = 5;
 
     private static class ThreadLocalState {
         final String threadLocalName;
@@ -184,7 +190,7 @@ public class ThreadLocalMonitor {
         }
 
         for (Map.Entry<Long, Set<ThreadLocalState>> entry : threadLocalsByThread.entrySet()) {
-            if (entry.getValue().size() > 5) {
+            if (entry.getValue().size() > RETAINED_VALUES_THRESHOLD) {
                 report.threadLocalAccumulation.add(String.format(
                     "Thread %d retained %d distinct ThreadLocal values",
                     entry.getKey(),
@@ -193,7 +199,25 @@ public class ThreadLocalMonitor {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.MEDIUM);
+            for (String finding : report.uncleanedThreadLocals) {
+                report.structuredViolations.add(new Violation("ThreadLocalMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.likelyLeaks) {
+                report.structuredViolations.add(new Violation("ThreadLocalMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.threadLocalAccumulation) {
+                report.structuredViolations.add(new Violation("ThreadLocalMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -227,6 +251,8 @@ public class ThreadLocalMonitor {
     public static class ThreadLocalReport {
         /** Thread-locals never removed before the thread was returned to its pool. */
         public final Set<String> uncleanedThreadLocals = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Thread-locals set by more than one thread in a round and never removed. */
         public final Set<String> likelyLeaks = new HashSet<>();
         /** Thread-locals whose stored value grew across reused threads. */

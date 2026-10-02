@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -135,7 +138,9 @@ public class ThreadLeakDetector {
      */
     public ThreadLeakReport analyzeLeaks() {
         if (!enabled) {
-            return new ThreadLeakReport(List.of(), 0, 0, 0, false);
+            ThreadLeakReport report801 = new ThreadLeakReport(List.of(), 0, 0, 0, false);
+            report801.fillStructuredViolations();
+            return DetectorFailurePolicy.checkedReport(this, report801);
         }
 
         List<ThreadLeakEvent> leaks = new ArrayList<>();
@@ -173,13 +178,15 @@ public class ThreadLeakDetector {
             }
         }
 
-        return new ThreadLeakReport(
+        ThreadLeakReport report801 = new ThreadLeakReport(
             leaks,
             trackedThreads.size(),
             (int) trackedThreads.values().stream().filter(s -> s.terminated).count(),
             maxThreadCount,
             autoMode
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -288,6 +295,23 @@ public class ThreadLeakDetector {
                         tracked ? DetectorTrust.Evidence.OBSERVED : DetectorTrust.Evidence.HEURISTIC));
             }
             return List.copyOf(out);
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.MEDIUM);
+            for (ThreadLeakEvent leak : leaks) {
+                structuredViolations.add(new Violation("ThreadLeak", severity,
+                        leak.threadName + ": " + leak.reason, List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

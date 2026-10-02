@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -115,19 +118,24 @@ public class CompletableFutureCommonPoolBlockingDetector {
         CompletableFutureCommonPoolBlockingReport r = new CompletableFutureCommonPoolBlockingReport();
         for (Map.Entry<String, AtomicInteger> e : occurrences.entrySet()) {
             int count = e.getValue().get();
-            r.violations.add(count > 1 ? e.getKey() + " (x" + count + ")" : e.getKey());
+            String finding = count > 1 ? e.getKey() + " (x" + count + ")" : e.getKey();
+            r.violations.add(finding);
+            r.structuredViolations.add(new Violation("CompletableFutureCommonPoolBlocking", IssueSeverity.MEDIUM,
+                    finding, List.of(), Map.of(), Instant.now()));
         }
         r.violations.sort(null);
         int dropped = droppedDistinctFindings.get();
         if (dropped > 0) {
             r.droppedDistinctFindings = dropped;
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class CompletableFutureCommonPoolBlockingReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Distinct findings refused because {@link #MAX_DISTINCT_FINDINGS} was already reached. */
         int droppedDistinctFindings;
 

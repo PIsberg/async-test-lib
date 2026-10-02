@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -338,7 +343,21 @@ public class StringBuilderDetector {
                     state.name, writes, mutators, reads, errors));
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.sharedBuilderViolations) {
+                report.structuredViolations.add(new Violation("StringBuilder", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.builderErrors) {
+                report.structuredViolations.add(new Violation("StringBuilder", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     // ---- Report ----------------------------------------------------------------
@@ -349,13 +368,15 @@ public class StringBuilderDetector {
     public static class StringBuilderReport implements GradedFindings {
 
         int totalBuilders = 0;
-        final java.util.List<String> sharedBuilderViolations = new java.util.ArrayList<>();
-        final java.util.List<String> builderErrors           = new java.util.ArrayList<>();
+        final List<String> sharedBuilderViolations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> builderErrors           = new ArrayList<>();
         /**
          * One line per builder object, named but not keyed by the name: two builders may share
          * a name, and filed under it the second one's line overwrote the first's (#789).
          */
-        final java.util.List<String> builderActivity         = new java.util.ArrayList<>();
+        final List<String> builderActivity         = new ArrayList<>();
 
         /**
          * Returns {@code true} when shared-mutation or errors were detected.
@@ -379,19 +400,19 @@ public class StringBuilderDetector {
          * keeps the severity the gate has always read for this report.
          */
         @Override
-        public java.util.List<GradedFindings.Grade> grades() {
+        public List<GradedFindings.Grade> grades() {
             if (!hasIssues()) {
-                return java.util.List.of();
+                return List.of();
             }
             IssueSeverity severity = DetectorDefaultSeverity.of(StringBuilderDetector.class.getSimpleName(), toString());
-            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            List<GradedFindings.Grade> out = new ArrayList<>();
             for (String shared : sharedBuilderViolations) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.VERDICT, shared, DetectorTrust.Evidence.CONTEXTUAL));
             }
             for (String error : builderErrors) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, error, DetectorTrust.Evidence.CONTEXT_FREE));
             }
-            return java.util.List.copyOf(out);
+            return List.copyOf(out);
         }
 
         @Override

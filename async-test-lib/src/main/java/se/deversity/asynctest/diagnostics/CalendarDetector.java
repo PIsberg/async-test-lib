@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.lang.reflect.Field;
 import java.util.Calendar;
 import java.util.Map;
@@ -243,7 +248,21 @@ public class CalendarDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.sharedCalendars) {
+                report.structuredViolations.add(new Violation("Calendar", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.calendarErrors) {
+                report.structuredViolations.add(new Violation("Calendar", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -321,8 +340,10 @@ public class CalendarDetector {
     public static class CalendarReport implements GradedFindings {
 
         int totalCalendars = 0;
-        final java.util.List<String> sharedCalendars  = new java.util.ArrayList<>();
-        final java.util.List<String> calendarErrors   = new java.util.ArrayList<>();
+        final List<String> sharedCalendars  = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> calendarErrors   = new ArrayList<>();
         final Map<String, String>   calendarActivity  = new ConcurrentHashMap<>();
 
         /**
@@ -346,19 +367,19 @@ public class CalendarDetector {
          * by it. Every grade keeps the severity the gate has always read for this report.
          */
         @Override
-        public java.util.List<GradedFindings.Grade> grades() {
+        public List<GradedFindings.Grade> grades() {
             if (!hasIssues()) {
-                return java.util.List.of();
+                return List.of();
             }
             IssueSeverity severity = DetectorDefaultSeverity.of(CalendarDetector.class.getSimpleName(), toString());
-            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            List<GradedFindings.Grade> out = new ArrayList<>();
             for (String shared : sharedCalendars) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.VERDICT, shared, DetectorTrust.Evidence.CONTEXTUAL));
             }
             for (String error : calendarErrors) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.FACT, error, DetectorTrust.Evidence.ASSERTED));
             }
-            return java.util.List.copyOf(out);
+            return List.copyOf(out);
         }
 
         @Override

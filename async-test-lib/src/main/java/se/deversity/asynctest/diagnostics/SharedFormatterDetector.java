@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -65,19 +68,24 @@ public class SharedFormatterDetector {
         SharedFormatterReport r = new SharedFormatterReport();
         for (FormatterState s : formatters.values()) {
             if (s.sharedAndUnguarded()) {
-                r.violations.add(String.format(
+                String finding = String.format(
                     "'%s' accessed from %d threads (%s) — not thread-safe; unsynchronized concurrent"
                         + " writes interleave output" + SelfGuard.REPORT_NOTE,
                     s.name, s.threadCount(),
-                    String.join(", ", s.threadNames())));
+                    String.join(", ", s.threadNames()));
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("SharedFormatter", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class SharedFormatterReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

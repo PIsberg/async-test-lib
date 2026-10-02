@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -178,13 +181,15 @@ public class StructuredConcurrencyMisuseDetector {
                 + ") was never closed — subtasks may outlive their scope (resource leak)");
         }
 
-        return new StructuredConcurrencyReport(
+        StructuredConcurrencyReport report801 = new StructuredConcurrencyReport(
             unclosed,
             new ArrayList<>(closedWithoutJoin),
             new ArrayList<>(resultAccessedBeforeJoin),
             new ArrayList<>(emptyScopes),
             maxNestingDepth.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -195,6 +200,35 @@ public class StructuredConcurrencyMisuseDetector {
         private final List<String> closedWithoutJoin;
         private final List<String> resultAccessedBeforeJoin;
         private final List<String> emptyScopes;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : unclosedScopes) {
+                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : closedWithoutJoin) {
+                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : resultAccessedBeforeJoin) {
+                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+                for (String finding : emptyScopes) {
+                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final int maxNestingDepth;
 
         StructuredConcurrencyReport(

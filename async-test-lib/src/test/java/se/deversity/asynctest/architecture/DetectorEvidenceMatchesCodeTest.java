@@ -55,7 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       it names a threshold, an identifier containing {@code threshold}.</li>
  * </ul>
  *
- * <p>From those, six implications are checked. The class goes by the weakest finding path, except
+ * <p>From those, seven implications are checked. The class goes by the weakest finding path, except
  * in a report that grades its findings, where it goes by the strongest grade; each implication
  * that can be broken by a weaker path has a shrink-only exemption list naming that path.
  *
@@ -76,12 +76,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>A detector that names a threshold and does not grade its findings is capped at PROMPT
  *       ({@code HEURISTIC} or {@code CONTEXT_FREE}), since the threshold path is its weakest, or
  *       names in {@link #THRESHOLD_DECIDES_NO_FINDING} why the threshold never reaches a finding.</li>
+ *   <li>A {@code HEURISTIC} detector names its threshold, since a threshold over what was recorded
+ *       is what the class says decides it (#756). Written as a bare literal, the gate could not
+ *       tell it from an {@code ASSERTED} or {@code CONTEXT_FREE} row, and rule 6 could not see it.</li>
  * </ol>
  *
  * <p><strong>What is not derived.</strong> A JDK query in a detector below {@code OBSERVED} is not
  * refused: many ask the recording thread whether it is virtual, or probe one path while a recorded
  * one decides another, so a probe does not show that the finding is observed. A threshold written
- * as a bare literal is not seen, so a {@code HEURISTIC} row is not required to name one, and
+ * as a bare literal is not seen, which is why rule 7 requires a {@code HEURISTIC} row to name one;
  * {@code ASSERTED} is told apart from {@code HEURISTIC} only by a named threshold (rule 6) and from
  * {@code CONTEXT_FREE} not at all: whether a finding is the record call itself or a thread count
  * over records is not a token. The scan reads the detector's own file, nested classes included; a detector that
@@ -416,6 +419,10 @@ class DetectorEvidenceMatchesCodeTest {
                 reasons.add("is " + evidence + " but " + detector + " names a threshold, does not grade "
                         + "its findings, and THRESHOLD_DECIDES_NO_FINDING does not say why the threshold "
                         + "decides no finding");
+            }
+            if (evidence == Evidence.HEURISTIC && !namesThreshold(type)) {
+                reasons.add("is HEURISTIC but " + detector + " names no threshold: give the number the "
+                        + "finding turns on a name containing THRESHOLD (#756)");
             }
             if (!reasons.isEmpty()) {
                 out.add(type + " " + String.join(ALSO, reasons));

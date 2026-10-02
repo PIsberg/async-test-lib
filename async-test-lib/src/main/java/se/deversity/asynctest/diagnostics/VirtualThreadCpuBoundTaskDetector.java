@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -188,13 +191,15 @@ public class VirtualThreadCpuBoundTaskDetector {
 
         int count = totalTasks.get();
         long avgMs = count > 0 ? totalDurationMs.get() / count : 0;
-        return new CpuBoundTaskReport(
+        CpuBoundTaskReport report801 = new CpuBoundTaskReport(
             found,
             count,
             avgMs,
             maxObservedMs.get(),
             cpuThresholdMs
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -202,6 +207,23 @@ public class VirtualThreadCpuBoundTaskDetector {
      */
     public static class CpuBoundTaskReport {
         private final List<String> violations;
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding (#801); called once by the detector before it returns the report. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+                for (String finding : violations) {
+                    structuredViolations.add(new Violation("VirtualThreadCpuBoundTask", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+        }
+
         private final int totalTasks;
         private final long averageDurationMs;
         private final long maxDurationMs;

@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
@@ -37,6 +42,12 @@ import org.jspecify.annotations.Nullable;
  * }</pre>
  */
 public class SharedRandomDetector {
+
+    /** Accesses a shared Random needs before its rate is judged for contention (#756). */
+    private static final int CONTENTION_ACCESS_THRESHOLD = 100;
+
+    /** Accesses per second above which a shared Random is reported contended. */
+    private static final double CONTENTION_RATE_THRESHOLD = 10_000;
 
     private static class RandomState {
         final String name;
@@ -141,9 +152,9 @@ public class SharedRandomDetector {
             // Check for high contention (many accesses in short time)
             if (state.firstAccessTime != null && state.lastAccessTime != null) {
                 long duration = state.lastAccessTime - state.firstAccessTime;
-                if (duration > 0 && state.accessCount.get() > 100) {
+                if (duration > 0 && state.accessCount.get() > CONTENTION_ACCESS_THRESHOLD) {
                     double accessesPerSecond = state.accessCount.get() * 1000.0 / duration;
-                    if (accessesPerSecond > 10000) { // More than 10k accesses/second
+                    if (accessesPerSecond > CONTENTION_RATE_THRESHOLD) {
                         report.highContention.add(String.format(Locale.ROOT,
                             "%s: high contention detected (%.0f accesses/sec)",
                             state.name, accessesPerSecond));
@@ -159,7 +170,21 @@ public class SharedRandomDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.sharedRandoms) {
+                report.structuredViolations.add(new Violation("SharedRandom", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.highContention) {
+                report.structuredViolations.add(new Violation("SharedRandom", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -167,8 +192,10 @@ public class SharedRandomDetector {
      */
     public static class SharedRandomReport {
         private boolean enabled = true;
-        final java.util.List<String> sharedRandoms = new java.util.ArrayList<>();
-        final java.util.List<String> highContention = new java.util.ArrayList<>();
+        final List<String> sharedRandoms = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> highContention = new ArrayList<>();
         final Map<String, String> methodBreakdown = new ConcurrentHashMap<>();
         final Map<String, String> randomActivity = new ConcurrentHashMap<>();
 

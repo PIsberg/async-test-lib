@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -20,6 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Long-running tasks blocking others
  */
 public class ThreadPoolMonitor {
+
+    /** Longest task duration, in milliseconds, above which a pool is reported for blocking tasks (#756). */
+    private static final long LONG_TASK_THRESHOLD_MS = 10_000;
     
     private static class PoolState {
         final String poolName;
@@ -165,7 +171,7 @@ public class ThreadPoolMonitor {
                 ));
             }
             
-            if (state.maxTaskDuration > 10000) {
+            if (state.maxTaskDuration > LONG_TASK_THRESHOLD_MS) {
                 report.longRunningTasks.add(String.format(
                     "%s: Max task duration %dms (may block other tasks)",
                     state.poolName, state.maxTaskDuration
@@ -180,7 +186,29 @@ public class ThreadPoolMonitor {
             }
         }
         
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.MEDIUM);
+            for (String finding : report.poolsWithRejections) {
+                report.structuredViolations.add(new Violation("ThreadPoolMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.saturatedQueues) {
+                report.structuredViolations.add(new Violation("ThreadPoolMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.longRunningTasks) {
+                report.structuredViolations.add(new Violation("ThreadPoolMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.threadStarvation) {
+                report.structuredViolations.add(new Violation("ThreadPoolMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -213,6 +241,8 @@ public class ThreadPoolMonitor {
     public static class ThreadPoolReport {
         /** Pools that rejected at least one submission. */
         public final Set<String> poolsWithRejections = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Work queues observed at their capacity. */
         public final Set<String> saturatedQueues = new HashSet<>();
         /** Tasks that ran past the reporting threshold. */

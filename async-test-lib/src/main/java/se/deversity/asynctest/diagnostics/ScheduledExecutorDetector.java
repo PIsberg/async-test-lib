@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +21,9 @@ import java.util.concurrent.ScheduledExecutorService;
  * - Exception handling in scheduled tasks
  */
 public class ScheduledExecutorDetector {
+
+    /** Task duration, in milliseconds, above which a scheduled task is reported long-running (#756). */
+    private static final long LONG_RUNNING_TASK_THRESHOLD_MS = 1000;
 
     private final Map<ScheduledExecutorService, ExecutorInfo> executorRegistry = new ConcurrentHashMap<>();
     private final Set<ScheduledExecutorService> notShutdownExecutors = ConcurrentHashMap.newKeySet();
@@ -81,7 +89,7 @@ public class ScheduledExecutorDetector {
         ExecutorInfo info = executorRegistry.get(executor);
         if (info != null) {
             info.recordTaskComplete(taskName, durationMs);
-            if (durationMs > 1000) {  // More than 1 second
+            if (durationMs > LONG_RUNNING_TASK_THRESHOLD_MS) {
                 longRunningTasks.add(executorName + ":" + taskName + " (" + durationMs + "ms)");
             }
         }
@@ -129,12 +137,14 @@ public class ScheduledExecutorDetector {
      */
     public ScheduledExecutorReport analyze() {
         checkShutdown();
-        return new ScheduledExecutorReport(
+        ScheduledExecutorReport report801 = new ScheduledExecutorReport(
             executorRegistry,
             notShutdownExecutors,
             longRunningTasks,
             exceptionInTasks.get()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -189,6 +199,31 @@ public class ScheduledExecutorDetector {
         private ExecutorInfo infoFor(ScheduledExecutorService executor) {
             ExecutorInfo info = executorRegistry.get(executor);
             return info != null ? info : new ExecutorInfo("<unregistered executor>", 0);
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.MEDIUM);
+            for (ScheduledExecutorService executor : notShutdownExecutors) {
+                structuredViolations.add(new Violation("ScheduledExecutor", severity,
+                        infoFor(executor).name + ": never shut down", List.of(), Map.of(), Instant.now()));
+            }
+            for (String taskInfo : longRunningTasks) {
+                structuredViolations.add(new Violation("ScheduledExecutor", severity,
+                        "Long-running task: " + taskInfo, List.of(), Map.of(), Instant.now()));
+            }
+            if (exceptionInTasks > 0) {
+                structuredViolations.add(new Violation("ScheduledExecutor", severity,
+                        exceptionInTasks + " exception(s) thrown in scheduled tasks", List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override
