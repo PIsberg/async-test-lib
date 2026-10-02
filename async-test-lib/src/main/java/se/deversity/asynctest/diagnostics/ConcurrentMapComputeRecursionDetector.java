@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -202,12 +205,28 @@ public class ConcurrentMapComputeRecursionDetector {
         ConcurrentMapComputeRecursionReport r = new ConcurrentMapComputeRecursionReport();
         r.recursions.addAll(recursions);
         r.crossKeyRecursions.addAll(crossKeyRecursions);
-        return r;
+        if (r.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(r.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : r.recursions) {
+                r.structuredViolations.add(new Violation("ConcurrentMapComputeRecursion", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : r.crossKeyRecursions) {
+                r.structuredViolations.add(new Violation("ConcurrentMapComputeRecursion", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class ConcurrentMapComputeRecursionReport {
         final List<String> recursions = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * Re-entries on a <em>different</em> key of the same map (#343).

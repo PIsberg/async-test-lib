@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,7 +49,7 @@ public class CompletableFutureChainDetector {
         volatile boolean joined;
         volatile boolean exceptionallyAdded;
         volatile boolean handled;
-        final java.util.List<String> chainOperations = new java.util.concurrent.CopyOnWriteArrayList<>();
+        final List<String> chainOperations = new java.util.concurrent.CopyOnWriteArrayList<>();
 
         FutureState(String name) {
             this.name = name;
@@ -226,7 +231,25 @@ public class CompletableFutureChainDetector {
                 "%d futures created but never joined", unjoined));
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.unjoinedFutures) {
+                report.structuredViolations.add(new Violation("CompletableFutureChain", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.missingExceptionHandler) {
+                report.structuredViolations.add(new Violation("CompletableFutureChain", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.unusedFutures) {
+                report.structuredViolations.add(new Violation("CompletableFutureChain", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -237,9 +260,11 @@ public class CompletableFutureChainDetector {
         int totalCreated;
         int totalJoined;
         int totalChained;
-        final java.util.List<String> unjoinedFutures = new java.util.ArrayList<>();
-        final java.util.List<String> missingExceptionHandler = new java.util.ArrayList<>();
-        final java.util.List<String> unusedFutures = new java.util.ArrayList<>();
+        final List<String> unjoinedFutures = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> missingExceptionHandler = new ArrayList<>();
+        final List<String> unusedFutures = new ArrayList<>();
 
         /**
          * Check if any issues were detected.

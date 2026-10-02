@@ -92,9 +92,8 @@ class StructuredViolationCoverageTest {
      * {@code DetectorSeverityMarkerTest} will then call redundant).
      */
     private static final Set<String> TEXT_ONLY = Set.of(
-            "ABAProblemDetector", "BlockingQueueDetector", "BusyWaitDetector", "CacheConcurrencyDetector", "CompletableFutureChainDetector",
-            "CompletableFutureCompletionLeakDetector", "CompletableFutureExceptionDetector",
-            "ConcurrentMapComputeRecursionDetector", "ConcurrentModificationDetector",
+            "ABAProblemDetector",
+            "CompletableFutureCompletionLeakDetector",
             "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
             "GathererConcurrencyMisuseDetector",
@@ -945,6 +944,56 @@ class StructuredViolationCoverageTest {
         d.recordClientCreated(new Object(), "test-client");
         d.recordRequestSent(new Object(), "api-call");
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 7 ----
+            new Path("BlockingQueueDetector", "an offer refused by a full queue", () -> {
+        var d = new BlockingQueueDetector();
+        var queue = new java.util.concurrent.ArrayBlockingQueue<String>(1);
+        d.registerQueue(queue, "full-queue", 1);
+        d.recordOffer(queue, "full-queue", queue.offer("a"));
+        d.recordOffer(queue, "full-queue", queue.offer("b"));
+        return d.analyze();
+            }),
+            new Path("BusyWaitDetector", "a spin loop past the threshold", () -> {
+        var d = new BusyWaitDetector();
+        d.reportSpinLoop("hot-path-loop", 1_000_000L);
+        return d.analyze();
+            }),
+            new Path("CacheConcurrencyDetector", "a HashMap cache read and written by two threads", () -> {
+        var d = new CacheConcurrencyDetector();
+        var cache = new java.util.HashMap<String, String>();
+        d.registerCache(cache, "unsafe-cache");
+        onTwoThreads(() -> d.recordGet(cache, "unsafe-cache", "key1"),
+                () -> d.recordPut(cache, "unsafe-cache", "key2", "value2"));
+        return d.analyze();
+            }),
+            new Path("CompletableFutureChainDetector", "a future never joined", () -> {
+        var d = new CompletableFutureChainDetector();
+        d.recordFutureCreated(java.util.concurrent.CompletableFuture.completedFuture("test"), "unjoined-future");
+        return d.analyze();
+            }),
+            new Path("CompletableFutureExceptionDetector", "a future completed exceptionally with no handler", () -> {
+        var d = new CompletableFutureExceptionDetector();
+        var future = new java.util.concurrent.CompletableFuture<String>();
+        d.recordFutureCreated(future, "unhandled-task");
+        future.completeExceptionally(new RuntimeException("test error"));
+        d.recordFutureCompleted(future, "unhandled-task", false);
+        return d.analyze();
+            }),
+            new Path("ConcurrentMapComputeRecursionDetector", "a compute on a key inside its own compute", () -> {
+        var d = new ConcurrentMapComputeRecursionDetector();
+        var map = new java.util.concurrent.ConcurrentHashMap<String, String>();
+        d.recordComputeStart(map, "key", Thread.currentThread(), "cache");
+        d.recordComputeStart(map, "key", Thread.currentThread(), "cache");
+        return d.analyze();
+            }),
+            new Path("ConcurrentModificationDetector", "a list modified while iterated", () -> {
+        var d = new ConcurrentModificationDetector();
+        var list = new java.util.ArrayList<String>();
+        d.registerCollection(list, "concurrent-list");
+        d.recordIterationStarted(list, "concurrent-list");
+        d.recordModificationDuringIteration(list, "concurrent-list", "add");
+        return d.analyze();
             }));
 
     /**
@@ -1001,7 +1050,14 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("ParallelStreamDetector", IssueSeverity.HIGH),
             java.util.Map.entry("LazyInitRaceDetector", IssueSeverity.HIGH),
             java.util.Map.entry("LockLeakDetector", IssueSeverity.CRITICAL),
-            java.util.Map.entry("HttpClientConcurrencyDetector", IssueSeverity.HIGH));
+            java.util.Map.entry("HttpClientConcurrencyDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("BlockingQueueDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("BusyWaitDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("CacheConcurrencyDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("CompletableFutureChainDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("CompletableFutureExceptionDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ConcurrentMapComputeRecursionDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ConcurrentModificationDetector", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.Locale;
@@ -378,7 +383,21 @@ public class BlockingQueueDetector {
                 state.putCount.get(), state.takeCount.get(), state.maxObservedSize.get()));
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.MEDIUM);
+            for (String finding : report.saturation) {
+                report.structuredViolations.add(new Violation("BlockingQueue", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.droppedElements) {
+                report.structuredViolations.add(new Violation("BlockingQueue", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -386,11 +405,13 @@ public class BlockingQueueDetector {
      */
     public static class BlockingQueueReport implements GradedFindings {
         private boolean enabled = true;
-        final java.util.List<String> droppedElements = new java.util.ArrayList<>();
-        final java.util.List<String> silentFailures = new java.util.ArrayList<>();
-        final java.util.List<String> emptyPolls = new java.util.ArrayList<>();
-        final java.util.List<String> saturation = new java.util.ArrayList<>();
-        final java.util.List<String> producerConsumerImbalance = new java.util.ArrayList<>();
+        final List<String> droppedElements = new ArrayList<>();
+        final List<String> silentFailures = new ArrayList<>();
+        final List<String> emptyPolls = new ArrayList<>();
+        final List<String> saturation = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+        final List<String> producerConsumerImbalance = new ArrayList<>();
         final Map<String, String> queueActivity = new ConcurrentHashMap<>();
 
         /**
@@ -438,19 +459,19 @@ public class BlockingQueueDetector {
          * gate has always read for this report.
          */
         @Override
-        public java.util.List<GradedFindings.Grade> grades() {
+        public List<GradedFindings.Grade> grades() {
             if (!hasIssues()) {
-                return java.util.List.of();
+                return List.of();
             }
             IssueSeverity severity = DetectorDefaultSeverity.of(BlockingQueueDetector.class.getSimpleName(), toString());
-            java.util.List<GradedFindings.Grade> out = new java.util.ArrayList<>();
+            List<GradedFindings.Grade> out = new ArrayList<>();
             for (String dropped : droppedElements) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.FACT, dropped, DetectorTrust.Evidence.ASSERTED));
             }
             for (String full : saturation) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, full, DetectorTrust.Evidence.HEURISTIC));
             }
-            return java.util.List.copyOf(out);
+            return List.copyOf(out);
         }
 
         @Override
