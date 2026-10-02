@@ -94,7 +94,6 @@ class StructuredViolationCoverageTest {
     private static final Set<String> TEXT_ONLY = Set.of(
             "ABAProblemDetector", "AtomicNonAtomicUpdateDetector", "BlockingQueueDetector", "BusyWaitDetector", "CacheConcurrencyDetector",
             "CalendarDetector", "CompletableFutureChainDetector",
-            "CompletableFutureCommonPoolBlockingDetector",
             "CompletableFutureCompletionLeakDetector", "CompletableFutureExceptionDetector",
             "ConcurrentMapComputeRecursionDetector", "ConcurrentModificationDetector",
             "ConditionVariableDetector", "ConstructorSafetyValidator",
@@ -103,20 +102,17 @@ class StructuredViolationCoverageTest {
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
             "ForkJoinTaskBlockingDetector", "FutureBlockingDetector",
             "GathererConcurrencyMisuseDetector", "HttpClientConcurrencyDetector",
-            "InheritableThreadLocalMisuseDetector", "InterruptMonitor",
-            "InterruptSwallowingDetector", "LatchMisuseDetector", "LazyConstantMisuseDetector",
+            "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LatchMisuseDetector", "LazyConstantMisuseDetector",
             "LazyInitRaceDetector", "LivelockDetector", "LockContentionDetector",
-            "LockDowngradeDetector", "LockLeakDetector", "LockOrderValidator",
-            "MdcContextLeakDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
+            "LockDowngradeDetector", "LockLeakDetector", "LockOrderValidator", "MemoryOrderingMonitor", "MissedSignalDetector",
             "MutableMapKeyDetector", "NestedMonitorLockoutDetector",
             "OptimisticReadValidationDetector", "ParallelStreamDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
             "ReentrantLockDetector", "ResourceLeakDetector", "ScheduledExecutorDetector",
             "ScopedValueMisuseDetector", "SemaphoreMisuseDetector", "SharedCollectionDetector",
-            "SharedDecimalFormatDetector", "SharedFormatterDetector", "SharedMatcherDetector",
-            "SharedRandomDetector", "SharedXmlParserDetector",
+            "SharedRandomDetector",
             "SimpleDateFormatDetector", "SleepInLockDetector", "StableValueMisuseDetector",
-            "StampedLockDetector", "StatefulLambdaDetector", "StreamClosingDetector",
+            "StampedLockDetector", "StreamClosingDetector",
             "StringBuilderDetector", "StructuredConcurrencyMisuseDetector",
             "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector",
             "SynchronizedNonFinalDetector", "SynchronizerMonitor", "ThreadFactoryDetector", "ThreadLeakDetector",
@@ -652,6 +648,63 @@ class StructuredViolationCoverageTest {
                 d.recordThreadStart(died);
                 d.recordUncaughtException(died, new IllegalStateException("boom"));
                 return d.analyze();
+            }),
+            // ---- structured in #801, batch 2 ----
+            new Path("CompletableFutureCommonPoolBlockingDetector", "a join inside a common-pool task", () -> {
+                var d = new CompletableFutureCommonPoolBlockingDetector();
+                Object future = new Object();
+                d.recordCommonPoolSubmission(future, Thread.currentThread(), "task");
+                d.recordBlockingCall(future, Thread.currentThread(), "join");
+                return d.analyze();
+            }),
+            new Path("InterruptSwallowingDetector", "an interrupt caught and not restored", () -> {
+                var d = new InterruptSwallowingDetector();
+                d.recordCatch(Thread.currentThread(), "loc", false);
+                return d.analyze();
+            }),
+            new Path("MdcContextLeakDetector", "an MDC key left behind by a task", () -> {
+                var d = new MdcContextLeakDetector();
+                d.recordTaskStart(Thread.currentThread(), java.util.Map.of());
+                d.recordTaskEnd(Thread.currentThread(), java.util.Map.of("requestId", "42"));
+                return d.analyze();
+            }),
+            new Path("SharedDecimalFormatDetector", "one DecimalFormat used by two threads", () -> {
+                var d = new SharedDecimalFormatDetector();
+                Object format = new java.text.DecimalFormat("#.##");
+                onTwoThreads(() -> d.recordAccess(format, "money", Thread.currentThread()),
+                        () -> d.recordAccess(format, "money", Thread.currentThread()));
+                return d.analyze();
+            }),
+            new Path("SharedFormatterDetector", "one Formatter used by two threads", () -> {
+                var d = new SharedFormatterDetector();
+                Object formatter = new java.util.Formatter(new StringBuilder());
+                onTwoThreads(() -> d.recordAccess(formatter, "out", Thread.currentThread()),
+                        () -> d.recordAccess(formatter, "out", Thread.currentThread()));
+                return d.analyze();
+            }),
+            new Path("SharedMatcherDetector", "one Matcher used by two threads", () -> {
+                var d = new SharedMatcherDetector();
+                Object matcher = java.util.regex.Pattern.compile("a").matcher("a");
+                onTwoThreads(() -> d.recordAccess(matcher, "m", Thread.currentThread()),
+                        () -> d.recordAccess(matcher, "m", Thread.currentThread()));
+                return d.analyze();
+            }),
+            new Path("SharedXmlParserDetector", "one parser used by two threads", () -> {
+                var d = new SharedXmlParserDetector();
+                Object parser = new Object();
+                onTwoThreads(() -> d.recordAccess(parser, "SAXParser", Thread.currentThread()),
+                        () -> d.recordAccess(parser, "SAXParser", Thread.currentThread()));
+                return d.analyze();
+            }),
+            new Path("StatefulLambdaDetector", "one lambda mutating its capture on two threads", () -> {
+                var d = new StatefulLambdaDetector();
+                Runnable lambda = () -> { };
+                Runnable run = () -> {
+                    d.recordExecution(lambda, "counter-lambda", Thread.currentThread());
+                    d.recordCapturedMutation(lambda, "counter", Thread.currentThread());
+                };
+                onTwoThreads(run, run);
+                return d.analyze();
             }));
 
     /**
@@ -661,16 +714,24 @@ class StructuredViolationCoverageTest {
      * structured findings must state the same, or the change moved what a {@code failOn} gate fails
      * on.
      */
-    private static final java.util.Map<String, IssueSeverity> SEVERITY_KEPT_IN_801 = java.util.Map.of(
-            "SynchronizedOnLiteralDetector", IssueSeverity.HIGH,
-            "BoxedPrimitiveLockDetector", IssueSeverity.HIGH,
-            "ExplicitGcDetector", IssueSeverity.LOW,
-            "DeprecatedThreadApiDetector", IssueSeverity.HIGH,
-            "SystemPropertyMutationDetector", IssueSeverity.HIGH,
-            "PublicLockExposureDetector", IssueSeverity.HIGH,
-            "FutureIgnoredDetector", IssueSeverity.HIGH,
-            "SharedTimeZoneDetector", IssueSeverity.HIGH,
-            "UncaughtExceptionHandlerDetector", IssueSeverity.HIGH);
+    private static final java.util.Map<String, IssueSeverity> SEVERITY_KEPT_IN_801 = java.util.Map.ofEntries(
+            java.util.Map.entry("SynchronizedOnLiteralDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("BoxedPrimitiveLockDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ExplicitGcDetector", IssueSeverity.LOW),
+            java.util.Map.entry("DeprecatedThreadApiDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SystemPropertyMutationDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("PublicLockExposureDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("FutureIgnoredDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SharedTimeZoneDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("UncaughtExceptionHandlerDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("CompletableFutureCommonPoolBlockingDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("InterruptSwallowingDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("MdcContextLeakDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SharedDecimalFormatDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SharedFormatterDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SharedMatcherDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SharedXmlParserDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("StatefulLambdaDetector", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

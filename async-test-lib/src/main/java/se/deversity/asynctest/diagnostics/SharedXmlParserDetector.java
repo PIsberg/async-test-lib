@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -74,21 +77,26 @@ public class SharedXmlParserDetector {
         SharedXmlParserReport r = new SharedXmlParserReport();
         for (ParserState s : parsers.values()) {
             if (s.sharedAndUnguarded()) {
-                r.violations.add(String.format(
+                String finding = String.format(
                         "'%s' instance accessed from %d threads (%s) — "
                                 + "XML parsers are not thread-safe; unsynchronized concurrent use causes "
                                 + "corrupted parse results or ConcurrentModificationExceptions"
                                 + SelfGuard.REPORT_NOTE,
                         s.parserType, s.threadCount(),
-                        String.join(", ", s.threadNames())));
+                        String.join(", ", s.threadNames()));
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("SharedXmlParser", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class SharedXmlParserReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

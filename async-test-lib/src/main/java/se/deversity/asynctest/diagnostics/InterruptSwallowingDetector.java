@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -66,19 +70,24 @@ public class InterruptSwallowingDetector {
         InterruptSwallowingReport r = new InterruptSwallowingReport();
         for (CatchEvent e : events) {
             if (!e.restored) {
-                r.violations.add(String.format(
+                String finding = String.format(
                         "Thread '%s' caught InterruptedException at [%s] without restoring "
                                 + "the interrupt flag — call Thread.currentThread().interrupt() "
                                 + "or rethrow the exception",
-                        e.threadName, e.location));
+                        e.threadName, e.location);
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("InterruptSwallowing", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return r;
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class InterruptSwallowingReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

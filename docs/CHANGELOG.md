@@ -9,13 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Nine more detectors state each finding's severity instead of leaving it to their text (#801).**
+- **Seventeen more detectors state each finding's severity instead of leaving it to their text (#801).**
   `SynchronizedOnLiteral`, `BoxedPrimitiveLock`, `ExplicitGc`, `DeprecatedThreadApi`,
   `SystemPropertyMutation`, `PublicLockExposure`, `FutureIgnored`, `SharedTimeZone` and
   `UncaughtExceptionHandler` reports now carry a `structuredViolations` list, so the `failOn` gate,
   JSON and SARIF read the severity each finding states. The severities are the ones their text
   resolved to before (HIGH, and LOW for `ExplicitGc`), measured per report and pinned in
   `StructuredViolationCoverageTest`, so no gate fails on anything new.
+  A second batch of eight followed: `CompletableFutureCommonPoolBlocking` (MEDIUM),
+  `InterruptSwallowing`, `MdcContextLeak`, `SharedDecimalFormat`, `SharedFormatter`,
+  `SharedMatcher`, `SharedXmlParser` and `StatefulLambda` (HIGH), measured and pinned the same way.
 
 - **Every `HEURISTIC` detector names its threshold, and the evidence gate requires it (#756).**
   Eleven `HEURISTIC` detectors wrote the number their findings turn on as a bare literal, which
