@@ -311,10 +311,11 @@ public class ThreadLeakDetector {
                         sb.append("      State: ").append(leak.thread.getState()).append("\n");
                         sb.append("      ID: ").append(leak.thread.threadId()).append("\n");
                     }
-                    if (leak.creationStack != null && leak.creationStack.length > 3) {
+                    List<StackTraceElement> frames = SiteCapture.userFrames(leak.creationStack, 3);
+                    if (!frames.isEmpty()) {
                         sb.append("      Created at:\n");
-                        for (int j = 3; j < Math.min(6, leak.creationStack.length); j++) {
-                            sb.append("        at ").append(leak.creationStack[j]).append("\n");
+                        for (StackTraceElement frame : frames) {
+                            sb.append("        at ").append(frame).append("\n");
                         }
                     }
                     sb.append("      Why: Threads that outlive the test consume OS resources (stack memory, file descriptors) and may\n");

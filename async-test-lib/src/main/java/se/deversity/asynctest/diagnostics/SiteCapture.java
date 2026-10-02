@@ -1,10 +1,13 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPerformance;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.lang.StackWalker.StackFrame;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -94,6 +97,39 @@ public final class SiteCapture {
     }
 
     /**
+     * {@return up to {@code max} frames of {@code trace}, from its first user frame on}
+     *
+     * <p>The one rule for a detector that prints a captured stack (#858). Skipping a fixed number
+     * of frames was right only for a direct call: on the agent path the hook and the detector's
+     * own overloads sit in between, and the first line printed was {@code AgentSleepHooks}.
+     *
+     * @param trace a stack captured with {@link Thread#getStackTrace()}, or {@code null}
+     * @param max   the most frames to return
+     */
+    static List<StackTraceElement> userFrames(StackTraceElement @Nullable [] trace,
+                                              int max) {
+        if (trace == null) {
+            return List.of();
+        }
+        for (int i = 0; i < trace.length; i++) {
+            if (!isFrameworkClass(trace[i].getClassName())) {
+                return Arrays.asList(trace).subList(i, Math.min(trace.length, i + max));
+            }
+        }
+        return List.of();
+    }
+
+    /**
+     * {@return the first user frame of {@code trace}, or {@code null} when there is none}
+     *
+     * @param trace a stack captured with {@link Thread#getStackTrace()}
+     */
+    static @Nullable StackTraceElement firstUserFrame(StackTraceElement[] trace) {
+        List<StackTraceElement> first = userFrames(trace, 1);
+        return first.isEmpty() ? null : first.get(0);
+    }
+
+    /**
      * Whether a frame in {@code cls} is skipped when looking for the user caller.
      *
      * @param cls the frame's binary class name, as {@link StackFrame#getClassName()} gives it
@@ -106,13 +142,23 @@ public final class SiteCapture {
         if (isAgentHook(cls)) return true;
         // Detectors live in the diagnostics package and have a known set of
         // class-name suffixes. We must not surface a detector's own frame as
-        // the "user site" of an access it recorded.
+        // the "user site" of an access it recorded. A class nested in one, such
+        // as ThreadLeakDetector$ThreadState capturing its creation stack, is the
+        // detector too (#858).
         int lastDot = cls.lastIndexOf('.');
-        String simple = lastDot < 0 ? cls : cls.substring(lastDot + 1);
+        int nested = cls.indexOf('$', lastDot + 1);
+        int outerEnd = nested < 0 ? cls.length() : nested;
         for (String suffix : FRAMEWORK_SUFFIXES) {
-            if (simple.endsWith(suffix)) return true;
+            if (endsWithSuffix(cls, cls.length(), suffix, lastDot)
+                    || endsWithSuffix(cls, outerEnd, suffix, lastDot)) return true;
         }
         return false;
+    }
+
+    /** {@return whether {@code cls} up to {@code end} ends in {@code suffix} after {@code lastDot}}; allocates nothing */
+    private static boolean endsWithSuffix(String cls, int end, String suffix, int lastDot) {
+        int start = end - suffix.length();
+        return start > lastDot && cls.startsWith(suffix, start);
     }
 
     /**

@@ -12,6 +12,7 @@ import se.deversity.asynctest.AgentThreadHooks;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -61,5 +62,41 @@ class SiteCaptureTest {
                 "nor an Agent*Hooks name outside the library");
         assertFalse(SiteCapture.isFrameworkClass("se.deversity.asynctest.sub.AgentFooHooks"),
                 "nor one in a sub-package of the library's root");
+    }
+
+    @Test
+    void aClassNestedInADetectorIsSkipped() {
+        // #858: ThreadLeakDetector$ThreadState captures the creation stack, so its frame sits on top.
+        assertTrue(SiteCapture.isFrameworkClass(ThreadLeakDetector.class.getName() + "$ThreadState"),
+                "a detector's nested class is the detector, not the user");
+        assertTrue(SiteCapture.isFrameworkClass("com.acme.QueueMonitor$Entry$1"),
+                "however deep the nesting");
+        assertFalse(SiteCapture.isFrameworkClass("com.acme.OrderService$Detector2"),
+                "a nested name is judged by its suffix, and Detector2 does not end in Detector");
+        assertFalse(SiteCapture.isFrameworkClass("com.acme.Detector.OrderService"),
+                "a suffix in the package name is not the class's");
+    }
+
+    @Test
+    void userFramesStartAtTheFirstUserFrameAndStopAtTheLimit() {
+        StackTraceElement[] trace = {
+                frame("java.lang.Thread", "getStackTrace"),
+                frame("se.deversity.asynctest.diagnostics.SleepInLockDetector", "recordHolding"),
+                frame("se.deversity.asynctest.AgentSleepHooks", "recordHeld"),
+                frame("se.deversity.asynctest.AgentSleepHooks", "sleepHoldingMonitor"),
+                frame("com.acme.Cache", "refresh"),
+                frame("com.acme.Cache", "get"),
+                frame("com.acme.Service", "handle"),
+        };
+        assertEquals(List.of(trace[4], trace[5]), SiteCapture.userFrames(trace, 2),
+                "the hook and the detector are skipped, whatever their number, and max bounds the rest");
+        assertEquals(trace[4], SiteCapture.firstUserFrame(trace));
+        assertEquals(List.of(), SiteCapture.userFrames(null, 4), "no stack, no frames");
+        assertEquals(List.of(), SiteCapture.userFrames(new StackTraceElement[] {trace[0], trace[1]}, 4),
+                "a stack of framework frames only has no user frame");
+    }
+
+    private static StackTraceElement frame(String cls, String method) {
+        return new StackTraceElement(cls, method, "X.java", 1);
     }
 }

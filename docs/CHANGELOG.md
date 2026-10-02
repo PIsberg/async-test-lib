@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bytes, and a release asset can be replaced behind an unchanged URL. `WorkflowDownloadIntegrityTest`
   now requires `sha256sum -c` in every workflow step that downloads a release asset.
 
+- **A printed stack starts at the caller's line, not the agent hook that fed the detector (#858).**
+  `SleepInLockDetector`, `ThreadLeakDetector`, `UnboundedQueueDetector`,
+  `CompletableFutureCompletionLeakDetector` and `ThreadPoolDeadlockDetector` printed a stack from a
+  fixed second or third frame, and `BusyWaitDetector` and `InterruptMonitor` named that frame as the call
+  site. That is the caller only on a direct call: through the agent, a sleep-in-lock report opened
+  at `AgentSleepHooks.recordHeld`. All seven, and `DaemonThreadHygieneDetector`'s own filter, now
+  take the first user frame by `SiteCapture`'s rule, which also skips a class nested in a detector
+  (`ThreadLeakDetector$ThreadState`) for every reported site.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added
