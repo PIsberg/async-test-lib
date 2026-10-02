@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -141,7 +144,17 @@ public class VisibilityMonitor {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : report.suspectedFields) {
+                report.structuredViolations.add(new Violation("VisibilityMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
@@ -175,6 +188,8 @@ public class VisibilityMonitor {
     public static class VisibilityReport {
         /** Fields where two threads observed different values at the same time. */
         public final Set<String> suspectedFields = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Values each thread observed per field, used to spot stale reads. */
         public final Map<String, Map<Long, Set<Object>>> fieldValueVariations = new HashMap<>();
         

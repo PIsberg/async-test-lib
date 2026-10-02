@@ -59,10 +59,7 @@ import static java.util.Map.entry;
 public final class DetectorDefaultSeverity {
 
     private static final Map<DetectorType, IssueSeverity> DECLARED = Map.ofEntries(
-            entry(DetectorType.VISIBILITY, IssueSeverity.HIGH),
             entry(DetectorType.LIVELOCKS, IssueSeverity.CRITICAL),
-            entry(DetectorType.WAKEUP_ISSUES, IssueSeverity.HIGH),
-            entry(DetectorType.LOCK_ORDER, IssueSeverity.CRITICAL),
             entry(DetectorType.SYNCHRONIZERS, IssueSeverity.CRITICAL),
             entry(DetectorType.THREAD_POOL, IssueSeverity.MEDIUM),
             entry(DetectorType.ASYNC_PIPELINE, IssueSeverity.HIGH),
@@ -107,14 +104,11 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.CACHE_CONCURRENCY, IssueSeverity.HIGH),
             entry(DetectorType.COMPLETABLEFUTURE_CHAIN, IssueSeverity.HIGH),
             entry(DetectorType.EXECUTOR_SHUTDOWN, IssueSeverity.MEDIUM),
-            entry(DetectorType.MUTABLE_MAP_KEY, IssueSeverity.HIGH),
-            entry(DetectorType.LOCK_DOWNGRADE, IssueSeverity.HIGH),
             entry(DetectorType.INHERITABLE_THREAD_LOCAL, IssueSeverity.HIGH),
             entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, IssueSeverity.HIGH),
             entry(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, IssueSeverity.HIGH),
             entry(DetectorType.OPTIMISTIC_READ_VALIDATION, IssueSeverity.HIGH),
-            entry(DetectorType.WEAK_REFERENCE_RACE, IssueSeverity.HIGH),
-            entry(DetectorType.LATCH_MISUSE, IssueSeverity.CRITICAL)
+            entry(DetectorType.WEAK_REFERENCE_RACE, IssueSeverity.HIGH)
     );
 
     private DetectorDefaultSeverity() { }

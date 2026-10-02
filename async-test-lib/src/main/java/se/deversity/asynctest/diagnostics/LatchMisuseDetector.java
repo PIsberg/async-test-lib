@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashSet;
@@ -175,12 +180,28 @@ public class LatchMisuseDetector {
             }
         }
 
-        return report;
+        if (report.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
+                    .orElse(IssueSeverity.CRITICAL);
+            for (String finding : report.missingCountDowns) {
+                report.structuredViolations.add(new Violation("LatchMisuse", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.extraCountDowns) {
+                report.structuredViolations.add(new Violation("LatchMisuse", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     public static class LatchMisuseReport {
         /** Latches never counted down to zero. */
         public final Set<String> missingCountDowns = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         /** Latches counted down more times than they were created for. */
         public final Set<String> extraCountDowns = new HashSet<>();
 

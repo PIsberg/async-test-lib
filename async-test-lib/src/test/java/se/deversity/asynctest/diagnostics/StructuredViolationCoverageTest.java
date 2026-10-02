@@ -99,10 +99,8 @@ class StructuredViolationCoverageTest {
             "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector", "ExecutorShutdownDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
             "GathererConcurrencyMisuseDetector", "HttpClientConcurrencyDetector",
-            "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LatchMisuseDetector", "LazyConstantMisuseDetector",
-            "LazyInitRaceDetector", "LivelockDetector",
-            "LockDowngradeDetector", "LockLeakDetector", "LockOrderValidator", "MemoryOrderingMonitor", "MissedSignalDetector",
-            "MutableMapKeyDetector",
+            "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LazyConstantMisuseDetector",
+            "LazyInitRaceDetector", "LivelockDetector", "LockLeakDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
             "OptimisticReadValidationDetector", "ParallelStreamDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
             "ReentrantLockDetector", "ResourceLeakDetector", "ScheduledExecutorDetector",
@@ -116,8 +114,7 @@ class StructuredViolationCoverageTest {
             "ThreadPoolMonitor", "ThreadStarvationDetector", "TimerDetector",
             "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
-            "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector",
-            "VisibilityMonitor", "VolatileArrayDetector", "WaitTimeoutDetector", "WakeupDetector",
+            "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector",
             "WeakReferenceRaceDetector");
 
     /**
@@ -768,6 +765,66 @@ class StructuredViolationCoverageTest {
         d.recordNewTask(Thread.currentThread(), "second");
         d.recordGet(Thread.currentThread(), tl, "REQUEST_ID", true);
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 4 ----
+            new Path("MutableMapKeyDetector", "a key mutated after insertion", () -> {
+        var d = new MutableMapKeyDetector();
+        Object key = new StringBuilder("before");
+        d.recordKeyInserted(new java.util.HashMap<>(), key, "index");
+        d.recordKeyMutation(key, "value", "before", "after");
+        return d.analyze();
+            }),
+            new Path("LatchMisuseDetector", "an await on a latch counted down short", () -> {
+        var d = new LatchMisuseDetector();
+        Object latch = new Object();
+        d.registerLatch(latch, "ready", 3);
+        d.recordCountDown(latch);
+        d.recordAwait(latch);
+        return d.analyze();
+            }),
+            new Path("LockDowngradeDetector", "a write lock attempted under the read lock", () -> {
+        var d = new LockDowngradeDetector();
+        var lock = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        lock.readLock().lock();
+        d.recordReadLockAcquired(lock, "rw");
+        try {
+            d.recordWriteLockAcquired(lock, "rw");
+        } finally {
+            lock.readLock().unlock();
+            d.recordReadLockReleased(lock, "rw");
+        }
+        return d.analyze();
+            }),
+            new Path("WakeupDetector", "a wait that never ended", () -> {
+        var d = new WakeupDetector();
+        Object monitor = new Object();
+        d.recordWaitEnter(monitor);
+        d.recordWaitExit(monitor, false);
+        return d.analyze();
+            }),
+            new Path("VisibilityMonitor", "two threads saw different values", () -> {
+        var d = new VisibilityMonitor();
+        d.markInvocationStart();
+        onTwoThreads(() -> d.recordFieldAccess("Holder.ref", "initialized"),
+                () -> d.recordFieldAccess("Holder.ref", null));
+        return d.analyze();
+            }),
+            new Path("LockOrderValidator", "two locks taken in both orders", () -> {
+        var d = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onTwoThreads(() -> {
+            d.recordLockAcquisition(a);
+            d.recordLockAcquisition(b);
+            d.recordLockRelease(b);
+            d.recordLockRelease(a);
+        }, () -> {
+            d.recordLockAcquisition(b);
+            d.recordLockAcquisition(a);
+            d.recordLockRelease(a);
+            d.recordLockRelease(b);
+        });
+        return d.validateLockOrder();
             }));
 
     /**
@@ -802,7 +859,13 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("LockContentionDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("ForkJoinTaskBlockingDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("NestedMonitorLockoutDetector", IssueSeverity.CRITICAL),
-            java.util.Map.entry("ThreadLocalContaminationDetector", IssueSeverity.HIGH));
+            java.util.Map.entry("ThreadLocalContaminationDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("MutableMapKeyDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("LatchMisuseDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("LockDowngradeDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("WakeupDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("VisibilityMonitor", IssueSeverity.HIGH),
+            java.util.Map.entry("LockOrderValidator", IssueSeverity.CRITICAL));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")
