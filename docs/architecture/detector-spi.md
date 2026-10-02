@@ -62,7 +62,9 @@ Coverage is automated:
   open what a named module keeps closed, so a report method or `hasIssues()` there
   fails the build under strict mode like a detector that throws (#847), and a list
   there that it may not read gives way to the text finding, which strict mode does
-  not call empty.
+  not call empty. That fallback writes one stderr line per report type, in every
+  mode, naming the type whose list was refused, so the author learns the
+  severities it chose were not the ones the gate read (#859).
   Detectors whose report doesn't follow the canonical
   `analyze() → Report{hasIssues(), toString()}` shape return an empty list and
   write nothing; `DetectorFiringContractTest` holds every built-in to that shape,

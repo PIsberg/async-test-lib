@@ -170,7 +170,11 @@ public final class LegacyDetectorAdapter<D> implements Detector {
             // fails this build's tests, and changes nothing anywhere else. A list this library may
             // not read is not an empty one, so strict mode would name the wrong fault; the finding
             // still comes out, graded by its text (#851).
-            if (structured.isPresent()) DetectorFailurePolicy.structuredFindingsMissing(delegateName(), report);
+            if (structured.isPresent()) {
+                DetectorFailurePolicy.structuredFindingsMissing(delegateName(), report);
+            } else {
+                DetectorFailurePolicy.structuredFindingsUnreadable(delegateName(), report.getClass());
+            }
             return List.of(new Violation(
                     detectorName,
                     DetectorDefaultSeverity.of(detectorName, text),

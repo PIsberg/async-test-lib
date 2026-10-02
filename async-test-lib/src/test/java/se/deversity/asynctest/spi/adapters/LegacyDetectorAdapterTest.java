@@ -274,6 +274,24 @@ class LegacyDetectorAdapterTest {
     }
 
     @Test
+    @DisplayName("a structured list the library may not read is said once, so the author knows its severities were not used (#859)")
+    void anUnreadableStructuredListIsSaidOncePerReportType() {
+        System.clearProperty(DetectorFailurePolicy.STRICT_PROPERTY);
+        Object closed = ClosedFixtureModule.newInstance(HiddenStructuredReportDetector.class);
+        Detector adapter = new LegacyDetectorAdapter<>(closed, DetectorType.DEADLOCKS, "HiddenStructured");
+
+        List<List<Violation>> result = new ArrayList<>();
+        String first = captureStdErr(() -> result.add(adapter.analyze()));
+        String second = captureStdErr(() -> result.add(adapter.analyze()));
+
+        assertEquals(1, result.get(0).size(), "the finding still comes out from its text: " + result.get(0));
+        assertTrue(first.contains("[AsyncTest] Detector HiddenStructuredReportDetector")
+                        && first.contains("structuredViolations") && first.contains("graded from their text"),
+                "the author is told the severities it chose were not read, and why: " + first);
+        assertEquals("", second, "once per report type, not once per run or per finding");
+    }
+
+    @Test
     @DisplayName("strict: a detector with no report method is not a failure; it has no view on this path, and says nothing")
     void aShapelessDetectorStaysSilentEvenUnderStrictMode() {
         System.setProperty(DetectorFailurePolicy.STRICT_PROPERTY, "true");

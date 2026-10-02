@@ -51,6 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detector's thread-safety note now says what #776 and #852 changed: state is keyed by the
   collection's identity when it is passed, and name-keyed edges last one round.
 
+- **A third-party report whose `structuredViolations` list cannot be read now says so (#859).**
+  The SPI adapter grades such a finding from its text, which keeps it, but nothing told the author
+  the severities it chose were ignored, not even under strict mode. One stderr line per report type
+  now names the type and the fix (open its package to the library), in every mode, without failing.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added
