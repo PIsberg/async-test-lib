@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -75,12 +79,18 @@ public class ForkJoinTaskBlockingDetector {
     public ForkJoinTaskBlockingReport analyze() {
         ForkJoinTaskBlockingReport r = new ForkJoinTaskBlockingReport();
         r.blockingCalls.addAll(blockingCalls);
-        return r;
+        for (String finding : blockingCalls) {
+            r.structuredViolations.add(new Violation("ForkJoinTaskBlocking", IssueSeverity.MEDIUM,
+                    finding, List.of(), Map.of(), Instant.now()));
+        }
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class ForkJoinTaskBlockingReport {
         final List<String> blockingCalls = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

@@ -1,5 +1,10 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.List;
+import java.util.ArrayList;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashSet;
@@ -174,21 +179,26 @@ public class ExecutorDeadlockDetector {
             // The state at analysis counts too: waits still open now are waits that never ended.
             state.noteIfSaturated();
             if (state.saturatedWaiters.get() > 0) {
-                report.selfDeadlocks.add(String.format(Locale.ROOT,
+                String finding = String.format(Locale.ROOT,
                     "%s: all %d worker(s) are waiting on sibling tasks while %d task(s) remain queued",
                     state.name,
                     state.maxThreads,
                     state.queuedWhenSaturated
-                ));
+                );
+                report.selfDeadlocks.add(finding);
+                report.structuredViolations.add(new Violation("ExecutorDeadlock", IssueSeverity.CRITICAL,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
 
-        return report;
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     public static class ExecutorDeadlockReport {
         /** Tasks that blocked waiting for another task on the same single-threaded executor. */
         public final Set<String> selfDeadlocks = new HashSet<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

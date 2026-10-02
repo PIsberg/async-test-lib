@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -130,13 +133,16 @@ public class LockContentionDetector {
 
             double ratio = (double) contended / attempts;
             if (ratio >= CONTENTION_THRESHOLD || contended >= 5) {
-                report.hotLocks.add(String.format(
+                String finding = String.format(
                         "%s: %d acquire attempt(s), %d contention event(s) (%.0f%% contention ratio) — contended",
-                        state.name, attempts, contended, ratio * 100));
+                        state.name, attempts, contended, ratio * 100);
+                report.hotLocks.add(finding);
+                report.structuredViolations.add(new Violation("LockContention", IssueSeverity.MEDIUM,
+                        finding, List.of(), Map.of(), Instant.now()));
             }
         }
 
-        return report;
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     // ---- Internal ----------------------------------------------------------
@@ -158,6 +164,10 @@ public class LockContentionDetector {
     public static class LockContentionReport {
 
         final List<String> hotLocks = new ArrayList<>();
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * Returns {@code true} when any monitor exceeds the contention threshold.

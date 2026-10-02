@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -147,12 +150,18 @@ public class NestedMonitorLockoutDetector {
     public NestedMonitorLockoutReport analyze() {
         NestedMonitorLockoutReport report = new NestedMonitorLockoutReport();
         report.incidents.addAll(issues);
-        return report;
+        for (String finding : issues) {
+            report.structuredViolations.add(new Violation("NestedMonitorLockout", IssueSeverity.CRITICAL,
+                    finding, List.of(), Map.of(), Instant.now()));
+        }
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class NestedMonitorLockoutReport {
         final List<String> incidents = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

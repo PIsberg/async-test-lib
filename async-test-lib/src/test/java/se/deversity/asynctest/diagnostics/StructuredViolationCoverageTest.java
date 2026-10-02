@@ -92,20 +92,17 @@ class StructuredViolationCoverageTest {
      * {@code DetectorSeverityMarkerTest} will then call redundant).
      */
     private static final Set<String> TEXT_ONLY = Set.of(
-            "ABAProblemDetector", "AtomicNonAtomicUpdateDetector", "BlockingQueueDetector", "BusyWaitDetector", "CacheConcurrencyDetector",
+            "ABAProblemDetector", "BlockingQueueDetector", "BusyWaitDetector", "CacheConcurrencyDetector",
             "CalendarDetector", "CompletableFutureChainDetector",
             "CompletableFutureCompletionLeakDetector", "CompletableFutureExceptionDetector",
             "ConcurrentMapComputeRecursionDetector", "ConcurrentModificationDetector",
-            "ConditionVariableDetector", "ConstructorSafetyValidator",
-            "CopyOnWriteCollectionDetector", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
-            "ExecutorDeadlockDetector", "ExecutorShutdownDetector",
+            "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector", "ExecutorShutdownDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
-            "ForkJoinTaskBlockingDetector", "FutureBlockingDetector",
             "GathererConcurrencyMisuseDetector", "HttpClientConcurrencyDetector",
             "InheritableThreadLocalMisuseDetector", "InterruptMonitor", "LatchMisuseDetector", "LazyConstantMisuseDetector",
-            "LazyInitRaceDetector", "LivelockDetector", "LockContentionDetector",
+            "LazyInitRaceDetector", "LivelockDetector",
             "LockDowngradeDetector", "LockLeakDetector", "LockOrderValidator", "MemoryOrderingMonitor", "MissedSignalDetector",
-            "MutableMapKeyDetector", "NestedMonitorLockoutDetector",
+            "MutableMapKeyDetector",
             "OptimisticReadValidationDetector", "ParallelStreamDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
             "ReentrantLockDetector", "ResourceLeakDetector", "ScheduledExecutorDetector",
@@ -115,8 +112,7 @@ class StructuredViolationCoverageTest {
             "StampedLockDetector", "StreamClosingDetector",
             "StringBuilderDetector", "StructuredConcurrencyMisuseDetector",
             "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector",
-            "SynchronizedNonFinalDetector", "SynchronizerMonitor", "ThreadFactoryDetector", "ThreadLeakDetector",
-            "ThreadLocalContaminationDetector", "ThreadLocalMonitor", "ThreadPoolDeadlockDetector",
+            "SynchronizedNonFinalDetector", "SynchronizerMonitor", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadLocalMonitor", "ThreadPoolDeadlockDetector",
             "ThreadPoolMonitor", "ThreadStarvationDetector", "TimerDetector",
             "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
@@ -705,6 +701,73 @@ class StructuredViolationCoverageTest {
                 };
                 onTwoThreads(run, run);
                 return d.analyze();
+            }),
+            // ---- structured in #801, batch 3 ----
+            new Path("AtomicNonAtomicUpdateDetector", "a get then set on one atomic", () -> {
+        var d = new AtomicNonAtomicUpdateDetector();
+        Object atomic = new java.util.concurrent.atomic.AtomicInteger();
+        d.recordGet(atomic, "counter", Thread.currentThread());
+        d.recordSet(atomic, "counter", Thread.currentThread());
+        return d.analyze();
+            }),
+            new Path("CopyOnWriteCollectionDetector", "a write-only copy-on-write list", () -> {
+        var d = new CopyOnWriteCollectionDetector();
+        Object list = new java.util.concurrent.CopyOnWriteArrayList<>();
+        d.registerCollection(list, "events");
+        for (int i = 0; i < 50; i++) {
+            d.recordWrite(list, "events");
+        }
+        return d.analyze();
+            }),
+            new Path("ExecutorDeadlockDetector", "the only worker waits on a queued sibling", () -> {
+        var d = new ExecutorDeadlockDetector();
+        Object pool = new Object();
+        d.registerExecutor(pool, "pool", 1);
+        d.recordTaskSubmitted(pool);
+        d.recordTaskSubmitted(pool);
+        d.recordTaskStarted(pool);
+        d.recordWaitingOnSibling(pool);
+        return d.analyze();
+            }),
+            new Path("FutureBlockingDetector", "the only worker blocks on a future", () -> {
+        var d = new FutureBlockingDetector();
+        Object pool = new Object();
+        d.registerExecutor(pool, "pool", 1);
+        d.recordTaskSubmitted(pool);
+        d.recordTaskSubmitted(pool);
+        d.recordTaskStarted(pool);
+        d.recordBlockingWait(pool);
+        return d.analyze();
+            }),
+            new Path("LockContentionDetector", "every acquire contended", () -> {
+        var d = new LockContentionDetector();
+        Object lock = new Object();
+        for (int i = 0; i < 5; i++) {
+            d.recordAcquireAttempt(lock, "lock");
+            d.recordContention(lock, "lock");
+        }
+        return d.analyze();
+            }),
+            new Path("ForkJoinTaskBlockingDetector", "a join inside a ForkJoinTask", () -> {
+        var d = new ForkJoinTaskBlockingDetector();
+        d.recordForkJoinTaskEntered(Thread.currentThread());
+        d.recordBlockingCallAttempted(Thread.currentThread(), "join");
+        return d.analyze();
+            }),
+            new Path("NestedMonitorLockoutDetector", "a sleep while holding a monitor", () -> {
+        var d = new NestedMonitorLockoutDetector();
+        d.recordMonitorAcquired(new Object());
+        d.recordBlockingOperationAttempted("Thread.sleep");
+        return d.analyze();
+            }),
+            new Path("ThreadLocalContaminationDetector", "a value set by the previous task is read", () -> {
+        var d = new ThreadLocalContaminationDetector();
+        Object tl = new ThreadLocal<>();
+        d.recordNewTask(Thread.currentThread(), "first");
+        d.recordSet(Thread.currentThread(), tl, "REQUEST_ID");
+        d.recordNewTask(Thread.currentThread(), "second");
+        d.recordGet(Thread.currentThread(), tl, "REQUEST_ID", true);
+        return d.analyze();
             }));
 
     /**
@@ -731,7 +794,15 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("SharedFormatterDetector", IssueSeverity.HIGH),
             java.util.Map.entry("SharedMatcherDetector", IssueSeverity.HIGH),
             java.util.Map.entry("SharedXmlParserDetector", IssueSeverity.HIGH),
-            java.util.Map.entry("StatefulLambdaDetector", IssueSeverity.HIGH));
+            java.util.Map.entry("StatefulLambdaDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("AtomicNonAtomicUpdateDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("CopyOnWriteCollectionDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("ExecutorDeadlockDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("FutureBlockingDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("LockContentionDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("ForkJoinTaskBlockingDetector", IssueSeverity.MEDIUM),
+            java.util.Map.entry("NestedMonitorLockoutDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("ThreadLocalContaminationDetector", IssueSeverity.HIGH));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

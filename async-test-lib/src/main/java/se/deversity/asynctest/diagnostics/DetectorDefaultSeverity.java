@@ -82,7 +82,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.VOLATILE_ARRAY, IssueSeverity.HIGH),
             entry(DetectorType.DOUBLE_CHECKED_LOCKING, IssueSeverity.HIGH),
             entry(DetectorType.WAIT_TIMEOUT, IssueSeverity.CRITICAL),
-            entry(DetectorType.LOCK_CONTENTION, IssueSeverity.MEDIUM),
             entry(DetectorType.SYNCHRONIZED_NON_FINAL, IssueSeverity.HIGH),
             entry(DetectorType.MISSED_SIGNAL, IssueSeverity.CRITICAL),
             entry(DetectorType.LAZY_INIT_RACE, IssueSeverity.HIGH),
@@ -102,7 +101,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.CALENDAR, IssueSeverity.HIGH),
             entry(DetectorType.SHARED_COLLECTIONS, IssueSeverity.HIGH),
             entry(DetectorType.TIMER, IssueSeverity.HIGH),
-            entry(DetectorType.COPY_ON_WRITE_COLLECTIONS, IssueSeverity.MEDIUM),
             entry(DetectorType.STRING_BUILDER, IssueSeverity.HIGH),
             entry(DetectorType.HTTP_CLIENT, IssueSeverity.HIGH),
             entry(DetectorType.STREAM_CLOSING, IssueSeverity.MEDIUM),
@@ -110,19 +108,13 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.COMPLETABLEFUTURE_CHAIN, IssueSeverity.HIGH),
             entry(DetectorType.EXECUTOR_SHUTDOWN, IssueSeverity.MEDIUM),
             entry(DetectorType.MUTABLE_MAP_KEY, IssueSeverity.HIGH),
-            entry(DetectorType.NESTED_MONITOR_LOCKOUT, IssueSeverity.CRITICAL),
             entry(DetectorType.LOCK_DOWNGRADE, IssueSeverity.HIGH),
             entry(DetectorType.INHERITABLE_THREAD_LOCAL, IssueSeverity.HIGH),
-            entry(DetectorType.THREAD_LOCAL_CONTAMINATION, IssueSeverity.HIGH),
-            entry(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, IssueSeverity.HIGH),
             entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, IssueSeverity.HIGH),
             entry(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, IssueSeverity.HIGH),
-            entry(DetectorType.FORK_JOIN_TASK_BLOCKING, IssueSeverity.MEDIUM),
             entry(DetectorType.OPTIMISTIC_READ_VALIDATION, IssueSeverity.HIGH),
             entry(DetectorType.WEAK_REFERENCE_RACE, IssueSeverity.HIGH),
-            entry(DetectorType.LATCH_MISUSE, IssueSeverity.CRITICAL),
-            entry(DetectorType.EXECUTOR_DEADLOCK, IssueSeverity.CRITICAL),
-            entry(DetectorType.FUTURE_BLOCKING, IssueSeverity.CRITICAL)
+            entry(DetectorType.LATCH_MISUSE, IssueSeverity.CRITICAL)
     );
 
     private DetectorDefaultSeverity() { }
