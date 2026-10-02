@@ -51,10 +51,14 @@ Config c = CONFIG.get();                       // computes once, cached forever
 
 ```java
 var d = new LazyConstantMisuseDetector();
-d.recordComputeStart("CONFIG", Thread.currentThread());
-d.recordComputeEnd("CONFIG", Thread.currentThread(), null);   // null result → flagged
+d.recordComputeStart(config, "CONFIG", Thread.currentThread());
+d.recordComputeEnd(config, "CONFIG", Thread.currentThread(), null);   // null result → flagged
 assertTrue(d.analyze().hasIssues());
 ```
+
+Pass the constant (`config` here) as well as its label. Each constant is then judged on its own:
+two constants that share the label `"CONFIG"` and are each computed once are not a repeated
+computation, which the label-only overloads would report.
 
 Inside `@AsyncTest` the detector is pipeline-wired: grab it with
 `AsyncTestContext.lazyConstantMisuseDetector()` (exclude with

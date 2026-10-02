@@ -28,6 +28,7 @@ final class FindingSink {
     private final Map<String, List<GradedFindings.Grade>> grades = new LinkedHashMap<>();
     private final Map<String, IssueSeverity> severities = new LinkedHashMap<>();
     private final Map<String, List<String>> notes = new LinkedHashMap<>();
+    private final Map<String, List<String>> messages = new LinkedHashMap<>();
 
     /**
      * Records one detector's report, and its per-finding grades when it has any.
@@ -46,6 +47,18 @@ final class FindingSink {
      */
     void add(String detectorName, String report, @Nullable List<GradedFindings.Grade> findingGrades,
              @Nullable IssueSeverity structuredSeverity) {
+        add(detectorName, report, findingGrades, structuredSeverity, List.of());
+    }
+
+    /**
+     * As {@link #add(String, String, List, IssueSeverity)}, also keeping the messages of the
+     * report's structured findings, which a merged report accumulates like its grades.
+     */
+    void add(String detectorName, String report, @Nullable List<GradedFindings.Grade> findingGrades,
+             @Nullable IssueSeverity structuredSeverity, List<String> structuredMessages) {
+        if (!structuredMessages.isEmpty()) {
+            messages.computeIfAbsent(detectorName, name -> new ArrayList<>()).addAll(structuredMessages);
+        }
         reports.merge(detectorName, report, (first, second) -> first + "\n" + second);
         if (findingGrades != null && !findingGrades.isEmpty()) {
             grades.computeIfAbsent(detectorName, name -> new ArrayList<>()).addAll(findingGrades);
@@ -85,6 +98,14 @@ final class FindingSink {
     /** {@return the structured severities, keyed by detector name; absent where a report has none} */
     Map<String, IssueSeverity> severities() {
         return severities;
+    }
+
+    /**
+     * {@return the messages of each report's structured findings, keyed by detector name; absent
+     * where a report keeps none}
+     */
+    Map<String, List<String>> messages() {
+        return messages;
     }
 
     /** {@return the notes of reports with no finding, keyed by detector name} */

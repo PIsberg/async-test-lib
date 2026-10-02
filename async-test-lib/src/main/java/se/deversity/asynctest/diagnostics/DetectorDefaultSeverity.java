@@ -11,6 +11,7 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.report.Violation;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,7 +27,7 @@ import java.util.Optional;
  * three said anything and the default said HIGH. That made {@code failOn = HIGH} close to "fail on
  * anything", which is the same as no gate at all.
  *
- * <p>Every one of those detectors now states its severity here, chosen against
+ * <p>From 1.9.7 every one of those detectors stated its severity here, chosen against
  * {@link IssueSeverity}'s own definitions: {@code CRITICAL} where the report's primary claim is
  * that something will not make progress, {@code HIGH} where it claims corruption or an incorrect
  * result, {@code MEDIUM} for degradation and leaks, {@code LOW} for an inefficiency. Where two
@@ -42,9 +43,10 @@ import java.util.Optional;
  *
  * <p><strong>The table is empty.</strong> Since #801 every built-in detector keeps its findings as
  * {@link Violation}s at the severity its text used to resolve to, so none falls back to an entry
- * here. {@link #of(DetectorType)} stays for callers and yields empty for every type; a detector
- * added without a structured severity of its own still fails {@code DetectorSeverityMarkerTest}
- * unless it marks its text or regains an entry.
+ * here; the structured severities are the ones this table, or a marker, gave them. {@link
+ * #of(DetectorType)} stays for callers and yields empty for every type; a detector added without
+ * a structured severity of its own still fails {@code DetectorSeverityMarkerTest} unless it marks
+ * its text or regains an entry.
  *
  * <p>Third-party detectors arriving through the SPI are not in this table and keep the historical
  * {@code HIGH} default. The library has no basis for ranking somebody else's finding.
@@ -131,26 +133,48 @@ public final class DetectorDefaultSeverity {
      */
     @API(status = Status.EXPERIMENTAL)
     public static Optional<IssueSeverity> structuredIn(@Nullable Object report) {
+        IssueSeverity worst = null;
+        for (Violation v : structuredFindingsIn(report)) {
+            if (worst == null || v.severity().compareTo(worst) < 0) {
+                worst = v.severity();
+            }
+        }
+        return Optional.ofNullable(worst);
+    }
+
+    /**
+     * {@return a report's structured findings, in its order; empty when it keeps none}
+     *
+     * <p>Read from the same {@code structuredViolations} field as {@link #structuredIn}. The
+     * runner's one-line summary of a folded block counts and heads with these, because a report's
+     * text also lists context and advice as bullets, and counting those read advice as a finding
+     * (#773).
+     *
+     * @param report a detector's report object; {@code null} yields empty
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public static List<Violation> structuredFindingsIn(@Nullable Object report) {
         if (report == null) {
-            return Optional.empty();
+            return List.of();
         }
         try {
             Field field = report.getClass().getField(STRUCTURED_FIELD);
             if (!List.class.isAssignableFrom(field.getType())
                     || !(field.canAccess(report) || field.trySetAccessible())) {
-                return Optional.empty();
+                return List.of();
             }
-            IssueSeverity worst = null;
+            List<Violation> found = new ArrayList<>();
             if (field.get(report) instanceof List<?> findings) {
                 for (Object finding : findings) {
-                    if (finding instanceof Violation v && (worst == null || v.severity().compareTo(worst) < 0)) {
-                        worst = v.severity();
+                    if (finding instanceof Violation v) {
+                        found.add(v);
                     }
                 }
             }
-            return Optional.ofNullable(worst);
+            return List.copyOf(found);
         } catch (NoSuchFieldException | IllegalAccessException | RuntimeException ignored) {
-            return Optional.empty();
+            return List.of();
         }
     }
 

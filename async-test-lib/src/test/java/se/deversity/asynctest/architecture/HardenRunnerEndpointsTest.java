@@ -109,6 +109,72 @@ class HardenRunnerEndpointsTest {
                         + "the same as a repository with no egress policy.");
     }
 
+    /** Where Central redirects a large artifact's download from some runners (#884). */
+    private static final String RELEASE_ASSETS = "release-assets.githubusercontent.com:443";
+
+    /** A job key directly under {@code jobs:}. */
+    private static final Pattern JOB_KEY = Pattern.compile("^  ([A-Za-z0-9_-]+):\\s*$");
+
+    @Test
+    @DisplayName("#884: a blocking job that builds the examples with Maven admits Central's redirect host")
+    void aJobBuildingTheExamplesWithMavenAdmitsReleaseAssets() {
+        List<String> missing = new ArrayList<>();
+        int checked = 0;
+        for (Path file : yamlFiles(repoRoot().resolve(".github/workflows"))) {
+            String relative = repoRoot().relativize(file).toString().replace('\\', '/');
+            for (List<String> job : jobsOf(readLines(file))) {
+                String body = String.join("\n", job);
+                boolean blocks = body.contains("egress-policy: block");
+                boolean buildsExamples = body.contains("mvn ") && body.contains("examples/pom.xml");
+                if (!blocks || !buildsExamples) {
+                    continue;
+                }
+                checked++;
+                if (!body.contains(RELEASE_ASSETS)) {
+                    missing.add(relative + ": " + job.get(0).strip());
+                }
+            }
+        }
+        assertTrue(missing.isEmpty(),
+                "These jobs build the examples with Maven behind an egress block that does not admit "
+                        + RELEASE_ASSETS + ". The Kotlin example needs kotlin-compiler-embeddable "
+                        + "(60 MB), and Central serves that download from some runners as a redirect "
+                        + "to " + RELEASE_ASSETS + ": the job then fails with 'Connection refused' on "
+                        + "a host it never named, which is how E2E Tests stayed red from 2026-09-24 "
+                        + "(#884):\n  " + String.join("\n  ", missing));
+        assertTrue(checked >= 2,
+                "Matched " + checked + " jobs that build the examples with Maven behind an egress "
+                        + "block; at least examples-changed and examples-all should. Fewer means the "
+                        + "scan stopped matching, which is not a pass.");
+    }
+
+    /** The lines of each job under {@code jobs:}, its key line first. */
+    private static List<List<String>> jobsOf(List<String> lines) {
+        List<List<String>> jobs = new ArrayList<>();
+        boolean inJobs = false;
+        List<String> current = null;
+        for (String line : lines) {
+            if (line.startsWith("jobs:")) {
+                inJobs = true;
+                continue;
+            }
+            if (!inJobs) {
+                continue;
+            }
+            if (!line.isBlank() && indentOf(line) == 0 && !line.startsWith("#")) {
+                break;
+            }
+            if (JOB_KEY.matcher(line).matches()) {
+                current = new ArrayList<>();
+                jobs.add(current);
+            }
+            if (current != null) {
+                current.add(line);
+            }
+        }
+        return jobs;
+    }
+
     private static int indentOf(String line) {
         int n = 0;
         while (n < line.length() && line.charAt(n) == ' ') {

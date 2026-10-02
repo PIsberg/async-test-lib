@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A folded console line could lead with advice and count it as findings (#773).** A passing
+  run prints each PROMPT or ADVISORY report as one line, `findings=N: <headline>`. For a report
+  without graded findings, N and the headline came from the report's `"  - "` bullets, which
+  also carry its "Why" and "Fix" text: an unbounded queue created four times printed
+  `findings=3: Use a bounded queue: ...`. Measured over the structured-coverage drivers, 45 of the
+  folding reports disagreed with their findings. The line now reads the report's structured
+  findings, which every built-in detector keeps since #801 (`findings=4: unbounded-queue:
+  Unbounded queue created`); only a third-party report with none is still read by its bullets.
+  New, experimental: `DetectorDefaultSeverity.structuredFindingsIn(report)` and
+  `AsyncTestContext.findingMessages()`.
+- **Examples 114 and 117 taught the label-only record calls (#852).** `StableValueMisuse` and
+  `LazyConstantMisuse` gained holder-taking overloads in #776, and the catalog says to prefer them,
+  but both examples and their READMEs still keyed every record by the label `"CONFIG"`, which
+  judges two holders sharing a label as one. They pass the holder now, and each gains a test that
+  two holders sharing a label, each used once, report nothing (red on the label-only calls).
+- **E2E Tests had been red on `main` since 2026-09-24 (#884).** The Kotlin example needs
+  `kotlin-compiler-embeddable` (60 MB), and Central began serving that download on the runners as
+  a redirect to `release-assets.githubusercontent.com`, which the `examples-all` and
+  `examples-changed` jobs' harden-runner allowlists did not name, so Maven failed with
+  "Connection refused" in `Examples Reactor (shard 0/4)` on every run. Both lists admit it now,
+  and `HardenRunnerEndpointsTest` requires it on every blocking job that builds the examples
+  with Maven.
 - **Ninety-nine more detectors state each finding's severity instead of leaving it to their text (#801).**
   `SynchronizedOnLiteral`, `BoxedPrimitiveLock`, `ExplicitGc`, `DeprecatedThreadApi`,
   `SystemPropertyMutation`, `PublicLockExposure`, `FutureIgnored`, `SharedTimeZone` and

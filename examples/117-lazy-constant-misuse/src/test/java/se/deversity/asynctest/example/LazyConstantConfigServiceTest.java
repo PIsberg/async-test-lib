@@ -27,6 +27,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * THE FIX:
  *   - LazyConstant.of(() -> loadConfig()) with a pure, non-null, deterministic supplier.
+ *
+ * Record with the constant as well as its label: recordComputeStart(constant, "CONFIG", t).
+ * The detector then judges each constant on its own, so two constants that share a
+ * label are not one value computed twice (Part 5). The label-only overloads judge by
+ * the label alone.
  */
 class LazyConstantConfigServiceTest {
 
@@ -46,12 +51,12 @@ class LazyConstantConfigServiceTest {
         var service = new LazyConstantConfigService(() -> "db-url=localhost");
         Thread t = Thread.currentThread();
 
-        detector.recordGet("CONFIG", t);
-        detector.recordComputeStart("CONFIG", t);
+        detector.recordGet(service, "CONFIG", t);
+        detector.recordComputeStart(service, "CONFIG", t);
         String value = service.get();
-        detector.recordComputeEnd("CONFIG", t, value);
+        detector.recordComputeEnd(service, "CONFIG", t, value);
 
-        detector.recordGet("CONFIG", t);
+        detector.recordGet(service, "CONFIG", t);
         assertEquals("db-url=localhost", service.get());
         assertEquals(1, service.supplierRunCount(), "supplier ran exactly once");
 
@@ -68,9 +73,9 @@ class LazyConstantConfigServiceTest {
         var service = new LazyConstantConfigService(() -> null);   // BUG
         Thread t = Thread.currentThread();
 
-        detector.recordComputeStart("CONFIG", t);
+        detector.recordComputeStart(service, "CONFIG", t);
         assertThrows(NullPointerException.class, service::get);
-        detector.recordComputeEnd("CONFIG", t, null);
+        detector.recordComputeEnd(service, "CONFIG", t, null);
 
         var report = detector.analyze();
         assertTrue(report.hasIssues());
@@ -94,9 +99,9 @@ class LazyConstantConfigServiceTest {
 
         Runnable racer = () -> {
             Thread self = Thread.currentThread();
-            detector.recordComputeStart("CONFIG", self);
+            detector.recordComputeStart(service, "CONFIG", self);
             String v = service.getRacy();                    // BUG: check-then-act race
-            detector.recordComputeEnd("CONFIG", self, v);
+            detector.recordComputeEnd(service, "CONFIG", self, v);
         };
         Thread a = new Thread(racer, "racer-a");
         Thread b = new Thread(racer, "racer-b");
@@ -121,14 +126,37 @@ class LazyConstantConfigServiceTest {
 
     @Test
     void reentrantSupplier_isDetected() {
+        var service = new LazyConstantConfigService(() -> "db-url=localhost");
         Thread t = Thread.currentThread();
 
-        detector.recordComputeStart("CONFIG", t);
-        detector.recordComputeStart("CONFIG", t);   // BUG: supplier re-entered itself
+        detector.recordComputeStart(service, "CONFIG", t);
+        detector.recordComputeStart(service, "CONFIG", t);   // BUG: supplier re-entered itself
 
         var report = detector.analyze();
         assertTrue(report.hasIssues());
         assertFalse(report.getReentrantIssues().isEmpty());
         assertTrue(report.getReentrantIssues().get(0).contains("IllegalStateException"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Part 5: two constants that share a label, each computed once. Not a repeat.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void twoConstantsSharingALabel_eachComputedOnce_isClean() {
+        var primary = new LazyConstantConfigService(() -> "db-url=primary");
+        var replica = new LazyConstantConfigService(() -> "db-url=replica");
+        Thread t = Thread.currentThread();
+
+        detector.recordComputeStart(primary, "CONFIG", t);
+        String first = primary.get();
+        detector.recordComputeEnd(primary, "CONFIG", t, first);
+        detector.recordComputeStart(replica, "CONFIG", t);
+        String second = replica.get();
+        detector.recordComputeEnd(replica, "CONFIG", t, second);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                () -> "Two constants each computed once share a label, not a value:\n" + report);
     }
 }

@@ -724,6 +724,7 @@ public class ConcurrencyRunner {
 
         Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
         Map<String, IssueSeverity> structured = phase2Analysis.severities();
+        Map<String, List<String>> findingMessages = phase2Analysis.messages();
 
         String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
         Baseline baseline = Baseline.fromSystemProperties();
@@ -766,7 +767,8 @@ public class ConcurrencyRunner {
             boolean trips = trips(config, e.getKey(), e.getValue(), structuredSeverity, gated);
             // A block that fails the run always prints in full: the assertion says "full reports above".
             if (!fullReports && !trips && foldsOnConsole(e.getKey(), grades)) {
-                System.err.println(foldedLine(e.getKey(), e.getValue(), grades));
+                System.err.println(foldedLine(e.getKey(), e.getValue(), grades,
+                        findingMessages.getOrDefault(e.getKey(), List.of())));
                 folded++;
             } else {
                 System.err.println(trustBanner(e.getKey(), grades));
@@ -1369,15 +1371,23 @@ public class ConcurrencyRunner {
     /**
      * One line for a folded block: detector, tier, finding count and the first finding's headline.
      *
-     * <p>A graded report names its findings in its grades. Any other report is read by the
-     * convention nearly every built-in detector follows, one {@code "  - "} bullet per finding;
-     * a report without one counts as a single finding headed by its first line.
+     * <p>A graded report names its findings in its grades, and a report that keeps structured
+     * findings names them in their messages. Only a report with neither, which since #801 is a
+     * third-party detector's, is read by its text: one {@code "  - "} bullet per finding, or a
+     * single finding headed by its first line. The bullets were the rule for every report until
+     * #773, and they also list context and advice, so a folded line could count "Fix" text as
+     * findings and lead with it.
      */
-    static String foldedLine(String detectorName, String report, List<GradedFindings.Grade> grades) {
+    static String foldedLine(String detectorName, String report, List<GradedFindings.Grade> grades,
+                             List<String> findingMessages) {
         int count;
         String headline;
         TrustTier tier;
-        if (grades.isEmpty()) {
+        if (grades.isEmpty() && !findingMessages.isEmpty()) {
+            count = findingMessages.size();
+            headline = findingMessages.get(0).strip();
+            tier = DetectorTrust.tierOfDetector(detectorName);
+        } else if (grades.isEmpty()) {
             List<String> bullets = report.lines().filter(l -> l.startsWith("  - ")).toList();
             count = Math.max(1, bullets.size());
             headline = bullets.isEmpty()
@@ -1463,6 +1473,12 @@ public class ConcurrencyRunner {
         Map<String, IssueSeverity> severities() {
             get();
             return ctx.findingSeverities();
+        }
+
+        /** {@return the structured finding messages of this run, keyed by detector; runs {@link #get()} first} */
+        Map<String, List<String>> messages() {
+            get();
+            return ctx.findingMessages();
         }
 
         /** {@return the findings of this run, keyed by the detector that produced each} */

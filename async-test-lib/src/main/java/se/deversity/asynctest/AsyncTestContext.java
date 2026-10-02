@@ -1071,6 +1071,22 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the messages of each report's structured findings from the most recent
+     * {@link #analyzeAllNamed()} pass, keyed by detector}
+     *
+     * <p>Absent for a report that keeps no {@link Violation}s, which since #801 means only a
+     * third-party detector. The runner's one-line summary of a folded block counts and heads with
+     * these rather than with the report's bullets, which also list context and advice (#773).
+     * Call after {@link #analyzeAllNamed()}.
+     *
+     * @since 1.12.3
+     */
+    @API(status = Status.EXPERIMENTAL)
+    public Map<String, List<String>> findingMessages() {
+        return registry.lastMessages();
+    }
+
+    /**
      * {@return the notes that are not findings from the most recent {@link #analyzeAllNamed()}
      * pass, keyed by detector}
      *

@@ -326,12 +326,17 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
+          # The Kotlin example needs kotlin-compiler-embeddable (60 MB), and Central serves
+          # that download on these runners as a redirect to release-assets: without the host,
+          # Maven fails with "Connection refused" on it (#884). HardenRunnerEndpointsTest
+          # requires it on every blocking job that builds the examples with Maven.
           allowed-endpoints: >
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
             github.com:443
             objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
@@ -389,12 +394,17 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
+          # The Kotlin example needs kotlin-compiler-embeddable (60 MB), and Central serves
+          # that download on these runners as a redirect to release-assets: without the host,
+          # Maven fails with "Connection refused" on it (#884). HardenRunnerEndpointsTest
+          # requires it on every blocking job that builds the examples with Maven.
           allowed-endpoints: >
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
             github.com:443
             objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
