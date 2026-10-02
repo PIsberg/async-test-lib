@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
@@ -275,7 +278,17 @@ public class OptimisticReadValidationDetector {
             }
         }
         r.violations.addAll(violations);
-        return r;
+        if (r.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(r.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : r.violations) {
+                r.structuredViolations.add(new Violation("OptimisticReadValidation", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     private static String neverValidatedViolation(OptimisticRead read) {
@@ -314,6 +327,8 @@ public class OptimisticReadValidationDetector {
     /** Report produced by {@link #analyze()}. */
     public static class OptimisticReadValidationReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
 
         /**
          * {@return whether there are issues}

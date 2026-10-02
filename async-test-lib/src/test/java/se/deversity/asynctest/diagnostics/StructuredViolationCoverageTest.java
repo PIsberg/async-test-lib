@@ -94,19 +94,17 @@ class StructuredViolationCoverageTest {
     private static final Set<String> TEXT_ONLY = Set.of(
             "ABAProblemDetector",
             "CompletableFutureCompletionLeakDetector",
-            "ConditionVariableDetector", "ConstructorSafetyValidator", "CountDownLatchDetector", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
+            "ConditionVariableDetector", "ConstructorSafetyValidator", "CyclicBarrierDetector", "DoubleCheckedLockingDetector", "ExchangerDetector",
             "FalseSharingDetector", "FinalFieldMutationDetector", "ForkJoinPoolDetector",
-            "GathererConcurrencyMisuseDetector", "LazyConstantMisuseDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector",
-            "OptimisticReadValidationDetector", "PhaserDetector",
+            "GathererConcurrencyMisuseDetector", "LazyConstantMisuseDetector", "LivelockDetector", "MemoryOrderingMonitor", "MissedSignalDetector", "PhaserDetector",
             "PipelineMonitor", "ReadWriteLockMonitor",
             "ReentrantLockDetector", "ScheduledExecutorDetector",
             "ScopedValueMisuseDetector", "SleepInLockDetector", "StableValueMisuseDetector",
             "StampedLockDetector", "StructuredConcurrencyMisuseDetector",
-            "StructuredTaskScopeMisuseDetector", "SynchronizedCollectionIterationDetector", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
+            "StructuredTaskScopeMisuseDetector", "ThreadFactoryDetector", "ThreadLeakDetector", "ThreadPoolDeadlockDetector", "ThreadStarvationDetector",
             "UnboundedQueueDetector",
             "VirtualThreadCarrierExhaustionDetector", "VirtualThreadContextLeakDetector",
-            "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector",
-            "WeakReferenceRaceDetector");
+            "VirtualThreadCpuBoundTaskDetector", "VirtualThreadPinningDetector", "VolatileArrayDetector", "WaitTimeoutDetector");
 
     /**
      * Detectors whose structured severity must equal what their text alone resolves to.
@@ -1029,6 +1027,44 @@ class StructuredViolationCoverageTest {
         d.recordLockObject(new Object(), "lock", Object.class, owner);
         d.recordLockObject(new Object(), "lock", Object.class, owner);
         return d.analyze();
+            }),
+            // ---- structured in #801, batch 9 ----
+            new Path("OptimisticReadValidationDetector", "data read under a stamp never validated", () -> {
+        var d = new OptimisticReadValidationDetector();
+        var lock = new java.util.concurrent.locks.StampedLock();
+        long stamp = lock.tryOptimisticRead();
+        d.recordOptimisticReadStarted(lock, stamp, Thread.currentThread());
+        d.recordDataAccessed(lock, stamp, Thread.currentThread(), "sharedY");
+        return d.analyze();
+            }),
+            new Path("SynchronizedCollectionIterationDetector", "a synchronized wrapper with no recorded lock", () -> {
+        var d = new SynchronizedCollectionIterationDetector();
+        var list = java.util.Collections.synchronizedList(new java.util.ArrayList<String>());
+        d.recordWrapperCreated(list, "my-list");
+        d.recordIterationStarted(list, Thread.currentThread(), false);
+        return d.analyze();
+            }),
+            new Path("WeakReferenceRaceDetector", "a referent collected between two threads' gets", () -> {
+        var d = new WeakReferenceRaceDetector();
+        Object referent = new Object();
+        var ref = new java.lang.ref.WeakReference<Object>(referent);
+        d.recordGet(ref, "ref", referent, Thread.currentThread());
+        Thread other = new Thread(() -> d.recordGet(ref, "ref", null, Thread.currentThread()));
+        other.start();
+        try {
+            other.join();
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
+        return d.analyze();
+            }),
+            new Path("CountDownLatchDetector", "a latch that timed out short of zero", () -> {
+        var d = new CountDownLatchDetector();
+        var latch = new java.util.concurrent.CountDownLatch(2);
+        d.registerLatch(latch, "workers-done", 2);
+        d.recordCountDown(latch);
+        d.recordTimeout(latch);
+        return d.analyze();
             }));
 
     /**
@@ -1096,7 +1132,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("InheritableThreadLocalMisuseDetector", IssueSeverity.HIGH),
             java.util.Map.entry("InterruptMonitor", IssueSeverity.HIGH),
             java.util.Map.entry("SharedCollectionDetector", IssueSeverity.HIGH),
-            java.util.Map.entry("SynchronizedNonFinalDetector", IssueSeverity.HIGH));
+            java.util.Map.entry("SynchronizedNonFinalDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("OptimisticReadValidationDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("SynchronizedCollectionIterationDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("WeakReferenceRaceDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("CountDownLatchDetector", IssueSeverity.CRITICAL));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

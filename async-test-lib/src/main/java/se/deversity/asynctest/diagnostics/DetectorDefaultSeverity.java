@@ -63,7 +63,6 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.ASYNC_PIPELINE, IssueSeverity.HIGH),
             entry(DetectorType.READ_WRITE_LOCK_FAIRNESS, IssueSeverity.MEDIUM),
             entry(DetectorType.CONDITION_VARIABLES, IssueSeverity.HIGH),
-            entry(DetectorType.COUNTDOWN_LATCH, IssueSeverity.CRITICAL),
             entry(DetectorType.CYCLIC_BARRIER, IssueSeverity.CRITICAL),
             entry(DetectorType.REENTRANT_LOCK, IssueSeverity.HIGH),
             entry(DetectorType.VOLATILE_ARRAY, IssueSeverity.HIGH),
@@ -79,10 +78,7 @@ public final class DetectorDefaultSeverity {
             entry(DetectorType.THREAD_LEAKS, IssueSeverity.MEDIUM),
             entry(DetectorType.SLEEP_IN_LOCK, IssueSeverity.MEDIUM),
             entry(DetectorType.UNBOUNDED_QUEUE, IssueSeverity.MEDIUM),
-            entry(DetectorType.THREAD_STARVATION, IssueSeverity.MEDIUM),
-            entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, IssueSeverity.HIGH),
-            entry(DetectorType.OPTIMISTIC_READ_VALIDATION, IssueSeverity.HIGH),
-            entry(DetectorType.WEAK_REFERENCE_RACE, IssueSeverity.HIGH)
+            entry(DetectorType.THREAD_STARVATION, IssueSeverity.MEDIUM)
     );
 
     private DetectorDefaultSeverity() { }

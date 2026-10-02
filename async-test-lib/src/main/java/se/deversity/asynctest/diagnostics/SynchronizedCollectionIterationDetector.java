@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.ConcurrentModificationException;
@@ -91,12 +94,24 @@ public class SynchronizedCollectionIterationDetector {
                 r.details.addAll(w.details);
             }
         }
-        return r;
+        if (r.hasIssues()) {
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(r.toString())
+                    .orElse(IssueSeverity.HIGH);
+            for (String finding : r.violations) {
+                r.structuredViolations.add(new Violation("SynchronizedCollectionIteration", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
+        return DetectorFailurePolicy.checkedReport(this, r);
     }
 
     /** Report produced by {@link #analyze()}. */
     public static class SynchronizedCollectionIterationReport {
         final List<String> violations = new ArrayList<>();
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
         final List<String> details    = new ArrayList<>();
 
         /**
