@@ -123,21 +123,17 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Prepare local Maven repository
-        shell: bash
-        run: mkdir -p .m2/repository
-
       - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+        run: mvn -DskipTests clean install
 
       - name: Run consumer fixture suite
-        run: mvn "-Dmaven.repo.local=.m2/repository" -f consumer-fixture/pom.xml test
+        run: mvn -f consumer-fixture/pom.xml test
 
       # Kotlin, Groovy, Scala and Clojure against the same installed artifact. Not part of the
       # JUnit compatibility matrix below on purpose: four compilers times seven Jupiter versions
       # is the wrong trade, and the language question is independent of the Jupiter version.
       - name: Run JVM language fixtures (Kotlin, Groovy, Scala, Clojure)
-        run: mvn "-Dmaven.repo.local=.m2/repository" -f consumer-fixture-langs/pom.xml test
+        run: mvn -f consumer-fixture-langs/pom.xml test
 
       - name: Upload consumer fixture reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -194,12 +190,8 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Prepare local Maven repository
-        shell: bash
-        run: mkdir -p .m2/repository
-
       - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+        run: mvn -DskipTests clean install
 
       # Guards against the matrix quietly testing one version seven times: Maven resolves the
       # nearest declaration, and a mistake in the property plumbing would leave the transitive
@@ -207,7 +199,7 @@ jobs:
       - name: Verify the declared Jupiter version is the resolved one
         run: |
           set -euo pipefail
-          resolved=$(mvn "-Dmaven.repo.local=.m2/repository" \
+          resolved=$(mvn \
                          "-Djunit.jupiter.version=${{ matrix.junit-version }}" \
                          -f consumer-fixture/pom.xml dependency:tree \
                      | grep -oE 'junit-jupiter-api:jar:[0-9.]+' | head -1 | cut -d: -f3)
@@ -216,7 +208,7 @@ jobs:
 
       - name: Run consumer fixture against JUnit ${{ matrix.junit-version }}
         run: |
-          mvn "-Dmaven.repo.local=.m2/repository" \
+          mvn \
               "-Djunit.jupiter.version=${{ matrix.junit-version }}" \
               -f consumer-fixture/pom.xml test
 
@@ -352,7 +344,7 @@ jobs:
           cache: maven
 
       - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+        run: mvn -DskipTests clean install
 
       - name: Run shard's slice of changed examples
         run: |
@@ -368,7 +360,7 @@ jobs:
             exit 0
           fi
           echo "Shard $SHARD modules: $slice"
-          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$slice" test -T 1C -fae "-Dasync-test.strict-detectors=true"
+          mvn -f examples/pom.xml -pl "$slice" test -T 1C -fae "-Dasync-test.strict-detectors=true"
 
       - name: Upload shard test reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -420,7 +412,7 @@ jobs:
           cache: maven
 
       - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+        run: mvn -DskipTests clean install
 
       - name: Run example reactor shard
         run: |
@@ -436,7 +428,7 @@ jobs:
             echo "Shard $SHARD has no modules"; exit 0
           fi
           echo "Shard $SHARD modules: $modules"
-          mvn "-Dmaven.repo.local=.m2/repository" -f examples/pom.xml -pl "$modules" test -T 1C -fae "-Dasync-test.strict-detectors=true"
+          mvn -f examples/pom.xml -pl "$modules" test -T 1C -fae "-Dasync-test.strict-detectors=true"
 
       - name: Upload shard test reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

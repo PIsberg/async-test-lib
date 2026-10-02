@@ -111,12 +111,8 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Prepare local Maven repository
-        shell: bash
-        run: mkdir -p .m2/repository
-
       - name: Install library to local Maven repository
-        run: mvn "-Dmaven.repo.local=.m2/repository" -DskipTests clean install
+        run: mvn -DskipTests clean install
 
       # Measures what the detectors report on third-party classes whose javadoc states a
       # thread-safety contract. One `mvn test` runs all six lanes CorpusLane declares, each as
@@ -125,7 +121,7 @@ jobs:
       # gates that must hold every run live in CorpusGates; the numbers are in the uploaded
       # reports, one set per JDK.
       - name: Run corpus eval
-        run: mvn "-Dmaven.repo.local=.m2/repository" -f corpus-eval/pom.xml test
+        run: mvn -f corpus-eval/pom.xml test
 
       - name: Upload corpus eval report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

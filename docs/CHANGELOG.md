@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but both examples and their READMEs still keyed every record by the label `"CONFIG"`, which
   judges two holders sharing a label as one. They pass the holder now, and each gains a test that
   two holders sharing a label, each used once, report nothing (red on the label-only calls).
+- **Six CI jobs restored a Maven cache they never read (#887).** `corpus-eval`, `consumer-fixture`,
+  `junit-compatibility`, `examples-changed`, `examples-all` and `tests.yml`'s `test` restore
+  `~/.m2/repository` through setup-java's `cache: maven`, then ran every Maven step with
+  `-Dmaven.repo.local=.m2/repository`, so each run downloaded every dependency from Central. That
+  exposure is how a change in Central's CDN kept E2E Tests red (#884), and how a `429 Too Many
+  Requests` failed an examples shard on a PR. The redirect and its `mkdir` steps are gone (each job
+  still installs the library from source before anything resolves it), and
+  `WorkflowMavenCacheTest` refuses the combination in any job.
 - **E2E Tests had been red on `main` since 2026-09-24 (#884).** The Kotlin example needs
   `kotlin-compiler-embeddable` (60 MB), and Central began serving that download on the runners as
   a redirect to `release-assets.githubusercontent.com`, which the `examples-all` and
