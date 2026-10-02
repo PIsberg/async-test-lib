@@ -52,14 +52,18 @@ holder, then assert on `analyze()`:
 
 ```java
 var d = new StableValueMisuseDetector();
-d.recordRead("CONFIG", Thread.currentThread());   // before any set → flagged
-d.recordSet("CONFIG", Thread.currentThread());
-d.recordSet("CONFIG", Thread.currentThread());    // double set → flagged
+d.recordRead(config, "CONFIG", Thread.currentThread());   // before any set → flagged
+d.recordSet(config, "CONFIG", Thread.currentThread());
+d.recordSet(config, "CONFIG", Thread.currentThread());    // double set → flagged
 assertTrue(d.analyze().hasIssues());
 ```
 
+Pass the holder (`config` here) as well as its label. Each holder is then judged on its own:
+two holders that share the label `"CONFIG"` and are each set once are not a double set, which
+the label-only `recordSet("CONFIG", thread)` would report.
+
 See [`StableValueConfigServiceTest`](src/test/java/se/deversity/asynctest/example/StableValueConfigServiceTest.java)
-for the full happy-path / read-before-set / double-set walkthrough.
+for the full happy-path / read-before-set / double-set / shared-label walkthrough.
 
 ## Running
 

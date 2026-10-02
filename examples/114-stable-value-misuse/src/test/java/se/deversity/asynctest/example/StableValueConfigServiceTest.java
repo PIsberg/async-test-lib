@@ -19,6 +19,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * locked file). It is used directly: instantiate it, record events around the
  * holder under test, then call analyze() and assert on the report.
  *
+ * Record with the holder as well as its label: recordSet(holder, "CONFIG", t).
+ * The detector then judges each holder on its own, so two holders that share a
+ * label are not one value set twice (Part 4), and one holder recorded under two
+ * labels is still one value. The label-only overloads judge by the label alone.
+ *
  * THE BUG:
  *   - orElseThrow() called before the value was ever set → NoSuchElementException
  *   - setOrThrow() called twice → IllegalStateException / lost update
@@ -45,11 +50,11 @@ class StableValueConfigServiceTest {
     void correctUsage_orElseSet_thenRead_isClean() {
         Thread t = Thread.currentThread();
 
-        detector.recordSupplierStart("CONFIG", t);
+        detector.recordSupplierStart(service, "CONFIG", t);
         String value = service.orElseSet(() -> "db-url=localhost");
-        detector.recordSupplierEnd("CONFIG", t);
+        detector.recordSupplierEnd(service, "CONFIG", t);
 
-        detector.recordRead("CONFIG", t);
+        detector.recordRead(service, "CONFIG", t);
         assertEquals("db-url=localhost", service.orElseThrow());
 
         var report = detector.analyze();
@@ -64,7 +69,7 @@ class StableValueConfigServiceTest {
     void readBeforeSet_isDetected() {
         Thread t = Thread.currentThread();
 
-        detector.recordRead("CONFIG", t);                 // BUG: nothing set yet
+        detector.recordRead(service, "CONFIG", t);                 // BUG: nothing set yet
         assertThrows(java.util.NoSuchElementException.class, () -> service.orElseThrow());
 
         var report = detector.analyze();
@@ -81,15 +86,34 @@ class StableValueConfigServiceTest {
     void doubleSet_isDetected() {
         Thread t = Thread.currentThread();
 
-        detector.recordSet("CONFIG", t);
+        detector.recordSet(service, "CONFIG", t);
         service.setOrThrow("first");
 
-        detector.recordSet("CONFIG", t);                  // BUG: second set
+        detector.recordSet(service, "CONFIG", t);                  // BUG: second set
         assertThrows(IllegalStateException.class, () -> service.setOrThrow("second"));
 
         var report = detector.analyze();
         assertTrue(report.hasIssues());
         assertEquals(1, report.getDoubleSetIssues().size());
         assertEquals("first", service.orElseThrow(), "first writer wins; second value is lost");
+    }
+
+    // -----------------------------------------------------------------------
+    // Part 4: two holders that share a label, each set once. Not a double set.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void twoHoldersSharingALabel_eachSetOnce_isClean() {
+        Thread t = Thread.currentThread();
+        var other = new StableValueConfigService();
+
+        detector.recordSet(service, "CONFIG", t);
+        service.setOrThrow("primary");
+        detector.recordSet(other, "CONFIG", t);
+        other.setOrThrow("replica");
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                () -> "Two holders each set once share a label, not a value:\n" + report);
     }
 }
