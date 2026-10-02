@@ -62,6 +62,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whitespace-only differences, which a regeneration on another OS can produce; CI stays byte-exact.
   `GuardrailDriftWiringTest` holds both callers to the one script.
 
+- **`LazyInitValidator.markInvocationStart()` closes a round (#764).** The validator kept one
+  state per field name for the whole run, so a holder built per round and initialised once per
+  round by a different thread added up to "multiple initializations across threads". The new method
+  keeps the round's findings for `analyze()` and drops its state; `reset()` also forgets closed
+  rounds. The runner does not wire this class, so a test that drives it across rounds calls the
+  method itself.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added
