@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads as a passed check. Each now has a preflight job whose output gates the lane's job, and
   `WorkflowSecretGateTest` refuses any `if:` that reads a secret-presence env variable.
 
+- **The fuzzing workflow checks the Jazzer CLI's SHA-256 before running it (#867).** The archive
+  was downloaded by a versioned URL and executed against the library's classes with no check of its
+  bytes, and a release asset can be replaced behind an unchanged URL. `WorkflowDownloadIntegrityTest`
+  now requires `sha256sum -c` in every workflow step that downloads a release asset.
+
 ## [1.12.3] - 2026-09-28
 
 ### Added

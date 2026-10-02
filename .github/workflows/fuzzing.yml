@@ -76,6 +76,11 @@ jobs:
         run: |
           curl -fsSL -o jazzer_linux.tar.gz \
             https://github.com/CodeIntelligenceTesting/jazzer/releases/download/v0.22.1/jazzer-linux.tar.gz
+          # A release asset can be replaced behind an unchanged URL, and this binary runs against
+          # the library's classes, so the bytes are pinned, not just the version (#867). The
+          # release API publishes no digest for v0.22.1; this one was taken from a download whose
+          # size matched the API's 9746799 bytes. Bumping Jazzer means recording a new hash.
+          echo "75fb506054d97db7b4f24a202003c7ba85db383ad59fd3a8b3f025975f78bab4  jazzer_linux.tar.gz" | sha256sum -c -
           # Extract the whole archive, not just the launcher. The `jazzer` binary is a thin
           # driver that loads jazzer_standalone.jar from its own directory; pulling out only
           # the binary made every run die with "Could not find jazzer_standalone.jar".
