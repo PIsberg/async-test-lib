@@ -39,6 +39,15 @@ class RoundStartFanOutIsCompleteTest {
             "registry", ROOT_PACKAGE + "DetectorRegistry",
             "phase1", ROOT_PACKAGE + "diagnostics.Phase1DetectorSet");
 
+    /**
+     * Classes that declare {@code markInvocationStart()} for a caller to drive, but that no
+     * {@code DetectorType} wires, so no chain can call them. If one gets wired, its call puts it
+     * back in the count and the comparison below fails until its entry here is removed.
+     */
+    private static final Map<String, String> UNWIRED = Map.of(
+            "LazyInitValidator", "has no DetectorType; a test that drives it across rounds closes "
+                    + "each round itself (#764)");
+
     /** The runner's local for the run's {@code AsyncTestContext}. */
     private static final String HAND_OFF = "phase2Context";
 
@@ -75,8 +84,9 @@ class RoundStartFanOutIsCompleteTest {
         List<String> names = new ArrayList<>();
         try (Stream<Path> files = Files.list(mainSources().resolve("diagnostics"))) {
             for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
-                if (DECLARATION.matcher(Files.readString(file)).find()) {
-                    names.add(file.getFileName().toString().replace(".java", ""));
+                String name = file.getFileName().toString().replace(".java", "");
+                if (DECLARATION.matcher(Files.readString(file)).find() && !UNWIRED.containsKey(name)) {
+                    names.add(name);
                 }
             }
         }
