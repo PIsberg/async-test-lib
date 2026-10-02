@@ -452,7 +452,7 @@ final class CollectionAccessWeaver {
             Entry.call(Calendar.class, "roll", "roll", int.class, boolean.class),
             Entry.call(Calendar.class, "clear", "clear"),
             Entry.call(Calendar.class, "clear", "clear", int.class),
-            Entry.call(Calendar.class, "setTime", "setTime", java.util.Date.class),
+            Entry.call(Calendar.class, "setTime", "setTime", Date.class),
             Entry.call(Calendar.class, "setTimeInMillis", "setTimeInMillis", long.class),
             Entry.call(Calendar.class, "setTimeZone", "setTimeZone", java.util.TimeZone.class),
             // StringBuilder is final, and every append overload reads count, writes the array

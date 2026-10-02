@@ -514,7 +514,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the calendar
      * @param date     the time to set
      */
-    public static void setTime(Calendar receiver, java.util.Date date) {
+    public static void setTime(Calendar receiver, Date date) {
         recordCalendarSetTime(receiver);
         receiver.setTime(date);
     }
