@@ -63,12 +63,14 @@ text, the detector's entry in `DetectorDefaultSeverity`, and last **HIGH for any
 detector that keeps `Violation`s states its severity there; one that does not must tag its text (a
 deadlock report says CRITICAL in its own text) or declare a default. Grades do not replace either:
 listeners, and the JSON and SARIF output, read the list, the text and the table, never the grades,
-so a graded report without a list keeps its table entry and grades at the severity it gives.
+so a graded report states its severity in its list too. Since #801 every built-in detector keeps
+the list and the `DetectorDefaultSeverity` table is empty; a new detector does the same.
 `DetectorSeverityMarkerTest` fails the build for a detector that reaches the HIGH fallback.
 
 Keep the list, and fill it wherever the text gains a line. `StructuredViolationCoverageTest` fails
 on a detector whose report has no `structuredViolations` field unless it is pinned in that test's
-text-only allow-list, which only shrinks, so a new detector needs the field. Return the report
+text-only allow-list, which only shrinks and has been empty since #801, so a new detector needs
+the field. Return the report
 through `DetectorFailurePolicy.checkedReport(this, r)`, as the template does; the same test fails a
 structured detector whose source does not. Under `async-test.strict-detectors`, which this build's
 tests set, that call throws for a report with issues and an empty list, so every test that obtains

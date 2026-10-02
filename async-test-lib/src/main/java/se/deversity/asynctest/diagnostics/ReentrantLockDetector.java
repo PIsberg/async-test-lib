@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -364,8 +367,10 @@ public class ReentrantLockDetector {
                         ? ", now idle in its pool" : ", which has finished"));
             }
         }
-        return new ReentrantLockReport(lockRegistry, timeouts, observedStarvation, recordedWaits,
+        ReentrantLockReport report801 = new ReentrantLockReport(lockRegistry, timeouts, observedStarvation, recordedWaits,
                 held, stillWorking, unjudgedHolds, locklessWaits.get());
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /** Where the thread holding a lock is when the run is analysed. */
@@ -602,6 +607,29 @@ public class ReentrantLockDetector {
             return open >= 0 && described.endsWith("]")
                     ? described.substring(open + 1, described.length() - 1)
                     : "locked";
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (Map.Entry<ReentrantLock, String> held : heldLocks.entrySet()) {
+                structuredViolations.add(new Violation("ReentrantLock", severity,
+                        infoFor(held.getKey()).name + " (" + held.getValue() + ", at analysis): still held",
+                        List.of(), Map.of(), Instant.now()));
+            }
+            for (String starved : sortedCopy(observedStarvation)) {
+                structuredViolations.add(new Violation("ReentrantLock", severity,
+                        "Thread " + starved + ": starved, barging seen on the lock",
+                        List.of(), Map.of(), Instant.now()));
+            }
         }
 
         @Override

@@ -90,10 +90,11 @@ class StructuredViolationCoverageTest {
      * severity the text already resolves to, add a driver to {@link #PATHS}, and delete the entry
      * here (and the detector's {@code DetectorDefaultSeverity} entry, which
      * {@code DetectorSeverityMarkerTest} will then call redundant).
+     *
+     * <p>Empty since #801 cleared its last eight entries. It stays as the ratchet: a new detector
+     * whose report keeps findings only as text fails here until it is structured or argued in.
      */
-    private static final Set<String> TEXT_ONLY = Set.of(
-            "ConditionVariableDetector",
-            "ReentrantLockDetector", "ThreadPoolDeadlockDetector", "VirtualThreadPinningDetector");
+    private static final Set<String> TEXT_ONLY = Set.of();
 
     /**
      * Detectors whose structured severity must equal what their text alone resolves to.
@@ -1377,6 +1378,84 @@ class StructuredViolationCoverageTest {
                 }
                 worker.join(10_000);
                 return d.analyze();
+            }),
+            // ---- structured in #801, batch 17 ----
+            new Path("ConditionVariableDetector", "a consumer parked while its predicate holds", () -> {
+                var d = new ConditionVariableDetector();
+                var lock = new java.util.concurrent.locks.ReentrantLock();
+                var ready = lock.newCondition();
+                // The predicate already holds, and the consumer parks anyway: nothing will signal it.
+                d.registerCondition(lock, ready, () -> true, "ready");
+                Thread waiter = new Thread(() -> {
+                    lock.lock();
+                    try {
+                        ready.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        lock.unlock();
+                    }
+                }, "stuck-consumer");
+                waiter.setDaemon(true);
+                waiter.start();
+                try {
+                    long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+                    while (true) {
+                        lock.lock();
+                        try {
+                            if (lock.hasWaiters(ready)) {
+                                break;
+                            }
+                        } finally {
+                            lock.unlock();
+                        }
+                        if (System.nanoTime() > deadline) {
+                            throw new AssertionError("the consumer never parked");
+                        }
+                        Thread.onSpinWait();
+                    }
+                    return d.analyze();
+                } finally {
+                    waiter.interrupt();
+                    waiter.join(10_000);
+                }
+            }),
+            new Path("ReentrantLockDetector", "a hold left by a finished worker", () -> {
+                var d = new ReentrantLockDetector();
+                var lock = new java.util.concurrent.locks.ReentrantLock();
+                d.registerLock(lock, "counter-lock");
+                // The recorded pair balances; a second, unrecorded hold is never released.
+                Thread worker = new Thread(() -> {
+                    lock.lock();
+                    d.recordLockAcquired(lock, "worker");
+                    try {
+                        lock.lock();
+                    } finally {
+                        d.recordLockReleased(lock, "worker");
+                        lock.unlock();
+                    }
+                }, "leaking-worker");
+                worker.start();
+                worker.join();
+                return d.analyze();
+            }),
+            new Path("ThreadPoolDeadlockDetector", "a nested submission into a single-thread executor", () -> {
+                var d = new ThreadPoolDeadlockDetector();
+                var pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+                try {
+                    d.registerPool(pool, "single");
+                    d.recordNestedSubmission(pool, "single");
+                    return d.analyze();
+                } finally {
+                    pool.shutdown();
+                }
+            }),
+            new Path("VirtualThreadPinningDetector", "a virtual thread pinned by a native downcall", () -> {
+                var d = new VirtualThreadPinningDetector();
+                d.startMonitoring();
+                // A native downcall pins on every JDK, unlike synchronized (24+) or class init (26+).
+                d.recordPinningEvent(Thread.ofVirtual().name("pinned-vt").unstarted(() -> { }), "native downcall");
+                return d.analyze();
             }));
 
     /**
@@ -1481,7 +1560,11 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("ABAProblemDetector", IssueSeverity.HIGH),
             java.util.Map.entry("ConstructorSafetyValidator", IssueSeverity.HIGH),
             java.util.Map.entry("FalseSharingDetector", IssueSeverity.LOW),
-            java.util.Map.entry("LivelockDetector", IssueSeverity.CRITICAL));
+            java.util.Map.entry("LivelockDetector", IssueSeverity.CRITICAL),
+            java.util.Map.entry("ConditionVariableDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ReentrantLockDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("ThreadPoolDeadlockDetector", IssueSeverity.HIGH),
+            java.util.Map.entry("VirtualThreadPinningDetector", IssueSeverity.MEDIUM));
 
     @Test
     @DisplayName("the detectors structured in #801 keep the severity their text resolved to before")

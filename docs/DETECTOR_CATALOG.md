@@ -24,8 +24,9 @@ The numbered detector entries live in [`detector-catalog/`](detector-catalog/), 
 ## Severity
 
 Every detector states a severity, and the code is where it is stated. The severities a detector
-puts in its structured findings (`Violation`) win; then a marker in its report text; the rest
-declare one in `DetectorDefaultSeverity`. Nothing is inferred any
+puts in its structured findings (`Violation`) win; then a marker in its report text; then an entry
+in `DetectorDefaultSeverity`. Since #801 every detector here keeps structured findings, at the
+severity its text or its table entry gave before, so the table is empty. Nothing is inferred any
 more: until #291 a detector that wrote no marker had its severity guessed by
 `IssueSeverity.fromReport`, which returned `HIGH`, and 86 of the 142 wrote none, so `failOn = HIGH`
 failed on a resource left open exactly as it failed on a lost update.

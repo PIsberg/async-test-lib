@@ -1,5 +1,9 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.DetectorFailurePolicy;
+import se.deversity.asynctest.report.Violation;
+import java.time.Instant;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -221,11 +225,13 @@ public class VirtualThreadPinningDetector {
             }
         }
 
-        return new PinningReport(
+        PinningReport report801 = new PinningReport(
             events,
             maxPinnedCount.get(),
             isVirtualThreadSupported()
         );
+        report801.fillStructuredViolations();
+        return DetectorFailurePolicy.checkedReport(this, report801);
     }
 
     /**
@@ -381,6 +387,28 @@ public class VirtualThreadPinningDetector {
          */
         public long getObsoleteEventCount() {
             return events.stream().filter(PinningEventSnapshot::isObsoleteOnCurrentJdk).count();
+        }
+
+        /** The findings as Violations, at the severity the text resolved to (#801). */
+        public final List<Violation> structuredViolations = new ArrayList<>();
+
+        /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (PinningEventSnapshot event : events) {
+                // hasIssues() counts only events that still pin on this JDK; the rest are history.
+                if (!event.isObsoleteOnCurrentJdk()) {
+                    structuredViolations.add(new Violation("VirtualThreadPinning", severity,
+                            event.threadName + " (id=" + event.threadId + "): pinned during "
+                                    + event.blockingOperation,
+                            List.of(), Map.of(), Instant.now()));
+                }
+            }
         }
 
         @Override

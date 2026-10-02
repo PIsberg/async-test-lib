@@ -15,8 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static java.util.Map.entry;
-
 /**
  * The severity a detector's findings carry when its own report does not say.
  *
@@ -42,6 +40,12 @@ import static java.util.Map.entry;
  * {@code DetectorSeverityMarkerTest} fails on an entry for a detector that marks its own reports,
  * so the table can only shrink as the detectors improve.
  *
+ * <p><strong>The table is empty.</strong> Since #801 every built-in detector keeps its findings as
+ * {@link Violation}s at the severity its text used to resolve to, so none falls back to an entry
+ * here. {@link #of(DetectorType)} stays for callers and yields empty for every type; a detector
+ * added without a structured severity of its own still fails {@code DetectorSeverityMarkerTest}
+ * unless it marks its text or regains an entry.
+ *
  * <p>Third-party detectors arriving through the SPI are not in this table and keep the historical
  * {@code HIGH} default. The library has no basis for ranking somebody else's finding.
  *
@@ -58,10 +62,8 @@ import static java.util.Map.entry;
 @API(status = Status.EXPERIMENTAL)
 public final class DetectorDefaultSeverity {
 
-    private static final Map<DetectorType, IssueSeverity> DECLARED = Map.ofEntries(
-            entry(DetectorType.CONDITION_VARIABLES, IssueSeverity.HIGH),
-            entry(DetectorType.REENTRANT_LOCK, IssueSeverity.HIGH)
-    );
+    /** Empty since #801: every built-in detector now states each finding's severity itself. */
+    private static final Map<DetectorType, IssueSeverity> DECLARED = Map.of();
 
     private DetectorDefaultSeverity() { }
 
