@@ -54,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Woven calendar rolls and zero adds were recorded as leaving fields to recompute (#820).** On
+  a `GregorianCalendar` a roll of `HOUR` or `HOUR_OF_DAY` keeps every field computed, and an
+  `add` or `roll` by 0 returns before touching the calendar, both measured against the class's
+  `isTimeSet` and `areFieldsSet`. The agent's hooks recorded them as adds, so gets after them
+  under one read lock were reported as writes. They are now recorded by effect on a plain
+  `GregorianCalendar`; other calendars stay conservative. `CacheConcurrencyDetector`'s thread
+  count is now labelled as counted across the run; its finding was already decided per round.
 - **A reference handed through an updater, an `AtomicReferenceArray` or a `VarHandle` read as a race
   (#741).** The agent wove those slots' stores as ownership offers but not their reads, and the
   stores released nothing to the happens-before model, so a plain update published by storing a

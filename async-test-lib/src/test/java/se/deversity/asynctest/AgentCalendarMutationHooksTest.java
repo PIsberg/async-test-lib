@@ -82,15 +82,21 @@ class AgentCalendarMutationHooksTest {
      * the next round reads the calendar from two threads under one read lock.
      */
     private static boolean getsUnderOneReadLockReported(boolean thenSetTime) throws InterruptedException {
-        AsyncTestContext ctx = newContext();
-        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.ROOT);
-        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-        round(ctx, () -> underLock(lock, false, () -> {
+        return getsUnderOneReadLockReported(cal -> {
             AgentSharedInstanceHooks.set(cal, Calendar.DAY_OF_MONTH, 3);
             if (thenSetTime) {
                 AgentSharedInstanceHooks.setTime(cal, new Date(0L));
             }
-        }));
+        });
+    }
+
+    /** The writer runs {@code writes} under the write lock; the next round gets under one read lock. */
+    private static boolean getsUnderOneReadLockReported(java.util.function.Consumer<Calendar> writes)
+            throws InterruptedException {
+        AsyncTestContext ctx = newContext();
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.ROOT);
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        round(ctx, () -> underLock(lock, false, () -> writes.accept(cal)));
         Runnable get = () -> underLock(lock, true, () -> AgentSharedInstanceHooks.get(cal, Calendar.DAY_OF_MONTH));
         round(ctx, get, get);
         return reported(ctx);
@@ -149,6 +155,54 @@ class AgentCalendarMutationHooksTest {
         AgentSharedInstanceHooks.clear(viaHook);
         viaJdk.clear();
         assertEquals(viaJdk.getTimeInMillis(), viaHook.getTimeInMillis(), "clear()");
+    }
+
+    // ---- #820's narrow limits: a roll of an hour field, and a zero amount ----------------------
+    //
+    // Measured against GregorianCalendar's protected isTimeSet and areFieldsSet on JDK 26: a roll
+    // of HOUR or HOUR_OF_DAY leaves both set, so the next get only reads; every other roll goes
+    // through set() and leaves fields to recompute; an add or roll by 0 returns before touching
+    // anything.
+
+    @Test
+    @DisplayName("a roll of an hour field computes every field, so the next gets only read")
+    void aRollOfAnHourFieldLeavesTheNextGetsReads() throws InterruptedException {
+        assertFalse(getsUnderOneReadLockReported(cal -> {
+            AgentSharedInstanceHooks.set(cal, Calendar.DAY_OF_MONTH, 3);
+            AgentSharedInstanceHooks.roll(cal, Calendar.HOUR_OF_DAY, 2);
+        }), "roll(HOUR_OF_DAY) completes the set's fields and keeps them computed, as setTime does");
+        assertFalse(getsUnderOneReadLockReported(cal -> {
+            AgentSharedInstanceHooks.set(cal, Calendar.DAY_OF_MONTH, 3);
+            AgentSharedInstanceHooks.roll(cal, Calendar.HOUR, true);
+        }), "roll(HOUR, up) likewise");
+    }
+
+    @Test
+    @DisplayName("a roll of any other field leaves fields to recompute, and the gets are reported")
+    void aRollOfAnotherFieldStillLeavesTheGetsWrites() throws InterruptedException {
+        assertTrue(getsUnderOneReadLockReported(cal -> {
+            AgentSharedInstanceHooks.setTime(cal, new Date(0L));
+            AgentSharedInstanceHooks.roll(cal, Calendar.MONTH, 2);
+        }), "roll(MONTH) is a set() of MONTH, which leaves the other fields to recompute");
+    }
+
+    @Test
+    @DisplayName("an add of zero changes nothing, so computed fields stay computed")
+    void anAddOfZeroLeavesTheNextGetsReads() throws InterruptedException {
+        assertFalse(getsUnderOneReadLockReported(cal -> {
+            AgentSharedInstanceHooks.setTime(cal, new Date(0L));
+            AgentSharedInstanceHooks.add(cal, Calendar.MONTH, 0);
+            AgentSharedInstanceHooks.roll(cal, Calendar.YEAR, 0);
+        }), "add and roll by 0 return before touching the calendar");
+    }
+
+    @Test
+    @DisplayName("an add of a month leaves fields to recompute, and the gets are reported")
+    void anAddOfAMonthLeavesTheGetsWrites() throws InterruptedException {
+        assertTrue(getsUnderOneReadLockReported(cal -> {
+            AgentSharedInstanceHooks.setTime(cal, new Date(0L));
+            AgentSharedInstanceHooks.add(cal, Calendar.MONTH, 1);
+        }), "add(MONTH, 1) sets MONTH and leaves the rest to recompute");
     }
 
     private static Calendar utc() {

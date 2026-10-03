@@ -14,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.security.DigestException;
 import java.util.Date;
 import java.util.Formatter;
+import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.regex.Matcher;
 
@@ -454,7 +455,7 @@ public final class AgentSharedInstanceHooks {
      */
     public static void add(Calendar receiver, int field, int amount) {
         CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
-        if (detector != null) {
+        if (detector != null && !(amount == 0 && isGregorian(receiver))) {
             detector.recordAdd(receiver, receiver.getClass().getName(), field);
         }
         receiver.add(field, amount);
@@ -462,14 +463,18 @@ public final class AgentSharedInstanceHooks {
 
     /**
      * Weaves {@code Calendar.roll(int, int)} (#820): recorded as an add that leaves the fields to
-     * recompute, which is conservative for a roll of an hour field.
+     * recompute, except on a plain {@code GregorianCalendar}, where a roll by 0 changes nothing and
+     * a roll of {@code HOUR} or {@code HOUR_OF_DAY} keeps every field computed, as a
+     * {@code setTime} does.
      *
      * @param receiver the calendar
      * @param field    the field to roll
      * @param amount   the signed amount to roll by
      */
     public static void roll(Calendar receiver, int field, int amount) {
-        recordCalendarAdd(receiver);
+        if (!(amount == 0 && isGregorian(receiver))) {
+            recordCalendarRoll(receiver, field);
+        }
         receiver.roll(field, amount);
     }
 
@@ -481,7 +486,7 @@ public final class AgentSharedInstanceHooks {
      * @param up       whether to roll up rather than down
      */
     public static void roll(Calendar receiver, int field, boolean up) {
-        recordCalendarAdd(receiver);
+        recordCalendarRoll(receiver, field);
         receiver.roll(field, up);
     }
 
@@ -540,6 +545,26 @@ public final class AgentSharedInstanceHooks {
     public static void setTimeZone(Calendar receiver, java.util.TimeZone zone) {
         recordCalendarSet(receiver);
         receiver.setTimeZone(zone);
+    }
+
+    /**
+     * {@return whether {@code receiver} is exactly the JDK's {@code GregorianCalendar}}
+     *
+     * <p>Measured there (#820): an {@code add} or {@code roll} by 0 returns before touching the
+     * calendar, and a roll of an hour field leaves its time and fields computed. Another calendar,
+     * or a subclass that may override either, stays recorded conservatively.
+     */
+    private static boolean isGregorian(Calendar receiver) {
+        return receiver.getClass() == GregorianCalendar.class;
+    }
+
+    /** A roll recorded by its effect: a plain Gregorian roll of an hour field computes every field. */
+    private static void recordCalendarRoll(Calendar receiver, int field) {
+        if (isGregorian(receiver) && (field == Calendar.HOUR || field == Calendar.HOUR_OF_DAY)) {
+            recordCalendarSetTime(receiver);
+        } else {
+            recordCalendarAdd(receiver);
+        }
     }
 
     private static void recordCalendarAdd(Calendar receiver) {
