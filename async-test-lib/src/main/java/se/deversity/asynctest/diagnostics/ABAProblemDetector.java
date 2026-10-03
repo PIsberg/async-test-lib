@@ -572,7 +572,8 @@ public class ABAProblemDetector {
      * {@code AtomicReferenceArray} or an array a {@code VarHandle} reaches, or {@code null} while
      * the detector is disabled} (#817)
      *
-     * @param array the array
+     * @param array the {@code AtomicReferenceArray} or Java array holding the element, compared by
+     *              identity, so two arrays with equal contents are two slots
      * @param index the element's index
      * @since 1.12.4
      */
