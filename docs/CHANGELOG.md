@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **JaCoCo instruments only this project's classes (#897).** The `prepare-agent` execution and
+  Gradle's `JacocoTaskExtension` had no `includes`, so every per-class test JVM instrumented every
+  class it loaded, JUnit, Byte Buddy and ASM among them, for a report that only covers
+  `se.deversity.*`. Both builds now include `se.deversity.*` only and keep excluding the named-module
+  fixture. `JacocoInstrumentsTheProjectOnlyTest` pins both.
 - **Example 116 shows the gatherer race through a real `Gatherer` on JDK 24+ (#893).** A
   `jdk24-gatherer` profile, in the pom and mirrored in Gradle, compiles `RealGathererTest` on JDK 24
   or later: a `Gatherer.of` with a combiner whose initializer returns one shared set is reported as
