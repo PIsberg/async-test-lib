@@ -60,6 +60,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A reassigned instance lock was never reported (#793).** `SynchronizedNonFinalDetector` could
+  decide a non-final instance field only when the body passed the owner to `recordLockObject`, so
+  one instance whose lock was swapped between two `synchronized` blocks went unreported. With the
+  agent attached it now needs no call: the weaver recognises the `ALOAD owner; GETFIELD; DUP;
+  ASTORE` that javac emits before the `MONITORENTER` of `synchronized (owner.field)`, reloads the
+  owner from its local and hands it to the detector with the monitor. One owner on two monitors is
+  reported, a non-final lock per instance stays silent, and the detector is agent-fed (22 of them
+  now). The feed holds up to 4,096 owners per run and names any it dropped in a note. A new corpus
+  agent pair reads as stated in both directions, and on the 100 documented-safe corpus subjects
+  the detector stays at zero findings with the agent attached.
 - **The bytecode identity-key gate missed three shapes (#803).** `IdentityHashKeyScanner` now
   follows a hash stored into an array a field holds, an `Object.toString()` whose text ends in the
   identity hash (called, passed to `String.valueOf` or built into a string), and a virtual or

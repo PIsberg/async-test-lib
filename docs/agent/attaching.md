@@ -243,7 +243,11 @@ Three limits worth knowing before switching it on:
   speculation on the same lock, its next write or the end of the round (#740). A speculation on
   a second lock nests inside the first instead of closing it, and reads it validates are judged
   by the enclosing one's `validate` as well (#823). A lock acquired only inside unwoven
-  code still needs `AsyncTestContext.holdingLock(...)`.
+  code still needs `AsyncTestContext.holdingLock(...)`. The same monitor entry also tells
+  `SynchronizedNonFinalDetector` which instance the monitor of a `synchronized (owner.field)` block
+  was read from (#793): javac compiles it to a load of the owner into a local, a read of the field
+  and the entry, and the weaver reloads the owner from that local, so a lock that one instance
+  reassigns is reported with no recording call, and a non-final lock per instance stays silent.
 - **Spinlocks and hand-offs are exclusion too (with `fields=true`).** A won
   `VarHandle.compareAndSet(this, 0, 1)` on an `int` field is a spinlock: the weaver replaces the
   call with a hook that performs it and declares a lock on that receiver's flag, released by a

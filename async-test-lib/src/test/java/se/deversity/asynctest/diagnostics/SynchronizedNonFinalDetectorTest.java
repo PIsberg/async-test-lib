@@ -198,6 +198,56 @@ public class SynchronizedNonFinalDetectorTest {
     }
 
     @Test
+    void theAgentFeedReportsOneOwnerOnTwoMonitors() {
+        // What the agent hands over for synchronized (holder.lock) (#793): the monitor, the field,
+        // and the instance it was read from, so one holder whose lock changed is decided.
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        Object holder = new Object();
+        detector.recordMonitorField(new Object(), "Holder.lock", holder);
+        detector.recordMonitorField(new Object(), "Holder.lock", holder);
+
+        SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
+        assertTrue(report.hasIssues() && report.toString().contains("Holder.lock: one instance synchronized on 2"),
+            "one owner entered the block on two monitors: " + report);
+    }
+
+    @Test
+    void theAgentFeedKeepsOneMonitorPerOwnerSilent() {
+        // The twin: many owners, each entering on its own monitor, every time the same one.
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        for (int i = 0; i < 5; i++) {
+            Object holder = new Object();
+            Object lock = new Object();
+            detector.recordMonitorField(lock, "Holder.lock", holder);
+            detector.recordMonitorField(lock, "Holder.lock", holder);
+        }
+
+        SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
+        assertFalse(report.hasIssues(), "each owner kept its monitor: " + report);
+        assertTrue(report.notes().isEmpty(), "the owner decides every slot: " + report.notes());
+    }
+
+    @Test
+    void theAgentFeedStopsAtItsOwnerCapAndSaysSo() {
+        // Every woven synchronized (owner.field) entry reaches the feed and each owner is held for
+        // the run, so a body building objects in a loop is capped rather than retained whole. An
+        // owner past the cap is not tracked, and the report says how many were not.
+        SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
+        for (int i = 0; i < SynchronizedNonFinalDetector.MAX_AGENT_OWNERS; i++) {
+            detector.recordMonitorField(new Object(), "Holder.lock", new Object());
+        }
+        Object late = new Object();
+        detector.recordMonitorField(new Object(), "Holder.lock", late);
+        detector.recordMonitorField(new Object(), "Holder.lock", late);
+
+        SynchronizedNonFinalDetector.SynchronizedNonFinalReport report = detector.analyze();
+        assertFalse(report.hasIssues(), "the late owner was past the cap, so it was not tracked: " + report);
+        assertTrue(report.notes().size() == 1 && report.notes().get(0).contains("2 more")
+                && report.notes().get(0).contains(String.valueOf(SynchronizedNonFinalDetector.MAX_AGENT_OWNERS)),
+            "the dropped entries are counted in a note: " + report.notes());
+    }
+
+    @Test
     void testSingleObjectNoIssues() {
         SynchronizedNonFinalDetector detector = new SynchronizedNonFinalDetector();
         Object lock = new Object();

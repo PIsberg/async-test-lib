@@ -748,6 +748,58 @@ class CorpusAgentPairLaneTest {
         counted(() -> abaRound(true));
     }
 
+    // --- synchronized on a non-final instance field (#793) --------------------------------------
+
+    /**
+     * A holder whose lock field is not final. {@code synchronized (lock)} inside an instance
+     * method is the shape the weaver reads the owner from: a load of {@code this}, the field, the
+     * monitor entry.
+     */
+    static final class LockHolder {
+        private Object lock = new Object();
+        private int count;
+
+        void increment() {
+            synchronized (lock) {
+                count++;
+            }
+        }
+
+        void swapLock() {
+            lock = new Object();
+        }
+    }
+
+    private static final LockHolder SHARED_LOCK_HOLDER = new LockHolder();
+
+    private static final AtomicInteger LOCK_SWAP_TICKETS = new AtomicInteger();
+
+    /**
+     * Every worker increments under the shared holder's lock, and one a round replaces the lock
+     * first, so the holder is entered on a new monitor every round.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_synchronized_onALockOneOwnerReassigns() {
+        if (LOCK_SWAP_TICKETS.getAndIncrement() % THREADS == 0) {
+            SHARED_LOCK_HOLDER.swapLock();
+        }
+        SHARED_LOCK_HOLDER.increment();
+    }
+
+    /**
+     * The same holder, block and swap, with a holder per worker: the swap lands before the
+     * holder's first entry, so each holder is entered on one monitor only.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    void agent_synchronized_onALockPerOwner() {
+        LockHolder mine = new LockHolder();
+        if (LOCK_SWAP_TICKETS.getAndIncrement() % THREADS == 0) {
+            mine.swapLock();
+        }
+        mine.increment();
+        mine.increment();
+    }
+
     // --- Thread daemon flag, left running (#736) ----------------------------------------------
 
     /**

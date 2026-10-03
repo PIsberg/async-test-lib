@@ -1228,6 +1228,26 @@ final class Corpus {
                             + "Recorded by hand that history reads as its twin (#810); woven, the "
                             + "records are in the order the operations ran"),
 
+            new RecordingSubject("agent_synchronized_onALockOneOwnerReassigns", JDK,
+                    "java.lang.Object",
+                    DetectorType.SYNCHRONIZED_NON_FINAL, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker enters synchronized (lock) on one shared holder, and one worker "
+                            + "a round replaces the holder's lock, so threads either side of the "
+                            + "swap hold different monitors and exclude nobody. Nothing is "
+                            + "recorded: the woven monitor entry names the holder it read the "
+                            + "field from (#793)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_synchronized_onALockPerOwner", JDK,
+                    "java.lang.Object",
+                    DetectorType.SYNCHRONIZED_NON_FINAL, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same holder class, swap and synchronized (lock), with a holder per "
+                            + "worker whose swap lands before its first entry. The field is not "
+                            + "final, so recorded without its owner this is undecidable (#793); "
+                            + "the owner the weaver passes shows one monitor per holder"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

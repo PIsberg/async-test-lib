@@ -142,14 +142,15 @@ class DetectorEffectivenessAndCorrectnessTest {
         Set<DetectorType> agentFed = LibraryReach.agentFed();
 
         // Every agent-fed detector is reached through third-party library bytecode except the
-        // three LibraryReach gives a reason for: no corpus library calls System.gc, none waits
-        // behind an if (#694), and none pushes a popped node back onto a lock-free stack (#817).
+        // four LibraryReach gives a reason for: no corpus library calls System.gc, none waits
+        // behind an if (#694), none pushes a popped node back onto a lock-free stack (#817), and
+        // none reassigns a field it synchronizes on (#793).
         // The daemon-hygiene weave is reached through a Guava service left running (#736).
-        assertEquals(agentFed.size() - 3, reached.size(),
-                "all agent-fed detectors except EXPLICIT_GC, MISSED_SIGNAL and ABA_PROBLEM must "
-                        + "be reached through library bytecode");
+        assertEquals(agentFed.size() - 4, reached.size(),
+                "all agent-fed detectors except EXPLICIT_GC, MISSED_SIGNAL, ABA_PROBLEM and "
+                        + "SYNCHRONIZED_NON_FINAL must be reached through library bytecode");
         assertEquals(Set.of(DetectorType.EXPLICIT_GC, DetectorType.MISSED_SIGNAL,
-                        DetectorType.ABA_PROBLEM),
+                        DetectorType.ABA_PROBLEM, DetectorType.SYNCHRONIZED_NON_FINAL),
                 LibraryReach.unreached().keySet());
     }
 

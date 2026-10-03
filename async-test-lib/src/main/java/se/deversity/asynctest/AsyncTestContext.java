@@ -2028,6 +2028,19 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link SynchronizedNonFinalDetector} for the calling thread's test, or
+     * {@code null}}
+     *
+     * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is
+     * {@link AgentMonitorHooks#monitorFieldEntered}, woven before a {@code synchronized} block that
+     * does not know a test is in progress (#793).
+     */
+    static @Nullable SynchronizedNonFinalDetector currentSynchronizedNonFinalDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.synchronizedNonFinalDetector;
+    }
+
+    /**
      * Returns the {@link TimerDetector} for the current test.
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@code detectTimerIssues = false}
      * @deprecated use {@link #timerDetector()}

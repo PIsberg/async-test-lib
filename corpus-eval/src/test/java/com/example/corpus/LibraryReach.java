@@ -45,6 +45,11 @@ final class LibraryReach {
                         + "row needs a library that pushes a popped node back onto a lock-free "
                         + "stack, and no corpus library ships that defect, so its pair calls the "
                         + "JDK type from the test file");
+        unreached(DetectorType.SYNCHRONIZED_NON_FINAL,
+                "agent-fed since #793 through the woven monitor entry of synchronized "
+                        + "(owner.field); a firing library row needs a library that reassigns a "
+                        + "field it synchronizes on, and no corpus library ships that defect, so "
+                        + "its pair synchronizes in the test file");
     }
 
     private static void unreached(DetectorType type, String reason) {
