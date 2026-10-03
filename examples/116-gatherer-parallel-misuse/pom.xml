@@ -25,4 +25,32 @@
             <configuration><systemPropertyVariables><license.mock.mode>true</license.mock.mode></systemPropertyVariables></configuration>
         </plugin>
     </plugins></build>
+    <profiles>
+        <!-- JDK 24+ only (#893): java.util.stream.Gatherer is final from JDK 24, and the examples
+             baseline is 21. On such a JDK this compiles src/test/java24 beside src/test/java, so
+             RealGathererTest runs the hazard through a real Gatherer. CI runs it in the
+             examples-jdk25 job; on JDK 21 the profile is off and the example builds as before. -->
+        <profile>
+            <id>jdk24-gatherer</id>
+            <activation><jdk>[24,)</jdk></activation>
+            <properties>
+                <maven.compiler.release>24</maven.compiler.release>
+            </properties>
+            <build><plugins>
+                <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>default-testCompile</id>
+                            <configuration>
+                                <compileSourceRoots>
+                                    <compileSourceRoot>${project.basedir}/src/test/java</compileSourceRoot>
+                                    <compileSourceRoot>${project.basedir}/src/test/java24</compileSourceRoot>
+                                </compileSourceRoots>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins></build>
+        </profile>
+    </profiles>
 </project>

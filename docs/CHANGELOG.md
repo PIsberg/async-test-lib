@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Example 116 shows the gatherer race through a real `Gatherer` on JDK 24+ (#893).** A
+  `jdk24-gatherer` profile, in the pom and mirrored in Gradle, compiles `RealGathererTest` on JDK 24
+  or later: a `Gatherer.of` with a combiner whose initializer returns one shared set is reported as
+  a shared-state race, and `HashSet::new` stays silent. The examples' baseline stays JDK 21, so a
+  new `Examples on JDK 25` CI leg runs it and fails if the test did not run.
 - **`ABAProblemDetector` grades its findings by path (#817).** An A-B-A the agent took inside each
   operation is graded `VERDICT` on `OBSERVED` evidence, so a `minTrust = VERDICT` gate now sees it;
   one recorded by hand stays `FACT` on `ASSERTED`, because a toggle that ran before the read
