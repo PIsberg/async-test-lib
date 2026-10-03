@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two optimistic-read shapes under the agent read as unguarded (#823).** A read or write lock
+  converted with `tryConvertToOptimisticRead` opened no speculation, so the reads after it, which
+  a later `validate` covers, were delivered as plain reads; the conversion now opens one, and
+  converting an optimistic stamp counts as that stamp validating. A speculation also gave up after
+  256 reads and delivered every read it held as plain; the bound is now 4,096, and only an
+  unbroken run of reads can reach it.
 - **A `ReentrantLock` leaked by a nameless thread went unreported (#855).** A lock names its holder
   only by name, and every unnamed virtual thread is `""`, so a hold such a thread kept through a
   balanced re-entry was printed as context by `ReentrantLockDetector` and missed by

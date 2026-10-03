@@ -482,6 +482,100 @@ class TelemetryBridgeTest {
     }
 
     /**
+     * #823 item 4: a validated speculation that reads more than the old 256-read bound. Past the
+     * bound every held read was delivered as a plain read, so the reads a validate covered were
+     * reported as unguarded.
+     */
+    @Test
+    void aLongValidatedSpeculationStillReadsUnderTheLock() throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(() -> {
+                long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(lock);
+                try {
+                    TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                            "Point.x", true, false, Integer.MIN_VALUE, false, false);
+                    point.x++;
+                } finally {
+                    se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, stamp);
+                }
+            });
+            writer.start();
+            writer.join();
+            Thread reader = new Thread(() -> {
+                long stamp = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                for (int i = 0; i < 1_000; i++) {
+                    TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                            "Point.x", false, false, Integer.MIN_VALUE, false, false);
+                }
+                se.deversity.asynctest.AgentLockHooks.validate(lock, stamp);
+            });
+            reader.start();
+            reader.join();
+            TelemetryRegistry.flush();
+        }
+        assertTrue(av.analyzeAtomicity().unsafeFieldAccesses.isEmpty(),
+                "1,000 reads between tryOptimisticRead and a validate that held are all guarded: "
+                        + av.analyzeAtomicity().unsafeFieldAccesses);
+    }
+
+    /**
+     * #823 item 3: a read lock converted to an optimistic stamp starts a speculation, as
+     * {@code tryOptimisticRead} does. The writer moved the point under the write lock first; the
+     * reader takes the read lock, converts it, reads, and validates.
+     *
+     * @return whether AtomicityValidator reported the point's field
+     */
+    private static boolean convertedOptimisticReadReported(boolean validates) throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(() -> {
+                long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(lock);
+                try {
+                    TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                            "Point.x", true, false, Integer.MIN_VALUE, false, false);
+                    point.x++;
+                } finally {
+                    se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, stamp);
+                }
+            });
+            writer.start();
+            writer.join();
+            Thread reader = new Thread(() -> {
+                long readStamp = se.deversity.asynctest.AgentLockHooks.readLock(lock);
+                long stamp = se.deversity.asynctest.AgentLockHooks.tryConvertToOptimisticRead(lock, readStamp);
+                TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                        "Point.x", false, false, Integer.MIN_VALUE, false, false);
+                if (validates) {
+                    se.deversity.asynctest.AgentLockHooks.validate(lock, stamp);
+                }
+            });
+            reader.start();
+            reader.join();
+            TelemetryRegistry.flush();
+        }
+        return !av.analyzeAtomicity().unsafeFieldAccesses.isEmpty();
+    }
+
+    @Test
+    void aReadLockConvertedToOptimisticAndValidatedReadsUnderTheLock() throws Exception {
+        assertFalse(convertedOptimisticReadReported(true),
+                "tryConvertToOptimisticRead released the read lock into an optimistic stamp, and the "
+                        + "validate after the read held, so the read saw what a reader under the lock "
+                        + "would have (#823)");
+    }
+
+    @Test
+    void aReadLockConvertedToOptimisticAndNeverValidatedIsStillReported() throws Exception {
+        assertTrue(convertedOptimisticReadReported(false),
+                "nothing validated the read made after the conversion, so it was used unguarded");
+    }
+
+    /**
      * One writer moves the point under the write lock and one reader reads it optimistically,
      * through the real lock hooks, ring and bridge, in an order fixed by the test (#740).
      *

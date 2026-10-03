@@ -144,10 +144,13 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
 
     /**
      * How many reads one {@code StampedLock} speculation holds back before they are delivered as
-     * plain reads (#740). An optimistic read covers a handful of fields; a speculation past this is
-     * not the idiom, and holding it would grow without bound. Chosen as generous, not measured.
+     * plain reads (#740). Reaching it delivers every read the thread holds back as plain, which
+     * reports the reads a later {@code validate} would have covered, so it is set well past the
+     * idiom: 256 was reached by a loop of reads under one stamp (#823). The bound only matters for
+     * an unbroken run of reads, since anything else the thread records ends its speculations, and
+     * holds at most this many reads per open speculation. Chosen as generous, not measured.
      */
-    static final int MAX_SPECULATIVE_READS = 256;
+    static final int MAX_SPECULATIVE_READS = 4096;
 
     /**
      * How many {@code StampedLock} speculations one thread may have open at once, nested on
