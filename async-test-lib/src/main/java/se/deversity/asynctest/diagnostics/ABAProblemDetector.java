@@ -1115,12 +1115,14 @@ public class ABAProblemDetector {
                 report.variablesWithCycles.put(label, cycleCount);
             }
             for (Object[] finding : found) {
-                report.successfulABACases.add(finding.length == 4
+                String line = finding.length == 4
                         ? String.format("%s: CAS succeeded despite ABA (expected %s with stamp %s, set to %s "
                                 + "with stamp %s; the stamp the value came back with was reused)",
                                 label, finding[0], finding[2], finding[1], finding[3])
                         : String.format("%s: CAS succeeded despite ABA (expected %s, set to %s)",
-                                label, finding[0], finding[1]));
+                                label, finding[0], finding[1]);
+                report.successfulABACases.add(line);
+                report.observedCases.add(line);
             }
         }
     }
@@ -1244,11 +1246,37 @@ public class ABAProblemDetector {
         return false;
     }
 
-    public static class ABAReport {
+    public static class ABAReport implements GradedFindings {
         /** How many A-B-A cycles were observed per variable. */
         public final Map<String, Integer> variablesWithCycles = new HashMap<>();
         /** Compare-and-set calls that succeeded even though the value had changed and changed back. */
-        public final Set<String> successfulABACases = new HashSet<>();
+        public final Set<String> successfulABACases = new java.util.LinkedHashSet<>();
+
+        /**
+         * The cases in {@link #successfulABACases} the agent took inside each operation (#817); the
+         * rest were recorded by hand, in the caller's order.
+         */
+        final Set<String> observedCases = new HashSet<>();
+
+        /**
+         * {@inheritDoc}
+         *
+         * <p>A case the agent took inside each operation is what ran, so it is graded
+         * {@link TrustTier#VERDICT} on {@link DetectorTrust.Evidence#OBSERVED} evidence. A recorded
+         * case is in the caller's record order, which a toggle that ran before the read also produces
+         * (#810), so it is graded {@link TrustTier#FACT} on {@link DetectorTrust.Evidence#ASSERTED}
+         * evidence.
+         */
+        @Override
+        public List<Grade> grades() {
+            List<Grade> grades = new ArrayList<>(successfulABACases.size());
+            for (String found : successfulABACases) {
+                grades.add(observedCases.contains(found)
+                        ? new Grade(IssueSeverity.HIGH, TrustTier.VERDICT, found, DetectorTrust.Evidence.OBSERVED)
+                        : new Grade(IssueSeverity.HIGH, TrustTier.FACT, found, DetectorTrust.Evidence.ASSERTED));
+            }
+            return grades;
+        }
         
         /**
          * {@return whether there are issues}

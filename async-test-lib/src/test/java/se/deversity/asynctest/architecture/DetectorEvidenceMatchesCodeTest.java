@@ -159,10 +159,6 @@ class DetectorEvidenceMatchesCodeTest {
      * an entry that no longer disagrees.
      */
     private static final Map<DetectorType, String> FED_BELOW_OBSERVED = Map.ofEntries(
-            entry(DetectorType.ABA_PROBLEM, "the agent path records inside each AtomicReference "
-                    + "operation, but recordRead and recordWrite still take the caller's order, and a "
-                    + "swing recorded after a read it ran before reads as an A-B-A (#810); no grade "
-                    + "separates the two paths yet"),
             entry(DetectorType.ATOMICITY_VIOLATIONS, "the woven field accesses are judged against the "
                     + "lockset, while a recorded compound operation or detectCheckThenActViolation "
                     + "compares values the caller passed"),
@@ -178,7 +174,7 @@ class DetectorEvidenceMatchesCodeTest {
                     + "init requests is FACT on ASSERTED; with no grade above FACT it keeps ASSERTED"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 5;
+    private static final int FED_BELOW_OBSERVED_CEILING = 4;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

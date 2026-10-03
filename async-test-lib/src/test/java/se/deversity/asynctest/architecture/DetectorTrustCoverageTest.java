@@ -353,7 +353,9 @@ class DetectorTrustCoverageTest {
             "ThreadLeakDetector",
             "CalendarDetector",
             "SimpleDateFormatDetector",
-            "StringBuilderDetector");
+            "StringBuilderDetector",
+            // #817: an A-B-A the agent took inside each operation beside one recorded by hand.
+            "ABAProblemDetector");
 
     @Test
     @DisplayName("every split-tier detector grades its findings individually")

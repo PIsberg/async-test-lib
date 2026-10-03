@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`ABAProblemDetector` grades its findings by path (#817).** An A-B-A the agent took inside each
+  operation is graded `VERDICT` on `OBSERVED` evidence, so a `minTrust = VERDICT` gate now sees it;
+  one recorded by hand stays `FACT` on `ASSERTED`, because a toggle that ran before the read
+  produces the same records (#810). The detector row moves from `ASSERTED` to `OBSERVED` evidence
+  and keeps its `FACT` tier.
+
 - **The agent's two unmeasured costs are measured and documented (#844).** A woven access inside
   `synchronized` methods pays about 15 ns per enclosing method for the `Thread.holdsLock` check
   #822 added (1.5 ns with none, 90 ns at depth 6). It stays: every cheaper check found was

@@ -572,6 +572,42 @@ class ABAProblemDetectorTest {
         }
     }
 
+    /**
+     * #817: a finding the agent took inside each operation is graded apart from one recorded by
+     * hand, whose record order is the caller's and can be the record of an A-B-A that never ran.
+     */
+    @Test
+    void anAgentFindingIsGradedObservedAndARecordedOneAsserted() throws InterruptedException {
+        ABAProblemDetector agent = new ABAProblemDetector();
+        Node a = new Node("A");
+        AtomicReference<Object> head = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot = agent.agentSlot(head);
+        Object seen = slot.get(head);
+        onAnotherThread(() -> slot.set(head, new Node("B")));
+        onAnotherThread(() -> slot.set(head, a));
+        assertTrue(slot.compareAndSet(head, seen, new Node("C")));
+        List<GradedFindings.Grade> observed = DetectorTrust.clampToCap("ABAProblemDetector",
+                ((GradedFindings) (Object) agent.analyzeABA()).grades());
+        assertEquals(1, observed.size(), "one finding: " + observed);
+        assertEquals(TrustTier.VERDICT, observed.get(0).tier(),
+                "taken inside each operation, the finding is what ran, and its evidence class allows a verdict");
+        assertEquals(DetectorTrust.Evidence.OBSERVED, observed.get(0).evidence());
+
+        ABAProblemDetector recorded = new ABAProblemDetector();
+        recorded.recordRead("head", "A");
+        onAnotherThread(() -> {
+            recorded.recordValueChange("head", "A", "B");
+            recorded.recordValueChange("head", "B", "A");
+        });
+        recorded.recordCASAttempt("head", "A", "C", true, "A");
+        List<GradedFindings.Grade> asserted = DetectorTrust.clampToCap("ABAProblemDetector",
+                ((GradedFindings) (Object) recorded.analyzeABA()).grades());
+        assertEquals(1, asserted.size(), "one finding: " + asserted);
+        assertEquals(TrustTier.FACT, asserted.get(0).tier(),
+                "a recorded history is the caller's order, which a toggle before the read also produces (#810)");
+        assertEquals(DetectorTrust.Evidence.ASSERTED, asserted.get(0).evidence());
+    }
+
     @Test
     void underTheAgentOnlyAnotherThreadsToggleAfterThisThreadsReadCounts() throws InterruptedException {
         Node a = new Node("A");

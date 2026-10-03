@@ -212,7 +212,7 @@ public final class DetectorTrust {
             row(DetectorType.FALSE_SHARING, "FalseSharingDetector", "FalseSharing", TrustTier.ADVISORY, Evidence.HEURISTIC),
             row(DetectorType.WAKEUP_ISSUES, "WakeupDetector", "WakeupIssues", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.CONSTRUCTOR_SAFETY, "ConstructorSafetyValidator", "ConstructorSafety", TrustTier.PROMPT, Evidence.OBSERVED),
-            row(DetectorType.ABA_PROBLEM, "ABAProblemDetector", "ABAProblem", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.ABA_PROBLEM, "ABAProblemDetector", "ABAProblem", TrustTier.FACT, Evidence.OBSERVED),
             row(DetectorType.LOCK_ORDER, "LockOrderValidator", "LockOrder", TrustTier.VERDICT, Evidence.OBSERVED),
             row(DetectorType.SYNCHRONIZERS, "SynchronizerMonitor", "Synchronizers", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.THREAD_POOL, "ThreadPoolMonitor", "ThreadPool", TrustTier.PROMPT, Evidence.HEURISTIC),
