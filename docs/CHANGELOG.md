@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One `TelemetryRegistry.stop()` switched off woven happens-before edges for the rest of the JVM
+  (#891).** `stop()` sets a flag that exists so nothing fills an event ring no drain thread will
+  empty, but the woven hooks also checked it before telling the happens-before model about a queue
+  hand-off, a volatile publication or an `AtomicReference` set. After one stop, every later woven
+  hand-off went unrecorded and read as a race. A consumer that stops the registry, as
+  `docs/agent/consuming-events.md` shows, hit it. So did the weekly mutation gate, red since
+  2026-09-27: pitest runs every test class in one JVM, and the tests that stand in for the agent by
+  starting and stopping the registry ran first, so 10 tests failed before a mutant was made. The
+  flag now guards the ring only. `AgentHappensBeforeFeedTest.aStoppedRegistryStillOrdersWovenHandOffs`
+  pins it.
 - **A folded console line could lead with advice and count it as findings (#773).** A passing
   run prints each PROMPT or ADVISORY report as one line, `findings=N: <headline>`. For a report
   without graded findings, N and the headline came from the report's `"  - "` bullets, which
