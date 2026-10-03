@@ -60,6 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A calendar `set()` before its first recorded access is seen on a default JVM (#820).**
+  `CalendarDetector` read the flags that say a `get()` will recompute fields only when the test
+  JVM opened `java.util` to the library. `set()` computes every field before clearing those
+  flags, so on a default JVM such a calendar read as complete, and gets under one read lock went
+  unreported. The flags are now read from the text `Calendar.toString()` prints, which computes
+  nothing; a calendar class that overrides `toString()` is still read as complete, since its
+  text is not the JDK's.
 - **A reassigned instance lock was never reported (#793).** `SynchronizedNonFinalDetector` could
   decide a non-final instance field only when the body passed the owner to `recordLockObject`, so
   one instance whose lock was swapped between two `synchronized` blocks went unreported. With the

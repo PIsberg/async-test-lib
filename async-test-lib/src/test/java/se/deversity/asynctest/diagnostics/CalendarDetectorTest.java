@@ -415,6 +415,49 @@ public class CalendarDetectorTest {
                 + "only read: " + detector.analyze());
     }
 
+    // A set() on a completed calendar leaves every field set; only the private flags say the
+    // next get() recomputes. This test JVM does not open java.util, so they cannot be read
+    // reflectively, and Calendar.toString() is what reports them.
+
+    @Test
+    void getsUnderOneReadLockOnACalendarSetAfterItWasCompletedAreReported()
+            throws InterruptedException {
+        CalendarDetector detector = new CalendarDetector();
+        Calendar cal = new java.util.GregorianCalendar(2024, Calendar.JANUARY, 15);
+        cal.getTime();
+        cal.set(Calendar.DAY_OF_MONTH, 20);  // set() computes every field first, then clears the flags
+        detector.registerCalendar(cal, "set-calendar");
+        java.util.concurrent.locks.ReentrantReadWriteLock lock =
+                new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable get = () -> underLock(lock, true, () -> {
+            detector.recordGet(cal, "set-calendar");
+            cal.get(Calendar.DAY_OF_WEEK);
+        });
+
+        round(new SelfGuard.Scope(), get, get);
+
+        assertTrue(detector.analyze().hasIssues(),
+            "the set() left the time and the other fields for the first get() to recompute, "
+                + "which a read lock does not make exclusive");
+    }
+
+    @Test
+    void aCalendarWhoseToStringIsOverriddenCountsAsComplete() {
+        Calendar cal = new java.util.GregorianCalendar(2024, Calendar.JANUARY, 15) {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public String toString() {
+                return "Audit[time=?,areFieldsSet=false,areAllFieldsSet=false,lenient=true]";
+            }
+        };
+        cal.getTime();
+        cal.get(Calendar.DAY_OF_WEEK);
+
+        assertFalse(CalendarDetector.PendingFields.of(cal),
+            "a subclass's own text is not the JDK's, so it says nothing about the flags");
+    }
+
     /** Runs {@code body} holding {@code lock}'s read view if {@code shared}, else its write view. */
     private static void underLock(java.util.concurrent.locks.ReentrantReadWriteLock lock,
                                   boolean shared, Runnable body) {
