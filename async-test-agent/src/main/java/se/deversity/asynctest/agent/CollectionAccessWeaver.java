@@ -1233,7 +1233,7 @@ final class CollectionAccessWeaver {
         }
 
         String @org.jspecify.annotations.Nullable [] exceptions() {
-            return exceptions == null ? null : exceptions.clone();
+            return exceptions == null ? null : exceptions.clone(); // NOPMD - null is ASM's "no throws clause"
         }
 
         void replay(MethodVisitor target) {
