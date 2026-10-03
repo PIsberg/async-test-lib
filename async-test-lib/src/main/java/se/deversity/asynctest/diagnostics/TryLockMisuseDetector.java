@@ -24,6 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class TryLockMisuseDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State {
         final String lockName;
         final Set<String> threadsWithViolations = ConcurrentHashMap.newKeySet();
@@ -85,7 +88,7 @@ public final class TryLockMisuseDetector {
             Boolean acquired = threadResults.get(thread.threadId());
             if (acquired != null && !acquired) {
                 State s = violations.computeIfAbsent(key, k -> new State(
-                    lockName != null ? lockName : "Lock@" + key.hashCode()
+                    lockName != null ? lockName : unnamedLabels.of(key, "Lock")
                 ));
                 s.threadsWithViolations.add(thread.getName());
             }

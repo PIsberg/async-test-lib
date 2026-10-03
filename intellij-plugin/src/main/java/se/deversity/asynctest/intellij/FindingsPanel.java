@@ -6,6 +6,7 @@ import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import se.deversity.asynctest.intellij.model.DetectorFinding;
 import se.deversity.asynctest.intellij.model.JsonReportParser;
+import se.deversity.asynctest.intellij.model.ReportLocator;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -13,7 +14,6 @@ import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -114,17 +114,8 @@ final class FindingsPanel {
     }
 
     private Path locateReport() {
-        String patterns = AsyncTestSettings.getInstance().getReportPathPattern();
-        String basePath = project.getBasePath();
-        if (basePath == null) return null;
-
-        for (String pattern : patterns.split(",")) {
-            pattern = pattern.trim();
-            if (pattern.isEmpty()) continue;
-            File candidate = new File(basePath, pattern);
-            if (candidate.exists()) return candidate.toPath();
-        }
-        return null;
+        return ReportLocator.locate(project.getBasePath(),
+            AsyncTestSettings.getInstance().getReportPathPattern());
     }
 
     // ---- Table model ----

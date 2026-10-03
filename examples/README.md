@@ -458,7 +458,7 @@ Runnable task = () -> { counter[0]++; };  // captures mutable int[]
 void testCounterTask() {
     var d = AsyncTestContext.statefulLambdaDetector();
     d.recordExecution(task, "counter-task", Thread.currentThread());
-    d.recordCapturedMutation(task, "counter[0]", Thread.currentThread());
+    d.recordCapturedMutation(task, "counter", counter, Thread.currentThread());
     task.run();
 }
 ```

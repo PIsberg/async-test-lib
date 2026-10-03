@@ -22,6 +22,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicStampedReference;
 
 /**
  * Detects the ABA Problem in atomic operations.
@@ -73,13 +74,19 @@ import java.util.concurrent.atomic.AtomicReference;
  * every {@code AtomicReference} {@code get}, {@code getAcquire}, {@code set}, {@code lazySet},
  * {@code setRelease}, {@code compareAndSet} and {@code getAndSet} in woven code, and on a thread
  * whose test has this detector each runs through an {@link AgentSlot}, which takes its record
- * inside the same lock as the operation (#817). The records of one atomic are then in the order
+ * inside the same lock as the operation (#817). So do the reference slots that are not an
+ * {@code AtomicReference}: a field reached through an {@code AtomicReferenceFieldUpdater} or a
+ * {@code VarHandle}, and an {@code AtomicReferenceArray} element or array element a handle reaches,
+ * each a slot of its own, and an {@code AtomicStampedReference}, judged on its (reference, stamp)
+ * pair: a compare-and-set that succeeds after the pair left and came back reused a stamp. The
+ * records of one atomic are then in the order
  * its woven operations ran, so neither limit above applies there: a toggle that ran before a read
  * is recorded before it, and one recorded after a compare-and-set ran after it. The finding is
- * also narrowed to the case an A-B-A can hurt. A compare-and-set whose expected value has no
- * mutable field of its own (an enum constant, a boxed number, a {@code String}, a record, any
- * class whose instance fields are all final) or is {@code null} is judged harmless: nothing
- * behind the value can have changed while it was away, so a state machine's A-B-A is silent,
+ * also narrowed to the case an A-B-A can hurt. A compare-and-set whose expected value can carry
+ * no state is judged harmless: {@code null}, an enum constant, a boxed number, a {@code String},
+ * or a value whose instance fields are all final and reach no such state, followed three fields
+ * deep, so a record of numbers is harmless and a record holding a {@code List} is not (#817).
+ * Nothing behind a harmless value can have changed while it was away, so a state machine's A-B-A is silent,
  * while a lock-free stack that pushes a popped node back is reported. The agent's records keep no
  * history, only each thread's last read and whether the value left it and came back since, so a
  * hot atomic costs one entry per thread. They are reported under the atomic's class and identity,
@@ -92,6 +99,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link ABAReport#variablesWithCycles} and shown as context beside a finding.
  */
 public class ABAProblemDetector {
+
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
 
     /**
      * Record order across all variables. It orders records, not the operations they describe;
@@ -178,8 +188,18 @@ public class ABAProblemDetector {
     
     private final Map<String, AtomicValueHistory> trackedVariables = new ConcurrentHashMap<>();
 
-    /** The atomics the agent feeds, by identity (#817). */
-    private final Map<IdentityKey, AgentSlot> agentSlots = new ConcurrentHashMap<>();
+    /**
+     * The slots the agent feeds (#817): an {@code AtomicReference} by its identity, and a slot inside
+     * a holder (a field reached through an updater or a {@code VarHandle}, or an array element) by
+     * a {@link SlotKey}.
+     */
+    private final Map<Object, AgentSlot> agentSlots = new ConcurrentHashMap<>();
+
+    /**
+     * A slot inside {@code holder}: the field {@code selector} (an updater or a handle) reaches, or
+     * the element at {@code index} when {@code selector} is {@code null}.
+     */
+    private record SlotKey(IdentityKey holder, @Nullable IdentityKey selector, int index) { }
 
     private volatile boolean enabled = true;
     
@@ -526,7 +546,46 @@ public class ABAProblemDetector {
         }
         IdentityKey key = new IdentityKey(atomic);
         AgentSlot slot = agentSlots.get(key);
-        return slot != null ? slot : agentSlots.computeIfAbsent(key, AgentSlot::new);
+        return slot != null ? slot
+                : agentSlots.computeIfAbsent(key, k -> new AgentSlot(atomic.getClass().getSimpleName(), unnamedLabels));
+    }
+
+    /**
+     * {@return this detector's view of the field {@code selector} reaches inside {@code holder}, or
+     * {@code null} while the detector is disabled} (#817)
+     *
+     * <p>For a reference field reached through an {@code AtomicReferenceFieldUpdater} or a
+     * {@code VarHandle}; the agent's hook hands each operation to the view, which performs it
+     * under its own lock and records it there.
+     *
+     * @param holder   the object whose field is the slot
+     * @param selector the updater or handle that reaches the field
+     * @since 1.12.4
+     */
+    @API(status = Status.INTERNAL)
+    public @Nullable AgentSlot agentSlot(Object holder, Object selector) {
+        return enabled ? slotFor(new SlotKey(new IdentityKey(holder), new IdentityKey(selector), 0), holder) : null;
+    }
+
+    /**
+     * {@return this detector's view of element {@code index} of {@code array}, an
+     * {@code AtomicReferenceArray} or an array a {@code VarHandle} reaches, or {@code null} while
+     * the detector is disabled} (#817)
+     *
+     * @param array the {@code AtomicReferenceArray} or Java array holding the element, compared by
+     *              identity, so two arrays with equal contents are two slots
+     * @param index the element's index
+     * @since 1.12.4
+     */
+    @API(status = Status.INTERNAL)
+    public @Nullable AgentSlot agentSlot(Object array, int index) {
+        return enabled ? slotFor(new SlotKey(new IdentityKey(array), null, index), array) : null;
+    }
+
+    private AgentSlot slotFor(SlotKey key, Object holder) {
+        AgentSlot slot = agentSlots.get(key);
+        return slot != null ? slot
+                : agentSlots.computeIfAbsent(key, k -> new AgentSlot(holder.getClass().getSimpleName(), unnamedLabels));
     }
 
     /**
@@ -563,6 +622,10 @@ public class ABAProblemDetector {
         private @Nullable Object lastOld;
         /** Guarded by {@link #lock}. */
         private @Nullable Object lastNew;
+        /** Guarded by {@link #lock}: the stamps of {@link #lastOld} and {@link #lastNew}. */
+        private int lastOldStamp;
+        /** Guarded by {@link #lock}. */
+        private int lastNewStamp;
         /** Guarded by {@link #lock}: whether {@link #lastOld} and {@link #lastNew} hold a change. */
         private boolean anyChange;
         /** Guarded by {@link #lock}. */
@@ -570,14 +633,274 @@ public class ABAProblemDetector {
         /** Guarded by {@link #lock}: expected and new value of each A-B-A compare-and-set. */
         private final List<Object[]> findings = new ArrayList<>();
 
-        private AgentSlot(IdentityKey atomic) {
-            this.label = ReportSections.unnamed(atomic.referent().getClass().getSimpleName());
+        private AgentSlot(String kind, UnnamedLabels labels) {
+            this.label = labels.next(kind);
+        }
+
+        /** Reads a reference slot: {@code holder} and {@code selector} or {@code index} name it. */
+        @FunctionalInterface
+        public interface SlotRead {
+            /**
+             * @param holder   the object or array holding the slot
+             * @param selector the updater or handle that reaches it, or {@code null} for an element
+             * @param index    the element's index, or 0
+             * @return what the slot holds
+             */
+            @Nullable Object read(Object holder, @Nullable Object selector, int index);
+        }
+
+        /** Stores into a reference slot named as {@link SlotRead} names it. */
+        @FunctionalInterface
+        public interface SlotStore {
+            /**
+             * @param holder   the object or array holding the slot
+             * @param selector the updater or handle that reaches it, or {@code null} for an element
+             * @param index    the element's index, or 0
+             * @param value    the reference to store
+             */
+            void store(Object holder, @Nullable Object selector, int index, @Nullable Object value);
+        }
+
+        /** Compares and swaps a reference slot named as {@link SlotRead} names it. */
+        @FunctionalInterface
+        public interface SlotSwap {
+            /**
+             * @param holder   the object or array holding the slot
+             * @param selector the updater or handle that reaches it, or {@code null} for an element
+             * @param index    the element's index, or 0
+             * @param expected the reference the slot must hold
+             * @param update   the reference to store
+             * @return whether it swapped
+             */
+            boolean swap(Object holder, @Nullable Object selector, int index,
+                         @Nullable Object expected, @Nullable Object update);
+        }
+
+        /** Stores into a reference slot and returns what it held, named as {@link SlotRead} names it. */
+        @FunctionalInterface
+        public interface SlotExchange {
+            /**
+             * @param holder   the object or array holding the slot
+             * @param selector the updater or handle that reaches it, or {@code null} for an element
+             * @param index    the element's index, or 0
+             * @param value    the reference to store
+             * @return what the slot held
+             */
+            @Nullable Object exchange(Object holder, @Nullable Object selector, int index,
+                                      @Nullable Object value);
+        }
+
+        /**
+         * Performs {@code read} on a slot other than an {@code AtomicReference} (#817), recorded as
+         * the calling thread's premise, as {@link #get} records.
+         *
+         * @param holder   the object or array holding the slot
+         * @param selector the updater or handle that reaches it, or {@code null} for an element
+         * @param index    the element's index, or 0
+         * @param read     the read, a non-capturing lambda
+         * @return what the read returned
+         */
+        public @Nullable Object read(Object holder, @Nullable Object selector, int index, SlotRead read) {
+            synchronized (lock) {
+                Object value = read.read(holder, selector, index);
+                read(value);
+                return value;
+            }
+        }
+
+        /**
+         * Performs {@code store}, recorded as a change from what {@code current} read before it.
+         *
+         * @param holder   the object or array holding the slot
+         * @param selector the updater or handle that reaches it, or {@code null} for an element
+         * @param index    the element's index, or 0
+         * @param value    the reference to store
+         * @param current  reads what the slot holds now, a non-capturing lambda
+         * @param store    the store, a non-capturing lambda
+         */
+        public void store(Object holder, @Nullable Object selector, int index, @Nullable Object value,
+                          SlotRead current, SlotStore store) {
+            synchronized (lock) {
+                Object old = current.read(holder, selector, index);
+                store.store(holder, selector, index, value);
+                changed(old, value);
+            }
+        }
+
+        /**
+         * Performs {@code swap}, judged against the calling thread's premise as
+         * {@link #compareAndSet} judges it.
+         *
+         * @param holder   the object or array holding the slot
+         * @param selector the updater or handle that reaches it, or {@code null} for an element
+         * @param index    the element's index, or 0
+         * @param expected the reference the slot must hold
+         * @param update   the reference to store
+         * @param swap     the compare-and-set, a non-capturing lambda
+         * @return whether it swapped
+         */
+        public boolean compareAndSet(Object holder, @Nullable Object selector, int index,
+                                     @Nullable Object expected, @Nullable Object update, SlotSwap swap) {
+            // Outside the lock, as in compareAndSet(AtomicReference, ...): it may load classes.
+            boolean stateful = canCarryState(expected);
+            synchronized (lock) {
+                boolean swapped = swap.swap(holder, selector, index, expected, update);
+                judgeCompareAndSet(expected, update, swapped, stateful);
+                return swapped;
+            }
+        }
+
+        /**
+         * Performs {@code exchange}, recorded as a change from the value it returns.
+         *
+         * @param holder   the object or array holding the slot
+         * @param selector the updater or handle that reaches it, or {@code null} for an element
+         * @param index    the element's index, or 0
+         * @param value    the reference to store
+         * @param exchange the get-and-set, a non-capturing lambda
+         * @return what the slot held
+         */
+        public @Nullable Object getAndSet(Object holder, @Nullable Object selector, int index,
+                                          @Nullable Object value, SlotExchange exchange) {
+            synchronized (lock) {
+                Object old = exchange.exchange(holder, selector, index, value);
+                changed(old, value);
+                return old;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.get(int[])}, recorded as the calling thread's
+         * premise: the reference and the stamp read together (#817).
+         *
+         * @param atomic      the atomic this slot describes
+         * @param stampHolder receives the stamp
+         * @return the reference
+         */
+        public @Nullable Object getStamped(AtomicStampedReference<Object> atomic, int[] stampHolder) {
+            synchronized (lock) {
+                Object value = atomic.get(stampHolder);
+                read(value, stampHolder[0]);
+                return value;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.getReference()}, recorded as {@link #getStamped}
+         * records: the reference with the stamp it held at that moment.
+         *
+         * @param atomic the atomic this slot describes
+         * @return the reference
+         */
+        public @Nullable Object getStampedReference(AtomicStampedReference<Object> atomic) {
+            int[] stamp = new int[1];
+            synchronized (lock) {
+                Object value = atomic.get(stamp);
+                read(value, stamp[0]);
+                return value;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.set}, recorded as a change of the pair.
+         *
+         * @param atomic the atomic this slot describes
+         * @param value  the reference to store
+         * @param stamp  the stamp to store
+         */
+        public void setStamped(AtomicStampedReference<Object> atomic, @Nullable Object value, int stamp) {
+            int[] oldStamp = new int[1];
+            synchronized (lock) {
+                Object old = atomic.get(oldStamp);
+                atomic.set(value, stamp);
+                changed(old, oldStamp[0], value, stamp);
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.compareAndSet} or {@code weakCompareAndSet},
+         * judged against the calling thread's premise of the pair. With a stamp that only grows, a
+         * pair that left never comes back, so a reported one reused a stamp.
+         *
+         * @param atomic        the atomic this slot describes
+         * @param expected      the reference the atomic must hold
+         * @param update        the reference to store
+         * @param expectedStamp the stamp it must hold
+         * @param newStamp      the stamp to store
+         * @param weak          whether the call was {@code weakCompareAndSet}
+         * @return whether it swapped
+         */
+        public boolean compareAndSetStamped(AtomicStampedReference<Object> atomic, @Nullable Object expected,
+                                            @Nullable Object update, int expectedStamp, int newStamp,
+                                            boolean weak) {
+            boolean stateful = canCarryState(expected);
+            synchronized (lock) {
+                boolean swapped = weak
+                        ? atomic.weakCompareAndSet(expected, update, expectedStamp, newStamp)
+                        : atomic.compareAndSet(expected, update, expectedStamp, newStamp);
+                judgeCompareAndSet(expected, expectedStamp, update, newStamp, swapped, stateful, true);
+                return swapped;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.attemptStamp}, recorded, when it took, as a change
+         * of the stamp alone.
+         *
+         * @param atomic   the atomic this slot describes
+         * @param expected the reference the atomic must hold
+         * @param newStamp the stamp to store
+         * @return whether the stamp was set
+         */
+        public boolean attemptStamp(AtomicStampedReference<Object> atomic, @Nullable Object expected, int newStamp) {
+            int[] oldStamp = new int[1];
+            synchronized (lock) {
+                Object current = atomic.get(oldStamp);
+                boolean set = atomic.attemptStamp(expected, newStamp);
+                if (set) {
+                    changed(current, oldStamp[0], current, newStamp);
+                }
+                return set;
+            }
+        }
+
+        /** Judges a compare-and-set against the caller's premise and records it. Call holding {@link #lock}. */
+        @SuppressWarnings("ReferenceEquality") // the slot compares identity, so this does too
+        private void judgeCompareAndSet(@Nullable Object expected, @Nullable Object update,
+                                        boolean swapped, boolean stateful) {
+            judgeCompareAndSet(expected, 0, update, 0, swapped, stateful, false);
+        }
+
+        /**
+         * Judges a compare-and-set of a (reference, stamp) pair, or of a reference alone when
+         * {@code stamped} is false and both stamps are 0. Call holding {@link #lock}.
+         */
+        @SuppressWarnings("ReferenceEquality") // the slot compares identity, so this does too
+        private void judgeCompareAndSet(@Nullable Object expected, int expectedStamp,
+                                        @Nullable Object update, int newStamp,
+                                        boolean swapped, boolean stateful, boolean stamped) {
+            Premise mine = premiseOf(Thread.currentThread().threadId());
+            if (mine != null && mine.live) {
+                if (swapped && mine.cameBack && mine.value == expected // NOPMD CompareObjectsWithEquals - identity, as the slot compares
+                        && mine.stamp == expectedStamp
+                        && stateful && findings.size() < MAX_FINDINGS) {
+                    findings.add(stamped
+                            ? new Object[] {expected, update, expectedStamp, newStamp}
+                            : new Object[] {expected, update});
+                }
+                mine.live = false;
+            }
+            if (swapped) {
+                changed(expected, expectedStamp, update, newStamp);
+            }
         }
 
         /** A thread's last read of the atomic and what happened to that value since. */
         private static final class Premise {
             final long thread;
             @Nullable Object value;
+            /** The stamp read with {@link #value}; 0 for a slot without stamps. */
+            int stamp;
             boolean live;
             boolean movedAway;
             boolean cameBack;
@@ -691,23 +1014,18 @@ public class ABAProblemDetector {
             boolean stateful = canCarryState(expected);
             synchronized (lock) {
                 boolean swapped = atomic.compareAndSet(expected, update);
-                Premise mine = premiseOf(Thread.currentThread().threadId());
-                if (mine != null && mine.live) {
-                    if (swapped && mine.cameBack && mine.value == expected // NOPMD CompareObjectsWithEquals - identity, as the atomic compares
-                            && stateful && findings.size() < MAX_FINDINGS) {
-                        findings.add(new Object[] {expected, update});
-                    }
-                    mine.live = false;
-                }
-                if (swapped) {
-                    changed(expected, update);
-                }
+                judgeCompareAndSet(expected, update, swapped, stateful);
                 return swapped;
             }
         }
 
         /** Records the calling thread's read. Call holding {@link #lock}. */
         private void read(@Nullable Object value) {
+            read(value, 0);
+        }
+
+        /** Records the calling thread's read of a value and its stamp. Call holding {@link #lock}. */
+        private void read(@Nullable Object value, int stamp) {
             long me = Thread.currentThread().threadId();
             Premise mine = premiseOf(me);
             if (mine == null) {
@@ -719,6 +1037,7 @@ public class ABAProblemDetector {
                 premiseCount++;
             }
             mine.value = value;
+            mine.stamp = stamp;
             mine.live = true;
             mine.movedAway = false;
             mine.cameBack = false;
@@ -728,25 +1047,40 @@ public class ABAProblemDetector {
          * Applies a change the calling thread made to every other thread's premise, and counts a
          * change that undoes the one before it. Call holding {@link #lock}.
          */
-        @SuppressWarnings("ReferenceEquality") // the atomic compares identity, so this does too
         private void changed(@Nullable Object old, @Nullable Object neu) {
+            changed(old, 0, neu, 0);
+        }
+
+        /**
+         * As {@link #changed(Object, Object)}, for a (reference, stamp) pair: a value is the same
+         * only when both the reference and the stamp are. Call holding {@link #lock}.
+         */
+        @SuppressWarnings("ReferenceEquality") // the atomic compares identity, so this does too
+        private void changed(@Nullable Object old, int oldStamp, @Nullable Object neu, int newStamp) {
             long me = Thread.currentThread().threadId();
             for (int i = 0; i < premiseCount; i++) {
                 Premise other = premises[i];
                 if (other.thread == me || !other.live || other.cameBack) {
                     continue;
                 }
+                boolean wasTheirs = old == other.value && oldStamp == other.stamp; // NOPMD CompareObjectsWithEquals - identity
+                boolean isTheirs = neu == other.value && newStamp == other.stamp; // NOPMD CompareObjectsWithEquals - identity
                 if (!other.movedAway) {
-                    other.movedAway = old == other.value && neu != other.value; // NOPMD CompareObjectsWithEquals - identity
-                } else if (neu == other.value) { // NOPMD CompareObjectsWithEquals - identity
+                    other.movedAway = wasTheirs && !isTheirs;
+                } else if (isTheirs) {
                     other.cameBack = true;
                 }
             }
-            if (anyChange && old == lastNew && neu == lastOld && lastOld != lastNew) { // NOPMD CompareObjectsWithEquals - identity
+            boolean undoes = old == lastNew && oldStamp == lastNewStamp // NOPMD CompareObjectsWithEquals - identity
+                    && neu == lastOld && newStamp == lastOldStamp; // NOPMD CompareObjectsWithEquals - identity
+            boolean lastWasAChange = lastOld != lastNew || lastOldStamp != lastNewStamp; // NOPMD CompareObjectsWithEquals - identity
+            if (anyChange && undoes && lastWasAChange) {
                 cycles++;
             }
             lastOld = old;
             lastNew = neu;
+            lastOldStamp = oldStamp;
+            lastNewStamp = newStamp;
             anyChange = true;
         }
 
@@ -782,56 +1116,168 @@ public class ABAProblemDetector {
                 report.variablesWithCycles.put(label, cycleCount);
             }
             for (Object[] finding : found) {
-                report.successfulABACases.add(String.format(
-                        "%s: CAS succeeded despite ABA (expected %s, set to %s)",
-                        label, finding[0], finding[1]));
+                String line = finding.length == 4
+                        ? String.format("%s: CAS succeeded despite ABA (expected %s with stamp %s, set to %s "
+                                + "with stamp %s; the stamp the value came back with was reused)",
+                                label, finding[0], finding[2], finding[1], finding[3])
+                        : String.format("%s: CAS succeeded despite ABA (expected %s, set to %s)",
+                                label, finding[0], finding[1]);
+                report.successfulABACases.add(line);
+                report.observedCases.add(line);
             }
         }
     }
 
+    /** What a class's instances are, for {@link #canCarryState}. */
+    private enum Shape {
+        /** A JDK value or an enum constant: an A-B-A of it leaves nothing stale. */
+        VALUE,
+        /** It has a mutable field of its own, or is an array, or its fields cannot be read. */
+        MUTABLE,
+        /** Every instance field is final; whether it carries state is a question for its values. */
+        FINAL
+    }
+
     /**
-     * Which classes' instances have a mutable field of their own, and so can carry state an A-B-A
-     * leaves stale (#817). The JDK's value classes are listed rather than read: a {@code String} or
-     * a {@code BigInteger} caches a hash or a magnitude in a non-final field without being any less
-     * a value.
+     * Each class's {@link Shape} (#817). The JDK's value classes are listed rather than read: a
+     * {@code String} or a {@code BigInteger} caches a hash or a magnitude in a non-final field
+     * without being any less a value.
      */
-    private static final ClassValue<Boolean> CARRIES_STATE = new ClassValue<>() {
+    private static final ClassValue<Shape> SHAPE = new ClassValue<>() {
         @Override
-        protected Boolean computeValue(Class<?> type) {
+        protected Shape computeValue(Class<?> type) {
             if (type.isArray()) {
-                return Boolean.TRUE;
+                return Shape.MUTABLE;
             }
-            if (type.isEnum() || type.isRecord() || type == String.class || type == Boolean.class
-                    || type == Character.class
+            if (type.isEnum() || type == String.class || type == Boolean.class || type == Character.class
                     || Number.class.isAssignableFrom(type) && type.getName().startsWith("java.")) {
-                return Boolean.FALSE;
+                return Shape.VALUE;
             }
             try {
                 for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
                     for (Field field : c.getDeclaredFields()) {
                         int modifiers = field.getModifiers();
                         if (!Modifier.isStatic(modifiers) && !Modifier.isFinal(modifiers)) {
-                            return Boolean.TRUE;
+                            return Shape.MUTABLE;
                         }
                     }
                 }
             } catch (LinkageError | SecurityException unreadable) {
-                return Boolean.TRUE; // its fields cannot be read, so it may have such a field
+                return Shape.MUTABLE; // its fields cannot be read, so it may have such a field
             }
-            return Boolean.FALSE;
+            return Shape.FINAL;
         }
     };
 
-    /** {@return whether an A-B-A of {@code value} can leave state behind it stale} */
-    static boolean canCarryState(@Nullable Object value) {
-        return value != null && !(value instanceof Enum<?>) && CARRIES_STATE.get(value.getClass());
+    /** A class's reference fields opened for reading; {@code readable} is false when one could not be. */
+    private record References(Field[] fields, boolean readable) {
+        static final References UNREADABLE = new References(new Field[0], false);
     }
 
-    public static class ABAReport {
+    /**
+     * The reference fields of each {@link Shape#FINAL} class, opened for reading; a class with one
+     * that cannot be opened counts as carrying state.
+     */
+    private static final ClassValue<References> FINAL_REFERENCES = new ClassValue<>() {
+        @Override
+        protected References computeValue(Class<?> type) {
+            List<Field> references = new ArrayList<>();
+            try {
+                for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (Field field : c.getDeclaredFields()) {
+                        if (Modifier.isStatic(field.getModifiers()) || field.getType().isPrimitive()) {
+                            continue;
+                        }
+                        if (!field.trySetAccessible()) {
+                            return References.UNREADABLE;
+                        }
+                        references.add(field);
+                    }
+                }
+            } catch (LinkageError | RuntimeException unreadable) {
+                return References.UNREADABLE;
+            }
+            return new References(references.toArray(new Field[0]), true);
+        }
+    };
+
+    /** How many final fields deep {@link #canCarryState} follows a value; past it, a value is harmless. */
+    private static final int REACH = 3;
+
+    /**
+     * {@return whether an A-B-A of {@code value} can leave state behind it stale}
+     *
+     * <p>A value whose instance fields are all final carries state when one of them reaches an
+     * object that does, a record holding a {@code List} for one, followed {@value #REACH} fields
+     * deep (#817). Reading those fields may load classes the first time a class is met, so this is
+     * decided before a slot's lock is taken.
+     *
+     * @param value the expected value of a compare-and-set
+     * @since 1.12.4
+     */
+    @API(status = Status.INTERNAL)
+    public static boolean canCarryState(@Nullable Object value) {
+        return carriesState(value, 0);
+    }
+
+    private static boolean carriesState(@Nullable Object value, int depth) {
+        if (value == null) {
+            return false;
+        }
+        Shape shape = SHAPE.get(value.getClass());
+        if (shape != Shape.FINAL) {
+            return shape == Shape.MUTABLE;
+        }
+        if (depth >= REACH) {
+            return false;
+        }
+        References references = FINAL_REFERENCES.get(value.getClass());
+        if (!references.readable()) {
+            return true; // a field that cannot be read may reach anything
+        }
+        for (Field field : references.fields()) {
+            try {
+                if (carriesState(field.get(value), depth + 1)) {
+                    return true;
+                }
+            } catch (IllegalAccessException | RuntimeException unreadable) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static class ABAReport implements GradedFindings {
         /** How many A-B-A cycles were observed per variable. */
         public final Map<String, Integer> variablesWithCycles = new HashMap<>();
         /** Compare-and-set calls that succeeded even though the value had changed and changed back. */
-        public final Set<String> successfulABACases = new HashSet<>();
+        public final Set<String> successfulABACases = new java.util.LinkedHashSet<>();
+
+        /**
+         * The cases in {@link #successfulABACases} the agent took inside each operation (#817); the
+         * rest were recorded by hand, in the caller's order.
+         */
+        final Set<String> observedCases = new HashSet<>();
+
+        /**
+         * {@inheritDoc}
+         *
+         * <p>A case the agent took inside each operation is what ran, so it is graded
+         * {@link TrustTier#VERDICT} on {@link DetectorTrust.Evidence#OBSERVED} evidence. A recorded
+         * case is in the caller's record order, which a toggle that ran before the read also produces
+         * (#810), so it is graded {@link TrustTier#FACT} on {@link DetectorTrust.Evidence#ASSERTED}
+         * evidence.
+         */
+        @Override
+        public List<Grade> grades() {
+            List<Grade> grades = new ArrayList<>(successfulABACases.size());
+            for (String found : successfulABACases) {
+                grades.add(observedCases.contains(found)
+                        ? new Grade(IssueSeverity.HIGH, TrustTier.VERDICT, found, DetectorTrust.Evidence.OBSERVED)
+                        : new Grade(IssueSeverity.HIGH, TrustTier.FACT, found, DetectorTrust.Evidence.ASSERTED));
+            }
+            return grades;
+        }
         
         /**
          * {@return whether there are issues}

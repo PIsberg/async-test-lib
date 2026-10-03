@@ -31,6 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class FutureIgnoredDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class SubmitRecord {
         final String taskName;
         final String submitterThreadName;
@@ -54,7 +57,7 @@ public class FutureIgnoredDetector {
     public void recordSubmit(Object future, String taskName, Thread thread) {
         if (future == null || thread == null) return;
         String label = taskName != null ? taskName
-                : "task@" + Integer.toHexString(System.identityHashCode(future));
+                : unnamedLabels.of(future, "task");
         submits.put(new IdentityKey(future),
                 new SubmitRecord(label, ReportSections.threadLabel(thread)));
     }

@@ -60,6 +60,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ExecutorShutdownDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class ExecutorState {
         final String name;
         /**
@@ -95,11 +98,11 @@ public class ExecutorShutdownDetector {
      * you for not closing something that is not yours to close.
      *
      * @param executor the executor this scope created (null-safe)
-     * @param name     a descriptive label for reports; if null uses identity hash
+     * @param name     a descriptive label for reports; if null the report numbers it, {@code executor@1}
      */
     public void recordExecutorCreated(ExecutorService executor, String name) {
         if (executor == null) return;
-        String resolved = name != null ? name : "executor@" + System.identityHashCode(executor);
+        String resolved = name != null ? name : unnamedLabels.of(executor, "executor");
         // computeIfAbsent, not put: re-declaring an executor already tracked would reset
         // tasksSubmitted and shutdownCalled, and analyze() gates on both.
         executors.computeIfAbsent(executor, k -> new ExecutorState(resolved, executor));

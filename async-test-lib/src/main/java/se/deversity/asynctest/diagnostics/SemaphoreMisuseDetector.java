@@ -39,6 +39,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class SemaphoreMisuseDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class SemaphoreState {
         final String name;
         final Semaphore semaphore;
@@ -94,7 +97,7 @@ public class SemaphoreMisuseDetector {
             // Auto-register with unknown permits, atomically. get-then-put let two threads
             // racing on an unregistered semaphore each keep a private state, so acquiringThreads
             // and currentAcquires undercounted exactly when contention made them matter.
-            final String label = name != null ? name : "semaphore@" + key.hashCode();
+            final String label = name != null ? name : unnamedLabels.of(key, "semaphore");
             state = semaphores.computeIfAbsent(key,
                 k -> new SemaphoreState(semaphore, label, -1));
         }

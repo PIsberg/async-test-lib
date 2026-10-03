@@ -60,6 +60,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedCharsetCoderDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
@@ -103,7 +106,7 @@ public final class SharedCharsetCoderDetector {
         State s = instances.get(IdentityKey.lookup(coder));
         if (s == null) {
             IdentityKey key = new IdentityKey(coder);
-            final String label = kind + "@" + key.hashCode();
+            final String label = unnamedLabels.of(key, kind);
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         s.noteAccess(coder, thread);

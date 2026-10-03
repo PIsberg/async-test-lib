@@ -39,13 +39,14 @@ import org.jspecify.annotations.Nullable;
  * {@link #recordCapturedRead(Object, Object, Thread)}; {@link #recordExecution(Object, String, Thread)}
  * names no captured object and probes no lock, so it does not count as a read.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest}, naming the captured object so each capture is judged on its
+ * own (the overloads that take it are stable since 1.12.4, #800):
  * <pre>{@code
  * int[] counter = {0};
  * Runnable task = () -> {
  *     var d = AsyncTestContext.statefulLambdaDetector();
  *     d.recordExecution(task, "task", Thread.currentThread());       // this lambda is running
- *     d.recordCapturedMutation(task, "counter", Thread.currentThread()); // mutating capture
+ *     d.recordCapturedMutation(task, "counter", counter, Thread.currentThread()); // mutating capture
  *     counter[0]++;
  * };
  * }</pre>
@@ -53,6 +54,9 @@ import org.jspecify.annotations.Nullable;
  * @since 0.9.0
  */
 public class StatefulLambdaDetector {
+
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
 
     /**
      * Per-lambda bookkeeping. The lockset is kept per captured object rather than per lambda, so
@@ -103,7 +107,7 @@ public class StatefulLambdaDetector {
         // The fallback label is built only when the instance is first seen.
         LambdaState s = lambdas.computeIfAbsent(
                 new IdentityKey(lambda), id -> new LambdaState(name != null ? name
-                        : lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda)));
+                        : unnamedLabels.of(lambda, lambda.getClass().getSimpleName())));
         // The label is built once per thread, and carries the id, so unnamed threads stay apart.
         if (s.executingThreadIds.add(thread.threadId())) {
             s.executingThreadNames.add(ReportSections.threadLabel(thread));
@@ -150,7 +154,7 @@ public class StatefulLambdaDetector {
      * @param thread        the mutating thread
      * @since 1.12.3
      */
-    @API(status = Status.EXPERIMENTAL)
+    @API(status = Status.STABLE)
     public void recordCapturedMutation(Object lambda, String capturedName,
                                        @Nullable Object capturedState, Thread thread) {
         if (lambda == null || thread == null) return;
@@ -181,7 +185,7 @@ public class StatefulLambdaDetector {
      * @param thread        the reading thread
      * @since 1.12.3
      */
-    @API(status = Status.EXPERIMENTAL)
+    @API(status = Status.STABLE)
     public void recordCapturedRead(Object lambda, @Nullable Object capturedState, Thread thread) {
         if (lambda == null || thread == null) return;
         if (capturedState != null && isThreadSafeByType(capturedState)) return;
@@ -192,8 +196,7 @@ public class StatefulLambdaDetector {
                                           boolean forWrite, Thread thread) {
         LambdaState s = lambdas.computeIfAbsent(
                 new IdentityKey(lambda),
-                id -> new LambdaState(lambda.getClass().getSimpleName()
-                        + "@" + System.identityHashCode(lambda)));
+                id -> new LambdaState(unnamedLabels.of(lambda, lambda.getClass().getSimpleName())));
         // Probed on the accessing thread while it is still inside whatever region guards it. Every
         // access also feeds the lambda-wide guard, since an unnamed access recorded later in the
         // round may be of this same object.

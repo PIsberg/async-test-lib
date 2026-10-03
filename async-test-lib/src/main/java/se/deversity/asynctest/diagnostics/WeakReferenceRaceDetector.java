@@ -46,6 +46,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class WeakReferenceRaceDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class RefState {
         final String      name;
         final AtomicBoolean sawNonNull    = new AtomicBoolean(false);
@@ -69,7 +72,7 @@ public class WeakReferenceRaceDetector {
      */
     public void recordGet(Object ref, String name, Object result, Thread thread) {
         if (ref == null || thread == null) return;
-        String label = name != null ? name : "ref@" + System.identityHashCode(ref);
+        String label = name != null ? name : unnamedLabels.of(ref, "ref");
         RefState s = refs.computeIfAbsent(new IdentityKey(ref), k -> new RefState(label));
         if (result != null) {
             s.sawNonNull.set(true);
@@ -91,7 +94,7 @@ public class WeakReferenceRaceDetector {
      */
     public void recordNullDereference(Object ref, String name, Thread thread) {
         if (ref == null || thread == null) return;
-        String label = name != null ? name : "ref@" + System.identityHashCode(ref);
+        String label = name != null ? name : unnamedLabels.of(ref, "ref");
         RefState s = refs.computeIfAbsent(new IdentityKey(ref), k -> new RefState(label));
         s.nullDerefs.add(thread.getName());
     }

@@ -829,8 +829,9 @@ class FileChannelPositionRaceDetectorTest {
         var report = d.analyze();
         assertEquals(1, report.violations.size(),
             "only the channel whose seek is still kept is reported: " + report);
-        assertTrue(report.violations.get(0).contains(
-                stillOpen.getClass().getSimpleName() + "@" + System.identityHashCode(stillOpen)),
+        // Unnamed channels are numbered in the order the detector first sees them (#860), so the
+        // fifth, the one sought last, is Object@5.
+        assertTrue(report.violations.get(0).contains("'Object@5'"),
             "and it is the latest one: " + report);
     }
 

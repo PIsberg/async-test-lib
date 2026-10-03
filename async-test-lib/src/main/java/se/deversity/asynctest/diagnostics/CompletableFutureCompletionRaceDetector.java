@@ -67,6 +67,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 )
 public final class CompletableFutureCompletionRaceDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** One observed completion attempt on one future. */
     private static final class Attempt {
         final long    seq;
@@ -164,8 +167,7 @@ public final class CompletableFutureCompletionRaceDetector {
     private void record(CompletableFuture<?> future, String label, boolean won,
                         boolean exceptional, String rendered, Thread thread) {
         if (!enabled || future == null || thread == null) return;
-        int id = System.identityHashCode(future);
-        String name = label != null ? label : "CompletableFuture@" + id;
+        String name = label != null ? label : unnamedLabels.of(future, "CompletableFuture");
         FutureState state = futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(name));
         state.attempts.add(new Attempt(
                 sequence.incrementAndGet(), thread.getName(), won, exceptional, rendered));

@@ -24,6 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SpuriousWakeupDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State {
         final String monitorName;
         final Set<String> threadsOutsideLoop = ConcurrentHashMap.newKeySet();
@@ -49,7 +52,7 @@ public final class SpuriousWakeupDetector {
         
         IdentityKey key = new IdentityKey(monitor);
         State s = monitors.computeIfAbsent(key, k -> new State(
-            monitorName != null ? monitorName : "Monitor@" + k.hashCode()
+            monitorName != null ? monitorName : unnamedLabels.of(k, "Monitor")
         ));
         s.threadsOutsideLoop.add(thread.getName());
     }

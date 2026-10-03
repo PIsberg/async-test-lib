@@ -17,6 +17,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ThreadLocalMonitor {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Distinct ThreadLocal values one thread may retain before it is reported accumulating (#756). */
     private static final int RETAINED_VALUES_THRESHOLD = 5;
 
@@ -85,7 +88,7 @@ public class ThreadLocalMonitor {
         }
 
         ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal, ignored -> new ThreadLocalState(
-                name == null || name.isBlank() ? ReportSections.unnamed("ThreadLocal") : name));
+                name == null || name.isBlank() ? unnamedLabels.next("ThreadLocal") : name));
         state.initialized = true;
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
@@ -100,7 +103,7 @@ public class ThreadLocalMonitor {
         }
 
         ThreadLocalState state = threadLocals.computeIfAbsent(threadLocal,
-                ignored -> new ThreadLocalState(ReportSections.unnamed("ThreadLocal")));
+                ignored -> new ThreadLocalState(unnamedLabels.next("ThreadLocal")));
         recordThreadUsage(state, Thread.currentThread().threadId());
     }
     /**

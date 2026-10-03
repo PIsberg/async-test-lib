@@ -67,6 +67,9 @@ import javax.crypto.Mac;
 @AISecure(aspect = "cryptography (confidentiality / integrity / authenticity state)")
 public final class SharedStatefulCryptoDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
@@ -126,7 +129,7 @@ public final class SharedStatefulCryptoDetector {
             // Cold path, the first observation of this instance. The algorithm is read here, not by
             // the callers: a method reference per access cost 16 bytes (#849).
             final String label = (name != null)
-                    ? name : instance.getClass().getSimpleName() + "@" + key.hashCode();
+                    ? name : unnamedLabels.of(key, instance.getClass().getSimpleName());
             final String algorithm = algorithmOf(instance);
             s = instances.computeIfAbsent(key, k -> new State(label, kind, algorithm));
         }

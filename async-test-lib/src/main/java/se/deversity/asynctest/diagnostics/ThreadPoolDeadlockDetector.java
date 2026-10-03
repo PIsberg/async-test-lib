@@ -471,8 +471,8 @@ public class ThreadPoolDeadlockDetector {
          *
          * @return stack trace at submission point
          */
-        public StackTraceElement @Nullable [] getStackTrace() {
-            return stackTrace == null ? null : stackTrace.clone();
+        public StackTraceElement[] getStackTrace() {
+            return stackTrace.clone();
         }
     }
 }

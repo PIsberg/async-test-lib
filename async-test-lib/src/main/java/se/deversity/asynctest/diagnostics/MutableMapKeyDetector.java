@@ -39,6 +39,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class MutableMapKeyDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class KeyRegistration {
         final String mapName;
         final int originalHashCode;
@@ -65,8 +68,8 @@ public class MutableMapKeyDetector {
      */
     public void recordKeyInserted(Map<?, ?> map, Object key, String mapName) {
         if (map == null || key == null) return;
-        String resolved = mapName != null ? mapName : "map@" + System.identityHashCode(map);
-        String desc = key.getClass().getSimpleName() + "@" + System.identityHashCode(key);
+        String resolved = mapName != null ? mapName : unnamedLabels.of(map, "map");
+        String desc = unnamedLabels.of(key, key.getClass().getSimpleName());
         registeredKeys.put(new IdentityKey(key),
                 new KeyRegistration(resolved, key.hashCode(), desc));
     }

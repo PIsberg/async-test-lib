@@ -57,6 +57,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class WakeupDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** A recorded wait whose exit has not been recorded yet. */
     private static final class OpenWait {
         final Thread thread;
@@ -302,7 +305,7 @@ public class WakeupDetector {
 
     private MonitorState stateFor(Object monitor) {
         return monitors.computeIfAbsent(new IdentityKey(monitor),
-                key -> new MonitorState(ReportSections.unnamed(key.referent().getClass().getSimpleName())));
+                key -> new MonitorState(unnamedLabels.next(key.referent().getClass().getSimpleName())));
     }
 
     public static class WakeupReport {

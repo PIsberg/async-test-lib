@@ -59,6 +59,9 @@ import java.util.zip.Inflater;
 )
 public final class SharedDeflaterDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
@@ -101,7 +104,7 @@ public final class SharedDeflaterDetector {
         State s = instances.get(IdentityKey.lookup(instance));
         if (s == null) {
             IdentityKey key = new IdentityKey(instance);
-            final String label = (name != null) ? name : kind + "@" + key.hashCode();
+            final String label = (name != null) ? name : unnamedLabels.of(key, kind);
             s = instances.computeIfAbsent(key, k -> new State(label, kind));
         }
         s.noteAccess(instance, thread);

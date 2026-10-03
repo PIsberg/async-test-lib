@@ -32,6 +32,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class ThreadLocalContaminationDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class ThreadState {
         int taskCount = 0;
         String currentTaskName = "task-0";
@@ -88,7 +91,7 @@ public class ThreadLocalContaminationDetector {
         Integer setTask = s.lastSetInTask.get(key);
         if (setTask != null && setTask < s.taskCount) {
             String label = s.tlNames.getOrDefault(
-                key, name != null ? name : "ThreadLocal@" + key.hashCode());
+                key, name != null ? name : unnamedLabels.of(key, "ThreadLocal"));
             contaminations.add(String.format(
                 "Thread '%s' in '%s': read %s whose value was set in task %d — not cleared between tasks",
                 ReportSections.threadLabel(thread), s.currentTaskName, label, setTask));

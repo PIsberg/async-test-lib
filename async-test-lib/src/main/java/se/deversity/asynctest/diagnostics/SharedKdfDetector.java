@@ -59,6 +59,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class SharedKdfDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String algorithm;
@@ -88,7 +91,7 @@ public final class SharedKdfDetector {
         State s = instances.get(IdentityKey.lookup(kdf));
         if (s == null) {
             IdentityKey key = new IdentityKey(kdf);
-            final String label = kdf.getClass().getSimpleName() + "@" + key.hashCode();
+            final String label = unnamedLabels.of(key, kdf.getClass().getSimpleName());
             final String algo = algorithm != null ? algorithm : "unknown";
             s = instances.computeIfAbsent(key, k -> new State(label, algo));
         }

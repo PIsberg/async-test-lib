@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.atomic.AtomicStampedReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -114,7 +115,7 @@ class SpinLockHookTableTest {
     void everyReferenceSlotSubstitutionResolvesToARegistryHook() {
         Set<String> substituted = new TreeSet<>();
         for (Class<?> owner : List.of(AtomicReference.class, AtomicReferenceFieldUpdater.class,
-                AtomicReferenceArray.class)) {
+                AtomicReferenceArray.class, AtomicStampedReference.class)) {
             for (Method method : owner.getMethods()) {
                 if (Modifier.isStatic(method.getModifiers())) {
                     continue;
@@ -153,22 +154,41 @@ class SpinLockHookTableTest {
                 new String[] {"setRelease", "([Ljava/lang/Object;I" + chunk + ")V"},
                 new String[] {"setOpaque", "([Ljava/lang/Object;I" + chunk + ")V"},
                 new String[] {"compareAndSet", "([Ljava/lang/Object;I" + chunk + chunk + ")Z"},
-                new String[] {"getAndSet", "([Ljava/lang/Object;I" + chunk + ")" + chunk})) {
+                new String[] {"getAndSet", "([Ljava/lang/Object;I" + chunk + ")" + chunk},
+                // The acquiring reads (#741): instance, static and array element.
+                new String[] {"getVolatile", "(" + receiver + ")" + chunk},
+                new String[] {"getAcquire", "(" + receiver + ")" + chunk},
+                new String[] {"getVolatile", "()" + chunk},
+                new String[] {"getAcquire", "()" + chunk},
+                new String[] {"getVolatile", "([Ljava/lang/Object;I)" + chunk},
+                new String[] {"getAcquire", "([Ljava/lang/Object;I)" + chunk})) {
             FieldAccessWeaver.Substitution substitution =
                     FieldAccessWeaver.referenceSlotSubstitution(handle, call[0], call[1]);
             assertTrue(substitution != null, "VarHandle." + call[0] + call[1] + " must be substituted");
             assertHookExists(substitution);
+            if (call[0].startsWith("get") && !call[0].equals("getAndSet")) {
+                assertEquals("Ljava/lang/Object;", Type.getReturnType(substitution.descriptor()).getDescriptor(),
+                        "an acquiring read's hook returns Object, which the weaver narrows back");
+            }
             substituted.add("VarHandle." + call[0]);
         }
         for (String[] untouched : List.<String[]>of(
-                new String[] {"set", "(" + receiver + "I)V"})) {
+                new String[] {"set", "(" + receiver + "I)V"},
+                // A plain or opaque read orders nothing, so it is left alone.
+                new String[] {"get", "(" + receiver + ")" + chunk},
+                new String[] {"getOpaque", "(" + receiver + ")" + chunk})) {
             assertTrue(FieldAccessWeaver.referenceSlotSubstitution(handle, untouched[0], untouched[1]) == null,
-                    "an int value is not a reference slot: VarHandle." + untouched[0] + untouched[1]);
+                    "not a reference slot the weaver observes: VarHandle." + untouched[0] + untouched[1]);
         }
         for (String form : List.of("AtomicReference.set", "AtomicReference.lazySet",
                 "AtomicReference.setRelease", "AtomicReference.compareAndSet",
                 "AtomicReference.getAndSet", "AtomicReference.get", "AtomicReference.getAcquire",
-                "AtomicReferenceFieldUpdater.set",
+                "AtomicReferenceFieldUpdater.set", "AtomicReferenceFieldUpdater.get",
+                "AtomicReferenceArray.get", "AtomicReferenceArray.getAcquire",
+                "VarHandle.getVolatile", "VarHandle.getAcquire",
+                "AtomicStampedReference.get", "AtomicStampedReference.getReference",
+                "AtomicStampedReference.set", "AtomicStampedReference.compareAndSet",
+                "AtomicStampedReference.weakCompareAndSet", "AtomicStampedReference.attemptStamp",
                 "AtomicReferenceFieldUpdater.lazySet", "AtomicReferenceFieldUpdater.compareAndSet",
                 "AtomicReferenceFieldUpdater.getAndSet", "AtomicReferenceArray.set",
                 "AtomicReferenceArray.lazySet", "AtomicReferenceArray.setRelease",

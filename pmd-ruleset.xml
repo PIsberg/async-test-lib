@@ -57,11 +57,13 @@
         <exclude name="AvoidAccessibilityAlteration"/>
 
         <!--
-            UseUtilityClass / MissingStaticMethodInNonInstantiatableClass:
-            AsyncAssert is a public API class whose constructor must remain accessible.
-            See contract_signatures in CLAUDE.md.
+            InstantiableUtilityClass / MissingStaticMethodInNonInstantiatableClass:
+            AsyncAssert and ConcurrencyRunner are public classes whose implicit constructor is
+            part of the published API; a private one would be a binary-incompatible change. PMD
+            7.28.0 renamed UseUtilityClass to InstantiableUtilityClass and
+            left the old name as a deprecated reference that an exclude no longer matches.
         -->
-        <exclude name="UseUtilityClass"/>
+        <exclude name="InstantiableUtilityClass"/>
         <exclude name="MissingStaticMethodInNonInstantiatableClass"/>
 
         <!--

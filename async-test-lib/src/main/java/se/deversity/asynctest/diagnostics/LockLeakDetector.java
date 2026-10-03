@@ -45,6 +45,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class LockLeakDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class LockState {
         final String name;
         final AtomicInteger acquireCount = new AtomicInteger(0);
@@ -68,8 +71,8 @@ public class LockLeakDetector {
          */
         final Set<Thread> threads = ConcurrentHashMap.newKeySet();
 
-        LockState(String name) {
-            this.name = name != null ? name : ReportSections.unnamed("lock");
+        LockState(String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.next("lock");
         }
     }
 
@@ -91,7 +94,7 @@ public class LockLeakDetector {
         // against the same lock. A put() would install a fresh LockState each time, wiping the
         // acquire/release counts — so an acquire leaked by an earlier invocation would be
         // erased before analysis ever saw it.
-        locks.computeIfAbsent(new IdentityKey(lock), ignored -> new LockState(name))
+        locks.computeIfAbsent(new IdentityKey(lock), ignored -> new LockState(name, unnamedLabels))
                 .threads.add(Thread.currentThread());
     }
 
@@ -109,7 +112,7 @@ public class LockLeakDetector {
         // and install a LockState, and the loser's increments then land on an orphaned object
         // that analysis never sees.
         LockState state = locks.computeIfAbsent(new IdentityKey(lock),
-                                                ignored -> new LockState(name));
+                                                ignored -> new LockState(name, unnamedLabels));
         state.acquireCount.incrementAndGet();
         state.acquiringThreads.add(Thread.currentThread().threadId());
         state.threads.add(Thread.currentThread());
@@ -138,7 +141,7 @@ public class LockLeakDetector {
             // Auto-register atomically. get-then-put let two threads racing on the same lock
             // each keep a private state whose releasingThreads held one id, so cross-thread
             // acquire/release imbalance became invisible under contention.
-            state = locks.computeIfAbsent(id, k -> new LockState(name));
+            state = locks.computeIfAbsent(id, k -> new LockState(name, unnamedLabels));
         }
         state.releaseCount.incrementAndGet();
         state.releasingThreads.add(Thread.currentThread().threadId());
@@ -273,8 +276,11 @@ public class LockLeakDetector {
         if (holderName == null) {
             return null;
         }
-        ReentrantLockDetector.HolderState state = ReentrantLockDetector.holderState(
-                holderName, recorded, platformThreads, recordedThreads);
+        // The owner itself where it can be read (#855), the name otherwise; the same answer
+        // ReentrantLockDetector gives for this hold.
+        ReentrantLockDetector.HolderState byOwner = ReentrantLockDetector.ownerState(lock);
+        ReentrantLockDetector.HolderState state = byOwner != null ? byOwner
+                : ReentrantLockDetector.holderState(holderName, recorded, platformThreads, recordedThreads);
         if (state == null || state == ReentrantLockDetector.HolderState.WORKING) {
             return null;
         }

@@ -58,6 +58,9 @@ import java.util.random.RandomGenerator;
 )
 public final class SharedSplittableRandomDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class GeneratorState extends SelfGuard.ThreadTrackedInstance {
         final String name;
         final String type;
@@ -88,7 +91,7 @@ public final class SharedSplittableRandomDetector {
             return;
         }
         String type = generator.getClass().getSimpleName();
-        String label = name != null ? name : type + "@" + key.hashCode();
+        String label = name != null ? name : unnamedLabels.of(key, type);
         generators.computeIfAbsent(key, k -> new GeneratorState(label, type));
     }
 
@@ -108,7 +111,7 @@ public final class SharedSplittableRandomDetector {
         if (state == null) {
             IdentityKey key = new IdentityKey(generator);
             final String type = generator.getClass().getSimpleName();
-            final String label = name != null ? name : type + "@" + key.hashCode();
+            final String label = name != null ? name : unnamedLabels.of(key, type);
             state = generators.computeIfAbsent(key, k -> new GeneratorState(label, type));
         }
         state.accessCount.incrementAndGet();

@@ -129,7 +129,7 @@ class TaskSchedulerTest {
     private void wire(StatefulLambdaDetector detector) {
         scheduler.observeTask(
                 (task, name) -> detector.recordExecution(task, name, Thread.currentThread()),
-                (task, name) -> detector.recordCapturedMutation(task, name, Thread.currentThread()));
+                (task, count) -> detector.recordCapturedMutation(task, "count", count, Thread.currentThread()));
     }
 
     /**
@@ -209,7 +209,7 @@ class TaskSchedulerTest {
         StatefulLambdaDetector detector = AsyncTestContext.get().statefulLambdaDetector();
         scheduler.observeTask(
                 (task, name) -> detector.recordExecution(task, name, Thread.currentThread()),
-                (task, name) -> detector.recordCapturedMutation(task, name, Thread.currentThread()));
+                (task, count) -> detector.recordCapturedMutation(task, "count", count, Thread.currentThread()));
 
         scheduler.countingTask().run();
     }

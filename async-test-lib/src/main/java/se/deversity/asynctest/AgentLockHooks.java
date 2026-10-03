@@ -443,16 +443,24 @@ public final class AgentLockHooks {
 
     /**
      * Weaves {@code StampedLock.tryConvertToOptimisticRead(long)}. A successful conversion
-     * releases whatever was held; an optimistic stamp holds nothing, so nothing is pushed.
+     * releases whatever was held; an optimistic stamp holds nothing, so nothing is pushed, and the
+     * reads after it are a speculation its {@code validate} judges, as after
+     * {@link #tryOptimisticRead} (#823). Converting an optimistic stamp succeeds only when it still
+     * validates, so that counts as its {@code validate} holding before the new speculation opens.
      *
      * @param receiver the lock
      * @param stamp    the stamp to convert
      * @return the observation stamp, 0 for failure
      */
     public static long tryConvertToOptimisticRead(StampedLock receiver, long stamp) {
+        boolean wasOptimistic = StampedLock.isOptimisticReadStamp(stamp);
         long converted = receiver.tryConvertToOptimisticRead(stamp);
         if (converted != 0L) {
             HeldLocks.released(receiver, false);
+            if (wasOptimistic) {
+                TelemetryRegistry.optimisticReadValidated(receiver, true);
+            }
+            TelemetryRegistry.optimisticReadStarted(receiver);
         }
         return converted;
     }

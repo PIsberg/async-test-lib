@@ -61,6 +61,9 @@ import java.util.concurrent.atomic.LongAdder;
 )
 public final class FlowPublisherConcurrencyDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State {
         final String label;
         final Set<Long>   threadIds   = ConcurrentHashMap.newKeySet();
@@ -175,7 +178,7 @@ public final class FlowPublisherConcurrencyDetector {
         if (s == null) {
             final String lbl = label != null
                     ? label
-                    : subscriber.getClass().getSimpleName() + "@" + id.hashCode();
+                    : unnamedLabels.of(id, subscriber.getClass().getSimpleName());
             s = subscribers.computeIfAbsent(id, k -> new State(lbl));
         }
         return s;

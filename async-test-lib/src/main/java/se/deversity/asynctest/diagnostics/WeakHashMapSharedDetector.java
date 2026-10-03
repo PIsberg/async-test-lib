@@ -56,6 +56,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class WeakHashMapSharedDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String type;
@@ -113,7 +116,7 @@ public final class WeakHashMapSharedDetector {
         if (s == null) {
             final String finalType = type;
             s = instances.computeIfAbsent(key, k -> new State(
-                    (name != null) ? name : finalType + "@" + k.hashCode(),
+                    (name != null) ? name : unnamedLabels.of(k, finalType),
                     finalType));
         }
         // Probed on the accessing thread, which is the one inside (or outside) the guarded

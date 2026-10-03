@@ -33,6 +33,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CompletableFutureCommonPoolBlockingDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * The most distinct findings this detector will keep. A finding is one (thread, call type,
      * future) triple, so the cap is only reached by a subject that really does block on the
@@ -71,7 +74,7 @@ public class CompletableFutureCommonPoolBlockingDetector {
         if (future == null) return;
         IdentityKey key = new IdentityKey(future);
         commonPoolFutures.add(key);
-        futureNames.put(key, taskName != null ? taskName : "task@" + key.hashCode());
+        futureNames.put(key, taskName != null ? taskName : unnamedLabels.of(key, "task"));
     }
 
     /**
@@ -86,7 +89,7 @@ public class CompletableFutureCommonPoolBlockingDetector {
         if (future == null || thread == null) return;
         IdentityKey key = new IdentityKey(future);
         if (!commonPoolFutures.contains(key)) return;
-        String name = futureNames.getOrDefault(key, "future@" + key.hashCode());
+        String name = futureNames.getOrDefault(key, unnamedLabels.of(key, "future"));
         String type = callType != null ? callType : "blocking call";
         String finding = String.format(
             "Thread '%s' made blocking call (%s) inside CompletableFuture '%s' "

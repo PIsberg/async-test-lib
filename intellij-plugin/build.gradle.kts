@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
 plugins {
@@ -25,12 +26,19 @@ dependencies {
         bundledPlugin("com.intellij.java")
         pluginVerifier()
         zipSigner()
+        // The headless-IDE fixture behind FindingsToolWindowPlatformTest (#723): the tool window,
+        // the Refresh action and the settings page cannot be built outside a running platform.
+        testFramework(TestFrameworkType.Platform)
     }
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     // Gradle 9 no longer puts a launcher on the test runtime classpath itself. JUnit 5.x
     // numbers the platform 1.x, so Jupiter 5.11.0 pairs with launcher 1.11.0.
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.0")
+    // BasePlatformTestCase is a JUnit 3 TestCase: junit 4 provides it on the classpath, and the
+    // vintage engine runs it on the JUnit Platform beside the Jupiter tests.
+    testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:$junitVersion")
 }
 
 tasks.test {

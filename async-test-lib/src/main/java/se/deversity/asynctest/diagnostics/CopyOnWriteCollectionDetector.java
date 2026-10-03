@@ -49,6 +49,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CopyOnWriteCollectionDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * Fraction of total operations that are writes above which a warning is raised.
      * Default: 20 %.
@@ -85,8 +88,8 @@ public class CopyOnWriteCollectionDetector {
         if (collection == null) return;
         IdentityKey key = new IdentityKey(collection);
         String type = collection.getClass().getSimpleName();
-        collections.putIfAbsent(key,
-                new CoWState(name != null ? name : ReportSections.unnamed(type), type));
+        collections.computeIfAbsent(key,
+                k -> new CoWState(name != null ? name : unnamedLabels.next(type), type));
     }
 
     /**
@@ -114,7 +117,7 @@ public class CopyOnWriteCollectionDetector {
     private CoWState resolve(Object collection, String name) {
         return collections.computeIfAbsent(new IdentityKey(collection), k -> {
             String type = collection.getClass().getSimpleName();
-            return new CoWState(name != null ? name : ReportSections.unnamed(type), type);
+            return new CoWState(name != null ? name : unnamedLabels.next(type), type);
         });
     }
 

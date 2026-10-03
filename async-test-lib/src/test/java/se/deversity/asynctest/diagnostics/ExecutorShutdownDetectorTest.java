@@ -79,7 +79,7 @@ public class ExecutorShutdownDetectorTest {
     }
 
     @Test
-    void testAutoNameFromIdentityHash() {
+    void testAutoNameIsNumbered() {
         ExecutorShutdownDetector detector = new ExecutorShutdownDetector();
         ExecutorService ex = Executors.newCachedThreadPool();
         detector.recordExecutorCreated(ex, null); // no name
@@ -185,6 +185,30 @@ public class ExecutorShutdownDetectorTest {
                             + "an accident of it");
         } finally {
             handedToUs.shutdownNow();
+        }
+    }
+
+    @Test
+    void anUnnamedExecutorKeepsOneNumberAndTheNextOneGetsTheNext() {
+        ExecutorShutdownDetector detector = new ExecutorShutdownDetector();
+        ExecutorService first = Executors.newSingleThreadExecutor();
+        ExecutorService second = Executors.newSingleThreadExecutor();
+        try {
+            detector.recordExecutorCreated(first, null);
+            detector.recordExecutorCreated(first, null);
+            detector.recordExecutorCreated(second, null);
+            detector.recordTaskSubmitted(first);
+            detector.recordTaskSubmitted(second);
+
+            ExecutorShutdownDetector.ExecutorShutdownReport report = detector.analyze();
+            assertEquals(2, report.notShutDown.size(), "two executors left running: " + report.notShutDown);
+            assertTrue(report.notShutDown.stream().anyMatch(line -> line.startsWith("executor@1:")),
+                    "the first unnamed executor is executor@1, not its identity hash (#860): " + report.notShutDown);
+            assertTrue(report.notShutDown.stream().anyMatch(line -> line.startsWith("executor@2:")),
+                    "declaring the first one again did not use up a number: " + report.notShutDown);
+        } finally {
+            first.shutdownNow();
+            second.shutdownNow();
         }
     }
 }

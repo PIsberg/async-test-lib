@@ -134,7 +134,7 @@ that way today, each with that path: `CONCURRENT_MODIFICATIONS`, `ATOMICITY_VIOL
 An `OBSERVED` row needs a detector the agent or the JVM feeds, or one that asks a live object for
 its state (`isLocked`, `Thread.isAlive`, `CyclicBarrier.isBroken`, a thread dump, reflection on the
 instance). A detector the agent or the JVM feeds and that is classified below `OBSERVED` and
-`CONTEXTUAL` must have the path that holds it there named: `ABA_PROBLEM`, `ATOMICITY_VIOLATIONS` and
+`CONTEXTUAL` must have the path that holds it there named: `ATOMICITY_VIOLATIONS` and
 `BLOCKING_QUEUE` for a record method or a finding the feed does not decide, `LIVELOCKS` for
 thresholds over thread dumps, `STATIC_INIT_DEADLOCK` for having no grade above FACT. A graded
 detector's class must be one its grades name. And an ungraded detector above `HEURISTIC`'s cap that
@@ -161,7 +161,7 @@ woven feed, which delivers the same events its record methods take, unless a rec
 does not replace or a finding the feed does not decide holds it lower, which the check above makes
 it name. The caps moved these rows:
 
-- **VERDICT to FACT, `ASSERTED`:** `ABA_PROBLEM`, `CONCURRENT_MODIFICATIONS`, `RESOURCE_LEAKS`,
+- **VERDICT to FACT, `ASSERTED`:** `CONCURRENT_MODIFICATIONS`, `RESOURCE_LEAKS`,
   `DOUBLE_CHECKED_LOCKING`, `INTERRUPT_MISHANDLING`, `CALENDAR` (its recorded-error path),
   `MUTABLE_MAP_KEY`, `NESTED_MONITOR_LOCKOUT`, `THREAD_LOCAL_CONTAMINATION`,
   `SYNCHRONIZED_COLLECTION_ITERATION`, `CONCURRENT_MAP_COMPUTE_RECURSION`, `PUBLIC_LOCK_EXPOSURE`,
@@ -365,9 +365,16 @@ but was recorded after it has the records of a real A-B-A, and nothing in the re
 them apart. The agent already substituted every `AtomicReference` `get`, `set` and
 `compareAndSet` for the ownership and happens-before models; on a thread whose test has this
 detector each now runs through the detector, which takes its record inside the operation's lock,
-so the records of one atomic are in the order its operations ran. A compare-and-set expecting a
-value with no mutable field of its own, an enum constant, a boxed number or a record, is not
-reported: an A-B-A of such a value leaves nothing stale.
+so the records of one atomic are in the order its operations ran. That finding is graded apart from
+a recorded one (#817): `VERDICT` on `OBSERVED` evidence, while a case recorded by hand, whose order
+is the caller's, stays `FACT` on `ASSERTED`; the row is `FACT`, its weakest path, on `OBSERVED`. A field reached through an
+`AtomicReferenceFieldUpdater` or a `VarHandle`, and an `AtomicReferenceArray` or handle-reached array
+element, are fed the same way, each a slot of its own (#817), and so is an `AtomicStampedReference`, whose
+value is the (reference, stamp) pair: a stamp bumped on every store makes a stale compare-and-set fail, and
+one that succeeds after the pair left and came back reused a stamp. A compare-and-set expecting a
+value that carries no state, an enum constant, a boxed number, or a value whose final fields reach
+none (a record of numbers, not a record holding a `List`), is not reported: an A-B-A of such a
+value leaves nothing stale.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,

@@ -78,6 +78,9 @@ import java.util.concurrent.atomic.LongAdder;
 )
 public final class VarHandleNonAtomicUpdateDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Cap on retained per-location detail lines, so a hot loop cannot grow the report without bound. */
     static final int MAX_DETAILS = 20;
 
@@ -208,7 +211,7 @@ public final class VarHandleNonAtomicUpdateDetector {
         State s = locations.get(key);
         if (s == null) {
             final String lbl = label != null ? label
-                    : "VarHandle@" + System.identityHashCode(varHandle);
+                    : unnamedLabels.of(varHandle, "VarHandle");
             s = locations.computeIfAbsent(key, k -> new State(lbl));
         }
         return s;

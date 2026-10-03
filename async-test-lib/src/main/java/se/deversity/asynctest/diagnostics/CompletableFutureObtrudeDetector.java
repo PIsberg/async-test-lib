@@ -24,6 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class CompletableFutureObtrudeDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State {
         final String label;
         final int obtrudeCount;
@@ -47,8 +50,7 @@ public final class CompletableFutureObtrudeDetector {
      */
     public void recordObtrude(CompletableFuture<?> future, String label, Thread thread) {
         if (future == null || thread == null) return;
-        int id = System.identityHashCode(future);
-        String name = label != null ? label : "CompletableFuture@" + id;
+        String name = label != null ? label : unnamedLabels.of(future, "CompletableFuture");
         obtrudes.merge(new IdentityKey(future), new State(name, 1, thread.getName()), (old, val) -> 
             new State(name, old.obtrudeCount + 1, val.lastObtrudedByThread)
         );

@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * plain pattern, and that is what kept them out of #434's sweep.
  *
  * <p>Two fixture beans rather than two methods on one, because the finding names its monitor as
- * {@code getClass().getName() + "@" + identityHashCode}. That is what makes each overload
+ * {@code getClass().getName() + "@" + n} (#860). That is what makes each overload
  * separately assertable here: with one bean, either overload weaving would satisfy both
  * assertions, which is the shape of green that says nothing.
  */

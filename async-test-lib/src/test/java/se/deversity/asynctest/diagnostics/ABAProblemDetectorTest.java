@@ -522,6 +522,92 @@ class ABAProblemDetectorTest {
         }
     }
 
+    /** A record whose own fields are final but whose list is not: it can carry state. */
+    record Basket(java.util.List<String> items) { }
+
+    /** A class whose fields are all final and reach only values. */
+    record Point(int x, int y) { }
+
+    /** All-final, but one field reaches an object with a mutable field. */
+    static final class Wrapper {
+        final Node inner;
+
+        Wrapper(Node inner) {
+            this.inner = inner;
+        }
+    }
+
+    /** {@return whether an A-B-A of {@code value} through the agent's view is reported} */
+    private static boolean abaOfReported(Object value) throws InterruptedException {
+        ABAProblemDetector detector = new ABAProblemDetector();
+        AtomicReference<Object> state = erased(new AtomicReference<>(value));
+        ABAProblemDetector.AgentSlot slot = detector.agentSlot(state);
+        Object seen = slot.get(state);
+        onAnotherThread(() -> slot.set(state, "elsewhere"));
+        onAnotherThread(() -> slot.set(state, value));
+        assertTrue(slot.compareAndSet(state, seen, "next"));
+        return detector.analyzeABA().hasIssues();
+    }
+
+    @Test
+    void underTheAgentAnImmutableValueThatReachesMutableStateIsAnABA() throws InterruptedException {
+        assertTrue(abaOfReported(new Basket(new java.util.ArrayList<>(List.of("a")))),
+                "the record is final throughout, but its list may have changed while it was away (#817)");
+        assertTrue(abaOfReported(new Wrapper(new Node("n"))),
+                "all-final, but its field reaches a node whose next is mutable");
+    }
+
+    @Test
+    void underTheAgentAnImmutableValueThatReachesOnlyValuesIsNotAnABA() throws InterruptedException {
+        assertFalse(abaOfReported(new Point(1, 2)), "nothing behind the point can change");
+        assertFalse(abaOfReported(new Wrapper2("text")), "a final String reaches no state");
+    }
+
+    /** All-final, reaching only a String. */
+    static final class Wrapper2 {
+        final String text;
+
+        Wrapper2(String text) {
+            this.text = text;
+        }
+    }
+
+    /**
+     * #817: a finding the agent took inside each operation is graded apart from one recorded by
+     * hand, whose record order is the caller's and can be the record of an A-B-A that never ran.
+     */
+    @Test
+    void anAgentFindingIsGradedObservedAndARecordedOneAsserted() throws InterruptedException {
+        ABAProblemDetector agent = new ABAProblemDetector();
+        Node a = new Node("A");
+        AtomicReference<Object> head = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot = agent.agentSlot(head);
+        Object seen = slot.get(head);
+        onAnotherThread(() -> slot.set(head, new Node("B")));
+        onAnotherThread(() -> slot.set(head, a));
+        assertTrue(slot.compareAndSet(head, seen, new Node("C")));
+        List<GradedFindings.Grade> observed = DetectorTrust.clampToCap("ABAProblemDetector",
+                ((GradedFindings) (Object) agent.analyzeABA()).grades());
+        assertEquals(1, observed.size(), "one finding: " + observed);
+        assertEquals(TrustTier.VERDICT, observed.get(0).tier(),
+                "taken inside each operation, the finding is what ran, and its evidence class allows a verdict");
+        assertEquals(DetectorTrust.Evidence.OBSERVED, observed.get(0).evidence());
+
+        ABAProblemDetector recorded = new ABAProblemDetector();
+        recorded.recordRead("head", "A");
+        onAnotherThread(() -> {
+            recorded.recordValueChange("head", "A", "B");
+            recorded.recordValueChange("head", "B", "A");
+        });
+        recorded.recordCASAttempt("head", "A", "C", true, "A");
+        List<GradedFindings.Grade> asserted = DetectorTrust.clampToCap("ABAProblemDetector",
+                ((GradedFindings) (Object) recorded.analyzeABA()).grades());
+        assertEquals(1, asserted.size(), "one finding: " + asserted);
+        assertEquals(TrustTier.FACT, asserted.get(0).tier(),
+                "a recorded history is the caller's order, which a toggle before the read also produces (#810)");
+        assertEquals(DetectorTrust.Evidence.ASSERTED, asserted.get(0).evidence());
+    }
+
     @Test
     void underTheAgentOnlyAnotherThreadsToggleAfterThisThreadsReadCounts() throws InterruptedException {
         Node a = new Node("A");

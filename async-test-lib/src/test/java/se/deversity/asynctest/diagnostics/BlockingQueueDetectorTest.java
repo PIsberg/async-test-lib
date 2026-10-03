@@ -679,4 +679,16 @@ public class BlockingQueueDetectorTest {
                 "two queues the test left unnamed are two queues in the report, even when their "
                         + "identity hashes collide (#854): " + report.queueActivity.keySet());
     }
+
+    @Test
+    void everyDetectorNumbersItsUnnamedQueuesFromOne() {
+        for (int run = 1; run <= 2; run++) {
+            BlockingQueueDetector detector = new BlockingQueueDetector();
+            detector.registerQueue(new ArrayBlockingQueue<String>(1), null, 1);
+
+            assertEquals(java.util.Set.of("queue@1"), detector.analyze().queueActivity.keySet(),
+                    "run " + run + ": labels restart with each detector, so a run's report does not "
+                            + "depend on what ran before it in the JVM (#860)");
+        }
+    }
 }

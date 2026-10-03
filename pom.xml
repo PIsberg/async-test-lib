@@ -82,7 +82,7 @@
         <surefire.forkCount>1</surefire.forkCount>
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+        <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
         <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
         <!-- Pinned because nothing else does: without it Maven falls back to its built-in
              default binding, which resolves maven-jar-plugin 2.4 (2013). That plugin writes
@@ -97,7 +97,7 @@
         <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
         <cyclonedx-maven-plugin.version>2.9.3</cyclonedx-maven-plugin.version>
         <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
-        <vibetags.version>1.3.6</vibetags.version>
+        <vibetags.version>1.3.7</vibetags.version>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
         <checkstyle.version>14.3.0</checkstyle.version>
         <spotbugs-maven-plugin.version>4.10.4.1</spotbugs-maven-plugin.version>
@@ -108,7 +108,7 @@
         <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
         <archunit.version>1.5.1</archunit.version>
         <error-prone.version>2.50.0</error-prone.version>
-        <nullaway.version>0.14.1</nullaway.version>
+        <nullaway.version>0.14.2</nullaway.version>
         <jspecify.version>1.0.1</jspecify.version>
         <asm.version>9.10.1</asm.version>
         <bytebuddy.version>1.18.14</bytebuddy.version>
@@ -120,7 +120,7 @@
              still defaults to PMD 7.17.0, which is the version that cannot resolve JDK types on
              a newer JDK than the build targets (see docs/QUALITY_GATES.md). Pinning it here also
              keeps Maven and Gradle on one engine — build.gradle.kts sets the same number. -->
-        <pmd.version>7.26.0</pmd.version>
+        <pmd.version>7.28.0</pmd.version>
     </properties>
 
     <!-- Versions only. Modules declare what they actually use, so the core artifact does not
@@ -295,10 +295,15 @@
                     <!-- Local default skips the @Tag("e2e") engine tier; the e2e profile
                          (auto-active in CI) clears this. E2eTagGuardTest pins the tag set. -->
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
-                    <!-- @{argLine} preserves JaCoCo's late-bound agent argLine; the extra flag
-                         permits AsyncTestAgent.selfAttach() to attach to the forked test JVM
-                         (self-attach is disabled by default since JDK 9). -->
-                    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
+                    <!-- @{argLine} preserves JaCoCo's late-bound agent argLine.
+                         allowAttachSelf permits AsyncTestAgent.selfAttach() to attach to the
+                         forked test JVM (self-attach is disabled by default since JDK 9).
+                         EnableDynamicAgentLoading stops the JDK printing its dynamic-agent warning
+                         to System.err from the Attach Listener thread, whose context class loader
+                         is null: surefire 3.6.0's stderr capture fails to initialise there, which
+                         aborts the agent's InstrumentationImpl constructor ("Agent failed to
+                         start!"), so every self-attach test fails under 3.6.0 without it. -->
+                    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading</argLine>
                     <systemPropertyVariables>
                         <license.mock.mode>${license.mock.mode}</license.mock.mode>
                         <!-- A detector that throws during analysis is contained for consumers

@@ -33,6 +33,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedFormatterDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class FormatterState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
 
@@ -56,7 +59,7 @@ public class SharedFormatterDetector {
             // The fallback label is built only when the instance is first seen.
             s = formatters.computeIfAbsent(new IdentityKey(formatter), id -> new FormatterState(name != null
                     ? name
-                    : formatter.getClass().getSimpleName() + "@" + System.identityHashCode(formatter)));
+                    : unnamedLabels.of(formatter, formatter.getClass().getSimpleName())));
         }
         s.noteAccess(formatter, thread);
     }

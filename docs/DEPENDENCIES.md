@@ -46,6 +46,8 @@ Never published, never transitive.
 | `com.tngtech.archunit:archunit-junit5` | `archunit.version` | Turns the module-boundary rules above from prose into failing tests (`ArchitectureTest`). |
 | `org.eclipse.jdt:ecj` | `ecj.version` | A second Java compiler, used as a compiler rather than as a library: `MissedSignalRotatedLoopWeavingTest` compiles the wait-loop shapes with it because ECJ rotates loops and javac does not, and the agent weaves whatever bytecode is on a user's classpath (#710). Test scope, `async-test-agent` only. |
 | `com.code-intelligence:jazzer-api` | `jazzer.version` | Entry points for the scheduled fuzzing workflow (`fuzzing.yml`), which throws generated input at the config and report parsers. |
+| IntelliJ Platform test framework (`testFramework(TestFrameworkType.Platform)`) | the platform version in `intellij-plugin/build.gradle.kts` | Boots a headless IDE for `FindingsToolWindowPlatformTest`, the only way to build the plugin's tool window, Refresh action and settings page in a test (#723). Test scope of the standalone `intellij-plugin` build; it never reaches the library. |
+| `junit:junit` 4 + `org.junit.vintage:junit-vintage-engine` | pinned in `intellij-plugin/build.gradle.kts` | `BasePlatformTestCase` is a JUnit 3 `TestCase`: JUnit 4 puts it on the classpath and the vintage engine runs it beside the plugin's Jupiter tests. `intellij-plugin` test scope only. |
 | `ch.qos.logback:logback-classic` | `logbackVersion` (in `build.gradle.kts` — no Maven twin, watched by the gradle Dependabot ecosystem) | The one test-only SLF4J backend, bound in the Gradle build so log-contract tests (`ConcurrencyRunnerLogContractTest`) can assert what the library actually logs. |
 
 ## 4. Build toolchain

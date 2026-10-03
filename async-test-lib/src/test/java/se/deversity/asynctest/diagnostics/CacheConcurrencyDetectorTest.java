@@ -527,4 +527,25 @@ class CacheConcurrencyDetectorTest {
             worker.join();
         }
     }
+
+    /**
+     * #820: the thread count in the finding is counted across the run, but the finding is decided
+     * per round. With a fresh thread for every body execution, which is what virtual threads give,
+     * one thread per round reading and writing its cache makes the run-wide count climb while no
+     * round ever shares the cache, so nothing is reported.
+     */
+    @Test
+    void oneFreshThreadPerRoundIsNotSharingHoweverManyThreadsTheRunSaw() throws InterruptedException {
+        Map<String, String> cache = new HashMap<>();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        for (int i = 0; i < 6; i++) {
+            round(scope, () -> {
+                detector.recordGet(cache, "per-round", "k");
+                detector.recordPut(cache, "per-round", "k", "v");
+            });
+        }
+
+        assertFalse(detector.analyze().hasIssues(),
+                "six threads used the cache, one per round, and none overlapped: " + detector.analyze());
+    }
 }

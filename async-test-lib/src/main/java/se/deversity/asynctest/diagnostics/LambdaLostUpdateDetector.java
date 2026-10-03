@@ -93,6 +93,9 @@ import org.jspecify.annotations.Nullable;
 )
 public final class LambdaLostUpdateDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class Rmw {
         final long    threadId;
         final String  threadName;
@@ -190,7 +193,7 @@ public final class LambdaLostUpdateDetector {
         String name = capturedName != null ? capturedName : "capturedState";
         CaptureState s = captures.computeIfAbsent(new CaptureKey(new IdentityKey(lambda), name),
                 k -> new CaptureState(
-                        lambda.getClass().getSimpleName() + "@" + System.identityHashCode(lambda), name));
+                        unnamedLabels.of(lambda, lambda.getClass().getSimpleName()), name));
         s.events.add(new Rmw(
                 thread.threadId(),
                 thread.getName(),

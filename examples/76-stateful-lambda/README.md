@@ -27,6 +27,12 @@ instance that ran on more than one thread while mutating what it captured. A fre
 submission is a different object every time and produces nothing, which is correct: nothing was
 shared.
 
+Every hook names the captured object as well: `recordCapturedMutation(task, "count", count,
+thread)`. With the object the detector judges each capture on its own, under its own lock, and
+skips state that is thread-safe by type, such as an `AtomicInteger`. The older
+`recordCapturedMutation(task, "count", thread)` cannot tell two captures apart, so it judges all
+of a lambda's mutations as one.
+
 That is exactly what this example used to get wrong. Its demonstration built a lambda inside the
 test body, so 400 body executions made 400 lambdas with one thread each, and the report was empty
 three runs out of three (issue #346). `TaskScheduler` now builds the task **once**, in its

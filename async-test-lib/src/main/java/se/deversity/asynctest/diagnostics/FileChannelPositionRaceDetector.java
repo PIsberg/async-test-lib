@@ -98,6 +98,9 @@ import java.util.concurrent.atomic.AtomicReference;
 )
 public final class FileChannelPositionRaceDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final Set<String> operations = ConcurrentHashMap.newKeySet();
@@ -364,7 +367,7 @@ public final class FileChannelPositionRaceDetector {
         IdentityKey id = new IdentityKey(channel);
         State s = instances.get(id);
         if (s == null) {
-            final String label = channel.getClass().getSimpleName() + "@" + id.hashCode();
+            final String label = unnamedLabels.of(id, channel.getClass().getSimpleName());
             s = instances.computeIfAbsent(id, k -> new State(label));
         }
         return s;

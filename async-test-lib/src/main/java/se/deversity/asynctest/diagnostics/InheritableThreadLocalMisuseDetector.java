@@ -52,6 +52,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class InheritableThreadLocalMisuseDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Thread IDs that belong to a thread pool (registered by test code). */
     private final Set<Long> knownPoolThreadIds = ConcurrentHashMap.newKeySet();
 
@@ -169,8 +172,8 @@ public class InheritableThreadLocalMisuseDetector {
         return DetectorFailurePolicy.checkedReport(this, report);
     }
 
-    private static String resolved(String name, Object itl) {
-        return name != null ? name : "itl@" + System.identityHashCode(itl);
+    private String resolved(String name, Object itl) {
+        return name != null ? name : unnamedLabels.of(itl, "itl");
     }
 
     /** Report produced by {@link #analyze()}. */

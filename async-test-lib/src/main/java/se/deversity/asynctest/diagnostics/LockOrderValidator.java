@@ -26,6 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * and identifies inconsistencies.
  */
 public class LockOrderValidator {
+
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
     
     /**
      * One lock acquired while another was already held: {@code from} nests {@code to}.
@@ -83,7 +86,7 @@ public class LockOrderValidator {
      * and two locks on a cycle as one (#854).
      */
     private String label(IdentityKey lock) {
-        return labels.computeIfAbsent(lock, k -> ReportSections.unnamed(k.referent().getClass().getSimpleName()));
+        return labels.computeIfAbsent(lock, k -> unnamedLabels.next(k.referent().getClass().getSimpleName()));
     }
 
     private final Map<Long, LockSequence> threadLockOrders = new ConcurrentHashMap<>();

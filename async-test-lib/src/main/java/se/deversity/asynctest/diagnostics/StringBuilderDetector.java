@@ -51,6 +51,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class StringBuilderDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * One round's sharing verdict for a builder. A fresh one per round, so the verdict is read for
      * the round it came from: the finding needs two writers and unguarded sharing in the same
@@ -116,7 +119,7 @@ public class StringBuilderDetector {
     public void registerBuilder(StringBuilder builder, String name) {
         if (builder == null) return;
         builders.putIfAbsent(new IdentityKey(builder),
-                new BuilderState(name != null ? name : "StringBuilder@" + System.identityHashCode(builder)));
+                new BuilderState(name != null ? name : unnamedLabels.of(builder, "StringBuilder")));
     }
 
     /**
@@ -286,7 +289,7 @@ public class StringBuilderDetector {
     private BuilderState resolve(StringBuilder builder, String name) {
         IdentityKey key = new IdentityKey(builder);
         return builders.computeIfAbsent(key,
-                k -> new BuilderState(name != null ? name : "StringBuilder@" + k.hashCode()));
+                k -> new BuilderState(name != null ? name : unnamedLabels.of(builder, "StringBuilder")));
     }
 
     /**

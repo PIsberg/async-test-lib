@@ -46,6 +46,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class BlockingQueueDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** The capacity of a queue with no bound, and the value {@code registerQueue} documents. */
     private static final int UNBOUNDED = -1;
 
@@ -75,9 +78,9 @@ public class BlockingQueueDetector {
         final AtomicInteger maxObservedSize = new AtomicInteger(0);
         final AtomicInteger minObservedSize = new AtomicInteger(Integer.MAX_VALUE);
 
-        QueueState(BlockingQueue<?> queue, @Nullable String name, int capacity) {
+        QueueState(BlockingQueue<?> queue, @Nullable String name, int capacity, UnnamedLabels labels) {
             this.queue = queue;
-            this.name = name != null ? name : ReportSections.unnamed("queue");
+            this.name = name != null ? name : labels.next("queue");
             this.capacity = new AtomicInteger(capacity);
         }
     }
@@ -111,7 +114,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        queues.putIfAbsent(new IdentityKey(queue), new QueueState(queue, name, capacity));
+        queues.computeIfAbsent(new IdentityKey(queue), k -> new QueueState(queue, name, capacity, unnamedLabels));
     }
 
     /**
@@ -139,7 +142,7 @@ public class BlockingQueueDetector {
         }
         int observed = observedCapacityOf(queue);
         queues.computeIfAbsent(new IdentityKey(queue),
-                        absent -> new QueueState(queue, null, observed))
+                        absent -> new QueueState(queue, null, observed, unnamedLabels))
                 .capacity.accumulateAndGet(observed, BlockingQueueDetector::widerBound);
     }
 

@@ -53,12 +53,34 @@ class LibraryStateIsKeyedByIdentityTest {
             + "undeclared, which can only report an access, never hide one";
 
     /**
+     * AtomicityValidator's ownership and publication state, keyed by the receiver's identity hash
+     * as its {@code instances} javadoc says, reached through the ring's event fields (#803).
+     */
+    private static final String OWNERSHIP = "AtomicityValidator keys its ownership, publication "
+            + "and settle state by identity hash on purpose, as the javadoc on its instances map "
+            + "says: a collision merges two objects' states, which can only publish one sooner or "
+            + "withhold an excuse, so it costs a finding on correct code and never hides one; the "
+            + "per-instance grouping, where a merge would invent a finding, is keyed by the object "
+            + "and falls back to the hash only for a caller that passed no receiver";
+
+    /** The drain loop hands every event field to the bridge, so it carries each key above. */
+    private static final String RING = "hands the ring's event fields to the bridge and the "
+            + "validator, whose identity keys are the ownership state above; the attribution set "
+            + "it also reaches is keyed by a thread id carried in the same long slot as a lock "
+            + "fingerprint, which a per-field taint cannot tell apart";
+
+    /**
      * Methods that key by an identity hash on purpose or where the merge is only in printed text,
      * as {@code SourceFile#method}, each with a reason a reviewer can check against the method. Per
      * method rather than per file, so a state map keyed by a hash elsewhere in the same file still
      * fails.
      */
     private static final Map<String, String> DELIBERATE = Map.ofEntries(
+            Map.entry("AtomicityValidator.java#analyzeAtomicity", OWNERSHIP),
+            Map.entry("AtomicityValidator.java#everyPublishedValueWentQuiet", OWNERSHIP),
+            Map.entry("AtomicityValidator.java#withdrawExclusivityFromContestedGenerations", OWNERSHIP),
+            Map.entry("TelemetryBridge.java#record", OWNERSHIP),
+            Map.entry("TelemetryEventBuffer.java#drain", RING),
             Map.entry("SpinLocks.java#lockFor", SPIN_LOCKS),
             Map.entry("SpinLocks.java#aboutToAcquire", SPIN_LOCKS),
             Map.entry("SpinLocks.java#release", SPIN_LOCKS),

@@ -72,3 +72,13 @@ spin path is never taken.
 - Startup cost scales with the number of classes woven. Weaving the entire classpath (the
   default `any()` match) is the worst case. Use `includes=` to bound instrumentation to your
   own packages and keep startup fast — see [Scope & filtering](scope-and-filtering.md#5-scope--filtering).
+- Each woven access inside a `synchronized` method pays one `Thread.holdsLock` for every
+  enclosing synchronized method on the stack, because an exception can release such a monitor
+  without passing a woven return (#822). Measured on JDK 26 (#844): a lock-set read costs 1.5 ns
+  with plain locks held and 17, 52 and 90 ns with 1, 3 and 6 synchronized methods enclosing it.
+  No cheaper check is sound: a held monitor does not prove its method is still running when the
+  same monitor is also held by an outer activation or an unwoven block, and nothing marks an
+  exception unwinding past a method, so the verdict cannot be cached between events.
+- Each volatile field the model has seen keeps up to four releases while its owner lives:
+  measured at 340 bytes per field with one writer and 444 to 492 bytes with four to eight
+  (#813, #844). Fields are held weakly, so the state goes with the owner.

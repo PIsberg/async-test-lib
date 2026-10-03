@@ -363,4 +363,21 @@ public class SharedRandomDetectorTest {
         detector.registerRandom(random, "r");
         assertDoesNotThrow(() -> detector.recordRandomAccess(random, "r", null));
     }
+
+    @Test
+    void unnamedRandomsAreNumberedFromOneInEveryDetectorAndARepeatedRegistrationTakesNoNumber() {
+        for (int run = 1; run <= 2; run++) {
+            SharedRandomDetector detector = new SharedRandomDetector();
+            Random first = new Random();
+            Random second = new Random();
+            detector.registerRandom(first, null);
+            detector.registerRandom(first, null);
+            detector.recordRandomAccess(second, null, "nextInt");
+            detector.recordRandomAccess(first, null, "nextInt");
+
+            assertEquals(java.util.Set.of("random@1", "random@2"), detector.analyze().randomActivity.keySet(),
+                    "run " + run + ": each detector, which is each run, numbers its unnamed randoms from 1, "
+                            + "and registering one again does not use up a number (#860)");
+        }
+    }
 }

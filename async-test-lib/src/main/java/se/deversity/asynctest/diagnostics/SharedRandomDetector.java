@@ -43,6 +43,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class SharedRandomDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Accesses a shared Random needs before its rate is judged for contention (#756). */
     private static final int CONTENTION_ACCESS_THRESHOLD = 100;
 
@@ -57,8 +60,8 @@ public class SharedRandomDetector {
         volatile @Nullable Long firstAccessTime = null;
         volatile @Nullable Long lastAccessTime = null;
 
-        RandomState(String name) {
-            this.name = name != null ? name : ReportSections.unnamed("random");
+        RandomState(String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.next("random");
         }
     }
 
@@ -78,7 +81,7 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        randoms.putIfAbsent(new IdentityKey(random), new RandomState(name));
+        randoms.computeIfAbsent(new IdentityKey(random), k -> new RandomState(name, unnamedLabels));
     }
 
     /**
@@ -101,7 +104,7 @@ public class SharedRandomDetector {
             // thread counted itself alone and analyze()'s "> 1 thread" test never tripped. A
             // detector whose whole job is spotting concurrent sharing went silent under
             // exactly the contention it exists to find.
-            state = randoms.computeIfAbsent(key, k -> new RandomState(name));
+            state = randoms.computeIfAbsent(key, k -> new RandomState(name, unnamedLabels));
         }
         
         long now = System.currentTimeMillis();

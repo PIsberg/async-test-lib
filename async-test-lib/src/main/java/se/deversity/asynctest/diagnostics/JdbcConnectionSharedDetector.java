@@ -81,6 +81,9 @@ import java.util.concurrent.ConcurrentHashMap;
 )
 public final class JdbcConnectionSharedDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String type;
@@ -134,7 +137,7 @@ public final class JdbcConnectionSharedDetector {
         if (s == null) {
             final String finalType = type;
             s = instances.computeIfAbsent(id, k -> new State(
-                    (name != null) ? name : finalType + "@" + k.hashCode(),
+                    (name != null) ? name : unnamedLabels.of(k, finalType),
                     finalType));
         }
         s.noteAccess(resource, thread);

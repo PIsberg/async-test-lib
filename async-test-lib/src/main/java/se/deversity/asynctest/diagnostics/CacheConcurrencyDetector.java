@@ -230,7 +230,7 @@ public class CacheConcurrencyDetector {
             if (!isConcurrentMap && reads > 0 && writes > 0
                     && state.distinctThreads() > 1 && state.sawUnguardedSharing()) {
                 report.concurrentReadWrite.add(String.format(
-                    "%s: concurrent reads (%d) and writes (%d) from %d threads on a "
+                    "%s: concurrent reads (%d) and writes (%d) from %d threads across the run on a "
                         + "non-thread-safe cache%s",
                     state.name, reads, writes, state.distinctThreads(), SelfGuard.REPORT_NOTE));
             }

@@ -559,8 +559,8 @@ public class VirtualThreadPinningDetector {
          *
          * @return stack trace at pinning point
          */
-        public StackTraceElement @Nullable [] getStackTrace() {
-            return stackTrace == null ? null : stackTrace.clone();
+        public StackTraceElement[] getStackTrace() {
+            return stackTrace.clone();
         }
     }
 }

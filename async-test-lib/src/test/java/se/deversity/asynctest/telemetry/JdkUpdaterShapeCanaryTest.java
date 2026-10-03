@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -27,6 +28,7 @@ class JdkUpdaterShapeCanaryTest {
     /** A flag to make a real updater on, so the implementation class is the one the JDK hands out. */
     static final class Flag {
         volatile int busy;
+        volatile Object slot;
     }
 
     private static final String HOW_TO_FIX = " SpinLocks.describe(AtomicIntegerFieldUpdater) reads this "
@@ -59,6 +61,36 @@ class JdkUpdaterShapeCanaryTest {
             implementation().getDeclaredConstructor(Class.class, String.class, Class.class);
         } catch (NoSuchMethodException e) {
             fail(SpinLocks.UPDATER_IMPL + " has no (Class, String, Class) constructor any more." + HOW_TO_FIX, e);
+        }
+    }
+
+    // ---- AtomicReferenceFieldUpdater, which ReferenceSlots reads the same way (#741) ------------
+
+    private static final String REFERENCE_HOW_TO_FIX = " ReferenceSlots.describe(AtomicReferenceFieldUpdater) "
+            + "reads this to name the field an updater reaches; on this JDK its slots would silently "
+            + "keep no happens-before clock. Update ReferenceSlots before shipping on " + Runtime.version() + ".";
+
+    @Test
+    @DisplayName("the JDK still hands out the reference updater implementation ReferenceSlots reads")
+    void theReferenceUpdaterImplementationIsTheOneRead() {
+        Class<?> impl = AtomicReferenceFieldUpdater.newUpdater(Flag.class, Object.class, "slot").getClass();
+        assertEquals(ReferenceSlots.UPDATER_IMPL, impl.getName(),
+                "AtomicReferenceFieldUpdater.newUpdater now returns " + impl.getName() + "." + REFERENCE_HOW_TO_FIX);
+        assertEquals(null, impl.getClassLoader(),
+                "the implementation is no longer a bootstrap class." + REFERENCE_HOW_TO_FIX);
+    }
+
+    @Test
+    @DisplayName("the reference updater keeps its offset and tclass fields and (Class, Class, String, Class) constructor")
+    void theReferenceUpdaterKeepsItsShape() throws ClassNotFoundException {
+        Class<?> impl = Class.forName(ReferenceSlots.UPDATER_IMPL);
+        assertInstanceField(impl, SpinLocks.UPDATER_OFFSET, long.class);
+        assertInstanceField(impl, SpinLocks.UPDATER_TARGET, Class.class);
+        try {
+            impl.getDeclaredConstructor(Class.class, Class.class, String.class, Class.class);
+        } catch (NoSuchMethodException e) {
+            fail(ReferenceSlots.UPDATER_IMPL + " has no (Class, Class, String, Class) constructor any more."
+                    + REFERENCE_HOW_TO_FIX, e);
         }
     }
 

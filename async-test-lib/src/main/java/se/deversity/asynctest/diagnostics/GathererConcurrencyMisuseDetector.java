@@ -62,6 +62,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Labels identify gatherers. Registering one label twice with different shapes marks it
  * ambiguous, and no missing-combiner verdict is drawn from its integrations.
  *
+ * <p>The enter and exit pair is recorded by hand: the agent does not weave a gatherer's
+ * integrator, which is a lambda the JDK's stream internals call. An enter whose exit was never
+ * recorded is dropped when the next round starts (#846); within one round it cannot be told from
+ * an overlap, so pair the two in a {@code finally} block.
+ *
  * <p><strong>Usage:</strong>
  * <pre>{@code
  * @AsyncTest(threads = 8)
@@ -313,6 +318,22 @@ public class GathererConcurrencyMisuseDetector {
         GathererInfo info = gatherers.get(name);
         if (info == null) return;
         info.inIntegration.computeIfPresent(IdentityKey.lookup(state), (key, current) -> current.exit());
+    }
+
+    /**
+     * Marks the start of a new round: every integration still open is dropped (#846).
+     *
+     * <p>Rounds run one after another, so an integration open when the next round starts never
+     * returned through {@link #recordIntegrateExit(String, Object)}; its enter was not paired in a
+     * {@code finally}. Kept, it would read as an overlap with the next thread to enter that state.
+     * An exit missing within one round still cannot be told from an overlap.
+     *
+     * @since 1.12.4
+     */
+    public void markInvocationStart() {
+        for (GathererInfo info : gatherers.values()) {
+            info.inIntegration.clear();
+        }
     }
 
     private void recordThread(String name, GathererInfo info, Thread thread) {

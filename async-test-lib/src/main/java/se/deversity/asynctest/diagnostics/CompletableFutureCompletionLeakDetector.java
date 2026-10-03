@@ -61,6 +61,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CompletableFutureCompletionLeakDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class FutureState {
         final String name;
         final long createdTimeNanos = System.nanoTime();
@@ -75,8 +78,8 @@ public class CompletableFutureCompletionLeakDetector {
         final java.util.concurrent.atomic.AtomicBoolean completed =
                 new java.util.concurrent.atomic.AtomicBoolean(false);
 
-        FutureState(CompletableFuture<?> future, String name) {
-            this.name = name != null ? name : "future@" + System.identityHashCode(future);
+        FutureState(CompletableFuture<?> future, String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.of(future, "future");
         }
     }
 
@@ -96,7 +99,7 @@ public class CompletableFutureCompletionLeakDetector {
             return;
         }
         IdentityKey identity = new IdentityKey(future);
-        FutureState state = new FutureState(future, name);
+        FutureState state = new FutureState(future, name, unnamedLabels);
         futures.put(identity, state);
         leakCount.incrementAndGet();
 
@@ -370,8 +373,8 @@ public class CompletableFutureCompletionLeakDetector {
          *
          * @return stack trace at creation point
          */
-        public StackTraceElement @Nullable [] getCreationStackTrace() {
-            return creationStackTrace == null ? null : creationStackTrace.clone();
+        public StackTraceElement[] getCreationStackTrace() {
+            return creationStackTrace.clone();
         }
 
         @Override

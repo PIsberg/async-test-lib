@@ -78,6 +78,9 @@ import java.util.concurrent.atomic.AtomicLong;
 )
 public final class CompletableFutureCombinatorMisuseDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Await styles that return immediately instead of waiting for the group. */
     private static final Set<String> NON_BLOCKING_READS = Set.of("getNow", "isDone", "poll", "complete");
 
@@ -157,8 +160,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
     public void recordCombinator(CompletableFuture<?> combined, String label,
                                  String kind, int arity, Thread thread) {
         if (!enabled || combined == null || thread == null) return;
-        int id = System.identityHashCode(combined);
-        String name = label != null ? label : "combinator@" + id;
+        String name = label != null ? label : unnamedLabels.of(combined, "combinator");
         combinators.computeIfAbsent(new IdentityKey(combined), k -> new CombinatorState(
                 name, kind != null ? kind : "allOf", Math.max(arity, 0), thread.getName()));
     }

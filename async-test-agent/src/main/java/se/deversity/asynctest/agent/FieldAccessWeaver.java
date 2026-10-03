@@ -158,6 +158,8 @@ final class FieldAccessWeaver {
             "java/util/concurrent/atomic/AtomicReferenceFieldUpdater";
     private static final String REFERENCE_ARRAY = "java/util/concurrent/atomic/AtomicReferenceArray";
 
+    private static final String STAMPED_REFERENCE = "java/util/concurrent/atomic/AtomicStampedReference";
+
     /** The erased {@code Object} descriptor element the reference-slot tables are written in. */
     private static final String OBJECT = "Ljava/lang/Object;";
 
@@ -175,20 +177,45 @@ final class FieldAccessWeaver {
             "get", "()" + OBJECT,
             "getAcquire", "()" + OBJECT);
 
-    /** The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus {@code ReferenceUpdater}. */
+    /**
+     * The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus
+     * {@code ReferenceUpdater}. {@code get}, a volatile read, acquires the store whose value it
+     * returned (#741).
+     */
     private static final Map<String, String> REFERENCE_UPDATER_FORMS = Map.of(
+            "get", "(" + OBJECT + ")" + OBJECT,
             "set", "(" + OBJECT + OBJECT + ")V",
             "lazySet", "(" + OBJECT + OBJECT + ")V",
             "compareAndSet", "(" + OBJECT + OBJECT + OBJECT + ")Z",
             "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT);
 
-    /** The {@code AtomicReferenceArray} calls substituted; the hook is the name plus {@code ReferenceArray}. */
+    /**
+     * The {@code AtomicReferenceArray} calls substituted; the hook is the name plus
+     * {@code ReferenceArray}. {@code get} and {@code getAcquire} acquire the store of that element
+     * whose value they returned (#741).
+     */
     private static final Map<String, String> REFERENCE_ARRAY_FORMS = Map.of(
+            "get", "(I)" + OBJECT,
+            "getAcquire", "(I)" + OBJECT,
             "set", "(I" + OBJECT + ")V",
             "lazySet", "(I" + OBJECT + ")V",
             "setRelease", "(I" + OBJECT + ")V",
             "compareAndSet", "(I" + OBJECT + OBJECT + ")Z",
             "getAndSet", "(I" + OBJECT + ")" + OBJECT);
+
+    /**
+     * The {@code AtomicStampedReference} calls substituted; the hook is the name plus
+     * {@code StampedReference}. Its value is a (reference, stamp) pair: the reads acquire, the
+     * stores release, and on a thread whose test has an {@code ABAProblemDetector} each runs through
+     * it (#817).
+     */
+    private static final Map<String, String> STAMPED_REFERENCE_FORMS = Map.of(
+            "get", "([I)" + OBJECT,
+            "getReference", "()" + OBJECT,
+            "set", "(" + OBJECT + "I)V",
+            "compareAndSet", "(" + OBJECT + OBJECT + "II)Z",
+            "weakCompareAndSet", "(" + OBJECT + OBJECT + "II)Z",
+            "attemptStamp", "(" + OBJECT + "I)Z");
 
     /**
      * Owner prefixes (in internal, slash-separated form) whose fields are never woven: the
@@ -354,7 +381,8 @@ final class FieldAccessWeaver {
     }
 
     /**
-     * {@return the identifier reported for {@code owner.name}}
+     * {@return the identifier reported for {@code owner.name}}; the weaver passes the class that
+     * declares the field as {@code owner}, not the instruction's (#813)
      *
      * <p>Dotted form, matching what {@code TelemetryBridge.fieldIdentifier} expects, so a direct
      * field access and a woven accessor for the same field land under one key and a detector can
@@ -469,6 +497,40 @@ final class FieldAccessWeaver {
             } else {
                 super.visitInsn(Opcodes.ACONST_NULL);
             }
+        }
+
+        /** {@link #declaringOwner} answers already given in this method, keyed by owner and name. */
+        private final Map<String, String> declaringOwners = new java.util.HashMap<>();
+
+        /**
+         * {@return the internal name of the class that declares field {@code name}, looked up
+         * from {@code owner}, or {@code owner} when it cannot be resolved}
+         *
+         * <p>javac names a field instruction by the static type of its qualifier, so one field
+         * written through a subclass reference and read through the superclass's carries two
+         * owners. The identifier names the declaring class instead, so the two accesses meet under
+         * one key, and a subclass field that shadows its superclass's keeps a key of its own: the
+         * happens-before model no longer has to match fields by simple name, which let one stand in
+         * for the other (#813). Resolved at weave time and emitted as a constant, so the hot path
+         * pays nothing.
+         */
+        private String declaringOwner(String owner, String name) {
+            return declaringOwners.computeIfAbsent(owner + '.' + name, key -> {
+                try {
+                    TypeDescription type = typePool.describe(owner.replace('/', '.')).resolve();
+                    for (TypeDefinition current = type; current != null; current = current.getSuperClass()) {
+                        for (FieldDescription.InDefinedShape field
+                                : current.asErasure().getDeclaredFields()) {
+                            if (field.getName().equals(name)) {
+                                return current.asErasure().getInternalName();
+                            }
+                        }
+                    }
+                } catch (RuntimeException e) { // NOPMD - an unresolvable type keeps the instruction's owner
+                    return owner;
+                }
+                return owner;
+            });
         }
 
         /**
@@ -858,6 +920,8 @@ final class FieldAccessWeaver {
                         "ReferenceUpdater");
                 case REFERENCE_ARRAY -> atomicHook(REFERENCE_ARRAY_FORMS, name, descriptor,
                         "ReferenceArray");
+                case STAMPED_REFERENCE -> atomicHook(STAMPED_REFERENCE_FORMS, name, descriptor,
+                        "StampedReference");
                 case VAR_HANDLE -> referenceHandleHook(name, descriptor);
                 default -> null;
             };
@@ -878,6 +942,8 @@ final class FieldAccessWeaver {
                             arguments.length == 3 && result.getSort() == Type.VOID;
                     case "compareAndSet" -> arguments.length == 4 && result.getSort() == Type.BOOLEAN;
                     case "getAndSet" -> arguments.length == 3 && isReference(result);
+                    // The acquiring reads (#741); a plain or opaque get orders nothing.
+                    case "getVolatile", "getAcquire" -> arguments.length == 2 && isReference(result);
                     default -> false;
                 };
                 return matches ? name + "ArrayReferenceHandle" : null;
@@ -893,6 +959,7 @@ final class FieldAccessWeaver {
                         arguments.length == 2 && result.getSort() == Type.VOID;
                 case "compareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 2 && isReference(result);
+                case "getVolatile", "getAcquire" -> arguments.length == 1 && isReference(result);
                 default -> false;
             };
             if (instanceMatches) {
@@ -903,6 +970,7 @@ final class FieldAccessWeaver {
                         arguments.length == 1 && result.getSort() == Type.VOID;
                 case "compareAndSet" -> arguments.length == 2 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 1 && isReference(result);
+                case "getVolatile", "getAcquire" -> arguments.length == 0 && isReference(result);
                 default -> false;
             };
             return staticMatches ? name + "StaticReferenceHandle" : null;
@@ -918,14 +986,14 @@ final class FieldAccessWeaver {
          * <p>An atomic's hook takes the atomic and then the call's own erased parameters. A
          * {@code VarHandle} hook takes the handle and one {@code Object} per operand (plus the
          * {@code int} index for an array element), and returns {@code Object} for a
-         * {@code getAndSet}, which {@link #castToCallSiteResult} narrows back.
+         * {@code getAndSet} or an acquiring read, which {@link #castToCallSiteResult} narrows back.
          */
         private static String referenceSlotHookDescriptor(String owner, String hook,
                                                           String descriptor) {
             if (!VAR_HANDLE.equals(owner)) {
                 return "(L" + owner + ";" + descriptor.substring(1);
             }
-            String result = hook.startsWith("getAndSet") ? "Ljava/lang/Object;"
+            String result = hook.startsWith("get") ? "Ljava/lang/Object;"
                     : hook.startsWith("compareAndSet") ? "Z" : "V";
             if (hook.endsWith("ArrayReferenceHandle")) {
                 return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I"
@@ -1128,7 +1196,7 @@ final class FieldAccessWeaver {
          * and keeps its finding.
          */
         private void notePublication(String owner, String name, boolean isWrite, boolean isVolatile) {
-            String identifier = identifier(owner, name);
+            String identifier = identifier(declaringOwner(owner, name), name);
             if (isVolatile) {
                 if (isWrite) {
                     for (String published : plainWritesInThisMethod) {
@@ -1164,7 +1232,7 @@ final class FieldAccessWeaver {
 
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-            String identifier = identifier(owner, name);
+            String identifier = identifier(declaringOwner(owner, name), name);
             boolean write = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
             int tag = constantTag(write, identifier);
             if (!write) {
@@ -1214,6 +1282,13 @@ final class FieldAccessWeaver {
                 }
                 volatileLoad = isVolatile && !isWrite;
                 notePublication(owner, name, isWrite, isVolatile);
+            } else if (constructionWrite && weaveFieldInstructions && shouldWeave(owner)
+                    && !thisIsUninitialised && isVolatile(owner, name)) {
+                // A constructor's write records no access, but a volatile one is still a release:
+                // a reader that sees the value is ordered after everything the thread did before
+                // it, which is how a flag set in a constructor publishes safely (#813). Only after
+                // the super constructor has run, when the receiver may be passed to a method.
+                emitVolatileStore(owner, false, descriptor, identifier);
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
             if (volatileLoad) {

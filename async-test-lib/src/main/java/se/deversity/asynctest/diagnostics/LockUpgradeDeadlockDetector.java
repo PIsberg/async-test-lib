@@ -31,6 +31,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 )
 public final class LockUpgradeDeadlockDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State {
         final String lockName;
         final Set<String> deadlockedThreads = ConcurrentHashMap.newKeySet();
@@ -114,7 +117,7 @@ public final class LockUpgradeDeadlockDetector {
         }
         if (upgrade) {
             State s = violations.computeIfAbsent(id, k -> new State(
-                lockName != null ? lockName : "ReentrantReadWriteLock@" + id.hashCode()
+                lockName != null ? lockName : unnamedLabels.of(id, "ReentrantReadWriteLock")
             ));
             s.deadlockedThreads.add(ReportSections.threadLabel(thread));
         }

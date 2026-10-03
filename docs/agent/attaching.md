@@ -208,10 +208,19 @@ returned published: reading one volatile field receives nothing a write of anoth
 a read that returned an older value receives nothing the later write published (#742). The acquire
 goes into the reading thread's clock, so everything the thread does after the read is ordered,
 including its accesses to the object the read returned, which is how a node published through a
-volatile `next` reaches its reader (#804). An `AtomicReference` is modelled the same way (#741): a
+volatile `next` reaches its reader (#804). A field is the one its class declares, whatever static type
+the access went through, so a subclass field that shadows a superclass field has a clock of its own,
+and a volatile write in a constructor releases once the super constructor has run (#813). An `AtomicReference` is modelled the same way (#741): a
 `set`, `lazySet`, `setRelease`, successful `compareAndSet` or `getAndSet` releases the slot, and a
 `get` or `getAcquire` acquires what the store whose value it returned published, so the same object
-read out of another slot receives nothing. The value is compared as a primitive's bits or a
+read out of another slot receives nothing. So is a reference slot reached through an `AtomicReferenceFieldUpdater`,
+an `AtomicReferenceArray` element or a `VarHandle` (since #741): their volatile, release and successful
+compare-and-set stores release the slot, and an updater `get`, an array `get` or `getAcquire`, or a
+handle's `getVolatile` or `getAcquire` acquires. An `AtomicStampedReference` is a slot too (#817): its
+`set` and successful swaps release, its `get` and `getReference` acquire. The slot is the field the updater or handle reaches,
+the same clock a direct access to that field uses, or the element's index. A plain or opaque access
+orders nothing, and an updater's field is named only while `java.util.concurrent.atomic` is open to the
+library, which `fields=true` arranges. The value is compared as a primitive's bits or a
 reference's identity, held weakly by the release so the model keeps nothing alive, and among the
 field's last four writes only, since a write is released just before it is stored and a read can
 still return an earlier value while later writers are in that window (#813). An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock
@@ -251,7 +260,9 @@ Three limits worth knowing before switching it on:
   weak swaps on both atomics. A handle bound before the agent attached is resolved from its own
   descriptor (#558), and an updater bound before it from its own target class and field offset,
   which the agent opens `java.util.concurrent.atomic` to read (#659), to the module of the library
-  copy each woven loader resolves and to nothing else (#668).
+  copy each woven loader resolves and to nothing else (#668). In every mode the agent also opens
+  `java.util.concurrent.locks` to that module, so `ReentrantLockDetector` and `LockLeakDetector` read
+  a held lock's owner thread at analysis instead of the name the lock prints (#855).
   A spinlock is never trusted past what its flag says: it counts as held only while the flag
   still reads locked and this thread is its last observed winner, re-checked whenever the lockset
   is read. A release through a call the weaver does not substitute (`Unsafe`, JNI, reflection, a
@@ -447,10 +458,15 @@ Self-attach needs `-Djdk.attach.allowAttachSelf=true` on the test JVM.
   <artifactId>maven-surefire-plugin</artifactId>
   <configuration>
     <!-- @{argLine} preserves JaCoCo's late-bound agent argLine -->
-    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
+    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading</argLine>
   </configuration>
 </plugin>
 ```
+
+On surefire 3.6.0, `-XX:+EnableDynamicAgentLoading` is required, not cosmetic. Without it the JDK
+prints its dynamic-agent warning to `System.err` from the Attach Listener thread, surefire's
+output capture fails there, and the attach aborts with `Agent failed to start!`. With the flag
+the JDK prints no warning, so surefire 3.5.x and Gradle need it only to keep the log quiet.
 
 **Gradle (Kotlin DSL):**
 

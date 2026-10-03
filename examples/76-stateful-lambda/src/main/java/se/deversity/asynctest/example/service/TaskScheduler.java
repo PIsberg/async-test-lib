@@ -39,7 +39,7 @@ public class TaskScheduler {
 
     private volatile BiConsumer<Object, String> onExecute = (task, name) -> { };
 
-    private volatile BiConsumer<Object, String> onCapturedMutation = (task, name) -> { };
+    private volatile BiConsumer<Object, Object> onCapturedMutation = (task, captured) -> { };
 
     /** BUG: one peak, captured by one tracker, read by every caller and written by few. */
     private final int[] peak = {0};
@@ -57,7 +57,7 @@ public class TaskScheduler {
         Runnable[] self = new Runnable[1];
         self[0] = () -> {
             onExecute.accept(self[0], "counting-task");
-            onCapturedMutation.accept(self[0], "count");
+            onCapturedMutation.accept(self[0], count);
             count[0]++;                      // BUG: non-atomic on shared captured state
         };
         this.countingTask = self[0];
@@ -127,10 +127,11 @@ public class TaskScheduler {
      * Installs the hooks StatefulLambdaDetector needs. No-ops by default.
      *
      * @param execute          called with the task instance and a label at the top of each run
-     * @param capturedMutation called with the task instance and the captured variable's name
+     * @param capturedMutation called with the task instance and the captured array before it is
+     *                         incremented
      */
     public void observeTask(BiConsumer<Object, String> execute,
-                            BiConsumer<Object, String> capturedMutation) {
+                            BiConsumer<Object, Object> capturedMutation) {
         this.onExecute = execute;
         this.onCapturedMutation = capturedMutation;
     }

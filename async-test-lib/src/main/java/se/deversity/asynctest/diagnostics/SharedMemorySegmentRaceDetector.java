@@ -74,6 +74,9 @@ import java.util.concurrent.atomic.LongAdder;
 )
 public final class SharedMemorySegmentRaceDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * Per-segment cap on retained access records. Beyond this the detector counts drops instead
      * of growing: a stress test doing a million writes must not turn the detector into the leak.
@@ -182,7 +185,7 @@ public final class SharedMemorySegmentRaceDetector {
         SegmentState s = segments.get(IdentityKey.lookup(segment));
         if (s == null) {
             IdentityKey key = new IdentityKey(segment);
-            final String lbl = label != null ? label : "MemorySegment@" + key.hashCode();
+            final String lbl = label != null ? label : unnamedLabels.of(key, "MemorySegment");
             s = segments.computeIfAbsent(key, k -> new SegmentState(lbl));
         }
         return s;

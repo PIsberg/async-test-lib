@@ -50,6 +50,9 @@ import java.util.Map;
 )
 public final class NotifyWithoutMonitorDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class Attempt {
         final String monitorLabel;
         final String threadName;
@@ -83,7 +86,7 @@ public final class NotifyWithoutMonitorDetector {
         if (held) return; // legal call; nothing to report
         String effectiveLabel = (label != null)
                 ? label
-                : monitor.getClass().getSimpleName() + "@" + System.identityHashCode(monitor);
+                : unnamedLabels.of(monitor, monitor.getClass().getSimpleName());
         synchronized (attempts) {
             attempts.add(new Attempt(effectiveLabel,
                     Thread.currentThread().getName(),

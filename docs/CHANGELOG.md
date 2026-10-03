@@ -7,8 +7,141 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`ABAProblemDetector` grades its findings by path (#817).** An A-B-A the agent took inside each
+  operation is graded `VERDICT` on `OBSERVED` evidence, so a `minTrust = VERDICT` gate now sees it;
+  one recorded by hand stays `FACT` on `ASSERTED`, because a toggle that ran before the read
+  produces the same records (#810). The detector row moves from `ASSERTED` to `OBSERVED` evidence
+  and keeps its `FACT` tier.
+
+- **The agent's two unmeasured costs are measured and documented (#844).** A woven access inside
+  `synchronized` methods pays about 15 ns per enclosing method for the `Thread.holdsLock` check
+  #822 added (1.5 ns with none, 90 ns at depth 6). It stays: every cheaper check found was
+  unsound. Volatile fields keep 340 to 492 bytes each while their owner lives, of which #813's
+  four kept releases add about 100 to 150. Both are in `docs/agent/overview.md`.
+
+- **`StatefulLambdaDetector`'s object-taking overloads are stable (#800).**
+  `recordCapturedMutation(lambda, name, state, thread)` and `recordCapturedRead(lambda, state,
+  thread)` leave `EXPERIMENTAL`. They are the fix for #800: without the captured object, two
+  captures each under its own lock read as one capture under no common lock, and keying by name
+  instead would let two names for one object hide a race. The class javadoc, `examples/README.md`
+  and example 76, whose counting task now hands its counter to the hook, use them.
+
+- **Unnamed objects are labelled `kind@n`, counted per detector, in every report (#860).** #854
+  moved nineteen detectors off a `type@identityHash` label, but 60 sites in 52 other detectors
+  still built one, from `System.identityHashCode` or from an `IdentityKey`'s `hashCode()`, which
+  is the same number. None was a map key, so no report merged two objects yet, but two live
+  objects share an identity hash often enough that any later keyed use would. The 21 sites #854
+  fixed drew their numbers from one JVM-wide counter, so a label read `queue@4711` deep in a
+  suite. All 81 now take their label from the detector's own `UnnamedLabels`, which counts per
+  kind from 1. A detector lives for one `@AsyncTest` invocation, so the same test prints `queue@1`
+  on every run, and a registration repeated by every worker no longer uses up a number.
+  `ReportLabelsAreNotIdentityHashesTest` refuses a new hash label. Baselines are unaffected: a
+  fingerprint reads `@` and digits as `@#`.
+
+- **Build: PMD 7.28.0, NullAway 0.14.2, setup-gradle 6.4.0, codecov-action 7.1.1 (#870, #873,
+  #880, #727).** PMD 7.28.0 renamed `UseUtilityClass` to `InstantiableUtilityClass`, so the
+  ruleset's exclude for the public `AsyncAssert` and `ConcurrencyRunner` constructors stopped
+  matching; it now names the new rule. The same release reports `ReturnEmptyCollectionRatherThanNull`
+  on `LeakedFuture.getCreationStackTrace()`, `NestedSubmissionSnapshot.getStackTrace()` and
+  `PinningEventSnapshot.getStackTrace()`, which returned `null` for a field that is never null.
+  They now return the copy unconditionally and are no longer declared `@Nullable`.
+- **Build: vibetags-processor 1.3.7 (#871).** 1.3.7 drops an element from the `<scoped_rules>`
+  index when its rule file holds only safety-tier stanzas, since those stay inline in the
+  aggregate. Four index entries leave the module `CLAUDE.md` files and `GEMINI.md`; every rule file
+  and every inline guardrail is unchanged.
+- **Build: maven-surefire-plugin 3.6.0 (#488).** Every agent self-attach test failed under 3.6.0
+  with `Agent failed to start!`. The JDK prints its dynamic-agent warning to `System.err` from the
+  Attach Listener thread, whose context class loader is null; 3.6.0's output capture throws while
+  initialising on that thread, and the error aborts `InstrumentationImpl`'s constructor. The test
+  JVM now runs with `-XX:+EnableDynamicAgentLoading`, which suppresses the warning, and the
+  self-attach snippet in `docs/agent/attaching.md` carries the same flag for consumers on 3.6.0.
+
 ### Fixed
 
+- **The bytecode identity-key gate missed three shapes (#803).** `IdentityHashKeyScanner` now
+  follows a hash stored into an array a field holds, an `Object.toString()` whose text ends in the
+  identity hash (called, passed to `String.valueOf` or built into a string), and a virtual or
+  interface call to any override in the scanned set rather than only the declared one. Following
+  the ring's event arrays surfaced `AtomicityValidator`'s ownership state, which its own javadoc
+  keys by identity hash on purpose (a collision can only withhold an excuse); those five methods
+  are excused in `LibraryStateIsKeyedByIdentityTest` with that reason. Scanning `async-test-agent`
+  is #895.
+- **`AtomicStampedReference` was not woven (#817).** A stamp reused across an A-B-A, a store that
+  keeps the stamp it found, is the same bug as a bare reference's A-B-A, and nothing saw it. Its
+  `get`, `getReference`, `set`, `compareAndSet`, `weakCompareAndSet` and `attemptStamp` are now
+  woven: `ABAProblemDetector` judges the (reference, stamp) pair, so a stamp bumped on every store
+  stays silent and a reused one is reported, and the stores release and the reads acquire in the
+  happens-before model as an `AtomicReference`'s do.
+- **An A-B-A of a record holding mutable state was judged harmless (#817).** On the agent path a
+  compare-and-set is reported only when its expected value can carry state, and a value whose
+  fields were all final, a record among them, never could. A record holding a `List` can: the list
+  may have changed while the record was away. Such a value now carries state when one of its
+  final fields reaches state, followed three fields deep.
+- **An A-B-A through an updater, an `AtomicReferenceArray` or a `VarHandle` went unreported (#817).**
+  `ABAProblemDetector` was fed by the agent through `AtomicReference` only. The other reference
+  slots' woven operations now run through it too, each slot (a field per updater or handle, an
+  element per index) judged on its own, with the record taken under the same monitor as the
+  operation, so a toggle before the read stays silent and one between the read and the swap fires.
+- **Two optimistic-read shapes under the agent read as unguarded (#823).** A read or write lock
+  converted with `tryConvertToOptimisticRead` opened no speculation, so the reads after it, which
+  a later `validate` covers, were delivered as plain reads; the conversion now opens one, and
+  converting an optimistic stamp counts as that stamp validating. A speculation also gave up after
+  256 reads and delivered every read it held as plain; the bound is now 4,096, and only an
+  unbroken run of reads can reach it.
+- **A `ReentrantLock` leaked by a nameless thread went unreported (#855).** A lock names its holder
+  only by name, and every unnamed virtual thread is `""`, so a hold such a thread kept through a
+  balanced re-entry was printed as context by `ReentrantLockDetector` and missed by
+  `LockLeakDetector`. With the agent attached, in any mode, it now opens
+  `java.util.concurrent.locks` to the library, which reads the lock's owner `Thread`: an owner that
+  has terminated or sits idle in a pool leaked the lock whatever it is called, and one still
+  working is context. Without the agent the name rules apply as before. `JdkLockShapeCanaryTest`
+  fails the build on a JDK that moves the members read.
+- **Woven calendar rolls and zero adds were recorded as leaving fields to recompute (#820).** On
+  a `GregorianCalendar` a roll of `HOUR` or `HOUR_OF_DAY` keeps every field computed, and an
+  `add` or `roll` by 0 returns before touching the calendar, both measured against the class's
+  `isTimeSet` and `areFieldsSet`. The agent's hooks recorded them as adds, so gets after them
+  under one read lock were reported as writes. They are now recorded by effect on a plain
+  `GregorianCalendar`; other calendars stay conservative. `CacheConcurrencyDetector`'s thread
+  count is now labelled as counted across the run; its finding was already decided per round.
+- **A reference handed through an updater, an `AtomicReferenceArray` or a `VarHandle` read as a race
+  (#741).** The agent wove those slots' stores as ownership offers but not their reads, and the
+  stores released nothing to the happens-before model, so a plain update published by storing a
+  reference there was reported against the reader that took it out. An updater `get`, an array
+  `get` or `getAcquire`, and a handle's `getVolatile` or `getAcquire` are now woven and acquire
+  what the store whose value they returned published; volatile, release and successful
+  compare-and-set stores release. A slot is keyed by the field its updater or handle reaches,
+  the same clock a direct access to that field uses, or by the element index. Plain and opaque
+  accesses still order nothing.
+- **Two happens-before edges the volatile model missed or invented (#813).** The agent named a
+  field by the static type of the access, so one field read through `Sub` and through `Base` had
+  two names, and the model matched fields by simple name to meet them. That let a subclass field
+  stand in for the superclass field it shadows: a read of the shadowed field, which nothing
+  released, was ordered by the other field's write and hid a race. The weaver now names a field
+  by its declaring class, and two names match only when one is a dot-suffix of the other, so a
+  manual `ready` or `Holder.ready` still meets `com.example.Holder.ready`. A volatile write in a
+  constructor also releases now, once the super constructor has run, so a flag set there
+  publishes what the thread wrote before it instead of reading as a race. Still known and now
+  pinned: a value stored twice is acquired from the later release.
+- **A gatherer integration left open by one round read as an overlap in the next (#846).**
+  `GathererConcurrencyMisuseDetector` reports two integrations of one state open at once on two
+  threads. An enter whose exit was never recorded stayed open until a 4,096-entry cap cleared it,
+  so the next round's first integration of that state on another thread was reported HIGH. Rounds
+  run one after another, so the detector now drops open integrations at each round start; within
+  one round a missing exit still cannot be told from an overlap. Decided on #846 and unchanged: a
+  missed-speedup LOW still counts in `hasIssues()`, and a deliberately shared, thread-safe state
+  is still reported, since the contract is one state per initializer call. Example 116's real
+  `Gatherer` waits on the examples' JDK baseline (#893).
+- **IntelliJ plugin: a directory at a report path hid the real report (#723).** The tool window
+  took the first configured report path that existed, so a directory named like the report shadowed
+  a file at a later path and the panel showed an empty parse. It now takes the first regular file.
+  The lookup moved to `ReportLocator` in the plugin's model package, which tests it without
+  booting an IDE. The UI layer had no test at all, which is how the Refresh button was documented
+  for the plugin's whole life without existing: `FindingsToolWindowPlatformTest` now boots a
+  headless IDE (the IntelliJ Platform test framework) and checks the Refresh action and its Tools
+  menu entry, the tool window's content and Refresh title action, a report under the project
+  loading into the summary, and the settings page's apply and reset.
 - **One `TelemetryRegistry.stop()` switched off woven happens-before edges for the rest of the JVM
   (#891).** `stop()` sets a flag that exists so nothing fills an event ring no drain thread will
   empty, but the woven hooks also checked it before telling the happens-before model about a queue

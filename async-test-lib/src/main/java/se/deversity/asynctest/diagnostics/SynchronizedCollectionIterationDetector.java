@@ -38,6 +38,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class SynchronizedCollectionIterationDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class WrapperInfo {
         final String name;
         final AtomicInteger unsafeIterations = new AtomicInteger();
@@ -56,7 +59,7 @@ public class SynchronizedCollectionIterationDetector {
      */
     public void recordWrapperCreated(Object wrapper, String name) {
         if (wrapper == null) return;
-        String label = name != null ? name : "collection@" + System.identityHashCode(wrapper);
+        String label = name != null ? name : unnamedLabels.of(wrapper, "collection");
         // computeIfAbsent, not put: an @AsyncTest body runs once per worker, so this is called
         // again for a wrapper already being tracked. Installing fresh state there discarded
         // every unsafe iteration counted so far. The first label wins, which is the right way

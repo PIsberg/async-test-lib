@@ -53,6 +53,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * holding the lock is reported. What remains is a virtual thread that never recorded against the
  * lock and carries the recorded thread's non-empty name.
  *
+ * <p>With the agent attached the holder is identified by the lock itself: the agent opens
+ * {@code java.util.concurrent.locks} to the library, which reads the owner {@code Thread} (#855). A
+ * hold whose owner has terminated, or sits idle in a pool, is reported whatever the thread is
+ * called, and one whose owner is still working is context; the name rules here and below apply
+ * only where the owner cannot be read.
+ *
  * <p>An unidentified hold is context rather than a finding of any grade (#855), although it misses
  * a real leak: a helper that re-enters the lock and keeps the extra hold on an unnamed virtual
  * thread, or on a thread that never recorded taking the lock, balances the recorded counts, so
@@ -93,6 +99,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * </ul>
  */
 public class ReentrantLockDetector {
+
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
 
     private final Map<ReentrantLock, LockInfo> lockRegistry = new ConcurrentHashMap<>();
     /** Timeouts per lock. {@code ReentrantLock} keeps {@code Object}'s equality, so keys are identities. */
@@ -153,7 +162,7 @@ public class ReentrantLockDetector {
     private String nameOf(ReentrantLock lock) {
         LockInfo info = lockRegistry.get(lock);
         return info != null ? info.name
-                : unnamed.computeIfAbsent(lock, l -> ReportSections.unnamed("ReentrantLock"));
+                : unnamed.computeIfAbsent(lock, l -> unnamedLabels.next("ReentrantLock"));
     }
 
     /** {@return what has been seen on {@code lock}, created on first use} */
@@ -339,6 +348,20 @@ public class ReentrantLockDetector {
             if (!lock.isLocked() || lock.isHeldByCurrentThread() || leftToLeakReporter(lock)) {
                 continue;
             }
+            Thread owner = LockOwners.ownerOf(lock);
+            if (owner != null) {
+                // The owner itself, read where the agent opened the lock's package (#855): a thread,
+                // not a name, so an unnamed or ambiguously named holder is judged like any other.
+                String byOwner = "Locked by thread " + ReportSections.threadLabel(owner);
+                HolderState ownerState = stateOf(owner);
+                if (ownerState == HolderState.WORKING) {
+                    stillWorking.put(lock, byOwner + ", still running");
+                } else {
+                    held.put(lock, byOwner + (ownerState == HolderState.IDLE
+                            ? ", now idle in its pool" : ", which has finished"));
+                }
+                continue;
+            }
             String holder = ReentrantLockReport.holderOf(lock);
             String holderName = holderNameOf(lock);
             if (holderName == null) {
@@ -405,10 +428,27 @@ public class ReentrantLockDetector {
                 || anotherLiveThreadIsNamed(holderName, recorded, recordedThreads)) {
             return null;
         }
-        if (!recorded.isAlive()) {
+        return stateOf(recorded);
+    }
+
+    /** {@return where {@code holder}, known to be the thread holding a lock, is now} */
+    static HolderState stateOf(Thread holder) {
+        if (!holder.isAlive()) {
             return HolderState.GONE;
         }
-        return idleInAPool(recorded) ? HolderState.IDLE : HolderState.WORKING;
+        return idleInAPool(holder) ? HolderState.IDLE : HolderState.WORKING;
+    }
+
+    /**
+     * {@return where the thread holding {@code lock} is now, read from the lock's owner, or
+     * {@code null} when the owner cannot be read} (#855): only where the agent opened
+     * {@code java.util.concurrent.locks}; {@link #holderState} judges by name otherwise.
+     *
+     * @param lock a lock that is held
+     */
+    static @Nullable HolderState ownerState(ReentrantLock lock) {
+        Thread owner = LockOwners.ownerOf(lock);
+        return owner == null ? null : stateOf(owner);
     }
 
     /** {@return whether a live thread among {@code threads} other than {@code recorded} is also named {@code name}} */

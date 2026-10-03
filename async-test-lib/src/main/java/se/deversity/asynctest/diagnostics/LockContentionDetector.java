@@ -46,6 +46,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class LockContentionDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Contention ratio threshold above which a monitor is reported as hot. */
     private static final double CONTENTION_THRESHOLD = 0.20;
 
@@ -151,7 +154,7 @@ public class LockContentionDetector {
         return monitors.computeIfAbsent(new IdentityKey(monitor), k -> {
             String label = (name != null)
                     ? name
-                    : monitor.getClass().getSimpleName() + "@" + k.hashCode();
+                    : unnamedLabels.of(k, monitor.getClass().getSimpleName());
             return new MonitorState(label);
         });
     }

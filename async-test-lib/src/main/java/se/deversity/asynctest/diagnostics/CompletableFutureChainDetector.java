@@ -40,6 +40,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CompletableFutureChainDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final java.util.regex.Pattern ARROW = java.util.regex.Pattern.compile("->");
 
     private static class FutureState {
@@ -89,7 +92,7 @@ public class CompletableFutureChainDetector {
             return;
         }
         IdentityKey key = new IdentityKey(future);
-        FutureState state = new FutureState(name != null ? name : "CompletableFuture@" + Integer.toHexString(key.hashCode()));
+        FutureState state = new FutureState(name != null ? name : unnamedLabels.of(key, "CompletableFuture"));
         futures.put(key, state);
         totalCreated.incrementAndGet();
     }

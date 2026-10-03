@@ -32,6 +32,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class AtomicNonAtomicUpdateDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class AtomicState extends SelfGuard.TrackedInstance {
         final String name;
         final Map<Long, Integer> pendingGetByThread = new ConcurrentHashMap<>();
@@ -45,7 +48,7 @@ public class AtomicNonAtomicUpdateDetector {
 
     private AtomicState stateFor(Object atomic, String name) {
         return atomics.computeIfAbsent(new IdentityKey(atomic),
-            key -> new AtomicState(name != null ? name : "Atomic@" + key.hashCode()));
+            key -> new AtomicState(name != null ? name : unnamedLabels.of(key, "Atomic")));
     }
 
     /**
