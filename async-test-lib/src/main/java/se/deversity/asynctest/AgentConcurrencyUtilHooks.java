@@ -2642,6 +2642,11 @@ public final class AgentConcurrencyUtilHooks {
         if (handed != null) {
             HappensBefore.receive(handed.finished());
         }
+        if (handed instanceof HandedStage stage && stage.composed != null) {
+            // A composed stage completes when the stage its function returned does, so what was
+            // released to that one is observed too (#741).
+            HappensBefore.acquire(stage.composed);
+        }
     }
 
     /**
@@ -2766,6 +2771,12 @@ public final class AgentConcurrencyUtilHooks {
         private final @Nullable AsyncTestContext registeredIn;
 
         /**
+         * The {@code CompletableFuture} the function returned, for {@code thenCompose} and
+         * {@code exceptionallyCompose}: the stage completes when that one does (#741).
+         */
+        volatile @Nullable Object composed;
+
+        /**
          * Takes the registering thread's clock, on that thread.
          *
          * @param source the stage the function follows, {@code null} when that is not known
@@ -2836,7 +2847,11 @@ public final class AgentConcurrencyUtilHooks {
         public @Nullable Object apply(@Nullable Object value) {
             AsyncTestContext lentBefore = begin();
             try {
-                return ((Function<@Nullable Object, @Nullable Object>) function).apply(value);
+                Object result = ((Function<@Nullable Object, @Nullable Object>) function).apply(value);
+                if (result instanceof CompletableFuture) {
+                    composed = result;
+                }
+                return result;
             } finally {
                 end(lentBefore);
             }

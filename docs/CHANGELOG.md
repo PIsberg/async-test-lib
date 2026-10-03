@@ -98,7 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `join` of its stage. The weaver now wraps the function: the thread running it receives the
   registering thread's clock and acquires each completion it waits for, and a `join` or `get` of
   the stage on the registering thread receives the clock the function finished with. The
-  `Either` forms carry only the registering thread's clock. The wrapper also attributes a pool
+  `Either` forms carry only the registering thread's clock, and a join of a composed stage is
+  also ordered after the completion of the stage its function returned. The wrapper also attributes a pool
   thread running such a function to the run (#834). A `CompletableFuture` never hands its
   functions back, so nothing can see the wrapper. Calls typed against `CompletionStage` are woven
   as well, and wrap only when the stage is a `CompletableFuture`.
