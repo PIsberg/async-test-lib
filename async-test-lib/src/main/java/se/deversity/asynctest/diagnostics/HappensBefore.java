@@ -118,10 +118,12 @@ import org.jspecify.annotations.Nullable;
  *       identity like a queue element, so one object two pairs exchange at once orders each
  *       taker after both givers.
  *   <li>Not yet observed: a dependent stage's function ({@code thenApply} and the rest),
- *       {@code Executor.execute}, a task submitted to an executor outside the JDK, a
- *       {@code get} of an {@code AtomicReferenceFieldUpdater} or an {@code AtomicReferenceArray},
- *       and a validated {@code StampedLock} optimistic read. Code relying on those needs the
- *       manual methods.
+ *       {@code Executor.execute}, a task submitted to an executor outside the JDK, a plain or
+ *       opaque {@code VarHandle} read, a reference slot whose field cannot be named (an adapted
+ *       handle, or an updater while {@code java.util.concurrent.atomic} is closed to this
+ *       library), and a validated {@code StampedLock} optimistic read. Code relying on those
+ *       needs the manual methods. An updater's, an {@code AtomicReferenceArray}'s and a
+ *       {@code VarHandle}'s volatile and acquiring reference reads are edges since #741.
  * </ul>
  *
  * <p>The state is process-wide, because ordering is a property of the execution rather than of one

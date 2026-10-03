@@ -213,7 +213,13 @@ the access went through, so a subclass field that shadows a superclass field has
 and a volatile write in a constructor releases once the super constructor has run (#813). An `AtomicReference` is modelled the same way (#741): a
 `set`, `lazySet`, `setRelease`, successful `compareAndSet` or `getAndSet` releases the slot, and a
 `get` or `getAcquire` acquires what the store whose value it returned published, so the same object
-read out of another slot receives nothing. The value is compared as a primitive's bits or a
+read out of another slot receives nothing. So is a reference slot reached through an `AtomicReferenceFieldUpdater`,
+an `AtomicReferenceArray` element or a `VarHandle` (since #741): their volatile, release and successful
+compare-and-set stores release the slot, and an updater `get`, an array `get` or `getAcquire`, or a
+handle's `getVolatile` or `getAcquire` acquires. The slot is the field the updater or handle reaches,
+the same clock a direct access to that field uses, or the element's index. A plain or opaque access
+orders nothing, and an updater's field is named only while `java.util.concurrent.atomic` is open to the
+library, which `fields=true` arranges. The value is compared as a primitive's bits or a
 reference's identity, held weakly by the release so the model keeps nothing alive, and among the
 field's last four writes only, since a write is released just before it is stored and a read can
 still return an earlier value while later writers are in that window (#813). An `ArrayDeque` or a `HashMap` promises nothing and gives no edge. A lock

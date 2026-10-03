@@ -2394,6 +2394,7 @@ public final class TelemetryRegistry {
     public static void setReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                            Object receiver, @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(updater));
+        slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
         updater.set(receiver, value);
     }
 
@@ -2409,6 +2410,7 @@ public final class TelemetryRegistry {
     public static void lazySetReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                                Object receiver, @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(updater));
+        slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
         updater.lazySet(receiver, value);
     }
 
@@ -2427,7 +2429,11 @@ public final class TelemetryRegistry {
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object expected, @Nullable Object update) {
         slotOffered(update, receiver, System.identityHashCode(updater));
-        return updater.compareAndSet(receiver, expected, update);
+        boolean swapped = updater.compareAndSet(receiver, expected, update);
+        if (swapped) {
+            slotReleased(receiver, ReferenceSlots.fieldOf(updater), update);
+        }
+        return swapped;
     }
 
     /**
@@ -2443,6 +2449,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetReferenceUpdater(
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object value) {
+        slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
         Object previous = updater.getAndSet(receiver, value);
         slotTaken(previous, receiver, System.identityHashCode(updater));
         return previous;
@@ -2459,6 +2466,7 @@ public final class TelemetryRegistry {
     public static void setReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                          @Nullable Object value) {
         slotOffered(value, slots, index);
+        slotReleased(slots, ReferenceSlots.element(index), value);
         slots.set(index, value);
     }
 
@@ -2473,6 +2481,7 @@ public final class TelemetryRegistry {
     public static void lazySetReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                              @Nullable Object value) {
         slotOffered(value, slots, index);
+        slotReleased(slots, ReferenceSlots.element(index), value);
         slots.lazySet(index, value);
     }
 
@@ -2487,6 +2496,7 @@ public final class TelemetryRegistry {
     public static void setReleaseReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                 @Nullable Object value) {
         slotOffered(value, slots, index);
+        slotReleased(slots, ReferenceSlots.element(index), value);
         slots.setRelease(index, value);
     }
 
@@ -2504,7 +2514,11 @@ public final class TelemetryRegistry {
                                                       @Nullable Object expected,
                                                       @Nullable Object update) {
         slotOffered(update, slots, index);
-        return slots.compareAndSet(index, expected, update);
+        boolean swapped = slots.compareAndSet(index, expected, update);
+        if (swapped) {
+            slotReleased(slots, ReferenceSlots.element(index), update);
+        }
+        return swapped;
     }
 
     /**
@@ -2519,6 +2533,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetReferenceArray(AtomicReferenceArray<Object> slots,
                                                            int index, @Nullable Object value) {
+        slotReleased(slots, ReferenceSlots.element(index), value);
         Object previous = slots.getAndSet(index, value);
         slotTaken(previous, slots, index);
         return previous;
@@ -2549,6 +2564,7 @@ public final class TelemetryRegistry {
     public static void setVolatileReferenceHandle(VarHandle handle, Object receiver,
                                                   @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(handle));
+        slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
         handle.withInvokeBehavior().setVolatile(receiver, value);
     }
 
@@ -2563,6 +2579,7 @@ public final class TelemetryRegistry {
     public static void setReleaseReferenceHandle(VarHandle handle, Object receiver,
                                                  @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(handle));
+        slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
         handle.withInvokeBehavior().setRelease(receiver, value);
     }
 
@@ -2595,7 +2612,11 @@ public final class TelemetryRegistry {
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
         slotOffered(update, receiver, System.identityHashCode(handle));
-        return handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
+        boolean swapped = handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
+        if (swapped) {
+            slotReleased(receiver, ReferenceSlots.fieldOf(handle), update);
+        }
+        return swapped;
     }
 
     /**
@@ -2611,6 +2632,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetReferenceHandle(VarHandle handle, Object receiver,
                                                             @Nullable Object value) {
+        slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
         Object previous = handle.withInvokeBehavior().getAndSet(receiver, value);
         slotTaken(previous, receiver, System.identityHashCode(handle));
         return previous;
@@ -2639,6 +2661,7 @@ public final class TelemetryRegistry {
      */
     public static void setVolatileStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
         slotOffered(value, handle, 0);
+        slotReleased(handle, SLOT_VALUE, value);
         handle.withInvokeBehavior().setVolatile(value);
     }
 
@@ -2651,6 +2674,7 @@ public final class TelemetryRegistry {
      */
     public static void setReleaseStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
         slotOffered(value, handle, 0);
+        slotReleased(handle, SLOT_VALUE, value);
         handle.withInvokeBehavior().setRelease(value);
     }
 
@@ -2680,7 +2704,11 @@ public final class TelemetryRegistry {
                                                              @Nullable Object expected,
                                                              @Nullable Object update) {
         slotOffered(update, handle, 0);
-        return handle.withInvokeBehavior().compareAndSet(expected, update);
+        boolean swapped = handle.withInvokeBehavior().compareAndSet(expected, update);
+        if (swapped) {
+            slotReleased(handle, SLOT_VALUE, update);
+        }
+        return swapped;
     }
 
     /**
@@ -2694,6 +2722,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetStaticReferenceHandle(VarHandle handle,
                                                                  @Nullable Object value) {
+        slotReleased(handle, SLOT_VALUE, value);
         Object previous = handle.withInvokeBehavior().getAndSet(value);
         slotTaken(previous, handle, 0);
         return previous;
@@ -2728,6 +2757,7 @@ public final class TelemetryRegistry {
     public static void setVolatileArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                        @Nullable Object value) {
         slotOffered(value, array, index);
+        slotReleased(array, ReferenceSlots.element(index), value);
         handle.withInvokeBehavior().setVolatile(array, index, value);
     }
 
@@ -2743,6 +2773,7 @@ public final class TelemetryRegistry {
     public static void setReleaseArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                       @Nullable Object value) {
         slotOffered(value, array, index);
+        slotReleased(array, ReferenceSlots.element(index), value);
         handle.withInvokeBehavior().setRelease(array, index, value);
     }
 
@@ -2776,7 +2807,11 @@ public final class TelemetryRegistry {
                                                             int index, @Nullable Object expected,
                                                             @Nullable Object update) {
         slotOffered(update, array, index);
-        return handle.withInvokeBehavior().compareAndSet(array, index, expected, update);
+        boolean swapped = handle.withInvokeBehavior().compareAndSet(array, index, expected, update);
+        if (swapped) {
+            slotReleased(array, ReferenceSlots.element(index), update);
+        }
+        return swapped;
     }
 
     /**
@@ -2791,9 +2826,161 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetArrayReferenceHandle(VarHandle handle, Object array,
                                                                  int index, @Nullable Object value) {
+        slotReleased(array, ReferenceSlots.element(index), value);
         Object previous = handle.withInvokeBehavior().getAndSet(array, index, value);
         slotTaken(previous, array, index);
         return previous;
+    }
+
+    // ---- Acquiring reads of the reference slots above (#741) ------------------------------------
+    //
+    // A store into one of these slots releases what the storing thread did so far to the slot's
+    // own volatile clock, as an AtomicReference's does, and an acquiring read takes what the store
+    // whose value it returned published. Plain and opaque accesses order nothing and stay unwoven
+    // or unreleased. A slot is named by the field it reaches, as a direct access to that field is
+    // (#813), or by its index; one whose field cannot be told keeps no clock.
+
+    /** The release half of a store into a reference slot; nothing when the slot cannot be named. */
+    private static void slotReleased(@Nullable Object owner, @Nullable String field,
+                                     @Nullable Object value) {
+        if (owner != null && field != null) {
+            HappensBefore.releaseVolatileReference(owner, field, value);
+        }
+    }
+
+    /** The acquire half of {@link #slotReleased}, for the value an acquiring read returned. */
+    private static void slotAcquired(@Nullable Object owner, @Nullable String field,
+                                     @Nullable Object value) {
+        if (owner != null && field != null) {
+            HappensBefore.acquireVolatileReference(owner, field, value);
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.get}, a volatile read of the receiver's field.
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @return the reference the field held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
+                                                       Object receiver) {
+        Object value = updater.get(receiver);
+        slotAcquired(receiver, ReferenceSlots.fieldOf(updater), value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.get}, a volatile read of one element.
+     *
+     * @param slots the array the call site invoked
+     * @param index the element's index
+     * @return the reference the element held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getReferenceArray(AtomicReferenceArray<Object> slots, int index) {
+        Object value = slots.get(index);
+        slotAcquired(slots, ReferenceSlots.element(index), value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.getAcquire}, an acquiring read of one element.
+     *
+     * @param slots the array the call site invoked
+     * @param index the element's index
+     * @return the reference the element held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getAcquireReferenceArray(AtomicReferenceArray<Object> slots, int index) {
+        Object value = slots.getAcquire(index);
+        slotAcquired(slots, ReferenceSlots.element(index), value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code VarHandle.getVolatile} on a reference instance field.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @return the reference the field held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getVolatileReferenceHandle(VarHandle handle, Object receiver) {
+        Object value = handle.withInvokeBehavior().getVolatile(receiver);
+        slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code VarHandle.getAcquire} on a reference instance field.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @return the reference the field held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getAcquireReferenceHandle(VarHandle handle, Object receiver) {
+        Object value = handle.withInvokeBehavior().getAcquire(receiver);
+        slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code VarHandle.getVolatile} on a reference static field, keyed on the handle.
+     *
+     * @param handle the handle the call site invoked
+     * @return the reference the field held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getVolatileStaticReferenceHandle(VarHandle handle) {
+        Object value = handle.withInvokeBehavior().getVolatile();
+        slotAcquired(handle, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code VarHandle.getAcquire} on a reference static field, keyed on the handle.
+     *
+     * @param handle the handle the call site invoked
+     * @return the reference the field held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getAcquireStaticReferenceHandle(VarHandle handle) {
+        Object value = handle.withInvokeBehavior().getAcquire();
+        slotAcquired(handle, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code VarHandle.getVolatile} on a reference array element.
+     *
+     * @param handle the handle the call site invoked
+     * @param array  the array
+     * @param index  the element's index
+     * @return the reference the element held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getVolatileArrayReferenceHandle(VarHandle handle, Object array, int index) {
+        Object value = handle.withInvokeBehavior().getVolatile(array, index);
+        slotAcquired(array, ReferenceSlots.element(index), value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code VarHandle.getAcquire} on a reference array element.
+     *
+     * @param handle the handle the call site invoked
+     * @param array  the array
+     * @param index  the element's index
+     * @return the reference the element held
+     * @since 1.12.4
+     */
+    public static @Nullable Object getAcquireArrayReferenceHandle(VarHandle handle, Object array, int index) {
+        Object value = handle.withInvokeBehavior().getAcquire(array, index);
+        slotAcquired(array, ReferenceSlots.element(index), value);
+        return value;
     }
 
     /**

@@ -3,16 +3,12 @@ package se.deversity.asynctest.telemetry;
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import org.jspecify.annotations.Nullable;
 
-import java.lang.constant.ClassDesc;
-import java.lang.constant.ConstantDesc;
-import java.lang.constant.ConstantDescs;
 import java.lang.invoke.VarHandle;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -294,26 +290,7 @@ final class SpinLocks {
 
     /** {@return {@code declaringClass.field} for a direct {@code int} instance-field handle, else ""} */
     private static String describe(VarHandle handle) {
-        try {
-            if (handle.varType() != int.class || handle.coordinateTypes().size() != 1) {
-                return "";
-            }
-            Optional<VarHandle.VarHandleDesc> described = handle.describeConstable();
-            if (described.isEmpty()
-                    || !ConstantDescs.BSM_VARHANDLE_FIELD.equals(described.get().bootstrapMethod())) {
-                return "";
-            }
-            VarHandle.VarHandleDesc desc = described.get();
-            ConstantDesc declaring = desc.bootstrapArgsList().get(0);
-            if (!(declaring instanceof ClassDesc type) || !type.isClassOrInterface()) {
-                return "";
-            }
-            String descriptor = type.descriptorString();
-            return descriptor.substring(1, descriptor.length() - 1).replace('/', '.')
-                    + '.' + desc.constantName();
-        } catch (RuntimeException e) { // NOPMD - an undescribable handle is only an unresolved one
-            return "";
-        }
+        return handle.varType() == int.class ? ReferenceSlots.describe(handle) : "";
     }
 
     /**

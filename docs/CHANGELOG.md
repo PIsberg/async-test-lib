@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A reference handed through an updater, an `AtomicReferenceArray` or a `VarHandle` read as a race
+  (#741).** The agent wove those slots' stores as ownership offers but not their reads, and the
+  stores released nothing to the happens-before model, so a plain update published by storing a
+  reference there was reported against the reader that took it out. An updater `get`, an array
+  `get` or `getAcquire`, and a handle's `getVolatile` or `getAcquire` are now woven and acquire
+  what the store whose value they returned published; volatile, release and successful
+  compare-and-set stores release. A slot is keyed by the field its updater or handle reaches,
+  the same clock a direct access to that field uses, or by the element index. Plain and opaque
+  accesses still order nothing.
 - **Two happens-before edges the volatile model missed or invented (#813).** The agent named a
   field by the static type of the access, so one field read through `Sub` and through `Base` had
   two names, and the model matched fields by simple name to meet them. That let a subclass field

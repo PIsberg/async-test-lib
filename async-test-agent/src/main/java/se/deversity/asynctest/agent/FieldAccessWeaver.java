@@ -175,15 +175,26 @@ final class FieldAccessWeaver {
             "get", "()" + OBJECT,
             "getAcquire", "()" + OBJECT);
 
-    /** The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus {@code ReferenceUpdater}. */
+    /**
+     * The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus
+     * {@code ReferenceUpdater}. {@code get}, a volatile read, acquires the store whose value it
+     * returned (#741).
+     */
     private static final Map<String, String> REFERENCE_UPDATER_FORMS = Map.of(
+            "get", "(" + OBJECT + ")" + OBJECT,
             "set", "(" + OBJECT + OBJECT + ")V",
             "lazySet", "(" + OBJECT + OBJECT + ")V",
             "compareAndSet", "(" + OBJECT + OBJECT + OBJECT + ")Z",
             "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT);
 
-    /** The {@code AtomicReferenceArray} calls substituted; the hook is the name plus {@code ReferenceArray}. */
+    /**
+     * The {@code AtomicReferenceArray} calls substituted; the hook is the name plus
+     * {@code ReferenceArray}. {@code get} and {@code getAcquire} acquire the store of that element
+     * whose value they returned (#741).
+     */
     private static final Map<String, String> REFERENCE_ARRAY_FORMS = Map.of(
+            "get", "(I)" + OBJECT,
+            "getAcquire", "(I)" + OBJECT,
             "set", "(I" + OBJECT + ")V",
             "lazySet", "(I" + OBJECT + ")V",
             "setRelease", "(I" + OBJECT + ")V",
@@ -913,6 +924,8 @@ final class FieldAccessWeaver {
                             arguments.length == 3 && result.getSort() == Type.VOID;
                     case "compareAndSet" -> arguments.length == 4 && result.getSort() == Type.BOOLEAN;
                     case "getAndSet" -> arguments.length == 3 && isReference(result);
+                    // The acquiring reads (#741); a plain or opaque get orders nothing.
+                    case "getVolatile", "getAcquire" -> arguments.length == 2 && isReference(result);
                     default -> false;
                 };
                 return matches ? name + "ArrayReferenceHandle" : null;
@@ -928,6 +941,7 @@ final class FieldAccessWeaver {
                         arguments.length == 2 && result.getSort() == Type.VOID;
                 case "compareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 2 && isReference(result);
+                case "getVolatile", "getAcquire" -> arguments.length == 1 && isReference(result);
                 default -> false;
             };
             if (instanceMatches) {
@@ -938,6 +952,7 @@ final class FieldAccessWeaver {
                         arguments.length == 1 && result.getSort() == Type.VOID;
                 case "compareAndSet" -> arguments.length == 2 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 1 && isReference(result);
+                case "getVolatile", "getAcquire" -> arguments.length == 0 && isReference(result);
                 default -> false;
             };
             return staticMatches ? name + "StaticReferenceHandle" : null;
@@ -953,14 +968,14 @@ final class FieldAccessWeaver {
          * <p>An atomic's hook takes the atomic and then the call's own erased parameters. A
          * {@code VarHandle} hook takes the handle and one {@code Object} per operand (plus the
          * {@code int} index for an array element), and returns {@code Object} for a
-         * {@code getAndSet}, which {@link #castToCallSiteResult} narrows back.
+         * {@code getAndSet} or an acquiring read, which {@link #castToCallSiteResult} narrows back.
          */
         private static String referenceSlotHookDescriptor(String owner, String hook,
                                                           String descriptor) {
             if (!VAR_HANDLE.equals(owner)) {
                 return "(L" + owner + ";" + descriptor.substring(1);
             }
-            String result = hook.startsWith("getAndSet") ? "Ljava/lang/Object;"
+            String result = hook.startsWith("get") ? "Ljava/lang/Object;"
                     : hook.startsWith("compareAndSet") ? "Z" : "V";
             if (hook.endsWith("ArrayReferenceHandle")) {
                 return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I"
