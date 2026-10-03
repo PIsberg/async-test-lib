@@ -216,7 +216,8 @@ and a volatile write in a constructor releases once the super constructor has ru
 read out of another slot receives nothing. So is a reference slot reached through an `AtomicReferenceFieldUpdater`,
 an `AtomicReferenceArray` element or a `VarHandle` (since #741): their volatile, release and successful
 compare-and-set stores release the slot, and an updater `get`, an array `get` or `getAcquire`, or a
-handle's `getVolatile` or `getAcquire` acquires. The slot is the field the updater or handle reaches,
+handle's `getVolatile` or `getAcquire` acquires. An `AtomicStampedReference` is a slot too (#817): its
+`set` and successful swaps release, its `get` and `getReference` acquire. The slot is the field the updater or handle reaches,
 the same clock a direct access to that field uses, or the element's index. A plain or opaque access
 orders nothing, and an updater's field is named only while `java.util.concurrent.atomic` is open to the
 library, which `fields=true` arranges. The value is compared as a primitive's bits or a

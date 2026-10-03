@@ -158,6 +158,8 @@ final class FieldAccessWeaver {
             "java/util/concurrent/atomic/AtomicReferenceFieldUpdater";
     private static final String REFERENCE_ARRAY = "java/util/concurrent/atomic/AtomicReferenceArray";
 
+    private static final String STAMPED_REFERENCE = "java/util/concurrent/atomic/AtomicStampedReference";
+
     /** The erased {@code Object} descriptor element the reference-slot tables are written in. */
     private static final String OBJECT = "Ljava/lang/Object;";
 
@@ -200,6 +202,20 @@ final class FieldAccessWeaver {
             "setRelease", "(I" + OBJECT + ")V",
             "compareAndSet", "(I" + OBJECT + OBJECT + ")Z",
             "getAndSet", "(I" + OBJECT + ")" + OBJECT);
+
+    /**
+     * The {@code AtomicStampedReference} calls substituted; the hook is the name plus
+     * {@code StampedReference}. Its value is a (reference, stamp) pair: the reads acquire, the
+     * stores release, and on a thread whose test has an {@code ABAProblemDetector} each runs through
+     * it (#817).
+     */
+    private static final Map<String, String> STAMPED_REFERENCE_FORMS = Map.of(
+            "get", "([I)" + OBJECT,
+            "getReference", "()" + OBJECT,
+            "set", "(" + OBJECT + "I)V",
+            "compareAndSet", "(" + OBJECT + OBJECT + "II)Z",
+            "weakCompareAndSet", "(" + OBJECT + OBJECT + "II)Z",
+            "attemptStamp", "(" + OBJECT + "I)Z");
 
     /**
      * Owner prefixes (in internal, slash-separated form) whose fields are never woven: the
@@ -904,6 +920,8 @@ final class FieldAccessWeaver {
                         "ReferenceUpdater");
                 case REFERENCE_ARRAY -> atomicHook(REFERENCE_ARRAY_FORMS, name, descriptor,
                         "ReferenceArray");
+                case STAMPED_REFERENCE -> atomicHook(STAMPED_REFERENCE_FORMS, name, descriptor,
+                        "StampedReference");
                 case VAR_HANDLE -> referenceHandleHook(name, descriptor);
                 default -> null;
             };

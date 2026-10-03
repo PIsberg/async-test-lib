@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.atomic.AtomicStampedReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -114,7 +115,7 @@ class SpinLockHookTableTest {
     void everyReferenceSlotSubstitutionResolvesToARegistryHook() {
         Set<String> substituted = new TreeSet<>();
         for (Class<?> owner : List.of(AtomicReference.class, AtomicReferenceFieldUpdater.class,
-                AtomicReferenceArray.class)) {
+                AtomicReferenceArray.class, AtomicStampedReference.class)) {
             for (Method method : owner.getMethods()) {
                 if (Modifier.isStatic(method.getModifiers())) {
                     continue;
@@ -185,6 +186,9 @@ class SpinLockHookTableTest {
                 "AtomicReferenceFieldUpdater.set", "AtomicReferenceFieldUpdater.get",
                 "AtomicReferenceArray.get", "AtomicReferenceArray.getAcquire",
                 "VarHandle.getVolatile", "VarHandle.getAcquire",
+                "AtomicStampedReference.get", "AtomicStampedReference.getReference",
+                "AtomicStampedReference.set", "AtomicStampedReference.compareAndSet",
+                "AtomicStampedReference.weakCompareAndSet", "AtomicStampedReference.attemptStamp",
                 "AtomicReferenceFieldUpdater.lazySet", "AtomicReferenceFieldUpdater.compareAndSet",
                 "AtomicReferenceFieldUpdater.getAndSet", "AtomicReferenceArray.set",
                 "AtomicReferenceArray.lazySet", "AtomicReferenceArray.setRelease",

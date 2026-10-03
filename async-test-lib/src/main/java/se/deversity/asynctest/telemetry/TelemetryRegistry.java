@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.IntBinaryOperator;
 import java.util.function.IntUnaryOperator;
 
@@ -2935,6 +2936,127 @@ public final class TelemetryRegistry {
                 : aba.getAndSet(array, handle, index, value, (h, s, i, v) -> asHandle(s).withInvokeBehavior().getAndSet(h, i, v));
         slotTaken(previous, array, index);
         return previous;
+    }
+
+    // ---- AtomicStampedReference (#817) ---------------------------------------------------------
+    //
+    // Its value is a (reference, stamp) pair. A store releases the slot and a read acquires the
+    // store whose reference it returned, as an AtomicReference's do; on a thread whose test has an
+    // ABAProblemDetector each operation runs through the detector's view of the pair.
+
+    /**
+     * Weaves {@code AtomicStampedReference.get(int[])}.
+     *
+     * @param slot        the atomic the call site invoked
+     * @param stampHolder receives the stamp
+     * @return the reference
+     * @since 1.12.4
+     */
+    public static @Nullable Object getStampedReference(AtomicStampedReference<Object> slot, int[] stampHolder) {
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object value = aba == null ? slot.get(stampHolder) : aba.getStamped(slot, stampHolder);
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicStampedReference.getReference()}.
+     *
+     * @param slot the atomic the call site invoked
+     * @return the reference
+     * @since 1.12.4
+     */
+    public static @Nullable Object getReferenceStampedReference(AtomicStampedReference<Object> slot) {
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object value = aba == null ? slot.getReference() : aba.getStampedReference(slot);
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicStampedReference.set}.
+     *
+     * @param slot  the atomic the call site invoked
+     * @param value the reference to store
+     * @param stamp the stamp to store
+     * @since 1.12.4
+     */
+    public static void setStampedReference(AtomicStampedReference<Object> slot, @Nullable Object value, int stamp) {
+        HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        if (aba == null) {
+            slot.set(value, stamp);
+        } else {
+            aba.setStamped(slot, value, stamp);
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicStampedReference.compareAndSet}.
+     *
+     * @param slot          the atomic the call site invoked
+     * @param expected      the reference it must hold
+     * @param update        the reference to store
+     * @param expectedStamp the stamp it must hold
+     * @param newStamp      the stamp to store
+     * @return whether it swapped
+     * @since 1.12.4
+     */
+    public static boolean compareAndSetStampedReference(AtomicStampedReference<Object> slot, @Nullable Object expected,
+                                                        @Nullable Object update, int expectedStamp, int newStamp) {
+        return stampedSwap(slot, expected, update, expectedStamp, newStamp, false);
+    }
+
+    /**
+     * Weaves {@code AtomicStampedReference.weakCompareAndSet}.
+     *
+     * @param slot          the atomic the call site invoked
+     * @param expected      the reference it must hold
+     * @param update        the reference to store
+     * @param expectedStamp the stamp it must hold
+     * @param newStamp      the stamp to store
+     * @return whether it swapped
+     * @since 1.12.4
+     */
+    public static boolean weakCompareAndSetStampedReference(AtomicStampedReference<Object> slot,
+                                                            @Nullable Object expected, @Nullable Object update,
+                                                            int expectedStamp, int newStamp) {
+        return stampedSwap(slot, expected, update, expectedStamp, newStamp, true);
+    }
+
+    private static boolean stampedSwap(AtomicStampedReference<Object> slot, @Nullable Object expected,
+                                       @Nullable Object update, int expectedStamp, int newStamp, boolean weak) {
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        boolean swapped;
+        if (aba == null) {
+            swapped = weak ? slot.weakCompareAndSet(expected, update, expectedStamp, newStamp)
+                    : slot.compareAndSet(expected, update, expectedStamp, newStamp);
+        } else {
+            swapped = aba.compareAndSetStamped(slot, expected, update, expectedStamp, newStamp, weak);
+        }
+        if (swapped) {
+            HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, update);
+        }
+        return swapped;
+    }
+
+    /**
+     * Weaves {@code AtomicStampedReference.attemptStamp}.
+     *
+     * @param slot     the atomic the call site invoked
+     * @param expected the reference it must hold
+     * @param newStamp the stamp to store
+     * @return whether the stamp was set
+     * @since 1.12.4
+     */
+    public static boolean attemptStampStampedReference(AtomicStampedReference<Object> slot, @Nullable Object expected,
+                                                       int newStamp) {
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        boolean set = aba == null ? slot.attemptStamp(expected, newStamp) : aba.attemptStamp(slot, expected, newStamp);
+        if (set) {
+            HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, expected);
+        }
+        return set;
     }
 
     // ---- The slot operations the hooks above hand ABAProblemDetector (#817) ---------------------

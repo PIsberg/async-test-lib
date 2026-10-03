@@ -22,6 +22,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicStampedReference;
 
 /**
  * Detects the ABA Problem in atomic operations.
@@ -76,7 +77,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * inside the same lock as the operation (#817). So do the reference slots that are not an
  * {@code AtomicReference}: a field reached through an {@code AtomicReferenceFieldUpdater} or a
  * {@code VarHandle}, and an {@code AtomicReferenceArray} element or array element a handle reaches,
- * each a slot of its own. The records of one atomic are then in the order
+ * each a slot of its own, and an {@code AtomicStampedReference}, judged on its (reference, stamp)
+ * pair: a compare-and-set that succeeds after the pair left and came back reused a stamp. The
+ * records of one atomic are then in the order
  * its woven operations ran, so neither limit above applies there: a toggle that ran before a read
  * is recorded before it, and one recorded after a compare-and-set ran after it. The finding is
  * also narrowed to the case an A-B-A can hurt. A compare-and-set whose expected value can carry
@@ -618,6 +621,10 @@ public class ABAProblemDetector {
         private @Nullable Object lastOld;
         /** Guarded by {@link #lock}. */
         private @Nullable Object lastNew;
+        /** Guarded by {@link #lock}: the stamps of {@link #lastOld} and {@link #lastNew}. */
+        private int lastOldStamp;
+        /** Guarded by {@link #lock}. */
+        private int lastNewStamp;
         /** Guarded by {@link #lock}: whether {@link #lastOld} and {@link #lastNew} hold a change. */
         private boolean anyChange;
         /** Guarded by {@link #lock}. */
@@ -761,20 +768,129 @@ public class ABAProblemDetector {
             }
         }
 
+        /**
+         * Performs {@code AtomicStampedReference.get(int[])}, recorded as the calling thread's
+         * premise: the reference and the stamp read together (#817).
+         *
+         * @param atomic      the atomic this slot describes
+         * @param stampHolder receives the stamp
+         * @return the reference
+         */
+        public @Nullable Object getStamped(AtomicStampedReference<Object> atomic, int[] stampHolder) {
+            synchronized (lock) {
+                Object value = atomic.get(stampHolder);
+                read(value, stampHolder[0]);
+                return value;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.getReference()}, recorded as {@link #getStamped}
+         * records: the reference with the stamp it held at that moment.
+         *
+         * @param atomic the atomic this slot describes
+         * @return the reference
+         */
+        public @Nullable Object getStampedReference(AtomicStampedReference<Object> atomic) {
+            int[] stamp = new int[1];
+            synchronized (lock) {
+                Object value = atomic.get(stamp);
+                read(value, stamp[0]);
+                return value;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.set}, recorded as a change of the pair.
+         *
+         * @param atomic the atomic this slot describes
+         * @param value  the reference to store
+         * @param stamp  the stamp to store
+         */
+        public void setStamped(AtomicStampedReference<Object> atomic, @Nullable Object value, int stamp) {
+            int[] oldStamp = new int[1];
+            synchronized (lock) {
+                Object old = atomic.get(oldStamp);
+                atomic.set(value, stamp);
+                changed(old, oldStamp[0], value, stamp);
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.compareAndSet} or {@code weakCompareAndSet},
+         * judged against the calling thread's premise of the pair. With a stamp that only grows, a
+         * pair that left never comes back, so a reported one reused a stamp.
+         *
+         * @param atomic        the atomic this slot describes
+         * @param expected      the reference the atomic must hold
+         * @param update        the reference to store
+         * @param expectedStamp the stamp it must hold
+         * @param newStamp      the stamp to store
+         * @param weak          whether the call was {@code weakCompareAndSet}
+         * @return whether it swapped
+         */
+        public boolean compareAndSetStamped(AtomicStampedReference<Object> atomic, @Nullable Object expected,
+                                            @Nullable Object update, int expectedStamp, int newStamp,
+                                            boolean weak) {
+            boolean stateful = canCarryState(expected);
+            synchronized (lock) {
+                boolean swapped = weak
+                        ? atomic.weakCompareAndSet(expected, update, expectedStamp, newStamp)
+                        : atomic.compareAndSet(expected, update, expectedStamp, newStamp);
+                judgeCompareAndSet(expected, expectedStamp, update, newStamp, swapped, stateful, true);
+                return swapped;
+            }
+        }
+
+        /**
+         * Performs {@code AtomicStampedReference.attemptStamp}, recorded, when it took, as a change
+         * of the stamp alone.
+         *
+         * @param atomic   the atomic this slot describes
+         * @param expected the reference the atomic must hold
+         * @param newStamp the stamp to store
+         * @return whether the stamp was set
+         */
+        public boolean attemptStamp(AtomicStampedReference<Object> atomic, @Nullable Object expected, int newStamp) {
+            int[] oldStamp = new int[1];
+            synchronized (lock) {
+                Object current = atomic.get(oldStamp);
+                boolean set = atomic.attemptStamp(expected, newStamp);
+                if (set) {
+                    changed(current, oldStamp[0], current, newStamp);
+                }
+                return set;
+            }
+        }
+
         /** Judges a compare-and-set against the caller's premise and records it. Call holding {@link #lock}. */
         @SuppressWarnings("ReferenceEquality") // the slot compares identity, so this does too
         private void judgeCompareAndSet(@Nullable Object expected, @Nullable Object update,
                                         boolean swapped, boolean stateful) {
+            judgeCompareAndSet(expected, 0, update, 0, swapped, stateful, false);
+        }
+
+        /**
+         * Judges a compare-and-set of a (reference, stamp) pair, or of a reference alone when
+         * {@code stamped} is false and both stamps are 0. Call holding {@link #lock}.
+         */
+        @SuppressWarnings("ReferenceEquality") // the slot compares identity, so this does too
+        private void judgeCompareAndSet(@Nullable Object expected, int expectedStamp,
+                                        @Nullable Object update, int newStamp,
+                                        boolean swapped, boolean stateful, boolean stamped) {
             Premise mine = premiseOf(Thread.currentThread().threadId());
             if (mine != null && mine.live) {
                 if (swapped && mine.cameBack && mine.value == expected // NOPMD CompareObjectsWithEquals - identity, as the slot compares
+                        && mine.stamp == expectedStamp
                         && stateful && findings.size() < MAX_FINDINGS) {
-                    findings.add(new Object[] {expected, update});
+                    findings.add(stamped
+                            ? new Object[] {expected, update, expectedStamp, newStamp}
+                            : new Object[] {expected, update});
                 }
                 mine.live = false;
             }
             if (swapped) {
-                changed(expected, update);
+                changed(expected, expectedStamp, update, newStamp);
             }
         }
 
@@ -782,6 +898,8 @@ public class ABAProblemDetector {
         private static final class Premise {
             final long thread;
             @Nullable Object value;
+            /** The stamp read with {@link #value}; 0 for a slot without stamps. */
+            int stamp;
             boolean live;
             boolean movedAway;
             boolean cameBack;
@@ -902,6 +1020,11 @@ public class ABAProblemDetector {
 
         /** Records the calling thread's read. Call holding {@link #lock}. */
         private void read(@Nullable Object value) {
+            read(value, 0);
+        }
+
+        /** Records the calling thread's read of a value and its stamp. Call holding {@link #lock}. */
+        private void read(@Nullable Object value, int stamp) {
             long me = Thread.currentThread().threadId();
             Premise mine = premiseOf(me);
             if (mine == null) {
@@ -913,6 +1036,7 @@ public class ABAProblemDetector {
                 premiseCount++;
             }
             mine.value = value;
+            mine.stamp = stamp;
             mine.live = true;
             mine.movedAway = false;
             mine.cameBack = false;
@@ -922,25 +1046,40 @@ public class ABAProblemDetector {
          * Applies a change the calling thread made to every other thread's premise, and counts a
          * change that undoes the one before it. Call holding {@link #lock}.
          */
-        @SuppressWarnings("ReferenceEquality") // the atomic compares identity, so this does too
         private void changed(@Nullable Object old, @Nullable Object neu) {
+            changed(old, 0, neu, 0);
+        }
+
+        /**
+         * As {@link #changed(Object, Object)}, for a (reference, stamp) pair: a value is the same
+         * only when both the reference and the stamp are. Call holding {@link #lock}.
+         */
+        @SuppressWarnings("ReferenceEquality") // the atomic compares identity, so this does too
+        private void changed(@Nullable Object old, int oldStamp, @Nullable Object neu, int newStamp) {
             long me = Thread.currentThread().threadId();
             for (int i = 0; i < premiseCount; i++) {
                 Premise other = premises[i];
                 if (other.thread == me || !other.live || other.cameBack) {
                     continue;
                 }
+                boolean wasTheirs = old == other.value && oldStamp == other.stamp; // NOPMD CompareObjectsWithEquals - identity
+                boolean isTheirs = neu == other.value && newStamp == other.stamp; // NOPMD CompareObjectsWithEquals - identity
                 if (!other.movedAway) {
-                    other.movedAway = old == other.value && neu != other.value; // NOPMD CompareObjectsWithEquals - identity
-                } else if (neu == other.value) { // NOPMD CompareObjectsWithEquals - identity
+                    other.movedAway = wasTheirs && !isTheirs;
+                } else if (isTheirs) {
                     other.cameBack = true;
                 }
             }
-            if (anyChange && old == lastNew && neu == lastOld && lastOld != lastNew) { // NOPMD CompareObjectsWithEquals - identity
+            boolean undoes = old == lastNew && oldStamp == lastNewStamp // NOPMD CompareObjectsWithEquals - identity
+                    && neu == lastOld && newStamp == lastOldStamp; // NOPMD CompareObjectsWithEquals - identity
+            boolean lastWasAChange = lastOld != lastNew || lastOldStamp != lastNewStamp; // NOPMD CompareObjectsWithEquals - identity
+            if (anyChange && undoes && lastWasAChange) {
                 cycles++;
             }
             lastOld = old;
             lastNew = neu;
+            lastOldStamp = oldStamp;
+            lastNewStamp = newStamp;
             anyChange = true;
         }
 
@@ -976,9 +1115,12 @@ public class ABAProblemDetector {
                 report.variablesWithCycles.put(label, cycleCount);
             }
             for (Object[] finding : found) {
-                report.successfulABACases.add(String.format(
-                        "%s: CAS succeeded despite ABA (expected %s, set to %s)",
-                        label, finding[0], finding[1]));
+                report.successfulABACases.add(finding.length == 4
+                        ? String.format("%s: CAS succeeded despite ABA (expected %s with stamp %s, set to %s "
+                                + "with stamp %s; the stamp the value came back with was reused)",
+                                label, finding[0], finding[2], finding[1], finding[3])
+                        : String.format("%s: CAS succeeded despite ABA (expected %s, set to %s)",
+                                label, finding[0], finding[1]));
             }
         }
     }

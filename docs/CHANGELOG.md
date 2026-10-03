@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`AtomicStampedReference` was not woven (#817).** A stamp reused across an A-B-A, a store that
+  keeps the stamp it found, is the same bug as a bare reference's A-B-A, and nothing saw it. Its
+  `get`, `getReference`, `set`, `compareAndSet`, `weakCompareAndSet` and `attemptStamp` are now
+  woven: `ABAProblemDetector` judges the (reference, stamp) pair, so a stamp bumped on every store
+  stays silent and a reused one is reported, and the stores release and the reads acquire in the
+  happens-before model as an `AtomicReference`'s do.
 - **An A-B-A of a record holding mutable state was judged harmless (#817).** On the agent path a
   compare-and-set is reported only when its expected value can carry state, and a value whose
   fields were all final, a record among them, never could. A record holding a `List` can: the list
