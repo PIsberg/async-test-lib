@@ -12,8 +12,10 @@ import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -2578,6 +2580,41 @@ public final class AgentConcurrencyUtilHooks {
         }
         HappensBefore.acquire(received);
         return received;
+    }
+
+    /**
+     * Weaves {@code Executor.execute(Runnable)} (#741, #834): on an executor that never hands the
+     * task back, the task runs as a {@link HandedTask}, so it starts ordered after this call, and
+     * the thread running it is attributed to the run while it does. There is no future, so nothing
+     * is ordered after the task.
+     *
+     * <p>Only the JDK's own {@code ForkJoinPool}, {@code ScheduledThreadPoolExecutor} and the
+     * thread-per-task executor behind {@code Executors.newVirtualThreadPerTaskExecutor()} qualify,
+     * by exact class: the first runs it inside its own adapter and returns no queued task from
+     * {@code shutdownNow}, the second queues its own futures, and the third queues nothing. A
+     * {@code ThreadPoolExecutor} returns the task itself from {@code getQueue},
+     * {@code shutdownNow} and {@code remove}, and passes it to {@code beforeExecute}, so its tasks
+     * are left alone, as are a subclass's and any executor outside the JDK's.
+     *
+     * @param receiver the executor the call site invoked
+     * @param command  what to run; the executor rejects {@code null}
+     * @since 1.12.4
+     */
+    public static void execute(Executor receiver, Runnable command) {
+        // The NullPointerException the call itself throws for a missing task.
+        Objects.requireNonNull(command);
+        if (!(command instanceof ForkJoinTask) && executesInvisibly(receiver)) {
+            receiver.execute(new HandedTask(command));
+            return;
+        }
+        receiver.execute(command);
+    }
+
+    /** {@return whether {@code executor} is one whose tasks no caller can get back} */
+    private static boolean executesInvisibly(Executor executor) {
+        Class<?> type = executor.getClass();
+        return type == ForkJoinPool.class || type == ScheduledThreadPoolExecutor.class
+                || "java.util.concurrent.ThreadPerTaskExecutor".equals(type.getName());
     }
 
     /**

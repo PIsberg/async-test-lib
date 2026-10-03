@@ -607,6 +607,10 @@ class DiscardedOfferWeavingTest {
             return r.exceptionallyComposeAsync((java.util.function.Function<Throwable, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a, e);
         }
 
+        public static void execute(java.util.concurrent.Executor x, Runnable r) {
+            x.execute(r);
+        }
+
         public static java.util.concurrent.CompletableFuture<Object> supplyAsync(
                 java.util.function.Supplier<Object> s) {
             return java.util.concurrent.CompletableFuture.supplyAsync(s);

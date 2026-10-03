@@ -215,6 +215,45 @@ class HandOffPublicationWeavingTest {
                         + "same way. Findings were: " + findings);
     }
 
+    /** Executes the fill-and-complete task on {@code executor} and joins it on the other worker. */
+    private static List<String> executedFindings(java.util.concurrent.ExecutorService executor)
+            throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        CompletableFuture<Parcel> future = new CompletableFuture<>();
+        try {
+            return findings(() -> bean.fillAndExecute(executor, future, 1), writerRuns -> {
+                writerRuns.run();
+                bean.updateJoined(future);
+            });
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("a task given to a ForkJoinPool's execute starts after what its caller did before (#741)")
+    void executeOnAForkJoinPoolOrdersTheTask() throws InterruptedException {
+        List<String> findings = executedFindings(new java.util.concurrent.ForkJoinPool(1));
+
+        assertFalse(mentionsContents(findings),
+                "The writer filled the parcel and then executed a task that completed a future with "
+                        + "it; the reader joined the future. A ForkJoinPool never hands the task "
+                        + "back, so it runs wrapped and starts ordered after the execute. Findings "
+                        + "were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a ThreadPoolExecutor's execute is left unwrapped and keeps its finding")
+    void executeOnAThreadPoolExecutorStaysUnordered() throws InterruptedException {
+        List<String> findings = executedFindings(new java.util.concurrent.ThreadPoolExecutor(1, 1, 0,
+                TimeUnit.SECONDS, new LinkedBlockingQueue<>()));
+
+        assertTrue(mentionsContents(findings),
+                "A ThreadPoolExecutor hands the task itself back from getQueue, shutdownNow and "
+                        + "remove, so it is not wrapped and nothing orders the fill before the "
+                        + "completion the task made. Findings were: " + findings);
+    }
+
     @Test
     @DisplayName("a parcel filled after the thenApply keeps its finding")
     void fillAfterTheRegistrationIsReported() throws InterruptedException {

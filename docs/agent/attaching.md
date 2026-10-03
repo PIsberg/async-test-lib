@@ -211,8 +211,11 @@ followed is not known. A call typed against `CompletionStage` is woven too, and 
 only when the stage is a `CompletableFuture`: any other implementation gets the caller's own
 function, since it might hand it back. A `CompletableFuture` never does, so the wrapper cannot be
 seen.
-`Executor.execute` is not an edge, because a `ThreadPoolExecutor` hands the task itself back from its
-queue. With `fields=true`, a volatile write releases that field
+`Executor.execute` runs its task wrapped, ordered after the call, on the JDK executors that never
+hand a task back: `ForkJoinPool`, `ScheduledThreadPoolExecutor` and the virtual-thread-per-task
+executor, matched by exact class (#741). On a `ThreadPoolExecutor`, which returns the task itself
+from `getQueue`, `shutdownNow` and `remove`, on a subclass of any of them, and on an executor
+outside the JDK, it is not an edge. With `fields=true`, a volatile write releases that field
 of its object, and a read of the same field acquires at the read what the write whose value it
 returned published: reading one volatile field receives nothing a write of another published, and
 a read that returned an older value receives nothing the later write published (#742). The acquire

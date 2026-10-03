@@ -721,6 +721,9 @@ final class CollectionAccessWeaver {
             Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class),
             Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class,
                     Executor.class),
+            // execute wraps its task only on the JDK executors that never hand it back; the
+            // hook decides by the executor's exact class (#741, #834).
+            Entry.call(Executor.class, "execute", "execute", Runnable.class),
             Entry.call(ExecutorService.class, "submit", "submit", Callable.class),
             Entry.call(ExecutorService.class, "submit", "submit", Runnable.class),
             Entry.call(ExecutorService.class, "submit", "submit", Runnable.class, Object.class),

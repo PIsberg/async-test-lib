@@ -81,6 +81,19 @@ public class HandOffPublicationBean {
         return source.thenApply(ignored -> ++parcel.contents);
     }
 
+    /**
+     * Fills a fresh parcel and executes a task that completes {@code future} with it (#741, #834).
+     * The task touches no field of the parcel, so the parcel reaches the joiner through the
+     * execute and the completion, or through nothing.
+     */
+    public void fillAndExecute(java.util.concurrent.Executor executor,
+                               CompletableFuture<Parcel> future, int contents) {
+        Parcel parcel = new Parcel();
+        parcel.contents = contents;
+        lastWritten = parcel;
+        executor.execute(() -> future.complete(parcel));
+    }
+
     /** Completes {@code source}, which runs the functions registered on it on this thread. */
     public void completeSource(CompletableFuture<Object> source) {
         source.complete(Boolean.TRUE);

@@ -188,7 +188,7 @@ does not leave the pool thread forwarded after the task: the thread's next start
 frames it missed (#834).
 
 Work handed over any other way is still dropped: a thread started in code the agent does not
-weave, a task given to `Executor.execute` or to an executor outside
+weave, a task given to a `ThreadPoolExecutor`'s `execute` or to an executor outside
 the JDK, and a pool thread's work outside a wrapped task. A dependent `CompletableFuture` stage's
 function runs wrapped like a submitted task, so a pool thread running one the body registered is
 forwarded while it runs (#741, #834). A

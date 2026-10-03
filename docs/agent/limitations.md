@@ -38,6 +38,7 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   configured worker-thread-id set, and from the threads those workers hand work to, are
   forwarded: a thread a worker starts through a woven `Thread.start`, `Thread.Builder` start or
   `Thread.startVirtualThread` (#834), and a pool thread while it runs a task a worker submitted
-  to a JDK executor (#745). Accesses on other application threads
-  during the round, a thread started in unwoven code or a task given to `Executor.execute`
-  included, are treated as noise and dropped.
+  to a JDK executor (#745), registered as a dependent `CompletableFuture` stage, or executed on a
+  `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task executor (#741). Accesses
+  on other application threads during the round, a thread started in unwoven code or a task given
+  to a `ThreadPoolExecutor`'s `execute` included, are treated as noise and dropped.

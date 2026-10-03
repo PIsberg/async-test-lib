@@ -761,6 +761,84 @@ class AgentHappensBeforeFeedTest {
                         + "caller's own, unwrapped: " + handed.get());
     }
 
+    /** Which executor the task below is given to, and when the input is written. */
+    private enum Execution {
+        /** A ForkJoinPool, input written before execute. */
+        FORK_JOIN_POOL,
+        /** A ScheduledThreadPoolExecutor, input written before execute. */
+        SCHEDULED_POOL,
+        /** A virtual thread per task, input written before execute. */
+        THREAD_PER_TASK,
+        /** A ForkJoinPool, with the input written after execute. */
+        INPUT_AFTER_EXECUTE,
+        /**
+         * A ThreadPoolExecutor, input written before execute. It hands the task itself back from
+         * getQueue, shutdownNow and remove, so the hook leaves it unwrapped and orders nothing.
+         */
+        THREAD_POOL_EXECUTOR
+    }
+
+    /**
+     * The calling thread writes an input and executes a task that reads it, on the executor the
+     * shape names (#741, #834). The task's read is recorded on the pool thread; the caller waits
+     * for it through an unwoven latch, which orders nothing as far as the model knows.
+     */
+    private static boolean executionReported(Execution shape) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box input = new Box();
+        java.util.concurrent.ExecutorService executor = switch (shape) {
+            case SCHEDULED_POOL -> new java.util.concurrent.ScheduledThreadPoolExecutor(1);
+            case THREAD_PER_TASK -> Executors.newVirtualThreadPerTaskExecutor();
+            case THREAD_POOL_EXECUTOR -> new java.util.concurrent.ThreadPoolExecutor(1, 1, 0,
+                    java.util.concurrent.TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+            default -> new java.util.concurrent.ForkJoinPool(1);
+        };
+        try {
+            if (shape != Execution.INPUT_AFTER_EXECUTE) {
+                input.value = 1;
+                detector.recordFieldWrite(input, "value");
+            }
+            CountDownLatch inputWritten = new CountDownLatch(1);
+            CountDownLatch read = new CountDownLatch(1);
+            AgentConcurrencyUtilHooks.execute(executor, () -> {
+                try {
+                    inputWritten.await(); // unwoven: only holds the task until the input is written
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                detector.recordFieldRead(input, "value");
+                read.countDown();
+            });
+            if (shape == Execution.INPUT_AFTER_EXECUTE) {
+                input.value = 1;
+                detector.recordFieldWrite(input, "value");
+            }
+            inputWritten.countDown();
+            if (!read.await(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("the task never ran");
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven execute orders the caller before the task where the executor never hands the task back (#741, #834)")
+    void executionPublishes() throws Exception {
+        assertFalse(executionReported(Execution.FORK_JOIN_POOL),
+                "the input was written before execute, which a ForkJoinPool orders before the task");
+        assertFalse(executionReported(Execution.SCHEDULED_POOL),
+                "the same through a ScheduledThreadPoolExecutor, whose queue holds its own futures");
+        assertFalse(executionReported(Execution.THREAD_PER_TASK),
+                "the same through a virtual thread per task");
+        assertTrue(executionReported(Execution.INPUT_AFTER_EXECUTE),
+                "the input was written after execute, which orders nothing before the task");
+        assertTrue(executionReported(Execution.THREAD_POOL_EXECUTOR),
+                "a ThreadPoolExecutor's task is left unwrapped, since its queue hands it back");
+    }
+
     /** Where the submitter below breaks the order an executor makes, if it does. */
     private enum Submission {
         /** Input written before submit, output read after get. */

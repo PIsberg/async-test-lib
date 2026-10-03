@@ -2080,8 +2080,8 @@ hand-off now names `AtomicityValidator`, and `SharedCollectionDetector` reports 
 only the report says so. The idioms are the ones the probe and the model's documented limits named,
 not a survey of user code, so a clean lane is a floor under those shapes and no statement about any
 other. Work a body hands to a thread in a way the agent does not see, a thread started in unwoven
-code or through a `Thread.Builder`, or a task given to `Executor.execute`, is still dropped, and no
-row measures it.
+code, or a task given to a `ThreadPoolExecutor`'s `execute`, is still dropped, and no row measures
+it.
 
 ## Reproducing it
 

@@ -121,7 +121,10 @@ import org.jspecify.annotations.Nullable;
  *       rest) is ordered after the registering thread and the completions it waits for, and a
  *       join of its stage on the registering thread after it; an {@code Either} stage carries
  *       only the registering thread's clock (#741).
- *   <li>Not yet observed: {@code Executor.execute}, a task submitted to an executor outside the
+ *   <li>Not yet observed: {@code execute} on a {@code ThreadPoolExecutor}, which hands its
+ *       tasks back (on a {@code ForkJoinPool}, a {@code ScheduledThreadPoolExecutor} and the
+ *       virtual-thread-per-task executor it is an edge to the task's start since #741), a task
+ *       submitted to an executor outside the
  *       JDK, a dependent stage of a {@code CompletionStage} that is not a
  *       {@code CompletableFuture}, a plain or
  *       opaque {@code VarHandle} read, a reference slot whose field cannot be named (an adapted

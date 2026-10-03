@@ -58,7 +58,8 @@ import se.deversity.vibetags.annotations.AIKeepInSync;
  * run, so a thread that outlives the run that started it, or a pool thread shared by several runs,
  * contributes to a later run only what that run's own workers hand it. Anything else is dropped
  * and counted ({@link #droppedNonWorkerEvents()}): a thread started in code the agent does not
- * weave, and a task handed over by {@code Executor.execute} or to a non-JDK executor.
+ * weave, and a task handed to a {@code ThreadPoolExecutor}'s {@code execute} or to a non-JDK
+ * executor.
  *
  * <h2>Thread safety</h2>
  * {@link #onEvent} runs on the single telemetry drain thread, while {@link #activate}
@@ -118,7 +119,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      *
      * <p>A thread the body starts through a woven {@code Thread.start}, and a pool thread running a
      * task the body submitted, are attributed (#745). Work handed over any other way, a thread
-     * started in unwoven code or a task passed to {@code Executor.execute}, produces accesses the
+     * started in unwoven code or a task passed to a {@code ThreadPoolExecutor}'s {@code execute},
+     * produces accesses the
      * bridge cannot attribute to the run, and it discards them. That is the honest thing to do,
      * but a clean atomicity report then means "nothing was observed" rather than "nothing was
      * wrong" for that work, and nothing used to say so. Counting them lets the runner announce the

@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Executor.execute` orders its task where nothing can hand it back (#741, #834).** A task given
+  to `execute` started with nothing ordering it after the caller, and its pool thread's accesses
+  were dropped as unattributed. On a `ForkJoinPool`, a `ScheduledThreadPoolExecutor` and the
+  virtual-thread-per-task executor, matched by exact class, the task now runs wrapped like a
+  submitted one: ordered after the call, and attributed to the run while it runs. A
+  `ThreadPoolExecutor` returns the task itself from `getQueue`, `shutdownNow` and `remove` and
+  passes it to `beforeExecute`, so its tasks, a subclass's, and any non-JDK executor's stay
+  unwrapped.
 - **A dependent `CompletableFuture` stage is a happens-before edge under the agent (#741).** A
   function registered with `thenApply`, `thenAccept`, `thenRun`, `thenCombine`, `thenAcceptBoth`,
   `runAfterBoth`, `thenCompose`, `whenComplete`, `handle`, `exceptionally` or
