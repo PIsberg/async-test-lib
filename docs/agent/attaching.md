@@ -201,6 +201,14 @@ a `get` or `join` of its future on the thread that submitted it; and each side o
 `Exchanger.exchange`, ordered before its partner's return. The submitted task runs wrapped, which only
 the JDK's own executors get, since only there nothing a caller can reach returns the task; a get on
 another thread, or of one of more than 16 futures a thread submitted without getting, orders nothing.
+A function registered on a `CompletableFuture` with `thenApply`, `thenAccept`, `thenRun`,
+`thenCombine`, `thenAcceptBoth`, `runAfterBoth`, `thenCompose`, `whenComplete`, `handle`,
+`exceptionally` or `exceptionallyCompose`, or their `Async` forms, runs wrapped as well: the thread
+that runs it is ordered after the registering thread and after the completion of each stage it
+waits for, and a `join` or `get` of the stage it returned, on the registering thread, is ordered
+after it. The `Either` forms carry only the registering thread's clock, since which stage they
+followed is not known, and a call typed against `CompletionStage` rather than `CompletableFuture`
+is not woven. A `CompletableFuture` never hands its functions back, so the wrapper cannot be seen.
 `Executor.execute` is not an edge, because a `ThreadPoolExecutor` hands the task itself back from its
 queue. With `fields=true`, a volatile write releases that field
 of its object, and a read of the same field acquires at the read what the write whose value it

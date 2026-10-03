@@ -65,6 +65,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A dependent `CompletableFuture` stage is a happens-before edge under the agent (#741).** A
+  function registered with `thenApply`, `thenAccept`, `thenRun`, `thenCombine`, `thenAcceptBoth`,
+  `runAfterBoth`, `thenCompose`, `whenComplete`, `handle`, `exceptionally` or
+  `exceptionallyCompose`, and their `Async` forms, ran on another thread with nothing ordering it,
+  so data the registering thread wrote before the call, or the completing thread wrote before
+  `complete`, read as a race inside the function, as did the function's own writes read after a
+  `join` of its stage. The weaver now wraps the function: the thread running it receives the
+  registering thread's clock and acquires each completion it waits for, and a `join` or `get` of
+  the stage on the registering thread receives the clock the function finished with. The
+  `Either` forms carry only the registering thread's clock. The wrapper also attributes a pool
+  thread running such a function to the run (#834). A `CompletableFuture` never hands its
+  functions back, so nothing can see the wrapper.
 - **A `validate` whose answer is thrown away no longer hides torn reads under the agent (#823).**
   The agent dropped the reads of a speculation whose `validate` failed, on the grounds that the
   caller discards them; a caller that discards the answer instead, `lock.validate(stamp);` as a

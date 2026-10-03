@@ -117,8 +117,13 @@ import org.jspecify.annotations.Nullable;
  *       future, receives nothing. An object handed through an {@code Exchanger} is released by
  *       identity like a queue element, so one object two pairs exchange at once orders each
  *       taker after both givers.
- *   <li>Not yet observed: a dependent stage's function ({@code thenApply} and the rest),
- *       {@code Executor.execute}, a task submitted to an executor outside the JDK, a plain or
+ *   <li>A function a dependent {@code CompletableFuture} stage runs ({@code thenApply} and the
+ *       rest) is ordered after the registering thread and the completions it waits for, and a
+ *       join of its stage on the registering thread after it; an {@code Either} stage carries
+ *       only the registering thread's clock (#741).
+ *   <li>Not yet observed: {@code Executor.execute}, a task submitted to an executor outside the
+ *       JDK, a dependent stage registered through a call typed against {@code CompletionStage}, a
+ *       plain or
  *       opaque {@code VarHandle} read, a reference slot whose field cannot be named (an adapted
  *       handle, or an updater while {@code java.util.concurrent.atomic} is closed to this
  *       library), and a validated {@code StampedLock} optimistic read. Code relying on those

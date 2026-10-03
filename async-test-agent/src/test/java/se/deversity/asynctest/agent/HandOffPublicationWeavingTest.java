@@ -181,6 +181,40 @@ class HandOffPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("a function registered with thenApply runs after what its registrar did before (#741)")
+    void aDependentStageIsOrderedAfterItsRegistration() throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        Parcel parcel = new Parcel();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        List<String> findings = findings(() -> bean.fillAndChain(source, parcel, false), writerRuns -> {
+            writerRuns.run();
+            bean.completeSource(source);
+        });
+
+        assertFalse(mentionsContents(findings),
+                "The writer filled the parcel and then registered a function that updates it; the "
+                        + "reader completed the source, which ran the function on the reader's "
+                        + "thread. CompletableFuture orders the registration before the function. "
+                        + "Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a parcel filled after the thenApply keeps its finding")
+    void fillAfterTheRegistrationIsReported() throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        Parcel parcel = new Parcel();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        List<String> findings = findings(() -> bean.fillAndChain(source, parcel, true), writerRuns -> {
+            writerRuns.run();
+            bean.completeSource(source);
+        });
+
+        assertTrue(mentionsContents(findings),
+                "The writer filled the parcel after registering the function, which the registration "
+                        + "cannot have ordered before it. Findings were: " + findings);
+    }
+
+    @Test
     @DisplayName("a parcel published with AtomicReference.set is ordered for the get that returned it")
     void atomicReferencePublicationIsSilent() throws InterruptedException {
         HandOffPublicationBean bean = new HandOffPublicationBean();

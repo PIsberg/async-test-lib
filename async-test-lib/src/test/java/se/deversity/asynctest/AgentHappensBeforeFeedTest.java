@@ -642,6 +642,93 @@ class AgentHappensBeforeFeedTest {
                         + "the join observed a completion the writer did not make");
     }
 
+    /** Where the registrar below breaks the order a dependent stage makes, if it does. */
+    private enum Stage {
+        /** Input written before thenApply, output read after joining the stage it returned. */
+        ORDERED,
+        /** The input is written after thenApply, where the function may already be reading it. */
+        INPUT_AFTER_REGISTERING,
+        /** The output is read before the join. */
+        OUTPUT_BEFORE_JOIN,
+        /** The source is already complete, so the function runs inside thenApply. */
+        ALREADY_COMPLETE,
+        /** Both calls made on the future directly, which the model cannot see. */
+        UNWOVEN
+    }
+
+    /**
+     * The registering thread writes an input and registers a function on a future another thread
+     * completes with a box it wrote; the function reads the input and the box and writes an
+     * output, and the registering thread joins the stage and reads the output (#741). The function
+     * runs on the completing thread, or inside thenApply when the source was already complete.
+     */
+    private static boolean stageReported(Stage shape) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box input = new Box();
+        Box completed = new Box();
+        Box output = new Box();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        Runnable complete = () -> {
+            completed.value = 1;
+            detector.recordFieldWrite(completed, "value");
+            AgentConcurrencyUtilHooks.complete(source, completed);
+        };
+        if (shape == Stage.ALREADY_COMPLETE) {
+            Thread completer = new Thread(complete);
+            completer.start();
+            completer.join();
+        }
+        if (shape != Stage.INPUT_AFTER_REGISTERING) {
+            input.value = 1;
+            detector.recordFieldWrite(input, "value");
+        }
+        java.util.function.Function<Object, Object> function = value -> {
+            detector.recordFieldRead(input, "value");
+            detector.recordFieldRead(value, "value");
+            output.value = input.value + ((Box) value).value;
+            detector.recordFieldWrite(output, "value");
+            return output;
+        };
+        CompletableFuture<Object> stage = shape == Stage.UNWOVEN ? source.thenApply(function)
+                : AgentConcurrencyUtilHooks.thenApply(source, function);
+        if (shape == Stage.INPUT_AFTER_REGISTERING) {
+            input.value = 1;
+            detector.recordFieldWrite(input, "value");
+        }
+        if (shape != Stage.ALREADY_COMPLETE) {
+            Thread completer = new Thread(complete);
+            completer.start();
+            completer.join(); // unwoven: orders nothing as far as the model knows
+        }
+        if (shape == Stage.OUTPUT_BEFORE_JOIN) {
+            detector.recordFieldRead(output, "value");
+        }
+        Object joined = shape == Stage.UNWOVEN ? stage.join() : AgentConcurrencyUtilHooks.join(stage);
+        if (joined != output) {
+            throw new AssertionError("the stage did not return the output");
+        }
+        if (shape != Stage.OUTPUT_BEFORE_JOIN) {
+            detector.recordFieldRead(output, "value");
+        }
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven thenApply orders the registrar and the completer before the function, and the function before a woven join (#741)")
+    void dependentStagesPublish() throws Exception {
+        assertFalse(stageReported(Stage.ORDERED),
+                "the input was written before thenApply, the box before the completion the function "
+                        + "followed, and the output read after joining the stage: all three ordered");
+        assertFalse(stageReported(Stage.ALREADY_COMPLETE),
+                "the same with the source completed first, so the function ran inside thenApply");
+        assertTrue(stageReported(Stage.INPUT_AFTER_REGISTERING),
+                "the input was written after thenApply, which orders nothing before the function");
+        assertTrue(stageReported(Stage.OUTPUT_BEFORE_JOIN),
+                "the output was read before the join, which orders nothing after the function");
+        assertTrue(stageReported(Stage.UNWOVEN),
+                "the unwoven twin: nothing told the model");
+    }
+
     /** Where the submitter below breaks the order an executor makes, if it does. */
     private enum Submission {
         /** Input written before submit, output read after get. */
