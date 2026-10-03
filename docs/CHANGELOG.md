@@ -60,6 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The bytecode identity-key gate now scans the agent too (#895).**
+  `LibraryStateIsKeyedByIdentityTest` ran `IdentityHashKeyScanner` over the library's classes only,
+  so a map or set keyed by an identity hash added to `async-test-agent` would have passed.
+  `async-test-analysis` now declares the agent at test scope, as it already did the library, and
+  scans the agent's package with its own anchor and minimum class count. Under Gradle the agent
+  arrives as its shaded jar, so the relocated Byte Buddy is left out. Invariant 5 now says main
+  code: no main code depends on the agent or the analysis module.
 - **A calendar `set()` before its first recorded access is seen on a default JVM (#820).**
   `CalendarDetector` read the flags that say a `get()` will recompute fields only when the test
   JVM opened `java.util` to the library. `set()` computes every field before clearing those

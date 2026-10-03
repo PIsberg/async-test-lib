@@ -34,7 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * override it went past it. This test runs {@link IdentityHashKeyScanner} over every class of the
  * library as one set, so fields and helpers are followed across classes. It lives here, not in the
  * library, because ASM may not leave this module (invariant 5); this module's tests reach the
- * library's classes through a test-scope dependency and read them as bytes, loading none.
+ * library's classes through a test-scope dependency and read them as bytes, loading none. The
+ * agent's classes are scanned the same way, through a second test-scope dependency (#895): its
+ * hooks live in the library, but state the agent keeps itself would otherwise pass unread.
  *
  * <p>The source gate stays: it also counts a hash anywhere inside a key expression, including an
  * argument to a JDK method this scanner does not pass a hash through.
@@ -46,6 +48,15 @@ class LibraryStateIsKeyedByIdentityTest {
 
     /** Well under the library's class count, so a scan that found the wrong place cannot pass. */
     private static final int MIN_CLASSES = 500;
+
+    /** A class of the agent that every build has. */
+    private static final String AGENT_ANCHOR = "se/deversity/asynctest/agent/AsyncTestAgent.class";
+
+    /** Under the agent's class count (33 on 2026-10-03), for the same reason as MIN_CLASSES. */
+    private static final int MIN_AGENT_CLASSES = 20;
+
+    /** Where the agent's jar relocates Byte Buddy, which is not this project's code. */
+    private static final String SHADED = "/shaded/";
 
     /** The lock table the agent's spinlock hooks share, keyed by hash on purpose. */
     private static final String SPIN_LOCKS = "keys by hash plus a weak reference, so nothing is "
@@ -92,9 +103,29 @@ class LibraryStateIsKeyedByIdentityTest {
                     + "rendered value, the same grouping as collide"));
 
     @Test
+    @DisplayName("no agent state is keyed by an identity hash, however the hash gets there")
+    void noIdentityHashKeysInTheAgent() {
+        List<byte[]> classes = classesNextTo(AGENT_ANCHOR);
+        assertTrue(classes.size() >= MIN_AGENT_CLASSES, "found only " + classes.size() + " classes next "
+                + "to " + AGENT_ANCHOR + "; the scan is looking in the wrong place and would pass by "
+                + "scanning nothing");
+
+        List<String> offenders = new ArrayList<>();
+        for (IdentityHashKeyScanner.Finding f : IdentityHashKeyScanner.scan(classes,
+                LibraryStateIsKeyedByIdentityTest.class.getClassLoader())) {
+            offenders.add(f.toString());
+        }
+
+        assertTrue(offenders.isEmpty(),
+                "these agent calls key a map or set by an identity hash, which merges two objects "
+                        + "whose hashes collide. Key by the object in an identity map, or by a value "
+                        + "that is already unique: " + offenders);
+    }
+
+    @Test
     @DisplayName("no library state is keyed by an identity hash, however the hash gets there")
     void noIdentityHashKeys() {
-        List<byte[]> classes = libraryClasses();
+        List<byte[]> classes = classesNextTo(ANCHOR);
         assertTrue(classes.size() >= MIN_CLASSES, "found only " + classes.size() + " classes next to "
                 + ANCHOR + "; the scan is looking in the wrong place and would pass by scanning nothing");
 
@@ -117,13 +148,23 @@ class LibraryStateIsKeyedByIdentityTest {
                         + "the next key written there; remove it from DELIBERATE: " + stale);
     }
 
-    /** {@return the bytes of every class in the library, read from its directory or its jar} */
-    private static List<byte[]> libraryClasses() {
-        URL anchor = LibraryStateIsKeyedByIdentityTest.class.getClassLoader().getResource(ANCHOR);
+    /**
+     * {@return the bytes of every class in {@code anchorClass}'s package and the packages below it,
+     * read from its directory or its jar}
+     *
+     * <p>Only that package tree, and not its {@code shaded} package: under Gradle the agent arrives as
+     * its shaded jar, with Byte Buddy relocated under {@code agent/shaded/}, and Byte Buddy's own
+     * maps are not this project's to judge (#895). Maven's reactor hands over the unshaded classes.
+     *
+     * @param anchorClass the resource path of one class the module always has, in its top package
+     */
+    private static List<byte[]> classesNextTo(String anchorClass) {
+        URL anchor = LibraryStateIsKeyedByIdentityTest.class.getClassLoader().getResource(anchorClass);
         if (anchor == null) {
-            throw new IllegalStateException(ANCHOR + " is not on the test classpath; this module's "
-                    + "pom declares async-test-lib as a test dependency for this test");
+            throw new IllegalStateException(anchorClass + " is not on the test classpath; this module's "
+                    + "pom declares async-test-lib and async-test-agent as test dependencies for this test");
         }
+        String packagePath = anchorClass.substring(0, anchorClass.lastIndexOf('/') + 1);
         List<byte[]> classes = new ArrayList<>();
         try {
             if ("jar".equals(anchor.getProtocol())) {
@@ -133,7 +174,8 @@ class LibraryStateIsKeyedByIdentityTest {
                     Enumeration<JarEntry> entries = jar.entries();
                     while (entries.hasMoreElements()) {
                         JarEntry entry = entries.nextElement();
-                        if (entry.getName().endsWith(".class") && !entry.getName().endsWith("module-info.class")) {
+                        if (entry.getName().startsWith(packagePath) && !entry.getName().contains(SHADED)
+                                && entry.getName().endsWith(".class")) {
                             try (InputStream in = jar.getInputStream(entry)) {
                                 classes.add(in.readAllBytes());
                             }
@@ -141,7 +183,7 @@ class LibraryStateIsKeyedByIdentityTest {
                     }
                 }
             } else {
-                Path root = Path.of(anchor.toURI()).getParent().getParent().getParent().getParent();
+                Path root = Path.of(anchor.toURI()).getParent();
                 try (Stream<Path> files = Files.walk(root)) {
                     for (Path file : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".class")
                             && !p.endsWith("module-info.class"))::iterator) {
@@ -150,9 +192,9 @@ class LibraryStateIsKeyedByIdentityTest {
                 }
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("could not read the library's classes from " + anchor, e);
+            throw new UncheckedIOException("could not read the classes from " + anchor, e);
         } catch (URISyntaxException e) {
-            throw new IllegalStateException("could not locate the library's classes from " + anchor, e);
+            throw new IllegalStateException("could not locate the classes from " + anchor, e);
         }
         return classes;
     }

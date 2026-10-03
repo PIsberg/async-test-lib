@@ -11,7 +11,7 @@ link, and every rule below names the gate that enforces it.
 2. `AsyncTestContext` ThreadLocal install and uninstall stay symmetric. `AsyncTestContextTest`, `PerInvocationLifecycleTest`.
 3. `DetectorType` is `@AILocked`: a constant changes only together with the `@AsyncTest` attribute, `AsyncTestConfig` (field, builder default, `build()`) and `DetectorRegistry`. Locked Files Guard, `AsyncTestConfigBuildResolutionTest`.
 4. `invocations = 0` and `threads = 0` are refused at `build()`; a run that executes nothing never passes. `AsyncTestConfigValidationTest`, `CoreFlowsBddTest`.
-5. Nothing depends on `async-test-agent` or `async-test-analysis`; byte-buddy and asm stay inside them. `ArchitectureTest` (20 rules).
+5. No main code depends on `async-test-agent` or `async-test-analysis`; byte-buddy and asm stay inside them. Only `async-test-analysis`'s tests read the library's and the agent's classes, as bytes ([docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)). `ArchitectureTest` (20 rules).
 6. Shared versions are declared only in `pom.xml`; Gradle reads them with `pomVersion(...)`. `BuildMetadataSyncTest`.
 7. Nothing is hand-edited between `VIBETAGS-START` / `VIBETAGS-END`; annotations change, the build regenerates. Guardrail Drift job.
 8. A log event asserted in a test is a contract; `runner.config` and its fields are pinned. `ConcurrencyRunnerLogContractTest`.
