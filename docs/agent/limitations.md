@@ -45,4 +45,8 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   shared-instance hooks (a `MessageDigest`, a `Calendar`, a `SimpleDateFormat` and the rest) reach
   the same threads: a thread started through a woven start works for the run of the thread that
   started it until that run is analysed, and a pool thread for the run that handed it a task or
-  stage function while it runs it (#834).
+  stage function while it runs it (#834). Attribution goes by thread, not by task: a fork-join
+  worker that, while waiting inside a task of the run, helps with work the run did not hand it (a
+  parallel stream's subtasks, say) has that work counted as the run's, which can only add a
+  finding. A thread started in unwoven code is never attributed: telling it apart would need a
+  check on every access or an inherited attribution that pool threads would carry into later runs.
