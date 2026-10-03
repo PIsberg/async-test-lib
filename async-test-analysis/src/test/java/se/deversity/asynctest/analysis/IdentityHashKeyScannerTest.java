@@ -194,6 +194,90 @@ class IdentityHashKeyScannerTest {
         }
     }
 
+    // --- #803's remaining shapes ---
+
+    /** The hash written into an array a field holds, and read back out of it as a key elsewhere. */
+    static final class HashInAFieldArray {
+        private static final Map<Integer, Object> INDEX = new ConcurrentHashMap<>();
+        private final int[] hashes = new int[1];
+
+        void remember(Object o) {
+            hashes[0] = System.identityHashCode(o);
+        }
+
+        void register(Object o) {
+            INDEX.put(hashes[0], o);
+        }
+    }
+
+    /** A class that inherits Object's toString, whose text ends in its identity hash. */
+    static final class PlainSubject {
+    }
+
+    /** One that renders itself, so its text is not an identity hash. */
+    static final class NamedSubject {
+        @Override
+        public String toString() {
+            return "named";
+        }
+    }
+
+    /** Object's toString used as a key: by string building, by toString() and by String.valueOf. */
+    static final class ToStringKeys {
+        private final Map<String, Object> byText = new HashMap<>();
+
+        void f(PlainSubject plain, NamedSubject named) {
+            byText.put("subject " + plain, plain);
+            byText.put(plain.toString(), plain);
+            byText.put(String.valueOf(plain), plain);
+            byText.put("subject " + named, named);
+            byText.put(named.toString(), named);
+        }
+    }
+
+    /** A key a subclass computes, reached through its abstract base by virtual dispatch. */
+    abstract static class Keyer {
+        abstract int keyOf(Object o);
+    }
+
+    static final class IdentityKeyer extends Keyer {
+        @Override
+        int keyOf(Object o) {
+            return System.identityHashCode(o);
+        }
+    }
+
+    /** The same through an interface. */
+    interface KeyFunction {
+        int apply(Object o);
+    }
+
+    static final class IdentityKeyFunction implements KeyFunction {
+        @Override
+        public int apply(Object o) {
+            return System.identityHashCode(o);
+        }
+    }
+
+    static final class ContentKeyFunction implements KeyFunction {
+        @Override
+        public int apply(Object o) {
+            return o.toString().length();
+        }
+    }
+
+    static final class DispatchedKeys {
+        private final Map<Integer, Object> byKey = new HashMap<>();
+
+        void viaBase(Keyer keyer, Object o) {
+            byKey.put(keyer.keyOf(o), o);
+        }
+
+        void viaInterface(KeyFunction function, Object o) {
+            byKey.get(function.apply(o));
+        }
+    }
+
     // --- correct idioms that must stay silent ---
 
     /** A wrapper that compares referents with {@code ==}, like the library's {@code IdentityKey}. */
@@ -288,6 +372,20 @@ class IdentityHashKeyScannerTest {
         List<IdentityHashKeyScanner.Finding> lambda = scan(CapturedByALambda.class);
         assertEquals(1, lambda.size(), lambda::toString);
         assertTrue(lambda.get(0).sink().contains("inside a lambda"), lambda::toString);
+    }
+
+    @Test
+    @DisplayName("a field-held array, Object's toString and virtual dispatch are followed (#803)")
+    void theRemainingShapes() {
+        assertSinks(List.of("Map.put"), scan(HashInAFieldArray.class));
+
+        List<IdentityHashKeyScanner.Finding> text = scan(ToStringKeys.class, PlainSubject.class, NamedSubject.class);
+        assertSinks(List.of("Map.put", "Map.put", "Map.put"), text);
+        assertTrue(text.stream().allMatch(f -> f.origin().contains("toString()")), text::toString);
+
+        assertSinks(List.of("Map.put", "Map.get"),
+                scan(DispatchedKeys.class, Keyer.class, IdentityKeyer.class, KeyFunction.class,
+                        IdentityKeyFunction.class, ContentKeyFunction.class));
     }
 
     @Test

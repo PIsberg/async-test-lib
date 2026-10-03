@@ -60,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The bytecode identity-key gate missed three shapes (#803).** `IdentityHashKeyScanner` now
+  follows a hash stored into an array a field holds, an `Object.toString()` whose text ends in the
+  identity hash (called, passed to `String.valueOf` or built into a string), and a virtual or
+  interface call to any override in the scanned set rather than only the declared one. Following
+  the ring's event arrays surfaced `AtomicityValidator`'s ownership state, which its own javadoc
+  keys by identity hash on purpose (a collision can only withhold an excuse); those five methods
+  are excused in `LibraryStateIsKeyedByIdentityTest` with that reason. Scanning `async-test-agent`
+  is #895.
 - **`AtomicStampedReference` was not woven (#817).** A stamp reused across an A-B-A, a store that
   keeps the stamp it found, is the same bug as a bare reference's A-B-A, and nothing saw it. Its
   `get`, `getReference`, `set`, `compareAndSet`, `weakCompareAndSet` and `attemptStamp` are now

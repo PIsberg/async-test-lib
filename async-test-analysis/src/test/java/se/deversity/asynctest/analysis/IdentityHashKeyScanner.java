@@ -42,9 +42,12 @@ import org.objectweb.asm.Type;
  * <p>The analysis is flow-sensitive inside a method, using the class file's stack map frames at
  * every branch target, and summary-based across methods: each method records whether it returns
  * a hash, and which of its parameters reach a key, a return or a field. Fields are one taint per
- * declared field, whatever instance holds it. Calls resolve statically to the first declaring
- * class up the superclass chain, so an override reached by virtual dispatch is not followed, and
- * a JDK method passes a hash through only when it is listed in {@link #passesThrough}.
+ * declared field, whatever instance holds it, and a hash stored into an array a field holds taints
+ * that field. Calls resolve to the first declaring class up the superclass chain, and a virtual or
+ * interface call also takes the summary of every override in the scanned set; a JDK method passes a
+ * hash through only when it is listed in {@link #passesThrough}. {@code Object.toString()} is a
+ * source too, on a type that inherits it and {@code Object.hashCode()}: its text ends in the identity
+ * hash, whether called, passed to {@code String.valueOf} or built into a string (#803).
  *
  * <p>This is a test utility for the library's own gate, not part of the published artifact: it
  * lives in this module's test sources because ASM may not leave this module (invariant 5).
@@ -236,6 +239,83 @@ final class IdentityHashKeyScanner {
         }
     }
 
+    /**
+     * {@return whether {@code internalName}'s {@code toString()} is {@code Object}'s and its hash the
+     * identity hash, so its text ends in the identity hash}
+     */
+    private boolean rendersIdentityHash(String internalName) {
+        if (!inheritsIdentityHash(internalName)) {
+            return false;
+        }
+        String cls = internalName;
+        ClassInfo info = index.get(cls);
+        while (info != null) {
+            if (info.methods.contains("toString()Ljava/lang/String;")) {
+                return false;
+            }
+            cls = info.superName;
+            info = index.get(cls);
+        }
+        Optional<Class<?>> type = load(cls);
+        if (type.isEmpty()) {
+            return false;
+        }
+        try {
+            return type.get().getMethod("toString").getDeclaringClass() == Object.class;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    private final Map<String, List<String>> overridesOf = new HashMap<>();
+
+    /**
+     * {@return the summary keys of every scanned class below {@code owner}, by superclass or
+     * interface, that declares {@code nameAndDesc}}
+     */
+    private List<String> overrides(String owner, String nameAndDesc) {
+        return overridesOf.computeIfAbsent(owner + "." + nameAndDesc, k -> {
+            List<String> found = new ArrayList<>();
+            for (ClassInfo info : index.values()) {
+                if (!info.name.equals(owner) && info.methods.contains(nameAndDesc) && isBelow(info, owner)) {
+                    found.add(info.name + "." + nameAndDesc);
+                }
+            }
+            return found;
+        });
+    }
+
+    /** {@return whether {@code info} extends or implements {@code owner}, within the scanned set} */
+    private boolean isBelow(ClassInfo info, String owner) {
+        ClassInfo current = info;
+        java.util.Deque<ClassInfo> pending = new java.util.ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        pending.push(current);
+        while (!pending.isEmpty()) {
+            current = pending.pop();
+            if (!seen.add(current.name)) {
+                continue;
+            }
+            if (owner.equals(current.superName)) {
+                return true;
+            }
+            for (String implemented : current.interfaces) {
+                if (owner.equals(implemented)) {
+                    return true;
+                }
+                ClassInfo up = index.get(implemented);
+                if (up != null) {
+                    pending.push(up);
+                }
+            }
+            ClassInfo up = index.get(current.superName);
+            if (up != null) {
+                pending.push(up);
+            }
+        }
+        return false;
+    }
+
     /** {@return the summary key of the method a call resolves to, walking up the scanned superclasses} */
     private String resolveMethod(String owner, String name, String desc) {
         String cls = owner;
@@ -302,6 +382,8 @@ final class IdentityHashKeyScanner {
         long params;
         final boolean wide;
         String type;
+        /** The field this value was loaded from, so a store into it as an array taints the field. */
+        String field;
 
         Val(String origin, long params, boolean wide) {
             this.origin = origin;
@@ -325,7 +407,9 @@ final class IdentityHashKeyScanner {
         }
 
         Val copy(boolean asWide) {
-            return new Val(origin, params, asWide).typed(type);
+            Val copied = new Val(origin, params, asWide).typed(type);
+            copied.field = field;
+            return copied;
         }
 
         Val typed(String internalName) {
@@ -588,7 +672,17 @@ final class IdentityHashKeyScanner {
                      Opcodes.BASTORE, Opcodes.CASTORE, Opcodes.SASTORE -> {
                     Val value = pop();
                     pop();
-                    pop().absorb(value);
+                    Val array = pop();
+                    array.absorb(value);
+                    if (array.field != null) {
+                        // An element of an array a field holds is the field's state (#803).
+                        if (value.origin != null) {
+                            taintField(array.field, value.origin);
+                        }
+                        if (value.params != 0) {
+                            summary(key).stores(value.params, array.field);
+                        }
+                    }
                 }
                 case Opcodes.POP -> pop();
                 case Opcodes.POP2 -> {
@@ -772,7 +866,9 @@ final class IdentityHashKeyScanner {
                     if (opcode == Opcodes.GETFIELD) {
                         pop();
                     }
-                    push(new Val(taintedFields.get(field), 0, wide).typed(Val.typeOf(Type.getType(descriptor))));
+                    Val loaded = new Val(taintedFields.get(field), 0, wide).typed(Val.typeOf(Type.getType(descriptor)));
+                    loaded.field = field;
+                    push(loaded);
                 }
                 default -> {
                     Val v = pop();
@@ -812,6 +908,15 @@ final class IdentityHashKeyScanner {
             } else if ("hashCode".equals(callName) && "()I".equals(desc) && !isStatic
                     && inheritsIdentityHash(receiverType)) {
                 result.origin = simpleName(receiverType) + ".hashCode(), Object's identity hash, at " + here();
+            } else if ("toString".equals(callName) && "()Ljava/lang/String;".equals(desc) && !isStatic
+                    && rendersIdentityHash(receiverType)) {
+                result.origin = simpleName(receiverType) + ".toString(), Object's, ending in the identity hash, at "
+                        + here();
+            } else if ("java/lang/String".equals(callOwner) && "valueOf".equals(callName)
+                    && "(Ljava/lang/Object;)Ljava/lang/String;".equals(desc) && in[0].type != null
+                    && rendersIdentityHash(in[0].type)) {
+                result.origin = simpleName(in[0].type) + ".toString(), Object's, ending in the identity hash, at "
+                        + here();
             } else {
                 if (!isStatic && in.length > 1 && isKeyed(callOwner, callName)) {
                     String sink = simpleName(callOwner) + "." + callName;
@@ -836,6 +941,15 @@ final class IdentityHashKeyScanner {
                 }
                 applyCallee(resolveMethod(callOwner, callName, desc), simpleName(callOwner) + "." + callName,
                         in, result, true);
+                if ((opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE)
+                        && index.containsKey(callOwner)) {
+                    // Any override in the set may be the one that runs (#803). A call through a JDK
+                    // type such as Object keeps the JDK's own summary, or every hashCode() would
+                    // take a scanned override's.
+                    for (String override : overrides(callOwner, callName + desc)) {
+                        applyCallee(override, simpleName(callOwner) + "." + callName, in, result, true);
+                    }
+                }
             }
             if (ret.getSort() != Type.VOID) {
                 push(result);
@@ -895,8 +1009,13 @@ final class IdentityHashKeyScanner {
             Type ret = Type.getReturnType(desc);
             Val result = Val.clean(ret.getSize() == 2);
             if ("java/lang/invoke/StringConcatFactory".equals(bootstrap.getOwner())) {
-                for (Val v : in) {
-                    result.absorb(v);
+                for (int i = 0; i < in.length; i++) {
+                    result.absorb(in[i]);
+                    String type = in[i].type != null ? in[i].type : Val.typeOf(args[i]);
+                    if (result.origin == null && type != null && rendersIdentityHash(type)) {
+                        result.origin = simpleName(type) + ".toString(), Object's, ending in the identity hash, "
+                                + "built into a string at " + here();
+                    }
                 }
             } else if ("java/lang/invoke/LambdaMetafactory".equals(bootstrap.getOwner()) && bsmArgs.length > 1
                     && bsmArgs[1] instanceof Handle impl && impl.getTag() != Opcodes.H_NEWINVOKESPECIAL) {
