@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Only the Tests & Build leg that uploads coverage runs JaCoCo (#899).** Every leg of the matrix
+  ran the suite under the JaCoCo agent, but only Ubuntu with JDK 21 uploads to Codecov. One
+  `UPLOADS_COVERAGE` flag on the job now passes `-Djacoco.skip=true` to the other legs and guards
+  the coverage-file check and the Codecov steps, so a leg without JaCoCo cannot fail looking for
+  the report. The `jacoco-check` gate still runs on the uploading leg.
 - **JaCoCo instruments only this project's classes (#897).** The `prepare-agent` execution and
   Gradle's `JacocoTaskExtension` had no `includes`, so every per-class test JVM instrumented every
   class it loaded, JUnit, Byte Buddy and ASM among them, for a report that only covers

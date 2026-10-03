@@ -176,7 +176,9 @@ The JaCoCo agent instruments only `se.deversity.*`, the classes the report cover
 each forked JVM also instrumented JUnit, Byte Buddy and ASM. With JaCoCo on, the library's
 `-P e2e` tests took 830 s against 1,292 s before on this box (the earlier run shared the machine
 with a Gradle build, so the gap is not clean), and the report's instruction, line, method and
-class totals did not change.
+class totals did not change. In CI only the Ubuntu JDK 21 leg of Tests & Build, the one that
+uploads to Codecov, runs JaCoCo and its `jacoco-check` gate; the other legs pass
+`-Djacoco.skip=true` (#899).
 
 Nothing is gated on the coverage a local `mvn test` produces: `jacoco-check` binds to `verify`,
 which `mvn test` never reaches, and `jacoco.check.skip` is true outside `-P e2e`. Run `-P e2e`
