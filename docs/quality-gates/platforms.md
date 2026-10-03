@@ -12,7 +12,7 @@ Part of the [Quality Gates guide](../QUALITY_GATES.md).
 > interface it is asking for.
 >
 > maven-pmd-plugin 3.28.0 still ships 7.17.0 as its default, so the parent POM now pins
-> `<pmd.version>7.26.0</pmd.version>` and overrides `pmd-core` / `pmd-java` in the plugin's
+> `<pmd.version>7.28.0</pmd.version>` and overrides `pmd-core` / `pmd-java` in the plugin's
 > `<dependencies>`. `build.gradle.kts` sets the same number via `extra["pmdVersion"]`.
 >
 > Same commit, same plugin, same JDK 26 — only the engine differs:
@@ -33,6 +33,12 @@ Part of the [Quality Gates guide](../QUALITY_GATES.md).
 > `ConcurrentHashMap` declarations with `ConcurrentMap` across ~120 files — was both large and
 > completely wrong, since the flagged declarations were already the interface. The tell was that the
 > reported line did not contain the implementation type the message named.
+>
+> PMD 7.28.0 (bumped from 7.26.0) renamed `UseUtilityClass` to `InstantiableUtilityClass`,
+> so the old exclude stopped matching and `AsyncAssert` and `ConcurrencyRunner` were reported again;
+> the ruleset now excludes the new name. It also began reporting `ReturnEmptyCollectionRatherThanNull`
+> on three stack-trace getters returning `cond ? null : array.clone()`. The fields could never be
+> null, so the getters now return the copy unconditionally rather than suppressing the rule.
 >
 > One consequence of the newer engine: `AvoidCatchingThrowable` is no longer a rule in PMD 7.26.0's
 > quickstart ruleset, and `AvoidCatchingGenericException` reports the `catch (Throwable)` sites

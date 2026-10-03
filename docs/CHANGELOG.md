@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Build: PMD 7.28.0, NullAway 0.14.2, setup-gradle 6.4.0, codecov-action 7.1.1 (#870, #873,
+  #880, #727).** PMD 7.28.0 renamed `UseUtilityClass` to `InstantiableUtilityClass`, so the
+  ruleset's exclude for the public `AsyncAssert` and `ConcurrencyRunner` constructors stopped
+  matching; it now names the new rule. The same release reports `ReturnEmptyCollectionRatherThanNull`
+  on `LeakedFuture.getCreationStackTrace()`, `NestedSubmissionSnapshot.getStackTrace()` and
+  `PinningEventSnapshot.getStackTrace()`, which returned `null` for a field that is never null.
+  They now return the copy unconditionally and are no longer declared `@Nullable`.
+
 ### Fixed
 
 - **One `TelemetryRegistry.stop()` switched off woven happens-before edges for the rest of the JVM

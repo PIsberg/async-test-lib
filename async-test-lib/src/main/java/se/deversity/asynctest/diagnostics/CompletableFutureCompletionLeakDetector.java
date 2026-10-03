@@ -370,8 +370,8 @@ public class CompletableFutureCompletionLeakDetector {
          *
          * @return stack trace at creation point
          */
-        public StackTraceElement @Nullable [] getCreationStackTrace() {
-            return creationStackTrace == null ? null : creationStackTrace.clone();
+        public StackTraceElement[] getCreationStackTrace() {
+            return creationStackTrace.clone();
         }
 
         @Override
