@@ -54,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An A-B-A through an updater, an `AtomicReferenceArray` or a `VarHandle` went unreported (#817).**
+  `ABAProblemDetector` was fed by the agent through `AtomicReference` only. The other reference
+  slots' woven operations now run through it too, each slot (a field per updater or handle, an
+  element per index) judged on its own, with the record taken under the same monitor as the
+  operation, so a toggle before the read stays silent and one between the read and the swap fires.
 - **Two optimistic-read shapes under the agent read as unguarded (#823).** A read or write lock
   converted with `tryConvertToOptimisticRead` opened no speculation, so the reads after it, which
   a later `validate` covers, were delivered as plain reads; the conversion now opens one, and

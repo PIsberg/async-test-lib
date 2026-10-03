@@ -86,6 +86,36 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * {@return the calling thread's {@link ABAProblemDetector} view of the reference field
+     * {@code selector} reaches inside {@code holder}, or {@code null} when no test with that
+     * detector runs on this thread} (#817)
+     *
+     * <p>For the {@code AtomicReferenceFieldUpdater} and {@code VarHandle} hooks in
+     * {@link TelemetryRegistry}, which perform their operation under the view's monitor.
+     *
+     * @param holder   the object whose field is the slot
+     * @param selector the updater or handle the call site invoked
+     * @since 1.12.4
+     */
+    public static ABAProblemDetector.@Nullable AgentSlot abaSlot(Object holder, Object selector) {
+        ABAProblemDetector detector = AsyncTestContext.currentABAProblemDetector();
+        return detector == null ? null : detector.agentSlot(holder, selector);
+    }
+
+    /**
+     * {@return the calling thread's {@link ABAProblemDetector} view of element {@code index} of
+     * {@code array}, or {@code null} when no test with that detector runs on this thread} (#817)
+     *
+     * @param array the {@code AtomicReferenceArray}, or the array a {@code VarHandle} reaches
+     * @param index the element's index
+     * @since 1.12.4
+     */
+    public static ABAProblemDetector.@Nullable AgentSlot abaSlot(Object array, int index) {
+        ABAProblemDetector detector = AsyncTestContext.currentABAProblemDetector();
+        return detector == null ? null : detector.agentSlot(array, index);
+    }
+
+    /**
      * Weaves {@code Semaphore.acquire()}.
      *
      * @param receiver the semaphore

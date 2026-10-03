@@ -2395,7 +2395,12 @@ public final class TelemetryRegistry {
                                            Object receiver, @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(updater));
         slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
-        updater.set(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
+        if (aba == null) {
+            updater.set(receiver, value);
+        } else {
+            aba.store(receiver, updater, 0, value, (h, s, i) -> asUpdater(s).get(h), (h, s, i, v) -> asUpdater(s).set(h, v));
+        }
     }
 
     /**
@@ -2411,7 +2416,12 @@ public final class TelemetryRegistry {
                                                Object receiver, @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(updater));
         slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
-        updater.lazySet(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
+        if (aba == null) {
+            updater.lazySet(receiver, value);
+        } else {
+            aba.store(receiver, updater, 0, value, (h, s, i) -> asUpdater(s).get(h), (h, s, i, v) -> asUpdater(s).lazySet(h, v));
+        }
     }
 
     /**
@@ -2429,7 +2439,9 @@ public final class TelemetryRegistry {
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object expected, @Nullable Object update) {
         slotOffered(update, receiver, System.identityHashCode(updater));
-        boolean swapped = updater.compareAndSet(receiver, expected, update);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
+        boolean swapped = aba == null ? updater.compareAndSet(receiver, expected, update)
+                : aba.compareAndSet(receiver, updater, 0, expected, update, (h, s, i, e, u) -> asUpdater(s).compareAndSet(h, e, u));
         if (swapped) {
             slotReleased(receiver, ReferenceSlots.fieldOf(updater), update);
         }
@@ -2450,7 +2462,9 @@ public final class TelemetryRegistry {
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object value) {
         slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
-        Object previous = updater.getAndSet(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
+        Object previous = aba == null ? updater.getAndSet(receiver, value)
+                : aba.getAndSet(receiver, updater, 0, value, (h, s, i, v) -> asUpdater(s).getAndSet(h, v));
         slotTaken(previous, receiver, System.identityHashCode(updater));
         return previous;
     }
@@ -2467,7 +2481,12 @@ public final class TelemetryRegistry {
                                          @Nullable Object value) {
         slotOffered(value, slots, index);
         slotReleased(slots, ReferenceSlots.element(index), value);
-        slots.set(index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        if (aba == null) {
+            slots.set(index, value);
+        } else {
+            aba.store(slots, null, index, value, (h, s, i) -> asArray(h).get(i), (h, s, i, v) -> asArray(h).set(i, v));
+        }
     }
 
     /**
@@ -2482,7 +2501,12 @@ public final class TelemetryRegistry {
                                              @Nullable Object value) {
         slotOffered(value, slots, index);
         slotReleased(slots, ReferenceSlots.element(index), value);
-        slots.lazySet(index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        if (aba == null) {
+            slots.lazySet(index, value);
+        } else {
+            aba.store(slots, null, index, value, (h, s, i) -> asArray(h).get(i), (h, s, i, v) -> asArray(h).lazySet(i, v));
+        }
     }
 
     /**
@@ -2497,7 +2521,12 @@ public final class TelemetryRegistry {
                                                 @Nullable Object value) {
         slotOffered(value, slots, index);
         slotReleased(slots, ReferenceSlots.element(index), value);
-        slots.setRelease(index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        if (aba == null) {
+            slots.setRelease(index, value);
+        } else {
+            aba.store(slots, null, index, value, (h, s, i) -> asArray(h).get(i), (h, s, i, v) -> asArray(h).setRelease(i, v));
+        }
     }
 
     /**
@@ -2514,7 +2543,9 @@ public final class TelemetryRegistry {
                                                       @Nullable Object expected,
                                                       @Nullable Object update) {
         slotOffered(update, slots, index);
-        boolean swapped = slots.compareAndSet(index, expected, update);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        boolean swapped = aba == null ? slots.compareAndSet(index, expected, update)
+                : aba.compareAndSet(slots, null, index, expected, update, (h, s, i, e, u) -> asArray(h).compareAndSet(i, e, u));
         if (swapped) {
             slotReleased(slots, ReferenceSlots.element(index), update);
         }
@@ -2534,7 +2565,9 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetReferenceArray(AtomicReferenceArray<Object> slots,
                                                            int index, @Nullable Object value) {
         slotReleased(slots, ReferenceSlots.element(index), value);
-        Object previous = slots.getAndSet(index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        Object previous = aba == null ? slots.getAndSet(index, value)
+                : aba.getAndSet(slots, null, index, value, (h, s, i, v) -> asArray(h).getAndSet(i, v));
         slotTaken(previous, slots, index);
         return previous;
     }
@@ -2550,7 +2583,12 @@ public final class TelemetryRegistry {
      */
     public static void setReferenceHandle(VarHandle handle, Object receiver, @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(handle));
-        handle.withInvokeBehavior().set(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().set(receiver, value);
+        } else {
+            aba.store(receiver, handle, 0, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h), (h, s, i, v) -> asHandle(s).withInvokeBehavior().set(h, v));
+        }
     }
 
     /**
@@ -2565,7 +2603,12 @@ public final class TelemetryRegistry {
                                                   @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(handle));
         slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
-        handle.withInvokeBehavior().setVolatile(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().setVolatile(receiver, value);
+        } else {
+            aba.store(receiver, handle, 0, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h), (h, s, i, v) -> asHandle(s).withInvokeBehavior().setVolatile(h, v));
+        }
     }
 
     /**
@@ -2580,7 +2623,12 @@ public final class TelemetryRegistry {
                                                  @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(handle));
         slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
-        handle.withInvokeBehavior().setRelease(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().setRelease(receiver, value);
+        } else {
+            aba.store(receiver, handle, 0, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h), (h, s, i, v) -> asHandle(s).withInvokeBehavior().setRelease(h, v));
+        }
     }
 
     /**
@@ -2594,7 +2642,12 @@ public final class TelemetryRegistry {
     public static void setOpaqueReferenceHandle(VarHandle handle, Object receiver,
                                                 @Nullable Object value) {
         slotOffered(value, receiver, System.identityHashCode(handle));
-        handle.withInvokeBehavior().setOpaque(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().setOpaque(receiver, value);
+        } else {
+            aba.store(receiver, handle, 0, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h), (h, s, i, v) -> asHandle(s).withInvokeBehavior().setOpaque(h, v));
+        }
     }
 
     /**
@@ -2612,7 +2665,9 @@ public final class TelemetryRegistry {
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
         slotOffered(update, receiver, System.identityHashCode(handle));
-        boolean swapped = handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(receiver, expected, update)
+                : aba.compareAndSet(receiver, handle, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, e, u));
         if (swapped) {
             slotReleased(receiver, ReferenceSlots.fieldOf(handle), update);
         }
@@ -2633,7 +2688,9 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetReferenceHandle(VarHandle handle, Object receiver,
                                                             @Nullable Object value) {
         slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
-        Object previous = handle.withInvokeBehavior().getAndSet(receiver, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        Object previous = aba == null ? handle.withInvokeBehavior().getAndSet(receiver, value)
+                : aba.getAndSet(receiver, handle, 0, value, (h, s, i, v) -> asHandle(s).withInvokeBehavior().getAndSet(h, v));
         slotTaken(previous, receiver, System.identityHashCode(handle));
         return previous;
     }
@@ -2649,7 +2706,12 @@ public final class TelemetryRegistry {
      */
     public static void setStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
         slotOffered(value, handle, 0);
-        handle.withInvokeBehavior().set(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().set(value);
+        } else {
+            aba.store(handle, null, 0, value, (h, s, i) -> asHandle(h).withInvokeBehavior().getVolatile(), (h, s, i, v) -> asHandle(h).withInvokeBehavior().set(v));
+        }
     }
 
     /**
@@ -2662,7 +2724,12 @@ public final class TelemetryRegistry {
     public static void setVolatileStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
         slotOffered(value, handle, 0);
         slotReleased(handle, SLOT_VALUE, value);
-        handle.withInvokeBehavior().setVolatile(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().setVolatile(value);
+        } else {
+            aba.store(handle, null, 0, value, (h, s, i) -> asHandle(h).withInvokeBehavior().getVolatile(), (h, s, i, v) -> asHandle(h).withInvokeBehavior().setVolatile(v));
+        }
     }
 
     /**
@@ -2675,7 +2742,12 @@ public final class TelemetryRegistry {
     public static void setReleaseStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
         slotOffered(value, handle, 0);
         slotReleased(handle, SLOT_VALUE, value);
-        handle.withInvokeBehavior().setRelease(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().setRelease(value);
+        } else {
+            aba.store(handle, null, 0, value, (h, s, i) -> asHandle(h).withInvokeBehavior().getVolatile(), (h, s, i, v) -> asHandle(h).withInvokeBehavior().setRelease(v));
+        }
     }
 
     /**
@@ -2687,7 +2759,12 @@ public final class TelemetryRegistry {
      */
     public static void setOpaqueStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
         slotOffered(value, handle, 0);
-        handle.withInvokeBehavior().setOpaque(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        if (aba == null) {
+            handle.withInvokeBehavior().setOpaque(value);
+        } else {
+            aba.store(handle, null, 0, value, (h, s, i) -> asHandle(h).withInvokeBehavior().getVolatile(), (h, s, i, v) -> asHandle(h).withInvokeBehavior().setOpaque(v));
+        }
     }
 
     /**
@@ -2704,7 +2781,9 @@ public final class TelemetryRegistry {
                                                              @Nullable Object expected,
                                                              @Nullable Object update) {
         slotOffered(update, handle, 0);
-        boolean swapped = handle.withInvokeBehavior().compareAndSet(expected, update);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(expected, update)
+                : aba.compareAndSet(handle, null, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(h).withInvokeBehavior().compareAndSet(e, u));
         if (swapped) {
             slotReleased(handle, SLOT_VALUE, update);
         }
@@ -2723,7 +2802,9 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetStaticReferenceHandle(VarHandle handle,
                                                                  @Nullable Object value) {
         slotReleased(handle, SLOT_VALUE, value);
-        Object previous = handle.withInvokeBehavior().getAndSet(value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        Object previous = aba == null ? handle.withInvokeBehavior().getAndSet(value)
+                : aba.getAndSet(handle, null, 0, value, (h, s, i, v) -> asHandle(h).withInvokeBehavior().getAndSet(v));
         slotTaken(previous, handle, 0);
         return previous;
     }
@@ -2742,7 +2823,12 @@ public final class TelemetryRegistry {
     public static void setArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                @Nullable Object value) {
         slotOffered(value, array, index);
-        handle.withInvokeBehavior().set(array, index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        if (aba == null) {
+            handle.withInvokeBehavior().set(array, index, value);
+        } else {
+            aba.store(array, handle, index, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h, i), (h, s, i, v) -> asHandle(s).withInvokeBehavior().set(h, i, v));
+        }
     }
 
     /**
@@ -2758,7 +2844,12 @@ public final class TelemetryRegistry {
                                                        @Nullable Object value) {
         slotOffered(value, array, index);
         slotReleased(array, ReferenceSlots.element(index), value);
-        handle.withInvokeBehavior().setVolatile(array, index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        if (aba == null) {
+            handle.withInvokeBehavior().setVolatile(array, index, value);
+        } else {
+            aba.store(array, handle, index, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h, i), (h, s, i, v) -> asHandle(s).withInvokeBehavior().setVolatile(h, i, v));
+        }
     }
 
     /**
@@ -2774,7 +2865,12 @@ public final class TelemetryRegistry {
                                                       @Nullable Object value) {
         slotOffered(value, array, index);
         slotReleased(array, ReferenceSlots.element(index), value);
-        handle.withInvokeBehavior().setRelease(array, index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        if (aba == null) {
+            handle.withInvokeBehavior().setRelease(array, index, value);
+        } else {
+            aba.store(array, handle, index, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h, i), (h, s, i, v) -> asHandle(s).withInvokeBehavior().setRelease(h, i, v));
+        }
     }
 
     /**
@@ -2789,7 +2885,12 @@ public final class TelemetryRegistry {
     public static void setOpaqueArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                      @Nullable Object value) {
         slotOffered(value, array, index);
-        handle.withInvokeBehavior().setOpaque(array, index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        if (aba == null) {
+            handle.withInvokeBehavior().setOpaque(array, index, value);
+        } else {
+            aba.store(array, handle, index, value, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h, i), (h, s, i, v) -> asHandle(s).withInvokeBehavior().setOpaque(h, i, v));
+        }
     }
 
     /**
@@ -2807,7 +2908,9 @@ public final class TelemetryRegistry {
                                                             int index, @Nullable Object expected,
                                                             @Nullable Object update) {
         slotOffered(update, array, index);
-        boolean swapped = handle.withInvokeBehavior().compareAndSet(array, index, expected, update);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(array, index, expected, update)
+                : aba.compareAndSet(array, handle, index, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, i, e, u));
         if (swapped) {
             slotReleased(array, ReferenceSlots.element(index), update);
         }
@@ -2827,9 +2930,36 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetArrayReferenceHandle(VarHandle handle, Object array,
                                                                  int index, @Nullable Object value) {
         slotReleased(array, ReferenceSlots.element(index), value);
-        Object previous = handle.withInvokeBehavior().getAndSet(array, index, value);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        Object previous = aba == null ? handle.withInvokeBehavior().getAndSet(array, index, value)
+                : aba.getAndSet(array, handle, index, value, (h, s, i, v) -> asHandle(s).withInvokeBehavior().getAndSet(h, i, v));
         slotTaken(previous, array, index);
         return previous;
+    }
+
+    // ---- The slot operations the hooks above hand ABAProblemDetector (#817) ---------------------
+    //
+    // Each lambda passed to an AgentSlot is non-capturing, so it is one shared instance and the hook
+    // allocates nothing for it; these name the selector or holder back as its real type.
+
+    @SuppressWarnings("unchecked") // the hook that passed it holds the updater as this type
+    private static AtomicReferenceFieldUpdater<Object, Object> asUpdater(@Nullable Object selector) {
+        if (selector == null) {
+            throw new IllegalStateException("an updater slot was handed no updater");
+        }
+        return (AtomicReferenceFieldUpdater<Object, Object>) selector;
+    }
+
+    @SuppressWarnings("unchecked") // the hook that passed it holds the array as this type
+    private static AtomicReferenceArray<Object> asArray(Object holder) {
+        return (AtomicReferenceArray<Object>) holder;
+    }
+
+    private static VarHandle asHandle(@Nullable Object selector) {
+        if (selector == null) {
+            throw new IllegalStateException("a handle slot was handed no handle");
+        }
+        return (VarHandle) selector;
     }
 
     // ---- Acquiring reads of the reference slots above (#741) ------------------------------------
@@ -2866,7 +2996,9 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                                        Object receiver) {
-        Object value = updater.get(receiver);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
+        Object value = aba == null ? updater.get(receiver)
+                : aba.read(receiver, updater, 0, (h, s, i) -> asUpdater(s).get(h));
         slotAcquired(receiver, ReferenceSlots.fieldOf(updater), value);
         return value;
     }
@@ -2880,7 +3012,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getReferenceArray(AtomicReferenceArray<Object> slots, int index) {
-        Object value = slots.get(index);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        Object value = aba == null ? slots.get(index)
+                : aba.read(slots, null, index, (h, s, i) -> asArray(h).get(i));
         slotAcquired(slots, ReferenceSlots.element(index), value);
         return value;
     }
@@ -2894,7 +3028,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireReferenceArray(AtomicReferenceArray<Object> slots, int index) {
-        Object value = slots.getAcquire(index);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        Object value = aba == null ? slots.getAcquire(index)
+                : aba.read(slots, null, index, (h, s, i) -> asArray(h).getAcquire(i));
         slotAcquired(slots, ReferenceSlots.element(index), value);
         return value;
     }
@@ -2908,7 +3044,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getVolatileReferenceHandle(VarHandle handle, Object receiver) {
-        Object value = handle.withInvokeBehavior().getVolatile(receiver);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        Object value = aba == null ? handle.withInvokeBehavior().getVolatile(receiver)
+                : aba.read(receiver, handle, 0, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h));
         slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value);
         return value;
     }
@@ -2922,7 +3060,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireReferenceHandle(VarHandle handle, Object receiver) {
-        Object value = handle.withInvokeBehavior().getAcquire(receiver);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        Object value = aba == null ? handle.withInvokeBehavior().getAcquire(receiver)
+                : aba.read(receiver, handle, 0, (h, s, i) -> asHandle(s).withInvokeBehavior().getAcquire(h));
         slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value);
         return value;
     }
@@ -2935,7 +3075,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getVolatileStaticReferenceHandle(VarHandle handle) {
-        Object value = handle.withInvokeBehavior().getVolatile();
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        Object value = aba == null ? handle.withInvokeBehavior().getVolatile()
+                : aba.read(handle, null, 0, (h, s, i) -> asHandle(h).withInvokeBehavior().getVolatile());
         slotAcquired(handle, SLOT_VALUE, value);
         return value;
     }
@@ -2948,7 +3090,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireStaticReferenceHandle(VarHandle handle) {
-        Object value = handle.withInvokeBehavior().getAcquire();
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        Object value = aba == null ? handle.withInvokeBehavior().getAcquire()
+                : aba.read(handle, null, 0, (h, s, i) -> asHandle(h).withInvokeBehavior().getAcquire());
         slotAcquired(handle, SLOT_VALUE, value);
         return value;
     }
@@ -2963,7 +3107,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getVolatileArrayReferenceHandle(VarHandle handle, Object array, int index) {
-        Object value = handle.withInvokeBehavior().getVolatile(array, index);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        Object value = aba == null ? handle.withInvokeBehavior().getVolatile(array, index)
+                : aba.read(array, handle, index, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h, i));
         slotAcquired(array, ReferenceSlots.element(index), value);
         return value;
     }
@@ -2978,7 +3124,9 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireArrayReferenceHandle(VarHandle handle, Object array, int index) {
-        Object value = handle.withInvokeBehavior().getAcquire(array, index);
+        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        Object value = aba == null ? handle.withInvokeBehavior().getAcquire(array, index)
+                : aba.read(array, handle, index, (h, s, i) -> asHandle(s).withInvokeBehavior().getAcquire(h, i));
         slotAcquired(array, ReferenceSlots.element(index), value);
         return value;
     }
