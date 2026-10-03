@@ -39,13 +39,14 @@ import org.jspecify.annotations.Nullable;
  * {@link #recordCapturedRead(Object, Object, Thread)}; {@link #recordExecution(Object, String, Thread)}
  * names no captured object and probes no lock, so it does not count as a read.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest}, naming the captured object so each capture is judged on its
+ * own (the overloads that take it are stable since 1.12.4, #800):
  * <pre>{@code
  * int[] counter = {0};
  * Runnable task = () -> {
  *     var d = AsyncTestContext.statefulLambdaDetector();
  *     d.recordExecution(task, "task", Thread.currentThread());       // this lambda is running
- *     d.recordCapturedMutation(task, "counter", Thread.currentThread()); // mutating capture
+ *     d.recordCapturedMutation(task, "counter", counter, Thread.currentThread()); // mutating capture
  *     counter[0]++;
  * };
  * }</pre>
@@ -153,7 +154,7 @@ public class StatefulLambdaDetector {
      * @param thread        the mutating thread
      * @since 1.12.3
      */
-    @API(status = Status.EXPERIMENTAL)
+    @API(status = Status.STABLE)
     public void recordCapturedMutation(Object lambda, String capturedName,
                                        @Nullable Object capturedState, Thread thread) {
         if (lambda == null || thread == null) return;
@@ -184,7 +185,7 @@ public class StatefulLambdaDetector {
      * @param thread        the reading thread
      * @since 1.12.3
      */
-    @API(status = Status.EXPERIMENTAL)
+    @API(status = Status.STABLE)
     public void recordCapturedRead(Object lambda, @Nullable Object capturedState, Thread thread) {
         if (lambda == null || thread == null) return;
         if (capturedState != null && isThreadSafeByType(capturedState)) return;

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`StatefulLambdaDetector`'s object-taking overloads are stable (#800).**
+  `recordCapturedMutation(lambda, name, state, thread)` and `recordCapturedRead(lambda, state,
+  thread)` leave `EXPERIMENTAL`. They are the fix for #800: without the captured object, two
+  captures each under its own lock read as one capture under no common lock, and keying by name
+  instead would let two names for one object hide a race. The class javadoc, `examples/README.md`
+  and example 76, whose counting task now hands its counter to the hook, use them.
+
 - **Unnamed objects are labelled `kind@n`, counted per detector, in every report (#860).** #854
   moved nineteen detectors off a `type@identityHash` label, but 60 sites in 52 other detectors
   still built one, from `System.identityHashCode` or from an `IdentityKey`'s `hashCode()`, which
