@@ -207,8 +207,10 @@ A function registered on a `CompletableFuture` with `thenApply`, `thenAccept`, `
 that runs it is ordered after the registering thread and after the completion of each stage it
 waits for, and a `join` or `get` of the stage it returned, on the registering thread, is ordered
 after it. The `Either` forms carry only the registering thread's clock, since which stage they
-followed is not known, and a call typed against `CompletionStage` rather than `CompletableFuture`
-is not woven. A `CompletableFuture` never hands its functions back, so the wrapper cannot be seen.
+followed is not known. A call typed against `CompletionStage` is woven too, and wraps the function
+only when the stage is a `CompletableFuture`: any other implementation gets the caller's own
+function, since it might hand it back. A `CompletableFuture` never does, so the wrapper cannot be
+seen.
 `Executor.execute` is not an edge, because a `ThreadPoolExecutor` hands the task itself back from its
 queue. With `fields=true`, a volatile write releases that field
 of its object, and a read of the same field acquires at the read what the write whose value it

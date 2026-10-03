@@ -199,6 +199,23 @@ class HandOffPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("the same through a call typed against CompletionStage (#741)")
+    void aStageTypedCallIsOrderedAfterItsRegistration() throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        Parcel parcel = new Parcel();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        List<String> findings = findings(() -> bean.fillAndChainStage(source, parcel), writerRuns -> {
+            writerRuns.run();
+            bean.completeSource(source);
+        });
+
+        assertFalse(mentionsContents(findings),
+                "The registration went through CompletionStage.thenApply, whose call site has its "
+                        + "own descriptor; the stage is a CompletableFuture, so it is ordered the "
+                        + "same way. Findings were: " + findings);
+    }
+
+    @Test
     @DisplayName("a parcel filled after the thenApply keeps its finding")
     void fillAfterTheRegistrationIsReported() throws InterruptedException {
         HandOffPublicationBean bean = new HandOffPublicationBean();

@@ -122,8 +122,8 @@ import org.jspecify.annotations.Nullable;
  *       join of its stage on the registering thread after it; an {@code Either} stage carries
  *       only the registering thread's clock (#741).
  *   <li>Not yet observed: {@code Executor.execute}, a task submitted to an executor outside the
- *       JDK, a dependent stage registered through a call typed against {@code CompletionStage}, a
- *       plain or
+ *       JDK, a dependent stage of a {@code CompletionStage} that is not a
+ *       {@code CompletableFuture}, a plain or
  *       opaque {@code VarHandle} read, a reference slot whose field cannot be named (an adapted
  *       handle, or an updater while {@code java.util.concurrent.atomic} is closed to this
  *       library), and a validated {@code StampedLock} optimistic read. Code relying on those

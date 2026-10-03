@@ -76,7 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the stage on the registering thread receives the clock the function finished with. The
   `Either` forms carry only the registering thread's clock. The wrapper also attributes a pool
   thread running such a function to the run (#834). A `CompletableFuture` never hands its
-  functions back, so nothing can see the wrapper.
+  functions back, so nothing can see the wrapper. Calls typed against `CompletionStage` are woven
+  as well, and wrap only when the stage is a `CompletableFuture`.
 - **A `validate` whose answer is thrown away no longer hides torn reads under the agent (#823).**
   The agent dropped the reads of a speculation whose `validate` failed, on the grounds that the
   caller discards them; a caller that discards the answer instead, `lock.validate(stamp);` as a

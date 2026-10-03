@@ -653,7 +653,9 @@ class AgentHappensBeforeFeedTest {
         /** The source is already complete, so the function runs inside thenApply. */
         ALREADY_COMPLETE,
         /** Both calls made on the future directly, which the model cannot see. */
-        UNWOVEN
+        UNWOVEN,
+        /** As ORDERED, through a call site typed against CompletionStage. */
+        TYPED_AS_STAGE
     }
 
     /**
@@ -689,8 +691,12 @@ class AgentHappensBeforeFeedTest {
             detector.recordFieldWrite(output, "value");
             return output;
         };
-        CompletableFuture<Object> stage = shape == Stage.UNWOVEN ? source.thenApply(function)
-                : AgentConcurrencyUtilHooks.thenApply(source, function);
+        CompletableFuture<Object> stage = switch (shape) {
+            case UNWOVEN -> source.thenApply(function);
+            case TYPED_AS_STAGE -> (CompletableFuture<Object>) AgentConcurrencyUtilHooks.thenApply(
+                    (java.util.concurrent.CompletionStage<Object>) source, function);
+            default -> AgentConcurrencyUtilHooks.thenApply(source, function);
+        };
         if (shape == Stage.INPUT_AFTER_REGISTERING) {
             input.value = 1;
             detector.recordFieldWrite(input, "value");
@@ -719,6 +725,9 @@ class AgentHappensBeforeFeedTest {
         assertFalse(stageReported(Stage.ORDERED),
                 "the input was written before thenApply, the box before the completion the function "
                         + "followed, and the output read after joining the stage: all three ordered");
+        assertFalse(stageReported(Stage.TYPED_AS_STAGE),
+                "the same through a call typed against CompletionStage, which a library returning "
+                        + "one makes");
         assertFalse(stageReported(Stage.ALREADY_COMPLETE),
                 "the same with the source completed first, so the function ran inside thenApply");
         assertTrue(stageReported(Stage.INPUT_AFTER_REGISTERING),
@@ -727,6 +736,29 @@ class AgentHappensBeforeFeedTest {
                 "the output was read before the join, which orders nothing after the function");
         assertTrue(stageReported(Stage.UNWOVEN),
                 "the unwoven twin: nothing told the model");
+    }
+
+    @Test
+    @DisplayName("a stage that is not a CompletableFuture gets the caller's own function (#741)")
+    void anotherStageImplementationSeesNoWrapper() {
+        java.util.concurrent.atomic.AtomicReference<Object> handed = new java.util.concurrent.atomic.AtomicReference<>();
+        @SuppressWarnings("unchecked")
+        java.util.concurrent.CompletionStage<Object> stage = (java.util.concurrent.CompletionStage<Object>)
+                java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                        new Class<?>[] {java.util.concurrent.CompletionStage.class}, (proxy, method, args) -> {
+                            if (method.getName().equals("thenApply")) {
+                                handed.set(args[0]);
+                                return proxy;
+                            }
+                            throw new UnsupportedOperationException(method.getName());
+                        });
+        java.util.function.Function<Object, Object> function = value -> value;
+
+        AgentConcurrencyUtilHooks.thenApply(stage, function);
+
+        assertTrue(handed.get() == function,
+                "a stage the JDK did not write may hand its functions back, so it must get the "
+                        + "caller's own, unwrapped: " + handed.get());
     }
 
     /** Where the submitter below breaks the order an executor makes, if it does. */

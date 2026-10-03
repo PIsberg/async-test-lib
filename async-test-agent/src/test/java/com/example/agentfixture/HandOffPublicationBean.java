@@ -71,6 +71,16 @@ public class HandOffPublicationBean {
         return stage;
     }
 
+    /**
+     * As {@link #fillAndChain}, through a call site typed against {@code CompletionStage}, the
+     * type a library that returns a stage hands its callers.
+     */
+    public java.util.concurrent.CompletionStage<Object> fillAndChainStage(
+            java.util.concurrent.CompletionStage<Object> source, Parcel parcel) {
+        parcel.contents = 1;
+        return source.thenApply(ignored -> ++parcel.contents);
+    }
+
     /** Completes {@code source}, which runs the functions registered on it on this thread. */
     public void completeSource(CompletableFuture<Object> source) {
         source.complete(Boolean.TRUE);

@@ -1501,6 +1501,905 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code CompletionStage.thenApply(Function)}: on a {@code CompletableFuture}, as {@link
+     * #thenApply(CompletableFuture, Function)}; any other stage gets the caller's function
+     * unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> thenApply(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenApply(future, function);
+        }
+        return receiver.thenApply(function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenApplyAsync(Function)}: on a {@code CompletableFuture}, as
+     * {@link #thenApplyAsync(CompletableFuture, Function)}; any other stage gets the caller's
+     * function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> thenApplyAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenApplyAsync(future, function);
+        }
+        return receiver.thenApplyAsync(function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenApplyAsync(Function, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #thenApplyAsync(CompletableFuture, Function, Executor)}; any
+     * other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> thenApplyAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenApplyAsync(future, function, executor);
+        }
+        return receiver.thenApplyAsync(function, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenAccept(Consumer)}: on a {@code CompletableFuture}, as
+     * {@link #thenAccept(CompletableFuture, Consumer)}; any other stage gets the caller's function
+     * unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenAccept(
+            CompletionStage<Object> receiver,
+            Consumer<Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenAccept(future, action);
+        }
+        return receiver.thenAccept(action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenAcceptAsync(Consumer)}: on a {@code CompletableFuture}, as
+     * {@link #thenAcceptAsync(CompletableFuture, Consumer)}; any other stage gets the caller's
+     * function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenAcceptAsync(
+            CompletionStage<Object> receiver,
+            Consumer<Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenAcceptAsync(future, action);
+        }
+        return receiver.thenAcceptAsync(action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenAcceptAsync(Consumer, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #thenAcceptAsync(CompletableFuture, Consumer, Executor)}; any
+     * other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenAcceptAsync(
+            CompletionStage<Object> receiver,
+            Consumer<Object> action,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenAcceptAsync(future, action, executor);
+        }
+        return receiver.thenAcceptAsync(action, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenRun(Runnable)}: on a {@code CompletableFuture}, as {@link
+     * #thenRun(CompletableFuture, Runnable)}; any other stage gets the caller's function unwrapped,
+     * since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenRun(
+            CompletionStage<Object> receiver,
+            Runnable action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenRun(future, action);
+        }
+        return receiver.thenRun(action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenRunAsync(Runnable)}: on a {@code CompletableFuture}, as
+     * {@link #thenRunAsync(CompletableFuture, Runnable)}; any other stage gets the caller's
+     * function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenRunAsync(
+            CompletionStage<Object> receiver,
+            Runnable action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenRunAsync(future, action);
+        }
+        return receiver.thenRunAsync(action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenRunAsync(Runnable, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #thenRunAsync(CompletableFuture, Runnable, Executor)}; any
+     * other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenRunAsync(
+            CompletionStage<Object> receiver,
+            Runnable action,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenRunAsync(future, action, executor);
+        }
+        return receiver.thenRunAsync(action, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenCombine(CompletionStage, BiFunction)}: on a {@code
+     * CompletableFuture}, as {@link #thenCombine(CompletableFuture, CompletionStage, BiFunction)};
+     * any other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> thenCombine(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            BiFunction<Object, Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenCombine(future, other, function);
+        }
+        return receiver.thenCombine(other, function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenCombineAsync(CompletionStage, BiFunction)}: on a {@code
+     * CompletableFuture}, as {@link #thenCombineAsync(CompletableFuture, CompletionStage,
+     * BiFunction)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> thenCombineAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            BiFunction<Object, Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenCombineAsync(future, other, function);
+        }
+        return receiver.thenCombineAsync(other, function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenCombineAsync(CompletionStage, BiFunction, Executor)}: on a
+     * {@code CompletableFuture}, as {@link #thenCombineAsync(CompletableFuture, CompletionStage,
+     * BiFunction, Executor)}; any other stage gets the caller's function unwrapped, since it may
+     * hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param function what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> thenCombineAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            BiFunction<Object, Object, Object> function,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenCombineAsync(future, other, function, executor);
+        }
+        return receiver.thenCombineAsync(other, function, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenAcceptBoth(CompletionStage, BiConsumer)}: on a {@code
+     * CompletableFuture}, as {@link #thenAcceptBoth(CompletableFuture, CompletionStage,
+     * BiConsumer)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenAcceptBoth(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            BiConsumer<Object, Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenAcceptBoth(future, other, action);
+        }
+        return receiver.thenAcceptBoth(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenAcceptBothAsync(CompletionStage, BiConsumer)}: on a {@code
+     * CompletableFuture}, as {@link #thenAcceptBothAsync(CompletableFuture, CompletionStage,
+     * BiConsumer)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenAcceptBothAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            BiConsumer<Object, Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenAcceptBothAsync(future, other, action);
+        }
+        return receiver.thenAcceptBothAsync(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenAcceptBothAsync(CompletionStage, BiConsumer, Executor)}: on
+     * a {@code CompletableFuture}, as {@link #thenAcceptBothAsync(CompletableFuture,
+     * CompletionStage, BiConsumer, Executor)}; any other stage gets the caller's function
+     * unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param action what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> thenAcceptBothAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            BiConsumer<Object, Object> action,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenAcceptBothAsync(future, other, action, executor);
+        }
+        return receiver.thenAcceptBothAsync(other, action, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.runAfterBoth(CompletionStage, Runnable)}: on a {@code
+     * CompletableFuture}, as {@link #runAfterBoth(CompletableFuture, CompletionStage, Runnable)};
+     * any other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> runAfterBoth(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Runnable action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return runAfterBoth(future, other, action);
+        }
+        return receiver.runAfterBoth(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.runAfterBothAsync(CompletionStage, Runnable)}: on a {@code
+     * CompletableFuture}, as {@link #runAfterBothAsync(CompletableFuture, CompletionStage,
+     * Runnable)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> runAfterBothAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Runnable action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return runAfterBothAsync(future, other, action);
+        }
+        return receiver.runAfterBothAsync(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.runAfterBothAsync(CompletionStage, Runnable, Executor)}: on a
+     * {@code CompletableFuture}, as {@link #runAfterBothAsync(CompletableFuture, CompletionStage,
+     * Runnable, Executor)}; any other stage gets the caller's function unwrapped, since it may hand
+     * it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage, which must also complete before the function runs
+     * @param action what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> runAfterBothAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Runnable action,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return runAfterBothAsync(future, other, action, executor);
+        }
+        return receiver.runAfterBothAsync(other, action, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.applyToEither(CompletionStage, Function)}: on a {@code
+     * CompletableFuture}, as {@link #applyToEither(CompletableFuture, CompletionStage, Function)};
+     * any other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> applyToEither(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return applyToEither(future, other, function);
+        }
+        return receiver.applyToEither(other, function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.applyToEitherAsync(CompletionStage, Function)}: on a {@code
+     * CompletableFuture}, as {@link #applyToEitherAsync(CompletableFuture, CompletionStage,
+     * Function)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> applyToEitherAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return applyToEitherAsync(future, other, function);
+        }
+        return receiver.applyToEitherAsync(other, function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.applyToEitherAsync(CompletionStage, Function, Executor)}: on a
+     * {@code CompletableFuture}, as {@link #applyToEitherAsync(CompletableFuture, CompletionStage,
+     * Function, Executor)}; any other stage gets the caller's function unwrapped, since it may hand
+     * it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param function what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> applyToEitherAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Function<Object, Object> function,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return applyToEitherAsync(future, other, function, executor);
+        }
+        return receiver.applyToEitherAsync(other, function, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.acceptEither(CompletionStage, Consumer)}: on a {@code
+     * CompletableFuture}, as {@link #acceptEither(CompletableFuture, CompletionStage, Consumer)};
+     * any other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> acceptEither(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Consumer<Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return acceptEither(future, other, action);
+        }
+        return receiver.acceptEither(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.acceptEitherAsync(CompletionStage, Consumer)}: on a {@code
+     * CompletableFuture}, as {@link #acceptEitherAsync(CompletableFuture, CompletionStage,
+     * Consumer)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> acceptEitherAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Consumer<Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return acceptEitherAsync(future, other, action);
+        }
+        return receiver.acceptEitherAsync(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.acceptEitherAsync(CompletionStage, Consumer, Executor)}: on a
+     * {@code CompletableFuture}, as {@link #acceptEitherAsync(CompletableFuture, CompletionStage,
+     * Consumer, Executor)}; any other stage gets the caller's function unwrapped, since it may hand
+     * it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param action what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> acceptEitherAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Consumer<Object> action,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return acceptEitherAsync(future, other, action, executor);
+        }
+        return receiver.acceptEitherAsync(other, action, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.runAfterEither(CompletionStage, Runnable)}: on a {@code
+     * CompletableFuture}, as {@link #runAfterEither(CompletableFuture, CompletionStage, Runnable)};
+     * any other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> runAfterEither(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Runnable action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return runAfterEither(future, other, action);
+        }
+        return receiver.runAfterEither(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.runAfterEitherAsync(CompletionStage, Runnable)}: on a {@code
+     * CompletableFuture}, as {@link #runAfterEitherAsync(CompletableFuture, CompletionStage,
+     * Runnable)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> runAfterEitherAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Runnable action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return runAfterEitherAsync(future, other, action);
+        }
+        return receiver.runAfterEitherAsync(other, action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.runAfterEitherAsync(CompletionStage, Runnable, Executor)}: on a
+     * {@code CompletableFuture}, as {@link #runAfterEitherAsync(CompletableFuture, CompletionStage,
+     * Runnable, Executor)}; any other stage gets the caller's function unwrapped, since it may hand
+     * it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param other the second stage; either one completing runs the function
+     * @param action what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Void> runAfterEitherAsync(
+            CompletionStage<Object> receiver,
+            CompletionStage<Object> other,
+            Runnable action,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return runAfterEitherAsync(future, other, action, executor);
+        }
+        return receiver.runAfterEitherAsync(other, action, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenCompose(Function)}: on a {@code CompletableFuture}, as
+     * {@link #thenCompose(CompletableFuture, Function)}; any other stage gets the caller's function
+     * unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> thenCompose(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenCompose(future, function);
+        }
+        return receiver.thenCompose(
+                (Function<Object, CompletionStage<Object>>) (Function<?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenComposeAsync(Function)}: on a {@code CompletableFuture}, as
+     * {@link #thenComposeAsync(CompletableFuture, Function)}; any other stage gets the caller's
+     * function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> thenComposeAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenComposeAsync(future, function);
+        }
+        return receiver.thenComposeAsync(
+                (Function<Object, CompletionStage<Object>>) (Function<?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.thenComposeAsync(Function, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #thenComposeAsync(CompletableFuture, Function, Executor)}; any
+     * other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> thenComposeAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return thenComposeAsync(future, function, executor);
+        }
+        return receiver.thenComposeAsync(
+                (Function<Object, CompletionStage<Object>>) (Function<?, ?>) function, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.whenComplete(BiConsumer)}: on a {@code CompletableFuture}, as
+     * {@link #whenComplete(CompletableFuture, BiConsumer)}; any other stage gets the caller's
+     * function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> whenComplete(
+            CompletionStage<Object> receiver,
+            BiConsumer<Object, Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return whenComplete(future, action);
+        }
+        return receiver.whenComplete(action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.whenCompleteAsync(BiConsumer)}: on a {@code CompletableFuture},
+     * as {@link #whenCompleteAsync(CompletableFuture, BiConsumer)}; any other stage gets the
+     * caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> whenCompleteAsync(
+            CompletionStage<Object> receiver,
+            BiConsumer<Object, Object> action) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return whenCompleteAsync(future, action);
+        }
+        return receiver.whenCompleteAsync(action);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.whenCompleteAsync(BiConsumer, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #whenCompleteAsync(CompletableFuture, BiConsumer, Executor)};
+     * any other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param action what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    public static CompletionStage<Object> whenCompleteAsync(
+            CompletionStage<Object> receiver,
+            BiConsumer<Object, Object> action,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return whenCompleteAsync(future, action, executor);
+        }
+        return receiver.whenCompleteAsync(action, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.handle(BiFunction)}: on a {@code CompletableFuture}, as {@link
+     * #handle(CompletableFuture, BiFunction)}; any other stage gets the caller's function
+     * unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> handle(
+            CompletionStage<Object> receiver,
+            BiFunction<Object, Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return handle(future, function);
+        }
+        return receiver.handle(
+                (BiFunction<Object, Throwable, Object>) (BiFunction<?, ?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.handleAsync(BiFunction)}: on a {@code CompletableFuture}, as
+     * {@link #handleAsync(CompletableFuture, BiFunction)}; any other stage gets the caller's
+     * function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> handleAsync(
+            CompletionStage<Object> receiver,
+            BiFunction<Object, Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return handleAsync(future, function);
+        }
+        return receiver.handleAsync(
+                (BiFunction<Object, Throwable, Object>) (BiFunction<?, ?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.handleAsync(BiFunction, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #handleAsync(CompletableFuture, BiFunction, Executor)}; any
+     * other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> handleAsync(
+            CompletionStage<Object> receiver,
+            BiFunction<Object, Object, Object> function,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return handleAsync(future, function, executor);
+        }
+        return receiver.handleAsync(
+                (BiFunction<Object, Throwable, Object>) (BiFunction<?, ?, ?>) function, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.exceptionally(Function)}: on a {@code CompletableFuture}, as
+     * {@link #exceptionally(CompletableFuture, Function)}; any other stage gets the caller's
+     * function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> exceptionally(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return exceptionally(future, function);
+        }
+        return receiver.exceptionally((Function<Throwable, Object>) (Function<?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.exceptionallyAsync(Function)}: on a {@code CompletableFuture},
+     * as {@link #exceptionallyAsync(CompletableFuture, Function)}; any other stage gets the
+     * caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> exceptionallyAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return exceptionallyAsync(future, function);
+        }
+        return receiver.exceptionallyAsync(
+                (Function<Throwable, Object>) (Function<?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.exceptionallyAsync(Function, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #exceptionallyAsync(CompletableFuture, Function, Executor)};
+     * any other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> exceptionallyAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return exceptionallyAsync(future, function, executor);
+        }
+        return receiver.exceptionallyAsync(
+                (Function<Throwable, Object>) (Function<?, ?>) function, executor);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.exceptionallyCompose(Function)}: on a {@code
+     * CompletableFuture}, as {@link #exceptionallyCompose(CompletableFuture, Function)}; any other
+     * stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> exceptionallyCompose(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return exceptionallyCompose(future, function);
+        }
+        return receiver.exceptionallyCompose(
+                (Function<Throwable, CompletionStage<Object>>) (Function<?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.exceptionallyComposeAsync(Function)}: on a {@code
+     * CompletableFuture}, as {@link #exceptionallyComposeAsync(CompletableFuture, Function)}; any
+     * other stage gets the caller's function unwrapped, since it may hand it back (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> exceptionallyComposeAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return exceptionallyComposeAsync(future, function);
+        }
+        return receiver.exceptionallyComposeAsync(
+                (Function<Throwable, CompletionStage<Object>>) (Function<?, ?>) function);
+    }
+
+    /**
+     * Weaves {@code CompletionStage.exceptionallyComposeAsync(Function, Executor)}: on a {@code
+     * CompletableFuture}, as {@link #exceptionallyComposeAsync(CompletableFuture, Function,
+     * Executor)}; any other stage gets the caller's function unwrapped, since it may hand it back
+     * (#741).
+     *
+     * @param receiver the stage the function follows
+     * @param function what runs next
+     * @param executor the executor the function runs on
+     * @return the stage the caller gets
+     * @since 1.12.4
+     */
+    @SuppressWarnings("unchecked") // the function as the stage types it, erased the same
+    public static CompletionStage<Object> exceptionallyComposeAsync(
+            CompletionStage<Object> receiver,
+            Function<Object, Object> function,
+            Executor executor) {
+        if (receiver instanceof CompletableFuture<Object> future) {
+            return exceptionallyComposeAsync(future, function, executor);
+        }
+        return receiver.exceptionallyComposeAsync(
+                (Function<Throwable, CompletionStage<Object>>) (Function<?, ?>) function, executor);
+    }
+
+    /**
      * Weaves {@code CompletableFuture.supplyAsync(Supplier)}: the supplier runs as a
      * {@link HandedTask}, so it starts ordered after this call and a join on this thread is
      * ordered after it finished (#741). The wrapper is internal to the future and never seen.
