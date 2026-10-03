@@ -708,4 +708,41 @@ class GathererConcurrencyMisuseDetectorTest {
             throw new IllegalStateException(e);
         }
     }
+
+    /**
+     * #846: an integration whose exit was never recorded (the enter was not paired in a finally)
+     * stays open. Rounds run one after another, so one still open when the next round starts is a
+     * missing exit, not a concurrent integration, and another thread's enter in the new round must
+     * not read as an overlap with it.
+     */
+    @Test
+    void anIntegrationLeftOpenByTheLastRoundIsNotAnOverlapInTheNext() throws Exception {
+        detector.registerGatherer("g", false, false); // the overlap rule holds for any shape
+        Object state = new Object();
+        Thread earlier = new Thread(() -> detector.recordIntegrateEnter("g", state, Thread.currentThread()));
+        earlier.start();
+        earlier.join();
+
+        detector.markInvocationStart();
+        detector.recordIntegrateEnter("g", state, Thread.currentThread());
+        detector.recordIntegrateExit("g", state);
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the open entry was the previous round's missing exit: " + detector.analyze());
+    }
+
+    @Test
+    void twoIntegrationsOfOneStateOpenInTheSameRoundStillFire() throws Exception {
+        detector.registerGatherer("g", false, false); // the overlap rule holds for any shape
+        Object state = new Object();
+        detector.markInvocationStart();
+        Thread other = new Thread(() -> detector.recordIntegrateEnter("g", state, Thread.currentThread()));
+        other.start();
+        other.join();
+
+        detector.recordIntegrateEnter("g", state, Thread.currentThread());
+
+        assertTrue(detector.analyze().hasIssues(),
+                "within one round an open integration on another thread is the overlap: " + detector.analyze());
+    }
 }

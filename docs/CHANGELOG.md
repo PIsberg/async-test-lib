@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A gatherer integration left open by one round read as an overlap in the next (#846).**
+  `GathererConcurrencyMisuseDetector` reports two integrations of one state open at once on two
+  threads. An enter whose exit was never recorded stayed open until a 4,096-entry cap cleared it,
+  so the next round's first integration of that state on another thread was reported HIGH. Rounds
+  run one after another, so the detector now drops open integrations at each round start; within
+  one round a missing exit still cannot be told from an overlap. Decided on #846 and unchanged: a
+  missed-speedup LOW still counts in `hasIssues()`, and a deliberately shared, thread-safe state
+  is still reported, since the contract is one state per initializer call. Example 116's real
+  `Gatherer` waits on the examples' JDK baseline (#893).
 - **IntelliJ plugin: a directory at a report path hid the real report (#723).** The tool window
   took the first configured report path that existed, so a directory named like the report shadowed
   a file at a later path and the panel showed an empty parse. It now takes the first regular file.

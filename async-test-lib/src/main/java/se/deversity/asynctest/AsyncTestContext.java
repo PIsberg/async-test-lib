@@ -917,6 +917,11 @@ public final class AsyncTestContext {
         if (lazyConstantMisuseDetector != null) {
             lazyConstantMisuseDetector.markInvocationStart();
         }
+        // An integration a pooled worker opened and never exited belongs to its round; another
+        // thread entering the same gatherer state next round is not an overlap with it (#846).
+        if (gathererConcurrencyMisuseDetector != null) {
+            gathererConcurrencyMisuseDetector.markInvocationStart();
+        }
         if (lazyCollectionMisuseDetector != null) {
             lazyCollectionMisuseDetector.markInvocationStart();
         }
