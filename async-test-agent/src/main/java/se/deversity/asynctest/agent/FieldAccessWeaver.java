@@ -473,7 +473,7 @@ final class FieldAccessWeaver {
         }
 
         /** {@link #declaringOwner} answers already given in this method, keyed by owner and name. */
-        private final java.util.Map<String, String> declaringOwners = new java.util.HashMap<>();
+        private final Map<String, String> declaringOwners = new java.util.HashMap<>();
 
         /**
          * {@return the internal name of the class that declares field {@code name}, looked up
