@@ -239,7 +239,9 @@ Three limits worth knowing before switching it on:
   nothing, so `tryOptimisticRead()` and `validate(long)` mark where a speculation starts and
   whether it held: the field reads in between count as reads under the lock in shared mode when
   `validate` returned `true`, are dropped when it returned `false`, since the caller discards what
-  it read, and count as plain reads when nothing validated them before the thread's next
+  it read, unless the caller threw the answer away (`lock.validate(stamp);` as a statement, a call
+  followed by a `POP`), when they count as plain reads (#823), and count as plain reads when
+  nothing validated them before the thread's next
   speculation on the same lock, its next write or the end of the round (#740). A speculation on
   a second lock nests inside the first instead of closing it, and reads it validates are judged
   by the enclosing one's `validate` as well (#823). A lock acquired only inside unwoven

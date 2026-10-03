@@ -387,7 +387,11 @@ final class CollectionAccessWeaver {
             Entry.call(StampedLock.class, "tryConvertToOptimisticRead", "tryConvertToOptimisticRead",
                     long.class),
             Entry.call(StampedLock.class, "tryOptimisticRead", "tryOptimisticRead"),
-            Entry.call(StampedLock.class, "validate", "validate", long.class),
+            // A validate whose answer is popped, lock.validate(stamp); as a statement, means the
+            // reads it judged are used whatever it said: the discard hook reports a refuted one
+            // (#823), the same lookahead as the queue offers.
+            Entry.call(StampedLock.class, "validate", "validate", long.class)
+                    .whenResultDiscarded("validateResultDiscarded"),
             Entry.view(StampedLock.class, "asReadLock", "asReadLock", Lock.class),
             Entry.view(StampedLock.class, "asWriteLock", "asWriteLock", Lock.class));
 

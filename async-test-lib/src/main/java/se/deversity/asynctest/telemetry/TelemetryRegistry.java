@@ -2036,6 +2036,27 @@ public final class TelemetryRegistry {
     static final String OPTIMISTIC_READ_VALIDATED = "#optimistic-validated";
 
     /**
+     * The target an event carries when a thread discarded the answer of the {@code validate} it
+     * just made, which had refuted its speculation (#823).
+     */
+    static final String OPTIMISTIC_READ_IGNORED = "#optimistic-ignored";
+
+    /**
+     * Records that the calling thread discarded the answer of its last {@code validate}, which was
+     * {@code false} (#823). The drain side then delivers that speculation's reads as plain reads:
+     * they may be torn, and the caller used them anyway. Allocation-free and non-throwing.
+     *
+     * @since 1.12.4
+     */
+    public static void optimisticReadIgnored() {
+        if (STOPPED.get()) {
+            return;
+        }
+        BUFFER.publish(Thread.currentThread().threadId(), OPTIMISTIC_READ_IGNORED, false, 0L, false,
+                Integer.MIN_VALUE, 0, false, 0, 0, 0);
+    }
+
+    /**
      * Records that the calling thread took an optimistic stamp from {@code lock} (#740).
      *
      * <p>Nothing is held: a {@code StampedLock} optimistic read is a speculation that

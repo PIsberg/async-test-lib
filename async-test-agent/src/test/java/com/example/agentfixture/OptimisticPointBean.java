@@ -43,6 +43,44 @@ public class OptimisticPointBean {
         return Math.hypot(currentX, currentY);
     }
 
+    /**
+     * {@return the distance, read optimistically and validated with the answer thrown away, the
+     * bug} {@code between} runs after the reads and before the validate (#823).
+     *
+     * @param between run between the reads and the validate, to let a writer in
+     */
+    public double distanceIgnoringValidate(Runnable between) {
+        long stamp = sl.tryOptimisticRead();
+        double currentX = x;
+        double currentY = y;
+        between.run();
+        sl.validate(stamp);
+        return Math.hypot(currentX, currentY);
+    }
+
+    /**
+     * {@return the distance, read optimistically and re-read under the read lock when the
+     * validate fails} {@code between} runs after the reads and before the validate (#823).
+     *
+     * @param between run between the reads and the validate, to let a writer in
+     */
+    public double distanceCheckingValidate(Runnable between) {
+        long stamp = sl.tryOptimisticRead();
+        double currentX = x;
+        double currentY = y;
+        between.run();
+        if (!sl.validate(stamp)) {
+            stamp = sl.readLock();
+            try {
+                currentX = x;
+                currentY = y;
+            } finally {
+                sl.unlockRead(stamp);
+            }
+        }
+        return Math.hypot(currentX, currentY);
+    }
+
     /** {@return the distance, read under an optimistic stamp that is never validated, the bug} */
     public double distanceWithoutValidating() {
         sl.tryOptimisticRead();

@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `validate` whose answer is thrown away no longer hides torn reads under the agent (#823).**
+  The agent dropped the reads of a speculation whose `validate` failed, on the grounds that the
+  caller discards them; a caller that discards the answer instead, `lock.validate(stamp);` as a
+  statement, used them anyway and went unreported. The weaver now recognises the call followed by
+  a `POP`, as it does for a discarded `BlockingQueue.offer`, and a refuted speculation's reads are
+  then delivered as plain reads that race the writer. A failed validate the caller branches on is
+  unchanged, and a discarded `true` still reads under the lock. The corpus idiom row for the
+  validated optimistic read was also shown to depend on the weave: with `tryOptimisticRead`,
+  `validate` and `tryConvertToOptimisticRead` removed from the agent's table, the correct row
+  reported `PROMPT/HIGH` on both fields and failed the lane.
 - **The bytecode identity-key gate now scans the agent too (#895).**
   `LibraryStateIsKeyedByIdentityTest` ran `IdentityHashKeyScanner` over the library's classes only,
   so a map or set keyed by an identity hash added to `async-test-agent` would have passed.

@@ -478,7 +478,14 @@ class TelemetryBridgeTest {
         /** Validates after a writer ran in between, and gives up without reading again. */
         VALIDATES_AND_GIVES_UP,
         /** Uses what it read and never validates. */
-        NEVER_VALIDATES
+        NEVER_VALIDATES,
+        /**
+         * Calls validate after a writer ran in between and discards its answer, as
+         * {@code lock.validate(stamp);} compiles: the weaver's discard hook follows the validate.
+         */
+        IGNORES_A_FAILED_VALIDATE,
+        /** Calls validate with nothing written in between and discards its answer. */
+        IGNORES_A_HELD_VALIDATE
     }
 
     /**
@@ -611,7 +618,7 @@ class TelemetryBridgeTest {
                 read.run();
             }).get(10, TimeUnit.SECONDS);
             if (reader == Reader.VALIDATES_AND_FALLS_BACK || reader == Reader.RETRIES_UNTIL_VALID
-                    || reader == Reader.VALIDATES_AND_GIVES_UP) {
+                    || reader == Reader.VALIDATES_AND_GIVES_UP || reader == Reader.IGNORES_A_FAILED_VALIDATE) {
                 Thread second = new Thread(write);
                 second.start();
                 second.join();
@@ -624,6 +631,10 @@ class TelemetryBridgeTest {
                         read.run();
                     }
                 }).get(10, TimeUnit.SECONDS);
+            } else if (reader == Reader.IGNORES_A_FAILED_VALIDATE || reader == Reader.IGNORES_A_HELD_VALIDATE) {
+                readerThread.submit(() -> se.deversity.asynctest.AgentLockHooks.validateResultDiscarded(
+                        se.deversity.asynctest.AgentLockHooks.validate(lock, stamp[0])))
+                        .get(10, TimeUnit.SECONDS);
             } else if (reader == Reader.VALIDATES_AND_GIVES_UP) {
                 readerThread.submit(() -> se.deversity.asynctest.AgentLockHooks.validate(lock, stamp[0]))
                         .get(10, TimeUnit.SECONDS);
@@ -679,6 +690,21 @@ class TelemetryBridgeTest {
                         + "reader discarded it and read again optimistically until a validate held. "
                         + "Only the read that validation covered was used, and it counts as a read "
                         + "under the lock; the discarded one is no access at all (#740)");
+    }
+
+    @Test
+    void aFailedValidateWhoseAnswerIsDiscardedLeavesItsReadsUnguarded() throws Exception {
+        assertTrue(optimisticReadReported(Reader.IGNORES_A_FAILED_VALIDATE),
+                "the reader called validate and threw the answer away, so it used what it read "
+                        + "whatever validate said. The answer was false, so those reads may be torn: "
+                        + "they are plain reads racing the writer, not reads nobody used (#823)");
+    }
+
+    @Test
+    void aHeldValidateWhoseAnswerIsDiscardedStillReadsUnderTheLock() throws Exception {
+        assertFalse(optimisticReadReported(Reader.IGNORES_A_HELD_VALIDATE),
+                "the reader discarded validate's answer, but nothing wrote in between and the "
+                        + "answer was true: the reads it used were consistent (#823)");
     }
 
     @Test
