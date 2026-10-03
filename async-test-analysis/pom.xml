@@ -32,12 +32,19 @@
         </dependency>
 
         <!-- Test scope only, and only as bytes: LibraryStateIsKeyedByIdentityTest reads the
-             library's class files to follow identity hashes into map keys (#803), which needs
-             ASM, and ASM may not leave this module. The main classes still cannot see the
-             library, and the dependency does not reach anyone who depends on this artifact. -->
+             library's and the agent's class files to follow identity hashes into map keys
+             (#803, #895), which needs ASM, and ASM may not leave this module. The main classes
+             still cannot see either, and the dependency does not reach anyone who depends on
+             this artifact. -->
         <dependency>
             <groupId>se.deversity.async-test-lib</groupId>
             <artifactId>async-test-lib</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-agent</artifactId>
+            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

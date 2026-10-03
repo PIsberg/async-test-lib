@@ -58,7 +58,8 @@ import se.deversity.vibetags.annotations.AIKeepInSync;
  * run, so a thread that outlives the run that started it, or a pool thread shared by several runs,
  * contributes to a later run only what that run's own workers hand it. Anything else is dropped
  * and counted ({@link #droppedNonWorkerEvents()}): a thread started in code the agent does not
- * weave, and a task handed over by {@code Executor.execute} or to a non-JDK executor.
+ * weave, and a task handed to a {@code ThreadPoolExecutor}'s {@code execute} or to a non-JDK
+ * executor.
  *
  * <h2>Thread safety</h2>
  * {@link #onEvent} runs on the single telemetry drain thread, while {@link #activate}
@@ -118,7 +119,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      *
      * <p>A thread the body starts through a woven {@code Thread.start}, and a pool thread running a
      * task the body submitted, are attributed (#745). Work handed over any other way, a thread
-     * started in unwoven code or a task passed to {@code Executor.execute}, produces accesses the
+     * started in unwoven code or a task passed to a {@code ThreadPoolExecutor}'s {@code execute},
+     * produces accesses the
      * bridge cannot attribute to the run, and it discards them. That is the honest thing to do,
      * but a clean atomicity report then means "nothing was observed" rather than "nothing was
      * wrong" for that work, and nothing used to say so. Counting them lets the runner announce the
@@ -168,6 +170,16 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      */
     private final java.util.Map<Long, java.util.Deque<Speculation>> speculations =
             new java.util.HashMap<>();
+
+    /**
+     * The speculation each thread's last {@code validate} refuted, kept until that thread's next
+     * event (#823). The weaver follows a {@code validate} whose answer the caller discards with an
+     * {@link TelemetryRegistry#OPTIMISTIC_READ_IGNORED} event, the thread's very next one: then the
+     * reads were used although they may be torn, and are delivered as plain reads. Any other next
+     * event means the caller looked at the answer, and the reads stay dropped. Drain thread only,
+     * like {@link #speculations}.
+     */
+    private final java.util.Map<Long, Speculation> refuted = new java.util.HashMap<>();
 
     /** One thread's optimistic read in progress: the lock's identity and the reads so far. */
     private static final class Speculation {
@@ -556,6 +568,17 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName == null) return;
+        if (!refuted.isEmpty() || TelemetryRegistry.OPTIMISTIC_READ_IGNORED.equals(qualifiedName)) {
+            Speculation lastRefuted = refuted.remove(threadId);
+            if (TelemetryRegistry.OPTIMISTIC_READ_IGNORED.equals(qualifiedName)) {
+                // The answer of the validate just before was thrown away, so what it refuted was
+                // used anyway: plain reads racing the writer (#823).
+                if (lastRefuted != null) {
+                    deliver(lastRefuted, false);
+                }
+                return;
+            }
+        }
         if (TelemetryRegistry.OPTIMISTIC_READ_STARTED.equals(qualifiedName)) {
             // A StampedLock speculation starts: this thread's reads wait for its validate (#740).
             // One still open on the same lock was never validated, so its reads, and those of
@@ -600,6 +623,9 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
                     // Still inside another speculation: these reads stand or fall with it too.
                     handOver(judged, enclosing);
                 }
+            } else if (!judged.reads.isEmpty()) {
+                // Dropped, unless the thread's next event says the answer was discarded.
+                refuted.put(threadId, judged);
             }
             return;
         }
@@ -828,9 +854,9 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
     /**
      * Delivers a closed speculation's reads (#740). When its {@code validate} held, no write lock
      * was taken while they ran, so they saw what a reader holding the lock in shared mode sees,
-     * and they are recorded with that lock added; a failed {@code validate} never reaches here,
-     * because the caller discards what it read. Otherwise they were used as read and are recorded
-     * exactly as they were made.
+     * and they are recorded with that lock added; a failed {@code validate} reaches here only when
+     * the caller discarded its answer (#823), since otherwise the caller discards what it read.
+     * Otherwise they were used as read and are recorded exactly as they were made.
      */
     private void deliver(Speculation speculation, boolean validated) {
         for (HeldRead read : speculation.reads) {
@@ -854,6 +880,7 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      */
     @Override
     public void onFlush() {
+        refuted.clear();
         if (speculations.isEmpty()) {
             return;
         }

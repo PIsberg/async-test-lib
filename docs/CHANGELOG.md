@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Example 116 shows the gatherer race through a real `Gatherer` on JDK 24+ (#893).** A
+  `jdk24-gatherer` profile, in the pom and mirrored in Gradle, compiles `RealGathererTest` on JDK 24
+  or later: a `Gatherer.of` with a combiner whose initializer returns one shared set is reported as
+  a shared-state race, and `HashSet::new` stays silent. The examples' baseline stays JDK 21, so a
+  new `Examples on JDK 25` CI leg runs it and fails if the test did not run.
 - **`ABAProblemDetector` grades its findings by path (#817).** An A-B-A the agent took inside each
   operation is graded `VERDICT` on `OBSERVED` evidence, so a `minTrust = VERDICT` gate now sees it;
   one recorded by hand stays `FACT` on `ASSERTED`, because a toggle that ran before the read
@@ -60,6 +65,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Executor.execute` orders its task where nothing can hand it back (#741, #834).** A task given
+  to `execute` started with nothing ordering it after the caller, and its pool thread's accesses
+  were dropped as unattributed. On a `ForkJoinPool`, a `ScheduledThreadPoolExecutor` and the
+  virtual-thread-per-task executor, matched by exact class, the task now runs wrapped like a
+  submitted one: ordered after the call, and attributed to the run while it runs. A
+  `ThreadPoolExecutor` returns the task itself from `getQueue`, `shutdownNow` and `remove` and
+  passes it to `beforeExecute`, so its tasks, a subclass's, and any non-JDK executor's stay
+  unwrapped.
+- **A dependent `CompletableFuture` stage is a happens-before edge under the agent (#741).** A
+  function registered with `thenApply`, `thenAccept`, `thenRun`, `thenCombine`, `thenAcceptBoth`,
+  `runAfterBoth`, `thenCompose`, `whenComplete`, `handle`, `exceptionally` or
+  `exceptionallyCompose`, and their `Async` forms, ran on another thread with nothing ordering it,
+  so data the registering thread wrote before the call, or the completing thread wrote before
+  `complete`, read as a race inside the function, as did the function's own writes read after a
+  `join` of its stage. The weaver now wraps the function: the thread running it receives the
+  registering thread's clock and acquires each completion it waits for, and a `join` or `get` of
+  the stage on the registering thread receives the clock the function finished with. The
+  `Either` forms carry only the registering thread's clock. The wrapper also attributes a pool
+  thread running such a function to the run (#834). A `CompletableFuture` never hands its
+  functions back, so nothing can see the wrapper. Calls typed against `CompletionStage` are woven
+  as well, and wrap only when the stage is a `CompletableFuture`.
+- **A `validate` whose answer is thrown away no longer hides torn reads under the agent (#823).**
+  The agent dropped the reads of a speculation whose `validate` failed, on the grounds that the
+  caller discards them; a caller that discards the answer instead, `lock.validate(stamp);` as a
+  statement, used them anyway and went unreported. The weaver now recognises the call followed by
+  a `POP`, as it does for a discarded `BlockingQueue.offer`, and a refuted speculation's reads are
+  then delivered as plain reads that race the writer. A failed validate the caller branches on is
+  unchanged, and a discarded `true` still reads under the lock. The corpus idiom row for the
+  validated optimistic read was also shown to depend on the weave: with `tryOptimisticRead`,
+  `validate` and `tryConvertToOptimisticRead` removed from the agent's table, the correct row
+  reported `PROMPT/HIGH` on both fields and failed the lane.
+- **The bytecode identity-key gate now scans the agent too (#895).**
+  `LibraryStateIsKeyedByIdentityTest` ran `IdentityHashKeyScanner` over the library's classes only,
+  so a map or set keyed by an identity hash added to `async-test-agent` would have passed.
+  `async-test-analysis` now declares the agent at test scope, as it already did the library, and
+  scans the agent's package with its own anchor and minimum class count. Under Gradle the agent
+  arrives as its shaded jar, so the relocated Byte Buddy is left out. Invariant 5 now says main
+  code: no main code depends on the agent or the analysis module.
+- **A calendar `set()` before its first recorded access is seen on a default JVM (#820).**
+  `CalendarDetector` read the flags that say a `get()` will recompute fields only when the test
+  JVM opened `java.util` to the library. `set()` computes every field before clearing those
+  flags, so on a default JVM such a calendar read as complete, and gets under one read lock went
+  unreported. The flags are now read from the text `Calendar.toString()` prints, which computes
+  nothing; a calendar class that overrides `toString()` is still read as complete, since its
+  text is not the JDK's.
+- **A reassigned instance lock was never reported (#793).** `SynchronizedNonFinalDetector` could
+  decide a non-final instance field only when the body passed the owner to `recordLockObject`, so
+  one instance whose lock was swapped between two `synchronized` blocks went unreported. With the
+  agent attached it now needs no call: the weaver recognises the `ALOAD owner; GETFIELD; DUP;
+  ASTORE` that javac emits before the `MONITORENTER` of `synchronized (owner.field)`, reloads the
+  owner from its local and hands it to the detector with the monitor. One owner on two monitors is
+  reported, a non-final lock per instance stays silent, and the detector is agent-fed (22 of them
+  now). The feed holds up to 4,096 owners per run and names any it dropped in a note. A new corpus
+  agent pair reads as stated in both directions, and on the 100 documented-safe corpus subjects
+  the detector stays at zero findings with the agent attached.
 - **The bytecode identity-key gate missed three shapes (#803).** `IdentityHashKeyScanner` now
   follows a hash stored into an array a field holds, an `Object.toString()` whose text ends in the
   identity hash (called, passed to `String.valueOf` or built into a string), and a virtual or

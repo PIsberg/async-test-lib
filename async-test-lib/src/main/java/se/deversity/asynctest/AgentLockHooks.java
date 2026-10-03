@@ -501,6 +501,21 @@ public final class AgentLockHooks {
         return valid;
     }
 
+    /**
+     * Woven after {@link #validate} when the caller discards its answer, as
+     * {@code lock.validate(stamp);} compiles (#823). A discarded {@code false} means the reads it
+     * refuted were used anyway, so they are delivered as plain reads rather than dropped; a
+     * discarded {@code true} changes nothing, since those reads were consistent.
+     *
+     * @param valid what {@code validate} returned, which the caller's {@code POP} would have taken
+     * @since 1.12.4
+     */
+    public static void validateResultDiscarded(boolean valid) {
+        if (!valid) {
+            TelemetryRegistry.optimisticReadIgnored();
+        }
+    }
+
     /** Weaves {@code StampedLock.asReadLock()}. @param receiver the lock @return its read view */
     public static Lock asReadLock(StampedLock receiver) {
         Lock view = receiver.asReadLock();

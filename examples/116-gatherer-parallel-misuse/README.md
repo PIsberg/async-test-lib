@@ -36,10 +36,13 @@ Gatherer<T,?,T> runningDistinct = Gatherer.of(
 list.parallelStream().gather(runningDistinct).toList();   // segments race on seen
 ```
 
-> `Stream.gather` / `java.util.stream.Gatherer` are not on the Java 21 baseline this
-> example targets, so [`RunningDistinctService`](src/main/java/se/deversity/asynctest/example/service/RunningDistinctService.java)
+> `Stream.gather` / `java.util.stream.Gatherer` are not on the Java 21 baseline the examples
+> target, so [`RunningDistinctService`](src/main/java/se/deversity/asynctest/example/service/RunningDistinctService.java)
 > shows the same hazard with a stateful `filter(seen::add)` over a shared `HashSet` on a
-> parallel stream. The detector is event-based, so it applies unchanged to a real `Gatherer`.
+> parallel stream. On JDK 24 or later the `jdk24-gatherer` profile also compiles
+> [`RealGathererTest`](src/test/java24/se/deversity/asynctest/example/RealGathererTest.java),
+> which runs the buggy pattern above through a real `Gatherer` with a combiner: one set returned
+> by every initializer call is reported, and `HashSet::new` is silent. CI runs it on JDK 25.
 
 ## The Fix
 
@@ -66,11 +69,13 @@ assertTrue(d.analyze().hasIssues());   // LOW once seen on >1 thread without a c
 ```
 
 See [`RunningDistinctServiceTest`](src/test/java/se/deversity/asynctest/example/RunningDistinctServiceTest.java)
-for the safe-vs-buggy comparison.
+for the safe-vs-buggy comparison. For a gatherer with a combiner, pass the state object instead,
+`d.recordIntegrate("running-distinct", state, Thread.currentThread())`: one state integrated on
+two threads is a shared-state race (`HIGH`), as `RealGathererTest` shows.
 
 ## Running
 
 ```bash
 mvn -f ../../pom.xml install -DskipTests -Dlicense.mock.mode=true
-mvn -f pom.xml test
+mvn -f pom.xml test          # on JDK 24+ this also runs RealGathererTest
 ```

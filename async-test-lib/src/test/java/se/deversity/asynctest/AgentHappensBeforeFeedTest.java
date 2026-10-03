@@ -642,6 +642,203 @@ class AgentHappensBeforeFeedTest {
                         + "the join observed a completion the writer did not make");
     }
 
+    /** Where the registrar below breaks the order a dependent stage makes, if it does. */
+    private enum Stage {
+        /** Input written before thenApply, output read after joining the stage it returned. */
+        ORDERED,
+        /** The input is written after thenApply, where the function may already be reading it. */
+        INPUT_AFTER_REGISTERING,
+        /** The output is read before the join. */
+        OUTPUT_BEFORE_JOIN,
+        /** The source is already complete, so the function runs inside thenApply. */
+        ALREADY_COMPLETE,
+        /** Both calls made on the future directly, which the model cannot see. */
+        UNWOVEN,
+        /** As ORDERED, through a call site typed against CompletionStage. */
+        TYPED_AS_STAGE
+    }
+
+    /**
+     * The registering thread writes an input and registers a function on a future another thread
+     * completes with a box it wrote; the function reads the input and the box and writes an
+     * output, and the registering thread joins the stage and reads the output (#741). The function
+     * runs on the completing thread, or inside thenApply when the source was already complete.
+     */
+    private static boolean stageReported(Stage shape) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box input = new Box();
+        Box completed = new Box();
+        Box output = new Box();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        Runnable complete = () -> {
+            completed.value = 1;
+            detector.recordFieldWrite(completed, "value");
+            AgentConcurrencyUtilHooks.complete(source, completed);
+        };
+        if (shape == Stage.ALREADY_COMPLETE) {
+            Thread completer = new Thread(complete);
+            completer.start();
+            completer.join();
+        }
+        if (shape != Stage.INPUT_AFTER_REGISTERING) {
+            input.value = 1;
+            detector.recordFieldWrite(input, "value");
+        }
+        java.util.function.Function<Object, Object> function = value -> {
+            detector.recordFieldRead(input, "value");
+            detector.recordFieldRead(value, "value");
+            output.value = input.value + ((Box) value).value;
+            detector.recordFieldWrite(output, "value");
+            return output;
+        };
+        CompletableFuture<Object> stage = switch (shape) {
+            case UNWOVEN -> source.thenApply(function);
+            case TYPED_AS_STAGE -> (CompletableFuture<Object>) AgentConcurrencyUtilHooks.thenApply(
+                    (java.util.concurrent.CompletionStage<Object>) source, function);
+            default -> AgentConcurrencyUtilHooks.thenApply(source, function);
+        };
+        if (shape == Stage.INPUT_AFTER_REGISTERING) {
+            input.value = 1;
+            detector.recordFieldWrite(input, "value");
+        }
+        if (shape != Stage.ALREADY_COMPLETE) {
+            Thread completer = new Thread(complete);
+            completer.start();
+            completer.join(); // unwoven: orders nothing as far as the model knows
+        }
+        if (shape == Stage.OUTPUT_BEFORE_JOIN) {
+            detector.recordFieldRead(output, "value");
+        }
+        Object joined = shape == Stage.UNWOVEN ? stage.join() : AgentConcurrencyUtilHooks.join(stage);
+        if (joined != output) {
+            throw new AssertionError("the stage did not return the output");
+        }
+        if (shape != Stage.OUTPUT_BEFORE_JOIN) {
+            detector.recordFieldRead(output, "value");
+        }
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven thenApply orders the registrar and the completer before the function, and the function before a woven join (#741)")
+    void dependentStagesPublish() throws Exception {
+        assertFalse(stageReported(Stage.ORDERED),
+                "the input was written before thenApply, the box before the completion the function "
+                        + "followed, and the output read after joining the stage: all three ordered");
+        assertFalse(stageReported(Stage.TYPED_AS_STAGE),
+                "the same through a call typed against CompletionStage, which a library returning "
+                        + "one makes");
+        assertFalse(stageReported(Stage.ALREADY_COMPLETE),
+                "the same with the source completed first, so the function ran inside thenApply");
+        assertTrue(stageReported(Stage.INPUT_AFTER_REGISTERING),
+                "the input was written after thenApply, which orders nothing before the function");
+        assertTrue(stageReported(Stage.OUTPUT_BEFORE_JOIN),
+                "the output was read before the join, which orders nothing after the function");
+        assertTrue(stageReported(Stage.UNWOVEN),
+                "the unwoven twin: nothing told the model");
+    }
+
+    @Test
+    @DisplayName("a stage that is not a CompletableFuture gets the caller's own function (#741)")
+    void anotherStageImplementationSeesNoWrapper() {
+        java.util.concurrent.atomic.AtomicReference<Object> handed = new java.util.concurrent.atomic.AtomicReference<>();
+        @SuppressWarnings("unchecked")
+        java.util.concurrent.CompletionStage<Object> stage = (java.util.concurrent.CompletionStage<Object>)
+                java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                        new Class<?>[] {java.util.concurrent.CompletionStage.class}, (proxy, method, args) -> {
+                            if (method.getName().equals("thenApply")) {
+                                handed.set(args[0]);
+                                return proxy;
+                            }
+                            throw new UnsupportedOperationException(method.getName());
+                        });
+        java.util.function.Function<Object, Object> function = value -> value;
+
+        AgentConcurrencyUtilHooks.thenApply(stage, function);
+
+        assertTrue(handed.get() == function,
+                "a stage the JDK did not write may hand its functions back, so it must get the "
+                        + "caller's own, unwrapped: " + handed.get());
+    }
+
+    /** Which executor the task below is given to, and when the input is written. */
+    private enum Execution {
+        /** A ForkJoinPool, input written before execute. */
+        FORK_JOIN_POOL,
+        /** A ScheduledThreadPoolExecutor, input written before execute. */
+        SCHEDULED_POOL,
+        /** A virtual thread per task, input written before execute. */
+        THREAD_PER_TASK,
+        /** A ForkJoinPool, with the input written after execute. */
+        INPUT_AFTER_EXECUTE,
+        /**
+         * A ThreadPoolExecutor, input written before execute. It hands the task itself back from
+         * getQueue, shutdownNow and remove, so the hook leaves it unwrapped and orders nothing.
+         */
+        THREAD_POOL_EXECUTOR
+    }
+
+    /**
+     * The calling thread writes an input and executes a task that reads it, on the executor the
+     * shape names (#741, #834). The task's read is recorded on the pool thread; the caller waits
+     * for it through an unwoven latch, which orders nothing as far as the model knows.
+     */
+    private static boolean executionReported(Execution shape) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box input = new Box();
+        java.util.concurrent.ExecutorService executor = switch (shape) {
+            case SCHEDULED_POOL -> new java.util.concurrent.ScheduledThreadPoolExecutor(1);
+            case THREAD_PER_TASK -> Executors.newVirtualThreadPerTaskExecutor();
+            case THREAD_POOL_EXECUTOR -> new java.util.concurrent.ThreadPoolExecutor(1, 1, 0,
+                    java.util.concurrent.TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+            default -> new java.util.concurrent.ForkJoinPool(1);
+        };
+        try {
+            if (shape != Execution.INPUT_AFTER_EXECUTE) {
+                input.value = 1;
+                detector.recordFieldWrite(input, "value");
+            }
+            CountDownLatch inputWritten = new CountDownLatch(1);
+            CountDownLatch read = new CountDownLatch(1);
+            AgentConcurrencyUtilHooks.execute(executor, () -> {
+                try {
+                    inputWritten.await(); // unwoven: only holds the task until the input is written
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                detector.recordFieldRead(input, "value");
+                read.countDown();
+            });
+            if (shape == Execution.INPUT_AFTER_EXECUTE) {
+                input.value = 1;
+                detector.recordFieldWrite(input, "value");
+            }
+            inputWritten.countDown();
+            if (!read.await(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new AssertionError("the task never ran");
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven execute orders the caller before the task where the executor never hands the task back (#741, #834)")
+    void executionPublishes() throws Exception {
+        assertFalse(executionReported(Execution.FORK_JOIN_POOL),
+                "the input was written before execute, which a ForkJoinPool orders before the task");
+        assertFalse(executionReported(Execution.SCHEDULED_POOL),
+                "the same through a ScheduledThreadPoolExecutor, whose queue holds its own futures");
+        assertFalse(executionReported(Execution.THREAD_PER_TASK),
+                "the same through a virtual thread per task");
+        assertTrue(executionReported(Execution.INPUT_AFTER_EXECUTE),
+                "the input was written after execute, which orders nothing before the task");
+        assertTrue(executionReported(Execution.THREAD_POOL_EXECUTOR),
+                "a ThreadPoolExecutor's task is left unwrapped, since its queue hands it back");
+    }
+
     /** Where the submitter below breaks the order an executor makes, if it does. */
     private enum Submission {
         /** Input written before submit, output read after get. */

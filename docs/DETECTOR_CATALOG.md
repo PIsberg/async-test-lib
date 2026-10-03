@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (21)
+### Agent-fed (22)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -376,12 +376,22 @@ value that carries no state, an enum constant, a boxed number, or a value whose 
 none (a record of numbers, not a record holding a `List`), is not reported: an A-B-A of such a
 value leaves nothing stale.
 
+`SynchronizedNonFinalDetector` joined with #793. Recorded without the instance that declares the
+field, one instance whose lock was reassigned and several instances each with a lock of its own
+record the same monitors, and the second is correct code, so a non-final instance field was never
+reported. javac compiles `synchronized (owner.lock)` to a load of the owner, a read of the field and
+the monitor entry; the agent reloads the owner from its local before the `MONITORENTER` and hands
+it to the detector with the monitor, so one owner on two monitors is reported and one monitor per
+owner is not. A monitor taken from a local, a method's return or a static field is not fed, and the
+feed tracks up to 4,096 owners per run, naming any it dropped in a note.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
-`MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`
+`MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
+`SynchronizedNonFinalDetector`
 
 ### Zero-config (3)
 
@@ -416,7 +426,7 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (122)
+### Recording-only (121)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -431,7 +441,7 @@ recording is the feed:
 `ParallelStreamDetector`, `ResourceLeakDetector`,
 `CyclicBarrierDetector`, `ReentrantLockDetector`,
 `VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,
-`LockContentionDetector`, `SynchronizedNonFinalDetector`,
+`LockContentionDetector`,
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
 `RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,

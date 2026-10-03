@@ -135,7 +135,7 @@ class DetectorFeedCoverageTest {
                 "currentLatchMisuseDetector", "currentBlockingQueueDetector",
                 "currentSleepInLockDetector", "currentExplicitGcDetector",
                 "currentMissedSignalDetector", "currentDaemonThreadHygieneDetector",
-                "currentABAProblemDetector")) {
+                "currentABAProblemDetector", "currentSynchronizedNonFinalDetector")) {
             Class<?> fed;
             try {
                 fed = AsyncTestContext.class.getDeclaredMethod(accessor).getReturnType();

@@ -21,3 +21,9 @@ tasks.test {
     useJUnitPlatform()
     systemProperty("license.mock.mode", "true")
 }
+// JDK 24+ only (#893), as the pom's jdk24-gatherer profile: Gatherer is final from JDK 24, so the
+// real-Gatherer test compiles only there; on the JDK 21 baseline the example builds as before.
+if (JavaVersion.current() >= JavaVersion.VERSION_24) {
+    sourceSets.test { java.srcDir("src/test/java24") }
+    tasks.compileTestJava { options.release = 24 }
+}

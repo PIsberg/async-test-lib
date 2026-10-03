@@ -276,11 +276,13 @@ public class CalendarDetector {
      * computed, so an unset field means it has not run since the fields were last touched, as
      * after {@code new GregorianCalendar(year, month, day)} or {@code clear()}. A {@code set()}
      * on a calendar whose fields were all computed leaves every field set, and only the private
-     * {@code isTimeSet}, {@code areFieldsSet} and {@code areAllFieldsSet} flags tell. Those are read only when
-     * {@code java.util} is already open to this library, for example by
+     * {@code isTimeSet}, {@code areFieldsSet} and {@code areAllFieldsSet} flags tell. Those are read
+     * reflectively when {@code java.util} is already open to this library, for example by
      * {@code --add-opens java.base/java.util=ALL-UNNAMED}; the library never opens it, as for
-     * {@link SelfGuard#relinksOnGet(Object)}. Otherwise such a calendar counts as complete, as
-     * every calendar did before.
+     * {@link SelfGuard#relinksOnGet(Object)}. Otherwise they are read from the text
+     * {@link Calendar#toString()} builds, which prints all three. A calendar whose class overrides
+     * {@code toString()} prints text the JDK did not write, so it counts as complete, as every
+     * calendar did before.
      */
     static final class PendingFields {
 
@@ -302,6 +304,9 @@ public class CalendarDetector {
                     return true;
                 }
             }
+            if (FLAGS.length == 0) {
+                return pendingInText(calendar);
+            }
             try {
                 for (Field flag : FLAGS) {
                     if (!flag.getBoolean(calendar)) {
@@ -312,6 +317,36 @@ public class CalendarDetector {
                 return false;
             }
             return false;
+        }
+
+        /**
+         * Reads the three flags from {@link Calendar#toString()}, which starts
+         * {@code ClassName[time=?,areFieldsSet=false,areAllFieldsSet=false,...} when they are clear
+         * and computes nothing. Only the JDK's own method is trusted to write that text.
+         */
+        private static boolean pendingInText(Calendar calendar) {
+            if (!jdkWritesText(calendar.getClass())) {
+                return false;
+            }
+            String text = calendar.toString();
+            int start = text.indexOf('[');
+            int end = text.indexOf(",lenient=");
+            if (start < 0 || end < start) {
+                return false;
+            }
+            String flags = text.substring(start, end);
+            return flags.startsWith("[time=?,") || flags.contains(",areFieldsSet=false")
+                    || flags.contains(",areAllFieldsSet=false");
+        }
+
+        private static boolean jdkWritesText(Class<?> type) {
+            try {
+                Class<?> declaring = type.getMethod("toString").getDeclaringClass();
+                // The JDK's own calendars (BuddhistCalendar) only rewrite the year in it.
+                return declaring == Calendar.class || declaring.getName().startsWith("sun.util.");
+            } catch (NoSuchMethodException e) { // NOPMD - every class has toString(); unknown is complete
+                return false;
+            }
         }
 
         private static Field[] flags() {

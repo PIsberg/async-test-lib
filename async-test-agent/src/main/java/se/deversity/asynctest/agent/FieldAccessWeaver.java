@@ -8,7 +8,9 @@ import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.jar.asm.ClassWriter;
+import net.bytebuddy.jar.asm.Handle;
 import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Type;
@@ -49,6 +51,12 @@ import java.util.Map;
  * and {@code DUP_X1, SWAP} and a static call after it, which leave exactly the polled element. None
  * of them branch.
  *
+ * <p>A {@code MONITORENTER} whose monitor was just read from an instance field, by
+ * {@code ALOAD owner; GETFIELD; DUP; ASTORE} with no label between, is preceded by a {@code DUP} of
+ * the monitor, an {@code ALOAD} of the owner's local, an {@code LDC} of the field and a static call
+ * consuming the three (#793). Nothing between the {@code ALOAD} and the entry wrote that local or
+ * could be jumped to, so it still holds the owner.
+ *
  * <p>A volatile field instruction carries its value to the happens-before model as well (#742). A
  * store is preceded by a copy of its owner and value and a static call consuming the copies, so
  * the release comes before the value is visible; a load is bracketed by a {@code DUP} of the
@@ -75,6 +83,9 @@ final class FieldAccessWeaver {
     /** Internal name of the telemetry sink the woven call targets. */
     private static final String REGISTRY =
             "se/deversity/asynctest/telemetry/TelemetryRegistry";
+
+    /** Internal name of the library's monitor hooks, for the monitor-field feed (#793). */
+    private static final String MONITOR_HOOKS = "se/deversity/asynctest/AgentMonitorHooks";
 
     /** Internal name of {@link Thread}. */
     private static final String THREAD = "java/lang/Thread";
@@ -430,6 +441,22 @@ final class FieldAccessWeaver {
         private final java.util.Deque<Object> recentConstants = new java.util.ArrayDeque<>();
 
         /**
+         * How much of {@code ALOAD owner; GETFIELD reference; DUP; ASTORE} the instructions just
+         * visited match: 0 for none, then one more per instruction. javac compiles
+         * {@code synchronized (owner.field)} to that shape before its {@code MONITORENTER}, and
+         * at a full match the owner is still in its local, so it can be loaded again for the hook
+         * (#793). Every other visit resets it, a label above all: a jump to one could arrive with
+         * another monitor on the stack and anything in the owner's local.
+         */
+        private int monitorFieldStep;
+
+        /** The local the matched {@code ALOAD} read the owner from. */
+        private int monitorOwnerLocal = -1;
+
+        /** The matched field as the hook names it, {@code "Service.lock"}. */
+        private @Nullable String monitorFieldKey;
+
+        /**
          * Whether {@code this} is still uninitialised, which is true inside a constructor until the
          * super constructor has run.
          *
@@ -582,6 +609,16 @@ final class FieldAccessWeaver {
         public void visitInsn(int opcode) {
             noteConstant(opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                     ? opcode - Opcodes.ICONST_0 : null);
+            if (opcode == Opcodes.MONITORENTER && monitorFieldStep == 4 && monitorFieldKey != null) {
+                // The monitor, the owner reloaded from the local the shape read it from, and the
+                // field, consumed by a void call: the MONITORENTER still finds its monitor (#793).
+                super.visitInsn(Opcodes.DUP);
+                super.visitVarInsn(Opcodes.ALOAD, monitorOwnerLocal);
+                super.visitLdcInsn(monitorFieldKey);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, MONITOR_HOOKS, "monitorFieldEntered",
+                        "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)V", false);
+            }
+            monitorFieldStep = opcode == Opcodes.DUP && monitorFieldStep == 2 ? 3 : 0;
             if (opcode == Opcodes.MONITORENTER || opcode == Opcodes.MONITOREXIT) {
                 String hook = opcode == Opcodes.MONITORENTER ? "monitorEntered" : "monitorExited";
                 super.visitInsn(Opcodes.DUP);
@@ -627,6 +664,7 @@ final class FieldAccessWeaver {
         }
         @Override
         public void visitIntInsn(int opcode, int operand) {
+            monitorFieldStep = 0;
             noteConstant(opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH ? operand : null);
             super.visitIntInsn(opcode, operand);
         }
@@ -680,6 +718,7 @@ final class FieldAccessWeaver {
 
         @Override
         public void visitLdcInsn(Object value) {
+            monitorFieldStep = 0;
             recentConstants.addFirst(value);
             while (recentConstants.size() > 4) {
                 recentConstants.removeLast();
@@ -694,6 +733,7 @@ final class FieldAccessWeaver {
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                                     boolean isInterface) {
+            monitorFieldStep = 0;
             noteConstant(null);
             String boundField = noteAtomicBinding(name);
             String hook = weaveFieldInstructions ? spinLockHook(opcode, owner, name, descriptor)
@@ -1069,7 +1109,78 @@ final class FieldAccessWeaver {
         @Override
         public void visitVarInsn(int opcode, int varIndex) {
             noteConstant(null);
+            if (opcode == Opcodes.ALOAD && !(thisIsUninitialised && varIndex == 0)) {
+                monitorFieldStep = 1;
+                monitorOwnerLocal = varIndex;
+            } else if (opcode == Opcodes.ASTORE && monitorFieldStep == 3 && varIndex != monitorOwnerLocal) {
+                monitorFieldStep = 4;
+            } else {
+                monitorFieldStep = 0;
+            }
             super.visitVarInsn(opcode, varIndex);
+        }
+
+        // The remaining visits can sit between two instructions of the monitor-field shape, so
+        // each ends a match before delegating (#793).
+
+        @Override
+        public void visitLabel(Label label) {
+            monitorFieldStep = 0;
+            super.visitLabel(label);
+        }
+
+        @Override
+        public void visitJumpInsn(int opcode, Label label) {
+            monitorFieldStep = 0;
+            super.visitJumpInsn(opcode, label);
+        }
+
+        @Override
+        public void visitTypeInsn(int opcode, String type) {
+            monitorFieldStep = 0;
+            super.visitTypeInsn(opcode, type);
+        }
+
+        @Override
+        public void visitIincInsn(int varIndex, int increment) {
+            monitorFieldStep = 0;
+            super.visitIincInsn(varIndex, increment);
+        }
+
+        @Override
+        public void visitTableSwitchInsn(int min, int max, Label dflt,
+                                         Label... labels) {
+            monitorFieldStep = 0;
+            super.visitTableSwitchInsn(min, max, dflt, labels);
+        }
+
+        @Override
+        public void visitLookupSwitchInsn(Label dflt, int[] keys,
+                                          Label[] labels) {
+            monitorFieldStep = 0;
+            super.visitLookupSwitchInsn(dflt, keys, labels);
+        }
+
+        @Override
+        public void visitMultiANewArrayInsn(String descriptor, int numDimensions) {
+            monitorFieldStep = 0;
+            super.visitMultiANewArrayInsn(descriptor, numDimensions);
+        }
+
+        @Override
+        public void visitInvokeDynamicInsn(String name, String descriptor,
+                                           Handle bootstrapMethodHandle,
+                                           Object... bootstrapMethodArguments) {
+            monitorFieldStep = 0;
+            super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle,
+                    bootstrapMethodArguments);
+        }
+
+        @Override
+        public void visitFrame(int type, int numLocal, Object @Nullable [] local, int numStack,
+                               Object @Nullable [] stack) {
+            monitorFieldStep = 0;
+            super.visitFrame(type, numLocal, local, numStack, stack);
         }
 
 
@@ -1232,7 +1343,15 @@ final class FieldAccessWeaver {
 
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-            String identifier = identifier(declaringOwner(owner, name), name);
+            String declaring = declaringOwner(owner, name);
+            String identifier = identifier(declaring, name);
+            if (opcode == Opcodes.GETFIELD && monitorFieldStep == 1 && isReference(descriptor)) {
+                monitorFieldStep = 2;
+                String simple = declaring.substring(declaring.lastIndexOf('/') + 1);
+                monitorFieldKey = simple.substring(simple.lastIndexOf('$') + 1) + '.' + name;
+            } else {
+                monitorFieldStep = 0;
+            }
             boolean write = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
             int tag = constantTag(write, identifier);
             if (!write) {

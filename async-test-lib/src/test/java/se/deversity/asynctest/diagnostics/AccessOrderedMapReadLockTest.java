@@ -28,8 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * each map's order reported the way the woven call reports it.
  *
  * <p>Whether a {@link java.util.Calendar} has fields left to compute is private {@code java.util}
- * state too, read on the same terms. A calendar {@code set()} before its first recorded access
- * leaves the first {@code get} a write, which is known only with {@code java.util} open (#820).
+ * state too, but unlike the map order it does not depend on the opening: with {@code java.util}
+ * closed it is read from {@code Calendar.toString()}, which prints the same flags. A calendar
+ * {@code set()} before its first recorded access leaves the first {@code get} a write, and all
+ * three scenarios see it (#820).
  */
 class AccessOrderedMapReadLockTest {
 
@@ -100,9 +102,10 @@ class AccessOrderedMapReadLockTest {
                 seen.toString());
         assertEquals(Boolean.FALSE, seen.get("lruCollectionGetsUnderItsMonitorInOneRound"),
                 seen.toString());
-        assertEquals(Boolean.FALSE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
-                "an unrecorded set() on a calendar whose fields were all computed cannot be seen "
-                        + "without reading java.util, so the read lock still guards the gets: " + seen);
+        assertEquals(Boolean.TRUE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
+                "an unrecorded set() on a calendar whose fields were all computed is read from "
+                        + "Calendar.toString() when java.util is closed, so one read lock over the "
+                        + "first gets is still reported: " + seen);
         assertEquals(Boolean.FALSE, seen.get("calendarCompletedBeforeFirstRecordGetsUnderOneReadLock"),
                 seen.toString());
     }
@@ -111,7 +114,7 @@ class AccessOrderedMapReadLockTest {
      * Still closed, but each map's order reported as the agent reports a woven
      * {@code LinkedHashMap(int, float, boolean)} call (#807): every map is judged as it is with
      * {@code java.util} open. A calendar's pending fields are not something the agent sees, so
-     * those two keep the closed JVM's verdict.
+     * those two keep the closed JVM's verdict, which is the open JVM's verdict as well.
      */
     @Test
     void withJavaUtilClosedAnOrderTheAgentSawBuiltIsKnown() throws Exception {
@@ -137,7 +140,7 @@ class AccessOrderedMapReadLockTest {
                 seen.toString());
         assertEquals(Boolean.FALSE, seen.get("lruCollectionGetsUnderItsMonitorInOneRound"),
                 seen.toString());
-        assertEquals(Boolean.FALSE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
+        assertEquals(Boolean.TRUE, seen.get("calendarSetBeforeFirstRecordGetsUnderOneReadLock"),
                 seen.toString());
         assertEquals(Boolean.FALSE, seen.get("calendarCompletedBeforeFirstRecordGetsUnderOneReadLock"),
                 seen.toString());

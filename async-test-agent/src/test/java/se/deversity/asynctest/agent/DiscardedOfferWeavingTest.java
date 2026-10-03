@@ -163,6 +163,454 @@ class DiscardedOfferWeavingTest {
             return f.get(timeout, unit);
         }
 
+        public static java.util.concurrent.CompletableFuture<Object> thenApply(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenApply(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> thenApplyAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenApplyAsync(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> thenApplyAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenApplyAsync(a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenAccept(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Consumer<Object> a) {
+            return r.thenAccept(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenAcceptAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Consumer<Object> a) {
+            return r.thenAcceptAsync(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenAcceptAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Consumer<Object> a, java.util.concurrent.Executor e) {
+            return r.thenAcceptAsync(a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenRun(
+                java.util.concurrent.CompletableFuture<Object> r, Runnable a) {
+            return r.thenRun(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenRunAsync(
+                java.util.concurrent.CompletableFuture<Object> r, Runnable a) {
+            return r.thenRunAsync(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenRunAsync(
+                java.util.concurrent.CompletableFuture<Object> r, Runnable a, java.util.concurrent.Executor e) {
+            return r.thenRunAsync(a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> thenCombine(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.thenCombine(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> thenCombineAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.thenCombineAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> thenCombineAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiFunction<Object, Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenCombineAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenAcceptBoth(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiConsumer<Object, Object> a) {
+            return r.thenAcceptBoth(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenAcceptBothAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiConsumer<Object, Object> a) {
+            return r.thenAcceptBothAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> thenAcceptBothAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiConsumer<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenAcceptBothAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAfterBoth(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterBoth(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAfterBothAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterBothAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAfterBothAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a, java.util.concurrent.Executor e) {
+            return r.runAfterBothAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> applyToEither(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Function<Object, Object> a) {
+            return r.applyToEither(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> applyToEitherAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Function<Object, Object> a) {
+            return r.applyToEitherAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> applyToEitherAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.applyToEitherAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> acceptEither(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Consumer<Object> a) {
+            return r.acceptEither(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> acceptEitherAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Consumer<Object> a) {
+            return r.acceptEitherAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> acceptEitherAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Consumer<Object> a, java.util.concurrent.Executor e) {
+            return r.acceptEitherAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAfterEither(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterEither(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAfterEitherAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterEitherAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Void> runAfterEitherAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a, java.util.concurrent.Executor e) {
+            return r.runAfterEitherAsync(o, a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> thenCompose(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenCompose((java.util.function.Function<Object, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> thenComposeAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenComposeAsync((java.util.function.Function<Object, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> thenComposeAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenComposeAsync((java.util.function.Function<Object, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a, e);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> whenComplete(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.BiConsumer<Object, Object> a) {
+            return r.whenComplete(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> whenCompleteAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.BiConsumer<Object, Object> a) {
+            return r.whenCompleteAsync(a);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> whenCompleteAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.BiConsumer<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.whenCompleteAsync(a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> handle(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.handle((java.util.function.BiFunction<Object, Throwable, Object>) (java.util.function.BiFunction<?, ?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> handleAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.handleAsync((java.util.function.BiFunction<Object, Throwable, Object>) (java.util.function.BiFunction<?, ?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> handleAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.BiFunction<Object, Object, Object> a, java.util.concurrent.Executor e) {
+            return r.handleAsync((java.util.function.BiFunction<Object, Throwable, Object>) (java.util.function.BiFunction<?, ?, ?>) a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> exceptionally(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionally((java.util.function.Function<Throwable, Object>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> exceptionallyAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionallyAsync((java.util.function.Function<Throwable, Object>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> exceptionallyAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.exceptionallyAsync((java.util.function.Function<Throwable, Object>) (java.util.function.Function<?, ?>) a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> exceptionallyCompose(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionallyCompose((java.util.function.Function<Throwable, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> exceptionallyComposeAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionallyComposeAsync((java.util.function.Function<Throwable, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletableFuture<Object> exceptionallyComposeAsync(
+                java.util.concurrent.CompletableFuture<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.exceptionallyComposeAsync((java.util.function.Function<Throwable, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> thenApply(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenApply(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> thenApplyAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenApplyAsync(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> thenApplyAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenApplyAsync(a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenAccept(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Consumer<Object> a) {
+            return r.thenAccept(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenAcceptAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Consumer<Object> a) {
+            return r.thenAcceptAsync(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenAcceptAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Consumer<Object> a, java.util.concurrent.Executor e) {
+            return r.thenAcceptAsync(a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenRun(
+                java.util.concurrent.CompletionStage<Object> r, Runnable a) {
+            return r.thenRun(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenRunAsync(
+                java.util.concurrent.CompletionStage<Object> r, Runnable a) {
+            return r.thenRunAsync(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenRunAsync(
+                java.util.concurrent.CompletionStage<Object> r, Runnable a, java.util.concurrent.Executor e) {
+            return r.thenRunAsync(a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> thenCombine(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.thenCombine(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> thenCombineAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.thenCombineAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> thenCombineAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiFunction<Object, Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenCombineAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenAcceptBoth(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiConsumer<Object, Object> a) {
+            return r.thenAcceptBoth(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenAcceptBothAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiConsumer<Object, Object> a) {
+            return r.thenAcceptBothAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> thenAcceptBothAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.BiConsumer<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenAcceptBothAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> runAfterBoth(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterBoth(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> runAfterBothAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterBothAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> runAfterBothAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a, java.util.concurrent.Executor e) {
+            return r.runAfterBothAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> applyToEither(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Function<Object, Object> a) {
+            return r.applyToEither(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> applyToEitherAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Function<Object, Object> a) {
+            return r.applyToEitherAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> applyToEitherAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.applyToEitherAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> acceptEither(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Consumer<Object> a) {
+            return r.acceptEither(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> acceptEitherAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Consumer<Object> a) {
+            return r.acceptEitherAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> acceptEitherAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, java.util.function.Consumer<Object> a, java.util.concurrent.Executor e) {
+            return r.acceptEitherAsync(o, a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> runAfterEither(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterEither(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> runAfterEitherAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a) {
+            return r.runAfterEitherAsync(o, a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Void> runAfterEitherAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.concurrent.CompletionStage<Object> o, Runnable a, java.util.concurrent.Executor e) {
+            return r.runAfterEitherAsync(o, a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> thenCompose(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenCompose((java.util.function.Function<Object, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> thenComposeAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.thenComposeAsync((java.util.function.Function<Object, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> thenComposeAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.thenComposeAsync((java.util.function.Function<Object, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a, e);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> whenComplete(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.BiConsumer<Object, Object> a) {
+            return r.whenComplete(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> whenCompleteAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.BiConsumer<Object, Object> a) {
+            return r.whenCompleteAsync(a);
+        }
+
+        public static java.util.concurrent.CompletionStage<Object> whenCompleteAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.BiConsumer<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.whenCompleteAsync(a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> handle(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.handle((java.util.function.BiFunction<Object, Throwable, Object>) (java.util.function.BiFunction<?, ?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> handleAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.BiFunction<Object, Object, Object> a) {
+            return r.handleAsync((java.util.function.BiFunction<Object, Throwable, Object>) (java.util.function.BiFunction<?, ?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> handleAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.BiFunction<Object, Object, Object> a, java.util.concurrent.Executor e) {
+            return r.handleAsync((java.util.function.BiFunction<Object, Throwable, Object>) (java.util.function.BiFunction<?, ?, ?>) a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> exceptionally(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionally((java.util.function.Function<Throwable, Object>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> exceptionallyAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionallyAsync((java.util.function.Function<Throwable, Object>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> exceptionallyAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.exceptionallyAsync((java.util.function.Function<Throwable, Object>) (java.util.function.Function<?, ?>) a, e);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> exceptionallyCompose(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionallyCompose((java.util.function.Function<Throwable, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> exceptionallyComposeAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a) {
+            return r.exceptionallyComposeAsync((java.util.function.Function<Throwable, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.concurrent.CompletionStage<Object> exceptionallyComposeAsync(
+                java.util.concurrent.CompletionStage<Object> r, java.util.function.Function<Object, Object> a, java.util.concurrent.Executor e) {
+            return r.exceptionallyComposeAsync((java.util.function.Function<Throwable, java.util.concurrent.CompletionStage<Object>>) (java.util.function.Function<?, ?>) a, e);
+        }
+
+        public static void execute(java.util.concurrent.Executor x, Runnable r) {
+            x.execute(r);
+        }
+
         public static java.util.concurrent.CompletableFuture<Object> supplyAsync(
                 java.util.function.Supplier<Object> s) {
             return java.util.concurrent.CompletableFuture.supplyAsync(s);

@@ -201,8 +201,21 @@ a `get` or `join` of its future on the thread that submitted it; and each side o
 `Exchanger.exchange`, ordered before its partner's return. The submitted task runs wrapped, which only
 the JDK's own executors get, since only there nothing a caller can reach returns the task; a get on
 another thread, or of one of more than 16 futures a thread submitted without getting, orders nothing.
-`Executor.execute` is not an edge, because a `ThreadPoolExecutor` hands the task itself back from its
-queue. With `fields=true`, a volatile write releases that field
+A function registered on a `CompletableFuture` with `thenApply`, `thenAccept`, `thenRun`,
+`thenCombine`, `thenAcceptBoth`, `runAfterBoth`, `thenCompose`, `whenComplete`, `handle`,
+`exceptionally` or `exceptionallyCompose`, or their `Async` forms, runs wrapped as well: the thread
+that runs it is ordered after the registering thread and after the completion of each stage it
+waits for, and a `join` or `get` of the stage it returned, on the registering thread, is ordered
+after it. The `Either` forms carry only the registering thread's clock, since which stage they
+followed is not known. A call typed against `CompletionStage` is woven too, and wraps the function
+only when the stage is a `CompletableFuture`: any other implementation gets the caller's own
+function, since it might hand it back. A `CompletableFuture` never does, so the wrapper cannot be
+seen.
+`Executor.execute` runs its task wrapped, ordered after the call, on the JDK executors that never
+hand a task back: `ForkJoinPool`, `ScheduledThreadPoolExecutor` and the virtual-thread-per-task
+executor, matched by exact class (#741). On a `ThreadPoolExecutor`, which returns the task itself
+from `getQueue`, `shutdownNow` and `remove`, on a subclass of any of them, and on an executor
+outside the JDK, it is not an edge. With `fields=true`, a volatile write releases that field
 of its object, and a read of the same field acquires at the read what the write whose value it
 returned published: reading one volatile field receives nothing a write of another published, and
 a read that returned an older value receives nothing the later write published (#742). The acquire
@@ -239,11 +252,17 @@ Three limits worth knowing before switching it on:
   nothing, so `tryOptimisticRead()` and `validate(long)` mark where a speculation starts and
   whether it held: the field reads in between count as reads under the lock in shared mode when
   `validate` returned `true`, are dropped when it returned `false`, since the caller discards what
-  it read, and count as plain reads when nothing validated them before the thread's next
+  it read, unless the caller threw the answer away (`lock.validate(stamp);` as a statement, a call
+  followed by a `POP`), when they count as plain reads (#823), and count as plain reads when
+  nothing validated them before the thread's next
   speculation on the same lock, its next write or the end of the round (#740). A speculation on
   a second lock nests inside the first instead of closing it, and reads it validates are judged
   by the enclosing one's `validate` as well (#823). A lock acquired only inside unwoven
-  code still needs `AsyncTestContext.holdingLock(...)`.
+  code still needs `AsyncTestContext.holdingLock(...)`. The same monitor entry also tells
+  `SynchronizedNonFinalDetector` which instance the monitor of a `synchronized (owner.field)` block
+  was read from (#793): javac compiles it to a load of the owner into a local, a read of the field
+  and the entry, and the weaver reloads the owner from that local, so a lock that one instance
+  reassigns is reported with no recording call, and a non-final lock per instance stays silent.
 - **Spinlocks and hand-offs are exclusion too (with `fields=true`).** A won
   `VarHandle.compareAndSet(this, 0, 1)` on an `int` field is a spinlock: the weaver replaces the
   call with a hook that performs it and declares a lock on that receiver's flag, released by a

@@ -52,6 +52,53 @@ public class HandOffPublicationBean {
         return ++parcel.contents;
     }
 
+    // ---- Dependent stages (#741) -------------------------------------------------------------
+
+    /**
+     * Registers a function on {@code source} that updates {@code parcel}, and fills the parcel
+     * before the registration, or after it with {@code fillAfter}. The function runs on whichever
+     * thread completes {@code source}.
+     */
+    public CompletableFuture<Object> fillAndChain(CompletableFuture<Object> source, Parcel parcel,
+                                                  boolean fillAfter) {
+        if (!fillAfter) {
+            parcel.contents = 1;
+        }
+        CompletableFuture<Object> stage = source.thenApply(ignored -> ++parcel.contents);
+        if (fillAfter) {
+            parcel.contents = 1;
+        }
+        return stage;
+    }
+
+    /**
+     * As {@link #fillAndChain}, through a call site typed against {@code CompletionStage}, the
+     * type a library that returns a stage hands its callers.
+     */
+    public java.util.concurrent.CompletionStage<Object> fillAndChainStage(
+            java.util.concurrent.CompletionStage<Object> source, Parcel parcel) {
+        parcel.contents = 1;
+        return source.thenApply(ignored -> ++parcel.contents);
+    }
+
+    /**
+     * Fills a fresh parcel and executes a task that completes {@code future} with it (#741, #834).
+     * The task touches no field of the parcel, so the parcel reaches the joiner through the
+     * execute and the completion, or through nothing.
+     */
+    public void fillAndExecute(java.util.concurrent.Executor executor,
+                               CompletableFuture<Parcel> future, int contents) {
+        Parcel parcel = new Parcel();
+        parcel.contents = contents;
+        lastWritten = parcel;
+        executor.execute(() -> future.complete(parcel));
+    }
+
+    /** Completes {@code source}, which runs the functions registered on it on this thread. */
+    public void completeSource(CompletableFuture<Object> source) {
+        source.complete(Boolean.TRUE);
+    }
+
     // ---- AtomicReference ---------------------------------------------------------------------
 
     /** Fills a fresh parcel and publishes it with {@code set}. */

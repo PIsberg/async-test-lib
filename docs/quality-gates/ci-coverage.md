@@ -16,6 +16,7 @@ Underneath, which legs run depends on the event:
 | Consumer Fixture (JDK 21, 25) | every PR and push | Resolves the built artifact from a local repo and drives it through the public API only, one `@AsyncTest` fixture per `DetectorType` |
 | Examples Shard (PR) | PRs that change `examples/**` **or** library sources | See below |
 | Examples Reactor | push to `main`/`develop`, and nightly | All 148 example projects, four shards |
+| Examples on JDK 25 | every PR and push, and nightly | The examples that carry a JDK 24+ profile, which the JDK 21 legs above never activate: example 116's real-`Gatherer` test (#893). Fails if that test did not run |
 
 **The PR filter used to ask the wrong question.** It watched `examples/**` only, so it answered
 "did you edit an example?" when what matters is "could you have broken the examples?", and the

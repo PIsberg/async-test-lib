@@ -197,6 +197,70 @@ class LockModelWeavingEndToEndTest {
                         + report.unsafeFieldAccesses + report.totcouRaces);
     }
 
+    /**
+     * Reads the point optimistically on one worker while a second worker moves it before the
+     * validate, so the validate fails every time (#823).
+     *
+     * @param ignoresTheAnswer whether the reader discards validate's answer, else re-reads
+     * @return what AtomicityValidator reported
+     */
+    private static AtomicityValidator.AtomicityReport refutedSpeculation(boolean ignoresTheAnswer)
+            throws Exception {
+        OptimisticPointBean bean = new OptimisticPointBean();
+        AtomicityValidator validator = new AtomicityValidator();
+        Set<Long> workerThreadIds = ConcurrentHashMap.newKeySet();
+        Runnable moveOnAnotherWorker = () -> {
+            Thread mover = new Thread(() -> {
+                workerThreadIds.add(Thread.currentThread().threadId());
+                bean.move(1, 1);
+            }, "optimistic-mover");
+            mover.start();
+            try {
+                mover.join(10_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        try (TelemetryBridge bridge =
+                     TelemetryBridge.activateWithFilter(validator, workerThreadIds::contains)) {
+            Thread reader = new Thread(() -> {
+                workerThreadIds.add(Thread.currentThread().threadId());
+                if (ignoresTheAnswer) {
+                    bean.distanceIgnoringValidate(moveOnAnotherWorker);
+                } else {
+                    bean.distanceCheckingValidate(moveOnAnotherWorker);
+                }
+            }, "optimistic-reader");
+            reader.start();
+            reader.join(10_000);
+            TelemetryRegistry.flush();
+        }
+        return validator.analyzeAtomicity();
+    }
+
+    @Test
+    @DisplayName("a validate whose answer is thrown away leaves a refuted read unguarded")
+    void aDiscardedFailedValidateIsReported() throws Exception {
+        AtomicityValidator.AtomicityReport report = refutedSpeculation(true);
+
+        assertTrue(report.unsafeFieldAccesses.stream()
+                        .anyMatch(f -> f.contains("OptimisticPointBean.")),
+                "lock.validate(stamp); compiles to a call and a POP: the reader used what it read "
+                        + "whatever the answer, and the answer was false, so the reads race the "
+                        + "move (#823). Findings were: " + report.unsafeFieldAccesses);
+    }
+
+    @Test
+    @DisplayName("a failed validate the reader acts on drops the refuted read")
+    void aCheckedFailedValidateIsSilent() throws Exception {
+        AtomicityValidator.AtomicityReport report = refutedSpeculation(false);
+
+        assertFalse(report.hasIssues(),
+                "the reader saw the validate fail and read again under the read lock, so the "
+                        + "refuted reads were never used (#740, #823). Findings: "
+                        + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
     @Test
     @DisplayName("an optimistic read that is never validated keeps firing")
     void unvalidatedOptimisticReadIsStillReported() throws Exception {

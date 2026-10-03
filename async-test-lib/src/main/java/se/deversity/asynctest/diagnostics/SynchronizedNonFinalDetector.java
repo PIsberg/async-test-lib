@@ -3,6 +3,8 @@ package se.deversity.asynctest.diagnostics;
 import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import java.time.Instant;
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.reflect.Field;
@@ -12,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Detects the anti-pattern of synchronizing on a non-final, reassignable
@@ -49,6 +53,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * instance field the three-argument form is deprecated in favour of that one (#793): nothing
  * recorded without the instance can tell its two readings apart, so it never reports.
  *
+ * <p>With the agent attached no call is needed for the common shape (#793). A
+ * {@code synchronized (owner.lock)} block in an included class compiles to a load of the owner, a
+ * read of the field and the monitor entry, and the agent hands this detector the monitor and the
+ * owner it was read from ({@link #recordMonitorField}), so a reassigned instance lock is decided
+ * like one recorded with its owner. A block whose monitor came from anywhere else, a local or a
+ * method's return, is not fed.
+ *
  * <p>Usage:
  * <pre>{@code
  * @AsyncTest(threads = 4, detectSynchronizedNonFinal = true)
@@ -85,6 +96,29 @@ public class SynchronizedNonFinalDetector {
 
     private record OwnedSlot(String fieldId, IdentityKey owner) {
     }
+
+    /**
+     * Owners the agent may name before its feed stops taking new ones (#793). The feed runs on
+     * every woven {@code synchronized (owner.field)} entry and holds each owner until the run ends,
+     * so a body that builds objects in a loop would otherwise keep every one of them alive.
+     */
+    static final int MAX_AGENT_OWNERS = 4096;
+
+    /** Monitors kept per agent-fed slot: two decide it, the rest only sharpen the count. */
+    static final int MAX_AGENT_MONITORS = 16;
+
+    /**
+     * Slots the agent fed, by owner and then by field (#793). Two levels, so the hot path finds an
+     * existing slot through the thread's reused {@link IdentityKey#lookup} key and a constant
+     * field name, allocating nothing.
+     */
+    private final Map<IdentityKey, Map<String, LockSlot>> agentSlots = new ConcurrentHashMap<>();
+
+    /** How many owners {@link #agentSlots} holds, counted on insertion to keep the cap cheap. */
+    private final AtomicInteger agentOwners = new AtomicInteger();
+
+    /** Owners the agent named after {@link #MAX_AGENT_OWNERS} was reached, not recorded. */
+    private final LongAdder agentOwnersDropped = new LongAdder();
 
     /**
      * A slot recorded without its owner, keyed by the declaring class itself rather than its
@@ -157,6 +191,44 @@ public class SynchronizedNonFinalDetector {
         slot.identityHashes.add(new IdentityKey(lockObject));
     }
 
+    /**
+     * Records the monitor a woven {@code synchronized} block read from an instance field, with the
+     * instance it read it from (#793).
+     *
+     * <p>Called by the agent just before the {@code MONITORENTER}, on the thread entering. Decided
+     * as {@link #recordLockObject(Object, String, Class, Object)} decides an owned recording: one
+     * owner that entered the block on two different monitors reassigned the field. Up to
+     * {@value #MAX_AGENT_OWNERS} owners are tracked; later ones are counted and named in a note.
+     *
+     * @param lockObject the monitor about to be entered
+     * @param field      the declaring class's simple name and the field's name, as
+     *                   {@code "Service.lock"}, the key an owned recording of the same field uses
+     * @param owner      the instance the field was read from
+     * @since 1.12.4
+     */
+    @API(status = Status.INTERNAL)
+    public void recordMonitorField(Object lockObject, String field, Object owner) {
+        Map<String, LockSlot> fields = agentSlots.get(IdentityKey.lookup(owner));
+        if (fields == null) {
+            if (agentOwners.get() >= MAX_AGENT_OWNERS) {
+                agentOwnersDropped.increment();
+                return;
+            }
+            fields = agentSlots.computeIfAbsent(new IdentityKey(owner), k -> {
+                agentOwners.incrementAndGet();
+                return new ConcurrentHashMap<>();
+            });
+        }
+        LockSlot slot = fields.get(field);
+        if (slot == null) {
+            slot = fields.computeIfAbsent(field, k -> new LockSlot(k, true));
+        }
+        Set<IdentityKey> monitors = slot.identityHashes;
+        if (monitors.size() < MAX_AGENT_MONITORS && !monitors.contains(IdentityKey.lookup(lockObject))) {
+            monitors.add(new IdentityKey(lockObject));
+        }
+    }
+
     // ---- Analysis ----------------------------------------------------------
 
     /**
@@ -199,6 +271,24 @@ public class SynchronizedNonFinalDetector {
             // Not a finding. Without the owner a reassigned instance field and N instances each
             // with their own lock record the same thing, and one of those is correct code.
             report.unattributed.add(undecided(slot.fieldId, classSlot, field != null, monitors));
+        }
+        for (Map<String, LockSlot> fields : agentSlots.values()) {
+            for (LockSlot slot : fields.values()) {
+                int monitors = slot.identityHashes.size();
+                if (monitors > 1) {
+                    report.violations.add(String.format(
+                            "%s: one instance synchronized on %s different objects — lock reference is "
+                                + "NOT FINAL, mutual exclusion is broken!",
+                            slot.fieldId, monitors >= MAX_AGENT_MONITORS ? "at least " + monitors : monitors));
+                }
+            }
+        }
+        long dropped = agentOwnersDropped.sum();
+        if (dropped > 0) {
+            report.unattributed.add(String.format(
+                    "The agent named %d more synchronized (owner.field) entries on instances past the first "
+                        + "%d, which were not tracked, so a lock reassigned on one of them is not reported.",
+                    dropped, MAX_AGENT_OWNERS));
         }
 
         if (report.hasIssues()) {
@@ -263,7 +353,10 @@ public class SynchronizedNonFinalDetector {
         /** The findings as Violations, at the severity the text resolved to (#801). */
 
         public final List<Violation> structuredViolations = new ArrayList<>();
-        /** Monitor changes recorded without an owner: undecidable, so notes rather than findings. */
+        /**
+         * Monitor changes recorded without an owner, undecidable, so notes rather than findings;
+         * and the agent feed's dropped owners, when its cap was reached.
+         */
         final List<String> unattributed = new ArrayList<>();
 
         /**
@@ -302,7 +395,7 @@ public class SynchronizedNonFinalDetector {
                 sb.append("  No violations detected.\n");
             }
             if (!unattributed.isEmpty()) {
-                sb.append("  Undecided without an owner (not reported as findings):\n");
+                sb.append("  Undecided (not reported as findings):\n");
                 for (String note : unattributed) {
                     sb.append("    - ").append(note).append("\n");
                 }

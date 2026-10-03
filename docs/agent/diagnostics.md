@@ -55,7 +55,8 @@ table above.
 ### When a detector leaves a note
 
 Some detectors write notes that are not findings, such as `SynchronizedNonFinalDetector`'s
-undecided slot, which names the four-argument `recordLockObject` call that would decide it. A
+undecided slot, which names the four-argument `recordLockObject` call that would decide it, or the
+count of `synchronized (owner.field)` entries its agent feed stopped tracking past 4,096 owners. A
 report is printed only when it has a finding, so the runner logs the notes of a report that has
 none at INFO, once per run (#816):
 

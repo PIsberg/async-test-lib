@@ -102,7 +102,11 @@ public final class DetectorFeeds {
             // ownership and happens-before models. Recorded by hand, a toggle recorded after a
             // read it ran before reads as an A-B-A; run through the detector, each record is taken
             // inside its operation, so record order is operation order.
-            DetectorType.ABA_PROBLEM);
+            DetectorType.ABA_PROBLEM,
+            // synchronized (owner.field) (#793). Recorded without the owner, one instance whose
+            // lock was reassigned and several instances with a lock each record the same thing.
+            // The woven MONITORENTER passes the owner it was read from, which decides it.
+            DetectorType.SYNCHRONIZED_NON_FINAL);
 
     /**
      * Fed by the JVM and the harness with no recording call.

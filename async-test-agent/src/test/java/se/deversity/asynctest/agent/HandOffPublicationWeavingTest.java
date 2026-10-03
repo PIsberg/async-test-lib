@@ -181,6 +181,96 @@ class HandOffPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("a function registered with thenApply runs after what its registrar did before (#741)")
+    void aDependentStageIsOrderedAfterItsRegistration() throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        Parcel parcel = new Parcel();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        List<String> findings = findings(() -> bean.fillAndChain(source, parcel, false), writerRuns -> {
+            writerRuns.run();
+            bean.completeSource(source);
+        });
+
+        assertFalse(mentionsContents(findings),
+                "The writer filled the parcel and then registered a function that updates it; the "
+                        + "reader completed the source, which ran the function on the reader's "
+                        + "thread. CompletableFuture orders the registration before the function. "
+                        + "Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("the same through a call typed against CompletionStage (#741)")
+    void aStageTypedCallIsOrderedAfterItsRegistration() throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        Parcel parcel = new Parcel();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        List<String> findings = findings(() -> bean.fillAndChainStage(source, parcel), writerRuns -> {
+            writerRuns.run();
+            bean.completeSource(source);
+        });
+
+        assertFalse(mentionsContents(findings),
+                "The registration went through CompletionStage.thenApply, whose call site has its "
+                        + "own descriptor; the stage is a CompletableFuture, so it is ordered the "
+                        + "same way. Findings were: " + findings);
+    }
+
+    /** Executes the fill-and-complete task on {@code executor} and joins it on the other worker. */
+    private static List<String> executedFindings(java.util.concurrent.ExecutorService executor)
+            throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        CompletableFuture<Parcel> future = new CompletableFuture<>();
+        try {
+            return findings(() -> bean.fillAndExecute(executor, future, 1), writerRuns -> {
+                writerRuns.run();
+                bean.updateJoined(future);
+            });
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("a task given to a ForkJoinPool's execute starts after what its caller did before (#741)")
+    void executeOnAForkJoinPoolOrdersTheTask() throws InterruptedException {
+        List<String> findings = executedFindings(new java.util.concurrent.ForkJoinPool(1));
+
+        assertFalse(mentionsContents(findings),
+                "The writer filled the parcel and then executed a task that completed a future with "
+                        + "it; the reader joined the future. A ForkJoinPool never hands the task "
+                        + "back, so it runs wrapped and starts ordered after the execute. Findings "
+                        + "were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a ThreadPoolExecutor's execute is left unwrapped and keeps its finding")
+    void executeOnAThreadPoolExecutorStaysUnordered() throws InterruptedException {
+        List<String> findings = executedFindings(new java.util.concurrent.ThreadPoolExecutor(1, 1, 0,
+                TimeUnit.SECONDS, new LinkedBlockingQueue<>()));
+
+        assertTrue(mentionsContents(findings),
+                "A ThreadPoolExecutor hands the task itself back from getQueue, shutdownNow and "
+                        + "remove, so it is not wrapped and nothing orders the fill before the "
+                        + "completion the task made. Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a parcel filled after the thenApply keeps its finding")
+    void fillAfterTheRegistrationIsReported() throws InterruptedException {
+        HandOffPublicationBean bean = new HandOffPublicationBean();
+        Parcel parcel = new Parcel();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        List<String> findings = findings(() -> bean.fillAndChain(source, parcel, true), writerRuns -> {
+            writerRuns.run();
+            bean.completeSource(source);
+        });
+
+        assertTrue(mentionsContents(findings),
+                "The writer filled the parcel after registering the function, which the registration "
+                        + "cannot have ordered before it. Findings were: " + findings);
+    }
+
+    @Test
     @DisplayName("a parcel published with AtomicReference.set is ordered for the get that returned it")
     void atomicReferencePublicationIsSilent() throws InterruptedException {
         HandOffPublicationBean bean = new HandOffPublicationBean();

@@ -607,8 +607,8 @@ public class ConcurrencyRunner {
                     log.warn("Telemetry bridge detach failed: {}", e.toString(), e);
                 }
                 // Accesses from threads the body handed work to in a way the agent does not see:
-                // a thread started in unwoven code, a task given to Executor.execute. A woven
-                // start or submit is attributed (#745). The bridge cannot attribute the rest to a
+                // a thread started in unwoven code, a task given to a ThreadPoolExecutor's
+                // execute. A woven start, submit, stage or other execute is attributed (#745, #741). The bridge cannot attribute the rest to a
                 // round, so it drops them - and a clean atomicity report then covers the workers
                 // and their woven hand-offs and nothing else. Said at INFO, per test rather than
                 // once per JVM, because it is an observation about this test's body and not a

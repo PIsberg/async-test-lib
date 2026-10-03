@@ -188,8 +188,10 @@ does not leave the pool thread forwarded after the task: the thread's next start
 frames it missed (#834).
 
 Work handed over any other way is still dropped: a thread started in code the agent does not
-weave, a task given to `Executor.execute` or to an executor outside
-the JDK, and a pool thread's work outside a wrapped task, such as a dependent stage's function. A
+weave, a task given to a `ThreadPoolExecutor`'s `execute` or to an executor outside
+the JDK, and a pool thread's work outside a wrapped task. A dependent `CompletableFuture` stage's
+function runs wrapped like a submitted task, so a pool thread running one the body registered is
+forwarded while it runs (#741, #834). A
 clean atomicity report means *the workers and their woven hand-offs were clean* rather than *the
 code was clean*. Since 1.11.2 the gap is announced rather than silent. The bridge counts what it
 dropped (`droppedNonWorkerEvents()`), and `ConcurrencyRunner` logs one line per test at INFO when

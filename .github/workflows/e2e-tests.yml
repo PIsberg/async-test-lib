@@ -479,10 +479,77 @@ jobs:
           path: examples/*/target/surefire-reports/
           retention-days: 7
 
+  # The examples' baseline is JDK 21, so a JDK 24+ API cannot appear in any job above. Example
+  # 116's jdk24-gatherer profile activates on JDK 24 or later and runs its real-Gatherer test
+  # (#893); this leg is what executes it. It fails if the profile did not run that test, so a
+  # profile that stops activating cannot pass by testing nothing.
+  examples-jdk25:
+    name: Examples on JDK 25 (JDK 24+ profiles)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            results-receiver.actions.githubusercontent.com:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      # Its own key, as for examples-all (#890): only this job resolves on JDK 25, and the library
+      # itself is never cached.
+      - name: Cache this job's Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/se/deversity
+          key: maven-${{ runner.os }}-examples-jdk25-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-examples-jdk25-
+
+      - name: Install library to local Maven repository
+        run: mvn -B -DskipTests clean install
+
+      - name: Run the examples that carry a JDK 24+ profile
+        run: |
+          set -euo pipefail
+          mvn -B -f examples/pom.xml -pl 116-gatherer-parallel-misuse test "-Dasync-test.strict-detectors=true"
+          report=examples/116-gatherer-parallel-misuse/target/surefire-reports/TEST-se.deversity.asynctest.example.RealGathererTest.xml
+          if [ ! -f "$report" ]; then
+            echo "::error::RealGathererTest did not run; the jdk24-gatherer profile did not activate"
+            exit 1
+          fi
+          grep -o 'tests="[0-9]*"[^>]*failures="[0-9]*"' "$report"
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: e2e-examples-jdk25-reports
+          path: examples/*/target/surefire-reports/
+          retention-days: 7
+
   e2e-summary:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [ consumer-fixture, junit-compatibility, examples-detect, examples-changed, examples-all ]
+    needs: [ consumer-fixture, junit-compatibility, examples-detect, examples-changed, examples-all, examples-jdk25 ]
     # Runs even when a leg was skipped (examples-changed on push, examples-all on PR) so
     # there is one stable required check for the whole suite.
     if: always()
@@ -495,7 +562,8 @@ jobs:
             "junit-compatibility=${{ needs.junit-compatibility.result }}" \
             "examples-detect=${{ needs.examples-detect.result }}" \
             "examples-changed=${{ needs.examples-changed.result }}" \
-            "examples-all=${{ needs.examples-all.result }}"; do
+            "examples-all=${{ needs.examples-all.result }}" \
+            "examples-jdk25=${{ needs.examples-jdk25.result }}"; do
             name=${result%%=*}
             outcome=${result#*=}
             echo "$name: $outcome"
