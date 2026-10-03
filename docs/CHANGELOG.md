@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The agent's two unmeasured costs are measured and documented (#844).** A woven access inside
+  `synchronized` methods pays about 15 ns per enclosing method for the `Thread.holdsLock` check
+  #822 added (1.5 ns with none, 90 ns at depth 6). It stays: every cheaper check found was
+  unsound. Volatile fields keep 340 to 492 bytes each while their owner lives, of which #813's
+  four kept releases add about 100 to 150. Both are in `docs/agent/overview.md`.
+
 - **`StatefulLambdaDetector`'s object-taking overloads are stable (#800).**
   `recordCapturedMutation(lambda, name, state, thread)` and `recordCapturedRead(lambda, state,
   thread)` leave `EXPERIMENTAL`. They are the fix for #800: without the captured object, two
