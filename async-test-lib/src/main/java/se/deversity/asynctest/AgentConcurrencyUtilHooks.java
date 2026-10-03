@@ -1704,7 +1704,7 @@ public final class AgentConcurrencyUtilHooks {
         }
         Handed handed = Submissions.forget(future);
         if (handed != null) {
-            HappensBefore.receive(handed.finished);
+            HappensBefore.receive(handed.finished());
         }
     }
 
@@ -1719,6 +1719,11 @@ public final class AgentConcurrencyUtilHooks {
         static final AtomicLong TOKENS = new AtomicLong();
 
         volatile HappensBefore.@Nullable Stamp finished;
+
+        /** {@return the stamp the work finished with, {@code null} while it has not} */
+        final HappensBefore.@Nullable Stamp finished() {
+            return finished;
+        }
     }
 
     /**
@@ -1841,10 +1846,10 @@ public final class AgentConcurrencyUtilHooks {
                 HappensBefore.acquire(other);
             }
             if (sourceWork != null) {
-                HappensBefore.receive(sourceWork.finished);
+                HappensBefore.receive(sourceWork.finished());
             }
             if (otherWork != null) {
-                HappensBefore.receive(otherWork.finished);
+                HappensBefore.receive(otherWork.finished());
             }
             TelemetryRegistry.taskStarted(token);
         }
