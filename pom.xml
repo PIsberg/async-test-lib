@@ -82,7 +82,7 @@
         <surefire.forkCount>1</surefire.forkCount>
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+        <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
         <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
         <!-- Pinned because nothing else does: without it Maven falls back to its built-in
              default binding, which resolves maven-jar-plugin 2.4 (2013). That plugin writes
@@ -295,10 +295,15 @@
                     <!-- Local default skips the @Tag("e2e") engine tier; the e2e profile
                          (auto-active in CI) clears this. E2eTagGuardTest pins the tag set. -->
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
-                    <!-- @{argLine} preserves JaCoCo's late-bound agent argLine; the extra flag
-                         permits AsyncTestAgent.selfAttach() to attach to the forked test JVM
-                         (self-attach is disabled by default since JDK 9). -->
-                    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
+                    <!-- @{argLine} preserves JaCoCo's late-bound agent argLine.
+                         allowAttachSelf permits AsyncTestAgent.selfAttach() to attach to the
+                         forked test JVM (self-attach is disabled by default since JDK 9).
+                         EnableDynamicAgentLoading stops the JDK printing its dynamic-agent warning
+                         to System.err from the Attach Listener thread, whose context class loader
+                         is null: surefire 3.6.0's stderr capture fails to initialise there, which
+                         aborts the agent's InstrumentationImpl constructor ("Agent failed to
+                         start!"), so every self-attach test fails under 3.6.0 without it. -->
+                    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading</argLine>
                     <systemPropertyVariables>
                         <license.mock.mode>${license.mock.mode}</license.mock.mode>
                         <!-- A detector that throws during analysis is contained for consumers

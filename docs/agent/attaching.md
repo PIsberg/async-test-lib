@@ -447,10 +447,15 @@ Self-attach needs `-Djdk.attach.allowAttachSelf=true` on the test JVM.
   <artifactId>maven-surefire-plugin</artifactId>
   <configuration>
     <!-- @{argLine} preserves JaCoCo's late-bound agent argLine -->
-    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
+    <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true -XX:+EnableDynamicAgentLoading</argLine>
   </configuration>
 </plugin>
 ```
+
+On surefire 3.6.0, `-XX:+EnableDynamicAgentLoading` is required, not cosmetic. Without it the JDK
+prints its dynamic-agent warning to `System.err` from the Attach Listener thread, surefire's
+output capture fails there, and the attach aborts with `Agent failed to start!`. With the flag
+the JDK prints no warning, so surefire 3.5.x and Gradle need it only to keep the log quiet.
 
 **Gradle (Kotlin DSL):**
 

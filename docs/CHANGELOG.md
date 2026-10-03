@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   index when its rule file holds only safety-tier stanzas, since those stay inline in the
   aggregate. Four index entries leave the module `CLAUDE.md` files and `GEMINI.md`; every rule file
   and every inline guardrail is unchanged.
+- **Build: maven-surefire-plugin 3.6.0 (#488).** Every agent self-attach test failed under 3.6.0
+  with `Agent failed to start!`. The JDK prints its dynamic-agent warning to `System.err` from the
+  Attach Listener thread, whose context class loader is null; 3.6.0's output capture throws while
+  initialising on that thread, and the error aborts `InstrumentationImpl`'s constructor. The test
+  JVM now runs with `-XX:+EnableDynamicAgentLoading`, which suppresses the warning, and the
+  self-attach snippet in `docs/agent/attaching.md` carries the same flag for consumers on 3.6.0.
 
 ### Fixed
 
