@@ -522,6 +522,56 @@ class ABAProblemDetectorTest {
         }
     }
 
+    /** A record whose own fields are final but whose list is not: it can carry state. */
+    record Basket(java.util.List<String> items) { }
+
+    /** A class whose fields are all final and reach only values. */
+    record Point(int x, int y) { }
+
+    /** All-final, but one field reaches an object with a mutable field. */
+    static final class Wrapper {
+        final Node inner;
+
+        Wrapper(Node inner) {
+            this.inner = inner;
+        }
+    }
+
+    /** {@return whether an A-B-A of {@code value} through the agent's view is reported} */
+    private static boolean abaOfReported(Object value) throws InterruptedException {
+        ABAProblemDetector detector = new ABAProblemDetector();
+        AtomicReference<Object> state = erased(new AtomicReference<>(value));
+        ABAProblemDetector.AgentSlot slot = detector.agentSlot(state);
+        Object seen = slot.get(state);
+        onAnotherThread(() -> slot.set(state, "elsewhere"));
+        onAnotherThread(() -> slot.set(state, value));
+        assertTrue(slot.compareAndSet(state, seen, "next"));
+        return detector.analyzeABA().hasIssues();
+    }
+
+    @Test
+    void underTheAgentAnImmutableValueThatReachesMutableStateIsAnABA() throws InterruptedException {
+        assertTrue(abaOfReported(new Basket(new java.util.ArrayList<>(List.of("a")))),
+                "the record is final throughout, but its list may have changed while it was away (#817)");
+        assertTrue(abaOfReported(new Wrapper(new Node("n"))),
+                "all-final, but its field reaches a node whose next is mutable");
+    }
+
+    @Test
+    void underTheAgentAnImmutableValueThatReachesOnlyValuesIsNotAnABA() throws InterruptedException {
+        assertFalse(abaOfReported(new Point(1, 2)), "nothing behind the point can change");
+        assertFalse(abaOfReported(new Wrapper2("text")), "a final String reaches no state");
+    }
+
+    /** All-final, reaching only a String. */
+    static final class Wrapper2 {
+        final String text;
+
+        Wrapper2(String text) {
+            this.text = text;
+        }
+    }
+
     @Test
     void underTheAgentOnlyAnotherThreadsToggleAfterThisThreadsReadCounts() throws InterruptedException {
         Node a = new Node("A");

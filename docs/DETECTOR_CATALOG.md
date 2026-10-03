@@ -368,8 +368,9 @@ detector each now runs through the detector, which takes its record inside the o
 so the records of one atomic are in the order its operations ran. A field reached through an
 `AtomicReferenceFieldUpdater` or a `VarHandle`, and an `AtomicReferenceArray` or handle-reached array
 element, are fed the same way, each a slot of its own (#817). A compare-and-set expecting a
-value with no mutable field of its own, an enum constant, a boxed number or a record, is not
-reported: an A-B-A of such a value leaves nothing stale.
+value that carries no state, an enum constant, a boxed number, or a value whose final fields reach
+none (a record of numbers, not a record holding a `List`), is not reported: an A-B-A of such a
+value leaves nothing stale.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,

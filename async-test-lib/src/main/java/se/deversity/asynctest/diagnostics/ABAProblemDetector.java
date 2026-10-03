@@ -79,10 +79,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * each a slot of its own. The records of one atomic are then in the order
  * its woven operations ran, so neither limit above applies there: a toggle that ran before a read
  * is recorded before it, and one recorded after a compare-and-set ran after it. The finding is
- * also narrowed to the case an A-B-A can hurt. A compare-and-set whose expected value has no
- * mutable field of its own (an enum constant, a boxed number, a {@code String}, a record, any
- * class whose instance fields are all final) or is {@code null} is judged harmless: nothing
- * behind the value can have changed while it was away, so a state machine's A-B-A is silent,
+ * also narrowed to the case an A-B-A can hurt. A compare-and-set whose expected value can carry
+ * no state is judged harmless: {@code null}, an enum constant, a boxed number, a {@code String},
+ * or a value whose instance fields are all final and reach no such state, followed three fields
+ * deep, so a record of numbers is harmless and a record holding a {@code List} is not (#817).
+ * Nothing behind a harmless value can have changed while it was away, so a state machine's A-B-A is silent,
  * while a lock-free stack that pushes a popped node back is reported. The agent's records keep no
  * history, only each thread's last read and whether the value left it and came back since, so a
  * hot atomic costs one entry per thread. They are reported under the atomic's class and identity,
@@ -982,51 +983,123 @@ public class ABAProblemDetector {
         }
     }
 
+    /** What a class's instances are, for {@link #canCarryState}. */
+    private enum Shape {
+        /** A JDK value or an enum constant: an A-B-A of it leaves nothing stale. */
+        VALUE,
+        /** It has a mutable field of its own, or is an array, or its fields cannot be read. */
+        MUTABLE,
+        /** Every instance field is final; whether it carries state is a question for its values. */
+        FINAL
+    }
+
     /**
-     * Which classes' instances have a mutable field of their own, and so can carry state an A-B-A
-     * leaves stale (#817). The JDK's value classes are listed rather than read: a {@code String} or
-     * a {@code BigInteger} caches a hash or a magnitude in a non-final field without being any less
-     * a value.
+     * Each class's {@link Shape} (#817). The JDK's value classes are listed rather than read: a
+     * {@code String} or a {@code BigInteger} caches a hash or a magnitude in a non-final field
+     * without being any less a value.
      */
-    private static final ClassValue<Boolean> CARRIES_STATE = new ClassValue<>() {
+    private static final ClassValue<Shape> SHAPE = new ClassValue<>() {
         @Override
-        protected Boolean computeValue(Class<?> type) {
+        protected Shape computeValue(Class<?> type) {
             if (type.isArray()) {
-                return Boolean.TRUE;
+                return Shape.MUTABLE;
             }
-            if (type.isEnum() || type.isRecord() || type == String.class || type == Boolean.class
-                    || type == Character.class
+            if (type.isEnum() || type == String.class || type == Boolean.class || type == Character.class
                     || Number.class.isAssignableFrom(type) && type.getName().startsWith("java.")) {
-                return Boolean.FALSE;
+                return Shape.VALUE;
             }
             try {
                 for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
                     for (Field field : c.getDeclaredFields()) {
                         int modifiers = field.getModifiers();
                         if (!Modifier.isStatic(modifiers) && !Modifier.isFinal(modifiers)) {
-                            return Boolean.TRUE;
+                            return Shape.MUTABLE;
                         }
                     }
                 }
             } catch (LinkageError | SecurityException unreadable) {
-                return Boolean.TRUE; // its fields cannot be read, so it may have such a field
+                return Shape.MUTABLE; // its fields cannot be read, so it may have such a field
             }
-            return Boolean.FALSE;
+            return Shape.FINAL;
         }
     };
+
+    /** A class's reference fields opened for reading; {@code readable} is false when one could not be. */
+    private record References(Field[] fields, boolean readable) {
+        static final References UNREADABLE = new References(new Field[0], false);
+    }
+
+    /**
+     * The reference fields of each {@link Shape#FINAL} class, opened for reading; a class with one
+     * that cannot be opened counts as carrying state.
+     */
+    private static final ClassValue<References> FINAL_REFERENCES = new ClassValue<>() {
+        @Override
+        protected References computeValue(Class<?> type) {
+            List<Field> references = new ArrayList<>();
+            try {
+                for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (Field field : c.getDeclaredFields()) {
+                        if (Modifier.isStatic(field.getModifiers()) || field.getType().isPrimitive()) {
+                            continue;
+                        }
+                        if (!field.trySetAccessible()) {
+                            return References.UNREADABLE;
+                        }
+                        references.add(field);
+                    }
+                }
+            } catch (LinkageError | RuntimeException unreadable) {
+                return References.UNREADABLE;
+            }
+            return new References(references.toArray(new Field[0]), true);
+        }
+    };
+
+    /** How many final fields deep {@link #canCarryState} follows a value; past it, a value is harmless. */
+    private static final int REACH = 3;
 
     /**
      * {@return whether an A-B-A of {@code value} can leave state behind it stale}
      *
-     * <p>May load classes the first time it meets one, so it is decided before a slot's lock is
-     * taken.
+     * <p>A value whose instance fields are all final carries state when one of them reaches an
+     * object that does, a record holding a {@code List} for one, followed {@value #REACH} fields
+     * deep (#817). Reading those fields may load classes the first time a class is met, so this is
+     * decided before a slot's lock is taken.
      *
      * @param value the expected value of a compare-and-set
      * @since 1.12.4
      */
     @API(status = Status.INTERNAL)
     public static boolean canCarryState(@Nullable Object value) {
-        return value != null && !(value instanceof Enum<?>) && CARRIES_STATE.get(value.getClass());
+        return carriesState(value, 0);
+    }
+
+    private static boolean carriesState(@Nullable Object value, int depth) {
+        if (value == null) {
+            return false;
+        }
+        Shape shape = SHAPE.get(value.getClass());
+        if (shape != Shape.FINAL) {
+            return shape == Shape.MUTABLE;
+        }
+        if (depth >= REACH) {
+            return false;
+        }
+        References references = FINAL_REFERENCES.get(value.getClass());
+        if (!references.readable()) {
+            return true; // a field that cannot be read may reach anything
+        }
+        for (Field field : references.fields()) {
+            try {
+                if (carriesState(field.get(value), depth + 1)) {
+                    return true;
+                }
+            } catch (IllegalAccessException | RuntimeException unreadable) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static class ABAReport {
