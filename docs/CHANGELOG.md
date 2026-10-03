@@ -41,6 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **IntelliJ plugin: a directory at a report path hid the real report (#723).** The tool window
+  took the first configured report path that existed, so a directory named like the report shadowed
+  a file at a later path and the panel showed an empty parse. It now takes the first regular file.
+  The lookup moved to `ReportLocator` in the plugin's model package, which tests it without
+  booting an IDE. The UI layer had no test at all, which is how the Refresh button was documented
+  for the plugin's whole life without existing: `FindingsToolWindowPlatformTest` now boots a
+  headless IDE (the IntelliJ Platform test framework) and checks the Refresh action and its Tools
+  menu entry, the tool window's content and Refresh title action, a report under the project
+  loading into the summary, and the settings page's apply and reset.
 - **One `TelemetryRegistry.stop()` switched off woven happens-before edges for the rest of the JVM
   (#891).** `stop()` sets a flag that exists so nothing fills an event ring no drain thread will
   empty, but the woven hooks also checked it before telling the happens-before model about a queue

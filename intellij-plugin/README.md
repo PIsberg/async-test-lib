@@ -118,7 +118,7 @@ The plugin reads the report file on demand — it does not watch for file change
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Report file paths | `target/async-test-reports/async-test-report.json, build/async-test-reports/async-test-report.json` | Comma-separated list of paths (relative to project root). The first file that exists is used. |
+| Report file paths | `target/async-test-reports/async-test-report.json, build/async-test-reports/async-test-report.json` | Comma-separated list of paths (relative to project root). The first that names a regular file is used; a directory at one of the paths is skipped. |
 
 If your project uses a non-standard output directory, update this setting to point at the correct location.
 
@@ -160,7 +160,8 @@ cd intellij-plugin
 # Build the plugin ZIP
 ./gradlew buildPlugin
 
-# Run the plugin tests (pure-Java model layer)
+# Run the plugin tests: the model layer, and the tool window, Refresh action and settings
+# page in a headless IDE (FindingsToolWindowPlatformTest)
 ./gradlew test
 
 # Run an IntelliJ sandbox instance with the plugin loaded
