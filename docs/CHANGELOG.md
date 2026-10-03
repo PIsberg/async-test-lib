@@ -54,6 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `ReentrantLock` leaked by a nameless thread went unreported (#855).** A lock names its holder
+  only by name, and every unnamed virtual thread is `""`, so a hold such a thread kept through a
+  balanced re-entry was printed as context by `ReentrantLockDetector` and missed by
+  `LockLeakDetector`. With the agent attached, in any mode, it now opens
+  `java.util.concurrent.locks` to the library, which reads the lock's owner `Thread`: an owner that
+  has terminated or sits idle in a pool leaked the lock whatever it is called, and one still
+  working is context. Without the agent the name rules apply as before. `JdkLockShapeCanaryTest`
+  fails the build on a JDK that moves the members read.
 - **Woven calendar rolls and zero adds were recorded as leaving fields to recompute (#820).** On
   a `GregorianCalendar` a roll of `HOUR` or `HOUR_OF_DAY` keeps every field computed, and an
   `add` or `roll` by 0 returns before touching the calendar, both measured against the class's

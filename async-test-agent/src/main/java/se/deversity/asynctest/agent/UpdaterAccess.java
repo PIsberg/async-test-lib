@@ -41,13 +41,21 @@ import org.jspecify.annotations.Nullable;
  * its woven call sites could not link to the library either. A loader whose delegation changes
  * after its first woven class is not followed: the answer is taken once per loader.
  *
+ * <p>In every mode, not only under field weaving, the same module also gets
+ * {@code java.util.concurrent.locks}, so the library can read which thread owns a
+ * {@code ReentrantLock} at analysis instead of judging its holder by name (#855). That read is
+ * analysis-time only and needs nothing woven.
+ *
  * <p>Failure is silent, like {@link AtomicFieldRegistry}: without the opening an updater bound
- * before the attach stays unresolved and its spinlock undeclared, which reports rather than hides,
- * while an exception here would cost a class its weaving or abort JVM startup from premain.
+ * before the attach stays unresolved and its spinlock undeclared, and a lock's owner is judged by
+ * name, both of which report rather than hide, while an exception here would cost a class its
+ * weaving or abort JVM startup from premain.
  */
 final class UpdaterAccess {
 
     private static final String ATOMIC_PACKAGE = "java.util.concurrent.atomic";
+
+    private static final String LOCKS_PACKAGE = "java.util.concurrent.locks";
 
     /**
      * The library class every woven hook call goes through. Named, not referenced as a class
@@ -74,18 +82,21 @@ final class UpdaterAccess {
      * @param loader the loader of a class about to be woven; {@code null} (bootstrap) opens nothing
      */
     static void openTo(Instrumentation inst, @Nullable ClassLoader loader) {
-        openTo(inst, loader, null);
+        openTo(inst, loader, null, true);
     }
 
     /**
-     * Opens {@code java.util.concurrent.atomic} to the module of the library copy {@code loader}
-     * resolves and, when {@code woven} is a named module, lets it read that copy's module.
+     * Opens {@code java.util.concurrent.locks} and, when {@code atomic}, {@code
+     * java.util.concurrent.atomic} to the module of the library copy {@code loader} resolves and,
+     * when {@code woven} is a named module, lets it read that copy's module.
      *
      * @param inst   the agent's instrumentation
      * @param loader the loader of a class about to be woven; {@code null} (bootstrap) opens nothing
      * @param woven  the module of that class, or {@code null} when not known
+     * @param atomic whether field weaving is on, the one mode whose spinlock hooks read updaters
      */
-    static void openTo(Instrumentation inst, @Nullable ClassLoader loader, @Nullable Module woven) {
+    static void openTo(Instrumentation inst, @Nullable ClassLoader loader, @Nullable Module woven,
+                       boolean atomic) {
         if (loader == null) {
             return;
         }
@@ -102,9 +113,15 @@ final class UpdaterAccess {
             // the module found is the one whose SpinLocks will do the reading.
             Module library = Class.forName(LIBRARY_ENTRY, false, loader).getModule();
             Module javaBase = Object.class.getModule();
-            if (!javaBase.isOpen(ATOMIC_PACKAGE, library)) {
-                inst.redefineModule(javaBase, Set.of(), Map.of(),
-                        Map.of(ATOMIC_PACKAGE, Set.of(library)), Set.of(), Map.of());
+            Map<String, Set<Module>> opens = new java.util.HashMap<>();
+            if (!javaBase.isOpen(LOCKS_PACKAGE, library)) {
+                opens.put(LOCKS_PACKAGE, Set.of(library));
+            }
+            if (atomic && !javaBase.isOpen(ATOMIC_PACKAGE, library)) {
+                opens.put(ATOMIC_PACKAGE, Set.of(library));
+            }
+            if (!opens.isEmpty()) {
+                inst.redefineModule(javaBase, Set.of(), Map.of(), opens, Set.of(), Map.of());
             }
         } catch (ClassNotFoundException | RuntimeException | LinkageError e) { // NOPMD - see the class javadoc
             // Unresolved updaters report rather than hide; see the class javadoc.

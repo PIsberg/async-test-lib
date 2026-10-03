@@ -276,8 +276,11 @@ public class LockLeakDetector {
         if (holderName == null) {
             return null;
         }
-        ReentrantLockDetector.HolderState state = ReentrantLockDetector.holderState(
-                holderName, recorded, platformThreads, recordedThreads);
+        // The owner itself where it can be read (#855), the name otherwise; the same answer
+        // ReentrantLockDetector gives for this hold.
+        ReentrantLockDetector.HolderState byOwner = ReentrantLockDetector.ownerState(lock);
+        ReentrantLockDetector.HolderState state = byOwner != null ? byOwner
+                : ReentrantLockDetector.holderState(holderName, recorded, platformThreads, recordedThreads);
         if (state == null || state == ReentrantLockDetector.HolderState.WORKING) {
             return null;
         }
