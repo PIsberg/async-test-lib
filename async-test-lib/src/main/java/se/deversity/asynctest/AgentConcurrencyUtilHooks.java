@@ -2681,47 +2681,55 @@ public final class AgentConcurrencyUtilHooks {
         private final Object task;
         private final HappensBefore.Stamp submitted;
         private final long token;
+        private final @Nullable AsyncTestContext submittedIn;
 
         HandedTask(Object task) {
             this.task = task;
             this.submitted = HappensBefore.handOff();
             this.token = TOKENS.incrementAndGet();
+            this.submittedIn = AsyncTestContext.agentContext();
             TelemetryRegistry.taskSubmitted(token);
         }
 
         @Override
         public void run() {
             HappensBefore.receive(submitted);
+            AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
             try {
                 ((Runnable) task).run();
             } finally {
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
+                AsyncTestContext.restoreLent(lentBefore);
             }
         }
 
         @Override
         public @Nullable Object call() throws Exception {
             HappensBefore.receive(submitted);
+            AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
             try {
                 return ((Callable<?>) task).call();
             } finally {
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
+                AsyncTestContext.restoreLent(lentBefore);
             }
         }
 
         @Override
         public @Nullable Object get() {
             HappensBefore.receive(submitted);
+            AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
             try {
                 return ((Supplier<?>) task).get();
             } finally {
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
+                AsyncTestContext.restoreLent(lentBefore);
             }
         }
 
@@ -2755,6 +2763,7 @@ public final class AgentConcurrencyUtilHooks {
         private final @Nullable Handed sourceWork;
         private final @Nullable Handed otherWork;
         private final long token;
+        private final @Nullable AsyncTestContext registeredIn;
 
         /**
          * Takes the registering thread's clock, on that thread.
@@ -2769,11 +2778,17 @@ public final class AgentConcurrencyUtilHooks {
             this.sourceWork = source == null ? null : Submissions.peek(source);
             this.otherWork = other == null ? null : Submissions.peek(other);
             this.token = TOKENS.incrementAndGet();
+            this.registeredIn = AsyncTestContext.agentContext();
             TelemetryRegistry.taskSubmitted(token);
         }
 
-        /** Orders the thread about to run the function after everything it follows. */
-        final void begin() {
+        /**
+         * Orders the thread about to run the function after everything it follows, and lends it
+         * the registering thread's run (#834).
+         *
+         * @return what the thread was lent before, for {@link #end}
+         */
+        final @Nullable AsyncTestContext begin() {
             HappensBefore.receive(registered);
             if (source != null) {
                 HappensBefore.acquire(source);
@@ -2787,13 +2802,21 @@ public final class AgentConcurrencyUtilHooks {
             if (otherWork != null) {
                 HappensBefore.receive(otherWork.finished());
             }
+            AsyncTestContext lentBefore = AsyncTestContext.lend(registeredIn);
             TelemetryRegistry.taskStarted(token);
+            return lentBefore;
         }
 
-        /** Takes the clock of the thread that ran the function, for a join of the stage. */
-        final void end() {
+        /**
+         * Takes the clock of the thread that ran the function, for a join of the stage, and ends
+         * the loan {@link #begin} made.
+         *
+         * @param lentBefore what {@link #begin} returned
+         */
+        final void end(@Nullable AsyncTestContext lentBefore) {
             finished = HappensBefore.handOff();
             TelemetryRegistry.taskEnded();
+            AsyncTestContext.restoreLent(lentBefore);
         }
     }
 
@@ -2811,43 +2834,43 @@ public final class AgentConcurrencyUtilHooks {
         @Override
         @SuppressWarnings("unchecked") // the caller's own function, erased at the call site
         public @Nullable Object apply(@Nullable Object value) {
-            begin();
+            AsyncTestContext lentBefore = begin();
             try {
                 return ((Function<@Nullable Object, @Nullable Object>) function).apply(value);
             } finally {
-                end();
+                end(lentBefore);
             }
         }
 
         @Override
         @SuppressWarnings("unchecked") // the caller's own action, erased at the call site
         public void accept(@Nullable Object value) {
-            begin();
+            AsyncTestContext lentBefore = begin();
             try {
                 ((Consumer<@Nullable Object>) function).accept(value);
             } finally {
-                end();
+                end(lentBefore);
             }
         }
 
         @Override
         @SuppressWarnings("unchecked") // the caller's own action, erased at the call site
         public void accept(@Nullable Object value, @Nullable Object failure) {
-            begin();
+            AsyncTestContext lentBefore = begin();
             try {
                 ((BiConsumer<@Nullable Object, @Nullable Object>) function).accept(value, failure);
             } finally {
-                end();
+                end(lentBefore);
             }
         }
 
         @Override
         public void run() {
-            begin();
+            AsyncTestContext lentBefore = begin();
             try {
                 ((Runnable) function).run();
             } finally {
-                end();
+                end(lentBefore);
             }
         }
 
@@ -2889,12 +2912,12 @@ public final class AgentConcurrencyUtilHooks {
         @Override
         @SuppressWarnings("unchecked") // the caller's own function, erased at the call site
         public @Nullable Object apply(@Nullable Object value, @Nullable Object second) {
-            begin();
+            AsyncTestContext lentBefore = begin();
             try {
                 return ((BiFunction<@Nullable Object, @Nullable Object, @Nullable Object>) function)
                         .apply(value, second);
             } finally {
-                end();
+                end(lentBefore);
             }
         }
 

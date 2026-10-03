@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The shared-instance detectors see the threads a worker hands work to (#834).** Under the agent,
+  the `MessageDigest`, `Calendar`, `SimpleDateFormat` and other shared-instance hooks looked up the
+  run on the accessing thread only, so a thread the body started, or a pool thread running a task
+  it submitted, used a shared instance unseen however it overlapped the workers. A thread started
+  through a woven start now works for the starting thread's run, and a pool thread for the run that
+  handed it a task, stage function or executed task while it runs it, with the run's round scope
+  too. A run stops lending once its analysis starts, the thread registry is weakly held, and a pool
+  thread's loan ends in a `finally` with the task.
 - **`Executor.execute` orders its task where nothing can hand it back (#741, #834).** A task given
   to `execute` started with nothing ordering it after the caller, and its pool thread's accesses
   were dropped as unattributed. On a `ForkJoinPool`, a `ScheduledThreadPoolExecutor` and the

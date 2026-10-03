@@ -41,4 +41,8 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   to a JDK executor (#745), registered as a dependent `CompletableFuture` stage, or executed on a
   `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task executor (#741). Accesses
   on other application threads during the round, a thread started in unwoven code or a task given
-  to a `ThreadPoolExecutor`'s `execute` included, are treated as noise and dropped.
+  to a `ThreadPoolExecutor`'s `execute` included, are treated as noise and dropped. The
+  shared-instance hooks (a `MessageDigest`, a `Calendar`, a `SimpleDateFormat` and the rest) reach
+  the same threads: a thread started through a woven start works for the run of the thread that
+  started it until that run is analysed, and a pool thread for the run that handed it a task or
+  stage function while it runs it (#834).

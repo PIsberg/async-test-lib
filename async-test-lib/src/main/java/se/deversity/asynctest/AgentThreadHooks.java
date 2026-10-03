@@ -298,6 +298,7 @@ public final class AgentThreadHooks {
         if (thread.getState() == Thread.State.NEW) {
             HappensBefore.fork(thread);
             TelemetryRegistry.threadStarting(thread);
+            AsyncTestContext.threadSpawned(thread);
         }
     }
 
