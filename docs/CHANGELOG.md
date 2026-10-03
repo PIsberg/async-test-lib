@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on `LeakedFuture.getCreationStackTrace()`, `NestedSubmissionSnapshot.getStackTrace()` and
   `PinningEventSnapshot.getStackTrace()`, which returned `null` for a field that is never null.
   They now return the copy unconditionally and are no longer declared `@Nullable`.
+- **Build: vibetags-processor 1.3.7 (#871).** 1.3.7 drops an element from the `<scoped_rules>`
+  index when its rule file holds only safety-tier stanzas, since those stay inline in the
+  aggregate. Four index entries leave the module `CLAUDE.md` files and `GEMINI.md`; every rule file
+  and every inline guardrail is unchanged.
 
 ### Fixed
 

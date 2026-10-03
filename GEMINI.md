@@ -20,7 +20,6 @@ The following elements are well-tested core components. Make changes with extrem
 Detailed per-element guardrails live in scoped rule files that Gemini CLI does not load on its own. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Before modifying an element listed below, open its file with read_file and apply the guardrails there:
 
 - `se.deversity.asynctest.agent.AgentOptions` → `.gemini/rules/async-test-instrumentation.md`
-- `se.deversity.asynctest.agent.AsyncTestAgent` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.agent.AtomicFieldRegistry` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.agent.CollectionAccessWeaver` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-agent -->
@@ -32,11 +31,6 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 The following elements are well-tested core components. Make changes with extreme caution:
 
 - `se.deversity.asynctest.analysis.StaticPinningScanner`: Sensitivity: High. Note: The whole module is this one class plus ASM, and ArchitectureTest pins both directions: nothing here may reference the library, and asm may not leak out of here. Keep the analysis one-directional — if the scanner starts needing the runner or a detector, that is a design question, not a dependency to add. The asymmetry in the findings is deliberate and must be preserved: monitor depth is tracked within a single method body only, so cross-method synchronization yields false negatives, and MONITOREXIT on exception-handler edges may undercount depth. False negatives are acceptable here; a false positive is not, because the scanner runs without executing tests and has no way to confirm a site.
-
-## Scoped Rules Index
-Detailed per-element guardrails live in scoped rule files that Gemini CLI does not load on its own. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Before modifying an element listed below, open its file with read_file and apply the guardrails there:
-
-- `se.deversity.asynctest.analysis.StaticPinningScanner` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-analysis -->
 <!-- VIBETAGS-MODULE: async-test-lib -->
 # GEMINI AI INSTRUCTIONS
@@ -104,7 +98,6 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 - `se.deversity.asynctest.AsyncTestRunner` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.DetectorRegistry` → `.gemini/rules/async-test-configuration.md`
 - `se.deversity.asynctest.DetectorType` → `.gemini/rules/async-test-configuration.md`
-- `se.deversity.asynctest.NoopAsyncTestListener` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.Preset` → `.gemini/rules/async-test-configuration.md`
 - `se.deversity.asynctest.benchmark.BenchmarkComparator` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.benchmark.BenchmarkRecorder` → `.gemini/rules/async-test-instrumentation.md`
@@ -173,7 +166,6 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 - `se.deversity.asynctest.runner.ConcurrencyRunner` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.runner.LicenseGuard` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.runner.LicenseValidationCache` → `.gemini/rules/async-test-runtime-core.md`
-- `se.deversity.asynctest.runner.OfflineLicense` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.spi.Detector` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.DetectorFactory` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.DetectorRegistry` → `.gemini/rules/async-test-public-api.md`

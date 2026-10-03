@@ -97,7 +97,6 @@ you are editing here.
     <element path="se.deversity.asynctest.AsyncTestRunner" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.DetectorRegistry" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.DetectorType" rules=".claude/rules/async-test-configuration.md"/>
-    <element path="se.deversity.asynctest.NoopAsyncTestListener" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.Preset" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkComparator" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder" rules=".claude/rules/async-test-instrumentation.md"/>
@@ -166,7 +165,6 @@ you are editing here.
     <element path="se.deversity.asynctest.runner.ConcurrencyRunner" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.runner.LicenseGuard" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.runner.LicenseValidationCache" rules=".claude/rules/async-test-runtime-core.md"/>
-    <element path="se.deversity.asynctest.runner.OfflineLicense" rules=".claude/rules/async-test-runtime-core.md"/>
     <element path="se.deversity.asynctest.spi.Detector" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorFactory" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorRegistry" rules=".claude/rules/async-test-public-api.md"/>
