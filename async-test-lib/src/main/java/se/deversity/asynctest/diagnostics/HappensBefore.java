@@ -110,7 +110,7 @@ import org.jspecify.annotations.Nullable;
  *       refused one. One into a queue that implements it itself, a {@code LinkedBlockingDeque} or
  *       a {@code ConcurrentLinkedQueue}, releases the batch first and, when it throws part way,
  *       withdraws every element the queue does not hold afterwards, judged by identity (#806).
- *   <li>A clock keeps at most 256 threads. Past that the entries of the lowest
+ *   <li>A clock keeps at most 4,096 threads (#840). Past that the entries of the lowest
  *       thread ids go, which loses edges and never adds one; a thread never loses its own.
  *   <li>A submitted task's end is found by the future its submitter was handed, among the last
  *       16 that thread submitted and has not got yet; a get on another thread, or of an older
@@ -143,8 +143,12 @@ import org.jspecify.annotations.Nullable;
 @API(status = Status.EXPERIMENTAL)
 public final class HappensBefore {
 
-    /** The most threads one clock remembers; see the class javadoc. */
-    static final int MAX_ENTRIES = 256;
+    /**
+     * The most threads one clock remembers; see the class javadoc. 4,096 since #840: a tick costs
+     * one small object whatever the clock's size, so only a join that learns something pays for
+     * the size, and a non-owner that met a few hundred threads keeps the hand-off it follows.
+     */
+    static final int MAX_ENTRIES = 4096;
 
     /** Passed as the entry to keep when merging into a clock that belongs to no thread. */
     private static final long NO_OWNER = Long.MIN_VALUE;
@@ -1028,12 +1032,32 @@ public final class HappensBefore {
         /** Thread ids, ascending. Never mutated once the stamp exists. */
         private final long[] threads;
 
-        /** The count known for the thread at the same index. */
+        /** The count known for the thread at the same index, except at {@link #own}. */
         private final int[] counts;
 
+        /**
+         * The one thread whose count is {@link #ownCount} rather than its slot in {@link #counts},
+         * {@code NO_OWNER} for none. Always one of {@link #threads}. It is what lets a tick share
+         * both arrays and allocate one object, whatever the clock's size (#840).
+         */
+        private final long own;
+
+        private final int ownCount;
+
         private Stamp(long[] threads, int[] counts) {
+            this(threads, counts, NO_OWNER, 0);
+        }
+
+        private Stamp(long[] threads, int[] counts, long own, int ownCount) {
             this.threads = threads;
             this.counts = counts;
+            this.own = own;
+            this.ownCount = ownCount;
+        }
+
+        /** {@return the count for the thread at {@code index}} */
+        private int countAt(int index) {
+            return threads[index] == own ? ownCount : counts[index];
         }
 
         /** {@return the clock a thread starts with: its own first entry and nothing else} */
@@ -1043,17 +1067,28 @@ public final class HappensBefore {
 
         /** {@return how much of {@code thread}'s history this stamp is ordered after, 0 for none} */
         int countOf(long thread) {
+            if (thread == own) {
+                return ownCount;
+            }
             int at = Arrays.binarySearch(threads, thread);
             return at < 0 ? 0 : counts[at];
         }
 
         /** {@return this stamp with {@code thread}'s own entry advanced by one} */
         Stamp tick(long thread) {
+            if (thread == own) {
+                return new Stamp(threads, counts, own, ownCount + 1);
+            }
             int at = Arrays.binarySearch(threads, thread);
             if (at < 0) {
                 return join(of(thread), thread);
             }
+            if (own == NO_OWNER) {
+                return new Stamp(threads, counts, thread, counts[at] + 1);
+            }
+            // Another thread's count rides beside the arrays; fold it in before this one does.
             int[] next = counts.clone();
+            next[Arrays.binarySearch(threads, own)] = ownCount;
             next[at]++;
             return new Stamp(threads, next);
         }
@@ -1061,7 +1096,7 @@ public final class HappensBefore {
         /** {@return whether this stamp already knows everything {@code other} knows} */
         boolean covers(Stamp other) {
             for (int i = 0; i < other.threads.length; i++) {
-                if (countOf(other.threads[i]) < other.counts[i]) {
+                if (countOf(other.threads[i]) < other.countAt(i)) {
                     return false;
                 }
             }
@@ -1096,15 +1131,15 @@ public final class HappensBefore {
                 if (right >= other.threads.length
                         || left < threads.length && threads[left] < other.threads[right]) {
                     next = threads[left];
-                    count = counts[left];
+                    count = countAt(left);
                     left++;
                 } else if (left >= threads.length || other.threads[right] < threads[left]) {
                     next = other.threads[right];
-                    count = other.counts[right];
+                    count = other.countAt(right);
                     right++;
                 } else {
                     next = threads[left];
-                    count = Math.max(counts[left], other.counts[right]);
+                    count = Math.max(countAt(left), other.countAt(right));
                     left++;
                     right++;
                 }
@@ -1147,7 +1182,7 @@ public final class HappensBefore {
                 if (i > 0) {
                     text.append(", ");
                 }
-                text.append(threads[i]).append(':').append(counts[i]);
+                text.append(threads[i]).append(':').append(countAt(i));
             }
             return text.append(']').toString();
         }

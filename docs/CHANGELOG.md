@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A non-owner that met a few hundred threads keeps the hand-off it follows (#840).** A
+  happens-before clock kept 256 threads and dropped the lowest ids past that, so a thread that
+  had met more than 256 others lost the entry of the thread that handed it an instance, and
+  `SelfGuard` fell back to the whole window's lockset: a finding on correct code. A tick copied the
+  whole clock, which is what kept the cap low. A clock now carries its own thread's count beside
+  its shared arrays, so a tick allocates one small object whatever the size (1,000 ticks of a
+  2,001-thread clock went from 1,064,000 bytes to under 128,000), and the cap is 4,096. Past it the
+  fallback stays conservative, as pinned.
 - **The shared-instance detectors see the threads a worker hands work to (#834).** Under the agent,
   the `MessageDigest`, `Calendar`, `SimpleDateFormat` and other shared-instance hooks looked up the
   run on the accessing thread only, so a thread the body started, or a pool thread running a task
