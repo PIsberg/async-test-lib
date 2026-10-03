@@ -100,8 +100,10 @@ import org.jspecify.annotations.Nullable;
  *       stored, because four later writers were in that window at once, acquires nothing. A
  *       reference is matched by identity, through a weak reference the release record holds, so
  *       an object sharing another's identity hash is not taken for it (#813). A volatile write
- *       inside a constructor is not woven, so it publishes nothing. Two fields of one object
- *       sharing a simple name, a field and the one it shadows, share a clock.
+ *       inside a constructor releases once the super constructor has run (#813); one before
+ *       it publishes nothing. A field named by its simple name through the manual methods
+ *       meets every field of that name on the object, a field and the one it shadows alike;
+ *       the agent names each by its declaring class (#813).
  *   <li>A withdrawn release was visible for the length of the refused call, and one another
  *       thread folded into its own release in that time stays. An {@code addAll} into a queue
  *       that inherits {@code AbstractQueue}'s is offered element by element and withdraws the
@@ -208,10 +210,11 @@ public final class HappensBefore {
      * to whoever later acquires the same field of the same object (#742).
      *
      * <p>Per field, where {@link #release} is per object: a read of one volatile field does not
-     * receive what a write of another published. The field is compared by its simple name, the
-     * part after the last dot, so {@code com.example.Holder.ready} and {@code ready} name one
-     * field; the agent qualifies a field with the class the instruction named, which for an
-     * inherited field depends on the static type at the call site.
+     * receive what a write of another published. Two names are one field when they are equal or
+     * one is a dot-separated suffix of the other, so {@code com.example.Holder.ready},
+     * {@code Holder.ready} and {@code ready} name one field, while {@code com.example.Sub.ready}
+     * and {@code com.example.Base.ready}, a field and the one it shadows, are two. The agent
+     * qualifies a field with the class that declares it, whatever static type the call site used.
      *
      * @param owner the object the field belongs to, the declaring class for a static field;
      *              {@code null} is ignored
@@ -671,18 +674,26 @@ public final class HappensBefore {
     }
 
     /**
-     * {@return whether two field names name the same field of one object}: equal simple names,
-     * the part after the last dot. Allocation-free.
+     * {@return whether two field names name the same field of one object}: equal, or one is a
+     * dot-separated suffix of the other. Allocation-free.
+     *
+     * <p>A suffix, not the simple name: the agent names a field by its declaring class, so
+     * {@code com.example.Sub.ready} and {@code com.example.Base.ready} are a subclass field and
+     * the superclass field it shadows, two fields with two clocks (#813). A caller of the manual
+     * methods may name the field less fully, {@code ready} or {@code Sub.ready}, and still meets
+     * the agent's name for it.
      */
     static boolean sameField(String one, String other) {
-        if (one.equals(other)) {
-            return true;
+        if (one.length() == other.length()) {
+            return one.equals(other);
         }
-        int from = one.lastIndexOf('.') + 1;
-        int otherFrom = other.lastIndexOf('.') + 1;
-        int length = one.length() - from;
-        return length == other.length() - otherFrom
-                && one.regionMatches(from, other, otherFrom, length);
+        return one.length() > other.length() ? endsWithField(one, other) : endsWithField(other, one);
+    }
+
+    /** {@return whether {@code longer} ends with a dot followed by {@code shorter}} */
+    private static boolean endsWithField(String longer, String shorter) {
+        int at = longer.length() - shorter.length();
+        return longer.charAt(at - 1) == '.' && longer.startsWith(shorter, at);
     }
 
     /** A vector clock that releases merge into and acquires read, replaced on every change. */

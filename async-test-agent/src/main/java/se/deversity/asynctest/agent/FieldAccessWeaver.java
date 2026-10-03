@@ -354,7 +354,8 @@ final class FieldAccessWeaver {
     }
 
     /**
-     * {@return the identifier reported for {@code owner.name}}
+     * {@return the identifier reported for {@code owner.name}}; the weaver passes the class that
+     * declares the field as {@code owner}, not the instruction's (#813)
      *
      * <p>Dotted form, matching what {@code TelemetryBridge.fieldIdentifier} expects, so a direct
      * field access and a woven accessor for the same field land under one key and a detector can
@@ -469,6 +470,40 @@ final class FieldAccessWeaver {
             } else {
                 super.visitInsn(Opcodes.ACONST_NULL);
             }
+        }
+
+        /** {@link #declaringOwner} answers already given in this method, keyed by owner and name. */
+        private final java.util.Map<String, String> declaringOwners = new java.util.HashMap<>();
+
+        /**
+         * {@return the internal name of the class that declares field {@code name}, looked up
+         * from {@code owner}, or {@code owner} when it cannot be resolved}
+         *
+         * <p>javac names a field instruction by the static type of its qualifier, so one field
+         * written through a subclass reference and read through the superclass's carries two
+         * owners. The identifier names the declaring class instead, so the two accesses meet under
+         * one key, and a subclass field that shadows its superclass's keeps a key of its own: the
+         * happens-before model no longer has to match fields by simple name, which let one stand in
+         * for the other (#813). Resolved at weave time and emitted as a constant, so the hot path
+         * pays nothing.
+         */
+        private String declaringOwner(String owner, String name) {
+            return declaringOwners.computeIfAbsent(owner + '.' + name, key -> {
+                try {
+                    TypeDescription type = typePool.describe(owner.replace('/', '.')).resolve();
+                    for (TypeDefinition current = type; current != null; current = current.getSuperClass()) {
+                        for (FieldDescription.InDefinedShape field
+                                : current.asErasure().getDeclaredFields()) {
+                            if (field.getName().equals(name)) {
+                                return current.asErasure().getInternalName();
+                            }
+                        }
+                    }
+                } catch (RuntimeException e) { // NOPMD - an unresolvable type keeps the instruction's owner
+                    return owner;
+                }
+                return owner;
+            });
         }
 
         /**
@@ -1128,7 +1163,7 @@ final class FieldAccessWeaver {
          * and keeps its finding.
          */
         private void notePublication(String owner, String name, boolean isWrite, boolean isVolatile) {
-            String identifier = identifier(owner, name);
+            String identifier = identifier(declaringOwner(owner, name), name);
             if (isVolatile) {
                 if (isWrite) {
                     for (String published : plainWritesInThisMethod) {
@@ -1164,7 +1199,7 @@ final class FieldAccessWeaver {
 
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-            String identifier = identifier(owner, name);
+            String identifier = identifier(declaringOwner(owner, name), name);
             boolean write = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
             int tag = constantTag(write, identifier);
             if (!write) {
@@ -1214,6 +1249,13 @@ final class FieldAccessWeaver {
                 }
                 volatileLoad = isVolatile && !isWrite;
                 notePublication(owner, name, isWrite, isVolatile);
+            } else if (constructionWrite && weaveFieldInstructions && shouldWeave(owner)
+                    && !thisIsUninitialised && isVolatile(owner, name)) {
+                // A constructor's write records no access, but a volatile one is still a release:
+                // a reader that sees the value is ordered after everything the thread did before
+                // it, which is how a flag set in a constructor publishes safely (#813). Only after
+                // the super constructor has run, when the receiver may be passed to a method.
+                emitVolatileStore(owner, false, descriptor, identifier);
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
             if (volatileLoad) {

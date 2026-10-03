@@ -54,6 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two happens-before edges the volatile model missed or invented (#813).** The agent named a
+  field by the static type of the access, so one field read through `Sub` and through `Base` had
+  two names, and the model matched fields by simple name to meet them. That let a subclass field
+  stand in for the superclass field it shadows: a read of the shadowed field, which nothing
+  released, was ordered by the other field's write and hid a race. The weaver now names a field
+  by its declaring class, and two names match only when one is a dot-suffix of the other, so a
+  manual `ready` or `Holder.ready` still meets `com.example.Holder.ready`. A volatile write in a
+  constructor also releases now, once the super constructor has run, so a flag set there
+  publishes what the thread wrote before it instead of reading as a race. Still known and now
+  pinned: a value stored twice is acquired from the later release.
 - **A gatherer integration left open by one round read as an overlap in the next (#846).**
   `GathererConcurrencyMisuseDetector` reports two integrations of one state open at once on two
   threads. An enter whose exit was never recorded stayed open until a 4,096-entry cap cleared it,

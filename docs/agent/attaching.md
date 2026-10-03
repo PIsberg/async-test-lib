@@ -208,7 +208,9 @@ returned published: reading one volatile field receives nothing a write of anoth
 a read that returned an older value receives nothing the later write published (#742). The acquire
 goes into the reading thread's clock, so everything the thread does after the read is ordered,
 including its accesses to the object the read returned, which is how a node published through a
-volatile `next` reaches its reader (#804). An `AtomicReference` is modelled the same way (#741): a
+volatile `next` reaches its reader (#804). A field is the one its class declares, whatever static type
+the access went through, so a subclass field that shadows a superclass field has a clock of its own,
+and a volatile write in a constructor releases once the super constructor has run (#813). An `AtomicReference` is modelled the same way (#741): a
 `set`, `lazySet`, `setRelease`, successful `compareAndSet` or `getAndSet` releases the slot, and a
 `get` or `getAcquire` acquires what the store whose value it returned published, so the same object
 read out of another slot receives nothing. The value is compared as a primitive's bits or a

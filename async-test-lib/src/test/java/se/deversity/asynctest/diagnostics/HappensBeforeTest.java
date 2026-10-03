@@ -117,6 +117,45 @@ class HappensBeforeTest {
         assertFalse(ordered(writer, wholeObject), "nor does the object's own hand-off clock");
     }
 
+    /**
+     * #813 item 2, pinned: when two writes store the same value, a read of it takes the later
+     * release. A release is recorded before its store, so in the instructions between a writer's
+     * release and its store a read of the earlier writer's equal value is ordered after the later
+     * writer too. Nothing in the record tells the two apart, and a hook after the store would only
+     * narrow the window, since the read's own hook runs after its load. Known over-ordering.
+     */
+    @Test
+    @DisplayName("two releases of one value: a read of it is ordered after the later one (#813 item 2, known)")
+    void aValueStoredTwiceIsAcquiredFromTheLaterRelease() throws InterruptedException {
+        Object holder = new Object();
+        Recorded first = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.flag", 1L));
+        Recorded second = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "Holder.flag", 1L));
+        Recorded reader = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Holder.flag", 1L), false, () -> { });
+
+        assertTrue(ordered(second, reader), "the later release of the value is the one acquired");
+        assertTrue(ordered(first, reader), "and through it the earlier one");
+    }
+
+    @Test
+    @DisplayName("a subclass field that shadows its superclass's has its own clock (#813 item 5)")
+    void twoFieldsOfOneObjectSharingASimpleNameHaveTwoClocks() throws InterruptedException {
+        Object holder = new Object();
+        Recorded writer = onNewThread(() -> { }, true,
+                () -> HappensBefore.releaseVolatile(holder, "com.example.Sub.ready"));
+        Recorded shadowed = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "com.example.Base.ready"), false, () -> { });
+        Recorded sameDeclaringClass = onNewThread(
+                () -> HappensBefore.acquireVolatile(holder, "Sub.ready"), false, () -> { });
+
+        assertFalse(ordered(writer, shadowed),
+                "Base.ready is another field; the agent names a field by its declaring class");
+        assertTrue(ordered(writer, sameDeclaringClass),
+                "a qualifier that is a suffix of the other names the same field");
+    }
+
     @Test
     @DisplayName("a volatile read receives the write whose value it returned, and no later one (#742)")
     void aVolatileReadIsMatchedByTheValueItReturned() throws InterruptedException {
