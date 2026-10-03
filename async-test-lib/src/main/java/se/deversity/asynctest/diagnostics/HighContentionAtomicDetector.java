@@ -68,6 +68,9 @@ import java.util.concurrent.atomic.LongAdder;
 )
 public final class HighContentionAtomicDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Default total-attempt count above which an instance becomes eligible for a finding. */
     public static final long DEFAULT_ATTEMPT_THRESHOLD = 1000L;
 
@@ -142,7 +145,7 @@ public final class HighContentionAtomicDetector {
         State existing = instances.get(id);
         if (existing != null) return existing;
         return instances.computeIfAbsent(id,
-                k -> new State(atomic.getClass().getSimpleName() + "@" + k.hashCode()));
+                k -> new State(unnamedLabels.of(k, atomic.getClass().getSimpleName())));
     }
 
     private void track(State s, Thread thread) {

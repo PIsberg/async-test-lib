@@ -59,6 +59,9 @@ import java.util.zip.Checksum;
 )
 public final class SharedChecksumDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final Set<String>  operations           = ConcurrentHashMap.newKeySet();
@@ -84,7 +87,7 @@ public final class SharedChecksumDetector {
         State s = instances.get(IdentityKey.lookup(checksum));
         if (s == null) {
             IdentityKey key = new IdentityKey(checksum);
-            final String label = checksum.getClass().getSimpleName() + "@" + key.hashCode();
+            final String label = unnamedLabels.of(key, checksum.getClass().getSimpleName());
             s = instances.computeIfAbsent(key, k -> new State(label));
         }
         if (operation != null) s.operations.add(operation);

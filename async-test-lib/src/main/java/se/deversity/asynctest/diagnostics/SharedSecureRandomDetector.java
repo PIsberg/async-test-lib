@@ -58,6 +58,9 @@ import java.util.concurrent.atomic.AtomicLong;
 @AISecure(aspect = "cryptography (RNG quality)")
 public final class SharedSecureRandomDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class State {
         final String label;
         final String algorithm;
@@ -107,7 +110,7 @@ public final class SharedSecureRandomDetector {
             s = instances.computeIfAbsent(key, k -> {
                 String label = (name != null)
                         ? name
-                        : random.getClass().getSimpleName() + "@" + k.hashCode();
+                        : unnamedLabels.of(k, random.getClass().getSimpleName());
                 String algorithm = safeString(random::getAlgorithm);
                 String provider  = safeString(() -> random.getProvider() != null
                         ? random.getProvider().getName() : "unknown");

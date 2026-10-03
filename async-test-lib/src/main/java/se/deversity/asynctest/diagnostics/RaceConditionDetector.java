@@ -55,6 +55,9 @@ import se.deversity.asynctest.report.Violation;
  */
 public class RaceConditionDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class FieldAccess implements HappensBefore.Access {
         final long threadId;
         final long timestamp;
@@ -148,9 +151,9 @@ public class RaceConditionDetector {
             this.type = type;
         }
 
-        synchronized String label() {
+        synchronized String label(UnnamedLabels labels) {
             if (label == null) {
-                label = ReportSections.unnamed(className);
+                label = labels.next(className);
             }
             return label;
         }
@@ -301,7 +304,7 @@ public class RaceConditionDetector {
                     continue;
                 }
 
-                String fieldRef = state.label() + "." + fieldName;
+                String fieldRef = state.label(unnamedLabels) + "." + fieldName;
 
                 // Pair accesses only within their invocation round: the runner ends a round
                 // by awaiting the worker latch and starts the next by submitting fresh

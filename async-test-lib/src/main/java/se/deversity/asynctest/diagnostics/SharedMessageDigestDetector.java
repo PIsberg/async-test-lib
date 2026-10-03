@@ -50,6 +50,9 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
 public class SharedMessageDigestDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class DigestState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
         final String      type;
@@ -92,7 +95,7 @@ public class SharedMessageDigestDetector {
             s = digests.computeIfAbsent(key, k -> {
                 String label = (name != null)
                         ? name
-                        : digest.getClass().getSimpleName() + "@" + k.hashCode();
+                        : unnamedLabels.of(k, digest.getClass().getSimpleName());
                 String type;
                 if (digest instanceof javax.crypto.Cipher) {
                     type = "Cipher";

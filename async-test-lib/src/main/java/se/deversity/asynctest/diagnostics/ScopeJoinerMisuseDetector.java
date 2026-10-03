@@ -100,6 +100,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 )
 public final class ScopeJoinerMisuseDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class JoinerState {
         final String        label;
         volatile long       ownerThreadId  = -1L;
@@ -265,7 +268,7 @@ public final class ScopeJoinerMisuseDetector {
 
     private JoinerState stateOrCreate(Object joiner, String label) {
         IdentityKey id = new IdentityKey(joiner);
-        String name = label != null ? label : "joiner@" + id.hashCode();
+        String name = label != null ? label : unnamedLabels.of(id, "joiner");
         return joiners.computeIfAbsent(id, k -> new JoinerState(name));
     }
 

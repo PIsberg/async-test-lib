@@ -87,6 +87,9 @@ import java.util.concurrent.atomic.AtomicLong;
 )
 public final class ScopeResultEscapeDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static final class ScopeState {
         final String        scopeId;
         final long          ownerThreadId;
@@ -163,7 +166,7 @@ public final class ScopeResultEscapeDetector {
         ScopeState s = scope(scopeId);
         if (s == null) return;
         IdentityKey key = new IdentityKey(handle);
-        String name = label != null ? label : "results@" + key.hashCode();
+        String name = label != null ? label : unnamedLabels.of(key, "results");
         handles.computeIfAbsent(key, k -> new HandleState(name, s));
     }
 

@@ -69,6 +69,9 @@ import java.util.concurrent.atomic.LongAdder;
 )
 public final class ConfinedArenaThreadEscapeDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * Never started, never runs. Its only purpose is to be a thread that is definitionally not
      * the owner of any confined arena, so {@code isAccessibleBy(PROBE)} answers "is this segment
@@ -145,7 +148,7 @@ public final class ConfinedArenaThreadEscapeDetector {
     public void recordArena(@Nullable Object arena, @Nullable String label, @Nullable Thread owner) {
         if (arena == null) return;
         IdentityKey key = new IdentityKey(arena);
-        final String lbl = label != null ? label : "Arena@" + key.hashCode();
+        final String lbl = label != null ? label : unnamedLabels.of(key, "Arena");
         arenas.computeIfAbsent(key, k -> new ArenaState(lbl, owner));
     }
 
@@ -221,7 +224,7 @@ public final class ConfinedArenaThreadEscapeDetector {
         IdentityKey key = new IdentityKey(arena);
         ArenaState a = arenas.get(key);
         if (a == null) {
-            final String lbl = "Arena@" + key.hashCode();
+            final String lbl = unnamedLabels.of(key, "Arena");
             a = arenas.computeIfAbsent(key, k -> new ArenaState(lbl, thread));
         }
         a.closed.set(true);
@@ -240,7 +243,7 @@ public final class ConfinedArenaThreadEscapeDetector {
         IdentityKey key = new IdentityKey(segment);
         SegmentState s = segments.get(key);
         if (s == null) {
-            final String lbl = label != null ? label : "MemorySegment@" + key.hashCode();
+            final String lbl = label != null ? label : unnamedLabels.of(key, "MemorySegment");
             s = segments.computeIfAbsent(key, k -> new SegmentState(lbl, arenaKey, byteSize));
         }
         return s;

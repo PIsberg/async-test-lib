@@ -39,6 +39,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class SleepInLockDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class SleepInLockEvent {
         final @Nullable String lockName;
         final String threadName;
@@ -193,7 +196,7 @@ public class SleepInLockDetector {
     private void recordHolding(long sleepDurationMs, Object lock, String lockType) {
         Thread currentThread = Thread.currentThread();
         record(new SleepInLockEvent(
-                lock.getClass().getName() + "@" + System.identityHashCode(lock),
+                unnamedLabels.of(lock, lock.getClass().getName()),
                 currentThread.getName(),
                 sleepDurationMs,
                 currentThread.getStackTrace(),

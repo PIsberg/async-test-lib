@@ -64,6 +64,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class SharedCollectionDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class CollectionState extends SelfGuard.TrackedInstance {
         final String name;
         final String collectionType;
@@ -124,8 +127,8 @@ public class SharedCollectionDetector {
         if (collection == null) return;
         IdentityKey key = new IdentityKey(collection);
         String resolvedType = collectionType != null ? collectionType : collection.getClass().getSimpleName();
-        String resolvedName = name != null ? name : ReportSections.unnamed(resolvedType);
-        collections.putIfAbsent(key, new CollectionState(resolvedName, resolvedType));
+        collections.computeIfAbsent(key,
+                k -> new CollectionState(name != null ? name : unnamedLabels.next(resolvedType), resolvedType));
     }
 
     /**
@@ -184,7 +187,7 @@ public class SharedCollectionDetector {
         }
         return collections.computeIfAbsent(new IdentityKey(collection), k -> {
             String type = collection.getClass().getSimpleName();
-            String label = name != null ? name : ReportSections.unnamed(type);
+            String label = name != null ? name : unnamedLabels.next(type);
             return new CollectionState(label, type);
         });
     }

@@ -48,6 +48,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class SimpleDateFormatDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class FormatterState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger formatCount = new AtomicInteger(0);
@@ -58,8 +61,8 @@ public class SimpleDateFormatDetector {
         final Map<String, AtomicInteger> methodCounts = new ConcurrentHashMap<>();
         volatile @Nullable Long firstAccessTime = null;
 
-        FormatterState(String name) {
-            this.name = name != null ? name : ReportSections.unnamed("formatter");
+        FormatterState(String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.next("formatter");
         }
     }
 
@@ -79,7 +82,7 @@ public class SimpleDateFormatDetector {
         if (!enabled || formatter == null) {
             return;
         }
-        formatters.putIfAbsent(new IdentityKey(formatter), new FormatterState(name));
+        formatters.computeIfAbsent(new IdentityKey(formatter), k -> new FormatterState(name, unnamedLabels));
     }
 
     /**
@@ -120,7 +123,7 @@ public class SimpleDateFormatDetector {
             // saw null, both built a state and the second put discarded the first, so each
             // thread counted itself alone and the "> 1 thread" test in analyze() never
             // tripped - the detector went silent under exactly the contention it looks for.
-            state = formatters.computeIfAbsent(key, k -> new FormatterState(name));
+            state = formatters.computeIfAbsent(key, k -> new FormatterState(name, unnamedLabels));
         }
         // The thread that hit the error was using the formatter, so it counts toward the
         // sharing the error finding now requires (#501).
@@ -139,7 +142,7 @@ public class SimpleDateFormatDetector {
         FormatterState state = formatters.get(key);
         if (state == null) {
             // Auto-register atomically - see recordError() for why get-then-put lost records.
-            state = formatters.computeIfAbsent(key, k -> new FormatterState(name));
+            state = formatters.computeIfAbsent(key, k -> new FormatterState(name, unnamedLabels));
         }
         state.noteAccess(formatter);
 

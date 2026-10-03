@@ -79,6 +79,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class ConcurrentMapComputeRecursionDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * The keys currently being computed, per (map, thread) scope.
      *
@@ -136,7 +139,7 @@ public class ConcurrentMapComputeRecursionDetector {
         Map<IdentityKey, String> active =
                 activeByScope.computeIfAbsent(scope(map, thread), ignored -> new ConcurrentHashMap<>());
         IdentityKey keyIdentity = new IdentityKey(key);
-        String label = mapName != null ? mapName : "map@" + System.identityHashCode(map);
+        String label = mapName != null ? mapName : unnamedLabels.of(map, "map");
 
         if (active.containsKey(keyIdentity)) {
             recursions.add(String.format(

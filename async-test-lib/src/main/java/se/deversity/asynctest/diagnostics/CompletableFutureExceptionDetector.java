@@ -51,6 +51,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class CompletableFutureExceptionDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** How old, in milliseconds, an incomplete future without a handler must be to be reported (#756). */
     private static final long MISSING_HANDLER_AGE_THRESHOLD_MS = 100;
 
@@ -64,8 +67,8 @@ public class CompletableFutureExceptionDetector {
         volatile @Nullable Exception lastException = null;
         final AtomicInteger getJoinCalls = new AtomicInteger(0);
 
-        FutureState(String name) {
-            this.name = name != null ? name : ReportSections.unnamed("future");
+        FutureState(String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.next("future");
         }
     }
 
@@ -84,7 +87,7 @@ public class CompletableFutureExceptionDetector {
         }
         // computeIfAbsent, not put: re-declaring a future already tracked would discard whether
         // a handler had been registered on it, which is the whole finding.
-        futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(name));
+        futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(name, unnamedLabels));
     }
 
     /**

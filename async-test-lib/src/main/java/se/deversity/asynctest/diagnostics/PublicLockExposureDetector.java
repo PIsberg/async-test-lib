@@ -32,6 +32,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PublicLockExposureDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private final Set<IdentityKey>          synchronizedObjects = ConcurrentHashMap.newKeySet();
     private final Set<IdentityKey>          publishedObjects    = ConcurrentHashMap.newKeySet();
     private final Map<IdentityKey, String>  objectNames         = new ConcurrentHashMap<>();
@@ -73,7 +76,7 @@ public class PublicLockExposureDetector {
         PublicLockExposureReport r = new PublicLockExposureReport();
         for (IdentityKey id : synchronizedObjects) {
             if (publishedObjects.contains(id)) {
-                String name = objectNames.getOrDefault(id, "object@" + id.hashCode());
+                String name = objectNames.getOrDefault(id, unnamedLabels.of(id, "object"));
                 String ctx  = publishContexts.getOrDefault(id, "external code");
                 String finding = String.format(
                     "%s uses synchronized(this) but is publicly exposed via %s — "

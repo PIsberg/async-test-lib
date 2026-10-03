@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Unnamed objects are labelled `kind@n`, counted per detector, in every report (#860).** #854
+  moved nineteen detectors off a `type@identityHash` label, but 60 sites in 52 other detectors
+  still built one, from `System.identityHashCode` or from an `IdentityKey`'s `hashCode()`, which
+  is the same number. None was a map key, so no report merged two objects yet, but two live
+  objects share an identity hash often enough that any later keyed use would. The 21 sites #854
+  fixed drew their numbers from one JVM-wide counter, so a label read `queue@4711` deep in a
+  suite. All 81 now take their label from the detector's own `UnnamedLabels`, which counts per
+  kind from 1. A detector lives for one `@AsyncTest` invocation, so the same test prints `queue@1`
+  on every run, and a registration repeated by every worker no longer uses up a number.
+  `ReportLabelsAreNotIdentityHashesTest` refuses a new hash label. Baselines are unaffected: a
+  fingerprint reads `@` and digits as `@#`.
+
 - **Build: PMD 7.28.0, NullAway 0.14.2, setup-gradle 6.4.0, codecov-action 7.1.1 (#870, #873,
   #880, #727).** PMD 7.28.0 renamed `UseUtilityClass` to `InstantiableUtilityClass`, so the
   ruleset's exclude for the public `AsyncAssert` and `ConcurrencyRunner` constructors stopped

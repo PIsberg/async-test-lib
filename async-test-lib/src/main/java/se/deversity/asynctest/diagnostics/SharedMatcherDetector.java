@@ -34,6 +34,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SharedMatcherDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class MatcherState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
 
@@ -57,7 +60,7 @@ public class SharedMatcherDetector {
             // The fallback label is built only when the instance is first seen.
             s = matchers.computeIfAbsent(new IdentityKey(matcher), id -> new MatcherState(name != null
                     ? name
-                    : matcher.getClass().getSimpleName() + "@" + System.identityHashCode(matcher)));
+                    : unnamedLabels.of(matcher, matcher.getClass().getSimpleName())));
         }
         s.noteAccess(matcher, thread);
     }

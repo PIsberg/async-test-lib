@@ -126,6 +126,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class ConditionVariableDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** {@code waitQueue} result: the lock was held by another thread, so it was not read. */
     private static final int LOCK_HELD = -1;
     /** {@code waitQueue} result: the registered lock did not create the condition. */
@@ -191,8 +194,8 @@ public class ConditionVariableDetector {
         @Nullable WaitQueueQuery waitQueue;
         boolean hasPredicate;
 
-        ConditionState(Condition condition, @Nullable String name) {
-            this.name = name != null ? name : "condition@" + System.identityHashCode(condition);
+        ConditionState(Condition condition, @Nullable String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.of(condition, "condition");
         }
     }
 
@@ -383,7 +386,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return null;
         }
-        ConditionState fresh = new ConditionState(condition, name);
+        ConditionState fresh = new ConditionState(condition, name, unnamedLabels);
         ConditionState prior = conditions.putIfAbsent(new IdentityKey(condition), fresh);
         return prior != null ? prior : fresh;
     }

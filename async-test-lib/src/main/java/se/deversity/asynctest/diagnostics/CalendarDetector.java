@@ -52,6 +52,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CalendarDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class CalendarState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger getCount   = new AtomicInteger(0);
@@ -71,8 +74,8 @@ public class CalendarDetector {
          */
         final AtomicBoolean fieldsPending;
 
-        CalendarState(Calendar calendar, String name) {
-            this.name = name != null ? name : ReportSections.unnamed("calendar");
+        CalendarState(Calendar calendar, String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.next("calendar");
             this.fieldsPending = new AtomicBoolean(PendingFields.of(calendar));
         }
     }
@@ -88,7 +91,7 @@ public class CalendarDetector {
     public void registerCalendar(Calendar calendar, String name) {
         if (calendar == null) return;
         // computeIfAbsent, so the calendar's state is read once, when it is first seen.
-        calendars.computeIfAbsent(new IdentityKey(calendar), k -> new CalendarState(calendar, name));
+        calendars.computeIfAbsent(new IdentityKey(calendar), k -> new CalendarState(calendar, name, unnamedLabels));
     }
 
     /**
@@ -186,7 +189,7 @@ public class CalendarDetector {
 
         IdentityKey key = new IdentityKey(calendar);
         CalendarState state = calendars.computeIfAbsent(key,
-                k -> new CalendarState(calendar, name));
+                k -> new CalendarState(calendar, name, unnamedLabels));
 
         long now = System.currentTimeMillis();
         boolean get = "get".equals(method);

@@ -11,7 +11,7 @@ import java.time.Duration;
  * always produces.
  *
  * <p>A separate class from the millisecond bean on purpose: the finding names the monitor as
- * {@code getClass().getName() + "@" + identityHashCode}, so two beans are what let one test
+ * {@code getClass().getName() + "@" + n} (#860), so two beans are what let one test
  * assert each overload separately rather than accept either one for both.
  */
 public class SleepingDurationInSynchronizedMethodBean {

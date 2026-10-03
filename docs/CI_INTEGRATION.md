@@ -150,9 +150,10 @@ mvn test -Dasync-test.baseline=async-test-baseline.txt \
 
 The file is plain text, one `testId | DetectorName | finding` entry per line, sorted and
 de-duplicated. The finding is a fingerprint of the report: its summary for a detector that grades
-its findings, otherwise each line of the report, with counts, thread numbers, timings, identity hash
-codes and colour codes replaced by `#` or dropped so that the same finding reads the same on every
-run (lines abridged here; the file holds each in full):
+its findings, otherwise each line of the report, with counts, thread numbers, timings, the number
+in an unnamed object's label (`queue@3`), identity hash codes and colour codes replaced by `#` or
+dropped so that the same finding reads the same on every run (lines abridged here; the file holds
+each in full):
 
 ```
 com.example.OrderServiceTest#checksum | SharedMessageDigestDetector | SHARED MESSAGE DIGEST / CRYPTOGRAPHY DETECTED:

@@ -94,6 +94,9 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class ReentrantLockDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private final Map<ReentrantLock, LockInfo> lockRegistry = new ConcurrentHashMap<>();
     /** Timeouts per lock. {@code ReentrantLock} keeps {@code Object}'s equality, so keys are identities. */
     private final Map<ReentrantLock, Integer> timeouts = new ConcurrentHashMap<>();
@@ -153,7 +156,7 @@ public class ReentrantLockDetector {
     private String nameOf(ReentrantLock lock) {
         LockInfo info = lockRegistry.get(lock);
         return info != null ? info.name
-                : unnamed.computeIfAbsent(lock, l -> ReportSections.unnamed("ReentrantLock"));
+                : unnamed.computeIfAbsent(lock, l -> unnamedLabels.next("ReentrantLock"));
     }
 
     /** {@return what has been seen on {@code lock}, created on first use} */

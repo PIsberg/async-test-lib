@@ -80,6 +80,9 @@ import org.jspecify.annotations.Nullable;
 )
 public final class NonAtomicConcurrentMapUpdateDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** One (map, key) site: its labels, the round in progress, and the round that lost a put. */
     private static final class State {
         final String mapLabel;
@@ -222,8 +225,7 @@ public final class NonAtomicConcurrentMapUpdateDetector {
         Site site = new Site(new IdentityKey(map), key);
         State s = sites.get(site);
         if (s == null) {
-            final String label = map.getClass().getSimpleName() + "@"
-                    + Integer.toHexString(System.identityHashCode(map));
+            final String label = unnamedLabels.of(map, map.getClass().getSimpleName());
             final String op = (operation != null) ? operation : "check-then-act";
             s = sites.computeIfAbsent(site, k -> new State(label, String.valueOf(key), op));
         }

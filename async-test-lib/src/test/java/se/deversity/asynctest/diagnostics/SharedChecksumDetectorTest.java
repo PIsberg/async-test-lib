@@ -150,4 +150,19 @@ class SharedChecksumDetectorTest {
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }
+
+    @Test
+    void anUnnamedChecksumIsNamedByItsTypeAndANumberNotItsIdentityHash() throws Exception {
+        SharedChecksumDetector d = new SharedChecksumDetector();
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        d.recordAccess(crc, "update", Thread.currentThread());
+        Thread t = new Thread(() -> d.recordAccess(crc, "getValue", Thread.currentThread()));
+        t.start();
+        t.join();
+
+        String report = d.analyze().toString();
+        assertTrue(java.util.regex.Pattern.compile("CRC32@1\\b").matcher(report).find(),
+                "the first unnamed checksum is CRC32@1 (#860): " + report);
+        assertFalse(report.contains("@" + System.identityHashCode(crc)), report);
+    }
 }

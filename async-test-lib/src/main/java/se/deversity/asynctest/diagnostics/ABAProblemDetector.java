@@ -93,6 +93,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class ABAProblemDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * Record order across all variables. It orders records, not the operations they describe;
      * see the class documentation for how a change recorded after a compare-and-set is judged.
@@ -526,7 +529,7 @@ public class ABAProblemDetector {
         }
         IdentityKey key = new IdentityKey(atomic);
         AgentSlot slot = agentSlots.get(key);
-        return slot != null ? slot : agentSlots.computeIfAbsent(key, AgentSlot::new);
+        return slot != null ? slot : agentSlots.computeIfAbsent(key, k -> new AgentSlot(k, unnamedLabels));
     }
 
     /**
@@ -570,8 +573,8 @@ public class ABAProblemDetector {
         /** Guarded by {@link #lock}: expected and new value of each A-B-A compare-and-set. */
         private final List<Object[]> findings = new ArrayList<>();
 
-        private AgentSlot(IdentityKey atomic) {
-            this.label = ReportSections.unnamed(atomic.referent().getClass().getSimpleName());
+        private AgentSlot(IdentityKey atomic, UnnamedLabels labels) {
+            this.label = labels.next(atomic.referent().getClass().getSimpleName());
         }
 
         /** A thread's last read of the atomic and what happened to that value since. */

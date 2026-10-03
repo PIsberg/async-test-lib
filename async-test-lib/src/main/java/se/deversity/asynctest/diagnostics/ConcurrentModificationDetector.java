@@ -53,6 +53,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ConcurrentModificationDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * Per-collection bookkeeping. The inherited lockset covers every recorded iteration start and
      * every recorded mutation together, which is what the concurrent-iteration finding asks about:
@@ -89,8 +92,8 @@ public class ConcurrentModificationDetector {
         /** Mutation is safe, iteration is not: a {@code Collections.synchronizedXxx} wrapper. */
         final boolean synchronizedWrapper;
 
-        CollectionState(Collection<?> collection, String name) {
-            this.name = name != null ? name : ReportSections.unnamed("collection");
+        CollectionState(Collection<?> collection, String name, UnnamedLabels labels) {
+            this.name = name != null ? name : labels.next("collection");
             String type = collection == null ? "" : collection.getClass().getName();
             this.concurrentType = isConcurrentByConvention(type);
             this.synchronizedWrapper = isSynchronizedWrapperByConvention(type);
@@ -150,8 +153,8 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        collections.putIfAbsent(new IdentityKey(collection), 
-            new CollectionState(collection, name));
+        collections.computeIfAbsent(new IdentityKey(collection),
+            k -> new CollectionState(collection, name, unnamedLabels));
     }
 
     /**

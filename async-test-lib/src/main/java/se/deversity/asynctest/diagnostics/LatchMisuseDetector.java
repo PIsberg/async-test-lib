@@ -36,6 +36,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class LatchMisuseDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     private static class LatchState {
         final String name;
         // The count the latch started from: declared by registerLatch, or inferred by
@@ -69,8 +72,8 @@ public class LatchMisuseDetector {
         if (latch == null) {
             return;
         }
-        latches.putIfAbsent(new IdentityKey(latch),
-            new LatchState(name == null || name.isBlank() ? ReportSections.unnamed("CountDownLatch") : name,
+        latches.computeIfAbsent(new IdentityKey(latch),
+            k -> new LatchState(name == null || name.isBlank() ? unnamedLabels.next("CountDownLatch") : name,
                 initialCount));
     }
 
@@ -101,7 +104,7 @@ public class LatchMisuseDetector {
         IdentityKey key = new IdentityKey(latch);
         int observed = (int) Math.min(countDownLatch.getCount(), Integer.MAX_VALUE);
         latches.computeIfAbsent(key,
-                absent -> new LatchState(ReportSections.unnamed("CountDownLatch"), observed))
+                absent -> new LatchState(unnamedLabels.next("CountDownLatch"), observed))
             .initialCount.accumulateAndGet(observed, Math::max);
     }
     /**

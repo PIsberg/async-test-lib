@@ -64,6 +64,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 )
 public final class PlatformThreadPerTaskDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Platform-thread creations per run before the churn signal may fire. */
     public static final int DEFAULT_CHURN_THRESHOLD = 16;
 
@@ -141,7 +144,7 @@ public final class PlatformThreadPerTaskDetector {
             return;
         }
         if (!probeWasVirtual.get()) {
-            perTaskPlatformExecutors.put(id, name != null ? name : "executor@" + id.hashCode());
+            perTaskPlatformExecutors.put(id, name != null ? name : unnamedLabels.of(id, "executor"));
         }
     }
 

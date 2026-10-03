@@ -87,6 +87,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 public class LockDowngradeDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * Per-thread hold counters. A single "R or W" marker cannot represent the
      * mid-downgrade state where a thread holds both locks: the read acquire
@@ -205,7 +208,7 @@ public class LockDowngradeDetector {
 
     private LockState stateFor(ReadWriteLock lock, String name) {
         return locks.computeIfAbsent(new IdentityKey(lock), k -> {
-            String resolved = name != null ? name : "rwlock@" + k.hashCode();
+            String resolved = name != null ? name : unnamedLabels.of(k, "rwlock");
             return new LockState(resolved);
         });
     }

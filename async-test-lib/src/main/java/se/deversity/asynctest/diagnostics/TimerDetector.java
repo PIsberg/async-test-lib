@@ -96,6 +96,9 @@ import org.jspecify.annotations.Nullable;
  */
 public class TimerDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /**
      * The class of every thread a {@link java.util.Timer} runs its tasks on. Package-private in
      * the JDK, so matched by name; a record from any other thread cannot be checked against a
@@ -228,7 +231,7 @@ public class TimerDetector {
      */
     public void registerTimer(java.util.Timer timer, String name) {
         if (timer == null) return;
-        timers.putIfAbsent(new IdentityKey(timer), new TimerState(label(name)));
+        timers.computeIfAbsent(new IdentityKey(timer), k -> new TimerState(label(name)));
     }
 
     /**
@@ -427,8 +430,8 @@ public class TimerDetector {
         return false;
     }
 
-    private static String label(String name) {
-        return name != null ? name : ReportSections.unnamed("timer");
+    private String label(String name) {
+        return name != null ? name : unnamedLabels.next("timer");
     }
 
     private TimerState resolve(java.util.Timer timer, String name) {

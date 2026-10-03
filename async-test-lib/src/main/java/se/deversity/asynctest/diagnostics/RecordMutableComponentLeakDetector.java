@@ -71,6 +71,9 @@ import java.util.concurrent.atomic.LongAdder;
 )
 public final class RecordMutableComponentLeakDetector {
 
+    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
     /** Cap on tracked record instances, so a test allocating in a loop cannot exhaust the heap. */
     static final int MAX_INSTANCES = 512;
 
@@ -157,7 +160,7 @@ public final class RecordMutableComponentLeakDetector {
             }
             final String lbl = label != null
                     ? label
-                    : recordInstance.getClass().getSimpleName() + "@" + id.hashCode();
+                    : unnamedLabels.of(id, recordInstance.getClass().getSimpleName());
             s = records.computeIfAbsent(id, k -> {
                 State fresh = new State(lbl, recordInstance);
                 snapshot(fresh);
