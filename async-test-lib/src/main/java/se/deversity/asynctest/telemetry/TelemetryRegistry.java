@@ -2957,7 +2957,7 @@ public final class TelemetryRegistry {
      * Weaves {@code VarHandle.getVolatile} on a reference array element.
      *
      * @param handle the handle the call site invoked
-     * @param array  the array
+     * @param array  the array whose element is the slot, keyed with the index
      * @param index  the element's index
      * @return the reference the element held
      * @since 1.12.4
@@ -2972,7 +2972,7 @@ public final class TelemetryRegistry {
      * Weaves {@code VarHandle.getAcquire} on a reference array element.
      *
      * @param handle the handle the call site invoked
-     * @param array  the array
+     * @param array  the array whose element is the slot, keyed with the index
      * @param index  the element's index
      * @return the reference the element held
      * @since 1.12.4
