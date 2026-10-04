@@ -417,6 +417,49 @@ class HappensBeforeTest {
     }
 
     @Test
+    @DisplayName("a clock keeps the hand-offs of a run that meets a few hundred threads (#840)")
+    void aFewHundredThreadsStayInTheClock() {
+        long own = 5L;
+        long handedOverBy = 6L;
+        HappensBefore.Stamp mine = HappensBefore.Stamp.of(own).join(HappensBefore.Stamp.of(handedOverBy), own);
+        for (long other = 1_000L; other < 1_300L; other++) {
+            mine = mine.join(HappensBefore.Stamp.of(other), own);
+        }
+        assertEquals(1, mine.countOf(handedOverBy),
+                "300 more threads used to push the thread that handed this one an instance out of "
+                        + "its clock, and the hand-off with it");
+    }
+
+    @Test
+    @DisplayName("ticking a large clock allocates the same as ticking a small one (#840)")
+    void aTickCostsTheSameWhateverTheClockSize() {
+        long own = 5L;
+        HappensBefore.Stamp mine = HappensBefore.Stamp.of(own);
+        for (long other = 1_000L; other < 3_000L; other++) {
+            mine = mine.join(HappensBefore.Stamp.of(other), own);
+        }
+        com.sun.management.ThreadMXBean threads =
+                (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+        long me = Thread.currentThread().threadId();
+        HappensBefore.Stamp ticked = mine;
+        for (int i = 0; i < 1_000; i++) { // warm up, so the measurement sees compiled code
+            ticked = ticked.tick(own);
+        }
+        long before = threads.getThreadAllocatedBytes(me);
+        for (int i = 0; i < 1_000; i++) {
+            ticked = ticked.tick(own);
+        }
+        long bytes = threads.getThreadAllocatedBytes(me) - before;
+
+        assertEquals(2_001, ticked.countOf(own), "every tick advanced the own entry");
+        assertEquals(1, ticked.countOf(2_999L), "and kept the others");
+        assertTrue(bytes < 1_000L * 128,
+                "1,000 ticks of a clock that knows 2,001 threads allocated " + bytes + " bytes: a "
+                        + "tick copies the whole clock, which a run meeting many threads pays on "
+                        + "every release");
+    }
+
+    @Test
     @DisplayName("only containers whose contract publishes their elements are edges")
     void publishingContainers() {
         assertTrue(HappensBefore.publishesElements(new java.util.concurrent.LinkedBlockingQueue<>()));

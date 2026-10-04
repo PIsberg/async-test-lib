@@ -4,6 +4,7 @@ import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Objects;
@@ -295,6 +296,12 @@ public final class SelfGuard {
 
         private static final ThreadLocal<Scope> BOUND = new ThreadLocal<>();
 
+        /** The scope a pool thread is lent for one handed task; see {@link #lend}. */
+        private static final ThreadLocal<Scope> LENT = new ThreadLocal<>();
+
+        /** The scope of each thread a run's thread started through a woven start, by thread id. */
+        private static final Map<Long, WeakReference<Scope>> SPAWNED = new ConcurrentHashMap<>();
+
         /** Advanced by the runner thread between rounds, read by every recording worker. */
         private final AtomicInteger round = new AtomicInteger();
 
@@ -328,9 +335,59 @@ public final class SelfGuard {
             IdentityKey.forgetLookup();
         }
 
-        /** {@return the calling thread's scope, or {@code null} outside a run} */
+        /**
+         * Gives {@code child}, about to be started by a thread of the run that owns {@code scope},
+         * that scope too (#834). Called by the context with its own registration.
+         *
+         * @param child the thread about to start
+         * @param scope the starting thread's run's scope
+         */
+        public static void spawned(Thread child, Scope scope) {
+            SPAWNED.put(child.threadId(), new WeakReference<>(scope));
+        }
+
+        /**
+         * Lends {@code scope} to the calling pool thread for one handed task, or ends the loan with
+         * {@code null} (#834). The context pairs the two in a {@code finally}.
+         *
+         * @param scope the run's scope, {@code null} to end the loan
+         */
+        public static void lend(@Nullable Scope scope) {
+            if (scope == null) {
+                LENT.remove();
+            } else {
+                LENT.set(scope);
+            }
+        }
+
+        /**
+         * Forgets the threads started into {@code scope}'s run, once its analysis starts (#834).
+         *
+         * @param scope the run's scope
+         */
+        public static void forgetSpawned(Scope scope) {
+            SPAWNED.values().removeIf(entry -> {
+                Scope spawnedInto = entry.get();
+                return spawnedInto == null || spawnedInto == scope; // NOPMD CompareObjectsWithEquals - one scope per run
+            });
+        }
+
+        /**
+         * {@return the calling thread's scope, or {@code null} outside a run}: a worker's bound
+         * scope, else one lent for a handed task, else that of the run whose thread started this
+         * one (#834)
+         */
         static @Nullable Scope current() {
-            return BOUND.get();
+            Scope scope = BOUND.get();
+            if (scope != null) {
+                return scope;
+            }
+            scope = LENT.get();
+            if (scope != null || SPAWNED.isEmpty()) {
+                return scope;
+            }
+            WeakReference<Scope> spawnedInto = SPAWNED.get(Thread.currentThread().threadId());
+            return spawnedInto == null ? null : spawnedInto.get();
         }
 
         /** Starts the next round. Called from {@code AsyncTestContext.markInvocationStart()}. */

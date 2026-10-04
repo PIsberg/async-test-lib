@@ -61,6 +61,10 @@ jobs:
     # library's own test run, packaging and coverage upload.
     env:
       ASYNC_TEST_TIMEOUT_MULTIPLIER: ${{ matrix.os == 'ubuntu-latest' && '1' || '3' }}
+      # The one leg whose coverage anyone reads. Every other leg skips JaCoCo, which roughly
+      # doubles serial test time, and with it the coverage steps below (#899). The jacoco-check
+      # gate still runs here, so coverage stays enforced once per run.
+      UPLOADS_COVERAGE: ${{ matrix.os == 'ubuntu-latest' && matrix.java-version == '21' }}
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
@@ -118,9 +122,14 @@ jobs:
           cache: maven
 
       - name: Run library tests and install artifact
-        run: mvn clean install
+        # Two per-class JVMs at a time on Ubuntu (#898): every class still gets its own JVM, so
+        # nothing is shared, and the soak recorded in the pom comment ran on Ubuntu.
+        # The skip is quoted: Windows runs this step in PowerShell, which splits a bare
+        # -Djacoco.skip=true at the dot and hands Maven ".skip=true" as a phase (#899).
+        run: mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '"-Djacoco.skip=true"' || '' }} ${{ matrix.os == 'ubuntu-latest' && '-Dsurefire.forkCount=2' || '' }}
 
       - name: Check coverage file exists
+        if: env.UPLOADS_COVERAGE == 'true'
         shell: bash
         run: |
           if [ -f ./async-test-lib/target/site/jacoco/jacoco.xml ]; then
@@ -136,7 +145,7 @@ jobs:
           fi
 
       - name: Import Codecov GPG key
-        if: matrix.os == 'ubuntu-latest' && matrix.java-version == '21'
+        if: env.UPLOADS_COVERAGE == 'true'
         shell: bash
         run: |
           gpg --keyserver hkps://keys.openpgp.org --recv-keys 27034E7FDB850E0BBC2C62FF806BB28AED779869 || \
@@ -144,7 +153,7 @@ jobs:
           echo "WARNING: Could not import GPG key, proceeding without verification"
 
       - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest' && matrix.java-version == '21'
+        if: env.UPLOADS_COVERAGE == 'true'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./async-test-lib/target/site/jacoco/jacoco.xml

@@ -161,9 +161,11 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.report.Violation;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -201,6 +203,24 @@ public final class AsyncTestContext {
 
     private static final ThreadLocal<AsyncTestContext> CURRENT = new ThreadLocal<>();
 
+    /**
+     * The run of each thread a run's thread started through a woven {@code Thread.start}, by
+     * thread id, which the JVM never reuses (#834). Weakly held, so a thread that outlives a run
+     * that was never analysed cannot keep its context reachable; a run that is analysed stops
+     * lending at once, and its entries go then.
+     */
+    private static final Map<Long, WeakReference<AsyncTestContext>> SPAWNED = new ConcurrentHashMap<>();
+
+    /** A soft bound on {@link #SPAWNED} before entries of finished runs are swept. */
+    private static final int SPAWNED_SWEEP_AT = 4096;
+
+    /**
+     * The run a pool thread works for while it runs a task or stage function a run's thread
+     * handed over through a woven call (#834). Set and cleared around that one task, in a
+     * {@code finally}, so it falls under the same symmetry rule as {@link #CURRENT}.
+     */
+    private static final ThreadLocal<AsyncTestContext> LENT = new ThreadLocal<>();
+
     /** Holds detector instances; extracted to keep this class small. */
     private final DetectorRegistry registry;
 
@@ -211,6 +231,9 @@ public final class AsyncTestContext {
      * here.
      */
     private final SelfGuard.Scope sharingScope = new SelfGuard.Scope();
+
+    /** Whether analysis has started, after which no thread is lent this run any more (#834). */
+    private volatile boolean analysed;
 
     /**
      * Third-party detectors contributed through the public {@link se.deversity.asynctest.spi.Detector}
@@ -700,6 +723,99 @@ public final class AsyncTestContext {
         return registry.interruptMonitor;
     }
 
+    // ---- Work a run's threads hand over (#834) ----
+
+    /**
+     * {@return the run the calling thread works for, as the agent's hooks see it, or {@code null}}
+     *
+     * <p>A worker's installed context first; else the run that lent the thread a handed task it
+     * is running; else the run whose thread started this one through a woven {@code Thread.start}.
+     * A run whose analysis has started lends nothing. Reads only; installs nothing.
+     *
+     * <p>Only the shared-instance accessors use it, whose detectors judge overlap. A detector that
+     * judges what never happened during the run, such as a latch never counted down, would read a
+     * started thread that outlives the run as the run's own: the corpus agent-pair lane caught a
+     * daemon thread waiting on a latch counted down after the run reported as latch misuse.
+     */
+    static @Nullable AsyncTestContext agentContext() {
+        AsyncTestContext context = CURRENT.get();
+        if (context != null) {
+            return context;
+        }
+        context = LENT.get();
+        if (context != null) {
+            return context;
+        }
+        if (SPAWNED.isEmpty()) {
+            return null;
+        }
+        WeakReference<AsyncTestContext> spawnedBy = SPAWNED.get(Thread.currentThread().threadId());
+        context = spawnedBy == null ? null : spawnedBy.get();
+        return context == null || context.analysed ? null : context;
+    }
+
+    /**
+     * Called on the starting thread when a woven {@code Thread.start} is about to start
+     * {@code child}: the child works for the starting thread's run, if it has one (#834).
+     *
+     * @param child the thread about to start
+     */
+    static void threadSpawned(Thread child) {
+        AsyncTestContext context = agentContext();
+        if (context == null || context.analysed) {
+            return;
+        }
+        if (SPAWNED.size() >= SPAWNED_SWEEP_AT) {
+            SPAWNED.values().removeIf(entry -> {
+                AsyncTestContext run = entry.get();
+                return run == null || run.analysed;
+            });
+        }
+        SPAWNED.put(child.threadId(), new WeakReference<>(context));
+        SelfGuard.Scope.spawned(child, context.sharingScope);
+    }
+
+    /**
+     * Lends {@code context} to the calling pool thread for one handed task, unless it is a worker
+     * with a context of its own. Pair with {@link #restoreLent} in a {@code finally} (#834).
+     *
+     * @param context the run the task was handed over in, {@code null} for none
+     * @return what the thread was lent before, which {@link #restoreLent} puts back
+     */
+    static @Nullable AsyncTestContext lend(@Nullable AsyncTestContext context) {
+        AsyncTestContext before = LENT.get();
+        if (context != null && !context.analysed && CURRENT.get() == null) {
+            LENT.set(context);
+            SelfGuard.Scope.lend(context.sharingScope);
+        }
+        return before;
+    }
+
+    /**
+     * Puts back what {@link #lend} returned, ending the loan it made.
+     *
+     * @param before the run the thread was lent before the task, {@code null} for none
+     */
+    static void restoreLent(@Nullable AsyncTestContext before) {
+        if (before == null) {
+            LENT.remove();
+            SelfGuard.Scope.lend(null);
+        } else {
+            LENT.set(before);
+            SelfGuard.Scope.lend(before.sharingScope);
+        }
+    }
+
+    /** Stops lending this run to the threads its threads started, once its analysis starts. */
+    private void stopLending() {
+        analysed = true;
+        SPAWNED.values().removeIf(entry -> {
+            AsyncTestContext run = entry.get();
+            return run == null || run == this; // NOPMD CompareObjectsWithEquals - this run, by identity
+        });
+        SelfGuard.Scope.forgetSpawned(sharingScope);
+    }
+
     // ---- Lifecycle (called by ConcurrencyRunner) ----
 
     /**
@@ -1033,6 +1149,7 @@ public final class AsyncTestContext {
      * @since 1.7.0
      */
     public Map<String, String> analyzeAllNamed() {
+        stopLending();
         Map<String, String> reports = registry.analyzeAllNamed();
         appendExternalFindings(reports);
         return reports;
@@ -1890,7 +2007,7 @@ public final class AsyncTestContext {
      * nothing, so it cannot affect the install/uninstall symmetry the class contract requires.
      */
     static @Nullable SharedCollectionDetector currentSharedCollectionDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.sharedCollectionDetector;
     }
 
@@ -1926,13 +2043,13 @@ public final class AsyncTestContext {
      * progress.
      */
     static @Nullable SimpleDateFormatDetector currentSimpleDateFormatDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.simpleDateFormatDetector;
     }
 
     /** {@return the {@link SharedMatcherDetector} for the calling thread's test, or {@code null}} */
     static @Nullable SharedMatcherDetector currentSharedMatcherDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.sharedMatcherDetector;
     }
 
@@ -1941,30 +2058,30 @@ public final class AsyncTestContext {
      * {@code null}}
      */
     static @Nullable SharedMessageDigestDetector currentSharedMessageDigestDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.sharedMessageDigestDetector;
     }
     /** {@return the {@link CalendarDetector} for the calling thread's test, or {@code null}} */
     static @Nullable CalendarDetector currentCalendarDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.calendarDetector;
     }
 
     /** {@return the {@link StringBuilderDetector} for the calling thread's test, or {@code null}} */
     static @Nullable StringBuilderDetector currentStringBuilderDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.stringBuilderDetector;
     }
 
     /** {@return the {@link SharedDecimalFormatDetector} for the calling thread's test, or {@code null}} */
     static @Nullable SharedDecimalFormatDetector currentSharedDecimalFormatDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.sharedDecimalFormatDetector;
     }
 
     /** {@return the {@link SharedFormatterDetector} for the calling thread's test, or {@code null}} */
     static @Nullable SharedFormatterDetector currentSharedFormatterDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.sharedFormatterDetector;
     }
     /** {@return the {@link SemaphoreMisuseDetector} for the calling thread's test, or {@code null}} */
