@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Only the Tests & Build leg that uploads coverage runs JaCoCo (#899).** Every leg of the matrix
+  ran the suite under the JaCoCo agent, but only Ubuntu with JDK 21 uploads to Codecov. One
+  `UPLOADS_COVERAGE` flag on the job now passes `-Djacoco.skip=true` to the other legs and guards
+  the coverage-file check and the Codecov steps, so a leg without JaCoCo cannot fail looking for
+  the report. The `jacoco-check` gate still runs on the uploading leg.
+- **JaCoCo instruments only this project's classes (#897).** The `prepare-agent` execution and
+  Gradle's `JacocoTaskExtension` had no `includes`, so every per-class test JVM instrumented every
+  class it loaded, JUnit, Byte Buddy and ASM among them, for a report that only covers
+  `se.deversity.*`. Both builds now include `se.deversity.*` only and keep excluding the named-module
+  fixture. `JacocoInstrumentsTheProjectOnlyTest` pins both.
 - **Example 116 shows the gatherer race through a real `Gatherer` on JDK 24+ (#893).** A
   `jdk24-gatherer` profile, in the pom and mirrored in Gradle, compiles `RealGathererTest` on JDK 24
   or later: a `Gatherer.of` with a combiner whose initializer returns one shared set is reported as
@@ -65,6 +75,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A non-owner that met a few hundred threads keeps the hand-off it follows (#840).** A
+  happens-before clock kept 256 threads and dropped the lowest ids past that, so a thread that
+  had met more than 256 others lost the entry of the thread that handed it an instance, and
+  `SelfGuard` fell back to the whole window's lockset: a finding on correct code. A tick copied the
+  whole clock, which is what kept the cap low. A clock now carries its own thread's count beside
+  its shared arrays, so a tick allocates one small object whatever the size (1,000 ticks of a
+  2,001-thread clock went from 1,064,000 bytes to under 128,000), and the cap is 4,096. Past it the
+  fallback stays conservative, as pinned.
+- **The shared-instance detectors see the threads a worker hands work to (#834).** Under the agent,
+  the `MessageDigest`, `Calendar`, `SimpleDateFormat` and other shared-instance hooks looked up the
+  run on the accessing thread only, so a thread the body started, or a pool thread running a task
+  it submitted, used a shared instance unseen however it overlapped the workers. A thread started
+  through a woven start now works for the starting thread's run, and a pool thread for the run that
+  handed it a task, stage function or executed task while it runs it, with the run's round scope
+  too. A run stops lending once its analysis starts, the thread registry is weakly held, and a pool
+  thread's loan ends in a `finally` with the task.
 - **`Executor.execute` orders its task where nothing can hand it back (#741, #834).** A task given
   to `execute` started with nothing ordering it after the caller, and its pool thread's accesses
   were dropped as unattributed. On a `ForkJoinPool`, a `ScheduledThreadPoolExecutor` and the
@@ -82,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `join` of its stage. The weaver now wraps the function: the thread running it receives the
   registering thread's clock and acquires each completion it waits for, and a `join` or `get` of
   the stage on the registering thread receives the clock the function finished with. The
-  `Either` forms carry only the registering thread's clock. The wrapper also attributes a pool
+  `Either` forms carry only the registering thread's clock, and a join of a composed stage is
+  also ordered after the completion of the stage its function returned. The wrapper also attributes a pool
   thread running such a function to the run (#834). A `CompletableFuture` never hands its
   functions back, so nothing can see the wrapper. Calls typed against `CompletionStage` are woven
   as well, and wrap only when the stage is a `CompletableFuture`.

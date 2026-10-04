@@ -364,11 +364,17 @@
                             <goal>prepare-agent</goal>
                         </goals>
                         <configuration>
-                            <!-- The NamedModule*WeavingTest classes need their named-module fixture to start
-                                 without a read edge to the class path. JaCoCo's instrumentation gives
-                                 it one before the agent attaches, which voids the test's premise
-                                 (#668, #862). Test fixture code; no coverage is lost. Mirrored in
-                                 build.gradle.kts. -->
+                            <!-- Only this project's classes: the report covers nothing else, and with no
+                                 includes every per-class test JVM instrumented every class it loaded,
+                                 JUnit, Byte Buddy and ASM among them (#897). The NamedModule*WeavingTest
+                                 classes also need their named-module fixture to start without a read
+                                 edge to the class path. JaCoCo's instrumentation gives it one before
+                                 the agent attaches, which voids the test's premise (#668, #862). Test
+                                 fixture code; no coverage is lost. Both mirrored in build.gradle.kts and
+                                 pinned by JacocoInstrumentsTheProjectOnlyTest. -->
+                            <includes>
+                                <include>se.deversity.*</include>
+                            </includes>
                             <excludes>
                                 <exclude>com.example.namedfixture.*</exclude>
                             </excludes>

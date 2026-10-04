@@ -761,6 +761,43 @@ class AgentHappensBeforeFeedTest {
                         + "caller's own, unwrapped: " + handed.get());
     }
 
+    /**
+     * The registering thread composes a stage whose function returns an inner future another
+     * thread completes with a box it wrote, then joins the composed stage and reads the box
+     * (#741). Only the inner future's completion orders that box, and the join observes it.
+     */
+    private static boolean composedStageReported(boolean joined) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box inner = new Box();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        CompletableFuture<Object> innerFuture = new CompletableFuture<>();
+        CompletableFuture<Object> composed = AgentConcurrencyUtilHooks.thenCompose(source, value -> innerFuture);
+        AgentConcurrencyUtilHooks.complete(source, Boolean.TRUE);
+        Thread innerCompleter = new Thread(() -> {
+            inner.value = 1;
+            detector.recordFieldWrite(inner, "value");
+            AgentConcurrencyUtilHooks.complete(innerFuture, inner);
+        });
+        innerCompleter.start();
+        innerCompleter.join(); // unwoven: orders nothing as far as the model knows
+        Object got = joined ? AgentConcurrencyUtilHooks.join(composed) : inner;
+        if (got != inner) {
+            throw new AssertionError("the composed stage did not return the inner box");
+        }
+        detector.recordFieldRead(inner, "value");
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a join of a composed stage is ordered after the inner stage's completion (#741)")
+    void composedStagesPublish() throws Exception {
+        assertFalse(composedStageReported(true),
+                "the composed stage completed when the inner future did, and the join returned the "
+                        + "inner future's box: the inner completion orders the box before the read");
+        assertTrue(composedStageReported(false),
+                "the box read without the join is ordered by nothing");
+    }
+
     /** Which executor the task below is given to, and when the input is written. */
     private enum Execution {
         /** A ForkJoinPool, input written before execute. */
