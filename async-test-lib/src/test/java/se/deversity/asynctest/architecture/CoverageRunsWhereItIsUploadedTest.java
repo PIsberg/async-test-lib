@@ -47,9 +47,12 @@ class CoverageRunsWhereItIsUploadedTest {
     @DisplayName("every other leg runs the suite with JaCoCo skipped")
     void theOtherLegsSkipJacoco() {
         String run = stepBody("Run library tests and install artifact");
-        assertTrue(run.contains("mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '-Djacoco.skip=true' || '' }}"),
-                "the build step must pass -Djacoco.skip=true on every leg that does not upload "
-                        + "coverage (#899): " + run);
+        // Quoted: the Windows legs run this step in PowerShell, which splits a bare
+        // -Djacoco.skip=true at the dot and hands Maven ".skip=true" as a lifecycle phase. The
+        // first dispatch of #899 failed every Windows leg that way in seconds.
+        assertTrue(run.contains("mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '\"-Djacoco.skip=true\"' || '' }}"),
+                "the build step must pass \"-Djacoco.skip=true\", quoted so PowerShell keeps it "
+                        + "whole, on every leg that does not upload coverage (#899): " + run);
     }
 
     @Test

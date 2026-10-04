@@ -124,7 +124,9 @@ jobs:
       - name: Run library tests and install artifact
         # Two per-class JVMs at a time on Ubuntu (#898): every class still gets its own JVM, so
         # nothing is shared, and the soak recorded in the pom comment ran on Ubuntu.
-        run: mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '-Djacoco.skip=true' || '' }} ${{ matrix.os == 'ubuntu-latest' && '-Dsurefire.forkCount=2' || '' }}
+        # The skip is quoted: Windows runs this step in PowerShell, which splits a bare
+        # -Djacoco.skip=true at the dot and hands Maven ".skip=true" as a phase (#899).
+        run: mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '"-Djacoco.skip=true"' || '' }} ${{ matrix.os == 'ubuntu-latest' && '-Dsurefire.forkCount=2' || '' }}
 
       - name: Check coverage file exists
         if: env.UPLOADS_COVERAGE == 'true'
