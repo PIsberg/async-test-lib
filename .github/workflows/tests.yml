@@ -122,7 +122,9 @@ jobs:
           cache: maven
 
       - name: Run library tests and install artifact
-        run: mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '-Djacoco.skip=true' || '' }}
+        # Two per-class JVMs at a time on Ubuntu (#898): every class still gets its own JVM, so
+        # nothing is shared, and the soak recorded in the pom comment ran on Ubuntu.
+        run: mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '-Djacoco.skip=true' || '' }} ${{ matrix.os == 'ubuntu-latest' && '-Dsurefire.forkCount=2' || '' }}
 
       - name: Check coverage file exists
         if: env.UPLOADS_COVERAGE == 'true'
