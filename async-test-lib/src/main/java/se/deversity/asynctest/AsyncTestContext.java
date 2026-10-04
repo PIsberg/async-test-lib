@@ -1201,7 +1201,7 @@ public final class AsyncTestContext {
      * these rather than with the report's bullets, which also list context and advice (#773).
      * Call after {@link #analyzeAllNamed()}.
      *
-     * @since 1.12.3
+     * @since 1.12.4
      */
     @API(status = Status.EXPERIMENTAL)
     public Map<String, List<String>> findingMessages() {

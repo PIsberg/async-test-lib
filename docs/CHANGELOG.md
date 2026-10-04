@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.4] - 2026-10-04
+
 ### Changed
 
 - **Only the Tests & Build leg that uploads coverage runs JaCoCo (#899).** Every leg of the matrix

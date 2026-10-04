@@ -151,7 +151,7 @@ public final class DetectorDefaultSeverity {
      * (#773).
      *
      * @param report a detector's report object; {@code null} yields empty
-     * @since 1.12.3
+     * @since 1.12.4
      */
     @API(status = Status.EXPERIMENTAL)
     public static List<Violation> structuredFindingsIn(@Nullable Object report) {
