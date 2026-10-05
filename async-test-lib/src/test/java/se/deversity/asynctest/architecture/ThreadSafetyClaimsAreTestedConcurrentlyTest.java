@@ -99,6 +99,21 @@ class ThreadSafetyClaimsAreTestedConcurrentlyTest {
                 "an EXEMPT entry names a class that no longer makes the claim: " + EXEMPT.keySet());
     }
 
+    @Test
+    @DisplayName("the weekly PIT run checks each marked test kills its class's mutants")
+    void theMutationRunChecksTheMarkedTestsKill() {
+        String workflow = read(repoRoot().resolve(".github/workflows/mutation.yml"));
+        assertTrue(workflow.contains(".github/scripts/concurrency_test_kills.py ."),
+                "mutation.yml must run concurrency_test_kills.py: a marked test that runs its class"
+                        + " concurrently but would pass if it broke is invisible to this gate (#909)");
+        for (String name : markedTargets().keySet()) {
+            assertTrue(read(repoRoot().resolve(".github/concurrency-kill-floors.txt"))
+                            .lines().anyMatch(line -> line.startsWith(name + " ")),
+                    name + " is marked but has no floor in .github/concurrency-kill-floors.txt;"
+                            + " measure it with concurrency_test_kills.py and add one");
+        }
+    }
+
     /** {@return simple class name to file, for every non-detector main class claiming thread safety} */
     private static Map<String, String> claims() {
         Map<String, String> claims = new TreeMap<>();

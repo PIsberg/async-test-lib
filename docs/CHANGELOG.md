@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classes like it carry the new `@OsSensitive` tag, and Tests & Build's `OS-Sensitive Tests` job
   runs that tag on Windows and macOS on every event, as an ordinary failing job that also fails
   when the tag selects nothing. Both legs are required checks on `main`.
+- **The weekly PIT run checks that each concurrency test would fail if its class broke (#909).**
+  `.github/scripts/concurrency_test_kills.py` mutates each `@ConcurrencyTestFor` class with only its
+  marked test, and fails below a per-class floor in `.github/concurrency-kill-floors.txt`. A test
+  weakened the way `LicenseGuard`'s old one was drops from 61% to 22% of the class's mutants and is
+  named.
 - **Every `@AIThreadSafe` class has a test that can fail when the claim breaks (#906).**
   `ThreadSafetyClaimsAreTestedConcurrentlyTest` requires each class outside the detectors that
   carries the annotation to be named with `@ConcurrencyTestFor` by a test that runs it through
