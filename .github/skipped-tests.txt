@@ -8,7 +8,9 @@
 #
 # Format:  <class>#<method> <context>[,<context>...] # <reason>
 #
-# <method> may be * for every method of the class. A context is a pattern over
+# <method> may be * for every method of the class, and may end in ? when the test's own
+# assumption depends on timing: the skip is then allowed but not required, never stale. Use ? only
+# for a skip the test cannot make deterministic, and say why. A context is a pattern over
 # "<job context>/<report directory>", where the job context is what the workflow passes
 # (tests/jdk21, gradle/jdk21, corpus/jdk25, ...). Use the narrowest pattern that holds.
 #
@@ -21,6 +23,9 @@ se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#jdkEval
 se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#detectorFedByARealGathererWithoutACombinerDoesNotClaimLostResults tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
 se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#twoParallelStreamsSharingOneStateThroughTheInitializerFire tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
 se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#oneParallelStreamHandingItsStateBetweenThreadsStaysSilentOnEnterAndExit tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
+# On 24+ it also skips when the JDK keeps all integration on one thread in five attempts, which a
+# loaded runner does: JDK 26 in PR #911's first run, with two surefire forks on a 4-core runner.
+se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#oneParallelStreamHandingItsStateBetweenThreadsStaysSilentOnEnterAndExit? tests/*,gradle/* # needs the JDK to hand the state between threads
 
 # The real-licence tests need the ATL_E2E_* secrets. license-e2e.yml runs them with
 # ATL_E2E_REQUIRED=true, and is checked here with no entry, so a skip there fails.

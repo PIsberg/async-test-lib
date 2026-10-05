@@ -76,7 +76,10 @@ reason that no longer holds.
 Each line is `<class>#<method> <contexts> # <reason>`. A context is a pattern over the job context
 the workflow passes (`tests/jdk21`, `gradle/jdk21`, `corpus/jdk25`, `license-e2e`, ...) joined to
 the report directory, so the Gatherer skips are allowed on JDK 21 legs only and lane five's
-disabled JDK rows only in lane five's reports. A job with no line in scope tolerates no skip, which
+disabled JDK rows only in lane five's reports. A method ending in `?` may skip but need not:
+that is for a test whose own assumption depends on timing, such as the Gatherer test that skips
+when the JDK keeps a parallel stream's integration on one thread, which a loaded JDK 26 leg did on
+this gate's first CI run. A job with no line in scope tolerates no skip, which
 is how `license-e2e.yml` and `OS-Sensitive Tests` are checked. A job that finds no report fails: an
 empty run must not read as a clean one. The baseline was measured from main's CI on 2026-10-05.
 

@@ -40,9 +40,11 @@ def method_of(name):
 
 
 def load_baseline(text):
-    """[(class, method, [context patterns], reason)] from the baseline file's text.
+    """[(class, method, [context patterns], reason, may_skip)] from the baseline file's text.
 
-    A line is '<class>#<method> <pattern>[,<pattern>...] # <reason>'; <method> may be '*'.
+    A line is '<class>#<method> <pattern>[,<pattern>...] # <reason>'; <method> may be '*'. A
+    method ending in '?' may skip: for a test whose own assumption depends on timing, the skip
+    is allowed but not required, so it is never reported as stale.
     Raises ValueError on a malformed line, so a typo cannot silently allow nothing or everything.
     """
     entries = []
@@ -56,8 +58,9 @@ def load_baseline(text):
             raise ValueError(f"{BASELINE_FILE}:{number}: expected '<class>#<method> <contexts> "
                              f"# <reason>', got: {raw}")
         cls, method = fields[0].split("#", 1)
+        may_skip = method.endswith("?")
         patterns = [p for p in fields[1].split(",") if p]
-        entries.append((cls, method, patterns, reason.strip()))
+        entries.append((cls, method.rstrip("?"), patterns, reason.strip(), may_skip))
     return entries
 
 
@@ -76,7 +79,7 @@ def collect(repo_root, context, dirs):
 
 
 def matches(entry, ctx, cls, method):
-    e_cls, e_method, patterns, _ = entry
+    e_cls, e_method, patterns = entry[:3]
     return (e_cls == cls and e_method in ("*", method)
             and any(fnmatch.fnmatchcase(ctx, p) for p in patterns))
 
@@ -92,7 +95,9 @@ def check(entries, scanned, skipped):
         else:
             allowed.append(((ctx, cls, method), entry[3]))
     for entry in entries:
-        cls, method, patterns, _ = entry
+        cls, method, patterns, _, may_skip = entry
+        if may_skip:
+            continue
         in_scope = [c for c in scanned if any(fnmatch.fnmatchcase(c, p) for p in patterns)]
         if in_scope and not any(matches(entry, *s) for s in skipped):
             errors.append(f"{cls}#{method} is baselined as skipping in {','.join(patterns)}, but "
@@ -120,6 +125,7 @@ def self_test(repo_root):
         "a.Gatherer#needsJdk24 job/jdk21/* # Gatherers are final in JDK 24",
         "a.Lane#* corpus/*/lane5 # lane five runs library rows only",
         "a.Other#elsewhere other/* # never in scope here",
+        "a.Gatherer#luck? job/* # skips when the JDK gives the test nothing to judge",
     ]))
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp).resolve()
@@ -147,6 +153,15 @@ def self_test(repo_root):
 
         errors, _ = check(baseline, *collect(root, "job/jdk25", [root / "lib"]))
         expect(not errors, f"an entry for another context is not checked: {errors}")
+
+        (jdk21 / "TEST-a.Gatherer.xml").write_text(report_xml([
+            ("a.Gatherer", "needsJdk24()", True), ("a.Gatherer", "luck()", True)]))
+        errors, allowed = check(baseline, *collect(root, "job/jdk21", [root / "lib"]))
+        expect(not errors and len(allowed) == 2, f"a may-skip entry allows the skip: {errors}")
+        (jdk21 / "TEST-a.Gatherer.xml").write_text(report_xml([
+            ("a.Gatherer", "needsJdk24()", True), ("a.Gatherer", "luck()", False)]))
+        errors, _ = check(baseline, *collect(root, "job/jdk21", [root / "lib"]))
+        expect(not errors, f"a may-skip entry that ran is not stale: {errors}")
 
         errors, allowed = check(baseline, *collect(root, "corpus/jdk21", [root / "corpus"]))
         expect(not errors and len(allowed) == 2, f"a '*' method covers every skip: {errors}")
