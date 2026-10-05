@@ -1,6 +1,23 @@
 <!-- VIBETAGS-START -->
 # Rules for async-test-runtime-core
 
+## Locked Status
+
+### se.deversity.asynctest.runner.OfflineLicense.VENDOR_VERIFY_KEY_B64
+- **Reason**: Every offline licence file already issued to a customer verifies against this key, and its private half exists only on the operator machine. A changed value denies each of those files with OFFLINE_FILE_SIGNATURE_INVALID on the customer's next build. Rotation means re-issuing every file first: a release decision, not a code edit.
+
+## Security-Critical Code
+- **Rule**: This code is security-critical. Do not weaken security properties. Every change must be explicitly reviewed for security impact.
+
+### se.deversity.asynctest.runner.LicenseGuard
+- **Aspect**: authorization
+
+### se.deversity.asynctest.runner.LicenseValidationCache
+- **Aspect**: authorization (isFresh skips online validation; hasRecord admits outage grace)
+
+### se.deversity.asynctest.runner.OfflineLicense
+- **Aspect**: authorization
+
 ## Security Audit Requirements
 When modifying these elements, audit for:
 - Thread Safety issues
@@ -67,14 +84,15 @@ When modifying these elements, audit for:
 - **Invariant**: The timeoutAlreadyReported flag, and the per-step guarded cleanup in the finally block, are both deliberate. A pre-round deadline check throws an error that has already been through timeoutError(), and each cleanup step is wrapped in its own try so one failure cannot suppress the next.
 - **Breaks if changed**: The flag is removed as redundant — the catch block then sends the same error through timeoutError() a second time, producing two onTimeout callbacks and two copies of every report for one timeout. Or the cleanup steps are merged into one try, at which point a failing AsyncTestContext.uninstall() skips the livelock snapshot and leaks context into the next test.
 
+## PII / Privacy Guardrails
+
+### se.deversity.asynctest.runner.LicenseGuard.Fingerprint
+- **Rule**: Never log or expose runtime values of this element.
+- **Reason**: Holds the licence key and the licensed user's email, and the record's generated toString() prints both, so never log or format a Fingerprint whole. The email may reach the licence provider (Keygen user scope, LemonSqueezy binding) and a denial message in that user's own build; disk sees either value only inside the SHA-256 LicenseValidationCache stores. Never put one in an INFO line, a report, SARIF or JUnit XML: those end up in CI logs and published artifacts.
+
 ## Contract-Frozen Signature
 
 ### se.deversity.asynctest.extension.AsyncTestExtension
 - **Constraint**: You may change internal logic, but MUST NOT modify the method name, parameters, return type, or checked exceptions.
 - **Reason**: JUnit 5 TestTemplateInvocationContextProvider SPI. The two overridden methods (supportsTestTemplate, provideTestTemplateInvocationContexts) must preserve their exact signatures as mandated by JUnit.
-
-## Security-Critical Code
-- **Rule**: This code is security-critical. Do not weaken security properties. Every change must be explicitly reviewed for security impact.
-- **Aspect**: authorization
-- **Applies to**: `se.deversity.asynctest.runner.LicenseGuard`, `se.deversity.asynctest.runner.OfflineLicense`
 <!-- VIBETAGS-END -->
