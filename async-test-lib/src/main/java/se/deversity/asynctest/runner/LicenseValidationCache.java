@@ -96,26 +96,15 @@ final class LicenseValidationCache {
         try {
             Path file = fileFor(hash);
             Path parent = file.getParent();
-            if (parent == null) {
-                return;   // fileFor always resolves inside a directory, and the temp file must share it
+            if (parent != null) {
+                Files.createDirectories(parent);
             }
-            Files.createDirectories(parent);
-            // A unique name, not one derived from the thread id: the main thread of every forked
-            // test JVM has the same id, so parallel forks recording at once shared one temp file
-            // and could move each other's half-written content into place.
-            Path tmp = Files.createTempFile(parent, file.getFileName() + ".", ".tmp");
+            Path tmp = file.resolveSibling(file.getFileName() + ".tmp-" + Thread.currentThread().threadId());
+            Files.writeString(tmp, Long.toString(System.currentTimeMillis()), StandardCharsets.UTF_8);
             try {
-                Files.writeString(tmp, Long.toString(System.currentTimeMillis()), StandardCharsets.UTF_8);
-                try {
-                    Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                } catch (AtomicMoveNotSupportedException e) {
-                    Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-                }
-            } finally {
-                // Windows refuses to replace a record another thread or JVM has open, and that
-                // failure is dropped below by design. The temp file it was moving must not be:
-                // left behind, one accumulated per lost race in a directory nothing cleans.
-                Files.deleteIfExists(tmp);
+                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException | RuntimeException ignored) {
             // Best effort by design: the next JVM validates online instead.
