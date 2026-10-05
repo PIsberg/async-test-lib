@@ -8,13 +8,13 @@ import se.deversity.asynctest.E2E;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * End-to-end proof against the <em>live</em> Keygen account with the real Deversity AB licence:
@@ -22,9 +22,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * in-suite twin of the operator runbook's {@code verify-license.sh}, and the only test that
  * exercises a real grant over the network - every other licence test is hermetic by design.
  *
- * <p><b>Where it runs.</b> Only where {@code ~/.config/deversity/e2e-license.env} has been
- * sourced (the operator machine): each test assumes the {@code ATL_E2E_*} environment variables
- * and skips cleanly elsewhere, so CI and contributor machines are unaffected. Run it with:
+ * <p><b>Where it runs.</b> In the {@code license-e2e.yml} workflow, from repository secrets, and
+ * on the operator machine once {@code ~/.config/deversity/e2e-license.env} is sourced. With none
+ * of the {@code ATL_E2E_*} variables set it skips, so contributor machines and the main CI legs
+ * are unaffected; a partial set, or no set where {@code ATL_E2E_REQUIRED=true}, fails instead
+ * ({@link LicenseE2eEnvironment}). Run it with:
  *
  * <pre>{@code
  * set -a; . ~/.config/deversity/e2e-license.env; set +a
@@ -53,13 +55,13 @@ class RealKeygenLicenseE2eTest {
 
     @BeforeEach
     void setUp() {
-        accountId = System.getenv("ATL_E2E_KEYGEN_ACCOUNT_ID");
-        productId = System.getenv("ATL_E2E_KEYGEN_PRODUCT_ID");
-        licenseKey = System.getenv("ATL_E2E_LICENSE_KEY");
-        licensedEmail = System.getenv("ATL_E2E_LICENSE_EMAIL");
-        assumeTrue(notBlank(accountId) && notBlank(productId)
-                && notBlank(licenseKey) && notBlank(licensedEmail),
-            "operator-machine test: source ~/.config/deversity/e2e-license.env to run it");
+        Map<String, String> env = LicenseE2eEnvironment.require(System.getenv(), List.of(
+            "ATL_E2E_KEYGEN_ACCOUNT_ID", "ATL_E2E_KEYGEN_PRODUCT_ID",
+            "ATL_E2E_LICENSE_KEY", "ATL_E2E_LICENSE_EMAIL"));
+        accountId = env.get("ATL_E2E_KEYGEN_ACCOUNT_ID");
+        productId = env.get("ATL_E2E_KEYGEN_PRODUCT_ID");
+        licenseKey = env.get("ATL_E2E_LICENSE_KEY");
+        licensedEmail = env.get("ATL_E2E_LICENSE_EMAIL");
 
         resetCache();
         // Surefire sets license.mock.mode=true for the whole build; this test exists to
@@ -121,10 +123,6 @@ class RealKeygenLicenseE2eTest {
         }
         if (value == null) System.clearProperty(key);
         else System.setProperty(key, value);
-    }
-
-    private static boolean notBlank(String s) {
-        return s != null && !s.isBlank();
     }
 
     private static void resetCache() {
