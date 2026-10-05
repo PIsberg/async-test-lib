@@ -7,6 +7,7 @@ import se.deversity.common.license.LicenseGate;
 import se.deversity.common.license.LicenseResult;
 import se.deversity.common.license.lemonsqueezy.LemonSqueezyValidator.EmailBinding;
 import se.deversity.vibetags.annotations.AIIdempotent;
+import se.deversity.vibetags.annotations.AIPrivacy;
 import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import org.slf4j.Logger;
@@ -420,6 +421,12 @@ public final class LicenseGuard {
         return CACHE.size();
     }
 
+    @AIPrivacy(reason = "Holds the licence key and the licensed user's email, and the record's "
+        + "generated toString() prints both, so never log or format a Fingerprint whole. The "
+        + "email may reach the licence provider (Keygen user scope, LemonSqueezy binding) and a "
+        + "denial message in that user's own build; disk sees either value only inside the "
+        + "SHA-256 LicenseValidationCache stores. Never put one in an INFO line, a report, "
+        + "SARIF or JUnit XML: those end up in CI logs and published artifacts.")
     private record Fingerprint(
         LicenseConfig.Provider licenseProvider,
         String keygenAccountId,

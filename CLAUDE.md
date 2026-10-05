@@ -92,6 +92,9 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
     <file path="se.deversity.asynctest.DetectorType">
       <reason>Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) &amp;&amp; !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.</reason>
     </file>
+    <file path="se.deversity.asynctest.runner.OfflineLicense.VENDOR_VERIFY_KEY_B64">
+      <reason>Every offline licence file already issued to a customer verifies against this key, and its private half exists only on the operator machine. A changed value denies each of those files with OFFLINE_FILE_SIGNATURE_INVALID on the customer&#39;s next build. Rotation means re-issuing every file first: a release decision, not a code edit.</reason>
+    </file>
   </locked_files>
 
   <audit_requirements>
@@ -114,6 +117,15 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
   </ignored_elements>
 
 <rule>Never reference or suggest changes to any element listed in <ignored_elements>. Treat these as if they do not exist.</rule>
+  <pii_guardrails>
+    <element path="se.deversity.asynctest.runner.LicenseGuard.Fingerprint">
+      <reason>Holds the licence key and the licensed user&#39;s email, and the record&#39;s generated toString() prints both, so never log or format a Fingerprint whole. The email may reach the licence provider (Keygen user scope, LemonSqueezy binding) and a denial message in that user&#39;s own build; disk sees either value only inside the SHA-256 LicenseValidationCache stores. Never put one in an INFO line, a report, SARIF or JUnit XML: those end up in CI logs and published artifacts.</reason>
+    </element>
+  </pii_guardrails>
+
+<rule>
+  Never include runtime values of elements listed in <pii_guardrails> in logs, console output, external API calls, test fixtures, mock data, or code suggestions. Treat their values as strictly confidential.
+</rule>
   <core_elements>
     <element path="se.deversity.asynctest.AsyncTestConfig">
       <sensitivity>Critical</sensitivity>
@@ -146,6 +158,9 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
     </element>
     <element path="se.deversity.asynctest.runner.LicenseGuard">
       <aspect>authorization</aspect>
+    </element>
+    <element path="se.deversity.asynctest.runner.LicenseValidationCache">
+      <aspect>authorization (isFresh skips online validation; hasRecord admits outage grace)</aspect>
     </element>
     <element path="se.deversity.asynctest.runner.OfflineLicense">
       <aspect>authorization</aspect>

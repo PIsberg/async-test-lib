@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LicenseE2eEnvironment` now fails on a partial configuration or an unopenable file instead of
   skipping. Nothing configured still skips, so contributor machines and `tests.yml` are unchanged.
 
+### Changed
+
+- **Three licence guardrails reach the always-loaded `CLAUDE.md`.** `OfflineLicense`'s embedded
+  vendor key is `@AILocked`, so the Locked Files Guard stops any change that would deny every
+  offline file already issued; `LicenseValidationCache` is `@AISecure`, joining `LicenseGuard` and
+  `OfflineLicense`, because it decides when online validation is skipped and when outage grace
+  applies; and `LicenseGuard`'s fingerprint record is `@AIPrivacy`, the library's first, because
+  its generated `toString()` prints the licence key and the user's email together.
+
 ## [1.12.4] - 2026-10-04
 
 ### Changed

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.runner;
 
+import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.io.IOException;
@@ -40,6 +41,7 @@ import java.util.HexFormat;
         + "temp-file move where the losing write is equivalent to the winning one; readers see "
         + "either the old complete file or the new complete file, never a partial write."
 )
+@AISecure(aspect = "authorization (isFresh skips online validation; hasRecord admits outage grace)")
 final class LicenseValidationCache {
 
     private static final long DEFAULT_TTL_HOURS = 24;
