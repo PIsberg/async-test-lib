@@ -55,8 +55,8 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 ## Thread-Safety Guarantee
 
 ### se.deversity.asynctest.DetectorRegistry
-- **Strategy**: SYNCHRONIZED
-- **Note**: Guards conditional access to internal detector initialization and phase blocks.
+- **Strategy**: OTHER
+- **Note**: No locks: every detector field is final and assigned in the constructor, before ConcurrencyRunner publishes the registry to its workers, so every worker of a run reads the same instances and each detector carries its own thread safety. The last* maps are written only by analyzeAllNamed(), which the runner calls on its own thread after the workers have quiesced.
 
 ## Contract-Frozen Signature
 

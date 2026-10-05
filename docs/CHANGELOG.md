@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every `@AIThreadSafe` class has a test that can fail when the claim breaks (#906).**
+  `ThreadSafetyClaimsAreTestedConcurrentlyTest` requires each class outside the detectors that
+  carries the annotation to be named with `@ConcurrencyTestFor` by a test that runs it through
+  `@AsyncTest` or a `CyclicBarrier`. The five such classes are covered; the new
+  `ConcurrencyRunnerCollisionDogfoodTest` checks that every worker of a round is in the body at once
+  and that rounds never overlap. `DetectorRegistry` claimed `SYNCHRONIZED` while holding no lock;
+  its claim now describes what makes it safe (final fields published before the workers start).
 - **Three licence guardrails reach the always-loaded `CLAUDE.md`.** `OfflineLicense`'s embedded
   vendor key is `@AILocked`, so the Locked Files Guard stops any change that would deny every
   offline file already issued; `LicenseValidationCache` is `@AISecure`, joining `LicenseGuard` and

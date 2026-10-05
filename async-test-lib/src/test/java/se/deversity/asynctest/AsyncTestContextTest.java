@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * - Attempting to access a disabled detector throws a clear error
  * - AsyncTestConfig.from() mirrors the annotation correctly
  */
+@ConcurrencyTestFor({AsyncTestContext.class, DetectorRegistry.class})
 class AsyncTestContextTest {
 
     // ---- AsyncTestConfig.from() mirrors annotation ----

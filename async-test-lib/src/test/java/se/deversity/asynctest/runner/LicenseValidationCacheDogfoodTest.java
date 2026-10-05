@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.io.TempDir;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.ConcurrencyTestFor;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * directory holds the one record and nothing else. Linux replaces under an open reader, so only the
  * Windows legs could see the leak; the assertions hold on every platform.
  */
+@ConcurrencyTestFor(LicenseValidationCache.class)
 class LicenseValidationCacheDogfoodTest {
 
     private static final int THREADS = 8;

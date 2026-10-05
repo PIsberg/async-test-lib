@@ -63,6 +63,25 @@ fails is the expected outcome, so a crash promoted to a failure would look like 
 `StrictDetectorsInDownstreamBuildsTest` fails if any of these loses the switch or the demo audit
 gains it.
 
+## Thread-safety claims are tested concurrently
+
+An `@AIThreadSafe` note is a specific claim ("at-most-once gate execution under contention"), so a
+class that makes one needs a test that runs it on several threads at once and can fail when the
+claim breaks. `ThreadSafetyClaimsAreTestedConcurrentlyTest` reads every main source file in the
+three modules (the annotation is source-retained) and fails when a class carrying `@AIThreadSafe`
+is not named by a test marked `@ConcurrencyTestFor(TheClass.class)`, when a marker names a class
+that no longer makes the claim, or when a marked test runs no threads through `@AsyncTest` or a
+`CyclicBarrier` (#906). The marker is explicit so that a test which merely mentions a class does
+not count. The detectors are exempt as a package, because `@AsyncTest` feeds them by design and
+`DetectorAccuracyEvalTest` and the corpus lanes run each one in both directions; any other
+exemption goes in the test's `EXEMPT` map with its reason.
+
+Why it exists: `LicenseGuard`'s only concurrency test asserted a `ConcurrentHashMap`'s size, which
+holds even when the gate runs on every thread, and `LicenseValidationCache` had no concurrent test
+until the first one found a shipped Windows defect (#904). Verified by deleting
+`LicenseGuardGateOnceDogfoodTest`: the gate names `LicenseGuard`. `ConcurrencyRunnerCollisionDogfoodTest`
+covers the runner's own claim, and goes red when the runner serializes its workers.
+
 ## License guard
 
 `runner/LicenseGuard.check(config)` runs once per config fingerprint per JVM and throws
