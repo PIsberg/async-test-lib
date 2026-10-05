@@ -163,6 +163,52 @@ jobs:
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  os-sensitive:
+    name: OS-Sensitive Tests
+    # The Test Suite legs on windows and macos are continue-on-error and skip pull requests
+    # (#484), so a defect only those platforms produce could fail no check at all:
+    # LicenseValidationCacheDogfoodTest guards one (#904), a temp-file leak Linux cannot
+    # reproduce. This job runs only the @OsSensitive classes, on every event and without
+    # continue-on-error, so it costs minutes instead of the full suite's 18 and a red result
+    # here is a real failure (#907). OsSensitiveTestsBlockOnEveryOsTest pins its shape.
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ windows-latest, macos-latest ]
+
+    env:
+      # Same scaling as the Test Suite legs on these runners; see the comment there.
+      ASYNC_TEST_TIMEOUT_MULTIPLIER: '3'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run the OS-sensitive tests
+        # Quoted for PowerShell, which runs this step on Windows (#899).
+        run: mvn -pl async-test-lib test "-Dgroups=os-sensitive" "-Djacoco.skip=true"
+
+      - name: Fail if the tag selected nothing
+        # -Dgroups matching no class runs zero tests and passes. A lost tag must not read
+        # as a green platform.
+        shell: bash
+        run: |
+          count=$(find async-test-lib/target/surefire-reports -name 'TEST-*.xml' 2>/dev/null | wc -l)
+          echo "surefire reports: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::-Dgroups=os-sensitive ran no test class"
+            exit 1
+          fi
+
   build:
     name: Build Maven Project
     runs-on: ubuntu-latest
