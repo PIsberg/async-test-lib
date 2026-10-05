@@ -184,9 +184,13 @@ Nothing is gated on the coverage a local `mvn test` produces: `jacoco-check` bin
 which `mvn test` never reaches, and `jacoco.check.skip` is true outside `-P e2e`. Run `-P e2e`
 or `mvn verify` when the coverage numbers are the point.
 
-The default stays at `forkCount=1` so CI is unchanged — CI runners have 2 to 4 cores and run the
-timing-sensitive e2e tier. Tune any run with `-Dsurefire.forkCount=N`. Note that `-DforkCount=N`
-does **not** work: Surefire's own parameter is set from a literal in the POM, and a literal beats
+The default stays at `forkCount=1`. CI runners have 2 to 4 cores and run the timing-sensitive e2e
+tier, so two forks went into CI only after a soak: Tests & Build's Ubuntu legs pass
+`-Dsurefire.forkCount=2` (#898). Over 17 runs (51 Ubuntu legs) no leg failed and none timed out,
+and the test step's median fell from 1,049 to 619 s on JDK 25 and from 1,066 to 947 s on JDK 21,
+which still runs JaCoCo; the pom comment has the full numbers. macOS and Windows keep one fork.
+Tune any run with `-Dsurefire.forkCount=N`. Note that `-DforkCount=N` does **not** work: the POM
+sets Surefire's own parameter from the `surefire.forkCount` property, and a configured value beats
 a user property, so the flag is silently accepted and ignored.
 
 ### Gradle

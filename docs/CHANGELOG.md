@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Two surefire forks on the Ubuntu CI legs is a recorded decision (#898).** Shipped in 1.12.4
+  ahead of its soak. The soak is now in: 17 Tests & Build runs (51 Ubuntu legs) with no failure and
+  no timeout, and the test step's median fell from 1,049 to 619 s on JDK 25 and from 1,066 to
+  947 s on JDK 21. The pom comment and `docs/BUILDING.md` record the numbers.
 - **CI fails when the set of skipped tests changes (#905).** Skips used to be a count in a log
   line, and the real-licence E2E tests skipped unnoticed for two months. Every job that runs a
   suite now runs `.github/scripts/skipped_tests_gate.py`, which fails when a test skips that
