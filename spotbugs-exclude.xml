@@ -179,6 +179,17 @@
         <Class name="se.deversity.asynctest.report.ReportSink"/>
     </Match>
 
+    <!-- PATH_TRAVERSAL_IN - the same reasoning as ReportSink, for the licence validation cache.
+         record() creates its temp file in the directory license.cache.dir names, a system
+         property of the person running the build, who can equally pass
+         -Dlicense.mock.mode=true. There is no privilege boundary to traverse. Scoped to
+         record(), the one method that creates a file there. -->
+    <Match>
+        <Bug pattern="PATH_TRAVERSAL_IN"/>
+        <Class name="se.deversity.asynctest.runner.LicenseValidationCache"/>
+        <Method name="record"/>
+    </Match>
+
     <!-- IMPROPER_UNICODE — the mitigation this rule asks for is already present.
          AgentOptions lowercases an agent-argument key with toLowerCase(Locale.ROOT),
          which is the locale-independent form; the rule fires on toLowerCase regardless

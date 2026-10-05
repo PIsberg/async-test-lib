@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow runs them from repository secrets with `ATL_E2E_REQUIRED=true`, and
   `LicenseE2eEnvironment` now fails on a partial configuration or an unopenable file instead of
   skipping. Nothing configured still skips, so contributor machines and `tests.yml` are unchanged.
+- **The licence validation cache no longer litters `~/.asynctest` on Windows.** When concurrent
+  writers recorded the same validation, Windows refused to replace the record another writer had
+  open; the failure was dropped by design, but the temporary file being moved was left behind. A
+  new `@AsyncTest` dogfood test measured about 1,265 stray files per 1,600 concurrent writes, on
+  every run. `record` now deletes its temporary file when the move does not consume it, and names
+  it uniquely: the old name came from the thread id, which the main thread of every forked test
+  JVM shares, so parallel forks could move each other's half-written record into place.
 
 ### Changed
 

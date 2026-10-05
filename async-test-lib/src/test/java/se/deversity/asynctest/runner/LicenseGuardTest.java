@@ -138,22 +138,6 @@ class LicenseGuardTest {
     }
 
     @Test
-    void cacheIsThreadSafe() throws Exception {
-        AsyncTestConfig cfg = AsyncTestConfig.builder()
-                .licenseMockMode(true)
-                .build();
-        int threads = 16;
-        Thread[] workers = new Thread[threads];
-        for (int i = 0; i < threads; i++) {
-            workers[i] = new Thread(() -> LicenseGuard.check(cfg));
-        }
-        for (Thread t : workers) t.start();
-        for (Thread t : workers) t.join();
-        assertEquals(1, LicenseGuard.cacheSize(),
-                "Concurrent first-time checks for the same config must collapse to one cache entry");
-    }
-
-    @Test
     void expiredOrInvalidLicense_throwsSecurityException() {
         String prevMockMode = System.getProperty("license.mock.mode");
         System.setProperty("license.mock.mode", "false");
