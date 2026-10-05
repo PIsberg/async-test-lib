@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The real-licence E2E tests run in CI.** `RealKeygenLicenseE2eTest` and
+  `RealOfflineLicenseE2eTest` had skipped on every CI leg since 1.9.1, and the offline class also
+  skipped on the Windows operator machine, because the env file's MSYS path (`/c/Users/...`) does
+  not resolve in Java and a missing file read as "not configured". The new `license-e2e.yml`
+  workflow runs them from repository secrets with `ATL_E2E_REQUIRED=true`, and
+  `LicenseE2eEnvironment` now fails on a partial configuration or an unopenable file instead of
+  skipping. Nothing configured still skips, so contributor machines and `tests.yml` are unchanged.
+
 ## [1.12.4] - 2026-10-04
 
 ### Changed
