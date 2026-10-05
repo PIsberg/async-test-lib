@@ -84,11 +84,11 @@ is how `license-e2e.yml` and `OS-Sensitive Tests` are checked. A job that finds 
 empty run must not read as a clean one. The baseline was measured from main's CI on 2026-10-05.
 
 `SkippedTestsGateWiringTest` pins the wiring: the listed jobs in `tests.yml`, `corpus.yml`,
-`e2e-tests.yml`, `license-e2e.yml` and `gradle-tests.yml` must call the gate, and any other job
+`e2e-tests.yml`, `license-e2e.yml`, `gradle-tests.yml` and `load-tests.yml` must call the gate, and any other job
 whose commands run a suite must be listed as exempt with a reason. The examples reactors are
 exempt because their skips are the `@Disabled` demonstrations, which
-[examples-and-demos.md](examples-and-demos.md) gates; `load-tests.yml` is exempt until its skip set
-is measured (#908). The script's `--self-test` covers both directions on synthetic reports and
+[examples-and-demos.md](examples-and-demos.md) gates. `load-tests.yml` is gated with no line: nothing
+in `load-tests/` can skip, so any skip there is new (#908). The script's `--self-test` covers both directions on synthetic reports and
 parses the real baseline; it was also run against main's real corpus reports, where it passes with
 the baseline and names all 46 lane-five skips without it.
 

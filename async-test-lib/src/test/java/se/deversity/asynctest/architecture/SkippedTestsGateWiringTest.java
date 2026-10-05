@@ -41,7 +41,8 @@ class SkippedTestsGateWiringTest {
             "corpus.yml", List.of("corpus-eval"),
             "e2e-tests.yml", List.of("consumer-fixture", "junit-compatibility"),
             "license-e2e.yml", List.of("license-e2e"),
-            "gradle-tests.yml", List.of("gradle-test", "intellij-plugin"));
+            "gradle-tests.yml", List.of("gradle-test", "intellij-plugin"),
+            "load-tests.yml", List.of("load-tests"));
 
     private static final String DEMOS = "its skips are the @Disabled example demonstrations, which"
             + " ExampleDisabledDemoTest and example-demos.yml already gate";
@@ -55,9 +56,7 @@ class SkippedTestsGateWiringTest {
             "gradle-tests.yml:gradle-examples-full", DEMOS,
             "example-demos.yml:enabled-demos", "runs the @Disabled demonstrations on purpose; a demo"
                     + " that passes is its finding, and it has its own baseline",
-            "publish.yml:publish", "builds a release tag whose commit Tests & Build already gated",
-            "load-tests.yml:load-tests", "a throughput measurement with its own report; its skip set"
-                    + " has not been measured yet (#908)");
+            "publish.yml:publish", "builds a release tag whose commit Tests & Build already gated");
 
     /** A build command that runs tests: a Maven phase at or past test, or a Gradle test task. */
     private static final Pattern RUNS_TESTS = Pattern.compile(
