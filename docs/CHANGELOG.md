@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guards a temp-file leak only Windows produces, could go red on no leg that blocks anything. Test
   classes like it carry the new `@OsSensitive` tag, and Tests & Build's `OS-Sensitive Tests` job
   runs that tag on Windows and macOS on every event, as an ordinary failing job that also fails
-  when the tag selects nothing.
+  when the tag selects nothing. Both legs are required checks on `main`.
 - **Every `@AIThreadSafe` class has a test that can fail when the claim breaks (#906).**
   `ThreadSafetyClaimsAreTestedConcurrentlyTest` requires each class outside the detectors that
   carries the annotation to be named with `@ConcurrencyTestFor` by a test that runs it through

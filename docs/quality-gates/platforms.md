@@ -70,7 +70,8 @@ can fail. `LicenseValidationCacheDogfoodTest` is one. It guards a temp-file leak
 produces and Linux cannot (#904), so if the leak came back, nothing would go red, before or after
 the merge. Such a class carries `@OsSensitive` (the `os-sensitive` tag), and Tests & Build's
 `OS-Sensitive Tests` job runs only those classes on `windows-latest` and `macos-latest`, on every
-event and without `continue-on-error` (#907). It takes minutes rather than eighteen, and a step
+event and without `continue-on-error`, and both legs are required checks on `main` since
+2026-10-05 (#907). It takes minutes rather than eighteen, and a step
 after the run fails it when the tag selected no class, so a lost tag cannot pass empty.
 `OsSensitiveTestsBlockOnEveryOsTest` pins the tag id, the tagged classes and the job's shape.
 Verified on Windows by restoring the pre-#904 `record()`: the job's command fails with 1,274

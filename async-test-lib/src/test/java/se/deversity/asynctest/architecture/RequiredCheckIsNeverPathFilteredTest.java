@@ -43,7 +43,9 @@ class RequiredCheckIsNeverPathFilteredTest {
             "Test Suite",
             "Guardrail Drift",
             "Locked Files Guard",
-            "Architecture Diagram Drift");
+            "Architecture Diagram Drift",
+            // Required since 2026-10-05, so a Windows- or macOS-only regression blocks (#907).
+            "OS-Sensitive Tests");
 
     private static final Pattern JOB_NAME = Pattern.compile("^\s{4}name:\s*(.+?)\s*$");
     private static final Pattern PATH_FILTER = Pattern.compile("^\s+paths(-ignore)?:\s*$");
