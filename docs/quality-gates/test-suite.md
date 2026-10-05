@@ -63,6 +63,32 @@ fails is the expected outcome, so a crash promoted to a failure would look like 
 `StrictDetectorsInDownstreamBuildsTest` fails if any of these loses the switch or the demo audit
 gains it.
 
+## Skipped tests are a baseline, not a count
+
+A skip is a pass to Maven and Gradle, and the only trace is a count in a log line. The real-licence
+E2E tests skipped on every CI leg, and on the operator machine, for about two months while guarding
+the only real-grant path (#901). So every job that runs a suite now checks its skips against a
+committed list: `.github/scripts/skipped_tests_gate.py` reads the job's JUnit XML after the tests
+and fails when a test skips that `.github/skipped-tests.txt` does not list, or a listed one ran or
+never appeared (#905). Both directions matter: a new skip hides a test, and a stale line hides a
+reason that no longer holds.
+
+Each line is `<class>#<method> <contexts> # <reason>`. A context is a pattern over the job context
+the workflow passes (`tests/jdk21`, `gradle/jdk21`, `corpus/jdk25`, `license-e2e`, ...) joined to
+the report directory, so the Gatherer skips are allowed on JDK 21 legs only and lane five's
+disabled JDK rows only in lane five's reports. A job with no line in scope tolerates no skip, which
+is how `license-e2e.yml` and `OS-Sensitive Tests` are checked. A job that finds no report fails: an
+empty run must not read as a clean one. The baseline was measured from main's CI on 2026-10-05.
+
+`SkippedTestsGateWiringTest` pins the wiring: the listed jobs in `tests.yml`, `corpus.yml`,
+`e2e-tests.yml`, `license-e2e.yml` and `gradle-tests.yml` must call the gate, and any other job
+whose commands run a suite must be listed as exempt with a reason. The examples reactors are
+exempt because their skips are the `@Disabled` demonstrations, which
+[examples-and-demos.md](examples-and-demos.md) gates; `load-tests.yml` is exempt until its skip set
+is measured (#908). The script's `--self-test` covers both directions on synthetic reports and
+parses the real baseline; it was also run against main's real corpus reports, where it passes with
+the baseline and names all 46 lane-five skips without it.
+
 ## Thread-safety claims are tested concurrently
 
 An `@AIThreadSafe` note is a specific claim ("at-most-once gate execution under contention"), so a

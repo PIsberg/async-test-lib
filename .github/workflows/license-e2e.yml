@@ -114,6 +114,11 @@ jobs:
             -Dtest='RealKeygenLicenseE2eTest,RealOfflineLicenseE2eTest' \
             -Dsurefire.failIfNoSpecifiedTests=false
 
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905). No entry covers this job, so any skip here fails.
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "license-e2e" async-test-lib
+
       # -Dsurefire.failIfNoSpecifiedTests=false is needed for the parent module, and it would
       # also let a renamed class match nothing and pass. The reports are the ground truth.
       - name: Require all five tests to have run

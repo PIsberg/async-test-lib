@@ -147,6 +147,11 @@ jobs:
       - name: Run JVM language fixtures (Kotlin, Groovy, Scala, Clojure)
         run: mvn -f consumer-fixture-langs/pom.xml test
 
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905).
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "consumer-fixture/jdk${{ matrix.java-version }}" consumer-fixture consumer-fixture-langs
+
       - name: Upload consumer fixture reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -223,6 +228,11 @@ jobs:
           mvn \
               "-Djunit.jupiter.version=${{ matrix.junit-version }}" \
               -f consumer-fixture/pom.xml test
+
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905).
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "junit-compat/${{ matrix.junit-version }}" consumer-fixture
 
       - name: Upload reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

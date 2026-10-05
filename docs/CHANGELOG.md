@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CI fails when the set of skipped tests changes (#905).** Skips used to be a count in a log
+  line, and the real-licence E2E tests skipped unnoticed for two months. Every job that runs a
+  suite now runs `.github/scripts/skipped_tests_gate.py`, which fails when a test skips that
+  `.github/skipped-tests.txt` does not list, or a listed skip ran. `SkippedTestsGateWiringTest`
+  requires every test-running job to call it or carry a reason it does not.
 - **A Windows-only regression can fail a pull request (#907).** The full suite's Windows and
   macOS legs are advisory and skip pull requests, so `LicenseValidationCacheDogfoodTest`, which
   guards a temp-file leak only Windows produces, could go red on no leg that blocks anything. Test

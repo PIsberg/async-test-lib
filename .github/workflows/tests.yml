@@ -128,6 +128,15 @@ jobs:
         # -Djacoco.skip=true at the dot and hands Maven ".skip=true" as a phase (#899).
         run: mvn clean install ${{ env.UPLOADS_COVERAGE != 'true' && '"-Djacoco.skip=true"' || '' }} ${{ matrix.os == 'ubuntu-latest' && '-Dsurefire.forkCount=2' || '' }}
 
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905).
+        # The self-test first: a parser that quietly stopped recognising a skip would pass empty.
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" .github/scripts/skipped_tests_gate.py . --self-test
+          "$py" .github/scripts/skipped_tests_gate.py . "tests/jdk${{ matrix.java-version }}" .
+
       - name: Check coverage file exists
         if: env.UPLOADS_COVERAGE == 'true'
         shell: bash
@@ -196,6 +205,11 @@ jobs:
       - name: Run the OS-sensitive tests
         # Quoted for PowerShell, which runs this step on Windows (#899).
         run: mvn -pl async-test-lib test "-Dgroups=os-sensitive" "-Djacoco.skip=true"
+
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905).
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "os-sensitive/${{ matrix.os }}" async-test-lib
 
       - name: Fail if the tag selected nothing
         # -Dgroups matching no class runs zero tests and passes. A lost tag must not read
