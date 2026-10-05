@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A docs-only pull request can no longer wait forever on `E2E Tests` (#910).** The check is
+  required, but `e2e-tests.yml` skipped pull requests that touch only docs, so the context would
+  never report. Its pull-request trigger is no longer path-filtered, and
+  `RequiredCheckIsNeverPathFilteredTest`, whose copy of the required checks lacked `E2E Tests` and
+  `Corpus Eval`, now lists them and reads only pull-request filters.
 - **Two surefire forks on the Ubuntu CI legs is a recorded decision (#898).** Shipped in 1.12.4
   ahead of its soak. The soak is now in: 17 Tests & Build runs (51 Ubuntu legs) with no failure and
   no timeout, and the test step's median fell from 1,049 to 619 s on JDK 25 and from 1,066 to

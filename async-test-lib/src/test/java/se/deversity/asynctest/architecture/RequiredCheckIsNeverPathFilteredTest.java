@@ -15,6 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -29,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * context, and why this test exists to keep it that way.
  *
  * <p>The contexts below are {@code main}'s required checks, read from the branch-protection API
- * on 2026-09-06. They are duplicated here on purpose: the API is not reachable from a test, and
+ * on 2026-10-05. They are duplicated here on purpose: the API is not reachable from a test, and
  * a stale list here fails in the safe direction - it can only over-protect a workflow that has
  * stopped being required, never let a filter onto one that still is. When a required check is
  * added or removed, update this list in the same change.
@@ -44,11 +45,29 @@ class RequiredCheckIsNeverPathFilteredTest {
             "Guardrail Drift",
             "Locked Files Guard",
             "Architecture Diagram Drift",
+            "E2E Tests",
+            "Corpus Eval",
             // Required since 2026-10-05, so a Windows- or macOS-only regression blocks (#907).
             "OS-Sensitive Tests");
 
     private static final Pattern JOB_NAME = Pattern.compile("^\s{4}name:\s*(.+?)\s*$");
     private static final Pattern PATH_FILTER = Pattern.compile("^\s+paths(-ignore)?:\s*$");
+    private static final Pattern TRIGGER = Pattern.compile("^  ([a-z_]+):.*$");
+
+    @Test
+    @DisplayName("the scan flags a pull-request path filter and ignores a push-only one")
+    void theScanReadsOnlyPullRequestFilters() {
+        List<String> pullRequestFiltered = List.of(
+                "on:", "  push:", "    branches: [ main ]",
+                "  pull_request:", "    paths-ignore:", "      - 'docs/**'", "jobs:");
+        assertTrue(hasPathFilter(pullRequestFiltered),
+                "e2e-tests.yml's shape before #910 must be caught, or a clean scan proves nothing");
+        List<String> pushFiltered = List.of(
+                "on:", "  push:", "    paths-ignore:", "      - 'docs/**'",
+                "  pull_request:", "    branches: [ main ]", "jobs:");
+        assertFalse(hasPathFilter(pushFiltered),
+                "a push-only filter cannot leave a pull request waiting on a context");
+    }
 
     @Test
     @DisplayName("no workflow that reports a required check filters itself out by path")
@@ -94,9 +113,15 @@ class RequiredCheckIsNeverPathFilteredTest {
         return false;
     }
 
-    /** Only the trigger block matters; a {@code paths} key deeper in a step is something else. */
+    /**
+     * Whether a pull-request trigger filters by path. Only the trigger block matters, since a
+     * {@code paths} key deeper in a step is something else, and only a pull-request trigger,
+     * since a required check blocks pull requests: a filter on {@code push} skips a docs-only
+     * push to main, where no merge waits on the context (#910).
+     */
     private static boolean hasPathFilter(List<String> lines) {
         boolean inTriggers = false;
+        String trigger = "";
         for (String line : lines) {
             if (line.startsWith("jobs:")) {
                 return false;
@@ -108,7 +133,11 @@ class RequiredCheckIsNeverPathFilteredTest {
             if (inTriggers && !line.isBlank() && !line.startsWith(" ") && !line.startsWith("#")) {
                 inTriggers = false;
             }
-            if (inTriggers && PATH_FILTER.matcher(line).matches()) {
+            Matcher key = TRIGGER.matcher(line);
+            if (inTriggers && key.matches()) {
+                trigger = key.group(1);
+            }
+            if (inTriggers && trigger.startsWith("pull_request") && PATH_FILTER.matcher(line).matches()) {
                 return true;
             }
         }
