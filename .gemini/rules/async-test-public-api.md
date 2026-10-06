@@ -40,10 +40,10 @@ This element is strictly excluded from AI context. Do not reference it.
 - **Reason**: Public formatter SPI. format(List<Violation>) signature must not change — built-in formatters and user-provided lambdas bind to this exact type.
 
 ### se.deversity.asynctest.spi.Detector
-- **Reason**: Public SPI interface. type(), analyze(), onTestStart(), and onTestEnd() signatures are part of the stable extension contract — implementors bind to these exact names and parameter types.
+- **Reason**: Public SPI interface. id(), type(), analyze(), onTestStart(), and onTestEnd() signatures are part of the stable extension contract — implementors bind to these exact names and parameter types. id() and type() are defaults so a detector can declare an identity of its own (#919); making either abstract again breaks every implementor that overrides only the other.
 
 ### se.deversity.asynctest.spi.DetectorFactory
-- **Reason**: Public SPI interface for ServiceLoader-based detector discovery. type(), isEnabledFor(), and create() signatures are part of the stable factory contract — implementors bind to these exact names and parameter types.
+- **Reason**: Public SPI interface for ServiceLoader-based detector discovery. id(), type(), isEnabledFor(), and create() signatures are part of the stable factory contract — implementors bind to these exact names and parameter types. id(), type() and isEnabledFor() are defaults (#919); making one abstract again breaks every factory that relies on it.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.
@@ -76,7 +76,7 @@ This element is strictly excluded from AI context. Do not reference it.
 - **Note**: Java record — fields are final by language. Collection fields are deep-copied to immutable views in the canonical constructor.
 
 ### se.deversity.asynctest.spi.DetectorRegistry
-- **Note**: Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over an EnumMap populated once at construction.
+- **Note**: Effectively immutable after build() — the id-keyed map is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over a map populated once at construction.
 
 ## Input Sanitization
 - **Target Filters**: XSS

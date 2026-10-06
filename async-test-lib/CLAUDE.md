@@ -51,7 +51,7 @@ you are editing here.
   <core_elements>
     <element path="se.deversity.asynctest.AsyncTestConfig">
       <sensitivity>Critical</sensitivity>
-      <note>Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends.</note>
+      <note>Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation, the Builder setter that calls flag(TYPE, v), and the from(AsyncTest) read; never reintroduce a per-detector resolution expression in build().</note>
     </element>
     <element path="se.deversity.asynctest.AsyncTestContext">
       <sensitivity>Critical</sensitivity>

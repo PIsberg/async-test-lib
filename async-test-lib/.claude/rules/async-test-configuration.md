@@ -25,14 +25,14 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 - **Avoid**: mutable state — this class must remain immutable after construction
 
 ### se.deversity.asynctest.DetectorRegistry
-- **Focus**: Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) conditional construction in the constructor keyed on the config flag, (3) an analyzeAll() call in the correct phase block. All three steps must be added together.
+- **Focus**: Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) its factory-table row in the constructor, field = create(DetectorType.TYPE, Detector::new), keyed on the type and never on a config flag (#916), (3) an analyzeAll() call in the correct phase block. All three steps must be added together.
 - **Avoid**: partial patterns — a field without construction or analysis silently skips detection
 
 ## Core Functionality
 
 ### se.deversity.asynctest.AsyncTestConfig
 - **Sensitivity**: Critical
-- **Note**: Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends.
+- **Note**: Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation, the Builder setter that calls flag(TYPE, v), and the from(AsyncTest) read; never reintroduce a per-detector resolution expression in build().
 
 ## Immutable Type
 - **Rule**: These types are immutable. Never introduce non-final fields, setters, or mutating methods.
