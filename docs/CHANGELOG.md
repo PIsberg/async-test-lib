@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
+  workers to meet after the start built a `CyclicBarrier` of its own, and had to get the party
+  count, the timeout and the reuse across rounds right by hand; five `@AsyncTest` classes in this
+  repository did. The runner now opens one rendezvous per round, sized to its workers and
+  bounded by the time the round has left (or by `rendezvous(Duration)`). A worker whose body throws
+  breaks it, so its peers fail at once with "the rendezvous was broken" next to the real exception,
+  instead of waiting out the round and reporting a timeout that hides it.
+
 ### Fixed
 
 - **The real-licence E2E tests run in CI.** `RealKeygenLicenseE2eTest` and

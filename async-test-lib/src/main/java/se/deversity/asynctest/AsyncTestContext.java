@@ -162,10 +162,15 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.report.Violation;
 
 import java.lang.ref.WeakReference;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Phaser;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 /**
@@ -1097,6 +1102,123 @@ public final class AsyncTestContext {
      */
     public void setReplaySeedForRound(long seed) {
         this.currentRoundSeed = seed;
+    }
+
+    // ---- Rendezvous (opened per round by ConcurrencyRunner) ----
+
+    /** The most parties a {@link Phaser} accepts; a larger round opens no rendezvous. */
+    private static final int MAX_RENDEZVOUS_PARTIES = 65_535;
+
+    /**
+     * This round's rendezvous, one party per worker, replaced at every round start. A
+     * {@link Phaser} rather than a {@code CyclicBarrier}: {@link Phaser#forceTermination()} is
+     * sticky, so a peer that arrives after the round broke fails at once, where a barrier's
+     * {@code reset()} would let it wait out the round.
+     */
+    private volatile @Nullable Phaser roundRendezvous;
+
+    /** When this round's time runs out: the bound {@link #rendezvous()} waits for by default. */
+    private volatile long roundDeadlineNanos;
+
+    /**
+     * Internal: called by {@code ConcurrencyRunner} before it starts a round's workers, with the
+     * number of workers and the time the round has left.
+     *
+     * @param workers        the round's worker count, which every rendezvous waits for
+     * @param roundTimeoutMs the time left in the round, the default rendezvous bound
+     * @since 1.12.5
+     */
+    public void openRendezvousForRound(int workers, long roundTimeoutMs) {
+        this.roundDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(roundTimeoutMs);
+        this.roundRendezvous = workers <= MAX_RENDEZVOUS_PARTIES ? new Phaser(workers) : null;
+    }
+
+    /**
+     * Internal: called by {@code ConcurrencyRunner} when a worker's body throws, so the peers
+     * waiting at this round's rendezvous, and any that arrive later, fail at once instead of
+     * waiting out the round for a worker that will never come.
+     *
+     * @since 1.12.5
+     */
+    public void breakRendezvous() {
+        Phaser rendezvous = roundRendezvous;
+        if (rendezvous != null) {
+            rendezvous.forceTermination();
+        }
+    }
+
+    /**
+     * Waits until every worker of the current round has called this, bounded by the time the
+     * round has left.
+     *
+     * <p>Call it from an {@code @AsyncTest} body to make the round's workers meet at a point inside
+     * the body, for example after each has prepared its state and before any acts on a peer's.
+     * Every worker must call it the same number of times per body; each call is one meeting point.
+     * The runner already releases the workers together at the start of the body; this is for the
+     * points after that.
+     *
+     * <p>It fails the worker with an {@link AssertionError} when the round cannot meet: when a peer
+     * threw first (the runner breaks the rendezvous so nobody waits for it), when the bound passes
+     * (the message says how many workers arrived), or when the round is cancelled.
+     *
+     * @throws IllegalStateException outside an {@code @AsyncTest} worker, or in a round of more than
+     *                               65,535 workers
+     * @since 1.12.5
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.5")
+    public static void rendezvous() {
+        awaitRendezvous(null);
+    }
+
+    /**
+     * Like {@link #rendezvous()}, but waits at most {@code timeout} instead of the time the round has
+     * left: use it when the meeting should take far less than the round, so a missing worker fails
+     * fast.
+     *
+     * @param timeout how long this worker waits for the rest of the round
+     * @throws IllegalStateException outside an {@code @AsyncTest} worker, or in a round of more than
+     *                               65,535 workers
+     * @since 1.12.5
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.12.5")
+    public static void rendezvous(Duration timeout) {
+        awaitRendezvous(Objects.requireNonNull(timeout, "timeout"));
+    }
+
+    private static void awaitRendezvous(@Nullable Duration timeout) {
+        AsyncTestContext ctx = CURRENT.get();
+        if (ctx == null) {
+            throw new IllegalStateException(
+                "rendezvous() can only be called by a worker inside an @AsyncTest method.");
+        }
+        Phaser rendezvous = ctx.roundRendezvous;
+        if (rendezvous == null) {
+            throw new IllegalStateException("No rendezvous is open: this round has more than "
+                + MAX_RENDEZVOUS_PARTIES + " workers, the most a rendezvous can hold.");
+        }
+        long timeoutNanos = timeout != null
+            ? timeout.toNanos()
+            : Math.max(0L, ctx.roundDeadlineNanos - System.nanoTime());
+        int phase = rendezvous.arrive();
+        try {
+            if (phase < 0 || rendezvous.awaitAdvanceInterruptibly(phase, timeoutNanos, TimeUnit.NANOSECONDS) < 0) {
+                throw new AssertionError("The rendezvous was broken: a peer failed or gave up before every"
+                    + " worker of the round reached it. The peer's own failure is reported with this one.");
+            }
+        } catch (TimeoutException e) {
+            // Read before terminating, which is what releases the peers still waiting.
+            int arrived = rendezvous.getArrivedParties();
+            int workers = rendezvous.getRegisteredParties();
+            rendezvous.forceTermination();
+            throw new AssertionError("The rendezvous timed out after "
+                + TimeUnit.NANOSECONDS.toMillis(timeoutNanos) + " ms with " + arrived + " of "
+                + workers + " workers arrived: a worker returned, or is blocked,"
+                + " before calling rendezvous(), or calls it fewer times than its peers.", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            rendezvous.forceTermination();
+            throw new AssertionError("Interrupted while waiting at the rendezvous; the round was cancelled.", e);
+        }
     }
 
     /**

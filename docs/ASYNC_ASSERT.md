@@ -115,3 +115,32 @@ between tests.
 
 The same data is available to any listener through
 [`AsyncTestListener.onViolation(Violation)`](OBSERVABILITY.md).
+
+## Meeting mid-body: `AsyncTestContext.rendezvous()` (1.12.5)
+
+The runner releases a round's workers together at the start of the body. When they also need to
+meet later, for example after each has prepared its own state and before any of them acts on a
+peer's, call `AsyncTestContext.rendezvous()`:
+
+```java
+@AsyncTest(threads = 4, invocations = 100)
+void transfer() {
+    Account mine = bank.open(100);       // each worker prepares its own state
+    AsyncTestContext.rendezvous();       // nobody moves money until every account exists
+    bank.transfer(mine, bank.randomOtherAccount(), 10);
+}
+```
+
+Every worker of the round must call it the same number of times; each call is one meeting point.
+It waits for as long as the round has left, or for `rendezvous(Duration)` when the meeting should
+take far less than that. A round that cannot meet fails at once and says why, instead of waiting
+out the timeout:
+
+| What happened | What the waiting workers report |
+|---|---|
+| a peer threw before reaching it | "The rendezvous was broken", reported next to the peer's own exception |
+| a peer returned, or is blocked, before calling it | "The rendezvous timed out after N ms with K of M workers arrived" |
+| the round was cancelled | "Interrupted while waiting at the rendezvous" |
+
+Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
+65,535 workers opens no rendezvous, and calling it there throws the same.
