@@ -91,13 +91,6 @@ class LinearizabilityE2eTest {
         assertTrue(e.getMessage().contains("No operations were recorded"), e.getMessage());
     }
 
-    @Test
-    void aRoundMayRecordAtMostSixtyFourOperations() {
-        OperationHistory<AtomicInteger> history = OperationHistory.of(AtomicInteger::new);
-        AtomicInteger counter = history.subject();
-        for (int i = 0; i < 64; i++) {
-            history.call("increment", null, counter::incrementAndGet);
-        }
-        assertThrows(IllegalStateException.class, () -> history.call("increment", null, counter::incrementAndGet));
-    }
+    // The 64-operation bound moved from recording to the search in #933; LinearizabilityPartitionTest
+    // pins both the search's bound and the recording cap.
 }

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`OperationHistory.assertLinearizable(spec, partition)` checks one independent object at a
+  time (#933).** One search takes at most 64 operations, so a round of more could not be checked at
+  all. Linearizability is local, so grouping a round's operations by the object they touch, such as
+  a map's key, and searching each group on its own proves the same thing with small searches. A
+  round may now record up to 1,024 operations; a whole-history check of more than 64 fails and says
+  to partition. Both directions: a `ConcurrentHashMap` counter at 120 operations a round passes, a
+  per-key read-then-write counter fails naming the key.
 - **`AsyncTestConfig.Builder.preset(Preset)`.** A programmatic run could not ask for the
   annotation's default, `Preset.ESSENTIALS`, except by listing its 12 types in `includes`, although
   `AsyncTestRunner`'s javadoc and the usage docs already told readers to call `preset(...)`. It

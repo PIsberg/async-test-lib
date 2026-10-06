@@ -176,7 +176,7 @@ static void linearizable() {
     HISTORY.assertLinearizable(SequentialSpec.of(() -> new int[1], int[]::clone, (s, op, arg) -> ++s[0]));
 }
 ```
-Fails when no real-time-consistent order of a round's operations gives the results the workers saw, and lists that round's operations with their tickets. Use it when the bug's shape is unknown and no detector would recognise it. At most 64 operations per round; an undecided search and an empty history fail rather than pass.
+Fails when no real-time-consistent order of a round's operations gives the results the workers saw, and lists that round's operations with their tickets. Use it when the bug's shape is unknown and no detector would recognise it. At most 64 operations per search; an undecided search and an empty history fail rather than pass. For a map, `assertLinearizable(perKeySpec, (op, arg) -> keyOf(arg))` checks each key on its own, so a round may record up to 1,024 operations with at most 64 per key.
 
 ### Reproduce a flaky failure with `replaySeed` (1.6.0+)
 ```java

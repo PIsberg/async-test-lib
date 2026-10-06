@@ -72,12 +72,27 @@ Wing and Gong's search, with the usual memoisation:
 
 The general problem is NP-complete, so two bounds keep it honest rather than slow:
 
-- **History size.** A round may record at most 64 operations, and `call` refuses the 65th with a
-  message naming the bound. Three threads with ten operations each is 30. The search's speed on
-  such histories has not been measured separately; `LinearizabilityE2eTest`'s 30 rounds of six
-  operations each, engine included, run in about a second.
+- **History size.** One search takes at most 64 operations, and a whole-history check of a round
+  that recorded more fails with a message saying to partition it. Three threads with ten operations
+  each is 30. The search's speed on such histories has not been measured separately;
+  `LinearizabilityE2eTest`'s 30 rounds of six operations each, engine included, run in about a
+  second. A round may record up to 1,024 operations (`call` refuses the next) for a partitioned
+  check, below.
 - **Search budget.** At most one million states per round. A round whose search exhausts the budget
   is reported as undecided and fails the assertion: a check that could not decide never passes.
+
+## Partitions: one search per independent object (#933)
+
+Linearizability is local (Herlihy and Wing, 1990): a history of independent objects is
+linearizable exactly when each object's own sub-history is. So
+`assertLinearizable(spec, partition)` groups a round's operations by `partition.keyOf(operation,
+argument)`, typically the key of a map, and searches each group on its own against a fresh model of
+one partition. The 64-operation bound then applies per partition, not per round:
+`LinearizabilityPartitionTest` checks four threads making 30 increments each across four keys of a
+`ConcurrentHashMap`, 120 operations a round, which a whole-history check refuses. Independence is the
+caller's claim; an operation that touches several partitions, such as a map's `size()`, cannot be
+checked this way. A failure names the partition (`Round 1, partition 7, is not linearizable`) and
+lists only its operations.
 
 ## The report
 
@@ -111,8 +126,6 @@ subject turns the atomic-counter case red ("Round 2 is not linearizable").
 
 - **No corpus subjects yet.** The issue asked for prototype cases drawn from the corpus; the tests
   use JDK subjects (`AtomicInteger`, `ConcurrentLinkedQueue`) and a hand-written lost update.
-- **No search reduction by object.** P-compositionality (checking each key of a map separately)
-  would let much longer histories through; it is a follow-up once the API settles.
 - **No integration with `failOn` or the reports.** The check is an assertion the test calls, like
   `RunOutcomes`; findings do not flow through the detector pipeline.
 - **No automatic scenario generation.** The test author chooses the operations, unlike Lincheck.

@@ -173,9 +173,14 @@ static void linearizable() {
 `run(...)` records one that returns nothing. The `SequentialSpec` says what each operation does
 when it runs alone: an initial state, a copy of a state, and the step, which returns the result the
 operation should give. A failure names the round and lists its operations with their tickets, so the
-overlap that made the results impossible is visible. A round may record at most 64 operations; a
+overlap that made the results impossible is visible. One search takes at most 64 operations; a
 round the search cannot decide within its budget fails rather than passes, and so does a check over
-no operations at all. The design and its limits are in
+no operations at all.
+
+For an object made of independent parts, such as a map whose keys never interact, check each part
+on its own: `HISTORY.assertLinearizable(spec, (operation, argument) -> argument)` searches each
+key's operations separately against a `spec` that models one key, so a round may record up to
+1,024 operations as long as no key gets more than 64. A failure names the key. The design and its limits are in
 [analysis/linearizability-checking.md](analysis/linearizability-checking.md).
 
 ## Asserting on what the workers did: `RunOutcomes` (1.13.0)
