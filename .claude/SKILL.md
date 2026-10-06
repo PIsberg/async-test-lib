@@ -1,6 +1,6 @@
 # async-test-lib — Usage Guide
 
-**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 135 specialized detectors across 18 phases to identify exactly what went wrong — including six JDK 25/26 detectors (Phases 16 and 18: `StableValue`, `StructuredTaskScope`, parallel `Gatherer`, `LazyConstant`, final-field mutation, shared `KDF`) you can also drive directly via AsyncTestContext accessors.
+**async-test-lib** is a JUnit 5 extension for stress-testing concurrent Java code. It forces real thread collisions using a `CyclicBarrier`, then runs 146 specialized detectors across 18 phases to identify exactly what went wrong — including six JDK 25/26 detectors (Phases 16 and 18: `StableValue`, `StructuredTaskScope`, parallel `Gatherer`, `LazyConstant`, final-field mutation, shared `KDF`) you can also drive directly via AsyncTestContext accessors.
 
 - Replaces `@Test` with `@AsyncTest` — zero other changes needed
 - Requires Java 21 and JUnit 5 (Jupiter 6.0.3+)
@@ -125,6 +125,37 @@ void testAsyncPipeline() {
 }
 ```
 `awaitAsync` blocks until the chain completes and unwraps `ExecutionException` so user assertions/exceptions surface as their original types. This is the supported way to exercise async APIs from `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate` return types at discovery.
+
+### Make the workers meet mid-body: `AsyncTestContext.rendezvous()` (1.12.5+)
+```java
+@AsyncTest(threads = 4, invocations = 100)
+void transfer() {
+    Account mine = bank.open(100);       // each worker prepares its own state
+    AsyncTestContext.rendezvous();       // nobody moves money until every account exists
+    bank.transfer(mine, bank.randomOtherAccount(), 10);
+}
+```
+Waits until every worker of the current round has called it, bounded by the time the round has left (`rendezvous(Duration)` for a tighter bound). Every worker must call it the same number of times; each call is one meeting point. Do not build a `CyclicBarrier` in the test for this: a worker that throws breaks the rendezvous, so its peers fail at once ("The rendezvous was broken") next to the real exception, where a hand-rolled barrier waits out the round and reports a timeout that hides it. A timeout says how many workers arrived. Outside an `@AsyncTest` worker it throws `IllegalStateException`.
+
+### Assert a run did something exactly once: `RunOutcomes` (1.12.5+)
+```java
+import se.deversity.asynctest.RunOutcomes;
+
+private static final RunOutcomes OUTCOMES = new RunOutcomes();
+
+@AsyncTest(threads = 8, invocations = 100)
+void initialise() {
+    if (service.initialiseIfNeeded()) OUTCOMES.record("initialised");
+    OUTCOMES.recordValue(idGenerator.next());
+}
+
+@AfterAll
+static void check() {
+    OUTCOMES.assertExactlyOnce("initialised");   // also: assertAtMostOnce, assertCount(event, n)
+    OUTCOMES.assertDistinct();                   // no value recorded twice
+}
+```
+Totals are per run, not per round. A failure names the count and the first threads that recorded the event. Prefer it to a static `AtomicInteger` plus a hand-written `@AfterAll`: the check is easy to write so that it holds whatever the code does (asserting a `ConcurrentHashMap`'s size, for example). Lock-free, so it adds no contention of its own.
 
 ### Reproduce a flaky failure with `replaySeed` (1.6.0+)
 ```java
