@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`AsyncTestConfig.enabledDetectors()` and `isEnabled(DetectorType)`: the resolved selection as
+  one set.** `build()` now resolves `detectAll`, the per-detector setters, `includes` and `excludes`
+  into one `EnumSet`, and every public detector flag is a membership test against it. Each flag
+  used to be its own resolution line, 146 expressions that could each be wrong; a test now checks
+  across 200 random selections that the flags and the set agree, and goes red when one flag is
+  derived from the wrong type (#917).
 - **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
   workers to meet after the start built a `CyclicBarrier` of its own, and had to get the party
   count, the timeout and the reuse across rounds right by hand; five `@AsyncTest` classes in this

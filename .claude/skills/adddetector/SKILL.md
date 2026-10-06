@@ -112,7 +112,7 @@ shape, including the blank line after `@Deprecated`:
     boolean {{FLAG}}() default true;
 ```
 
-### 5. `AsyncTestConfig.java` — **six** edits (immutable class; keep 1:1 mapping)
+### 5. `AsyncTestConfig.java` — **four** edits (immutable class; keep 1:1 mapping)
 Anchor every one after the current-last detector's line (`detectSharedKdf`). The columns are
 alignment-padded — copy the surrounding spacing.
 
@@ -120,34 +120,21 @@ alignment-padded — copy the surrounding spacing.
    ```java
    public final boolean {{FLAG}};
    ```
-2. **Constructor assignment from builder** (~L371):
+2. **Constructor derivation from the enabled set** (~L371):
    ```java
-   {{FLAG}} = b.{{FLAG}};
+   {{FLAG}} = enabled.contains(DetectorType.{{CONSTANT}});
    ```
 3. **`from(AsyncTest ann)` chain** (~L561) — append to the builder call chain:
    ```java
    .{{FLAG}}(ann.{{FLAG}}())
    ```
-4. **Builder default** (~L717) — defaults are `false`; the resolver flips them on:
+4. **Builder setter** (~L861) — it adds or removes its type in the builder's `explicit` set; there
+   is no per-detector builder field:
    ```java
-   private boolean {{FLAG}} = false;
+   public Builder {{FLAG}}(boolean v) { return flag(DetectorType.{{CONSTANT}}, v); }
    ```
-5. **Builder setter** (~L861):
-   ```java
-   public Builder {{FLAG}}(boolean v) { {{FLAG}} = v; return this; }
-   ```
-6. **`build()` — both branches** of the detectAll/excludes resolution:
-   - In the `if (detectAll) { … }` block (~L1159), two lines:
-     ```java
-     if (!excludes.contains(DetectorType.{{CONSTANT}})) {{FLAG}} = true;
-         else {{FLAG}} = false;
-     ```
-   - In the `else { … }` excludes block (~L1293), one line:
-     ```java
-     if (excludes.contains(DetectorType.{{CONSTANT}})) {{FLAG}} = false;
-     ```
-   > `includes` / `preset` resolution is generic (it iterates `DetectorType.values()`), so it
-   > needs no per-detector edit — the enum constant from step 3 is enough for those paths.
+   > Resolution in `build()` is one `EnumSet` (#917): `detectAll`, `includes`, `excludes` and
+   > presets iterate `DetectorType`, so they need no per-detector edit.
 
 ### 6. `DetectorRegistry.java` — **four** edits (root package: `se.deversity.asynctest`)
 This is the class that actually runs detectors. All four are required — a field without

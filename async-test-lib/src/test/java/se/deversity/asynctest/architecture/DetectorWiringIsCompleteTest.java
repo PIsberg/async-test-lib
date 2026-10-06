@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p><strong>The failure this prevents.</strong> Turning a detector on travels through three
  * places that nothing tied together: the attribute on {@link AsyncTest}, the
- * {@code ann.detectXxx()} read in {@code AsyncTestConfig.from}, and the resolution line in
- * {@code AsyncTestConfig.Builder.build}. {@code AsyncTestConfigBuildResolutionTest} pins the third
+ * {@code ann.detectXxx()} read in {@code AsyncTestConfig.from}, and the flag's derivation from the
+ * enabled set in the {@code AsyncTestConfig} constructor. {@code AsyncTestConfigBuildResolutionTest} pins the third
  * by counting fields reflectively. Nothing pinned the second, so an attribute that was declared and
  * never read would compile, ship, and silently ignore the user who set it: they would switch a
  * detector on, get a clean report, and have no way to tell that from a detector that found nothing.
@@ -47,7 +47,7 @@ class DetectorWiringIsCompleteTest {
      * Boolean attributes on {@code @AsyncTest} that are not detector switches.
      *
      * <p>A line here needs a reason. Each of these configures the run rather than enabling a
-     * detector, which is why none has a resolution line in {@code build()}.
+     * detector, which is why none is derived from the enabled set.
      */
     private static final Map<String, String> NOT_A_DETECTOR_SWITCH = Map.of(
             "detectAll", "the umbrella toggle every detector switch is resolved against",
@@ -57,7 +57,7 @@ class DetectorWiringIsCompleteTest {
             "licenseMockMode", "bypasses the licence check for local runs");
 
     @Test
-    @DisplayName("every detector switch on @AsyncTest is read by from() and resolved in build()")
+    @DisplayName("every detector switch on @AsyncTest is read by from() and derived from the enabled set")
     void everySwitchReachesTheConfig() {
         String config = read(repoRoot().resolve(
                 "async-test-lib/src/main/java/se/deversity/asynctest/AsyncTestConfig.java"));
@@ -68,7 +68,8 @@ class DetectorWiringIsCompleteTest {
             if (!config.contains("." + attribute + "()")) {
                 unread.add(attribute);
             }
-            if (!config.contains(attribute + " = (detectAll || " + attribute + ")")) {
+            if (!java.util.regex.Pattern.compile("\\b" + attribute
+                    + "\\s+= enabled\\.contains\\(DetectorType\\.\\w+\\);").matcher(config).find()) {
                 unresolved.add(attribute);
             }
         }
@@ -79,10 +80,10 @@ class DetectorWiringIsCompleteTest {
                         + "detector on, gets a clean report, and cannot tell that from a detector "
                         + "that found nothing. Read it in from().");
         assertTrue(unresolved.isEmpty(),
-                "These have no resolution line in build(): " + unresolved
-                        + ". Without one the flag is read and then never reconciled against "
-                        + "detectAll and excludes, so excludes cannot switch it off. Add "
-                        + "`x = (detectAll || x) && !excludes.contains(TYPE);`.");
+                "These public flags are not derived from the enabled set: " + unresolved
+                        + ". Without the derivation the flag is never reconciled against "
+                        + "detectAll, includes and excludes, so excludes cannot switch it off. "
+                        + "Assign `x = enabled.contains(DetectorType.TYPE);` in the constructor.");
     }
 
     @Test

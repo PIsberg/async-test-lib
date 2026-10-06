@@ -10,6 +10,7 @@ import se.deversity.vibetags.annotations.AIFeatureFlag;
 import se.deversity.vibetags.annotations.AIImmutable;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
@@ -21,7 +22,7 @@ import java.util.Set;
  */
 @AICore(
     sensitivity = "Critical",
-    note = "Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends."
+    note = "Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation, the Builder setter that calls flag(TYPE, v), and the from(AsyncTest) read; never reintroduce a per-detector resolution expression in build()."
 )
 @AIContext(
     focus = "Maintain strict 1:1 mapping between @AsyncTest attributes, Builder fields, from(AsyncTest), build() logic, and DetectorRegistry",
@@ -69,6 +70,14 @@ public final class AsyncTestConfig {
      * @since 1.9.7
      */
     public final TrustTier minTrust;
+
+    /**
+     * The detectors this run enables, resolved once in {@link Builder#build()} from
+     * {@code detectAll}, the per-detector switches, {@code includes} and {@code excludes}. Every
+     * public detector flag below is a membership test against this set, so none can disagree
+     * with it (#917).
+     */
+    private final Set<DetectorType> enabledDetectors;
 
     // ---- Phase 1 ----
     /** Resolved value of {@link AsyncTest#detectDeadlocks()} for this run. */
@@ -424,7 +433,8 @@ public final class AsyncTestConfig {
     @AIFeatureFlag(flag = "license.mock.mode", defaultValue = false)
     public final boolean licenseMockMode;
 
-    private AsyncTestConfig(Builder b) {
+    private AsyncTestConfig(Builder b, EnumSet<DetectorType> enabled) {
+        enabledDetectors               = Collections.unmodifiableSet(EnumSet.copyOf(enabled));
         threads                        = b.threads;
         invocations                    = b.invocations;
         useVirtualThreads              = b.useVirtualThreads;
@@ -434,158 +444,158 @@ public final class AsyncTestConfig {
         replaySeed                     = b.replaySeed;
         failOn                         = b.failOn;
         minTrust                       = b.minTrust;
-        detectDeadlocks                = b.detectDeadlocks;
-        detectVisibility               = b.detectVisibility;
-        detectLivelocks                = b.detectLivelocks;
-        detectFalseSharing             = b.detectFalseSharing;
-        detectWakeupIssues             = b.detectWakeupIssues;
-        validateConstructorSafety      = b.validateConstructorSafety;
-        detectABAProblem               = b.detectABAProblem;
-        validateLockOrder              = b.validateLockOrder;
-        monitorSynchronizers           = b.monitorSynchronizers;
-        monitorThreadPool              = b.monitorThreadPool;
-        detectMemoryOrderingViolations = b.detectMemoryOrderingViolations;
-        monitorAsyncPipeline           = b.monitorAsyncPipeline;
-        monitorReadWriteLockFairness   = b.monitorReadWriteLockFairness;
-        detectRaceConditions           = b.detectRaceConditions;
-        detectThreadLocalLeaks         = b.detectThreadLocalLeaks;
-        detectBusyWaiting              = b.detectBusyWaiting;
-        detectAtomicityViolations      = b.detectAtomicityViolations;
-        detectInterruptMishandling     = b.detectInterruptMishandling;
-        monitorSemaphore               = b.monitorSemaphore;
-        detectCompletableFutureExceptions = b.detectCompletableFutureExceptions;
-        detectCompletableFutureCompletionLeaks = b.detectCompletableFutureCompletionLeaks;
-        detectVirtualThreadPinning     = b.detectVirtualThreadPinning;
-        detectThreadPoolDeadlocks      = b.detectThreadPoolDeadlocks;
-        detectConcurrentModifications  = b.detectConcurrentModifications;
-        detectLockLeaks                = b.detectLockLeaks;
-        detectSharedRandom             = b.detectSharedRandom;
-        detectBlockingQueueIssues      = b.detectBlockingQueueIssues;
-        detectConditionVariableIssues  = b.detectConditionVariableIssues;
-        detectSimpleDateFormatIssues   = b.detectSimpleDateFormatIssues;
-        detectParallelStreamIssues     = b.detectParallelStreamIssues;
-        detectResourceLeaks            = b.detectResourceLeaks;
-        detectCountDownLatchIssues     = b.detectCountDownLatchIssues;
-        detectCyclicBarrierIssues      = b.detectCyclicBarrierIssues;
-        detectReentrantLockIssues      = b.detectReentrantLockIssues;
-        detectVolatileArrayIssues      = b.detectVolatileArrayIssues;
-        detectDoubleCheckedLocking     = b.detectDoubleCheckedLocking;
-        detectWaitTimeout              = b.detectWaitTimeout;
-        detectLockContention           = b.detectLockContention;
-        detectSynchronizedNonFinal     = b.detectSynchronizedNonFinal;
-        detectMissedSignals            = b.detectMissedSignals;
-        detectLazyInitRace             = b.detectLazyInitRace;
-        detectPhaserIssues             = b.detectPhaserIssues;
-        detectStampedLockIssues        = b.detectStampedLockIssues;
-        detectExchangerIssues          = b.detectExchangerIssues;
-        detectScheduledExecutorIssues  = b.detectScheduledExecutorIssues;
-        detectForkJoinPoolIssues       = b.detectForkJoinPoolIssues;
-        detectThreadFactoryIssues      = b.detectThreadFactoryIssues;
-        detectThreadLeaks              = b.detectThreadLeaks;
-        detectSleepInLock              = b.detectSleepInLock;
-        detectUnboundedQueue           = b.detectUnboundedQueue;
-        detectThreadStarvation         = b.detectThreadStarvation;
-        detectCalendarIssues           = b.detectCalendarIssues;
-        detectSharedCollections        = b.detectSharedCollections;
-        detectTimerIssues              = b.detectTimerIssues;
-        detectCopyOnWriteCollectionIssues = b.detectCopyOnWriteCollectionIssues;
-        detectStringBuilderIssues        = b.detectStringBuilderIssues;
-        detectStructuredConcurrencyIssues    = b.detectStructuredConcurrencyIssues;
-        detectVirtualThreadContextLeaks      = b.detectVirtualThreadContextLeaks;
-        detectScopedValueMisuse              = b.detectScopedValueMisuse;
-        detectVirtualThreadCpuBoundTasks     = b.detectVirtualThreadCpuBoundTasks;
-        detectVirtualThreadCarrierExhaustion = b.detectVirtualThreadCarrierExhaustion;
-        detectHttpClientIssues           = b.detectHttpClientIssues;
-        detectStreamClosing              = b.detectStreamClosing;
-        detectCacheConcurrency           = b.detectCacheConcurrency;
-        detectCompletableFutureChainIssues = b.detectCompletableFutureChainIssues;
-        detectExecutorShutdown           = b.detectExecutorShutdown;
-        detectMutableMapKeys             = b.detectMutableMapKeys;
-        detectNestedMonitorLockout       = b.detectNestedMonitorLockout;
-        detectLockDowngrade              = b.detectLockDowngrade;
-        detectInheritableThreadLocalMisuse = b.detectInheritableThreadLocalMisuse;
-        detectThreadLocalContamination     = b.detectThreadLocalContamination;
-        detectAtomicNonAtomicUpdates       = b.detectAtomicNonAtomicUpdates;
-        detectSynchronizedCollectionIteration = b.detectSynchronizedCollectionIteration;
-        detectSharedFormatter              = b.detectSharedFormatter;
-        detectConcurrentMapComputeRecursion = b.detectConcurrentMapComputeRecursion;
-        detectSynchronizedOnLiteral        = b.detectSynchronizedOnLiteral;
-        detectPublicLockExposure           = b.detectPublicLockExposure;
-        detectForkJoinTaskBlocking         = b.detectForkJoinTaskBlocking;
-        detectOptimisticReadValidation     = b.detectOptimisticReadValidation;
-        detectCFCommonPoolBlocking         = b.detectCFCommonPoolBlocking;
-        detectSharedMatcher            = b.detectSharedMatcher;
-        detectSharedDecimalFormat      = b.detectSharedDecimalFormat;
-        detectWeakReferenceRace        = b.detectWeakReferenceRace;
-        detectStatefulLambda           = b.detectStatefulLambda;
-        detectSharedMessageDigest      = b.detectSharedMessageDigest;
-        detectInterruptSwallowing      = b.detectInterruptSwallowing;
-        detectMdcContextLeak           = b.detectMdcContextLeak;
-        detectSystemPropertyMutation   = b.detectSystemPropertyMutation;
-        detectFutureIgnored            = b.detectFutureIgnored;
-        detectExplicitGc               = b.detectExplicitGc;
-        detectDeprecatedThreadApi      = b.detectDeprecatedThreadApi;
-        detectSharedXmlParser          = b.detectSharedXmlParser;
-        detectBoxedPrimitiveLock       = b.detectBoxedPrimitiveLock;
-        detectSharedTimeZone           = b.detectSharedTimeZone;
-        detectUncaughtExceptionHandler = b.detectUncaughtExceptionHandler;
+        detectDeadlocks                = enabled.contains(DetectorType.DEADLOCKS);
+        detectVisibility               = enabled.contains(DetectorType.VISIBILITY);
+        detectLivelocks                = enabled.contains(DetectorType.LIVELOCKS);
+        detectFalseSharing             = enabled.contains(DetectorType.FALSE_SHARING);
+        detectWakeupIssues             = enabled.contains(DetectorType.WAKEUP_ISSUES);
+        validateConstructorSafety      = enabled.contains(DetectorType.CONSTRUCTOR_SAFETY);
+        detectABAProblem               = enabled.contains(DetectorType.ABA_PROBLEM);
+        validateLockOrder              = enabled.contains(DetectorType.LOCK_ORDER);
+        monitorSynchronizers           = enabled.contains(DetectorType.SYNCHRONIZERS);
+        monitorThreadPool              = enabled.contains(DetectorType.THREAD_POOL);
+        detectMemoryOrderingViolations = enabled.contains(DetectorType.MEMORY_ORDERING);
+        monitorAsyncPipeline           = enabled.contains(DetectorType.ASYNC_PIPELINE);
+        monitorReadWriteLockFairness   = enabled.contains(DetectorType.READ_WRITE_LOCK_FAIRNESS);
+        detectRaceConditions           = enabled.contains(DetectorType.RACE_CONDITIONS);
+        detectThreadLocalLeaks         = enabled.contains(DetectorType.THREAD_LOCAL_LEAKS);
+        detectBusyWaiting              = enabled.contains(DetectorType.BUSY_WAITING);
+        detectAtomicityViolations      = enabled.contains(DetectorType.ATOMICITY_VIOLATIONS);
+        detectInterruptMishandling     = enabled.contains(DetectorType.INTERRUPT_MISHANDLING);
+        monitorSemaphore               = enabled.contains(DetectorType.SEMAPHORE);
+        detectCompletableFutureExceptions = enabled.contains(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS);
+        detectCompletableFutureCompletionLeaks = enabled.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS);
+        detectVirtualThreadPinning     = enabled.contains(DetectorType.VIRTUAL_THREAD_PINNING);
+        detectThreadPoolDeadlocks      = enabled.contains(DetectorType.THREAD_POOL_DEADLOCK);
+        detectConcurrentModifications  = enabled.contains(DetectorType.CONCURRENT_MODIFICATIONS);
+        detectLockLeaks                = enabled.contains(DetectorType.LOCK_LEAKS);
+        detectSharedRandom             = enabled.contains(DetectorType.SHARED_RANDOM);
+        detectBlockingQueueIssues      = enabled.contains(DetectorType.BLOCKING_QUEUE);
+        detectConditionVariableIssues  = enabled.contains(DetectorType.CONDITION_VARIABLES);
+        detectSimpleDateFormatIssues   = enabled.contains(DetectorType.SIMPLE_DATE_FORMAT);
+        detectParallelStreamIssues     = enabled.contains(DetectorType.PARALLEL_STREAMS);
+        detectResourceLeaks            = enabled.contains(DetectorType.RESOURCE_LEAKS);
+        detectCountDownLatchIssues     = enabled.contains(DetectorType.COUNTDOWN_LATCH);
+        detectCyclicBarrierIssues      = enabled.contains(DetectorType.CYCLIC_BARRIER);
+        detectReentrantLockIssues      = enabled.contains(DetectorType.REENTRANT_LOCK);
+        detectVolatileArrayIssues      = enabled.contains(DetectorType.VOLATILE_ARRAY);
+        detectDoubleCheckedLocking     = enabled.contains(DetectorType.DOUBLE_CHECKED_LOCKING);
+        detectWaitTimeout              = enabled.contains(DetectorType.WAIT_TIMEOUT);
+        detectLockContention           = enabled.contains(DetectorType.LOCK_CONTENTION);
+        detectSynchronizedNonFinal     = enabled.contains(DetectorType.SYNCHRONIZED_NON_FINAL);
+        detectMissedSignals            = enabled.contains(DetectorType.MISSED_SIGNAL);
+        detectLazyInitRace             = enabled.contains(DetectorType.LAZY_INIT_RACE);
+        detectPhaserIssues             = enabled.contains(DetectorType.PHASER);
+        detectStampedLockIssues        = enabled.contains(DetectorType.STAMPED_LOCK);
+        detectExchangerIssues          = enabled.contains(DetectorType.EXCHANGER);
+        detectScheduledExecutorIssues  = enabled.contains(DetectorType.SCHEDULED_EXECUTOR);
+        detectForkJoinPoolIssues       = enabled.contains(DetectorType.FORK_JOIN_POOL);
+        detectThreadFactoryIssues      = enabled.contains(DetectorType.THREAD_FACTORY);
+        detectThreadLeaks              = enabled.contains(DetectorType.THREAD_LEAKS);
+        detectSleepInLock              = enabled.contains(DetectorType.SLEEP_IN_LOCK);
+        detectUnboundedQueue           = enabled.contains(DetectorType.UNBOUNDED_QUEUE);
+        detectThreadStarvation         = enabled.contains(DetectorType.THREAD_STARVATION);
+        detectCalendarIssues           = enabled.contains(DetectorType.CALENDAR);
+        detectSharedCollections        = enabled.contains(DetectorType.SHARED_COLLECTIONS);
+        detectTimerIssues              = enabled.contains(DetectorType.TIMER);
+        detectCopyOnWriteCollectionIssues = enabled.contains(DetectorType.COPY_ON_WRITE_COLLECTIONS);
+        detectStringBuilderIssues        = enabled.contains(DetectorType.STRING_BUILDER);
+        detectStructuredConcurrencyIssues    = enabled.contains(DetectorType.STRUCTURED_CONCURRENCY);
+        detectVirtualThreadContextLeaks      = enabled.contains(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS);
+        detectScopedValueMisuse              = enabled.contains(DetectorType.SCOPED_VALUE);
+        detectVirtualThreadCpuBoundTasks     = enabled.contains(DetectorType.VIRTUAL_THREAD_CPU_BOUND);
+        detectVirtualThreadCarrierExhaustion = enabled.contains(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION);
+        detectHttpClientIssues           = enabled.contains(DetectorType.HTTP_CLIENT);
+        detectStreamClosing              = enabled.contains(DetectorType.STREAM_CLOSING);
+        detectCacheConcurrency           = enabled.contains(DetectorType.CACHE_CONCURRENCY);
+        detectCompletableFutureChainIssues = enabled.contains(DetectorType.COMPLETABLEFUTURE_CHAIN);
+        detectExecutorShutdown           = enabled.contains(DetectorType.EXECUTOR_SHUTDOWN);
+        detectMutableMapKeys             = enabled.contains(DetectorType.MUTABLE_MAP_KEY);
+        detectNestedMonitorLockout       = enabled.contains(DetectorType.NESTED_MONITOR_LOCKOUT);
+        detectLockDowngrade              = enabled.contains(DetectorType.LOCK_DOWNGRADE);
+        detectInheritableThreadLocalMisuse = enabled.contains(DetectorType.INHERITABLE_THREAD_LOCAL);
+        detectThreadLocalContamination     = enabled.contains(DetectorType.THREAD_LOCAL_CONTAMINATION);
+        detectAtomicNonAtomicUpdates       = enabled.contains(DetectorType.ATOMIC_NON_ATOMIC_UPDATE);
+        detectSynchronizedCollectionIteration = enabled.contains(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION);
+        detectSharedFormatter              = enabled.contains(DetectorType.SHARED_FORMATTER);
+        detectConcurrentMapComputeRecursion = enabled.contains(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION);
+        detectSynchronizedOnLiteral        = enabled.contains(DetectorType.SYNCHRONIZED_ON_LITERAL);
+        detectPublicLockExposure           = enabled.contains(DetectorType.PUBLIC_LOCK_EXPOSURE);
+        detectForkJoinTaskBlocking         = enabled.contains(DetectorType.FORK_JOIN_TASK_BLOCKING);
+        detectOptimisticReadValidation     = enabled.contains(DetectorType.OPTIMISTIC_READ_VALIDATION);
+        detectCFCommonPoolBlocking         = enabled.contains(DetectorType.CF_COMMON_POOL_BLOCKING);
+        detectSharedMatcher            = enabled.contains(DetectorType.SHARED_MATCHER);
+        detectSharedDecimalFormat      = enabled.contains(DetectorType.SHARED_DECIMAL_FORMAT);
+        detectWeakReferenceRace        = enabled.contains(DetectorType.WEAK_REFERENCE_RACE);
+        detectStatefulLambda           = enabled.contains(DetectorType.STATEFUL_LAMBDA);
+        detectSharedMessageDigest      = enabled.contains(DetectorType.SHARED_MESSAGE_DIGEST);
+        detectInterruptSwallowing      = enabled.contains(DetectorType.INTERRUPT_SWALLOWING);
+        detectMdcContextLeak           = enabled.contains(DetectorType.MDC_CONTEXT_LEAK);
+        detectSystemPropertyMutation   = enabled.contains(DetectorType.SYSTEM_PROPERTY_MUTATION);
+        detectFutureIgnored            = enabled.contains(DetectorType.FUTURE_IGNORED);
+        detectExplicitGc               = enabled.contains(DetectorType.EXPLICIT_GC);
+        detectDeprecatedThreadApi      = enabled.contains(DetectorType.DEPRECATED_THREAD_API);
+        detectSharedXmlParser          = enabled.contains(DetectorType.SHARED_XML_PARSER);
+        detectBoxedPrimitiveLock       = enabled.contains(DetectorType.BOXED_PRIMITIVE_LOCK);
+        detectSharedTimeZone           = enabled.contains(DetectorType.SHARED_TIMEZONE);
+        detectUncaughtExceptionHandler = enabled.contains(DetectorType.UNCAUGHT_EXCEPTION_HANDLER);
         // Phase 13
-        detectDaemonThreadHygiene   = b.detectDaemonThreadHygiene;
-        detectNotifyWithoutMonitor  = b.detectNotifyWithoutMonitor;
-        detectSharedSecureRandom    = b.detectSharedSecureRandom;
-        detectWeakHashMapShared     = b.detectWeakHashMapShared;
-        detectJdbcConnectionShared  = b.detectJdbcConnectionShared;
+        detectDaemonThreadHygiene   = enabled.contains(DetectorType.DAEMON_THREAD_HYGIENE);
+        detectNotifyWithoutMonitor  = enabled.contains(DetectorType.NOTIFY_WITHOUT_MONITOR);
+        detectSharedSecureRandom    = enabled.contains(DetectorType.SHARED_SECURE_RANDOM);
+        detectWeakHashMapShared     = enabled.contains(DetectorType.WEAK_HASH_MAP_SHARED);
+        detectJdbcConnectionShared  = enabled.contains(DetectorType.JDBC_CONNECTION_SHARED);
         // Phase 14
-        detectSharedStatefulCrypto      = b.detectSharedStatefulCrypto;
-        detectConcurrentMapCheckThenAct = b.detectConcurrentMapCheckThenAct;
-        detectSharedDeflater            = b.detectSharedDeflater;
-        detectThisEscape                = b.detectThisEscape;
-        detectThreadLocalRandomMisuse   = b.detectThreadLocalRandomMisuse;
+        detectSharedStatefulCrypto      = enabled.contains(DetectorType.SHARED_STATEFUL_CRYPTO);
+        detectConcurrentMapCheckThenAct = enabled.contains(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT);
+        detectSharedDeflater            = enabled.contains(DetectorType.SHARED_DEFLATER);
+        detectThisEscape                = enabled.contains(DetectorType.THIS_ESCAPE);
+        detectThreadLocalRandomMisuse   = enabled.contains(DetectorType.THREAD_LOCAL_RANDOM_MISUSE);
         // Phase 15
-        detectCompletableFutureObtrudeAbuse = b.detectCompletableFutureObtrudeAbuse;
-        detectSpuriousWakeupHazard          = b.detectSpuriousWakeupHazard;
-        detectLockUpgradeDeadlock           = b.detectLockUpgradeDeadlock;
-        detectTryLockMisuse                 = b.detectTryLockMisuse;
-        detectCFBlockingCallback            = b.detectCFBlockingCallback;
+        detectCompletableFutureObtrudeAbuse = enabled.contains(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE);
+        detectSpuriousWakeupHazard          = enabled.contains(DetectorType.SPURIOUS_WAKEUP_HAZARD);
+        detectLockUpgradeDeadlock           = enabled.contains(DetectorType.LOCK_UPGRADE_DEADLOCK);
+        detectTryLockMisuse                 = enabled.contains(DetectorType.TRY_LOCK_MISUSE);
+        detectCFBlockingCallback            = enabled.contains(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK);
         // Phase 16 (JDK 25/26)
-        detectStableValueMisuse             = b.detectStableValueMisuse;
-        detectStructuredTaskScopeMisuse     = b.detectStructuredTaskScopeMisuse;
-        detectGathererConcurrencyMisuse     = b.detectGathererConcurrencyMisuse;
+        detectStableValueMisuse             = enabled.contains(DetectorType.STABLE_VALUE_MISUSE);
+        detectStructuredTaskScopeMisuse     = enabled.contains(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE);
+        detectGathererConcurrencyMisuse     = enabled.contains(DetectorType.GATHERER_CONCURRENCY_MISUSE);
         // Phase 17
-        detectSharedByteBuffer          = b.detectSharedByteBuffer;
-        detectSharedCharsetCoder        = b.detectSharedCharsetCoder;
-        detectSharedChecksum            = b.detectSharedChecksum;
-        detectFileChannelPositionRace   = b.detectFileChannelPositionRace;
-        detectSharedIterator            = b.detectSharedIterator;
-        detectHighContentionAtomic      = b.detectHighContentionAtomic;
-        detectSharedJsonMapperReconfig  = b.detectSharedJsonMapperReconfig;
+        detectSharedByteBuffer          = enabled.contains(DetectorType.SHARED_BYTE_BUFFER);
+        detectSharedCharsetCoder        = enabled.contains(DetectorType.SHARED_CHARSET_CODER);
+        detectSharedChecksum            = enabled.contains(DetectorType.SHARED_CHECKSUM);
+        detectFileChannelPositionRace   = enabled.contains(DetectorType.FILE_CHANNEL_POSITION_RACE);
+        detectSharedIterator            = enabled.contains(DetectorType.SHARED_ITERATOR);
+        detectHighContentionAtomic      = enabled.contains(DetectorType.HIGH_CONTENTION_ATOMIC);
+        detectSharedJsonMapperReconfig  = enabled.contains(DetectorType.SHARED_JSON_MAPPER_RECONFIG);
         // Phase 18 (JDK 25/26 GA)
-        detectLazyConstantMisuse        = b.detectLazyConstantMisuse;
-        detectFinalFieldMutation        = b.detectFinalFieldMutation;
-        detectSharedKdf                 = b.detectSharedKdf;
-        detectLatchMisuse               = b.detectLatchMisuse;
-        detectExecutorDeadlock          = b.detectExecutorDeadlock;
-        detectFutureBlocking            = b.detectFutureBlocking;
-        detectFlowPublisherConcurrency  = b.detectFlowPublisherConcurrency;
-        detectConfinedArenaThreadEscape  = b.detectConfinedArenaThreadEscape;
-        detectSharedMemorySegmentRace    = b.detectSharedMemorySegmentRace;
-        detectVarHandleNonAtomicUpdate   = b.detectVarHandleNonAtomicUpdate;
-        detectRecordMutableComponentLeak = b.detectRecordMutableComponentLeak;
-        detectStaticInitDeadlock         = b.detectStaticInitDeadlock;
-        detectVirtualThreadPooling       = b.detectVirtualThreadPooling;
-        detectPlatformThreadPerTask      = b.detectPlatformThreadPerTask;
-        detectSharedSplittableRandom     = b.detectSharedSplittableRandom;
-        detectCompletableFutureCompletionRace = b.detectCompletableFutureCompletionRace;
-        detectCompletableFutureCancellationPropagation = b.detectCompletableFutureCancellationPropagation;
-        detectCompletableFutureCombinatorMisuse = b.detectCompletableFutureCombinatorMisuse;
-        detectLambdaLostUpdate           = b.detectLambdaLostUpdate;
-        detectVirtualThreadResourceSaturation = b.detectVirtualThreadResourceSaturation;
-        detectVirtualThreadMonitorSerialization = b.detectVirtualThreadMonitorSerialization;
-        detectThreadLocalCacheDegradation = b.detectThreadLocalCacheDegradation;
-        detectScopeJoinerMisuse = b.detectScopeJoinerMisuse;
-        detectScopeConfigurationMisuse = b.detectScopeConfigurationMisuse;
-        detectScopeResultEscape = b.detectScopeResultEscape;
-        detectLazyCollectionMisuse = b.detectLazyCollectionMisuse;
+        detectLazyConstantMisuse        = enabled.contains(DetectorType.LAZY_CONSTANT_MISUSE);
+        detectFinalFieldMutation        = enabled.contains(DetectorType.FINAL_FIELD_MUTATION);
+        detectSharedKdf                 = enabled.contains(DetectorType.SHARED_KDF);
+        detectLatchMisuse               = enabled.contains(DetectorType.LATCH_MISUSE);
+        detectExecutorDeadlock          = enabled.contains(DetectorType.EXECUTOR_DEADLOCK);
+        detectFutureBlocking            = enabled.contains(DetectorType.FUTURE_BLOCKING);
+        detectFlowPublisherConcurrency  = enabled.contains(DetectorType.FLOW_PUBLISHER_CONCURRENCY);
+        detectConfinedArenaThreadEscape  = enabled.contains(DetectorType.CONFINED_ARENA_THREAD_ESCAPE);
+        detectSharedMemorySegmentRace    = enabled.contains(DetectorType.SHARED_MEMORY_SEGMENT_RACE);
+        detectVarHandleNonAtomicUpdate   = enabled.contains(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE);
+        detectRecordMutableComponentLeak = enabled.contains(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK);
+        detectStaticInitDeadlock         = enabled.contains(DetectorType.STATIC_INIT_DEADLOCK);
+        detectVirtualThreadPooling       = enabled.contains(DetectorType.VIRTUAL_THREAD_POOLING);
+        detectPlatformThreadPerTask      = enabled.contains(DetectorType.PLATFORM_THREAD_PER_TASK);
+        detectSharedSplittableRandom     = enabled.contains(DetectorType.SHARED_SPLITTABLE_RANDOM);
+        detectCompletableFutureCompletionRace = enabled.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE);
+        detectCompletableFutureCancellationPropagation = enabled.contains(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION);
+        detectCompletableFutureCombinatorMisuse = enabled.contains(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE);
+        detectLambdaLostUpdate           = enabled.contains(DetectorType.LAMBDA_LOST_UPDATE);
+        detectVirtualThreadResourceSaturation = enabled.contains(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION);
+        detectVirtualThreadMonitorSerialization = enabled.contains(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION);
+        detectThreadLocalCacheDegradation = enabled.contains(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION);
+        detectScopeJoinerMisuse = enabled.contains(DetectorType.SCOPE_JOINER_MISUSE);
+        detectScopeConfigurationMisuse = enabled.contains(DetectorType.SCOPE_CONFIGURATION_MISUSE);
+        detectScopeResultEscape = enabled.contains(DetectorType.SCOPE_RESULT_ESCAPE);
+        detectLazyCollectionMisuse = enabled.contains(DetectorType.LAZY_COLLECTION_MISUSE);
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -595,6 +605,29 @@ public final class AsyncTestConfig {
         lemonSqueezyStore              = b.lemonSqueezyStore;
         licenseKey                     = b.licenseKey;
         licenseMockMode                = b.licenseMockMode;
+    }
+
+    /**
+     * {@return the detectors this run enables, as an unmodifiable set}
+     *
+     * <p>The one answer to "which detectors run": {@code detectAll}, the per-detector switches,
+     * {@code includes}, {@code excludes} and a preset are all resolved into it, and every public
+     * detector flag on this class reads from it.
+     *
+     * @since 2.0.0
+     */
+    public Set<DetectorType> enabledDetectors() {
+        return enabledDetectors;
+    }
+
+    /**
+     * {@return whether this run enables {@code type}}
+     *
+     * @param type the detector to ask about
+     * @since 2.0.0
+     */
+    public boolean isEnabled(DetectorType type) {
+        return enabledDetectors.contains(type);
     }
 
     /**
@@ -840,158 +873,6 @@ public final class AsyncTestConfig {
         private long    replaySeed                 = 0L;
         private FailOn  failOn                     = FailOn.NONE;
         private TrustTier minTrust                 = TrustTier.ADVISORY;
-        private boolean detectDeadlocks            = true;
-        private boolean detectVisibility           = false;
-        private boolean detectLivelocks            = false;
-        private boolean detectFalseSharing         = false;
-        private boolean detectWakeupIssues         = false;
-        private boolean validateConstructorSafety  = false;
-        private boolean detectABAProblem           = false;
-        private boolean validateLockOrder          = false;
-        private boolean monitorSynchronizers       = false;
-        private boolean monitorThreadPool          = false;
-        private boolean detectMemoryOrderingViolations = false;
-        private boolean monitorAsyncPipeline       = false;
-        private boolean monitorReadWriteLockFairness = false;
-        private boolean detectRaceConditions       = false;
-        private boolean detectThreadLocalLeaks     = false;
-        private boolean detectBusyWaiting          = false;
-        private boolean detectAtomicityViolations  = false;
-        private boolean detectInterruptMishandling = false;
-        private boolean monitorSemaphore           = false;
-        private boolean detectCompletableFutureExceptions = false;
-        private boolean detectCompletableFutureCompletionLeaks = false;
-        private boolean detectVirtualThreadPinning = false;
-        private boolean detectThreadPoolDeadlocks = false;
-        private boolean detectConcurrentModifications = false;
-        private boolean detectLockLeaks = false;
-        private boolean detectSharedRandom = false;
-        private boolean detectBlockingQueueIssues = false;
-        private boolean detectConditionVariableIssues = false;
-        private boolean detectSimpleDateFormatIssues = false;
-        private boolean detectParallelStreamIssues = false;
-        private boolean detectResourceLeaks = false;
-        private boolean detectCountDownLatchIssues = false;
-        private boolean detectCyclicBarrierIssues = false;
-        private boolean detectReentrantLockIssues = false;
-        private boolean detectVolatileArrayIssues = false;
-        private boolean detectDoubleCheckedLocking = false;
-        private boolean detectWaitTimeout = false;
-        private boolean detectLockContention = false;
-        private boolean detectSynchronizedNonFinal = false;
-        private boolean detectMissedSignals = false;
-        private boolean detectLazyInitRace = false;
-        private boolean detectPhaserIssues = false;
-        private boolean detectStampedLockIssues = false;
-        private boolean detectExchangerIssues = false;
-        private boolean detectScheduledExecutorIssues = false;
-        private boolean detectForkJoinPoolIssues = false;
-        private boolean detectThreadFactoryIssues = false;
-        private boolean detectThreadLeaks = false;
-        private boolean detectSleepInLock = false;
-        private boolean detectUnboundedQueue = false;
-        private boolean detectThreadStarvation = false;
-        private boolean detectCalendarIssues = false;
-        private boolean detectSharedCollections = false;
-        private boolean detectTimerIssues = false;
-        private boolean detectCopyOnWriteCollectionIssues = false;
-        private boolean detectStringBuilderIssues = false;
-        private boolean detectStructuredConcurrencyIssues = false;
-        private boolean detectVirtualThreadContextLeaks = false;
-        private boolean detectScopedValueMisuse = false;
-        private boolean detectVirtualThreadCpuBoundTasks = false;
-        private boolean detectVirtualThreadCarrierExhaustion = false;
-        private boolean detectHttpClientIssues = false;
-        private boolean detectStreamClosing = false;
-        private boolean detectCacheConcurrency = false;
-        private boolean detectCompletableFutureChainIssues = false;
-        private boolean detectExecutorShutdown = false;
-        private boolean detectMutableMapKeys = false;
-        private boolean detectNestedMonitorLockout = false;
-        private boolean detectLockDowngrade = false;
-        private boolean detectInheritableThreadLocalMisuse = false;
-        private boolean detectThreadLocalContamination     = false;
-        private boolean detectAtomicNonAtomicUpdates       = false;
-        private boolean detectSynchronizedCollectionIteration = false;
-        private boolean detectSharedFormatter              = false;
-        private boolean detectConcurrentMapComputeRecursion = false;
-        private boolean detectSynchronizedOnLiteral        = false;
-        private boolean detectPublicLockExposure           = false;
-        private boolean detectForkJoinTaskBlocking         = false;
-        private boolean detectOptimisticReadValidation     = false;
-        private boolean detectCFCommonPoolBlocking         = false;
-        private boolean detectSharedMatcher            = false;
-        private boolean detectSharedDecimalFormat      = false;
-        private boolean detectWeakReferenceRace        = false;
-        private boolean detectStatefulLambda           = false;
-        private boolean detectSharedMessageDigest      = false;
-        private boolean detectInterruptSwallowing      = false;
-        private boolean detectMdcContextLeak           = false;
-        private boolean detectSystemPropertyMutation   = false;
-        private boolean detectFutureIgnored            = false;
-        private boolean detectExplicitGc               = false;
-        private boolean detectDeprecatedThreadApi      = false;
-        private boolean detectSharedXmlParser          = false;
-        private boolean detectBoxedPrimitiveLock       = false;
-        private boolean detectSharedTimeZone           = false;
-        private boolean detectUncaughtExceptionHandler = false;
-        // Phase 13
-        private boolean detectDaemonThreadHygiene  = false;
-        private boolean detectNotifyWithoutMonitor = false;
-        private boolean detectSharedSecureRandom   = false;
-        private boolean detectWeakHashMapShared    = false;
-        private boolean detectJdbcConnectionShared = false;
-        // Phase 14
-        private boolean detectSharedStatefulCrypto      = false;
-        private boolean detectConcurrentMapCheckThenAct = false;
-        private boolean detectSharedDeflater            = false;
-        private boolean detectThisEscape                = false;
-        private boolean detectThreadLocalRandomMisuse   = false;
-        // Phase 15
-        private boolean detectCompletableFutureObtrudeAbuse = false;
-        private boolean detectSpuriousWakeupHazard          = false;
-        private boolean detectLockUpgradeDeadlock           = false;
-        private boolean detectTryLockMisuse                 = false;
-        private boolean detectCFBlockingCallback            = false;
-        // Phase 16 (JDK 25/26)
-        private boolean detectStableValueMisuse             = false;
-        private boolean detectStructuredTaskScopeMisuse     = false;
-        private boolean detectGathererConcurrencyMisuse     = false;
-        // Phase 17
-        private boolean detectSharedByteBuffer          = false;
-        private boolean detectSharedCharsetCoder        = false;
-        private boolean detectSharedChecksum            = false;
-        private boolean detectFileChannelPositionRace   = false;
-        private boolean detectSharedIterator            = false;
-        private boolean detectHighContentionAtomic      = false;
-        private boolean detectSharedJsonMapperReconfig  = false;
-        // Phase 18 (JDK 25/26 GA)
-        private boolean detectLazyConstantMisuse        = false;
-        private boolean detectFinalFieldMutation        = false;
-        private boolean detectSharedKdf                 = false;
-        private boolean detectLatchMisuse               = false;
-        private boolean detectExecutorDeadlock          = false;
-        private boolean detectFutureBlocking            = false;
-        private boolean detectFlowPublisherConcurrency  = false;
-        private boolean detectConfinedArenaThreadEscape  = false;
-        private boolean detectSharedMemorySegmentRace    = false;
-        private boolean detectVarHandleNonAtomicUpdate   = false;
-        private boolean detectRecordMutableComponentLeak = false;
-        private boolean detectStaticInitDeadlock         = false;
-        private boolean detectVirtualThreadPooling       = false;
-        private boolean detectPlatformThreadPerTask      = false;
-        private boolean detectSharedSplittableRandom     = false;
-        private boolean detectCompletableFutureCompletionRace = false;
-        private boolean detectCompletableFutureCancellationPropagation = false;
-        private boolean detectCompletableFutureCombinatorMisuse = false;
-        private boolean detectLambdaLostUpdate           = false;
-        private boolean detectVirtualThreadResourceSaturation = false;
-        private boolean detectVirtualThreadMonitorSerialization = false;
-        private boolean detectThreadLocalCacheDegradation = false;
-        private boolean detectScopeJoinerMisuse = false;
-        private boolean detectScopeConfigurationMisuse = false;
-        private boolean detectScopeResultEscape = false;
-        private boolean detectLazyCollectionMisuse = false;
         private boolean enableBenchmarking = false;
         private double benchmarkRegressionThreshold = 0.2;
         private boolean failOnBenchmarkRegression = false;
@@ -1001,6 +882,10 @@ public final class AsyncTestConfig {
         private String lemonSqueezyStore = "";
         private String licenseKey = "";
         private boolean licenseMockMode = false;
+        // The per-detector setters, as one set: a setter adds or removes its own type, and
+        // build() resolves the whole selection from it (#917). Deadlock detection is on by
+        // default, as its boolean was.
+        private final EnumSet<DetectorType> explicit = EnumSet.of(DetectorType.DEADLOCKS);
         private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
         private Set<DetectorType> includes = EnumSet.noneOf(DetectorType.class);
 
@@ -1063,877 +948,877 @@ public final class AsyncTestConfig {
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectDeadlocks(boolean v)            { detectDeadlocks = v; return this; }
+        public Builder detectDeadlocks(boolean v) { return flag(DetectorType.DEADLOCKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVisibility}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVisibility(boolean v)           { detectVisibility = v; return this; }
+        public Builder detectVisibility(boolean v) { return flag(DetectorType.VISIBILITY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLivelocks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLivelocks(boolean v)            { detectLivelocks = v; return this; }
+        public Builder detectLivelocks(boolean v) { return flag(DetectorType.LIVELOCKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectFalseSharing}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectFalseSharing(boolean v)         { detectFalseSharing = v; return this; }
+        public Builder detectFalseSharing(boolean v) { return flag(DetectorType.FALSE_SHARING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectWakeupIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectWakeupIssues(boolean v)         { detectWakeupIssues = v; return this; }
+        public Builder detectWakeupIssues(boolean v) { return flag(DetectorType.WAKEUP_ISSUES, v); }
         /**
          * Sets {@link AsyncTestConfig#validateConstructorSafety}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder validateConstructorSafety(boolean v)  { validateConstructorSafety = v; return this; }
+        public Builder validateConstructorSafety(boolean v) { return flag(DetectorType.CONSTRUCTOR_SAFETY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectABAProblem}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectABAProblem(boolean v)           { detectABAProblem = v; return this; }
+        public Builder detectABAProblem(boolean v) { return flag(DetectorType.ABA_PROBLEM, v); }
         /**
          * Sets {@link AsyncTestConfig#validateLockOrder}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder validateLockOrder(boolean v)          { validateLockOrder = v; return this; }
+        public Builder validateLockOrder(boolean v) { return flag(DetectorType.LOCK_ORDER, v); }
         /**
          * Sets {@link AsyncTestConfig#monitorSynchronizers}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder monitorSynchronizers(boolean v)       { monitorSynchronizers = v; return this; }
+        public Builder monitorSynchronizers(boolean v) { return flag(DetectorType.SYNCHRONIZERS, v); }
         /**
          * Sets {@link AsyncTestConfig#monitorThreadPool}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder monitorThreadPool(boolean v)          { monitorThreadPool = v; return this; }
+        public Builder monitorThreadPool(boolean v) { return flag(DetectorType.THREAD_POOL, v); }
         /**
          * Sets {@link AsyncTestConfig#detectMemoryOrderingViolations}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectMemoryOrderingViolations(boolean v) { detectMemoryOrderingViolations = v; return this; }
+        public Builder detectMemoryOrderingViolations(boolean v) { return flag(DetectorType.MEMORY_ORDERING, v); }
         /**
          * Sets {@link AsyncTestConfig#monitorAsyncPipeline}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder monitorAsyncPipeline(boolean v)       { monitorAsyncPipeline = v; return this; }
+        public Builder monitorAsyncPipeline(boolean v) { return flag(DetectorType.ASYNC_PIPELINE, v); }
         /**
          * Sets {@link AsyncTestConfig#monitorReadWriteLockFairness}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder monitorReadWriteLockFairness(boolean v) { monitorReadWriteLockFairness = v; return this; }
+        public Builder monitorReadWriteLockFairness(boolean v) { return flag(DetectorType.READ_WRITE_LOCK_FAIRNESS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectRaceConditions}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectRaceConditions(boolean v)       { detectRaceConditions = v; return this; }
+        public Builder detectRaceConditions(boolean v) { return flag(DetectorType.RACE_CONDITIONS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadLocalLeaks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadLocalLeaks(boolean v)     { detectThreadLocalLeaks = v; return this; }
+        public Builder detectThreadLocalLeaks(boolean v) { return flag(DetectorType.THREAD_LOCAL_LEAKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectBusyWaiting}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectBusyWaiting(boolean v)          { detectBusyWaiting = v; return this; }
+        public Builder detectBusyWaiting(boolean v) { return flag(DetectorType.BUSY_WAITING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectAtomicityViolations}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectAtomicityViolations(boolean v)  { detectAtomicityViolations = v; return this; }
+        public Builder detectAtomicityViolations(boolean v) { return flag(DetectorType.ATOMICITY_VIOLATIONS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectInterruptMishandling}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectInterruptMishandling(boolean v) { detectInterruptMishandling = v; return this; }
+        public Builder detectInterruptMishandling(boolean v) { return flag(DetectorType.INTERRUPT_MISHANDLING, v); }
         /**
          * Sets {@link AsyncTestConfig#monitorSemaphore}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder monitorSemaphore(boolean v)           { monitorSemaphore = v; return this; }
+        public Builder monitorSemaphore(boolean v) { return flag(DetectorType.SEMAPHORE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCompletableFutureExceptions}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCompletableFutureExceptions(boolean v) { detectCompletableFutureExceptions = v; return this; }
+        public Builder detectCompletableFutureExceptions(boolean v) { return flag(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCompletableFutureCompletionLeaks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCompletableFutureCompletionLeaks(boolean v) { detectCompletableFutureCompletionLeaks = v; return this; }
+        public Builder detectCompletableFutureCompletionLeaks(boolean v) { return flag(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVirtualThreadPinning}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVirtualThreadPinning(boolean v) { detectVirtualThreadPinning = v; return this; }
+        public Builder detectVirtualThreadPinning(boolean v) { return flag(DetectorType.VIRTUAL_THREAD_PINNING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadPoolDeadlocks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadPoolDeadlocks(boolean v) { detectThreadPoolDeadlocks = v; return this; }
+        public Builder detectThreadPoolDeadlocks(boolean v) { return flag(DetectorType.THREAD_POOL_DEADLOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectConcurrentModifications}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectConcurrentModifications(boolean v) { detectConcurrentModifications = v; return this; }
+        public Builder detectConcurrentModifications(boolean v) { return flag(DetectorType.CONCURRENT_MODIFICATIONS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLockLeaks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLockLeaks(boolean v) { detectLockLeaks = v; return this; }
+        public Builder detectLockLeaks(boolean v) { return flag(DetectorType.LOCK_LEAKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedRandom}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedRandom(boolean v) { detectSharedRandom = v; return this; }
+        public Builder detectSharedRandom(boolean v) { return flag(DetectorType.SHARED_RANDOM, v); }
         /**
          * Sets {@link AsyncTestConfig#detectBlockingQueueIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectBlockingQueueIssues(boolean v) { detectBlockingQueueIssues = v; return this; }
+        public Builder detectBlockingQueueIssues(boolean v) { return flag(DetectorType.BLOCKING_QUEUE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectConditionVariableIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectConditionVariableIssues(boolean v) { detectConditionVariableIssues = v; return this; }
+        public Builder detectConditionVariableIssues(boolean v) { return flag(DetectorType.CONDITION_VARIABLES, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSimpleDateFormatIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSimpleDateFormatIssues(boolean v) { detectSimpleDateFormatIssues = v; return this; }
+        public Builder detectSimpleDateFormatIssues(boolean v) { return flag(DetectorType.SIMPLE_DATE_FORMAT, v); }
         /**
          * Sets {@link AsyncTestConfig#detectParallelStreamIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectParallelStreamIssues(boolean v) { detectParallelStreamIssues = v; return this; }
+        public Builder detectParallelStreamIssues(boolean v) { return flag(DetectorType.PARALLEL_STREAMS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectResourceLeaks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectResourceLeaks(boolean v) { detectResourceLeaks = v; return this; }
+        public Builder detectResourceLeaks(boolean v) { return flag(DetectorType.RESOURCE_LEAKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCountDownLatchIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCountDownLatchIssues(boolean v) { detectCountDownLatchIssues = v; return this; }
+        public Builder detectCountDownLatchIssues(boolean v) { return flag(DetectorType.COUNTDOWN_LATCH, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCyclicBarrierIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCyclicBarrierIssues(boolean v) { detectCyclicBarrierIssues = v; return this; }
+        public Builder detectCyclicBarrierIssues(boolean v) { return flag(DetectorType.CYCLIC_BARRIER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectReentrantLockIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectReentrantLockIssues(boolean v) { detectReentrantLockIssues = v; return this; }
+        public Builder detectReentrantLockIssues(boolean v) { return flag(DetectorType.REENTRANT_LOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVolatileArrayIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVolatileArrayIssues(boolean v) { detectVolatileArrayIssues = v; return this; }
+        public Builder detectVolatileArrayIssues(boolean v) { return flag(DetectorType.VOLATILE_ARRAY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectDoubleCheckedLocking}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectDoubleCheckedLocking(boolean v) { detectDoubleCheckedLocking = v; return this; }
+        public Builder detectDoubleCheckedLocking(boolean v) { return flag(DetectorType.DOUBLE_CHECKED_LOCKING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectWaitTimeout}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectWaitTimeout(boolean v) { detectWaitTimeout = v; return this; }
+        public Builder detectWaitTimeout(boolean v) { return flag(DetectorType.WAIT_TIMEOUT, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLockContention}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLockContention(boolean v) { detectLockContention = v; return this; }
+        public Builder detectLockContention(boolean v) { return flag(DetectorType.LOCK_CONTENTION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSynchronizedNonFinal}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSynchronizedNonFinal(boolean v) { detectSynchronizedNonFinal = v; return this; }
+        public Builder detectSynchronizedNonFinal(boolean v) { return flag(DetectorType.SYNCHRONIZED_NON_FINAL, v); }
         /**
          * Sets {@link AsyncTestConfig#detectMissedSignals}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectMissedSignals(boolean v) { detectMissedSignals = v; return this; }
+        public Builder detectMissedSignals(boolean v) { return flag(DetectorType.MISSED_SIGNAL, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLazyInitRace}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLazyInitRace(boolean v) { detectLazyInitRace = v; return this; }
+        public Builder detectLazyInitRace(boolean v) { return flag(DetectorType.LAZY_INIT_RACE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectPhaserIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectPhaserIssues(boolean v) { detectPhaserIssues = v; return this; }
+        public Builder detectPhaserIssues(boolean v) { return flag(DetectorType.PHASER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStampedLockIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStampedLockIssues(boolean v) { detectStampedLockIssues = v; return this; }
+        public Builder detectStampedLockIssues(boolean v) { return flag(DetectorType.STAMPED_LOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectExchangerIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectExchangerIssues(boolean v) { detectExchangerIssues = v; return this; }
+        public Builder detectExchangerIssues(boolean v) { return flag(DetectorType.EXCHANGER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectScheduledExecutorIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectScheduledExecutorIssues(boolean v) { detectScheduledExecutorIssues = v; return this; }
+        public Builder detectScheduledExecutorIssues(boolean v) { return flag(DetectorType.SCHEDULED_EXECUTOR, v); }
         /**
          * Sets {@link AsyncTestConfig#detectForkJoinPoolIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectForkJoinPoolIssues(boolean v) { detectForkJoinPoolIssues = v; return this; }
+        public Builder detectForkJoinPoolIssues(boolean v) { return flag(DetectorType.FORK_JOIN_POOL, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadFactoryIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadFactoryIssues(boolean v) { detectThreadFactoryIssues = v; return this; }
+        public Builder detectThreadFactoryIssues(boolean v) { return flag(DetectorType.THREAD_FACTORY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadLeaks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadLeaks(boolean v) { detectThreadLeaks = v; return this; }
+        public Builder detectThreadLeaks(boolean v) { return flag(DetectorType.THREAD_LEAKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSleepInLock}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSleepInLock(boolean v) { detectSleepInLock = v; return this; }
+        public Builder detectSleepInLock(boolean v) { return flag(DetectorType.SLEEP_IN_LOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectUnboundedQueue}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectUnboundedQueue(boolean v) { detectUnboundedQueue = v; return this; }
+        public Builder detectUnboundedQueue(boolean v) { return flag(DetectorType.UNBOUNDED_QUEUE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadStarvation}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadStarvation(boolean v) { detectThreadStarvation = v; return this; }
+        public Builder detectThreadStarvation(boolean v) { return flag(DetectorType.THREAD_STARVATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCalendarIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCalendarIssues(boolean v) { detectCalendarIssues = v; return this; }
+        public Builder detectCalendarIssues(boolean v) { return flag(DetectorType.CALENDAR, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedCollections}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedCollections(boolean v) { detectSharedCollections = v; return this; }
+        public Builder detectSharedCollections(boolean v) { return flag(DetectorType.SHARED_COLLECTIONS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectTimerIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectTimerIssues(boolean v) { detectTimerIssues = v; return this; }
+        public Builder detectTimerIssues(boolean v) { return flag(DetectorType.TIMER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCopyOnWriteCollectionIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCopyOnWriteCollectionIssues(boolean v) { detectCopyOnWriteCollectionIssues = v; return this; }
+        public Builder detectCopyOnWriteCollectionIssues(boolean v) { return flag(DetectorType.COPY_ON_WRITE_COLLECTIONS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStringBuilderIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStringBuilderIssues(boolean v)           { detectStringBuilderIssues = v; return this; }
+        public Builder detectStringBuilderIssues(boolean v) { return flag(DetectorType.STRING_BUILDER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStructuredConcurrencyIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStructuredConcurrencyIssues(boolean v)      { detectStructuredConcurrencyIssues = v; return this; }
+        public Builder detectStructuredConcurrencyIssues(boolean v) { return flag(DetectorType.STRUCTURED_CONCURRENCY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVirtualThreadContextLeaks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVirtualThreadContextLeaks(boolean v)        { detectVirtualThreadContextLeaks = v; return this; }
+        public Builder detectVirtualThreadContextLeaks(boolean v) { return flag(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, v); }
         /**
          * Sets {@link AsyncTestConfig#detectScopedValueMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectScopedValueMisuse(boolean v)                { detectScopedValueMisuse = v; return this; }
+        public Builder detectScopedValueMisuse(boolean v) { return flag(DetectorType.SCOPED_VALUE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVirtualThreadCpuBoundTasks}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVirtualThreadCpuBoundTasks(boolean v)       { detectVirtualThreadCpuBoundTasks = v; return this; }
+        public Builder detectVirtualThreadCpuBoundTasks(boolean v) { return flag(DetectorType.VIRTUAL_THREAD_CPU_BOUND, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVirtualThreadCarrierExhaustion}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVirtualThreadCarrierExhaustion(boolean v)   { detectVirtualThreadCarrierExhaustion = v; return this; }
+        public Builder detectVirtualThreadCarrierExhaustion(boolean v) { return flag(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectHttpClientIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectHttpClientIssues(boolean v)                 { detectHttpClientIssues = v; return this; }
+        public Builder detectHttpClientIssues(boolean v) { return flag(DetectorType.HTTP_CLIENT, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStreamClosing}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStreamClosing(boolean v)                  { detectStreamClosing = v; return this; }
+        public Builder detectStreamClosing(boolean v) { return flag(DetectorType.STREAM_CLOSING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCacheConcurrency}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCacheConcurrency(boolean v)               { detectCacheConcurrency = v; return this; }
+        public Builder detectCacheConcurrency(boolean v) { return flag(DetectorType.CACHE_CONCURRENCY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCompletableFutureChainIssues}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCompletableFutureChainIssues(boolean v)   { detectCompletableFutureChainIssues = v; return this; }
+        public Builder detectCompletableFutureChainIssues(boolean v) { return flag(DetectorType.COMPLETABLEFUTURE_CHAIN, v); }
         /**
          * Sets {@link AsyncTestConfig#detectExecutorShutdown}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectExecutorShutdown(boolean v)               { detectExecutorShutdown = v; return this; }
+        public Builder detectExecutorShutdown(boolean v) { return flag(DetectorType.EXECUTOR_SHUTDOWN, v); }
         /**
          * Sets {@link AsyncTestConfig#detectMutableMapKeys}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectMutableMapKeys(boolean v)                 { detectMutableMapKeys = v; return this; }
+        public Builder detectMutableMapKeys(boolean v) { return flag(DetectorType.MUTABLE_MAP_KEY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectNestedMonitorLockout}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectNestedMonitorLockout(boolean v)           { detectNestedMonitorLockout = v; return this; }
+        public Builder detectNestedMonitorLockout(boolean v) { return flag(DetectorType.NESTED_MONITOR_LOCKOUT, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLockDowngrade}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLockDowngrade(boolean v)                  { detectLockDowngrade = v; return this; }
+        public Builder detectLockDowngrade(boolean v) { return flag(DetectorType.LOCK_DOWNGRADE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectInheritableThreadLocalMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectInheritableThreadLocalMisuse(boolean v)   { detectInheritableThreadLocalMisuse = v; return this; }
+        public Builder detectInheritableThreadLocalMisuse(boolean v) { return flag(DetectorType.INHERITABLE_THREAD_LOCAL, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadLocalContamination}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadLocalContamination(boolean v)       { detectThreadLocalContamination = v; return this; }
+        public Builder detectThreadLocalContamination(boolean v) { return flag(DetectorType.THREAD_LOCAL_CONTAMINATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectAtomicNonAtomicUpdates}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectAtomicNonAtomicUpdates(boolean v)         { detectAtomicNonAtomicUpdates = v; return this; }
+        public Builder detectAtomicNonAtomicUpdates(boolean v) { return flag(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSynchronizedCollectionIteration}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSynchronizedCollectionIteration(boolean v){ detectSynchronizedCollectionIteration = v; return this; }
+        public Builder detectSynchronizedCollectionIteration(boolean v) { return flag(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedFormatter}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedFormatter(boolean v)                { detectSharedFormatter = v; return this; }
+        public Builder detectSharedFormatter(boolean v) { return flag(DetectorType.SHARED_FORMATTER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectConcurrentMapComputeRecursion}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectConcurrentMapComputeRecursion(boolean v)  { detectConcurrentMapComputeRecursion = v; return this; }
+        public Builder detectConcurrentMapComputeRecursion(boolean v) { return flag(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSynchronizedOnLiteral}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSynchronizedOnLiteral(boolean v)          { detectSynchronizedOnLiteral = v; return this; }
+        public Builder detectSynchronizedOnLiteral(boolean v) { return flag(DetectorType.SYNCHRONIZED_ON_LITERAL, v); }
         /**
          * Sets {@link AsyncTestConfig#detectPublicLockExposure}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectPublicLockExposure(boolean v)             { detectPublicLockExposure = v; return this; }
+        public Builder detectPublicLockExposure(boolean v) { return flag(DetectorType.PUBLIC_LOCK_EXPOSURE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectForkJoinTaskBlocking}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectForkJoinTaskBlocking(boolean v)           { detectForkJoinTaskBlocking = v; return this; }
+        public Builder detectForkJoinTaskBlocking(boolean v) { return flag(DetectorType.FORK_JOIN_TASK_BLOCKING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectOptimisticReadValidation}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectOptimisticReadValidation(boolean v)       { detectOptimisticReadValidation = v; return this; }
+        public Builder detectOptimisticReadValidation(boolean v) { return flag(DetectorType.OPTIMISTIC_READ_VALIDATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCFCommonPoolBlocking}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCFCommonPoolBlocking(boolean v)           { detectCFCommonPoolBlocking = v; return this; }
+        public Builder detectCFCommonPoolBlocking(boolean v) { return flag(DetectorType.CF_COMMON_POOL_BLOCKING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedMatcher}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedMatcher(boolean v)                  { detectSharedMatcher = v; return this; }
+        public Builder detectSharedMatcher(boolean v) { return flag(DetectorType.SHARED_MATCHER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedDecimalFormat}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedDecimalFormat(boolean v)            { detectSharedDecimalFormat = v; return this; }
+        public Builder detectSharedDecimalFormat(boolean v) { return flag(DetectorType.SHARED_DECIMAL_FORMAT, v); }
         /**
          * Sets {@link AsyncTestConfig#detectWeakReferenceRace}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectWeakReferenceRace(boolean v)              { detectWeakReferenceRace = v; return this; }
+        public Builder detectWeakReferenceRace(boolean v) { return flag(DetectorType.WEAK_REFERENCE_RACE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStatefulLambda}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStatefulLambda(boolean v)                 { detectStatefulLambda = v; return this; }
+        public Builder detectStatefulLambda(boolean v) { return flag(DetectorType.STATEFUL_LAMBDA, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedMessageDigest}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedMessageDigest(boolean v)            { detectSharedMessageDigest = v; return this; }
+        public Builder detectSharedMessageDigest(boolean v) { return flag(DetectorType.SHARED_MESSAGE_DIGEST, v); }
         /**
          * Sets {@link AsyncTestConfig#detectInterruptSwallowing}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectInterruptSwallowing(boolean v)            { detectInterruptSwallowing = v; return this; }
+        public Builder detectInterruptSwallowing(boolean v) { return flag(DetectorType.INTERRUPT_SWALLOWING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectMdcContextLeak}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectMdcContextLeak(boolean v)                 { detectMdcContextLeak = v; return this; }
+        public Builder detectMdcContextLeak(boolean v) { return flag(DetectorType.MDC_CONTEXT_LEAK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSystemPropertyMutation}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSystemPropertyMutation(boolean v)         { detectSystemPropertyMutation = v; return this; }
+        public Builder detectSystemPropertyMutation(boolean v) { return flag(DetectorType.SYSTEM_PROPERTY_MUTATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectFutureIgnored}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectFutureIgnored(boolean v)                  { detectFutureIgnored = v; return this; }
+        public Builder detectFutureIgnored(boolean v) { return flag(DetectorType.FUTURE_IGNORED, v); }
         /**
          * Sets {@link AsyncTestConfig#detectExplicitGc}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectExplicitGc(boolean v)                     { detectExplicitGc = v; return this; }
+        public Builder detectExplicitGc(boolean v) { return flag(DetectorType.EXPLICIT_GC, v); }
         /**
          * Sets {@link AsyncTestConfig#detectDeprecatedThreadApi}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectDeprecatedThreadApi(boolean v)            { detectDeprecatedThreadApi = v; return this; }
+        public Builder detectDeprecatedThreadApi(boolean v) { return flag(DetectorType.DEPRECATED_THREAD_API, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedXmlParser}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedXmlParser(boolean v)                { detectSharedXmlParser = v; return this; }
+        public Builder detectSharedXmlParser(boolean v) { return flag(DetectorType.SHARED_XML_PARSER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectBoxedPrimitiveLock}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectBoxedPrimitiveLock(boolean v)             { detectBoxedPrimitiveLock = v; return this; }
+        public Builder detectBoxedPrimitiveLock(boolean v) { return flag(DetectorType.BOXED_PRIMITIVE_LOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedTimeZone}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedTimeZone(boolean v)                 { detectSharedTimeZone = v; return this; }
+        public Builder detectSharedTimeZone(boolean v) { return flag(DetectorType.SHARED_TIMEZONE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectUncaughtExceptionHandler}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectUncaughtExceptionHandler(boolean v)       { detectUncaughtExceptionHandler = v; return this; }
+        public Builder detectUncaughtExceptionHandler(boolean v) { return flag(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectDaemonThreadHygiene}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectDaemonThreadHygiene(boolean v)            { detectDaemonThreadHygiene = v; return this; }
+        public Builder detectDaemonThreadHygiene(boolean v) { return flag(DetectorType.DAEMON_THREAD_HYGIENE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectNotifyWithoutMonitor}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectNotifyWithoutMonitor(boolean v)           { detectNotifyWithoutMonitor = v; return this; }
+        public Builder detectNotifyWithoutMonitor(boolean v) { return flag(DetectorType.NOTIFY_WITHOUT_MONITOR, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedSecureRandom}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedSecureRandom(boolean v)             { detectSharedSecureRandom = v; return this; }
+        public Builder detectSharedSecureRandom(boolean v) { return flag(DetectorType.SHARED_SECURE_RANDOM, v); }
         /**
          * Sets {@link AsyncTestConfig#detectWeakHashMapShared}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectWeakHashMapShared(boolean v)              { detectWeakHashMapShared = v; return this; }
+        public Builder detectWeakHashMapShared(boolean v) { return flag(DetectorType.WEAK_HASH_MAP_SHARED, v); }
         /**
          * Sets {@link AsyncTestConfig#detectJdbcConnectionShared}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectJdbcConnectionShared(boolean v)           { detectJdbcConnectionShared = v; return this; }
+        public Builder detectJdbcConnectionShared(boolean v) { return flag(DetectorType.JDBC_CONNECTION_SHARED, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedStatefulCrypto}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedStatefulCrypto(boolean v)           { detectSharedStatefulCrypto = v; return this; }
+        public Builder detectSharedStatefulCrypto(boolean v) { return flag(DetectorType.SHARED_STATEFUL_CRYPTO, v); }
         /**
          * Sets {@link AsyncTestConfig#detectConcurrentMapCheckThenAct}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectConcurrentMapCheckThenAct(boolean v)      { detectConcurrentMapCheckThenAct = v; return this; }
+        public Builder detectConcurrentMapCheckThenAct(boolean v) { return flag(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedDeflater}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedDeflater(boolean v)                 { detectSharedDeflater = v; return this; }
+        public Builder detectSharedDeflater(boolean v) { return flag(DetectorType.SHARED_DEFLATER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThisEscape}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThisEscape(boolean v)                     { detectThisEscape = v; return this; }
+        public Builder detectThisEscape(boolean v) { return flag(DetectorType.THIS_ESCAPE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadLocalRandomMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadLocalRandomMisuse(boolean v)        { detectThreadLocalRandomMisuse = v; return this; }
+        public Builder detectThreadLocalRandomMisuse(boolean v) { return flag(DetectorType.THREAD_LOCAL_RANDOM_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCompletableFutureObtrudeAbuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCompletableFutureObtrudeAbuse(boolean v)  { detectCompletableFutureObtrudeAbuse = v; return this; }
+        public Builder detectCompletableFutureObtrudeAbuse(boolean v) { return flag(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSpuriousWakeupHazard}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSpuriousWakeupHazard(boolean v)           { detectSpuriousWakeupHazard = v; return this; }
+        public Builder detectSpuriousWakeupHazard(boolean v) { return flag(DetectorType.SPURIOUS_WAKEUP_HAZARD, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLockUpgradeDeadlock}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLockUpgradeDeadlock(boolean v)            { detectLockUpgradeDeadlock = v; return this; }
+        public Builder detectLockUpgradeDeadlock(boolean v) { return flag(DetectorType.LOCK_UPGRADE_DEADLOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectTryLockMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectTryLockMisuse(boolean v)                  { detectTryLockMisuse = v; return this; }
+        public Builder detectTryLockMisuse(boolean v) { return flag(DetectorType.TRY_LOCK_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCFBlockingCallback}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCFBlockingCallback(boolean v)             { detectCFBlockingCallback = v; return this; }
+        public Builder detectCFBlockingCallback(boolean v) { return flag(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStableValueMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStableValueMisuse(boolean v)              { detectStableValueMisuse = v; return this; }
+        public Builder detectStableValueMisuse(boolean v) { return flag(DetectorType.STABLE_VALUE_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStructuredTaskScopeMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStructuredTaskScopeMisuse(boolean v)      { detectStructuredTaskScopeMisuse = v; return this; }
+        public Builder detectStructuredTaskScopeMisuse(boolean v) { return flag(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectGathererConcurrencyMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectGathererConcurrencyMisuse(boolean v)      { detectGathererConcurrencyMisuse = v; return this; }
+        public Builder detectGathererConcurrencyMisuse(boolean v) { return flag(DetectorType.GATHERER_CONCURRENCY_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedByteBuffer}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedByteBuffer(boolean v)               { detectSharedByteBuffer = v; return this; }
+        public Builder detectSharedByteBuffer(boolean v) { return flag(DetectorType.SHARED_BYTE_BUFFER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedCharsetCoder}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedCharsetCoder(boolean v)             { detectSharedCharsetCoder = v; return this; }
+        public Builder detectSharedCharsetCoder(boolean v) { return flag(DetectorType.SHARED_CHARSET_CODER, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedChecksum}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedChecksum(boolean v)                 { detectSharedChecksum = v; return this; }
+        public Builder detectSharedChecksum(boolean v) { return flag(DetectorType.SHARED_CHECKSUM, v); }
         /**
          * Sets {@link AsyncTestConfig#detectFileChannelPositionRace}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectFileChannelPositionRace(boolean v)        { detectFileChannelPositionRace = v; return this; }
+        public Builder detectFileChannelPositionRace(boolean v) { return flag(DetectorType.FILE_CHANNEL_POSITION_RACE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedIterator}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedIterator(boolean v)                 { detectSharedIterator = v; return this; }
+        public Builder detectSharedIterator(boolean v) { return flag(DetectorType.SHARED_ITERATOR, v); }
         /**
          * Sets {@link AsyncTestConfig#detectHighContentionAtomic}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectHighContentionAtomic(boolean v)           { detectHighContentionAtomic = v; return this; }
+        public Builder detectHighContentionAtomic(boolean v) { return flag(DetectorType.HIGH_CONTENTION_ATOMIC, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedJsonMapperReconfig}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedJsonMapperReconfig(boolean v)       { detectSharedJsonMapperReconfig = v; return this; }
+        public Builder detectSharedJsonMapperReconfig(boolean v) { return flag(DetectorType.SHARED_JSON_MAPPER_RECONFIG, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLazyConstantMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLazyConstantMisuse(boolean v)             { detectLazyConstantMisuse = v; return this; }
+        public Builder detectLazyConstantMisuse(boolean v) { return flag(DetectorType.LAZY_CONSTANT_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectFinalFieldMutation}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectFinalFieldMutation(boolean v)             { detectFinalFieldMutation = v; return this; }
+        public Builder detectFinalFieldMutation(boolean v) { return flag(DetectorType.FINAL_FIELD_MUTATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedKdf}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedKdf(boolean v)                      { detectSharedKdf = v; return this; }
+        public Builder detectSharedKdf(boolean v) { return flag(DetectorType.SHARED_KDF, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLatchMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLatchMisuse(boolean v)                    { detectLatchMisuse = v; return this; }
+        public Builder detectLatchMisuse(boolean v) { return flag(DetectorType.LATCH_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectExecutorDeadlock}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectExecutorDeadlock(boolean v)               { detectExecutorDeadlock = v; return this; }
+        public Builder detectExecutorDeadlock(boolean v) { return flag(DetectorType.EXECUTOR_DEADLOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectFutureBlocking}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectFutureBlocking(boolean v)                 { detectFutureBlocking = v; return this; }
+        public Builder detectFutureBlocking(boolean v) { return flag(DetectorType.FUTURE_BLOCKING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectFlowPublisherConcurrency}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectFlowPublisherConcurrency(boolean v)       { detectFlowPublisherConcurrency = v; return this; }
+        public Builder detectFlowPublisherConcurrency(boolean v) { return flag(DetectorType.FLOW_PUBLISHER_CONCURRENCY, v); }
         /**
          * Sets {@link AsyncTestConfig#detectConfinedArenaThreadEscape}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectConfinedArenaThreadEscape(boolean v)      { detectConfinedArenaThreadEscape = v; return this; }
+        public Builder detectConfinedArenaThreadEscape(boolean v) { return flag(DetectorType.CONFINED_ARENA_THREAD_ESCAPE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedMemorySegmentRace}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedMemorySegmentRace(boolean v)        { detectSharedMemorySegmentRace = v; return this; }
+        public Builder detectSharedMemorySegmentRace(boolean v) { return flag(DetectorType.SHARED_MEMORY_SEGMENT_RACE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVarHandleNonAtomicUpdate}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVarHandleNonAtomicUpdate(boolean v)       { detectVarHandleNonAtomicUpdate = v; return this; }
+        public Builder detectVarHandleNonAtomicUpdate(boolean v) { return flag(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectRecordMutableComponentLeak}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectRecordMutableComponentLeak(boolean v)     { detectRecordMutableComponentLeak = v; return this; }
+        public Builder detectRecordMutableComponentLeak(boolean v) { return flag(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectStaticInitDeadlock}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectStaticInitDeadlock(boolean v)             { detectStaticInitDeadlock = v; return this; }
+        public Builder detectStaticInitDeadlock(boolean v) { return flag(DetectorType.STATIC_INIT_DEADLOCK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVirtualThreadPooling}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVirtualThreadPooling(boolean v)           { detectVirtualThreadPooling = v; return this; }
+        public Builder detectVirtualThreadPooling(boolean v) { return flag(DetectorType.VIRTUAL_THREAD_POOLING, v); }
         /**
          * Sets {@link AsyncTestConfig#detectPlatformThreadPerTask}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectPlatformThreadPerTask(boolean v)          { detectPlatformThreadPerTask = v; return this; }
+        public Builder detectPlatformThreadPerTask(boolean v) { return flag(DetectorType.PLATFORM_THREAD_PER_TASK, v); }
         /**
          * Sets {@link AsyncTestConfig#detectSharedSplittableRandom}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectSharedSplittableRandom(boolean v)         { detectSharedSplittableRandom = v; return this; }
+        public Builder detectSharedSplittableRandom(boolean v) { return flag(DetectorType.SHARED_SPLITTABLE_RANDOM, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCompletableFutureCompletionRace}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCompletableFutureCompletionRace(boolean v) { detectCompletableFutureCompletionRace = v; return this; }
+        public Builder detectCompletableFutureCompletionRace(boolean v) { return flag(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCompletableFutureCancellationPropagation}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCompletableFutureCancellationPropagation(boolean v) { detectCompletableFutureCancellationPropagation = v; return this; }
+        public Builder detectCompletableFutureCancellationPropagation(boolean v) { return flag(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectCompletableFutureCombinatorMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectCompletableFutureCombinatorMisuse(boolean v)  { detectCompletableFutureCombinatorMisuse = v; return this; }
+        public Builder detectCompletableFutureCombinatorMisuse(boolean v) { return flag(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLambdaLostUpdate}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLambdaLostUpdate(boolean v)               { detectLambdaLostUpdate = v; return this; }
+        public Builder detectLambdaLostUpdate(boolean v) { return flag(DetectorType.LAMBDA_LOST_UPDATE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVirtualThreadResourceSaturation}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVirtualThreadResourceSaturation(boolean v) { detectVirtualThreadResourceSaturation = v; return this; }
+        public Builder detectVirtualThreadResourceSaturation(boolean v) { return flag(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectVirtualThreadMonitorSerialization}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectVirtualThreadMonitorSerialization(boolean v) { detectVirtualThreadMonitorSerialization = v; return this; }
+        public Builder detectVirtualThreadMonitorSerialization(boolean v) { return flag(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectThreadLocalCacheDegradation}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectThreadLocalCacheDegradation(boolean v)     { detectThreadLocalCacheDegradation = v; return this; }
+        public Builder detectThreadLocalCacheDegradation(boolean v) { return flag(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, v); }
         /**
          * Sets {@link AsyncTestConfig#detectScopeJoinerMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectScopeJoinerMisuse(boolean v) { detectScopeJoinerMisuse = v; return this; }
+        public Builder detectScopeJoinerMisuse(boolean v) { return flag(DetectorType.SCOPE_JOINER_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectScopeConfigurationMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectScopeConfigurationMisuse(boolean v) { detectScopeConfigurationMisuse = v; return this; }
+        public Builder detectScopeConfigurationMisuse(boolean v) { return flag(DetectorType.SCOPE_CONFIGURATION_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectScopeResultEscape}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectScopeResultEscape(boolean v) { detectScopeResultEscape = v; return this; }
+        public Builder detectScopeResultEscape(boolean v) { return flag(DetectorType.SCOPE_RESULT_ESCAPE, v); }
         /**
          * Sets {@link AsyncTestConfig#detectLazyCollectionMisuse}.
          * @param v the value to use
          * @return this builder
          */
-        public Builder detectLazyCollectionMisuse(boolean v) { detectLazyCollectionMisuse = v; return this; }
+        public Builder detectLazyCollectionMisuse(boolean v) { return flag(DetectorType.LAZY_COLLECTION_MISUSE, v); }
         /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use
@@ -1989,6 +1874,16 @@ public final class AsyncTestConfig {
          */
         public Builder licenseMockMode(boolean v) { licenseMockMode = v; return this; }
 
+        /** Adds {@code type} to the explicitly enabled detectors, or removes it. */
+        private Builder flag(DetectorType type, boolean on) {
+            if (on) {
+                explicit.add(type);
+            } else {
+                explicit.remove(type);
+            }
+            return this;
+        }
+
         /**
          * Sets {@link AsyncTest#excludes()}.
          * @param v the value to use
@@ -2037,174 +1932,18 @@ public final class AsyncTestConfig {
                 throw new IllegalArgumentException("threads must be >= 1, was " + threads);
             }
             if (!includes.isEmpty()) {
-                // includes wins over detectAll/per-flag setters: force the
-                // detectAll path and exclude everything outside the include set.
-                // Explicit excludes are already in the set and thus still win.
+                // includes wins over detectAll and the per-detector setters, and the resolved
+                // detectAll field has always read true for it.
                 detectAll = true;
-                for (DetectorType t : DetectorType.values()) {
-                    if (!includes.contains(t)) {
-                        excludes.add(t);
-                    }
-                }
             }
-            // One resolution per detector, replacing the former detectAll/else pair.
-            //
-            //   detectAll  : enabled unless excluded          -> !excludes.contains(T)
-            //   otherwise  : keep the explicit enable, then apply excludes
-            //                                                 -> field && !excludes.contains(T)
-            //
-            // which is one expression: (detectAll || field) && !excludes.contains(T). Writing it
-            // once per type instead of twice removes the failure this code has already had, where a
-            // type present in one branch was missing from the other and silently ignored excludes.
-            // A type can now only be forgotten entirely, which AsyncTestConfigBuildResolutionTest
-            // fails on, rather than half-forgotten, which nothing noticed for several releases.
-            detectDeadlocks = (detectAll || detectDeadlocks) && !excludes.contains(DetectorType.DEADLOCKS);
-            detectVisibility = (detectAll || detectVisibility) && !excludes.contains(DetectorType.VISIBILITY);
-            detectLivelocks = (detectAll || detectLivelocks) && !excludes.contains(DetectorType.LIVELOCKS);
-            detectFalseSharing = (detectAll || detectFalseSharing) && !excludes.contains(DetectorType.FALSE_SHARING);
-            detectWakeupIssues = (detectAll || detectWakeupIssues) && !excludes.contains(DetectorType.WAKEUP_ISSUES);
-            validateConstructorSafety = (detectAll || validateConstructorSafety) && !excludes.contains(DetectorType.CONSTRUCTOR_SAFETY);
-            detectABAProblem = (detectAll || detectABAProblem) && !excludes.contains(DetectorType.ABA_PROBLEM);
-            validateLockOrder = (detectAll || validateLockOrder) && !excludes.contains(DetectorType.LOCK_ORDER);
-            monitorSynchronizers = (detectAll || monitorSynchronizers) && !excludes.contains(DetectorType.SYNCHRONIZERS);
-            monitorThreadPool = (detectAll || monitorThreadPool) && !excludes.contains(DetectorType.THREAD_POOL);
-            detectMemoryOrderingViolations = (detectAll || detectMemoryOrderingViolations) && !excludes.contains(DetectorType.MEMORY_ORDERING);
-            monitorAsyncPipeline = (detectAll || monitorAsyncPipeline) && !excludes.contains(DetectorType.ASYNC_PIPELINE);
-            monitorReadWriteLockFairness = (detectAll || monitorReadWriteLockFairness) && !excludes.contains(DetectorType.READ_WRITE_LOCK_FAIRNESS);
-            monitorSemaphore = (detectAll || monitorSemaphore) && !excludes.contains(DetectorType.SEMAPHORE);
-            detectCompletableFutureExceptions = (detectAll || detectCompletableFutureExceptions) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS);
-            detectCompletableFutureCompletionLeaks = (detectAll || detectCompletableFutureCompletionLeaks) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS);
-            detectVirtualThreadPinning = (detectAll || detectVirtualThreadPinning) && !excludes.contains(DetectorType.VIRTUAL_THREAD_PINNING);
-            detectThreadPoolDeadlocks = (detectAll || detectThreadPoolDeadlocks) && !excludes.contains(DetectorType.THREAD_POOL_DEADLOCK);
-            detectConcurrentModifications = (detectAll || detectConcurrentModifications) && !excludes.contains(DetectorType.CONCURRENT_MODIFICATIONS);
-            detectLockLeaks = (detectAll || detectLockLeaks) && !excludes.contains(DetectorType.LOCK_LEAKS);
-            detectSharedRandom = (detectAll || detectSharedRandom) && !excludes.contains(DetectorType.SHARED_RANDOM);
-            detectBlockingQueueIssues = (detectAll || detectBlockingQueueIssues) && !excludes.contains(DetectorType.BLOCKING_QUEUE);
-            detectConditionVariableIssues = (detectAll || detectConditionVariableIssues) && !excludes.contains(DetectorType.CONDITION_VARIABLES);
-            detectSimpleDateFormatIssues = (detectAll || detectSimpleDateFormatIssues) && !excludes.contains(DetectorType.SIMPLE_DATE_FORMAT);
-            detectParallelStreamIssues = (detectAll || detectParallelStreamIssues) && !excludes.contains(DetectorType.PARALLEL_STREAMS);
-            detectResourceLeaks = (detectAll || detectResourceLeaks) && !excludes.contains(DetectorType.RESOURCE_LEAKS);
-            detectCountDownLatchIssues = (detectAll || detectCountDownLatchIssues) && !excludes.contains(DetectorType.COUNTDOWN_LATCH);
-            detectCyclicBarrierIssues = (detectAll || detectCyclicBarrierIssues) && !excludes.contains(DetectorType.CYCLIC_BARRIER);
-            detectReentrantLockIssues = (detectAll || detectReentrantLockIssues) && !excludes.contains(DetectorType.REENTRANT_LOCK);
-            detectVolatileArrayIssues = (detectAll || detectVolatileArrayIssues) && !excludes.contains(DetectorType.VOLATILE_ARRAY);
-            detectDoubleCheckedLocking = (detectAll || detectDoubleCheckedLocking) && !excludes.contains(DetectorType.DOUBLE_CHECKED_LOCKING);
-            detectWaitTimeout = (detectAll || detectWaitTimeout) && !excludes.contains(DetectorType.WAIT_TIMEOUT);
-            detectLockContention = (detectAll || detectLockContention) && !excludes.contains(DetectorType.LOCK_CONTENTION);
-            detectSynchronizedNonFinal = (detectAll || detectSynchronizedNonFinal) && !excludes.contains(DetectorType.SYNCHRONIZED_NON_FINAL);
-            detectMissedSignals = (detectAll || detectMissedSignals) && !excludes.contains(DetectorType.MISSED_SIGNAL);
-            detectLazyInitRace = (detectAll || detectLazyInitRace) && !excludes.contains(DetectorType.LAZY_INIT_RACE);
-            detectPhaserIssues = (detectAll || detectPhaserIssues) && !excludes.contains(DetectorType.PHASER);
-            detectStampedLockIssues = (detectAll || detectStampedLockIssues) && !excludes.contains(DetectorType.STAMPED_LOCK);
-            detectExchangerIssues = (detectAll || detectExchangerIssues) && !excludes.contains(DetectorType.EXCHANGER);
-            detectScheduledExecutorIssues = (detectAll || detectScheduledExecutorIssues) && !excludes.contains(DetectorType.SCHEDULED_EXECUTOR);
-            detectForkJoinPoolIssues = (detectAll || detectForkJoinPoolIssues) && !excludes.contains(DetectorType.FORK_JOIN_POOL);
-            detectThreadFactoryIssues = (detectAll || detectThreadFactoryIssues) && !excludes.contains(DetectorType.THREAD_FACTORY);
-            detectThreadLeaks = (detectAll || detectThreadLeaks) && !excludes.contains(DetectorType.THREAD_LEAKS);
-            detectSleepInLock = (detectAll || detectSleepInLock) && !excludes.contains(DetectorType.SLEEP_IN_LOCK);
-            detectUnboundedQueue = (detectAll || detectUnboundedQueue) && !excludes.contains(DetectorType.UNBOUNDED_QUEUE);
-            detectThreadStarvation = (detectAll || detectThreadStarvation) && !excludes.contains(DetectorType.THREAD_STARVATION);
-            detectCalendarIssues = (detectAll || detectCalendarIssues) && !excludes.contains(DetectorType.CALENDAR);
-            detectSharedCollections = (detectAll || detectSharedCollections) && !excludes.contains(DetectorType.SHARED_COLLECTIONS);
-            detectTimerIssues = (detectAll || detectTimerIssues) && !excludes.contains(DetectorType.TIMER);
-            detectCopyOnWriteCollectionIssues = (detectAll || detectCopyOnWriteCollectionIssues) && !excludes.contains(DetectorType.COPY_ON_WRITE_COLLECTIONS);
-            detectStringBuilderIssues = (detectAll || detectStringBuilderIssues) && !excludes.contains(DetectorType.STRING_BUILDER);
-            detectStructuredConcurrencyIssues = (detectAll || detectStructuredConcurrencyIssues) && !excludes.contains(DetectorType.STRUCTURED_CONCURRENCY);
-            detectVirtualThreadContextLeaks = (detectAll || detectVirtualThreadContextLeaks) && !excludes.contains(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS);
-            detectScopedValueMisuse = (detectAll || detectScopedValueMisuse) && !excludes.contains(DetectorType.SCOPED_VALUE);
-            detectVirtualThreadCpuBoundTasks = (detectAll || detectVirtualThreadCpuBoundTasks) && !excludes.contains(DetectorType.VIRTUAL_THREAD_CPU_BOUND);
-            detectVirtualThreadCarrierExhaustion = (detectAll || detectVirtualThreadCarrierExhaustion) && !excludes.contains(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION);
-            detectRaceConditions = (detectAll || detectRaceConditions) && !excludes.contains(DetectorType.RACE_CONDITIONS);
-            detectThreadLocalLeaks = (detectAll || detectThreadLocalLeaks) && !excludes.contains(DetectorType.THREAD_LOCAL_LEAKS);
-            detectBusyWaiting = (detectAll || detectBusyWaiting) && !excludes.contains(DetectorType.BUSY_WAITING);
-            detectAtomicityViolations = (detectAll || detectAtomicityViolations) && !excludes.contains(DetectorType.ATOMICITY_VIOLATIONS);
-            detectInterruptMishandling = (detectAll || detectInterruptMishandling) && !excludes.contains(DetectorType.INTERRUPT_MISHANDLING);
-            detectHttpClientIssues = (detectAll || detectHttpClientIssues) && !excludes.contains(DetectorType.HTTP_CLIENT);
-            detectStreamClosing = (detectAll || detectStreamClosing) && !excludes.contains(DetectorType.STREAM_CLOSING);
-            detectCacheConcurrency = (detectAll || detectCacheConcurrency) && !excludes.contains(DetectorType.CACHE_CONCURRENCY);
-            detectCompletableFutureChainIssues = (detectAll || detectCompletableFutureChainIssues) && !excludes.contains(DetectorType.COMPLETABLEFUTURE_CHAIN);
-            detectExecutorShutdown = (detectAll || detectExecutorShutdown) && !excludes.contains(DetectorType.EXECUTOR_SHUTDOWN);
-            detectMutableMapKeys = (detectAll || detectMutableMapKeys) && !excludes.contains(DetectorType.MUTABLE_MAP_KEY);
-            detectNestedMonitorLockout = (detectAll || detectNestedMonitorLockout) && !excludes.contains(DetectorType.NESTED_MONITOR_LOCKOUT);
-            detectLockDowngrade = (detectAll || detectLockDowngrade) && !excludes.contains(DetectorType.LOCK_DOWNGRADE);
-            detectInheritableThreadLocalMisuse = (detectAll || detectInheritableThreadLocalMisuse) && !excludes.contains(DetectorType.INHERITABLE_THREAD_LOCAL);
-            detectThreadLocalContamination = (detectAll || detectThreadLocalContamination) && !excludes.contains(DetectorType.THREAD_LOCAL_CONTAMINATION);
-            detectAtomicNonAtomicUpdates = (detectAll || detectAtomicNonAtomicUpdates) && !excludes.contains(DetectorType.ATOMIC_NON_ATOMIC_UPDATE);
-            detectSynchronizedCollectionIteration = (detectAll || detectSynchronizedCollectionIteration) && !excludes.contains(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION);
-            detectSharedFormatter = (detectAll || detectSharedFormatter) && !excludes.contains(DetectorType.SHARED_FORMATTER);
-            detectConcurrentMapComputeRecursion = (detectAll || detectConcurrentMapComputeRecursion) && !excludes.contains(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION);
-            detectSynchronizedOnLiteral = (detectAll || detectSynchronizedOnLiteral) && !excludes.contains(DetectorType.SYNCHRONIZED_ON_LITERAL);
-            detectPublicLockExposure = (detectAll || detectPublicLockExposure) && !excludes.contains(DetectorType.PUBLIC_LOCK_EXPOSURE);
-            detectForkJoinTaskBlocking = (detectAll || detectForkJoinTaskBlocking) && !excludes.contains(DetectorType.FORK_JOIN_TASK_BLOCKING);
-            detectOptimisticReadValidation = (detectAll || detectOptimisticReadValidation) && !excludes.contains(DetectorType.OPTIMISTIC_READ_VALIDATION);
-            detectCFCommonPoolBlocking = (detectAll || detectCFCommonPoolBlocking) && !excludes.contains(DetectorType.CF_COMMON_POOL_BLOCKING);
-            detectSharedMatcher = (detectAll || detectSharedMatcher) && !excludes.contains(DetectorType.SHARED_MATCHER);
-            detectSharedDecimalFormat = (detectAll || detectSharedDecimalFormat) && !excludes.contains(DetectorType.SHARED_DECIMAL_FORMAT);
-            detectWeakReferenceRace = (detectAll || detectWeakReferenceRace) && !excludes.contains(DetectorType.WEAK_REFERENCE_RACE);
-            detectStatefulLambda = (detectAll || detectStatefulLambda) && !excludes.contains(DetectorType.STATEFUL_LAMBDA);
-            detectSharedMessageDigest = (detectAll || detectSharedMessageDigest) && !excludes.contains(DetectorType.SHARED_MESSAGE_DIGEST);
-            detectInterruptSwallowing = (detectAll || detectInterruptSwallowing) && !excludes.contains(DetectorType.INTERRUPT_SWALLOWING);
-            detectMdcContextLeak = (detectAll || detectMdcContextLeak) && !excludes.contains(DetectorType.MDC_CONTEXT_LEAK);
-            detectSystemPropertyMutation = (detectAll || detectSystemPropertyMutation) && !excludes.contains(DetectorType.SYSTEM_PROPERTY_MUTATION);
-            detectFutureIgnored = (detectAll || detectFutureIgnored) && !excludes.contains(DetectorType.FUTURE_IGNORED);
-            detectExplicitGc = (detectAll || detectExplicitGc) && !excludes.contains(DetectorType.EXPLICIT_GC);
-            detectDeprecatedThreadApi = (detectAll || detectDeprecatedThreadApi) && !excludes.contains(DetectorType.DEPRECATED_THREAD_API);
-            detectSharedXmlParser = (detectAll || detectSharedXmlParser) && !excludes.contains(DetectorType.SHARED_XML_PARSER);
-            detectBoxedPrimitiveLock = (detectAll || detectBoxedPrimitiveLock) && !excludes.contains(DetectorType.BOXED_PRIMITIVE_LOCK);
-            detectSharedTimeZone = (detectAll || detectSharedTimeZone) && !excludes.contains(DetectorType.SHARED_TIMEZONE);
-            detectUncaughtExceptionHandler = (detectAll || detectUncaughtExceptionHandler) && !excludes.contains(DetectorType.UNCAUGHT_EXCEPTION_HANDLER);
-            detectDaemonThreadHygiene = (detectAll || detectDaemonThreadHygiene) && !excludes.contains(DetectorType.DAEMON_THREAD_HYGIENE);
-            detectNotifyWithoutMonitor = (detectAll || detectNotifyWithoutMonitor) && !excludes.contains(DetectorType.NOTIFY_WITHOUT_MONITOR);
-            detectSharedSecureRandom = (detectAll || detectSharedSecureRandom) && !excludes.contains(DetectorType.SHARED_SECURE_RANDOM);
-            detectWeakHashMapShared = (detectAll || detectWeakHashMapShared) && !excludes.contains(DetectorType.WEAK_HASH_MAP_SHARED);
-            detectJdbcConnectionShared = (detectAll || detectJdbcConnectionShared) && !excludes.contains(DetectorType.JDBC_CONNECTION_SHARED);
-            detectSharedStatefulCrypto = (detectAll || detectSharedStatefulCrypto) && !excludes.contains(DetectorType.SHARED_STATEFUL_CRYPTO);
-            detectConcurrentMapCheckThenAct = (detectAll || detectConcurrentMapCheckThenAct) && !excludes.contains(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT);
-            detectSharedDeflater = (detectAll || detectSharedDeflater) && !excludes.contains(DetectorType.SHARED_DEFLATER);
-            detectThisEscape = (detectAll || detectThisEscape) && !excludes.contains(DetectorType.THIS_ESCAPE);
-            detectThreadLocalRandomMisuse = (detectAll || detectThreadLocalRandomMisuse) && !excludes.contains(DetectorType.THREAD_LOCAL_RANDOM_MISUSE);
-            detectCompletableFutureObtrudeAbuse = (detectAll || detectCompletableFutureObtrudeAbuse) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE);
-            detectSpuriousWakeupHazard = (detectAll || detectSpuriousWakeupHazard) && !excludes.contains(DetectorType.SPURIOUS_WAKEUP_HAZARD);
-            detectLockUpgradeDeadlock = (detectAll || detectLockUpgradeDeadlock) && !excludes.contains(DetectorType.LOCK_UPGRADE_DEADLOCK);
-            detectTryLockMisuse = (detectAll || detectTryLockMisuse) && !excludes.contains(DetectorType.TRY_LOCK_MISUSE);
-            detectCFBlockingCallback = (detectAll || detectCFBlockingCallback) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK);
-            detectStableValueMisuse = (detectAll || detectStableValueMisuse) && !excludes.contains(DetectorType.STABLE_VALUE_MISUSE);
-            detectStructuredTaskScopeMisuse = (detectAll || detectStructuredTaskScopeMisuse) && !excludes.contains(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE);
-            detectGathererConcurrencyMisuse = (detectAll || detectGathererConcurrencyMisuse) && !excludes.contains(DetectorType.GATHERER_CONCURRENCY_MISUSE);
-            detectSharedByteBuffer = (detectAll || detectSharedByteBuffer) && !excludes.contains(DetectorType.SHARED_BYTE_BUFFER);
-            detectSharedCharsetCoder = (detectAll || detectSharedCharsetCoder) && !excludes.contains(DetectorType.SHARED_CHARSET_CODER);
-            detectSharedChecksum = (detectAll || detectSharedChecksum) && !excludes.contains(DetectorType.SHARED_CHECKSUM);
-            detectFileChannelPositionRace = (detectAll || detectFileChannelPositionRace) && !excludes.contains(DetectorType.FILE_CHANNEL_POSITION_RACE);
-            detectSharedIterator = (detectAll || detectSharedIterator) && !excludes.contains(DetectorType.SHARED_ITERATOR);
-            detectHighContentionAtomic = (detectAll || detectHighContentionAtomic) && !excludes.contains(DetectorType.HIGH_CONTENTION_ATOMIC);
-            detectSharedJsonMapperReconfig = (detectAll || detectSharedJsonMapperReconfig) && !excludes.contains(DetectorType.SHARED_JSON_MAPPER_RECONFIG);
-            detectLazyConstantMisuse = (detectAll || detectLazyConstantMisuse) && !excludes.contains(DetectorType.LAZY_CONSTANT_MISUSE);
-            detectFinalFieldMutation = (detectAll || detectFinalFieldMutation) && !excludes.contains(DetectorType.FINAL_FIELD_MUTATION);
-            detectSharedKdf = (detectAll || detectSharedKdf) && !excludes.contains(DetectorType.SHARED_KDF);
-            detectLatchMisuse = (detectAll || detectLatchMisuse) && !excludes.contains(DetectorType.LATCH_MISUSE);
-            detectExecutorDeadlock = (detectAll || detectExecutorDeadlock) && !excludes.contains(DetectorType.EXECUTOR_DEADLOCK);
-            detectFutureBlocking = (detectAll || detectFutureBlocking) && !excludes.contains(DetectorType.FUTURE_BLOCKING);
-            detectFlowPublisherConcurrency = (detectAll || detectFlowPublisherConcurrency) && !excludes.contains(DetectorType.FLOW_PUBLISHER_CONCURRENCY);
-            detectConfinedArenaThreadEscape = (detectAll || detectConfinedArenaThreadEscape) && !excludes.contains(DetectorType.CONFINED_ARENA_THREAD_ESCAPE);
-            detectSharedMemorySegmentRace = (detectAll || detectSharedMemorySegmentRace) && !excludes.contains(DetectorType.SHARED_MEMORY_SEGMENT_RACE);
-            detectVarHandleNonAtomicUpdate = (detectAll || detectVarHandleNonAtomicUpdate) && !excludes.contains(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE);
-            detectRecordMutableComponentLeak = (detectAll || detectRecordMutableComponentLeak) && !excludes.contains(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK);
-            detectStaticInitDeadlock = (detectAll || detectStaticInitDeadlock) && !excludes.contains(DetectorType.STATIC_INIT_DEADLOCK);
-            detectVirtualThreadPooling = (detectAll || detectVirtualThreadPooling) && !excludes.contains(DetectorType.VIRTUAL_THREAD_POOLING);
-            detectPlatformThreadPerTask = (detectAll || detectPlatformThreadPerTask) && !excludes.contains(DetectorType.PLATFORM_THREAD_PER_TASK);
-            detectSharedSplittableRandom = (detectAll || detectSharedSplittableRandom) && !excludes.contains(DetectorType.SHARED_SPLITTABLE_RANDOM);
-            detectCompletableFutureCompletionRace = (detectAll || detectCompletableFutureCompletionRace) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE);
-            detectCompletableFutureCancellationPropagation = (detectAll || detectCompletableFutureCancellationPropagation) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION);
-            detectCompletableFutureCombinatorMisuse = (detectAll || detectCompletableFutureCombinatorMisuse) && !excludes.contains(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE);
-            detectLambdaLostUpdate = (detectAll || detectLambdaLostUpdate) && !excludes.contains(DetectorType.LAMBDA_LOST_UPDATE);
-            detectVirtualThreadResourceSaturation = (detectAll || detectVirtualThreadResourceSaturation) && !excludes.contains(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION);
-            detectVirtualThreadMonitorSerialization = (detectAll || detectVirtualThreadMonitorSerialization) && !excludes.contains(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION);
-            detectThreadLocalCacheDegradation = (detectAll || detectThreadLocalCacheDegradation) && !excludes.contains(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION);
-            detectScopeJoinerMisuse = (detectAll || detectScopeJoinerMisuse) && !excludes.contains(DetectorType.SCOPE_JOINER_MISUSE);
-            detectScopeConfigurationMisuse = (detectAll || detectScopeConfigurationMisuse) && !excludes.contains(DetectorType.SCOPE_CONFIGURATION_MISUSE);
-            detectScopeResultEscape = (detectAll || detectScopeResultEscape) && !excludes.contains(DetectorType.SCOPE_RESULT_ESCAPE);
-            detectLazyCollectionMisuse = (detectAll || detectLazyCollectionMisuse) && !excludes.contains(DetectorType.LAZY_COLLECTION_MISUSE);
-            return new AsyncTestConfig(this);
+            // One set, computed once, and every public detector flag is a membership test
+            // against it (#917). Each flag used to have its own resolution line here,
+            // (detectAll || flag) && !excludes.contains(TYPE), 146 expressions that could each
+            // be wrong; nothing per type is left to write, so nothing per type can be forgotten.
+            EnumSet<DetectorType> enabled = !includes.isEmpty() ? EnumSet.copyOf(includes)
+                    : detectAll ? EnumSet.allOf(DetectorType.class) : EnumSet.copyOf(explicit);
+            enabled.removeAll(excludes);
+            return new AsyncTestConfig(this, enabled);
         }
     }
 }

@@ -115,7 +115,8 @@ done behind the existing API. Only deletions must wait for 2.0.
 
 ### Train 1 — 1.8.x (fully compatible, start immediately)
 
-* **Config core** (#917): introduce an internal `EnumSet<DetectorType> enabledDetectors` on
+* **Config core** (#917, **done 2026-10-06**: `AsyncTestConfig.enabledDetectors()`, and the 146
+  resolution lines are gone): introduce an internal `EnumSet<DetectorType> enabledDetectors` on
   `AsyncTestConfig` as the single source of truth, computed once in `build()` from
   preset/includes/excludes/detectAll/legacy booleans. Keep every existing public boolean
   field, now assigned as a one-line derivation (`this.detectXxx = enabled.contains(XXX)`).

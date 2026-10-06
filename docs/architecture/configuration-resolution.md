@@ -18,28 +18,32 @@ Non-detector knobs: `threads`, `invocations`, `timeoutMs`, `useVirtualThreads`,
 
 ## Detector selection resolution
 
-`AsyncTestConfig.Builder.build()` resolves which detector flags end up enabled. Precedence:
-**includes beats everything; then the `detectAll` branch; then the non-`detectAll` branch, where
-excludes always win over explicit enables.**
+`AsyncTestConfig.Builder.build()` resolves the selection once, into one `EnumSet<DetectorType>`
+that `AsyncTestConfig.enabledDetectors()` returns (#917). Precedence: **includes beats
+everything; then `detectAll`; then the per-detector setters; and excludes always have the last
+word.**
 
-1. **includes** — a non-empty `includes` forces the `detectAll` path and excludes every type not
-   listed. Explicit excludes still apply on top.
-2. **one expression per type** — `build()` collapses the rest into a single line per detector:
+```java
+EnumSet<DetectorType> enabled = !includes.isEmpty() ? EnumSet.copyOf(includes)
+        : detectAll ? EnumSet.allOf(DetectorType.class) : EnumSet.copyOf(explicit);
+enabled.removeAll(excludes);
+```
 
-   ```java
-   detectDeadlocks = (detectAll || detectDeadlocks) && !excludes.contains(DetectorType.DEADLOCKS);
-   ```
+The per-detector builder setters add or remove their type in `explicit` (deadlock detection starts
+in it). Every public detector flag is then a membership test against the set, assigned in the
+constructor:
 
-   `detectAll || flag` covers "on because everything is on" and "on because it was asked for";
-   `&& !excludes.contains(...)` gives excludes the last word in both cases.
+```java
+detectDeadlocks = enabled.contains(DetectorType.DEADLOCKS);
+```
 
-**That line must exist for every `DetectorType`.** A type missing from it is a real bug: it can be
-neither enabled by `detectAll` nor disabled by `excludes`. Ten types were once missing from what was
-then a separate excludes branch, and mutation testing caught it; folding the two branches into one
-expression removed the possibility of a type being present in one and absent from the other. The
-exhaustive per-type mapping test in
-`async-test-lib/src/test/java/se/deversity/asynctest/AsyncTestConfigBuildResolutionTest.java`
-derives the type→flag mapping empirically and pins it.
+**Why one set.** Until #917 each flag had its own resolution line,
+`(detectAll || flag) && !excludes.contains(TYPE)`: 146 expressions that could each be wrong, and
+ten types were once missing from what was then a separate excludes branch until mutation testing
+caught it. A flag derived from the set cannot disagree with it. `AsyncTestConfigEnabledSetTest`
+checks that across 200 random selections, `AsyncTestConfigBuildResolutionTest` derives the
+type→flag mapping empirically and pins it as a bijection, and `DetectorWiringIsCompleteTest` fails
+on a flag with no derivation.
 
 ## DetectorType and Preset
 
