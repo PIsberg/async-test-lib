@@ -155,7 +155,7 @@ document says so rather than being edited in place.
 
 | Document | Purpose |
 |----------|---------|
-| [analysis/roadmap-v2.md](analysis/roadmap-v2.md) | The 2.0 plan: three trains, only the last of which breaks compatibility. Carries a re-measured status section — Trains 1 and 2 have not started, and every metric the plan exists to reduce has grown |
+| [analysis/roadmap-v2.md](analysis/roadmap-v2.md) | The 2.0 plan: three trains, only the last of which breaks compatibility. Carries a re-measured status section — Trains 1 and 2 have not started, and every metric the plan exists to reduce has grown. Also the feature roadmap (history-based checking); every open item links its GitHub issue |
 | [analysis/production-readiness.md](analysis/production-readiness.md) | Remaining work to reach GA / external usability |
 | [analysis/modularization.md](analysis/modularization.md) | Investigation: should the library be split into Maven submodules, and what blocks it |
 | [analysis/test-profiles-and-detector-gaps.md](analysis/test-profiles-and-detector-gaps.md) | Investigation: splitting the suite into a fast local tier and a CI-only e2e tier, and which bug classes the detectors miss |
