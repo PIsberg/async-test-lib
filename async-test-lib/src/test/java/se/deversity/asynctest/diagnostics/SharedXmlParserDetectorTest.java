@@ -74,4 +74,11 @@ public class SharedXmlParserDetectorTest {
         assertTrue(s.contains("SHARED XML PARSER"));
         assertTrue(s.contains("Fix"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedXmlParserDetector d = new SharedXmlParserDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(o -> d.recordAccess(o, "DocumentBuilder", Thread.currentThread()));
+    }
 }

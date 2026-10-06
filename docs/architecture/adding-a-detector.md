@@ -31,7 +31,11 @@ One new `DetectorType` constant requires simultaneous changes in five files, all
 
 ## The detector class itself
 
-New detectors live in `diagnostics/` and follow the house thread-safety idiom: per-key state in a
+New detectors live in `diagnostics/` and follow the house thread-safety idiom. A detector that
+keeps state per object it is told about extends `AbstractInstanceDetector<S>` (#918), which owns
+the weakly identity-keyed map, the get-then-`computeIfAbsent` lookup and the label of an unnamed
+object: implement `newState(instance, label)`, call `stateFor(instance, name)` on the record path
+and iterate `states()` in `analyze()`. Otherwise: per-key state in a
 `ConcurrentHashMap` with a **get-then-`computeIfAbsent`** hot path, thread-id/name sets as
 `ConcurrentHashMap.newKeySet()`, counters as `LongAdder`. Violation lists are `CopyOnWrite` or
 synchronized lists; first-registration-wins uses `putIfAbsent`.

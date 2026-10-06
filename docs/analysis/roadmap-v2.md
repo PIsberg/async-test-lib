@@ -133,7 +133,10 @@ done behind the existing API. Only deletions must wait for 2.0.
 
 ### Train 2 — 1.9.x (fully compatible)
 
-* **`AbstractInstanceDetector<T>` base class** (#918): owns the instance map, `stateFor()`
+* **`AbstractInstanceDetector<T>` base class** (#918, **first wave done 2026-10-06**: the base
+  class with weak identity keys, and the five `Shared*` detectors whose scaffolding was identical:
+  `SharedDecimalFormat`, `SharedFormatter`, `SharedMatcher`, `SharedTimeZone`, `SharedXmlParser`.
+  The rest vary in state shape and migrate in later waves): owns the instance map, `stateFor()`
   (get-then-computeIfAbsent hot path), thread-id/name key sets, enabled flag, and `reset()`.
   Migrate the ~83 scaffolding-duplicating detectors in waves — each has a dedicated test
   class to pin behavior. Fix the `identityHashCode` hazard here once, in the base class,

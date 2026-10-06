@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type-keyed SPI registry. The registry is keyed by id (`get(String)`), and
   `@AsyncTest(excludeIds = ...)` and `AsyncTestConfig.Builder.excludeIds(...)` switch a detector
   off by id, even when its factory ignores the config (#919).
+- **Per-instance detectors share one base class, and no longer keep what they track alive.**
+  `AbstractInstanceDetector` owns the identity-keyed map, the allocation-free lookup and the
+  single registration of a first sighting, which detectors used to copy one by one. It keys each
+  object weakly: an object the code under test dropped can be collected, while the state, and any
+  finding it latched, stays. The first wave moves `SharedDecimalFormatDetector`,
+  `SharedFormatterDetector`, `SharedMatcherDetector`, `SharedTimeZoneDetector` and
+  `SharedXmlParserDetector` onto it; each now has a test that fails if it holds a recorded object
+  strongly (#918).
 - **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
   workers to meet after the start built a `CyclicBarrier` of its own, and had to get the party
   count, the timeout and the reuse across rounds right by hand; five `@AsyncTest` classes in this

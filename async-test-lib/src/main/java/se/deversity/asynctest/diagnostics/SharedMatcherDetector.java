@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link java.util.regex.Matcher} instances shared across multiple threads.
@@ -32,18 +31,18 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 0.9.0
  */
-public class SharedMatcherDetector {
+public class SharedMatcherDetector extends AbstractInstanceDetector<SharedMatcherDetector.MatcherState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class MatcherState extends SelfGuard.ThreadTrackedInstance {
+    static final class MatcherState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
 
         MatcherState(String name) { this.name = name; }
     }
 
-    private final Map<IdentityKey, MatcherState> matchers = new ConcurrentHashMap<>();
+    @Override
+    MatcherState newState(Object instance, String label) {
+        return new MatcherState(label);
+    }
 
     /**
      * Record an access (find/matches/group/reset) to a Matcher instance.
@@ -54,15 +53,7 @@ public class SharedMatcherDetector {
      */
     public void recordAccess(Object matcher, String name, Thread thread) {
         if (matcher == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        MatcherState s = matchers.get(IdentityKey.lookup(matcher));
-        if (s == null) {
-            // The fallback label is built only when the instance is first seen.
-            s = matchers.computeIfAbsent(new IdentityKey(matcher), id -> new MatcherState(name != null
-                    ? name
-                    : unnamedLabels.of(matcher, matcher.getClass().getSimpleName())));
-        }
-        s.noteAccess(matcher, thread);
+        stateFor(matcher, name).noteAccess(matcher, thread);
     }
 
     /**
@@ -70,7 +61,7 @@ public class SharedMatcherDetector {
      */
     public SharedMatcherReport analyze() {
         SharedMatcherReport r = new SharedMatcherReport();
-        for (MatcherState s : matchers.values()) {
+        for (MatcherState s : states()) {
             if (s.sharedAndUnguarded()) {
                 String finding = String.format(
                         "'%s' accessed from %d threads (%s) — Matcher is not thread-safe; "

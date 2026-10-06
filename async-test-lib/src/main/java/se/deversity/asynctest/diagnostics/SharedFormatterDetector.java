@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link java.util.Formatter}, {@link java.io.PrintWriter}, and
@@ -31,18 +30,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * mon.recordAccess(sharedFormatter, "sharedFormatter", Thread.currentThread());
  * }</pre>
  */
-public class SharedFormatterDetector {
+public class SharedFormatterDetector extends AbstractInstanceDetector<SharedFormatterDetector.FormatterState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class FormatterState extends SelfGuard.ThreadTrackedInstance {
+    static final class FormatterState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
 
         FormatterState(String name) { this.name = name; }
     }
 
-    private final Map<IdentityKey, FormatterState> formatters = new ConcurrentHashMap<>();
+    @Override
+    FormatterState newState(Object instance, String label) {
+        return new FormatterState(label);
+    }
 
     /**
      * Record an access (format/print/write) to a shared formatter or print stream.
@@ -53,15 +52,7 @@ public class SharedFormatterDetector {
      */
     public void recordAccess(Object formatter, String name, Thread thread) {
         if (formatter == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        FormatterState s = formatters.get(IdentityKey.lookup(formatter));
-        if (s == null) {
-            // The fallback label is built only when the instance is first seen.
-            s = formatters.computeIfAbsent(new IdentityKey(formatter), id -> new FormatterState(name != null
-                    ? name
-                    : unnamedLabels.of(formatter, formatter.getClass().getSimpleName())));
-        }
-        s.noteAccess(formatter, thread);
+        stateFor(formatter, name).noteAccess(formatter, thread);
     }
 
     /**
@@ -69,7 +60,7 @@ public class SharedFormatterDetector {
      */
     public SharedFormatterReport analyze() {
         SharedFormatterReport r = new SharedFormatterReport();
-        for (FormatterState s : formatters.values()) {
+        for (FormatterState s : states()) {
             if (s.sharedAndUnguarded()) {
                 String finding = String.format(
                     "'%s' accessed from %d threads (%s) — not thread-safe; unsynchronized concurrent"
