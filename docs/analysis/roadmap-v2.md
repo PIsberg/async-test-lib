@@ -158,7 +158,8 @@ at any time and does not wait on the `AsyncTestConfig` decision: the 146 `@Async
 and the 42 `AsyncTestContext` accessors can be removed now, because both are deprecated and both
 name their replacement. Each item below says whether it is ready.
 
-* Remove the 146 deprecated boolean attributes from `@AsyncTest` (#920). Ready: all 146 carry a
+* Remove the 146 deprecated boolean attributes from `@AsyncTest` (#920, **done 2026-10-06**;
+  360 annotations rewritten, and `detectAll = false` now selects nothing). Ready: all 146 carry a
   `@deprecated` tag naming `preset` / `includes` / `excludes` and a `DetectorType`, and
   `DeprecationsNameTheirReplacementTest` keeps that true. Seven of them had no tag at all until
   2026-08-27.

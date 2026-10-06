@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -86,7 +87,7 @@ class DataHolderTest {
      * 3. To fix: declare value and ready as volatile
      */
     @Disabled("Remove @Disabled to see the bug detected by MemoryOrderingMonitor")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMemoryOrderingViolations = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.MEMORY_ORDERING)
     void test_concurrent_detectsStaleRead() {
         var mon = AsyncTestContext.memoryOrderingMonitor();
         String name = Thread.currentThread().getName();

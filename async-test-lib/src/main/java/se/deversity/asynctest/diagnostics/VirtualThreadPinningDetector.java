@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 10, useVirtualThreads = true, detectVirtualThreadPinning = true)
+ * @AsyncTest(threads = 10, useVirtualThreads = true, includes = DetectorType.VIRTUAL_THREAD_PINNING)
  * void testVirtualThreadPinning() {
  *     AsyncTestContext.virtualThreadPinningDetector()
  *         .startMonitoring();

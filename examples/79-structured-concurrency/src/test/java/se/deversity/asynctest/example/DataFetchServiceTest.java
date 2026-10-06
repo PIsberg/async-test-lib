@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -74,7 +75,7 @@ class DataFetchServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unclosed StructuredTaskScope detected by StructuredConcurrencyMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectStructuredConcurrencyIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 30, failOn = FailOn.LOW, includes = DetectorType.STRUCTURED_CONCURRENCY)
     void test_concurrent_detectsUnclosedScope() throws Exception {
         var detector = AsyncTestContext.get().structuredConcurrencyMisuseDetector();
 

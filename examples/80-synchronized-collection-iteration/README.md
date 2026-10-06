@@ -1,7 +1,7 @@
 # Example 80 — Synchronized Collection Iteration
 
 **Detector**: `SynchronizedCollectionIterationDetector`  
-**Flag**: `detectSynchronizedCollectionIteration = true`
+**Select it with**: `includes = DetectorType.SYNCHRONIZED_COLLECTION_ITERATION`
 
 ## The Problem
 

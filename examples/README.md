@@ -206,7 +206,7 @@ The library now includes 4 new important detectors for common concurrency patter
 
 **Usage**:
 ```java
-@AsyncTest(threads = 10, detectHttpClientIssues = true)
+@AsyncTest(threads = 10, includes = DetectorType.HTTP_CLIENT)
 void testHttpClient() {
     AsyncTestContext.httpClientDetector()
         .recordClientCreated(client, "api-client");
@@ -224,7 +224,7 @@ void testHttpClient() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 10, detectStreamClosing = true)
+@AsyncTest(threads = 10, includes = DetectorType.STREAM_CLOSING)
 void testStreams() throws IOException {
     InputStream is = new FileInputStream("data.txt");
     AsyncTestContext.streamClosingDetector()
@@ -246,7 +246,7 @@ void testStreams() throws IOException {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 10, detectCacheConcurrency = true)
+@AsyncTest(threads = 10, includes = DetectorType.CACHE_CONCURRENCY)
 void testCache() {
     Map<String, Object> cache = new HashMap<>();
     AsyncTestContext.cacheConcurrencyDetector()
@@ -265,7 +265,7 @@ void testCache() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 10, detectCompletableFutureChainIssues = true)
+@AsyncTest(threads = 10, includes = DetectorType.COMPLETABLEFUTURE_CHAIN)
 void testCFChain() {
     CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> "result");
     AsyncTestContext.cfChainDetector()
@@ -395,7 +395,7 @@ the shared object with the detector before exercising it.
 
 **Usage**:
 ```java
-@AsyncTest(threads = 8, detectSharedMatcher = true)
+@AsyncTest(threads = 8, includes = DetectorType.SHARED_MATCHER)
 void testEmailValidation() {
     AsyncTestContext.sharedMatcherDetector()
         .recordAccess(service.getSharedMatcher(), "emailMatcher", Thread.currentThread());
@@ -413,7 +413,7 @@ void testEmailValidation() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 8, detectSharedDecimalFormat = true)
+@AsyncTest(threads = 8, includes = DetectorType.SHARED_DECIMAL_FORMAT)
 void testAmountFormatting() {
     AsyncTestContext.sharedDecimalFormatDetector()
         .recordAccess(service.getAmountFormat(), "currencyFmt", Thread.currentThread());
@@ -431,7 +431,7 @@ void testAmountFormatting() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectWeakReferenceRace = true)
+@AsyncTest(threads = 4, includes = DetectorType.WEAK_REFERENCE_RACE)
 void testWeakCache() {
     var d = AsyncTestContext.weakReferenceRaceDetector();
     Object val = weakRef.get();
@@ -454,7 +454,7 @@ void testWeakCache() {
 int[] counter = {0};
 Runnable task = () -> { counter[0]++; };  // captures mutable int[]
 
-@AsyncTest(threads = 4, detectStatefulLambda = true)
+@AsyncTest(threads = 4, includes = DetectorType.STATEFUL_LAMBDA)
 void testCounterTask() {
     var d = AsyncTestContext.statefulLambdaDetector();
     d.recordExecution(task, "counter-task", Thread.currentThread());
@@ -473,7 +473,7 @@ void testCounterTask() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 8, detectSharedMessageDigest = true)
+@AsyncTest(threads = 8, includes = DetectorType.SHARED_MESSAGE_DIGEST)
 void testFingerprint() {
     AsyncTestContext.sharedMessageDigestDetector()
         .recordAccess(service.getSha256(), "sha256", Thread.currentThread());
@@ -538,7 +538,7 @@ and on the nightly schedule, only the changed ones on a pull request. Each shard
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectInterruptSwallowing = true)
+@AsyncTest(threads = 4, includes = DetectorType.INTERRUPT_SWALLOWING)
 void testInterruptHandling() {
     try {
         Thread.sleep(100);
@@ -561,7 +561,7 @@ void testInterruptHandling() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectMdcContextLeak = true)
+@AsyncTest(threads = 4, includes = DetectorType.MDC_CONTEXT_LEAK)
 void testMdcCleanup() {
     var d = AsyncTestContext.mdcContextLeakDetector();
     Map<String,String> before = MDC.getCopyOfContextMap();
@@ -587,7 +587,7 @@ void testMdcCleanup() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectSystemPropertyMutation = true)
+@AsyncTest(threads = 4, includes = DetectorType.SYSTEM_PROPERTY_MUTATION)
 void testConfig() {
     var d = AsyncTestContext.systemPropertyMutationDetector();
     d.recordSet("app.timeout", "5000", Thread.currentThread());
@@ -606,7 +606,7 @@ void testConfig() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectFutureIgnored = true)
+@AsyncTest(threads = 4, includes = DetectorType.FUTURE_IGNORED)
 void testSubmit() {
     var d = AsyncTestContext.futureIgnoredDetector();
     Future<?> f = executor.submit(task);
@@ -626,7 +626,7 @@ void testSubmit() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectExplicitGc = true)
+@AsyncTest(threads = 4, includes = DetectorType.EXPLICIT_GC)
 void testEviction() {
     var d = AsyncTestContext.explicitGcDetector();
     d.recordGcInvocation(Thread.currentThread(), "CacheManager.evict:58");
@@ -645,7 +645,7 @@ void testEviction() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectDeprecatedThreadApi = true)
+@AsyncTest(threads = 4, includes = DetectorType.DEPRECATED_THREAD_API)
 void testCancel() {
     var d = AsyncTestContext.deprecatedThreadApiDetector();
     d.recordApiUse("Thread.stop", Thread.currentThread()); // Flagged!
@@ -664,7 +664,7 @@ void testCancel() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectSharedXmlParser = true)
+@AsyncTest(threads = 4, includes = DetectorType.SHARED_XML_PARSER)
 void testXmlProcessing() {
     var d = AsyncTestContext.sharedXmlParserDetector();
     d.recordAccess(sharedBuilder, "DocumentBuilder", Thread.currentThread());
@@ -683,7 +683,7 @@ void testXmlProcessing() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectBoxedPrimitiveLock = true)
+@AsyncTest(threads = 4, includes = DetectorType.BOXED_PRIMITIVE_LOCK)
 void testSync() {
     var d = AsyncTestContext.boxedPrimitiveLockDetector();
     Integer id = 42; // cached!
@@ -703,7 +703,7 @@ void testSync() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectSharedTimeZone = true)
+@AsyncTest(threads = 4, includes = DetectorType.SHARED_TIMEZONE)
 void testTz() {
     var d = AsyncTestContext.sharedTimeZoneDetector();
     d.recordMutation(sharedTz, "setRawOffset", Thread.currentThread());
@@ -722,7 +722,7 @@ void testTz() {
 
 **Usage**:
 ```java
-@AsyncTest(threads = 4, detectUncaughtExceptionHandler = true)
+@AsyncTest(threads = 4, includes = DetectorType.UNCAUGHT_EXCEPTION_HANDLER)
 void testWorker() {
     var d = AsyncTestContext.uncaughtExceptionHandlerDetector();
     Thread worker = new Thread(task); // no handler set!

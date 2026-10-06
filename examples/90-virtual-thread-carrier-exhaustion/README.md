@@ -1,7 +1,7 @@
 # Example 90 — Virtual Thread Carrier Exhaustion
 
 **Detector**: `VirtualThreadCarrierExhaustionDetector`  
-**Flag**: `detectVirtualThreadCarrierExhaustion = true`
+**Select it with**: `includes = DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION`
 
 ## The Problem
 

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -45,7 +46,7 @@ class SessionRegistryTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by MutableMapKeyDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMutableMapKeys = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.MUTABLE_MAP_KEY)
     void test_concurrent_detectsBug() {
         UserSession session = new UserSession("session-" + Thread.currentThread().getId());
         String oldId = session.getId();

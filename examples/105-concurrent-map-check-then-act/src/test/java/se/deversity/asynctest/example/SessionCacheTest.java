@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -87,7 +88,7 @@ class SessionCacheTest {
      * 3. To fix: replace getOrCreate with computeIfAbsent
      */
     @Disabled("Remove @Disabled to see the bug detected by NonAtomicConcurrentMapUpdateDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectConcurrentMapCheckThenAct = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT)
     void test_concurrent_detectsCheckThenAct() {
         Thread thread = Thread.currentThread();
         String userId = "user-shared";

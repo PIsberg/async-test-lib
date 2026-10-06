@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectBlockingQueueIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.BLOCKING_QUEUE)
  * void testQueueUsage() {
  *     BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
  *     AsyncTestContext.blockingQueueDetector()

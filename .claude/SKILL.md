@@ -45,7 +45,7 @@ class CounterTest {
 
 `@AsyncTest` launches `threads` concurrent threads per invocation, repeats `invocations` times, and reports exactly which detector fired and why. The same test with plain `@Test` would pass silently.
 
-> **Default behavior changed in 1.x:** `detectAll = true` is now the default, so bare `@AsyncTest` enables every detector. Use `excludes = {…}` to opt out, or set `detectAll = false` and turn on detectors individually.
+> **2.0.0:** the per-detector boolean attributes (`detectRaceConditions = true` and the other 145) are gone. Select detectors by `DetectorType`: `includes = {…}` for exactly these, `excludes = {…}` to drop some, or a `preset`. A bare `@AsyncTest` still enables every detector.
 
 ---
 
@@ -60,7 +60,7 @@ class CounterTest {
 | `timeoutMs` | long | 5000 | Milliseconds before timeout (triggers deadlock analysis) |
 | `virtualThreadStressMode` | String | `"OFF"` | `OFF` / `LOW` / `MEDIUM` / `HIGH` / `EXTREME` — pins carrier threads to increase contention |
 | `preset` | `Preset` | `Preset.ALL` | **Curated detector bundle.** `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`. Overrides `detectAll` for any value other than `ALL` (1.6.0+) |
-| `detectAll` | boolean | **true** | Enable every detector at once. Honored when `preset = ALL`; ignored otherwise. Set `false` to only run individually-flagged detectors |
+| `detectAll` | boolean | **true** | Enable every detector at once. Honored when `preset = ALL`; ignored otherwise. `false` on its own selects nothing; name detectors with `includes` instead |
 | `excludes` | DetectorType[] | `{}` | Detectors to skip — layers on top of any preset |
 | `excludeIds` | String[] | `{}` | Detectors to skip by id: a third-party detector's own id, or a built-in's `DetectorType` name (2.0.0+) |
 | `replaySeed` | long | 0 | **Per-round RNG seed.** `0` = fresh seed per round, printed on failure for paste-and-reproduce. Set explicitly to reproduce a failing schedule (1.6.0+) |
@@ -68,7 +68,7 @@ class CounterTest {
 | `benchmarkRegressionThreshold` | double | 0.2 | Regression threshold as a decimal (0.2 = 20%) |
 | `failOnBenchmarkRegression` | boolean | false | Fail the test if a regression is detected |
 
-Every individual detector flag (the full `detect*` / `validate*` / `monitor*` list further down) defaults to `true` and is gated by `detectAll`. To run a tiny subset, set `detectAll = false` and enable only what you need — or use `preset = Preset.ESSENTIALS` / `Preset.CI_FAST` for curated bundles.
+Detectors are named by `DetectorType` (the full list further down). To run a tiny subset, list it in `includes`, or use `preset = Preset.ESSENTIALS` / `Preset.CI_FAST` for curated bundles; `excludes` always removes on top.
 
 `virtualThreadStressMode` thread budgets: `LOW` ≈ 100, `MEDIUM` ≈ 1,000, `HIGH` ≈ 10,000, `EXTREME` ≈ 100,000+ (may need heap adjustment).
 
@@ -211,9 +211,7 @@ try { ... } finally { AsyncTestListenerRegistry.restoreSnapshot(snap); }
 @AsyncTest(
     threads = 20,
     invocations = 50,
-    detectAll = false,
-    detectRaceConditions = true,
-    detectAtomicityViolations = true
+    includes = {DetectorType.RACE_CONDITIONS, DetectorType.ATOMICITY_VIOLATIONS}
 )
 void testCounter() {
     counter++; // Detected: non-atomic read-modify-write
@@ -263,11 +261,7 @@ void testVirtualThreadSafety() {
 @AsyncTest(
     threads = 10,
     invocations = 50,
-    detectAll = false,
-    detectCompletableFutureExceptions = true,
-    detectCompletableFutureCompletionLeaks = true,
-    detectCompletableFutureChainIssues = true,
-    detectCFCommonPoolBlocking = true
+    includes = {DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, DetectorType.COMPLETABLEFUTURE_CHAIN, DetectorType.CF_COMMON_POOL_BLOCKING}
 )
 void testAsyncPipeline() {
     CompletableFuture<Result> future = service.processAsync(item);
@@ -331,193 +325,193 @@ class SharedStateTest {
 
 ## Full detector reference
 
-All detector flags below default to `true` and are gated by `detectAll`. Set `detectAll = false` to run only the ones you turn on explicitly, or list `DetectorType` values in `excludes` to skip specific ones.
+Select detectors below by their `DetectorType`: list them in `includes` to run only those, or in `excludes` to skip them.
 
 ### Phase 1 — Core
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectDeadlocks` | `DEADLOCKS` | Thread deadlocks with lock-chain analysis (always on) |
-| `detectVisibility` | `VISIBILITY` | Missing `volatile`, stale memory reads |
-| `detectLivelocks` | `LIVELOCKS` | Threads spinning without progress |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `DEADLOCKS` | Thread deadlocks with lock-chain analysis (always on) |
+| `VISIBILITY` | Missing `volatile`, stale memory reads |
+| `LIVELOCKS` | Threads spinning without progress |
 
 ### Phase 2 — Core advanced
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectFalseSharing` | `FALSE_SHARING` | Cache-line contention between threads |
-| `detectWakeupIssues` | `WAKEUP_ISSUES` | A `wait()` that returned with no notify and was not waited again (`if` instead of `while`) |
-| `validateConstructorSafety` | `CONSTRUCTOR_SAFETY` | Object published before fully constructed |
-| `detectABAProblem` | `ABA_PROBLEM` | Lock-free ABA hazard |
-| `validateLockOrder` | `LOCK_ORDER` | Inconsistent lock acquisition order |
-| `monitorSynchronizers` | `SYNCHRONIZERS` | Barrier/phaser progression issues |
-| `monitorThreadPool` | `THREAD_POOL` | Executor saturation and unhealthy state |
-| `detectMemoryOrderingViolations` | `MEMORY_ORDERING` | CPU reordering issues |
-| `monitorAsyncPipeline` | `ASYNC_PIPELINE` | Event flow tracking |
-| `monitorReadWriteLockFairness` | `READ_WRITE_LOCK_FAIRNESS` | Writer starvation |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `FALSE_SHARING` | Cache-line contention between threads |
+| `WAKEUP_ISSUES` | A `wait()` that returned with no notify and was not waited again (`if` instead of `while`) |
+| `CONSTRUCTOR_SAFETY` | Object published before fully constructed |
+| `ABA_PROBLEM` | Lock-free ABA hazard |
+| `LOCK_ORDER` | Inconsistent lock acquisition order |
+| `SYNCHRONIZERS` | Barrier/phaser progression issues |
+| `THREAD_POOL` | Executor saturation and unhealthy state |
+| `MEMORY_ORDERING` | CPU reordering issues |
+| `ASYNC_PIPELINE` | Event flow tracking |
+| `READ_WRITE_LOCK_FAIRNESS` | Writer starvation |
 
 ### Phase 2 — Monitors
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `monitorSemaphore` | `SEMAPHORE` | Permit leaks, over-release |
-| `detectCompletableFutureExceptions` | `COMPLETABLE_FUTURE_EXCEPTIONS` | Unhandled async exceptions |
-| `detectCompletableFutureCompletionLeaks` | `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | Futures that are never completed |
-| `detectVirtualThreadPinning` | `VIRTUAL_THREAD_PINNING` | Virtual threads pinned to carrier thread |
-| `detectThreadPoolDeadlocks` | `THREAD_POOL_DEADLOCK` | Nested task submission deadlocks |
-| `detectConcurrentModifications` | `CONCURRENT_MODIFICATIONS` | Collection mutated during iteration |
-| `detectLockLeaks` | `LOCK_LEAKS` | Locks acquired but never released |
-| `detectSharedRandom` | `SHARED_RANDOM` | `java.util.Random` used across threads |
-| `detectBlockingQueueIssues` | `BLOCKING_QUEUE` | Queue saturation or imbalance |
-| `detectConditionVariableIssues` | `CONDITION_VARIABLES` | Stuck waiters, wakeups no signal accounts for |
-| `detectSimpleDateFormatIssues` | `SIMPLE_DATE_FORMAT` | Non-thread-safe `SimpleDateFormat` |
-| `detectParallelStreamIssues` | `PARALLEL_STREAMS` | Stateful lambdas and side effects |
-| `detectResourceLeaks` | `RESOURCE_LEAKS` | `AutoCloseable` not closed |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `SEMAPHORE` | Permit leaks, over-release |
+| `COMPLETABLE_FUTURE_EXCEPTIONS` | Unhandled async exceptions |
+| `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | Futures that are never completed |
+| `VIRTUAL_THREAD_PINNING` | Virtual threads pinned to carrier thread |
+| `THREAD_POOL_DEADLOCK` | Nested task submission deadlocks |
+| `CONCURRENT_MODIFICATIONS` | Collection mutated during iteration |
+| `LOCK_LEAKS` | Locks acquired but never released |
+| `SHARED_RANDOM` | `java.util.Random` used across threads |
+| `BLOCKING_QUEUE` | Queue saturation or imbalance |
+| `CONDITION_VARIABLES` | Stuck waiters, wakeups no signal accounts for |
+| `SIMPLE_DATE_FORMAT` | Non-thread-safe `SimpleDateFormat` |
+| `PARALLEL_STREAMS` | Stateful lambdas and side effects |
+| `RESOURCE_LEAKS` | `AutoCloseable` not closed |
 
 ### Phase 2 — Additional concurrency
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectCountDownLatchIssues` | `COUNTDOWN_LATCH` | Timeout, missing/extra `countDown()` |
-| `detectCyclicBarrierIssues` | `CYCLIC_BARRIER` | Await on a broken barrier (a recorded timeout is context, not a finding) |
-| `detectReentrantLockIssues` | `REENTRANT_LOCK` | A lock still held at analysis by a holder that stopped working; starvation the lock saw (barging) |
-| `detectVolatileArrayIssues` | `VOLATILE_ARRAY` | Non-volatile array element access |
-| `detectDoubleCheckedLocking` | `DOUBLE_CHECKED_LOCKING` | Broken DCL without `volatile` |
-| `detectWaitTimeout` | `WAIT_TIMEOUT` | `wait()` without a timeout argument |
-| `detectLockContention` | `LOCK_CONTENTION` | Monitors with high blocked-acquire ratio |
-| `detectSynchronizedNonFinal` | `SYNCHRONIZED_NON_FINAL` | `synchronized` on a non-`final` field |
-| `detectMissedSignals` | `MISSED_SIGNAL` | a wait that began after a `notify()` no thread was waiting for, and received no notify of its own |
-| `detectLazyInitRace` | `LAZY_INIT_RACE` | Multi-thread lazy init without proper guards |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `COUNTDOWN_LATCH` | Timeout, missing/extra `countDown()` |
+| `CYCLIC_BARRIER` | Await on a broken barrier (a recorded timeout is context, not a finding) |
+| `REENTRANT_LOCK` | A lock still held at analysis by a holder that stopped working; starvation the lock saw (barging) |
+| `VOLATILE_ARRAY` | Non-volatile array element access |
+| `DOUBLE_CHECKED_LOCKING` | Broken DCL without `volatile` |
+| `WAIT_TIMEOUT` | `wait()` without a timeout argument |
+| `LOCK_CONTENTION` | Monitors with high blocked-acquire ratio |
+| `SYNCHRONIZED_NON_FINAL` | `synchronized` on a non-`final` field |
+| `MISSED_SIGNAL` | a wait that began after a `notify()` no thread was waiting for, and received no notify of its own |
+| `LAZY_INIT_RACE` | Multi-thread lazy init without proper guards |
 
 ### Phase 2 — Advanced concurrency utilities
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectPhaserIssues` | `PHASER` | Arrivals after the party count reached zero, phases stalled past a timeout or behind an `arriveAndAwaitAdvance()` that never returned |
-| `detectStampedLockIssues` | `STAMPED_LOCK` | Unvalidated optimistic reads, stamps never released on a lock still held (conversions tracked via `recordConversion`), a read stamp released twice while another reader holds |
-| `detectExchangerIssues` | `EXCHANGER` | Orphaned exchanges: a caller that started an exchange and never left it (a handled timeout is not a finding) |
-| `detectScheduledExecutorIssues` | `SCHEDULED_EXECUTOR` | Missing shutdown, long-running tasks |
-| `detectForkJoinPoolIssues` | `FORK_JOIN_POOL` | Fork without join |
-| `detectThreadFactoryIssues` | `THREAD_FACTORY` | Missing uncaught exception handlers |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `PHASER` | Arrivals after the party count reached zero, phases stalled past a timeout or behind an `arriveAndAwaitAdvance()` that never returned |
+| `STAMPED_LOCK` | Unvalidated optimistic reads, stamps never released on a lock still held (conversions tracked via `recordConversion`), a read stamp released twice while another reader holds |
+| `EXCHANGER` | Orphaned exchanges: a caller that started an exchange and never left it (a handled timeout is not a finding) |
+| `SCHEDULED_EXECUTOR` | Missing shutdown, long-running tasks |
+| `FORK_JOIN_POOL` | Fork without join |
+| `THREAD_FACTORY` | Missing uncaught exception handlers |
 
 ### Phase 3 — Behavioral
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectRaceConditions` | `RACE_CONDITIONS` | Unsynchronized cross-thread field access |
-| `detectThreadLocalLeaks` | `THREAD_LOCAL_LEAKS` | Missing `ThreadLocal.remove()` |
-| `detectBusyWaiting` | `BUSY_WAITING` | Tight spin loops |
-| `detectAtomicityViolations` | `ATOMICITY_VIOLATIONS` | Check-then-act compound operations |
-| `detectInterruptMishandling` | `INTERRUPT_MISHANDLING` | Swallowed `InterruptedException` |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `RACE_CONDITIONS` | Unsynchronized cross-thread field access |
+| `THREAD_LOCAL_LEAKS` | Missing `ThreadLocal.remove()` |
+| `BUSY_WAITING` | Tight spin loops |
+| `ATOMICITY_VIOLATIONS` | Check-then-act compound operations |
+| `INTERRUPT_MISHANDLING` | Swallowed `InterruptedException` |
 
 ### Phase 4 — Infrastructure & resource management
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectThreadLeaks` | `THREAD_LEAKS` | Threads created but never terminated |
-| `detectSleepInLock` | `SLEEP_IN_LOCK` | `Thread.sleep()` while holding a lock |
-| `detectUnboundedQueue` | `UNBOUNDED_QUEUE` | `BlockingQueue` with no capacity bound |
-| `detectThreadStarvation` | `THREAD_STARVATION` | Tasks waiting excessively for execution |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `THREAD_LEAKS` | Threads created but never terminated |
+| `SLEEP_IN_LOCK` | `Thread.sleep()` while holding a lock |
+| `UNBOUNDED_QUEUE` | `BlockingQueue` with no capacity bound |
+| `THREAD_STARVATION` | Tasks waiting excessively for execution |
 
 ### Phase 5 — Thread-safety of common types
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectCalendarIssues` | `CALENDAR` | Shared `Calendar` accessed by multiple threads |
-| `detectSharedCollections` | `SHARED_COLLECTIONS` | `ArrayList`/`HashMap`/`HashSet`/etc. used concurrently without synchronization |
-| `detectTimerIssues` | `TIMER` | `java.util.Timer` failures (uncaught exception kills all tasks), tasks starved behind another on the timer thread |
-| `detectCopyOnWriteCollectionIssues` | `COPY_ON_WRITE_COLLECTIONS` | `CopyOnWriteArrayList`/`Set` in write-heavy paths |
-| `detectStringBuilderIssues` | `STRING_BUILDER` | `StringBuilder` mutated by multiple threads |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `CALENDAR` | Shared `Calendar` accessed by multiple threads |
+| `SHARED_COLLECTIONS` | `ArrayList`/`HashMap`/`HashSet`/etc. used concurrently without synchronization |
+| `TIMER` | `java.util.Timer` failures (uncaught exception kills all tasks), tasks starved behind another on the timer thread |
+| `COPY_ON_WRITE_COLLECTIONS` | `CopyOnWriteArrayList`/`Set` in write-heavy paths |
+| `STRING_BUILDER` | `StringBuilder` mutated by multiple threads |
 
 ### Phase 6 — Virtual thread concurrency (Java 21+)
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectStructuredConcurrencyIssues` | `STRUCTURED_CONCURRENCY` | Unclosed `StructuredTaskScope`, missing `join()`, etc. |
-| `detectVirtualThreadContextLeaks` | `VIRTUAL_THREAD_CONTEXT_LEAKS` | `ThreadLocal` set in virtual threads but never removed |
-| `detectScopedValueMisuse` | `SCOPED_VALUE` | `ScopedValue.get()` outside an active binding |
-| `detectVirtualThreadCpuBoundTasks` | `VIRTUAL_THREAD_CPU_BOUND` | Virtual threads running long CPU-bound work without yielding |
-| `detectVirtualThreadCarrierExhaustion` | `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | Blocked virtual threads exceeding carrier capacity |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `STRUCTURED_CONCURRENCY` | Unclosed `StructuredTaskScope`, missing `join()`, etc. |
+| `VIRTUAL_THREAD_CONTEXT_LEAKS` | `ThreadLocal` set in virtual threads but never removed |
+| `SCOPED_VALUE` | `ScopedValue.get()` outside an active binding |
+| `VIRTUAL_THREAD_CPU_BOUND` | Virtual threads running long CPU-bound work without yielding |
+| `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | Blocked virtual threads exceeding carrier capacity |
 
 ### Phase 7 — High-level concurrency patterns
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectHttpClientIssues` | `HTTP_CLIENT` | Unclosed responses, pool exhaustion, requests never awaited |
-| `detectStreamClosing` | `STREAM_CLOSING` | `InputStream`/`OutputStream`/`Reader`/`Writer` opened but never closed |
-| `detectCacheConcurrency` | `CACHE_CONCURRENCY` | `HashMap`/`LinkedHashMap` used as cache without synchronization, cache stampede |
-| `detectCompletableFutureChainIssues` | `COMPLETABLEFUTURE_CHAIN` | Missing `.exceptionally()`/`.handle()` in async chains |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `HTTP_CLIENT` | Unclosed responses, pool exhaustion, requests never awaited |
+| `STREAM_CLOSING` | `InputStream`/`OutputStream`/`Reader`/`Writer` opened but never closed |
+| `CACHE_CONCURRENCY` | `HashMap`/`LinkedHashMap` used as cache without synchronization, cache stampede |
+| `COMPLETABLEFUTURE_CHAIN` | Missing `.exceptionally()`/`.handle()` in async chains |
 
 ### Phase 8 — Lifecycle & structural correctness
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectExecutorShutdown` | `EXECUTOR_SHUTDOWN` | `ExecutorService` never shut down, or shut down without `awaitTermination()` |
-| `detectMutableMapKeys` | `MUTABLE_MAP_KEY` | Mutable objects used as `HashMap`/`HashSet` keys, then mutated |
-| `detectNestedMonitorLockout` | `NESTED_MONITOR_LOCKOUT` | Blocking call (`wait()`, `Future.get()`, `Lock.lock()`) while holding another monitor |
-| `detectLockDowngrade` | `LOCK_DOWNGRADE` | Illegal read-to-write upgrade on `ReentrantReadWriteLock` |
-| `detectInheritableThreadLocalMisuse` | `INHERITABLE_THREAD_LOCAL` | `InheritableThreadLocal` used in pooled threads (inheritance happens at thread creation, not submission) |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `EXECUTOR_SHUTDOWN` | `ExecutorService` never shut down, or shut down without `awaitTermination()` |
+| `MUTABLE_MAP_KEY` | Mutable objects used as `HashMap`/`HashSet` keys, then mutated |
+| `NESTED_MONITOR_LOCKOUT` | Blocking call (`wait()`, `Future.get()`, `Lock.lock()`) while holding another monitor |
+| `LOCK_DOWNGRADE` | Illegal read-to-write upgrade on `ReentrantReadWriteLock` |
+| `INHERITABLE_THREAD_LOCAL` | `InheritableThreadLocal` used in pooled threads (inheritance happens at thread creation, not submission) |
 
 ### Phase 10 — API traps & subtle concurrency bugs
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectThreadLocalContamination` | `THREAD_LOCAL_CONTAMINATION` | `ThreadLocal` from one task read by the next task on the same pooled thread |
-| `detectAtomicNonAtomicUpdates` | `ATOMIC_NON_ATOMIC_UPDATE` | `get()`-then-`set()` on `AtomicInteger`/`AtomicLong` without `compareAndSet()` |
-| `detectSynchronizedCollectionIteration` | `SYNCHRONIZED_COLLECTION_ITERATION` | Iterating `Collections.synchronizedList`/`Map`/`Set` without holding the wrapper lock |
-| `detectSharedFormatter` | `SHARED_FORMATTER` | `Formatter`/`PrintWriter`/`PrintStream` shared without synchronization |
-| `detectConcurrentMapComputeRecursion` | `CONCURRENT_MAP_COMPUTE_RECURSION` | Recursive `ConcurrentHashMap.computeIfAbsent`/`compute`/`merge` on the same key |
-| `detectSynchronizedOnLiteral` | `SYNCHRONIZED_ON_LITERAL` | `synchronized` on interned `String` or cached `Integer`/`Long` (JVM-shared monitors) |
-| `detectPublicLockExposure` | `PUBLIC_LOCK_EXPOSURE` | `synchronized(this)` while `this` is publicly accessible |
-| `detectForkJoinTaskBlocking` | `FORK_JOIN_TASK_BLOCKING` | Blocking calls inside `ForkJoinTask` bodies — starves carrier threads |
-| `detectOptimisticReadValidation` | `OPTIMISTIC_READ_VALIDATION` | `StampedLock.tryOptimisticRead()` data used without `validate(stamp)` |
-| `detectCFCommonPoolBlocking` | `CF_COMMON_POOL_BLOCKING` | Blocking ops inside `CompletableFuture` stages on the common `ForkJoinPool` |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `THREAD_LOCAL_CONTAMINATION` | `ThreadLocal` from one task read by the next task on the same pooled thread |
+| `ATOMIC_NON_ATOMIC_UPDATE` | `get()`-then-`set()` on `AtomicInteger`/`AtomicLong` without `compareAndSet()` |
+| `SYNCHRONIZED_COLLECTION_ITERATION` | Iterating `Collections.synchronizedList`/`Map`/`Set` without holding the wrapper lock |
+| `SHARED_FORMATTER` | `Formatter`/`PrintWriter`/`PrintStream` shared without synchronization |
+| `CONCURRENT_MAP_COMPUTE_RECURSION` | Recursive `ConcurrentHashMap.computeIfAbsent`/`compute`/`merge` on the same key |
+| `SYNCHRONIZED_ON_LITERAL` | `synchronized` on interned `String` or cached `Integer`/`Long` (JVM-shared monitors) |
+| `PUBLIC_LOCK_EXPOSURE` | `synchronized(this)` while `this` is publicly accessible |
+| `FORK_JOIN_TASK_BLOCKING` | Blocking calls inside `ForkJoinTask` bodies — starves carrier threads |
+| `OPTIMISTIC_READ_VALIDATION` | `StampedLock.tryOptimisticRead()` data used without `validate(stamp)` |
+| `CF_COMMON_POOL_BLOCKING` | Blocking ops inside `CompletableFuture` stages on the common `ForkJoinPool` |
 
 ### Phase 11 — Thread-safety of additional types & patterns
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectSharedMatcher` | `SHARED_MATCHER` | `java.util.regex.Matcher` shared across threads (mutable match state) |
-| `detectSharedDecimalFormat` | `SHARED_DECIMAL_FORMAT` | `DecimalFormat`/`NumberFormat` shared concurrently |
-| `detectWeakReferenceRace` | `WEAK_REFERENCE_RACE` | `WeakReference.get()` results used without null check, or referent collected mid-test |
-| `detectStatefulLambda` | `STATEFUL_LAMBDA` | Lambda/`Runnable`/`Callable` capturing mutable containers (`int[]`, `Object[]`) executed concurrently |
-| `detectSharedMessageDigest` | `SHARED_MESSAGE_DIGEST` | `MessageDigest` accessed from more than one thread — unsynchronized use corrupts hash state |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `SHARED_MATCHER` | `java.util.regex.Matcher` shared across threads (mutable match state) |
+| `SHARED_DECIMAL_FORMAT` | `DecimalFormat`/`NumberFormat` shared concurrently |
+| `WEAK_REFERENCE_RACE` | `WeakReference.get()` results used without null check, or referent collected mid-test |
+| `STATEFUL_LAMBDA` | Lambda/`Runnable`/`Callable` capturing mutable containers (`int[]`, `Object[]`) executed concurrently |
+| `SHARED_MESSAGE_DIGEST` | `MessageDigest` accessed from more than one thread — unsynchronized use corrupts hash state |
 
 ### Phase 12 — Operational & hygiene concurrency issues
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectInterruptSwallowing` | `INTERRUPT_SWALLOWING` | `catch (InterruptedException)` blocks that neither rethrow nor restore the interrupt flag |
-| `detectMdcContextLeak` | `MDC_CONTEXT_LEAK` | SLF4J MDC entries not cleared at task end |
-| `detectSystemPropertyMutation` | `SYSTEM_PROPERTY_MUTATION` | Concurrent `System.setProperty`/`clearProperty` calls during the run |
-| `detectFutureIgnored` | `FUTURE_IGNORED` | `Future` from `submit()` never inspected — failed-task exceptions silently swallowed |
-| `detectExplicitGc` | `EXPLICIT_GC` | `System.gc()`/`Runtime.gc()` calls — corrupt timing measurements |
-| `detectDeprecatedThreadApi` | `DEPRECATED_THREAD_API` | `Thread.stop()`/`suspend()`/`resume()`/`destroy()`/`countStackFrames()` |
-| `detectSharedXmlParser` | `SHARED_XML_PARSER` | `DocumentBuilder`/`SAXParser`/`Transformer`/`XPath` shared concurrently |
-| `detectBoxedPrimitiveLock` | `BOXED_PRIMITIVE_LOCK` | `synchronized` on cached `Integer`/`Long`/`Boolean.TRUE`/interned `String` |
-| `detectSharedTimeZone` | `SHARED_TIMEZONE` | Mutating shared `TimeZone` via `setRawOffset`/`setID` from multiple threads |
-| `detectUncaughtExceptionHandler` | `UNCAUGHT_EXCEPTION_HANDLER` | Threads started without a custom `UncaughtExceptionHandler` that subsequently throw |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `INTERRUPT_SWALLOWING` | `catch (InterruptedException)` blocks that neither rethrow nor restore the interrupt flag |
+| `MDC_CONTEXT_LEAK` | SLF4J MDC entries not cleared at task end |
+| `SYSTEM_PROPERTY_MUTATION` | Concurrent `System.setProperty`/`clearProperty` calls during the run |
+| `FUTURE_IGNORED` | `Future` from `submit()` never inspected — failed-task exceptions silently swallowed |
+| `EXPLICIT_GC` | `System.gc()`/`Runtime.gc()` calls — corrupt timing measurements |
+| `DEPRECATED_THREAD_API` | `Thread.stop()`/`suspend()`/`resume()`/`destroy()`/`countStackFrames()` |
+| `SHARED_XML_PARSER` | `DocumentBuilder`/`SAXParser`/`Transformer`/`XPath` shared concurrently |
+| `BOXED_PRIMITIVE_LOCK` | `synchronized` on cached `Integer`/`Long`/`Boolean.TRUE`/interned `String` |
+| `SHARED_TIMEZONE` | Mutating shared `TimeZone` via `setRawOffset`/`setID` from multiple threads |
+| `UNCAUGHT_EXCEPTION_HANDLER` | Threads started without a custom `UncaughtExceptionHandler` that subsequently throw |
 
 ### Phase 13 — Additional concurrency-bug categories (1.6.0+)
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectDaemonThreadHygiene` | `DAEMON_THREAD_HYGIENE` | Non-daemon `Thread` instances still alive at analyze time — they block JVM exit and can hang the test process. Distinct from `THREAD_LEAKS` which counts live threads regardless of daemon flag. Detector class: `DaemonThreadHygieneDetector`. |
-| `detectNotifyWithoutMonitor` | `NOTIFY_WITHOUT_MONITOR` | `notify()`/`notifyAll()` attempts (declared via `recordNotifyAttempt`) when the calling thread does not hold the monitor — would throw `IllegalMonitorStateException` at runtime and leave `wait()`-ers blocked. Complements `MISSED_SIGNAL` (which catches notifies with no waiter). |
-| `detectSharedSecureRandom` | `SHARED_SECURE_RANDOM` | `java.security.SecureRandom` instances accessed from multiple threads. Thread safety is provider-dependent (SHA1PRNG, NativePRNG, Bouncy Castle, custom SPIs all differ). Distinct from `SHARED_RANDOM` which covers `java.util.Random` only. Report carries algorithm + provider names. |
-| `detectWeakHashMapShared` | `WEAK_HASH_MAP_SHARED` | `WeakHashMap` or `IdentityHashMap` instances accessed from multiple threads. Both have additional concurrency hazards beyond regular `HashMap`: GC-driven entry removal mutates the table on every get/put; linear probing can drop or duplicate entries under concurrent puts. |
-| `detectJdbcConnectionShared` | `JDBC_CONNECTION_SHARED` | `java.sql.Connection`/`Statement`/`PreparedStatement`/`ResultSet` accessed from multiple threads. JDBC spec does not require any of these to be thread-safe; most drivers (Postgres/MySQL/Oracle) document one-thread-per-Connection. Concurrent use produces mixed cursors, protocol corruption, or transaction leakage. |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `DAEMON_THREAD_HYGIENE` | Non-daemon `Thread` instances still alive at analyze time — they block JVM exit and can hang the test process. Distinct from `THREAD_LEAKS` which counts live threads regardless of daemon flag. Detector class: `DaemonThreadHygieneDetector`. |
+| `NOTIFY_WITHOUT_MONITOR` | `notify()`/`notifyAll()` attempts (declared via `recordNotifyAttempt`) when the calling thread does not hold the monitor — would throw `IllegalMonitorStateException` at runtime and leave `wait()`-ers blocked. Complements `MISSED_SIGNAL` (which catches notifies with no waiter). |
+| `SHARED_SECURE_RANDOM` | `java.security.SecureRandom` instances accessed from multiple threads. Thread safety is provider-dependent (SHA1PRNG, NativePRNG, Bouncy Castle, custom SPIs all differ). Distinct from `SHARED_RANDOM` which covers `java.util.Random` only. Report carries algorithm + provider names. |
+| `WEAK_HASH_MAP_SHARED` | `WeakHashMap` or `IdentityHashMap` instances accessed from multiple threads. Both have additional concurrency hazards beyond regular `HashMap`: GC-driven entry removal mutates the table on every get/put; linear probing can drop or duplicate entries under concurrent puts. |
+| `JDBC_CONNECTION_SHARED` | `java.sql.Connection`/`Statement`/`PreparedStatement`/`ResultSet` accessed from multiple threads. JDBC spec does not require any of these to be thread-safe; most drivers (Postgres/MySQL/Oracle) document one-thread-per-Connection. Concurrent use produces mixed cursors, protocol corruption, or transaction leakage. |
 
 ### Phase 14 — Additional thread-unsafe primitives & publication hazards (1.7.0+)
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectSharedStatefulCrypto` | `SHARED_STATEFUL_CRYPTO` | `javax.crypto.Cipher`, `javax.crypto.Mac`, and `java.security.Signature` instances accessed from multiple threads. Unlike `MessageDigest`, these carry mutable per-operation state across `init → update → doFinal`/`sign`/`verify`; interleaved calls corrupt ciphertext or fold bytes from two callers into one MAC/signature that verifies for neither. Instrument via `AsyncTestContext.sharedStatefulCryptoDetector().recordAccess(cipher/mac/signature, name, thread)`. Sibling of `SHARED_MESSAGE_DIGEST` / `SHARED_SECURE_RANDOM`. |
-| `detectConcurrentMapCheckThenAct` | `CONCURRENT_MAP_CHECK_THEN_ACT` | Non-atomic check-then-act on a `ConcurrentMap` (`containsKey`/`get` then `put`) performed by multiple threads against the same map+key — a lost-update race. Each op is atomic but the compound sequence is not; use `putIfAbsent`/`computeIfAbsent`/`compute`/`merge`. Instrument via `recordCheckThenAct(map, key, operation, thread)`. Distinct from `ATOMIC_NON_ATOMIC_UPDATE` (`Atomic*` types) and `CONCURRENT_MAP_COMPUTE_RECURSION` (re-entrancy inside `computeIfAbsent`). |
-| `detectSharedDeflater` | `SHARED_DEFLATER` | `java.util.zip.Deflater`/`Inflater` accessed from multiple threads. Both wrap a stateful native zlib stream and are not thread-safe; concurrent use corrupts output or crashes when one thread calls `end()` mid-stream. Instrument via `recordAccess(deflater/inflater, name, thread)`. |
-| `detectThisEscape` | `THIS_ESCAPE` | A constructor that publishes `this` before returning (starts a thread, registers a listener, stores into shared state), exposing a partially-constructed object — no final-field visibility guarantee, fields may still be default. Instrument via `recordConstructorEscape(this, how, thread)`, plus optional `recordExternalAccess(instance, thread)` / `recordConstructionComplete(instance)`. MEDIUM, escalated to HIGH when another thread observes it before completion. |
-| `detectThreadLocalRandomMisuse` | `THREAD_LOCAL_RANDOM_MISUSE` | A `ThreadLocalRandom.current()` reference cached (e.g. in a field) and used from a thread other than the one that obtained it, defeating its per-thread isolation. Instrument via `recordObtain(rng, name, thread)` then `recordUse(rng, thread)`. Distinct from `SHARED_RANDOM` (`java.util.Random`) and `SHARED_SECURE_RANDOM`. |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `SHARED_STATEFUL_CRYPTO` | `javax.crypto.Cipher`, `javax.crypto.Mac`, and `java.security.Signature` instances accessed from multiple threads. Unlike `MessageDigest`, these carry mutable per-operation state across `init → update → doFinal`/`sign`/`verify`; interleaved calls corrupt ciphertext or fold bytes from two callers into one MAC/signature that verifies for neither. Instrument via `AsyncTestContext.sharedStatefulCryptoDetector().recordAccess(cipher/mac/signature, name, thread)`. Sibling of `SHARED_MESSAGE_DIGEST` / `SHARED_SECURE_RANDOM`. |
+| `CONCURRENT_MAP_CHECK_THEN_ACT` | Non-atomic check-then-act on a `ConcurrentMap` (`containsKey`/`get` then `put`) performed by multiple threads against the same map+key — a lost-update race. Each op is atomic but the compound sequence is not; use `putIfAbsent`/`computeIfAbsent`/`compute`/`merge`. Instrument via `recordCheckThenAct(map, key, operation, thread)`. Distinct from `ATOMIC_NON_ATOMIC_UPDATE` (`Atomic*` types) and `CONCURRENT_MAP_COMPUTE_RECURSION` (re-entrancy inside `computeIfAbsent`). |
+| `SHARED_DEFLATER` | `java.util.zip.Deflater`/`Inflater` accessed from multiple threads. Both wrap a stateful native zlib stream and are not thread-safe; concurrent use corrupts output or crashes when one thread calls `end()` mid-stream. Instrument via `recordAccess(deflater/inflater, name, thread)`. |
+| `THIS_ESCAPE` | A constructor that publishes `this` before returning (starts a thread, registers a listener, stores into shared state), exposing a partially-constructed object — no final-field visibility guarantee, fields may still be default. Instrument via `recordConstructorEscape(this, how, thread)`, plus optional `recordExternalAccess(instance, thread)` / `recordConstructionComplete(instance)`. MEDIUM, escalated to HIGH when another thread observes it before completion. |
+| `THREAD_LOCAL_RANDOM_MISUSE` | A `ThreadLocalRandom.current()` reference cached (e.g. in a field) and used from a thread other than the one that obtained it, defeating its per-thread isolation. Instrument via `recordObtain(rng, name, thread)` then `recordUse(rng, thread)`. Distinct from `SHARED_RANDOM` (`java.util.Random`) and `SHARED_SECURE_RANDOM`. |
 
 ### Phase 17 — Shared stateful JDK objects, I/O position races & contention advisories (1.7.0+)
-| Annotation field | DetectorType | What it catches |
-|-----------------|-------------|-----------------|
-| `detectSharedByteBuffer` | `SHARED_BYTE_BUFFER` | A `ByteBuffer` (position/limit/mark are mutable state) accessed from multiple threads |
-| `detectSharedCharsetCoder` | `SHARED_CHARSET_CODER` | `CharsetEncoder`/`CharsetDecoder` shared across threads — internal coding state garbles output |
-| `detectSharedChecksum` | `SHARED_CHECKSUM` | `CRC32`/`CRC32C`/`Adler32` shared across threads — silently wrong checksums |
-| `detectFileChannelPositionRace` | `FILE_CHANNEL_POSITION_RACE` | `FileChannel` `position(n)` then `read`/`write` relying on it, with another thread's call able to land between them |
-| `detectSharedIterator` | `SHARED_ITERATOR` | An `Iterator`/`ListIterator`/`Spliterator` consumed by more than one thread |
-| `detectHighContentionAtomic` | `HIGH_CONTENTION_ATOMIC` | CAS retry storms on hot `Atomic*` fields — advisory to switch to `LongAdder` |
-| `detectSharedJsonMapperReconfig` | `SHARED_JSON_MAPPER_RECONFIG` | Mapper (`ObjectMapper`, `Gson`) reconfigured while another thread uses it in the same round |
+| DetectorType | What it catches |
+|-------------|-----------------|
+| `SHARED_BYTE_BUFFER` | A `ByteBuffer` (position/limit/mark are mutable state) accessed from multiple threads |
+| `SHARED_CHARSET_CODER` | `CharsetEncoder`/`CharsetDecoder` shared across threads — internal coding state garbles output |
+| `SHARED_CHECKSUM` | `CRC32`/`CRC32C`/`Adler32` shared across threads — silently wrong checksums |
+| `FILE_CHANNEL_POSITION_RACE` | `FileChannel` `position(n)` then `read`/`write` relying on it, with another thread's call able to land between them |
+| `SHARED_ITERATOR` | An `Iterator`/`ListIterator`/`Spliterator` consumed by more than one thread |
+| `HIGH_CONTENTION_ATOMIC` | CAS retry storms on hot `Atomic*` fields — advisory to switch to `LongAdder` |
+| `SHARED_JSON_MAPPER_RECONFIG` | Mapper (`ObjectMapper`, `Gson`) reconfigured while another thread uses it in the same round |
 
 ### JDK 25/26 detectors — Phases 16 & 18 (1.7.0+ / 1.8.0+)
 
 These six detectors target concurrency features introduced/finalized in JDK 24–26. They
-are **wired into the `@AsyncTest` pipeline** — each has a `DetectorType` constant, a
-deprecated boolean flag, and an `AsyncTestContext` accessor — and can also be
+are **wired into the `@AsyncTest` pipeline** — each has a `DetectorType` constant and an
+`AsyncTestContext` accessor — and can also be
 instantiated standalone. They live in `se.deversity.asynctest.diagnostics` and are
 thread-safe (`ConcurrentHashMap`-backed), so a single instance can be shared across
 the worker threads of an `@AsyncTest`.
@@ -689,7 +683,7 @@ The built-in detectors are not in the SPI registry: since 2.0.0 they have one re
 
 ## Tips
 
-- **Bare `@AsyncTest` is the right starting point** — every detector is on by default in 1.x. Narrow with `excludes`, or set `detectAll = false` and turn on individual flags only after you understand the failures.
+- **Bare `@AsyncTest` is the right starting point** — every detector is on by default. Narrow with `excludes`, or name the detectors you want with `includes` once you understand the failures.
 - **Increase `invocations` before `threads`** — more rounds give detectors more chances to observe bad interleavings. 200–1000 invocations is a good baseline.
 - **Use `@BeforeEachInvocation` to reset shared state** between rounds; not doing so causes round N's leftover state to pollute round N+1.
 - **`timeoutMs`** controls how long a round can run before deadlock analysis fires. Lower it for tests that should complete quickly.

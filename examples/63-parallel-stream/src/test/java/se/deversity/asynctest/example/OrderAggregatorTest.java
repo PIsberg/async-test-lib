@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -41,7 +42,7 @@ class OrderAggregatorTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by ParallelStreamDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectParallelStreamIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.PARALLEL_STREAMS)
     void test_concurrent_detectsBug() {
         // Inform the detector that a parallel stream is being used
         AsyncTestContext.parallelStreamDetector()

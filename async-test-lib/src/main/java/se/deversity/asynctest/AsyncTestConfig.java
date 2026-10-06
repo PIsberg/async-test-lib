@@ -22,10 +22,10 @@ import java.util.Set;
  */
 @AICore(
     sensitivity = "Critical",
-    note = "Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation, the Builder setter that calls flag(TYPE, v), and the from(AsyncTest) read; never reintroduce a per-detector resolution expression in build()."
+    note = "Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 2.0.0 (#920). Never reintroduce a per-detector resolution expression in build()."
 )
 @AIContext(
-    focus = "Maintain strict 1:1 mapping between @AsyncTest attributes, Builder fields, from(AsyncTest), build() logic, and DetectorRegistry",
+    focus = "Keep one public flag per DetectorType, each derived from the enabled set, and the selection in from(AsyncTest) and build() expressed only through includes, excludes, preset and detectAll",
     avoids = "mutable state — this class must remain immutable after construction"
 )
 @AIImmutable(note = "Immutable snapshot of @AsyncTest parameters to ensure thread safety.")
@@ -83,333 +83,333 @@ public final class AsyncTestConfig {
     private final Set<String> excludedIds;
 
     // ---- Phase 1 ----
-    /** Resolved value of {@link AsyncTest#detectDeadlocks()} for this run. */
+    /** Whether {@link DetectorType#DEADLOCKS} is enabled for this run. */
     public final boolean detectDeadlocks;
-    /** Resolved value of {@link AsyncTest#detectVisibility()} for this run. */
+    /** Whether {@link DetectorType#VISIBILITY} is enabled for this run. */
     public final boolean detectVisibility;
-    /** Resolved value of {@link AsyncTest#detectLivelocks()} for this run. */
+    /** Whether {@link DetectorType#LIVELOCKS} is enabled for this run. */
     public final boolean detectLivelocks;
 
     // ---- Phase 2 ----
-    /** Resolved value of {@link AsyncTest#detectFalseSharing()} for this run. */
+    /** Whether {@link DetectorType#FALSE_SHARING} is enabled for this run. */
     public final boolean detectFalseSharing;
-    /** Resolved value of {@link AsyncTest#detectWakeupIssues()} for this run. */
+    /** Whether {@link DetectorType#WAKEUP_ISSUES} is enabled for this run. */
     public final boolean detectWakeupIssues;
-    /** Resolved value of {@link AsyncTest#validateConstructorSafety()} for this run. */
+    /** Whether {@link DetectorType#CONSTRUCTOR_SAFETY} is enabled for this run. */
     public final boolean validateConstructorSafety;
-    /** Resolved value of {@link AsyncTest#detectABAProblem()} for this run. */
+    /** Whether {@link DetectorType#ABA_PROBLEM} is enabled for this run. */
     public final boolean detectABAProblem;
-    /** Resolved value of {@link AsyncTest#validateLockOrder()} for this run. */
+    /** Whether {@link DetectorType#LOCK_ORDER} is enabled for this run. */
     public final boolean validateLockOrder;
-    /** Resolved value of {@link AsyncTest#monitorSynchronizers()} for this run. */
+    /** Whether {@link DetectorType#SYNCHRONIZERS} is enabled for this run. */
     public final boolean monitorSynchronizers;
-    /** Resolved value of {@link AsyncTest#monitorThreadPool()} for this run. */
+    /** Whether {@link DetectorType#THREAD_POOL} is enabled for this run. */
     public final boolean monitorThreadPool;
-    /** Resolved value of {@link AsyncTest#detectMemoryOrderingViolations()} for this run. */
+    /** Whether {@link DetectorType#MEMORY_ORDERING} is enabled for this run. */
     public final boolean detectMemoryOrderingViolations;
-    /** Resolved value of {@link AsyncTest#monitorAsyncPipeline()} for this run. */
+    /** Whether {@link DetectorType#ASYNC_PIPELINE} is enabled for this run. */
     public final boolean monitorAsyncPipeline;
-    /** Resolved value of {@link AsyncTest#monitorReadWriteLockFairness()} for this run. */
+    /** Whether {@link DetectorType#READ_WRITE_LOCK_FAIRNESS} is enabled for this run. */
     public final boolean monitorReadWriteLockFairness;
 
     // ---- Phase 3 ----
-    /** Resolved value of {@link AsyncTest#detectRaceConditions()} for this run. */
+    /** Whether {@link DetectorType#RACE_CONDITIONS} is enabled for this run. */
     public final boolean detectRaceConditions;
-    /** Resolved value of {@link AsyncTest#detectThreadLocalLeaks()} for this run. */
+    /** Whether {@link DetectorType#THREAD_LOCAL_LEAKS} is enabled for this run. */
     public final boolean detectThreadLocalLeaks;
-    /** Resolved value of {@link AsyncTest#detectBusyWaiting()} for this run. */
+    /** Whether {@link DetectorType#BUSY_WAITING} is enabled for this run. */
     public final boolean detectBusyWaiting;
-    /** Resolved value of {@link AsyncTest#detectAtomicityViolations()} for this run. */
+    /** Whether {@link DetectorType#ATOMICITY_VIOLATIONS} is enabled for this run. */
     public final boolean detectAtomicityViolations;
-    /** Resolved value of {@link AsyncTest#detectInterruptMishandling()} for this run. */
+    /** Whether {@link DetectorType#INTERRUPT_MISHANDLING} is enabled for this run. */
     public final boolean detectInterruptMishandling;
 
     // ---- Phase 2 Additional ----
-    /** Resolved value of {@link AsyncTest#monitorSemaphore()} for this run. */
+    /** Whether {@link DetectorType#SEMAPHORE} is enabled for this run. */
     public final boolean monitorSemaphore;
-    /** Resolved value of {@link AsyncTest#detectCompletableFutureExceptions()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLE_FUTURE_EXCEPTIONS} is enabled for this run. */
     public final boolean detectCompletableFutureExceptions;
-    /** Resolved value of {@link AsyncTest#detectCompletableFutureCompletionLeaks()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLE_FUTURE_COMPLETION_LEAKS} is enabled for this run. */
     public final boolean detectCompletableFutureCompletionLeaks;
-    /** Resolved value of {@link AsyncTest#detectVirtualThreadPinning()} for this run. */
+    /** Whether {@link DetectorType#VIRTUAL_THREAD_PINNING} is enabled for this run. */
     public final boolean detectVirtualThreadPinning;
-    /** Resolved value of {@link AsyncTest#detectThreadPoolDeadlocks()} for this run. */
+    /** Whether {@link DetectorType#THREAD_POOL_DEADLOCK} is enabled for this run. */
     public final boolean detectThreadPoolDeadlocks;
-    /** Resolved value of {@link AsyncTest#detectConcurrentModifications()} for this run. */
+    /** Whether {@link DetectorType#CONCURRENT_MODIFICATIONS} is enabled for this run. */
     public final boolean detectConcurrentModifications;
-    /** Resolved value of {@link AsyncTest#detectLockLeaks()} for this run. */
+    /** Whether {@link DetectorType#LOCK_LEAKS} is enabled for this run. */
     public final boolean detectLockLeaks;
-    /** Resolved value of {@link AsyncTest#detectSharedRandom()} for this run. */
+    /** Whether {@link DetectorType#SHARED_RANDOM} is enabled for this run. */
     public final boolean detectSharedRandom;
-    /** Resolved value of {@link AsyncTest#detectBlockingQueueIssues()} for this run. */
+    /** Whether {@link DetectorType#BLOCKING_QUEUE} is enabled for this run. */
     public final boolean detectBlockingQueueIssues;
-    /** Resolved value of {@link AsyncTest#detectConditionVariableIssues()} for this run. */
+    /** Whether {@link DetectorType#CONDITION_VARIABLES} is enabled for this run. */
     public final boolean detectConditionVariableIssues;
-    /** Resolved value of {@link AsyncTest#detectSimpleDateFormatIssues()} for this run. */
+    /** Whether {@link DetectorType#SIMPLE_DATE_FORMAT} is enabled for this run. */
     public final boolean detectSimpleDateFormatIssues;
-    /** Resolved value of {@link AsyncTest#detectParallelStreamIssues()} for this run. */
+    /** Whether {@link DetectorType#PARALLEL_STREAMS} is enabled for this run. */
     public final boolean detectParallelStreamIssues;
-    /** Resolved value of {@link AsyncTest#detectResourceLeaks()} for this run. */
+    /** Whether {@link DetectorType#RESOURCE_LEAKS} is enabled for this run. */
     public final boolean detectResourceLeaks;
 
     // ---- Phase 2: Additional Concurrency ----
-    /** Resolved value of {@link AsyncTest#detectCountDownLatchIssues()} for this run. */
+    /** Whether {@link DetectorType#COUNTDOWN_LATCH} is enabled for this run. */
     public final boolean detectCountDownLatchIssues;
-    /** Resolved value of {@link AsyncTest#detectCyclicBarrierIssues()} for this run. */
+    /** Whether {@link DetectorType#CYCLIC_BARRIER} is enabled for this run. */
     public final boolean detectCyclicBarrierIssues;
-    /** Resolved value of {@link AsyncTest#detectReentrantLockIssues()} for this run. */
+    /** Whether {@link DetectorType#REENTRANT_LOCK} is enabled for this run. */
     public final boolean detectReentrantLockIssues;
-    /** Resolved value of {@link AsyncTest#detectVolatileArrayIssues()} for this run. */
+    /** Whether {@link DetectorType#VOLATILE_ARRAY} is enabled for this run. */
     public final boolean detectVolatileArrayIssues;
-    /** Resolved value of {@link AsyncTest#detectDoubleCheckedLocking()} for this run. */
+    /** Whether {@link DetectorType#DOUBLE_CHECKED_LOCKING} is enabled for this run. */
     public final boolean detectDoubleCheckedLocking;
-    /** Resolved value of {@link AsyncTest#detectWaitTimeout()} for this run. */
+    /** Whether {@link DetectorType#WAIT_TIMEOUT} is enabled for this run. */
     public final boolean detectWaitTimeout;
-    /** Resolved value of {@link AsyncTest#detectLockContention()} for this run. */
+    /** Whether {@link DetectorType#LOCK_CONTENTION} is enabled for this run. */
     public final boolean detectLockContention;
-    /** Resolved value of {@link AsyncTest#detectSynchronizedNonFinal()} for this run. */
+    /** Whether {@link DetectorType#SYNCHRONIZED_NON_FINAL} is enabled for this run. */
     public final boolean detectSynchronizedNonFinal;
-    /** Resolved value of {@link AsyncTest#detectMissedSignals()} for this run. */
+    /** Whether {@link DetectorType#MISSED_SIGNAL} is enabled for this run. */
     public final boolean detectMissedSignals;
-    /** Resolved value of {@link AsyncTest#detectLazyInitRace()} for this run. */
+    /** Whether {@link DetectorType#LAZY_INIT_RACE} is enabled for this run. */
     public final boolean detectLazyInitRace;
 
     // ---- Phase 2: Advanced Concurrency Utilities ----
-    /** Resolved value of {@link AsyncTest#detectPhaserIssues()} for this run. */
+    /** Whether {@link DetectorType#PHASER} is enabled for this run. */
     public final boolean detectPhaserIssues;
-    /** Resolved value of {@link AsyncTest#detectStampedLockIssues()} for this run. */
+    /** Whether {@link DetectorType#STAMPED_LOCK} is enabled for this run. */
     public final boolean detectStampedLockIssues;
-    /** Resolved value of {@link AsyncTest#detectExchangerIssues()} for this run. */
+    /** Whether {@link DetectorType#EXCHANGER} is enabled for this run. */
     public final boolean detectExchangerIssues;
-    /** Resolved value of {@link AsyncTest#detectScheduledExecutorIssues()} for this run. */
+    /** Whether {@link DetectorType#SCHEDULED_EXECUTOR} is enabled for this run. */
     public final boolean detectScheduledExecutorIssues;
-    /** Resolved value of {@link AsyncTest#detectForkJoinPoolIssues()} for this run. */
+    /** Whether {@link DetectorType#FORK_JOIN_POOL} is enabled for this run. */
     public final boolean detectForkJoinPoolIssues;
-    /** Resolved value of {@link AsyncTest#detectThreadFactoryIssues()} for this run. */
+    /** Whether {@link DetectorType#THREAD_FACTORY} is enabled for this run. */
     public final boolean detectThreadFactoryIssues;
-    /** Resolved value of {@link AsyncTest#detectThreadLeaks()} for this run. */
+    /** Whether {@link DetectorType#THREAD_LEAKS} is enabled for this run. */
     public final boolean detectThreadLeaks;
-    /** Resolved value of {@link AsyncTest#detectSleepInLock()} for this run. */
+    /** Whether {@link DetectorType#SLEEP_IN_LOCK} is enabled for this run. */
     public final boolean detectSleepInLock;
-    /** Resolved value of {@link AsyncTest#detectUnboundedQueue()} for this run. */
+    /** Whether {@link DetectorType#UNBOUNDED_QUEUE} is enabled for this run. */
     public final boolean detectUnboundedQueue;
-    /** Resolved value of {@link AsyncTest#detectThreadStarvation()} for this run. */
+    /** Whether {@link DetectorType#THREAD_STARVATION} is enabled for this run. */
     public final boolean detectThreadStarvation;
 
     // ---- Phase 5: Thread-Safety of Common Types ----
-    /** Resolved value of {@link AsyncTest#detectCalendarIssues()} for this run. */
+    /** Whether {@link DetectorType#CALENDAR} is enabled for this run. */
     public final boolean detectCalendarIssues;
-    /** Resolved value of {@link AsyncTest#detectSharedCollections()} for this run. */
+    /** Whether {@link DetectorType#SHARED_COLLECTIONS} is enabled for this run. */
     public final boolean detectSharedCollections;
-    /** Resolved value of {@link AsyncTest#detectTimerIssues()} for this run. */
+    /** Whether {@link DetectorType#TIMER} is enabled for this run. */
     public final boolean detectTimerIssues;
-    /** Resolved value of {@link AsyncTest#detectCopyOnWriteCollectionIssues()} for this run. */
+    /** Whether {@link DetectorType#COPY_ON_WRITE_COLLECTIONS} is enabled for this run. */
     public final boolean detectCopyOnWriteCollectionIssues;
-    /** Resolved value of {@link AsyncTest#detectStringBuilderIssues()} for this run. */
+    /** Whether {@link DetectorType#STRING_BUILDER} is enabled for this run. */
     public final boolean detectStringBuilderIssues;
 
     // ---- Phase 6: Virtual Thread Concurrency (Java 21+) ----
-    /** Resolved value of {@link AsyncTest#detectStructuredConcurrencyIssues()} for this run. */
+    /** Whether {@link DetectorType#STRUCTURED_CONCURRENCY} is enabled for this run. */
     public final boolean detectStructuredConcurrencyIssues;
-    /** Resolved value of {@link AsyncTest#detectVirtualThreadContextLeaks()} for this run. */
+    /** Whether {@link DetectorType#VIRTUAL_THREAD_CONTEXT_LEAKS} is enabled for this run. */
     public final boolean detectVirtualThreadContextLeaks;
-    /** Resolved value of {@link AsyncTest#detectScopedValueMisuse()} for this run. */
+    /** Whether {@link DetectorType#SCOPED_VALUE} is enabled for this run. */
     public final boolean detectScopedValueMisuse;
-    /** Resolved value of {@link AsyncTest#detectVirtualThreadCpuBoundTasks()} for this run. */
+    /** Whether {@link DetectorType#VIRTUAL_THREAD_CPU_BOUND} is enabled for this run. */
     public final boolean detectVirtualThreadCpuBoundTasks;
-    /** Resolved value of {@link AsyncTest#detectVirtualThreadCarrierExhaustion()} for this run. */
+    /** Whether {@link DetectorType#VIRTUAL_THREAD_CARRIER_EXHAUSTION} is enabled for this run. */
     public final boolean detectVirtualThreadCarrierExhaustion;
 
     // ---- Phase 7: High-Level Concurrency Patterns ----
-    /** Resolved value of {@link AsyncTest#detectHttpClientIssues()} for this run. */
+    /** Whether {@link DetectorType#HTTP_CLIENT} is enabled for this run. */
     public final boolean detectHttpClientIssues;
-    /** Resolved value of {@link AsyncTest#detectStreamClosing()} for this run. */
+    /** Whether {@link DetectorType#STREAM_CLOSING} is enabled for this run. */
     public final boolean detectStreamClosing;
-    /** Resolved value of {@link AsyncTest#detectCacheConcurrency()} for this run. */
+    /** Whether {@link DetectorType#CACHE_CONCURRENCY} is enabled for this run. */
     public final boolean detectCacheConcurrency;
-    /** Resolved value of {@link AsyncTest#detectCompletableFutureChainIssues()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLEFUTURE_CHAIN} is enabled for this run. */
     public final boolean detectCompletableFutureChainIssues;
 
     // ---- Phase 8: Lifecycle & Structural Correctness ----
-    /** Resolved value of {@link AsyncTest#detectExecutorShutdown()} for this run. */
+    /** Whether {@link DetectorType#EXECUTOR_SHUTDOWN} is enabled for this run. */
     public final boolean detectExecutorShutdown;
-    /** Resolved value of {@link AsyncTest#detectMutableMapKeys()} for this run. */
+    /** Whether {@link DetectorType#MUTABLE_MAP_KEY} is enabled for this run. */
     public final boolean detectMutableMapKeys;
-    /** Resolved value of {@link AsyncTest#detectNestedMonitorLockout()} for this run. */
+    /** Whether {@link DetectorType#NESTED_MONITOR_LOCKOUT} is enabled for this run. */
     public final boolean detectNestedMonitorLockout;
-    /** Resolved value of {@link AsyncTest#detectLockDowngrade()} for this run. */
+    /** Whether {@link DetectorType#LOCK_DOWNGRADE} is enabled for this run. */
     public final boolean detectLockDowngrade;
-    /** Resolved value of {@link AsyncTest#detectInheritableThreadLocalMisuse()} for this run. */
+    /** Whether {@link DetectorType#INHERITABLE_THREAD_LOCAL} is enabled for this run. */
     public final boolean detectInheritableThreadLocalMisuse;
 
     // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
-    /** Resolved value of {@link AsyncTest#detectThreadLocalContamination()} for this run. */
+    /** Whether {@link DetectorType#THREAD_LOCAL_CONTAMINATION} is enabled for this run. */
     public final boolean detectThreadLocalContamination;
-    /** Resolved value of {@link AsyncTest#detectAtomicNonAtomicUpdates()} for this run. */
+    /** Whether {@link DetectorType#ATOMIC_NON_ATOMIC_UPDATE} is enabled for this run. */
     public final boolean detectAtomicNonAtomicUpdates;
-    /** Resolved value of {@link AsyncTest#detectSynchronizedCollectionIteration()} for this run. */
+    /** Whether {@link DetectorType#SYNCHRONIZED_COLLECTION_ITERATION} is enabled for this run. */
     public final boolean detectSynchronizedCollectionIteration;
-    /** Resolved value of {@link AsyncTest#detectSharedFormatter()} for this run. */
+    /** Whether {@link DetectorType#SHARED_FORMATTER} is enabled for this run. */
     public final boolean detectSharedFormatter;
-    /** Resolved value of {@link AsyncTest#detectConcurrentMapComputeRecursion()} for this run. */
+    /** Whether {@link DetectorType#CONCURRENT_MAP_COMPUTE_RECURSION} is enabled for this run. */
     public final boolean detectConcurrentMapComputeRecursion;
-    /** Resolved value of {@link AsyncTest#detectSynchronizedOnLiteral()} for this run. */
+    /** Whether {@link DetectorType#SYNCHRONIZED_ON_LITERAL} is enabled for this run. */
     public final boolean detectSynchronizedOnLiteral;
-    /** Resolved value of {@link AsyncTest#detectPublicLockExposure()} for this run. */
+    /** Whether {@link DetectorType#PUBLIC_LOCK_EXPOSURE} is enabled for this run. */
     public final boolean detectPublicLockExposure;
-    /** Resolved value of {@link AsyncTest#detectForkJoinTaskBlocking()} for this run. */
+    /** Whether {@link DetectorType#FORK_JOIN_TASK_BLOCKING} is enabled for this run. */
     public final boolean detectForkJoinTaskBlocking;
-    /** Resolved value of {@link AsyncTest#detectOptimisticReadValidation()} for this run. */
+    /** Whether {@link DetectorType#OPTIMISTIC_READ_VALIDATION} is enabled for this run. */
     public final boolean detectOptimisticReadValidation;
-    /** Resolved value of {@link AsyncTest#detectCFCommonPoolBlocking()} for this run. */
+    /** Whether {@link DetectorType#CF_COMMON_POOL_BLOCKING} is enabled for this run. */
     public final boolean detectCFCommonPoolBlocking;
 
     // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
-    /** Resolved value of {@link AsyncTest#detectSharedMatcher()} for this run. */
+    /** Whether {@link DetectorType#SHARED_MATCHER} is enabled for this run. */
     public final boolean detectSharedMatcher;
-    /** Resolved value of {@link AsyncTest#detectSharedDecimalFormat()} for this run. */
+    /** Whether {@link DetectorType#SHARED_DECIMAL_FORMAT} is enabled for this run. */
     public final boolean detectSharedDecimalFormat;
-    /** Resolved value of {@link AsyncTest#detectWeakReferenceRace()} for this run. */
+    /** Whether {@link DetectorType#WEAK_REFERENCE_RACE} is enabled for this run. */
     public final boolean detectWeakReferenceRace;
-    /** Resolved value of {@link AsyncTest#detectStatefulLambda()} for this run. */
+    /** Whether {@link DetectorType#STATEFUL_LAMBDA} is enabled for this run. */
     public final boolean detectStatefulLambda;
-    /** Resolved value of {@link AsyncTest#detectSharedMessageDigest()} for this run. */
+    /** Whether {@link DetectorType#SHARED_MESSAGE_DIGEST} is enabled for this run. */
     public final boolean detectSharedMessageDigest;
 
     // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
-    /** Resolved value of {@link AsyncTest#detectInterruptSwallowing()} for this run. */
+    /** Whether {@link DetectorType#INTERRUPT_SWALLOWING} is enabled for this run. */
     public final boolean detectInterruptSwallowing;
-    /** Resolved value of {@link AsyncTest#detectMdcContextLeak()} for this run. */
+    /** Whether {@link DetectorType#MDC_CONTEXT_LEAK} is enabled for this run. */
     public final boolean detectMdcContextLeak;
-    /** Resolved value of {@link AsyncTest#detectSystemPropertyMutation()} for this run. */
+    /** Whether {@link DetectorType#SYSTEM_PROPERTY_MUTATION} is enabled for this run. */
     public final boolean detectSystemPropertyMutation;
-    /** Resolved value of {@link AsyncTest#detectFutureIgnored()} for this run. */
+    /** Whether {@link DetectorType#FUTURE_IGNORED} is enabled for this run. */
     public final boolean detectFutureIgnored;
-    /** Resolved value of {@link AsyncTest#detectExplicitGc()} for this run. */
+    /** Whether {@link DetectorType#EXPLICIT_GC} is enabled for this run. */
     public final boolean detectExplicitGc;
-    /** Resolved value of {@link AsyncTest#detectDeprecatedThreadApi()} for this run. */
+    /** Whether {@link DetectorType#DEPRECATED_THREAD_API} is enabled for this run. */
     public final boolean detectDeprecatedThreadApi;
-    /** Resolved value of {@link AsyncTest#detectSharedXmlParser()} for this run. */
+    /** Whether {@link DetectorType#SHARED_XML_PARSER} is enabled for this run. */
     public final boolean detectSharedXmlParser;
-    /** Resolved value of {@link AsyncTest#detectBoxedPrimitiveLock()} for this run. */
+    /** Whether {@link DetectorType#BOXED_PRIMITIVE_LOCK} is enabled for this run. */
     public final boolean detectBoxedPrimitiveLock;
-    /** Resolved value of {@link AsyncTest#detectSharedTimeZone()} for this run. */
+    /** Whether {@link DetectorType#SHARED_TIMEZONE} is enabled for this run. */
     public final boolean detectSharedTimeZone;
-    /** Resolved value of {@link AsyncTest#detectUncaughtExceptionHandler()} for this run. */
+    /** Whether {@link DetectorType#UNCAUGHT_EXCEPTION_HANDLER} is enabled for this run. */
     public final boolean detectUncaughtExceptionHandler;
 
     // ---- Phase 13 (1.0.0+) ----
-    /** Resolved value of {@link AsyncTest#detectDaemonThreadHygiene()} for this run. */
+    /** Whether {@link DetectorType#DAEMON_THREAD_HYGIENE} is enabled for this run. */
     public final boolean detectDaemonThreadHygiene;
-    /** Resolved value of {@link AsyncTest#detectNotifyWithoutMonitor()} for this run. */
+    /** Whether {@link DetectorType#NOTIFY_WITHOUT_MONITOR} is enabled for this run. */
     public final boolean detectNotifyWithoutMonitor;
-    /** Resolved value of {@link AsyncTest#detectSharedSecureRandom()} for this run. */
+    /** Whether {@link DetectorType#SHARED_SECURE_RANDOM} is enabled for this run. */
     public final boolean detectSharedSecureRandom;
-    /** Resolved value of {@link AsyncTest#detectWeakHashMapShared()} for this run. */
+    /** Whether {@link DetectorType#WEAK_HASH_MAP_SHARED} is enabled for this run. */
     public final boolean detectWeakHashMapShared;
-    /** Resolved value of {@link AsyncTest#detectJdbcConnectionShared()} for this run. */
+    /** Whether {@link DetectorType#JDBC_CONNECTION_SHARED} is enabled for this run. */
     public final boolean detectJdbcConnectionShared;
 
     // ---- Phase 14 (1.7.0+) ----
-    /** Resolved value of {@link AsyncTest#detectSharedStatefulCrypto()} for this run. */
+    /** Whether {@link DetectorType#SHARED_STATEFUL_CRYPTO} is enabled for this run. */
     public final boolean detectSharedStatefulCrypto;
-    /** Resolved value of {@link AsyncTest#detectConcurrentMapCheckThenAct()} for this run. */
+    /** Whether {@link DetectorType#CONCURRENT_MAP_CHECK_THEN_ACT} is enabled for this run. */
     public final boolean detectConcurrentMapCheckThenAct;
-    /** Resolved value of {@link AsyncTest#detectSharedDeflater()} for this run. */
+    /** Whether {@link DetectorType#SHARED_DEFLATER} is enabled for this run. */
     public final boolean detectSharedDeflater;
-    /** Resolved value of {@link AsyncTest#detectThisEscape()} for this run. */
+    /** Whether {@link DetectorType#THIS_ESCAPE} is enabled for this run. */
     public final boolean detectThisEscape;
-    /** Resolved value of {@link AsyncTest#detectThreadLocalRandomMisuse()} for this run. */
+    /** Whether {@link DetectorType#THREAD_LOCAL_RANDOM_MISUSE} is enabled for this run. */
     public final boolean detectThreadLocalRandomMisuse;
 
     // ---- Phase 15 (1.8.0+) ----
-    /** Resolved value of {@link AsyncTest#detectCompletableFutureObtrudeAbuse()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLE_FUTURE_OBTRUDE_ABUSE} is enabled for this run. */
     public final boolean detectCompletableFutureObtrudeAbuse;
-    /** Resolved value of {@link AsyncTest#detectSpuriousWakeupHazard()} for this run. */
+    /** Whether {@link DetectorType#SPURIOUS_WAKEUP_HAZARD} is enabled for this run. */
     public final boolean detectSpuriousWakeupHazard;
-    /** Resolved value of {@link AsyncTest#detectLockUpgradeDeadlock()} for this run. */
+    /** Whether {@link DetectorType#LOCK_UPGRADE_DEADLOCK} is enabled for this run. */
     public final boolean detectLockUpgradeDeadlock;
-    /** Resolved value of {@link AsyncTest#detectTryLockMisuse()} for this run. */
+    /** Whether {@link DetectorType#TRY_LOCK_MISUSE} is enabled for this run. */
     public final boolean detectTryLockMisuse;
-    /** Resolved value of {@link AsyncTest#detectCFBlockingCallback()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLE_FUTURE_BLOCKING_CALLBACK} is enabled for this run. */
     public final boolean detectCFBlockingCallback;
 
     // ---- Phase 16: JDK 25/26 preview-era detectors ----
-    /** Resolved value of {@link AsyncTest#detectStableValueMisuse()} for this run. */
+    /** Whether {@link DetectorType#STABLE_VALUE_MISUSE} is enabled for this run. */
     public final boolean detectStableValueMisuse;
-    /** Resolved value of {@link AsyncTest#detectStructuredTaskScopeMisuse()} for this run. */
+    /** Whether {@link DetectorType#STRUCTURED_TASK_SCOPE_MISUSE} is enabled for this run. */
     public final boolean detectStructuredTaskScopeMisuse;
-    /** Resolved value of {@link AsyncTest#detectGathererConcurrencyMisuse()} for this run. */
+    /** Whether {@link DetectorType#GATHERER_CONCURRENCY_MISUSE} is enabled for this run. */
     public final boolean detectGathererConcurrencyMisuse;
 
     // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
-    /** Resolved value of {@link AsyncTest#detectSharedByteBuffer()} for this run. */
+    /** Whether {@link DetectorType#SHARED_BYTE_BUFFER} is enabled for this run. */
     public final boolean detectSharedByteBuffer;
-    /** Resolved value of {@link AsyncTest#detectSharedCharsetCoder()} for this run. */
+    /** Whether {@link DetectorType#SHARED_CHARSET_CODER} is enabled for this run. */
     public final boolean detectSharedCharsetCoder;
-    /** Resolved value of {@link AsyncTest#detectSharedChecksum()} for this run. */
+    /** Whether {@link DetectorType#SHARED_CHECKSUM} is enabled for this run. */
     public final boolean detectSharedChecksum;
-    /** Resolved value of {@link AsyncTest#detectFileChannelPositionRace()} for this run. */
+    /** Whether {@link DetectorType#FILE_CHANNEL_POSITION_RACE} is enabled for this run. */
     public final boolean detectFileChannelPositionRace;
-    /** Resolved value of {@link AsyncTest#detectSharedIterator()} for this run. */
+    /** Whether {@link DetectorType#SHARED_ITERATOR} is enabled for this run. */
     public final boolean detectSharedIterator;
-    /** Resolved value of {@link AsyncTest#detectHighContentionAtomic()} for this run. */
+    /** Whether {@link DetectorType#HIGH_CONTENTION_ATOMIC} is enabled for this run. */
     public final boolean detectHighContentionAtomic;
-    /** Resolved value of {@link AsyncTest#detectSharedJsonMapperReconfig()} for this run. */
+    /** Whether {@link DetectorType#SHARED_JSON_MAPPER_RECONFIG} is enabled for this run. */
     public final boolean detectSharedJsonMapperReconfig;
 
     // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
-    /** Resolved value of {@link AsyncTest#detectLazyConstantMisuse()} for this run. */
+    /** Whether {@link DetectorType#LAZY_CONSTANT_MISUSE} is enabled for this run. */
     public final boolean detectLazyConstantMisuse;
-    /** Resolved value of {@link AsyncTest#detectFinalFieldMutation()} for this run. */
+    /** Whether {@link DetectorType#FINAL_FIELD_MUTATION} is enabled for this run. */
     public final boolean detectFinalFieldMutation;
-    /** Resolved value of {@link AsyncTest#detectSharedKdf()} for this run. */
+    /** Whether {@link DetectorType#SHARED_KDF} is enabled for this run. */
     public final boolean detectSharedKdf;
-    /** Resolved value of {@link AsyncTest#detectLatchMisuse()} for this run. */
+    /** Whether {@link DetectorType#LATCH_MISUSE} is enabled for this run. */
     public final boolean detectLatchMisuse;
-    /** Resolved value of {@link AsyncTest#detectExecutorDeadlock()} for this run. */
+    /** Whether {@link DetectorType#EXECUTOR_DEADLOCK} is enabled for this run. */
     public final boolean detectExecutorDeadlock;
-    /** Resolved value of {@link AsyncTest#detectFutureBlocking()} for this run. */
+    /** Whether {@link DetectorType#FUTURE_BLOCKING} is enabled for this run. */
     public final boolean detectFutureBlocking;
-    /** Resolved value of {@link AsyncTest#detectFlowPublisherConcurrency()} for this run. */
+    /** Whether {@link DetectorType#FLOW_PUBLISHER_CONCURRENCY} is enabled for this run. */
     public final boolean detectFlowPublisherConcurrency;
-    /** Resolved value of {@link AsyncTest#detectConfinedArenaThreadEscape()} for this run. */
+    /** Whether {@link DetectorType#CONFINED_ARENA_THREAD_ESCAPE} is enabled for this run. */
     public final boolean detectConfinedArenaThreadEscape;
-    /** Resolved value of {@link AsyncTest#detectSharedMemorySegmentRace()} for this run. */
+    /** Whether {@link DetectorType#SHARED_MEMORY_SEGMENT_RACE} is enabled for this run. */
     public final boolean detectSharedMemorySegmentRace;
-    /** Resolved value of {@link AsyncTest#detectVarHandleNonAtomicUpdate()} for this run. */
+    /** Whether {@link DetectorType#VAR_HANDLE_NON_ATOMIC_UPDATE} is enabled for this run. */
     public final boolean detectVarHandleNonAtomicUpdate;
-    /** Resolved value of {@link AsyncTest#detectRecordMutableComponentLeak()} for this run. */
+    /** Whether {@link DetectorType#RECORD_MUTABLE_COMPONENT_LEAK} is enabled for this run. */
     public final boolean detectRecordMutableComponentLeak;
-    /** Resolved value of {@link AsyncTest#detectStaticInitDeadlock()} for this run. */
+    /** Whether {@link DetectorType#STATIC_INIT_DEADLOCK} is enabled for this run. */
     public final boolean detectStaticInitDeadlock;
-    /** Resolved value of {@link AsyncTest#detectVirtualThreadPooling()} for this run. */
+    /** Whether {@link DetectorType#VIRTUAL_THREAD_POOLING} is enabled for this run. */
     public final boolean detectVirtualThreadPooling;
-    /** Resolved value of {@link AsyncTest#detectPlatformThreadPerTask()} for this run. */
+    /** Whether {@link DetectorType#PLATFORM_THREAD_PER_TASK} is enabled for this run. */
     public final boolean detectPlatformThreadPerTask;
-    /** Resolved value of {@link AsyncTest#detectSharedSplittableRandom()} for this run. */
+    /** Whether {@link DetectorType#SHARED_SPLITTABLE_RANDOM} is enabled for this run. */
     public final boolean detectSharedSplittableRandom;
-    /** Resolved value of {@link AsyncTest#detectCompletableFutureCompletionRace()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLE_FUTURE_COMPLETION_RACE} is enabled for this run. */
     public final boolean detectCompletableFutureCompletionRace;
-    /** Resolved value of {@link AsyncTest#detectCompletableFutureCancellationPropagation()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION} is enabled for this run. */
     public final boolean detectCompletableFutureCancellationPropagation;
-    /** Resolved value of {@link AsyncTest#detectCompletableFutureCombinatorMisuse()} for this run. */
+    /** Whether {@link DetectorType#COMPLETABLE_FUTURE_COMBINATOR_MISUSE} is enabled for this run. */
     public final boolean detectCompletableFutureCombinatorMisuse;
-    /** Resolved value of {@link AsyncTest#detectLambdaLostUpdate()} for this run. */
+    /** Whether {@link DetectorType#LAMBDA_LOST_UPDATE} is enabled for this run. */
     public final boolean detectLambdaLostUpdate;
-    /** Resolved value of {@link AsyncTest#detectVirtualThreadResourceSaturation()} for this run. */
+    /** Whether {@link DetectorType#VIRTUAL_THREAD_RESOURCE_SATURATION} is enabled for this run. */
     public final boolean detectVirtualThreadResourceSaturation;
-    /** Resolved value of {@link AsyncTest#detectVirtualThreadMonitorSerialization()} for this run. */
+    /** Whether {@link DetectorType#VIRTUAL_THREAD_MONITOR_SERIALIZATION} is enabled for this run. */
     public final boolean detectVirtualThreadMonitorSerialization;
-    /** Resolved value of {@link AsyncTest#detectThreadLocalCacheDegradation()} for this run. */
+    /** Whether {@link DetectorType#THREAD_LOCAL_CACHE_DEGRADATION} is enabled for this run. */
     public final boolean detectThreadLocalCacheDegradation;
-    /** Resolved value of {@link AsyncTest#detectScopeJoinerMisuse()} for this run. */
+    /** Whether {@link DetectorType#SCOPE_JOINER_MISUSE} is enabled for this run. */
     public final boolean detectScopeJoinerMisuse;
-    /** Resolved value of {@link AsyncTest#detectScopeConfigurationMisuse()} for this run. */
+    /** Whether {@link DetectorType#SCOPE_CONFIGURATION_MISUSE} is enabled for this run. */
     public final boolean detectScopeConfigurationMisuse;
-    /** Resolved value of {@link AsyncTest#detectScopeResultEscape()} for this run. */
+    /** Whether {@link DetectorType#SCOPE_RESULT_ESCAPE} is enabled for this run. */
     public final boolean detectScopeResultEscape;
-    /** Resolved value of {@link AsyncTest#detectLazyCollectionMisuse()} for this run. */
+    /** Whether {@link DetectorType#LAZY_COLLECTION_MISUSE} is enabled for this run. */
     public final boolean detectLazyCollectionMisuse;
 
     // ---- Benchmarking ----
@@ -688,19 +688,16 @@ public final class AsyncTestConfig {
         // Check for global benchmarking system property
         boolean globalBenchmarkingEnabled = Boolean.getBoolean("async-test.benchmarking.enabled");
 
-        // Resolve includes/preset → effective detectAll + excludes set.
-        // A non-empty includes() is the most specific selection and wins over
-        // preset() and detectAll(): detectAll is forced true and every
-        // DetectorType outside the include set is excluded, so build()'s
-        // detectAll loop activates only the listed detectors. Otherwise
-        // ALL/STRICT preserve the legacy detectAll behavior, and other presets
-        // exclude everything outside the preset's enabled set the same way.
-        // User-supplied excludes() always layer on top and win on conflict.
+        // Resolve the selection: includes(), else a preset other than ALL/STRICT, else
+        // detectAll(). Each is expressed as detectAll plus the excludes that carve the selection
+        // out of every type, so build() resolves it like any other. The per-detector boolean
+        // attributes that used to feed build() were removed in 2.0.0 (#920), so detectAll = false
+        // under ALL selects nothing; under 1.x it left 144 of those attributes at their default
+        // of true. User-supplied excludes() always layer on top and win on conflict.
         Preset preset = ann.preset();
-        boolean effectiveDetectAll;
+        boolean effectiveDetectAll = true;
         Set<DetectorType> effectiveExcludes = EnumSet.noneOf(DetectorType.class);
         if (ann.includes().length > 0) {
-            effectiveDetectAll = true;
             Set<DetectorType> included = EnumSet.noneOf(DetectorType.class);
             included.addAll(Arrays.asList(ann.includes()));
             for (DetectorType t : DetectorType.values()) {
@@ -708,8 +705,10 @@ public final class AsyncTestConfig {
             }
         } else if (preset.isAll()) {
             effectiveDetectAll = ann.detectAll();
+            if (!effectiveDetectAll) {
+                effectiveExcludes.addAll(EnumSet.allOf(DetectorType.class));
+            }
         } else {
-            effectiveDetectAll = true;
             // Non-null here: the isAll() branch above owns every preset whose set is null.
             Set<DetectorType> enabled = Objects.requireNonNull(
                 preset.enabled(), "non-all preset must enumerate its detectors");
@@ -729,152 +728,6 @@ public final class AsyncTestConfig {
             .replaySeed(ann.replaySeed())
             .failOn(ann.failOn())
             .minTrust(ann.minTrust())
-            .detectDeadlocks(ann.detectDeadlocks())
-            .detectVisibility(ann.detectVisibility())
-            .detectLivelocks(ann.detectLivelocks())
-            .detectFalseSharing(ann.detectFalseSharing())
-            .detectWakeupIssues(ann.detectWakeupIssues())
-            .validateConstructorSafety(ann.validateConstructorSafety())
-            .detectABAProblem(ann.detectABAProblem())
-            .validateLockOrder(ann.validateLockOrder())
-            .monitorSynchronizers(ann.monitorSynchronizers())
-            .monitorThreadPool(ann.monitorThreadPool())
-            .detectMemoryOrderingViolations(ann.detectMemoryOrderingViolations())
-            .monitorAsyncPipeline(ann.monitorAsyncPipeline())
-            .monitorReadWriteLockFairness(ann.monitorReadWriteLockFairness())
-            .detectRaceConditions(ann.detectRaceConditions())
-            .detectThreadLocalLeaks(ann.detectThreadLocalLeaks())
-            .detectBusyWaiting(ann.detectBusyWaiting())
-            .detectAtomicityViolations(ann.detectAtomicityViolations())
-            .detectInterruptMishandling(ann.detectInterruptMishandling())
-            .monitorSemaphore(ann.monitorSemaphore())
-            .detectCompletableFutureExceptions(ann.detectCompletableFutureExceptions())
-            .detectCompletableFutureCompletionLeaks(ann.detectCompletableFutureCompletionLeaks())
-            .detectVirtualThreadPinning(ann.detectVirtualThreadPinning())
-            .detectThreadPoolDeadlocks(ann.detectThreadPoolDeadlocks())
-            .detectConcurrentModifications(ann.detectConcurrentModifications())
-            .detectLockLeaks(ann.detectLockLeaks())
-            .detectSharedRandom(ann.detectSharedRandom())
-            .detectBlockingQueueIssues(ann.detectBlockingQueueIssues())
-            .detectConditionVariableIssues(ann.detectConditionVariableIssues())
-            .detectSimpleDateFormatIssues(ann.detectSimpleDateFormatIssues())
-            .detectParallelStreamIssues(ann.detectParallelStreamIssues())
-            .detectResourceLeaks(ann.detectResourceLeaks())
-            .detectCountDownLatchIssues(ann.detectCountDownLatchIssues())
-            .detectCyclicBarrierIssues(ann.detectCyclicBarrierIssues())
-            .detectReentrantLockIssues(ann.detectReentrantLockIssues())
-            .detectVolatileArrayIssues(ann.detectVolatileArrayIssues())
-            .detectDoubleCheckedLocking(ann.detectDoubleCheckedLocking())
-            .detectWaitTimeout(ann.detectWaitTimeout())
-            .detectLockContention(ann.detectLockContention())
-            .detectSynchronizedNonFinal(ann.detectSynchronizedNonFinal())
-            .detectMissedSignals(ann.detectMissedSignals())
-            .detectLazyInitRace(ann.detectLazyInitRace())
-            .detectPhaserIssues(ann.detectPhaserIssues())
-            .detectStampedLockIssues(ann.detectStampedLockIssues())
-            .detectExchangerIssues(ann.detectExchangerIssues())
-            .detectScheduledExecutorIssues(ann.detectScheduledExecutorIssues())
-            .detectForkJoinPoolIssues(ann.detectForkJoinPoolIssues())
-            .detectThreadFactoryIssues(ann.detectThreadFactoryIssues())
-            .detectThreadLeaks(ann.detectThreadLeaks())
-            .detectSleepInLock(ann.detectSleepInLock())
-            .detectUnboundedQueue(ann.detectUnboundedQueue())
-            .detectThreadStarvation(ann.detectThreadStarvation())
-            .detectCalendarIssues(ann.detectCalendarIssues())
-            .detectSharedCollections(ann.detectSharedCollections())
-            .detectTimerIssues(ann.detectTimerIssues())
-            .detectCopyOnWriteCollectionIssues(ann.detectCopyOnWriteCollectionIssues())
-            .detectStringBuilderIssues(ann.detectStringBuilderIssues())
-            .detectStructuredConcurrencyIssues(ann.detectStructuredConcurrencyIssues())
-            .detectVirtualThreadContextLeaks(ann.detectVirtualThreadContextLeaks())
-            .detectScopedValueMisuse(ann.detectScopedValueMisuse())
-            .detectVirtualThreadCpuBoundTasks(ann.detectVirtualThreadCpuBoundTasks())
-            .detectVirtualThreadCarrierExhaustion(ann.detectVirtualThreadCarrierExhaustion())
-            .detectHttpClientIssues(ann.detectHttpClientIssues())
-            .detectStreamClosing(ann.detectStreamClosing())
-            .detectCacheConcurrency(ann.detectCacheConcurrency())
-            .detectCompletableFutureChainIssues(ann.detectCompletableFutureChainIssues())
-            .detectExecutorShutdown(ann.detectExecutorShutdown())
-            .detectMutableMapKeys(ann.detectMutableMapKeys())
-            .detectNestedMonitorLockout(ann.detectNestedMonitorLockout())
-            .detectLockDowngrade(ann.detectLockDowngrade())
-            .detectInheritableThreadLocalMisuse(ann.detectInheritableThreadLocalMisuse())
-            .detectThreadLocalContamination(ann.detectThreadLocalContamination())
-            .detectAtomicNonAtomicUpdates(ann.detectAtomicNonAtomicUpdates())
-            .detectSynchronizedCollectionIteration(ann.detectSynchronizedCollectionIteration())
-            .detectSharedFormatter(ann.detectSharedFormatter())
-            .detectConcurrentMapComputeRecursion(ann.detectConcurrentMapComputeRecursion())
-            .detectSynchronizedOnLiteral(ann.detectSynchronizedOnLiteral())
-            .detectPublicLockExposure(ann.detectPublicLockExposure())
-            .detectForkJoinTaskBlocking(ann.detectForkJoinTaskBlocking())
-            .detectOptimisticReadValidation(ann.detectOptimisticReadValidation())
-            .detectCFCommonPoolBlocking(ann.detectCFCommonPoolBlocking())
-            .detectSharedMatcher(ann.detectSharedMatcher())
-            .detectSharedDecimalFormat(ann.detectSharedDecimalFormat())
-            .detectWeakReferenceRace(ann.detectWeakReferenceRace())
-            .detectStatefulLambda(ann.detectStatefulLambda())
-            .detectSharedMessageDigest(ann.detectSharedMessageDigest())
-            .detectInterruptSwallowing(ann.detectInterruptSwallowing())
-            .detectMdcContextLeak(ann.detectMdcContextLeak())
-            .detectSystemPropertyMutation(ann.detectSystemPropertyMutation())
-            .detectFutureIgnored(ann.detectFutureIgnored())
-            .detectExplicitGc(ann.detectExplicitGc())
-            .detectDeprecatedThreadApi(ann.detectDeprecatedThreadApi())
-            .detectSharedXmlParser(ann.detectSharedXmlParser())
-            .detectBoxedPrimitiveLock(ann.detectBoxedPrimitiveLock())
-            .detectSharedTimeZone(ann.detectSharedTimeZone())
-            .detectUncaughtExceptionHandler(ann.detectUncaughtExceptionHandler())
-            .detectDaemonThreadHygiene(ann.detectDaemonThreadHygiene())
-            .detectNotifyWithoutMonitor(ann.detectNotifyWithoutMonitor())
-            .detectSharedSecureRandom(ann.detectSharedSecureRandom())
-            .detectWeakHashMapShared(ann.detectWeakHashMapShared())
-            .detectJdbcConnectionShared(ann.detectJdbcConnectionShared())
-            .detectSharedStatefulCrypto(ann.detectSharedStatefulCrypto())
-            .detectConcurrentMapCheckThenAct(ann.detectConcurrentMapCheckThenAct())
-            .detectSharedDeflater(ann.detectSharedDeflater())
-            .detectThisEscape(ann.detectThisEscape())
-            .detectThreadLocalRandomMisuse(ann.detectThreadLocalRandomMisuse())
-            .detectCompletableFutureObtrudeAbuse(ann.detectCompletableFutureObtrudeAbuse())
-            .detectSpuriousWakeupHazard(ann.detectSpuriousWakeupHazard())
-            .detectLockUpgradeDeadlock(ann.detectLockUpgradeDeadlock())
-            .detectTryLockMisuse(ann.detectTryLockMisuse())
-            .detectCFBlockingCallback(ann.detectCFBlockingCallback())
-            .detectStableValueMisuse(ann.detectStableValueMisuse())
-            .detectStructuredTaskScopeMisuse(ann.detectStructuredTaskScopeMisuse())
-            .detectGathererConcurrencyMisuse(ann.detectGathererConcurrencyMisuse())
-            .detectSharedByteBuffer(ann.detectSharedByteBuffer())
-            .detectSharedCharsetCoder(ann.detectSharedCharsetCoder())
-            .detectSharedChecksum(ann.detectSharedChecksum())
-            .detectFileChannelPositionRace(ann.detectFileChannelPositionRace())
-            .detectSharedIterator(ann.detectSharedIterator())
-            .detectHighContentionAtomic(ann.detectHighContentionAtomic())
-            .detectSharedJsonMapperReconfig(ann.detectSharedJsonMapperReconfig())
-            .detectLazyConstantMisuse(ann.detectLazyConstantMisuse())
-            .detectFinalFieldMutation(ann.detectFinalFieldMutation())
-            .detectSharedKdf(ann.detectSharedKdf())
-            .detectLatchMisuse(ann.detectLatchMisuse())
-            .detectExecutorDeadlock(ann.detectExecutorDeadlock())
-            .detectFutureBlocking(ann.detectFutureBlocking())
-            .detectFlowPublisherConcurrency(ann.detectFlowPublisherConcurrency())
-            .detectConfinedArenaThreadEscape(ann.detectConfinedArenaThreadEscape())
-            .detectSharedMemorySegmentRace(ann.detectSharedMemorySegmentRace())
-            .detectVarHandleNonAtomicUpdate(ann.detectVarHandleNonAtomicUpdate())
-            .detectRecordMutableComponentLeak(ann.detectRecordMutableComponentLeak())
-            .detectStaticInitDeadlock(ann.detectStaticInitDeadlock())
-            .detectVirtualThreadPooling(ann.detectVirtualThreadPooling())
-            .detectPlatformThreadPerTask(ann.detectPlatformThreadPerTask())
-            .detectSharedSplittableRandom(ann.detectSharedSplittableRandom())
-            .detectCompletableFutureCompletionRace(ann.detectCompletableFutureCompletionRace())
-            .detectCompletableFutureCancellationPropagation(ann.detectCompletableFutureCancellationPropagation())
-            .detectCompletableFutureCombinatorMisuse(ann.detectCompletableFutureCombinatorMisuse())
-            .detectLambdaLostUpdate(ann.detectLambdaLostUpdate())
-            .detectVirtualThreadResourceSaturation(ann.detectVirtualThreadResourceSaturation())
-            .detectVirtualThreadMonitorSerialization(ann.detectVirtualThreadMonitorSerialization())
-            .detectThreadLocalCacheDegradation(ann.detectThreadLocalCacheDegradation())
-            .detectScopeJoinerMisuse(ann.detectScopeJoinerMisuse())
-            .detectScopeConfigurationMisuse(ann.detectScopeConfigurationMisuse())
-            .detectScopeResultEscape(ann.detectScopeResultEscape())
-            .detectLazyCollectionMisuse(ann.detectLazyCollectionMisuse())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
             .benchmarkRegressionThreshold(ann.benchmarkRegressionThreshold())
             .failOnBenchmarkRegression(ann.failOnBenchmarkRegression())

@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectThreadLeaks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.THREAD_LEAKS)
  * void testThreadLeak() {
  *     Thread backgroundThread = new Thread(() -> {
  *         while (!Thread.interrupted()) {

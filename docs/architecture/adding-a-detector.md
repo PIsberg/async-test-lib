@@ -9,23 +9,21 @@ detector just doesn't run.
 
 ## The synchronized-change contract
 
-One new `DetectorType` constant requires simultaneous changes in five files, all under
+One new `DetectorType` constant requires simultaneous changes in four files, all under
 `async-test-lib/src/main/java/se/deversity/asynctest/`. Land them as one change, never piecemeal.
 
 1. **`DetectorType.java`** — the new enum constant. This file is `@AILocked`; edit only with
-   explicit owner sign-off.
-2. **`AsyncTest.java`** — the matching `detectXxx()` annotation attribute. Its name and default
-   become stable public API.
-3. **`AsyncTestConfig.java`** — public final flag field derived in the constructor
-   (`flag = enabled.contains(DetectorType.TYPE);`), the same-named `Builder` setter
-   (`return flag(DetectorType.TYPE, v);`) and the `from(AsyncTest)` call chain. Resolution itself
-   is one `EnumSet` and needs no per-detector line. See
-   [configuration-resolution.md](configuration-resolution.md).
-4. **`DetectorRegistry.java`** — three steps that must land together: (a) the final field,
+   explicit owner sign-off. Users select it by this name with `includes` / `excludes`; there is
+   no `@AsyncTest` attribute to add (the per-detector attributes were removed in 2.0.0, #920).
+2. **`AsyncTestConfig.java`** — public final flag field derived in the constructor
+   (`flag = enabled.contains(DetectorType.TYPE);`) and the same-named `Builder` setter
+   (`return flag(DetectorType.TYPE, v);`). Resolution itself is one `EnumSet` and needs no
+   per-detector line. See [configuration-resolution.md](configuration-resolution.md).
+3. **`DetectorRegistry.java`** — three steps that must land together: (a) the final field,
    (b) its factory-table row in the constructor, `field = create(DetectorType.TYPE, Xxx::new);`,
    keyed on the type rather than a config flag (#916), (c) an `analyzeAll()` call in the correct
    phase block. `DetectorRegistryFactoryTableTest` fails on a type with no row, or two.
-5. **`AsyncTestContext.java`** — the field copied from the registry plus the static accessor used by
+4. **`AsyncTestContext.java`** — the field copied from the registry plus the static accessor used by
    instrumented code, keeping ThreadLocal install/uninstall symmetric. See
    [execution-flow.md](execution-flow.md).
 

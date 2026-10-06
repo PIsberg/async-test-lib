@@ -41,7 +41,7 @@ class DoWhileMissedSignalWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 10, detectMissedSignals = true)
+    @AsyncTest(threads = 4, invocations = 10)
     void waitingInADoWhileLoopAfterTheSignalWasLost() throws InterruptedException {
         handOff.signalThenAwait();
     }

@@ -915,7 +915,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 11.1: Shared Matcher detection — Matcher is not thread-safe.
      * Pattern is safe to share; Matcher holds mutable per-match state and must not be shared.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectSharedMatcher = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testSharedMatcherDetection() {
         SharedMatcherDetector detector = AsyncTestContext.sharedMatcherDetector();
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\d+");
@@ -932,7 +932,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 11.2: Shared DecimalFormat detection — DecimalFormat is not thread-safe.
      * Use ThreadLocal<DecimalFormat> or create a new instance per call.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectSharedDecimalFormat = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testSharedDecimalFormatDetection() {
         SharedDecimalFormatDetector detector = AsyncTestContext.sharedDecimalFormatDetector();
         java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.00");
@@ -949,7 +949,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 11.3: Weak reference race detection — null-safe usage pattern.
      * Always null-check WeakReference.get() before use.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectWeakReferenceRace = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 3000)
     void testWeakReferenceRaceDetection() {
         WeakReferenceRaceDetector detector = AsyncTestContext.weakReferenceRaceDetector();
         Object obj = new Object();
@@ -977,7 +977,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 11.4: Stateful lambda detection — captured mutable state shared across threads.
      * Use AtomicInteger or separate instances when lambdas run concurrently.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectStatefulLambda = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testStatefulLambdaDetection() {
         StatefulLambdaDetector detector = AsyncTestContext.statefulLambdaDetector();
         // Safe: single-thread, no concurrent mutation expected in this invocation
@@ -994,7 +994,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 11.5: Shared MessageDigest detection — MessageDigest is not thread-safe.
      * Use ThreadLocal<MessageDigest> or obtain a new instance per thread.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectSharedMessageDigest = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testSharedMessageDigestDetection() throws Exception {
         SharedMessageDigestDetector detector = AsyncTestContext.sharedMessageDigestDetector();
         java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
@@ -1218,7 +1218,7 @@ class ConsumerAsyncTestUsageTest {
      * 
      * This test demonstrates proper usage: track creation and completion.
      */
-    @AsyncTest(threads = 1, detectCompletableFutureCompletionLeaks = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, timeoutMs = 3000)
     void testCompletableFutureCompletionLeak() throws Exception {
         CompletableFuture<String> future = new CompletableFuture<>();
         
@@ -1242,7 +1242,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates a CompletableFuture leak - future created but never completed.
      * This test intentionally creates a leak to show detector behavior.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectCompletableFutureCompletionLeaks = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testCompletableFutureCompletionLeak_detected() {
         CompletableFuture<String> future = new CompletableFuture<>();
         
@@ -1262,7 +1262,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 2.34: Thread pool deadlock detection.
      * Detects tasks submitting nested tasks to the same pool, which can cause deadlock.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectThreadPoolDeadlocks = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testThreadPoolDeadlockDetection() {
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
         
@@ -1284,7 +1284,7 @@ class ConsumerAsyncTestUsageTest {
     /**
      * Demonstrates safe thread pool usage - no nested submissions.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectThreadPoolDeadlocks = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testThreadPoolNoDeadlock() {
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
         
@@ -1309,7 +1309,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates thread leak detection.
      * Shows how to track thread creation and termination.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectThreadLeaks = true, timeoutMs = 5000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5000)
     void testThreadLeakDetection() {
         Thread backgroundThread = new Thread(() -> {
             try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
@@ -1332,7 +1332,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates sleep-in-lock detection.
      * Shows the anti-pattern of sleeping while holding a lock.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectSleepInLock = true, timeoutMs = 5000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5000)
     void testSleepInLockDetection() {
         final Object lock = new Object();
         
@@ -1349,7 +1349,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates unbounded queue detection.
      * Shows the risk of using queues without capacity bounds.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectUnboundedQueue = true, timeoutMs = 5000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5000)
     void testUnboundedQueueDetection() {
         // Bad: unbounded queue can grow indefinitely
         java.util.concurrent.LinkedBlockingQueue<String> unboundedQueue = new java.util.concurrent.LinkedBlockingQueue<>();
@@ -1367,7 +1367,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates thread starvation detection.
      * Shows how to monitor executor thread pools for task starvation.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectThreadStarvation = true, timeoutMs = 10000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 10000)
     void testThreadStarvationDetection() {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         
@@ -1406,7 +1406,7 @@ class ConsumerAsyncTestUsageTest {
      * java.util.Calendar is not thread-safe — multiple threads sharing one instance
      * can produce silently corrupted date values.
      */
-    @AsyncTest(threads = 4, invocations = 20, detectCalendarIssues = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 20, timeoutMs = 5000)
     void testCalendarSharingDetection() {
         java.util.Calendar cal = java.util.Calendar.getInstance();
 
@@ -1427,7 +1427,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates shared collection detection.
      * ArrayList and HashMap accessed by multiple threads without synchronisation.
      */
-    @AsyncTest(threads = 4, invocations = 20, detectSharedCollections = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 20, timeoutMs = 5000)
     void testSharedCollectionDetection() {
         java.util.List<String> sharedList = new java.util.ArrayList<>();
 
@@ -1444,7 +1444,7 @@ class ConsumerAsyncTestUsageTest {
      * java.util.Timer exception in one task kills the timer thread, silently
      * cancelling all remaining tasks.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectTimerIssues = true, timeoutMs = 10000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 10000)
     void testTimerMisuseDetection() {
         java.util.Timer timer = new java.util.Timer("demo-timer");
 
@@ -1465,7 +1465,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates CopyOnWriteArrayList write-heavy detection.
      * High write ratio makes copy-on-write collections a performance bottleneck.
      */
-    @AsyncTest(threads = 4, invocations = 20, detectCopyOnWriteCollectionIssues = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 20, timeoutMs = 5000)
     void testCopyOnWriteCollectionDetection() {
         java.util.concurrent.CopyOnWriteArrayList<String> cowList = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -1488,7 +1488,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates StringBuilder sharing detection.
      * StringBuilder mutated by multiple threads produces garbled output.
      */
-    @AsyncTest(threads = 4, invocations = 20, detectStringBuilderIssues = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 20, timeoutMs = 5000)
     void testStringBuilderSharingDetection() {
         StringBuilder sharedSb = new StringBuilder();
 
@@ -1508,7 +1508,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates HTTP client concurrency issue detection.
      * Detects unclosed HTTP responses and connection pool exhaustion.
      */
-    @AsyncTest(threads = 4, invocations = 10, detectHttpClientIssues = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 10, timeoutMs = 5000)
     void testHttpClientConcurrencyDetection() {
         Object httpClient = new Object();
         Object httpRequest = new Object();
@@ -1528,7 +1528,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates stream closing detection.
      * Detects InputStream/OutputStream instances not properly closed.
      */
-    @AsyncTest(threads = 4, invocations = 10, detectStreamClosing = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 10, timeoutMs = 5000)
     void testStreamClosingDetection() throws Exception {
         InputStream inputStream = new ByteArrayInputStream(new byte[0]);
 
@@ -1549,7 +1549,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates cache concurrency issue detection.
      * Detects HashMap used as cache without synchronization.
      */
-    @AsyncTest(threads = 4, invocations = 10, detectCacheConcurrency = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 10, timeoutMs = 5000)
     void testCacheConcurrencyDetection() {
         Map<String, String> cache = new HashMap<>();
 
@@ -1570,7 +1570,7 @@ class ConsumerAsyncTestUsageTest {
      * Demonstrates CompletableFuture chain issue detection.
      * Detects missing exception handlers and unjoined futures.
      */
-    @AsyncTest(threads = 4, invocations = 10, detectCompletableFutureChainIssues = true, timeoutMs = 5000)
+    @AsyncTest(threads = 4, invocations = 10, timeoutMs = 5000)
     void testCompletableFutureChainDetection() {
         CompletableFuture<String> future = CompletableFuture.completedFuture("test");
         CompletableFuture<String> chained = future.thenApply(s -> s.toUpperCase());
@@ -1618,9 +1618,9 @@ class ConsumerAsyncTestUsageTest {
      * that call {@code recordYieldPoint} before blocking operations should not
      * trigger violations.
      */
-    @AsyncTest(threads = 4, invocations = 10,
+    @AsyncTest(threads = 4,
+               invocations = 10,
                useVirtualThreads = true,
-               detectVirtualThreadCpuBoundTasks = true,
                timeoutMs = 5000)
     void testVirtualThreadCpuBoundTaskDetection() throws InterruptedException {
         var detector = AsyncTestContext.virtualThreadCpuBoundTaskDetector();
@@ -1654,9 +1654,9 @@ class ConsumerAsyncTestUsageTest {
      * test that uses {@code ReentrantLock} (or limits concurrency) should not trigger
      * the exhaustion threshold.
      */
-    @AsyncTest(threads = 4, invocations = 10,
+    @AsyncTest(threads = 4,
+               invocations = 10,
                useVirtualThreads = true,
-               detectVirtualThreadCarrierExhaustion = true,
                timeoutMs = 5000)
     void testVirtualThreadCarrierExhaustionDetection() throws InterruptedException {
         var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
@@ -1679,7 +1679,7 @@ class ConsumerAsyncTestUsageTest {
      * Lock contention detection — tracks a monitor that has high acquire-contention.
      * Proper usage: record each acquire attempt, contention events, and releases.
      */
-    @AsyncTest(threads = 4, detectLockContention = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, timeoutMs = 3000)
     void testLockContentionDetection() {
         Object sharedResource = new Object();
         LockContentionDetector detector = AsyncTestContext.lockContentionDetector();
@@ -1709,7 +1709,7 @@ class ConsumerAsyncTestUsageTest {
      * always the same object identity.  invocations=1 keeps a single JUnit test instance
      * so fixtureLock has a stable identity across all 4 threads.
      */
-    @AsyncTest(threads = 4, invocations = 1, detectSynchronizedNonFinal = true, timeoutMs = 3000)
+    @AsyncTest(threads = 4, invocations = 1, timeoutMs = 3000)
     void testSynchronizedNonFinalDetection() {
         SynchronizedNonFinalDetector detector = AsyncTestContext.synchronizedNonFinalDetector();
 
@@ -1732,7 +1732,7 @@ class ConsumerAsyncTestUsageTest {
      * making waiterCount appear as zero.  The assertion is intentionally omitted here;
      * correctness is verified by MissedSignalDetectorTest unit tests.
      */
-    @AsyncTest(threads = 2, detectMissedSignals = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, timeoutMs = 3000)
     void testMissedSignalDetection() {
         MissedSignalDetector detector = AsyncTestContext.missedSignalDetector();
 
@@ -1751,7 +1751,7 @@ class ConsumerAsyncTestUsageTest {
      * Lazy-init race detection — detects multiple threads initializing the same field.
      * Demonstrates the classic broken lazy-initialization pattern.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectLazyInitRace = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testLazyInitRaceDetection() {
         LazyInitRaceDetector detector = AsyncTestContext.lazyInitRaceDetector();
 
@@ -1771,7 +1771,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 8.1: Executor shutdown detection — proper lifecycle with awaitTermination.
      * Always call shutdown() followed by awaitTermination() to prevent thread leaks.
      */
-    @AsyncTest(threads = 1, invocations = 2, detectExecutorShutdown = true, timeoutMs = 5000)
+    @AsyncTest(threads = 1, invocations = 2, timeoutMs = 5000)
     void testExecutorShutdownDetection() throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         AsyncTestContext.executorShutdownDetector()
@@ -1794,7 +1794,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 8.2: Mutable map key detection — key should not be mutated after insertion.
      * Mutating a HashMap key changes its hash bucket, breaking all future lookups.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectMutableMapKeys = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 3000)
     void testMutableMapKeyDetection() {
         MutableMapKeyDetector detector = AsyncTestContext.mutableMapKeyDetector();
 
@@ -1813,7 +1813,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 8.3: Nested monitor lockout detection — blocking while holding a different monitor.
      * Attempting to acquire a second lock while holding one is a deadlock path.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectNestedMonitorLockout = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 3000)
     void testNestedMonitorLockoutDetection() {
         NestedMonitorLockoutDetector detector = AsyncTestContext.nestedMonitorLockoutDetector();
         Object lockA = new Object();
@@ -1832,7 +1832,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 8.4: Lock downgrade detection — correct write-to-read downgrade pattern.
      * Lock downgrade (write → read) is valid; upgrade (read → write) deadlocks.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectLockDowngrade = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 3000)
     void testLockDowngradeDetection() {
         LockDowngradeDetector detector = AsyncTestContext.lockDowngradeDetector();
         ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
@@ -1859,7 +1859,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 8.5: InheritableThreadLocal misuse detection — pooled thread accesses ITL.
      * InheritableThreadLocal values are captured at thread creation, not task submission.
      */
-    @AsyncTest(threads = 2, invocations = 2, detectInheritableThreadLocalMisuse = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 3000)
     void testInheritableThreadLocalMisuseDetection() {
         InheritableThreadLocalMisuseDetector detector =
             AsyncTestContext.inheritableThreadLocalMisuseDetector();
@@ -1883,7 +1883,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.1: ThreadLocal contamination — detecting stale values from a prior task.
      * When pooled threads reuse ThreadLocals, task B silently reads task A's context.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectThreadLocalContamination = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testThreadLocalContaminationDetection() {
         ThreadLocalContaminationDetector detector =
             AsyncTestContext.threadLocalContaminationDetector();
@@ -1912,7 +1912,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.2: Atomic non-atomic update — get()+set() without compareAndSet().
      * Concurrent threads using get+set silently lose each other's updates.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectAtomicNonAtomicUpdates = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
     void testAtomicNonAtomicUpdateDetection() {
         AtomicNonAtomicUpdateDetector detector = AsyncTestContext.atomicNonAtomicUpdateDetector();
         AtomicInteger counter = new AtomicInteger(0);
@@ -1929,7 +1929,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.3: Synchronized collection iteration — safe iteration with lock held.
      * Always hold synchronized(wrapper) while iterating a synchronized wrapper.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectSynchronizedCollectionIteration = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
     void testSynchronizedCollectionIterationDetection() {
         SynchronizedCollectionIterationDetector detector =
             AsyncTestContext.synchronizedCollectionIterationDetector();
@@ -1951,7 +1951,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.4: Shared formatter detection — access from multiple threads.
      * PrintWriter/Formatter are not thread-safe; shared access corrupts output.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectSharedFormatter = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testSharedFormatterDetection() {
         SharedFormatterDetector detector = AsyncTestContext.sharedFormatterDetector();
         java.io.PrintWriter pw = new java.io.PrintWriter(java.io.Writer.nullWriter());
@@ -1967,7 +1967,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.5: ConcurrentHashMap compute recursion — safe non-recursive usage.
      * Recursive computeIfAbsent on the same key from the same thread causes infinite loop.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectConcurrentMapComputeRecursion = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
     void testConcurrentMapComputeRecursionDetection() {
         ConcurrentMapComputeRecursionDetector detector =
             AsyncTestContext.concurrentMapComputeRecursionDetector();
@@ -1987,7 +1987,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.6: Synchronized on literal — safe usage with a dedicated lock object.
      * Synchronizing on a String literal or cached Integer uses a JVM-wide shared monitor.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectSynchronizedOnLiteral = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
     void testSynchronizedOnLiteralDetection() {
         SynchronizedOnLiteralDetector detector = AsyncTestContext.synchronizedOnLiteralDetector();
         Object privateLock = new Object();  // correct: private, non-interned lock object
@@ -2004,7 +2004,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.7: Public lock exposure — synchronized(this) on an accessible object.
      * Callers outside the class can acquire the same lock, causing unexpected deadlocks.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectPublicLockExposure = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
     void testPublicLockExposureDetection() {
         PublicLockExposureDetector detector = AsyncTestContext.publicLockExposureDetector();
         Object privateLock = new Object();
@@ -2023,7 +2023,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.8: ForkJoinTask blocking detection — no blocking calls inside a task.
      * Blocking inside a ForkJoinTask starvation the bounded pool for all other tasks.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectForkJoinTaskBlocking = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
     void testForkJoinTaskBlockingDetection() {
         ForkJoinTaskBlockingDetector detector = AsyncTestContext.forkJoinTaskBlockingDetector();
         Thread current = Thread.currentThread();
@@ -2043,7 +2043,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.9: Optimistic read validation — proper validate() before using data.
      * StampedLock optimistic reads require validate(stamp) before trusting the data.
      */
-    @AsyncTest(threads = 1, invocations = 5, detectOptimisticReadValidation = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 5, timeoutMs = 3000)
     void testOptimisticReadValidationDetection() {
         OptimisticReadValidationDetector detector =
             AsyncTestContext.optimisticReadValidationDetector();
@@ -2073,7 +2073,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 10.10: CompletableFuture common-pool blocking detection.
      * Blocking inside a CF stage submitted without an Executor starves the common ForkJoinPool.
      */
-    @AsyncTest(threads = 2, invocations = 5, detectCFCommonPoolBlocking = true, timeoutMs = 3000)
+    @AsyncTest(threads = 2, invocations = 5, timeoutMs = 3000)
     void testCFCommonPoolBlockingDetection() {
         CompletableFutureCommonPoolBlockingDetector detector =
             AsyncTestContext.cfCommonPoolBlockingDetector();
@@ -2093,7 +2093,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.1: Interrupt-swallowing detection — catch(InterruptedException) without
      * restoring the interrupt flag permanently suppresses the cancellation signal.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectInterruptSwallowing = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testInterruptSwallowingDetection() {
         InterruptSwallowingDetector detector = AsyncTestContext.interruptSwallowingDetector();
 
@@ -2108,7 +2108,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.2: MDC context-leak detection — MDC entries not cleared at task end leak
      * to the next task on the reused pooled thread.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectMdcContextLeak = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testMdcContextLeakDetection() {
         MdcContextLeakDetector detector = AsyncTestContext.mdcContextLeakDetector();
 
@@ -2124,7 +2124,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.3: System-property mutation detection — concurrent setProperty/clearProperty
      * causes non-deterministic configuration and test pollution.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectSystemPropertyMutation = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testSystemPropertyMutationDetection() {
         SystemPropertyMutationDetector detector = AsyncTestContext.systemPropertyMutationDetector();
 
@@ -2139,7 +2139,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.4: Ignored-Future detection — submit() result never inspected swallows
      * task exceptions silently.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectFutureIgnored = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testFutureIgnoredDetection() {
         FutureIgnoredDetector detector = AsyncTestContext.futureIgnoredDetector();
 
@@ -2155,7 +2155,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.5: Explicit-GC detection — System.gc() triggers unpredictable STW pauses
      * that corrupt timing measurements in concurrency tests.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectExplicitGc = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testExplicitGcDetection() {
         ExplicitGcDetector detector = AsyncTestContext.explicitGcDetector();
 
@@ -2168,7 +2168,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.6: Deprecated-Thread-API detection — Thread.stop/suspend/resume/destroy
      * are unsafe and removed in Java 20+.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectDeprecatedThreadApi = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testDeprecatedThreadApiDetection() {
         DeprecatedThreadApiDetector detector = AsyncTestContext.deprecatedThreadApiDetector();
 
@@ -2181,7 +2181,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.7: Shared-XML-parser detection — DocumentBuilder/SAXParser/Transformer/XPath
      * are not thread-safe; shared instance causes corrupted parse results.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectSharedXmlParser = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testSharedXmlParserDetection() {
         SharedXmlParserDetector detector = AsyncTestContext.sharedXmlParserDetector();
 
@@ -2196,7 +2196,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.8: Boxed-primitive-lock detection — synchronized on cached Integer/Boolean/Long
      * or interned String acquires a JVM-global shared monitor.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectBoxedPrimitiveLock = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testBoxedPrimitiveLockDetection() {
         BoxedPrimitiveLockDetector detector = AsyncTestContext.boxedPrimitiveLockDetector();
 
@@ -2211,7 +2211,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.9: Shared-TimeZone mutation detection — setRawOffset/setID on a shared
      * TimeZone from multiple threads produces silently wrong date/time arithmetic.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectSharedTimeZone = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testSharedTimeZoneDetection() {
         SharedTimeZoneDetector detector = AsyncTestContext.sharedTimeZoneDetector();
 
@@ -2226,7 +2226,7 @@ class ConsumerAsyncTestUsageTest {
      * Phase 12.10: Uncaught-exception-handler detection — threads that throw without a
      * custom handler discard the exception silently from the submitter's perspective.
      */
-    @AsyncTest(threads = 1, invocations = 1, detectUncaughtExceptionHandler = true, timeoutMs = 3000)
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 3000)
     void testUncaughtExceptionHandlerDetection() {
         UncaughtExceptionHandlerDetector detector = AsyncTestContext.uncaughtExceptionHandlerDetector();
 

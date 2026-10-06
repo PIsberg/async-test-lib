@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSharedCollections = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SHARED_COLLECTIONS)
  * void testSharedList() {
  *     List<String> shared = new ArrayList<>();
  *     AsyncTestContext.sharedCollectionDetector()

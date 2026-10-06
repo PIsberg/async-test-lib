@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -190,8 +191,10 @@ class DataStoreTest {
      * have nothing to gate on. See issue #346.
      */
     @Disabled("Remove @Disabled to see the unsafe downgrade detected by LockDowngradeDetector")
-    @AsyncTest(threads = 8, invocations = 20, detectAll = false,
-            detectLockDowngrade = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 20,
+            failOn = FailOn.LOW,
+            includes = DetectorType.LOCK_DOWNGRADE)
     void testUpdateAndRead_concurrent_detectsUnsafeDowngrade() {
         LockDowngradeDetector detector = AsyncTestContext.lockDowngradeDetector();
         wire(detector);

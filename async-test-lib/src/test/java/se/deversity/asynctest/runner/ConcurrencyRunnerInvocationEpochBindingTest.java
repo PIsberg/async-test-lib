@@ -3,6 +3,7 @@ package se.deversity.asynctest.runner;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.testkit.engine.EngineTestKit;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListener;
@@ -45,7 +46,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class CrossRoundOnly {
         static final AtomicInteger EXECUTIONS = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 2, detectAtomicityViolations = true)
+        @AsyncTest(threads = 2, invocations = 2)
         void body() {
             // Rounds are totally ordered by the runner, so the first two executions are round
             // one and the next two are round two. Thread ids are passed explicitly so the
@@ -64,7 +65,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class SameRound {
         static final AtomicInteger EXECUTIONS = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 2, detectAtomicityViolations = true)
+        @AsyncTest(threads = 2, invocations = 2)
         void body() {
             int n = EXECUTIONS.getAndIncrement();
             AtomicityValidator validator = AsyncTestContext.get().sharedAtomicityValidator();
@@ -104,8 +105,9 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
         // One platform worker, so the same pool thread runs both rounds: a get left pending in
         // round one would pair with the set in round two unless the runner resets the epoch.
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAtomicNonAtomicUpdates = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false)
         void body() {
             int n = EXECUTIONS.getAndIncrement();
             AtomicNonAtomicUpdateDetector d = AsyncTestContext.atomicNonAtomicUpdateDetector();
@@ -120,8 +122,9 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class AtomicSameRound {
         static final AtomicInteger SUBJECT = new AtomicInteger();
 
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
-                   detectAtomicNonAtomicUpdates = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = false)
         void body() {
             AtomicNonAtomicUpdateDetector d = AsyncTestContext.atomicNonAtomicUpdateDetector();
             d.recordGet(SUBJECT, "subject", Thread.currentThread());
@@ -151,8 +154,9 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class CfCrossRoundOnly {
         static final AtomicInteger EXECUTIONS = new AtomicInteger();
 
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectCompletableFutureCancellationPropagation = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false)
         void body() {
             int n = EXECUTIONS.getAndIncrement();
             var d = AsyncTestContext.cfCancellationPropagationDetector();
@@ -167,8 +171,9 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
     /** The same cancel and completion inside one round: the pair that must still be reported. */
     public static class CfSameRound {
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
-                   detectCompletableFutureCancellationPropagation = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = false)
         void body() {
             var d = AsyncTestContext.cfCancellationPropagationDetector();
             d.cancel(new java.util.concurrent.CompletableFuture<String>(), "report", "view", false);
@@ -206,8 +211,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
         // One platform worker, so the same pool thread runs both rounds: the entry a thrown
         // supplier leaves behind follows that thread into round two.
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAll = false, detectLazyConstantMisuse = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false,
+                   includes = DetectorType.LAZY_CONSTANT_MISUSE)
         void body() {
             var d = AsyncTestContext.lazyConstantMisuseDetector();
             if (EXECUTIONS.getAndIncrement() == 0) {
@@ -222,8 +229,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
     /** Both starts inside one round: the genuine re-entry that must still be reported. */
     public static class LazyConstantSameRound {
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
-                   detectAll = false, detectLazyConstantMisuse = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = false,
+                   includes = DetectorType.LAZY_CONSTANT_MISUSE)
         void body() {
             var d = AsyncTestContext.lazyConstantMisuseDetector();
             d.recordComputeStart("CONFIG", Thread.currentThread());
@@ -261,8 +270,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
         // One platform worker, so the same pool thread runs both rounds: round two's check would
         // read as a re-test of round one's wait unless the runner closes the round (#635).
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAll = false, detectMissedSignals = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false,
+                   includes = DetectorType.MISSED_SIGNAL)
         void body() {
             var d = AsyncTestContext.missedSignalDetector();
             if (EXECUTIONS.getAndIncrement() == 0) {
@@ -279,8 +290,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class MissedSignalCheckInSameRound {
         static final Object MONITOR = new Object();
 
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
-                   detectAll = false, detectMissedSignals = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = false,
+                   includes = DetectorType.MISSED_SIGNAL)
         void body() {
             var d = AsyncTestContext.missedSignalDetector();
             d.recordNotify(MONITOR);
@@ -319,8 +332,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
         // One platform worker, so the same pool thread runs both rounds: without the round
         // boundary, its await in round two is merged into round one's and that one vanishes.
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAll = false, detectConditionVariableIssues = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false,
+                   includes = DetectorType.CONDITION_VARIABLES)
         void body() {
             var d = AsyncTestContext.conditionVariableDetector();
             USED.set(d);
@@ -339,8 +354,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final java.util.concurrent.locks.Condition CONDITION =
                 new java.util.concurrent.locks.ReentrantLock().newCondition();
 
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAll = false, detectConditionVariableIssues = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false,
+                   includes = DetectorType.CONDITION_VARIABLES)
         void body() {
             var d = AsyncTestContext.conditionVariableDetector();
             USED.set(d);
@@ -397,8 +414,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final java.util.concurrent.locks.ReentrantReadWriteLock LOCK =
                 LockDowngradeSameRound.LOCK;
 
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAll = false, detectLockDowngrade = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false,
+                   includes = DetectorType.LOCK_DOWNGRADE)
         void body() {
             var d = AsyncTestContext.lockDowngradeDetector();
             if (EXECUTIONS.getAndIncrement() == 0) {
@@ -434,8 +453,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final java.util.concurrent.locks.ReentrantReadWriteLock LOCK =
                 new java.util.concurrent.locks.ReentrantReadWriteLock();
 
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
-                   detectAll = false, detectLockDowngrade = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = false,
+                   includes = DetectorType.LOCK_DOWNGRADE)
         void body() {
             var d = AsyncTestContext.lockDowngradeDetector();
             LOCK.writeLock().lock();
@@ -485,8 +506,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final java.util.concurrent.locks.StampedLock LOCK =
                 new java.util.concurrent.locks.StampedLock();
 
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAll = false, detectStampedLockIssues = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false,
+                   includes = DetectorType.STAMPED_LOCK)
         void body() {
             var d = AsyncTestContext.stampedLockDetector();
             if (EXECUTIONS.getAndIncrement() == 0) {
@@ -508,8 +531,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final java.util.concurrent.locks.StampedLock LOCK =
                 new java.util.concurrent.locks.StampedLock();
 
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
-                   detectAll = false, detectStampedLockIssues = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = false,
+                   includes = DetectorType.STAMPED_LOCK)
         void body() {
             var d = AsyncTestContext.stampedLockDetector();
             long optimistic = LOCK.tryOptimisticRead();
@@ -550,8 +575,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
         // One platform worker, so the same pool thread runs both rounds: its wait in round two
         // would read as the re-check of round one's return unless the round boundary closes it.
-        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = false,
-                   detectAll = false, detectWakeupIssues = true)
+        @AsyncTest(threads = 1,
+                   invocations = 2,
+                   useVirtualThreads = false,
+                   includes = DetectorType.WAKEUP_ISSUES)
         void body() {
             var d = AsyncTestContext.wakeupDetector();
             d.recordWaitEnter(MONITOR);
@@ -563,8 +590,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class WakeupSameRoundReWait {
         static final Object MONITOR = new Object();
 
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = false,
-                   detectAll = false, detectWakeupIssues = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = false,
+                   includes = DetectorType.WAKEUP_ISSUES)
         void body() {
             var d = AsyncTestContext.wakeupDetector();
             d.recordWaitEnter(MONITOR);
@@ -599,8 +628,10 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class PinningEnabledOnly {
         static final AtomicInteger EVENTS_SEEN = new AtomicInteger(-1);
 
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
-                   detectAll = false, detectVirtualThreadPinning = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   useVirtualThreads = true,
+                   includes = DetectorType.VIRTUAL_THREAD_PINNING)
         void body() {
             // No startMonitoring() call. Until #501 the detector's monitoring flag defaulted to
             // false and nothing in main code turned it on, so recordPinningEvent returned early
@@ -652,7 +683,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class SecureRandomCrossRound {
         static final java.security.SecureRandom RNG = new java.security.SecureRandom();
 
-        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectSharedSecureRandom = true)
+        @AsyncTest(threads = 1, invocations = 2, includes = DetectorType.SHARED_SECURE_RANDOM)
         void body() {
             AsyncTestContext.sharedSecureRandomDetector().recordAccess(RNG, "rng", Thread.currentThread());
         }
@@ -662,7 +693,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class SecureRandomSameRound {
         static final java.security.SecureRandom RNG = new java.security.SecureRandom();
 
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectSharedSecureRandom = true)
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.SHARED_SECURE_RANDOM)
         void body() {
             AsyncTestContext.sharedSecureRandomDetector().recordAccess(RNG, "rng", Thread.currentThread());
         }
@@ -689,7 +720,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final java.util.concurrent.atomic.AtomicBoolean FLAG =
                 new java.util.concurrent.atomic.AtomicBoolean();
 
-        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectHighContentionAtomic = true)
+        @AsyncTest(threads = 1, invocations = 2, includes = DetectorType.HIGH_CONTENTION_ATOMIC)
         void body() {
             var d = AsyncTestContext.highContentionAtomicDetector();
             for (int i = 0; i < 600; i++) {
@@ -703,7 +734,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final java.util.concurrent.atomic.AtomicBoolean FLAG =
                 new java.util.concurrent.atomic.AtomicBoolean();
 
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectHighContentionAtomic = true)
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.HIGH_CONTENTION_ATOMIC)
         void body() {
             var d = AsyncTestContext.highContentionAtomicDetector();
             for (int i = 0; i < 600; i++) {
@@ -734,7 +765,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class RecordCrossRound {
         static final Order ORDER = new Order(new java.util.ArrayList<>());
 
-        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectRecordMutableComponentLeak = true)
+        @AsyncTest(threads = 1, invocations = 2, includes = DetectorType.RECORD_MUTABLE_COMPONENT_LEAK)
         void body() {
             AsyncTestContext.recordMutableComponentLeakDetector().recordShared(ORDER, "order", Thread.currentThread());
             ORDER.items().add("item");
@@ -745,7 +776,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class RecordSameRound {
         static final Order ORDER = new Order(java.util.Collections.synchronizedList(new java.util.ArrayList<>()));
 
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectRecordMutableComponentLeak = true)
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.RECORD_MUTABLE_COMPONENT_LEAK)
         void body() {
             AsyncTestContext.recordMutableComponentLeakDetector().recordShared(ORDER, "order", Thread.currentThread());
             ORDER.items().add("item");
@@ -770,7 +801,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
     /** A reflective final-field write, once per round, one thread per round. */
     public static class FinalFieldCrossRound {
-        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectFinalFieldMutation = true)
+        @AsyncTest(threads = 1, invocations = 2, includes = DetectorType.FINAL_FIELD_MUTATION)
         void body() {
             AsyncTestContext.finalFieldMutationDetector().recordMutation("Config.MAX", Thread.currentThread());
         }
@@ -778,7 +809,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
     /** The same write from two threads inside one round. */
     public static class FinalFieldSameRound {
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectFinalFieldMutation = true)
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.FINAL_FIELD_MUTATION)
         void body() {
             AsyncTestContext.finalFieldMutationDetector().recordMutation("Config.MAX", Thread.currentThread());
         }
@@ -808,7 +839,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         static final int[] COUNTER = {0};
         static final Runnable TASK = () -> { };
 
-        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectLambdaLostUpdate = true)
+        @AsyncTest(threads = 1, invocations = 2, includes = DetectorType.LAMBDA_LOST_UPDATE)
         void body() {
             COUNTER[0] = 0;
             int before = COUNTER[0];
@@ -822,7 +853,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class LambdaSameRound {
         static final Runnable TASK = () -> { };
 
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectLambdaLostUpdate = true)
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.LAMBDA_LOST_UPDATE)
         void body() {
             AsyncTestContext.lambdaLostUpdateDetector()
                     .recordReadModifyWrite(TASK, "counter", 0, 1, Thread.currentThread());
@@ -847,7 +878,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
     /** A holder the body builds afresh every round, initialised once per round by one thread. */
     public static class LazyInitCrossRound {
-        @AsyncTest(threads = 1, invocations = 2, detectAll = false, detectLazyInitRace = true)
+        @AsyncTest(threads = 1, invocations = 2, includes = DetectorType.LAZY_INIT_RACE)
         void body() {
             AsyncTestContext.lazyInitRaceDetector().recordNullCheck("holder.value", true, false);
             AsyncTestContext.lazyInitRaceDetector().recordInitialization("holder.value");
@@ -856,7 +887,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
     /** Two threads that both saw null and both initialised, inside one round. */
     public static class LazyInitSameRound {
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectLazyInitRace = true)
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.LAZY_INIT_RACE)
         void body() {
             AsyncTestContext.lazyInitRaceDetector().recordNullCheck("holder.value", true, false);
             AsyncTestContext.lazyInitRaceDetector().recordInitialization("holder.value");

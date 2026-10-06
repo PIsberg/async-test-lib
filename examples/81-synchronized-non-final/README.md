@@ -1,7 +1,7 @@
 # Example 81 — Synchronized on Non-Final Field
 
 **Detector**: `SynchronizedNonFinalDetector`  
-**Flag**: `detectSynchronizedNonFinal = true`
+**Select it with**: `includes = DetectorType.SYNCHRONIZED_NON_FINAL`
 
 ## The Problem
 

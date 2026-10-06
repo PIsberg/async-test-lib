@@ -27,13 +27,9 @@ class AsyncTestPublishedDependencyTest {
         beforeRounds.incrementAndGet();
     }
 
-    @AsyncTest(
-        threads = 3,
+    @AsyncTest(threads = 3,
         invocations = 4,
-        detectFalseSharing = true,
-        timeoutMs = 5_000,
-        detectDeadlocks = false
-    )
+        timeoutMs = 5_000)
     void asyncTestWorksFromPublishedDependency() {
         totalExecutions.incrementAndGet();
         roundCounter.incrementAndGet();

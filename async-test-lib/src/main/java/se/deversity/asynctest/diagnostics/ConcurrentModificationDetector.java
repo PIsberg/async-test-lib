@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectConcurrentModifications = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.CONCURRENT_MODIFICATIONS)
  * void testCollectionIteration() {
  *     List<String> list = new ArrayList<>();
  *     AsyncTestContext.concurrentModificationDetector()

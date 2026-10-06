@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -202,8 +203,10 @@ class ReminderServiceTest {
      * 3. Fix: ScheduledExecutorService with a thread pool
      */
     @Disabled("Remove @Disabled to see bug detected by TimerDetector")
-    @AsyncTest(threads = 8, invocations = 1, detectAll = false,
-            detectTimerIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 1,
+            failOn = FailOn.LOW,
+            includes = DetectorType.TIMER)
     void test_concurrent_detectsTimerIssues() throws Exception {
         TimerDetector detector = AsyncTestContext.timerDetector();
         detector.registerTimer(service.getTimer(), "reminder-timer");

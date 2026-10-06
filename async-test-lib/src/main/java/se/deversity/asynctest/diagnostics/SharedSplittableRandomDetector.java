@@ -37,7 +37,7 @@ import java.util.random.RandomGenerator;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSharedSplittableRandom = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SHARED_SPLITTABLE_RANDOM)
  * void testGeneratorSharing() {
  *     var d = AsyncTestContext.sharedSplittableRandomDetector();
  *     d.registerGenerator(splittable, "ids");

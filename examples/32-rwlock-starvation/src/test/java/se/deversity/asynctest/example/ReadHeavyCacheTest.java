@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * DETECTORS TRIGGERED:
  * ReadWriteLockMonitor — accessed via AsyncTestContext.readWriteLockMonitor()
  *                        (wired through DetectorRegistry, enabled via
- *                         monitorReadWriteLockFairness = true in @AsyncTest).
+ *                         includes = DetectorType.READ_WRITE_LOCK_FAIRNESS in @AsyncTest).
  *
  * FIX:
  * Construct the lock with fair=true: new ReentrantReadWriteLock(true).
@@ -116,7 +116,7 @@ class ReadHeavyCacheTest {
      * 3. Fix: change ReentrantReadWriteLock(false) to ReentrantReadWriteLock(true)
      */
     @Disabled("Remove @Disabled to see writer starvation detected by ReadWriteLockMonitor")
-    @AsyncTest(threads = 8, invocations = 100, monitorReadWriteLockFairness = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW)
     void testCache_concurrent_detectsWriterStarvation() {
         ReentrantReadWriteLock rwLock = (ReentrantReadWriteLock) cache.getLock();
 

@@ -26,7 +26,7 @@ sequential test. The `System.gc()` is invisible to the assertion.
 ## How `@AsyncTest` Exposes the Bug
 
 ```java
-@AsyncTest(threads = 4, invocations = 3, detectExplicitGc = true, timeoutMs = 5000)
+@AsyncTest(threads = 4, invocations = 3, timeoutMs = 5000, includes = DetectorType.EXPLICIT_GC)
 void part2_detectExplicitGc() {
     var d = AsyncTestContext.explicitGcDetector();
     d.recordGcInvocation(Thread.currentThread(), "CacheManager.evictAll");

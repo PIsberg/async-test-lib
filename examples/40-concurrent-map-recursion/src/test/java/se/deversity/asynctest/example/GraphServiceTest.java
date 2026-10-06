@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -92,9 +93,10 @@ class GraphServiceTest {
     // failOn/minTrust are set so this test does what the README says it does. failOn defaults
     // to NONE, which reports a finding without failing the run. minTrust is left alone: its
     // default is ADVISORY, the lowest tier, so every detector already passes that filter.
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
-            detectConcurrentMapComputeRecursion = true,
-            failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            failOn = FailOn.LOW,
+            includes = DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION)
     void testGetNeighbors_concurrent_detectsRecursion() {
         var map = service.getAdjacency();
 

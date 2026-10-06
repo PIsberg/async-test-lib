@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -72,7 +73,7 @@ class LogFormatterServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared Formatter race detected by SharedFormatterDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedFormatter = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SHARED_FORMATTER)
     void testFormatEntry_concurrent_detectsSharedFormatter() {
         // Record access on the shared Formatter instance — core anti-pattern
         AsyncTestContext.sharedFormatterDetector()

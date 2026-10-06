@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
@@ -105,8 +106,11 @@ class AsyncBodyRunnerTest {
     // ---- Fixtures ----
 
     static class SuccessFixture {
-        @AsyncTest(threads = 4, invocations = 1, timeoutMs = 10_000,
-                detectAll = false, licenseMockMode = true)
+        @AsyncTest(threads = 4,
+                invocations = 1,
+                timeoutMs = 10_000,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void awaitedAsyncBody() {
             CompletableFuture<Void> chain = CompletableFuture
                     .runAsync(() -> ASYNC_COMPLETIONS.incrementAndGet());
@@ -115,8 +119,11 @@ class AsyncBodyRunnerTest {
     }
 
     static class FailureFixture {
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 10_000,
-                detectAll = false, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 1,
+                timeoutMs = 10_000,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void awaitedAsyncFails() {
             CompletableFuture<Void> chain = CompletableFuture.runAsync(() -> {
                 throw new IllegalStateException("boom-async");
@@ -171,8 +178,11 @@ class AsyncBodyRunnerTest {
     static class StrandedWorkerFixture {
         static volatile CountDownLatch INTERRUPTED_LATCH;
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300,
-                detectAll = false, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 1,
+                timeoutMs = 300,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void hangsWellPastTimeout() {
             try {
                 Thread.sleep(60_000);

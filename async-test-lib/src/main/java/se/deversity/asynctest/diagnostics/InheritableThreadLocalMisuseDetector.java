@@ -35,7 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <pre>{@code
  * static final InheritableThreadLocal<String> USER = new InheritableThreadLocal<>();
  *
- * @AsyncTest(threads = 4, detectInheritableThreadLocalMisuse = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.INHERITABLE_THREAD_LOCAL)
  * void testContextPropagation() {
  *     InheritableThreadLocalMisuseDetector mon =
  *         AsyncTestContext.inheritableThreadLocalMisuseDetector();

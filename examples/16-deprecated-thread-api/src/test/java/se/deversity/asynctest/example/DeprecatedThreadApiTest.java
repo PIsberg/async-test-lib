@@ -73,7 +73,7 @@ class DeprecatedThreadApiTest {
     // =========================================================================
     // Part 2: Upgrade to @AsyncTest (0.10.0) to detect the bug
     //
-    // @AsyncTest(threads = 4, invocations = 2, detectDeprecatedThreadApi = true, timeoutMs = 5000)
+    // @AsyncTest(threads = 4, invocations = 2, timeoutMs = 5000, includes = DetectorType.DEPRECATED_THREAD_API)
     // =========================================================================
 
     @Test

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -77,7 +78,7 @@ class HealthCheckServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see executor leak detected by ScheduledExecutorDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScheduledExecutorIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SCHEDULED_EXECUTOR)
     void testStartChecks_concurrent_detectsExecutorLeak() {
         // Start checks — creates a new executor and never shuts it down
         service.startChecks();

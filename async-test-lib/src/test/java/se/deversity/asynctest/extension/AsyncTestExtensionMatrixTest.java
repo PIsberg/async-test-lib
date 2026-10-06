@@ -1,4 +1,5 @@
 package se.deversity.asynctest.extension;
+import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
@@ -65,16 +66,22 @@ class AsyncTestExtensionMatrixTest {
     // ---- Fixtures driven through JUnit-platform-testkit ----
 
     static class MatrixFixture {
-        @AsyncTest(invocations = 1, threadCounts = {2, 4, 8}, timeoutMs = 10_000,
-                detectAll = false, licenseMockMode = true)
+        @AsyncTest(invocations = 1,
+                threadCounts = {2, 4, 8},
+                timeoutMs = 10_000,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void matrixTest() {
             // No assertion needed; presence of the test events is what we verify.
         }
     }
 
     static class LegacyFixture {
-        @AsyncTest(invocations = 1, threads = 3, timeoutMs = 10_000,
-                detectAll = false, licenseMockMode = true)
+        @AsyncTest(invocations = 1,
+                threads = 3,
+                timeoutMs = 10_000,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void legacyTest() {
             // No assertion needed.
         }

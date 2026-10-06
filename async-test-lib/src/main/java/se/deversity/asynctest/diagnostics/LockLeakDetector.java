@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectLockLeaks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.LOCK_LEAKS)
  * void testLockUsage() {
  *     ReentrantLock lock = new ReentrantLock();
  *     AsyncTestContext.lockLeakDetector()

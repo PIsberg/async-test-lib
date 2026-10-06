@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -76,7 +77,7 @@ class DateConverterServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared-Calendar race detected by CalendarDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCalendarIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.CALENDAR)
 
     void testConvertToDate_concurrent_detectsSharingBug() {
         Calendar cal = service.getCalendar();

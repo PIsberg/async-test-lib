@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -107,7 +108,7 @@ class InventoryServiceTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by OptimisticReadValidationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectOptimisticReadValidation = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.OPTIMISTIC_READ_VALIDATION)
     void test_concurrent_detectsBug() {
         Thread current = Thread.currentThread();
 
@@ -134,7 +135,7 @@ class InventoryServiceTest {
      * the value whatever validate() answered. Any read a restock overtook is reported.
      */
     @Disabled("Remove @Disabled to see a value used after a failed validate() detected by OptimisticReadValidationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectOptimisticReadValidation = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.OPTIMISTIC_READ_VALIDATION)
     void test_concurrent_detectsValueUsedAfterFailedValidate() throws InterruptedException {
         Thread current = Thread.currentThread();
         if (current.threadId() % 2 == 0) {

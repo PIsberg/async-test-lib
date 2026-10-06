@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 4, useVirtualThreads = true, detectStructuredConcurrencyIssues = true)
+ * @AsyncTest(threads = 4, useVirtualThreads = true, includes = DetectorType.STRUCTURED_CONCURRENCY)
  * void testStructuredConcurrency() {
  *     var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
  *     String scopeId = detector.recordScopeOpened("ShutdownOnFailure");

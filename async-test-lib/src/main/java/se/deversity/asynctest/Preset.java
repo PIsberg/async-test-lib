@@ -14,10 +14,10 @@ import java.util.Set;
 /**
  * Curated bundles of detectors selectable via {@link AsyncTest#preset()}.
  *
- * <p>{@link AsyncTest} has dozens of boolean detector flags; in practice most
- * test suites want one of a handful of standard combinations. Pick a preset to
- * skip the per-flag configuration, then layer {@code excludes = {...}} on top if
- * you need to opt out of a specific detector.
+ * <p>There are well over a hundred detectors; in practice most test suites want one of a
+ * handful of standard combinations. Pick a preset rather than listing detectors in
+ * {@code includes = {...}}, then layer {@code excludes = {...}} on top if you need to opt out
+ * of a specific detector.
  *
  * <p>Example:
  * <pre>{@code
@@ -86,8 +86,8 @@ public enum Preset {
     /**
      * Disable every detector. The runner still drives N×M concurrent execution
      * (so the test body still exercises concurrent code) but no diagnostic
-     * machinery is engaged. Useful when you want raw stress execution and intend
-     * to enable specific detectors via the per-flag boolean attributes manually.
+     * machinery is engaged. Useful when you want raw stress execution with no
+     * diagnostics; to run a few detectors, list them in {@code includes} instead.
      */
     NONE(EnumSet.noneOf(DetectorType.class));
 

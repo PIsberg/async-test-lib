@@ -48,7 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectExecutorShutdown = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.EXECUTOR_SHUTDOWN)
  * void testExecutorLifecycle() {
  *     ExecutorService ex = Executors.newFixedThreadPool(2);   // created here, so owned here
  *     AsyncTestContext.executorShutdownDetector().recordExecutorCreated(ex, "my-pool");

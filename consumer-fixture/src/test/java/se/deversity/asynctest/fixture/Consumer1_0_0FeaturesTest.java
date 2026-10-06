@@ -171,9 +171,7 @@ class Consumer1_0_0FeaturesTest {
 
     // ---- 8) Phase 13 detectors: AsyncTestContext accessors compile + return ----
 
-    // Default Preset.ALL + detectAll=true enables every detector. Per-flag
-    // overrides under Preset.NONE don't work — the preset's effective excludes
-    // pin every type off before per-flag values are read.
+    // Default Preset.ALL + detectAll=true enables every detector.
     @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
     void phase13_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.daemonThreadHygieneDetector());

@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 8, useVirtualThreads = true, detectVirtualThreadCpuBoundTasks = true)
+ * @AsyncTest(threads = 8, useVirtualThreads = true, includes = DetectorType.VIRTUAL_THREAD_CPU_BOUND)
  * void testComputeIntensive() {
  *     var detector = AsyncTestContext.virtualThreadCpuBoundTaskDetector();
  *     String taskId = detector.recordTaskStart("matrix-multiply");

@@ -41,8 +41,10 @@ public class AdvancedAsyncTestsTest {
         private final Object lock2 = new Object();
         private final AtomicInteger threadId = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500,
-                  detectDeadlocks = true, useVirtualThreads = false)
+        @AsyncTest(threads = 2,
+                  invocations = 1,
+                  timeoutMs = 1500,
+                  useVirtualThreads = false)
         void testClassicDeadlock() throws InterruptedException {
             int id = threadId.getAndIncrement();
             if (id % 2 == 0) {
@@ -81,8 +83,10 @@ public class AdvancedAsyncTestsTest {
         private boolean flag = false;
         private final AtomicInteger assigner = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2000,
-                  detectVisibility = true, useVirtualThreads = false)
+        @AsyncTest(threads = 2,
+                  invocations = 1,
+                  timeoutMs = 2000,
+                  useVirtualThreads = false)
         void testMissingVolatile() throws Exception {
             if (assigner.getAndIncrement() % 2 == 0) {
                 Thread.sleep(100);
@@ -116,7 +120,7 @@ public class AdvancedAsyncTestsTest {
         private volatile int counter1 = 0;
         private volatile int counter2 = 0;
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 15000, detectLivelocks = true)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 15000)
         void testLivelock() throws InterruptedException {
             if (Thread.currentThread().threadId() % 2 == 0) {
                 for (int i = 0; i < 100; i++) {

@@ -1,7 +1,7 @@
 # Example 85 — Thread Local Contamination
 
 **Detector**: `ThreadLocalContaminationDetector`  
-**Flag**: `detectThreadLocalContamination = true`
+**Select it with**: `includes = DetectorType.THREAD_LOCAL_CONTAMINATION`
 
 ## The Problem
 

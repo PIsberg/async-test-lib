@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -107,8 +108,10 @@ class TryLockMisuseTest {
     // -------------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see the unchecked unlock detected by TryLockMisuseDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectTryLockMisuse = true,
-            failOn = FailOn.LOW)
+    @AsyncTest(threads = 2,
+            invocations = 5,
+            failOn = FailOn.LOW,
+            includes = DetectorType.TRY_LOCK_MISUSE)
     void test_concurrent_detectsTryLockMisuse() {
         var mon = AsyncTestContext.tryLockMisuseDetector();
         Thread thread = Thread.currentThread();

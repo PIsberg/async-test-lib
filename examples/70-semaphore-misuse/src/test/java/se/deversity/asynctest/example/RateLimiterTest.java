@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -77,7 +78,7 @@ class RateLimiterTest {
 
     @Disabled("Remove @Disabled: the round times out once the leaked permits run out, and the failure "
             + "names SemaphoreMisuseDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorSemaphore = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SEMAPHORE)
     void testExecuteRequest_concurrent_detectsPermitLeak() {
         Semaphore sem = limiter.getSemaphore();
         String name = "rate-limiter-semaphore";

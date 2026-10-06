@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <pre>{@code
  * private static final ScopedValue<String> USER_ID = ScopedValue.newInstance();
  *
- * @AsyncTest(threads = 10, useVirtualThreads = true, detectScopedValueMisuse = true)
+ * @AsyncTest(threads = 10, useVirtualThreads = true, includes = DetectorType.SCOPED_VALUE)
  * void testScopedValueUsage() {
  *     var detector = AsyncTestContext.scopedValueMisuseDetector();
  *     String svName = "USER_ID";

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -42,7 +43,7 @@ class TransactionServiceTest {
 
     @Disabled("Remove @Disabled: the round times out because the leaked lock is never released, and the failure "
             + "names LockLeakDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockLeaks = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.LOCK_LEAKS)
     void test_concurrent_detectsBug() {
         // Register the lock and record acquire/release to let the detector track it
         AsyncTestContext.lockLeakDetector().registerLock(service.lock, "TransactionService.lock");

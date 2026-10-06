@@ -18,6 +18,12 @@ Non-detector knobs: `threads`, `invocations`, `timeoutMs`, `useVirtualThreads`,
 
 ## Detector selection resolution
 
+`AsyncTestConfig.from(AsyncTest)` turns the annotation into a builder call. The selection comes from
+`includes` if it is non-empty, otherwise from a `preset` other than `ALL`/`STRICT`, otherwise from
+`detectAll`: `true` selects every type and `false` selects none. `excludes` and `excludeIds` apply on
+top. The annotation has no per-detector attribute since 2.0.0 (#920); under 1.x, 144 of those
+attributes defaulted to `true`, so `detectAll = false` left almost every detector on.
+
 `AsyncTestConfig.Builder.build()` resolves the selection once, into one `EnumSet<DetectorType>`
 that `AsyncTestConfig.enabledDetectors()` returns (#917). Precedence: **includes beats
 everything; then `detectAll`; then the per-detector setters; and excludes always have the last

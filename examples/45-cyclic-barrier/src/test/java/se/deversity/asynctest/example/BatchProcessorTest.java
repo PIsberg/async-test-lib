@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -105,7 +106,7 @@ class BatchProcessorTest {
      */
     @Disabled("Remove @Disabled: a stranded worker's timed-out await breaks the barrier, later "
             + "rounds arrive at it broken, and the failure names CyclicBarrierDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCyclicBarrierIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.CYCLIC_BARRIER)
     void testProcessPhase_concurrent_detectsBrokenBarrier() {
         var monitor = AsyncTestContext.cyclicBarrierDetector();
         monitor.registerBarrier(processor.getBarrier(), "phase-barrier", 4);

@@ -315,7 +315,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 @AsyncTest(excludes = { DetectorType.FALSE_SHARING })
 
 // Explicit opt-in
-@AsyncTest(detectAll = false, detectDeadlocks = true, detectRaceConditions = true)
+@AsyncTest(includes = {DetectorType.DEADLOCKS, DetectorType.RACE_CONDITIONS})
 ```
 
 **What feeds them.** Three read the JVM and the harness directly and need no configuration at
@@ -352,8 +352,8 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 > **JDK 25/26 detectors are wired into the pipeline** (Phases 16 and 18). They are part of
 > `detectAll` and the `Preset.ALL` / `STRICT` bundles, each with a `DetectorType` constant
 > (`STABLE_VALUE_MISUSE`, `STRUCTURED_TASK_SCOPE_MISUSE`, `GATHERER_CONCURRENCY_MISUSE`,
-> `LAZY_CONSTANT_MISUSE`, `FINAL_FIELD_MUTATION`, `SHARED_KDF`) and a deprecated `@AsyncTest`
-> boolean flag. Record events against them via the matching `AsyncTestContext` accessors
+> `LAZY_CONSTANT_MISUSE`, `FINAL_FIELD_MUTATION`, `SHARED_KDF`) that `includes` and `excludes`
+> name. Record events against them via the matching `AsyncTestContext` accessors
 > (`stableValueMisuseDetector()` … `lazyConstantMisuseDetector()`,
 > `finalFieldMutationDetector()`, `sharedKdfDetector()`); findings surface through the
 > standard report and `failOn` gate. `VirtualThreadPinningDetector` is JDK-version-aware
@@ -391,7 +391,7 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `useVirtualThreads` | true | Use `Thread.ofVirtual()` (Java 21+) |
 | `preset` | `Preset.ALL` | Curated bundle: `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE` |
 | `detectAll` | true | Enable all detectors in one shot (honored when `preset = ALL`) |
-| `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll`/per-detector flags when non-empty |
+| `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll` when non-empty |
 | `excludes` | `{}` | Detectors to skip — layers on top of any preset or `includes` and wins on conflict |
 | `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (2.0.0+) |
 | `failOn` | `FailOn.NONE` | Severity gate: findings at/above this level (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) fail the test; `NONE` = report-only |
@@ -451,7 +451,7 @@ class LockTest {
     private final Object lockA = new Object();
     private final Object lockB = new Object();
 
-    @AsyncTest(threads = 4, invocations = 50, detectDeadlocks = true)
+    @AsyncTest(threads = 4, invocations = 50, includes = DetectorType.DEADLOCKS)
     void acquireLocks() {
         if (Thread.currentThread().getId() % 2 == 0) {
             synchronized (lockA) { synchronized (lockB) { /* work */ } }

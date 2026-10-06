@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -73,7 +74,7 @@ class MetricsServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see write-heavy CopyOnWriteArrayList detected by CopyOnWriteCollectionDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCopyOnWriteCollectionIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.COPY_ON_WRITE_COLLECTIONS)
     void testRecordEvent_concurrent_detectsWriteHeavy() {
         var timestamps = service.getTimestamps();
 

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -59,7 +60,7 @@ class ConnectionHandlerServiceTest {
      * {@code shutdown()}. By analysis time the threads are still alive.
      */
     @Disabled("Remove @Disabled to see bug detected by ThreadLeakDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadLeaks = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.THREAD_LEAKS)
     void test_concurrent_detectsThreadLeak() {
         String connId = "conn-" + Thread.currentThread().threadId();
         service.handleConnection(connId);

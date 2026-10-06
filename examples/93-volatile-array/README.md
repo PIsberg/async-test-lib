@@ -1,7 +1,7 @@
 # Example 93 — Volatile Array
 
 **Detector**: `VolatileArrayDetector`  
-**Flag**: `detectVolatileArrayIssues = true`
+**Select it with**: `includes = DetectorType.VOLATILE_ARRAY`
 
 ## The Problem
 

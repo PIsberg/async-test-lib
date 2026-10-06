@@ -22,21 +22,10 @@ class AsyncTestContextTest {
 
     // ---- AsyncTestConfig.from() mirrors annotation ----
 
-    @AsyncTest(
-        threads = 3, invocations = 2,
+    @AsyncTest(threads = 3,
+        invocations = 2,
         useVirtualThreads = false,
-        detectFalseSharing = true,
-        detectWakeupIssues = true,
-        validateConstructorSafety = true,
-        detectABAProblem = true,
-        validateLockOrder = true,
-        monitorSynchronizers = true,
-        monitorThreadPool = true,
-        detectMemoryOrderingViolations = true,
-        monitorAsyncPipeline = true,
-        monitorReadWriteLockFairness = true,
-        timeoutMs = 5_000
-    )
+        timeoutMs = 5_000)
     void phase2ContextIsActiveInsideTest() {
         // All Phase 2 detectors must be accessible without throwing
         assertNotNull(AsyncTestContext.get(), "context must be non-null inside @AsyncTest");
@@ -61,15 +50,15 @@ class AsyncTestContextTest {
 
     @Test
     void accessingDisabledDetectorThrowsIllegalState() {
-        // Build a config with detectFalseSharing = false (default)
+        // The builder's default selection leaves FALSE_SHARING off.
         AsyncTestConfig cfg = AsyncTestConfig.builder().build();
         AsyncTestContext ctx = new AsyncTestContext(cfg);
         AsyncTestContext.install(ctx);
         try {
             IllegalStateException ex = assertThrows(IllegalStateException.class,
                 AsyncTestContext::falseSharingDetector);
-            assertTrue(ex.getMessage().contains("detectFalseSharing"),
-                "Error message must name the disabled flag");
+            assertTrue(ex.getMessage().contains("DetectorType.FALSE_SHARING"),
+                "Error message must name the DetectorType to add to includes: " + ex.getMessage());
         } finally {
             AsyncTestContext.uninstall();
         }
@@ -101,8 +90,10 @@ class AsyncTestContextTest {
 
     // ---- Detectors are shared across threads and record events ----
 
-    @AsyncTest(threads = 3, invocations = 2, useVirtualThreads = false,
-               detectFalseSharing = true, timeoutMs = 5_000)
+    @AsyncTest(threads = 3,
+               invocations = 2,
+               useVirtualThreads = false,
+               timeoutMs = 5_000)
     void falseSharingDetectorIsSharedAcrossThreads() {
         // All threads use the same detector instance — events accumulate
         FalseSharingDetector detector = AsyncTestContext.falseSharingDetector();
@@ -111,8 +102,10 @@ class AsyncTestContextTest {
         // No assertion here — we just verify it doesn't throw
     }
 
-    @AsyncTest(threads = 2, invocations = 2, useVirtualThreads = false,
-               detectABAProblem = true, timeoutMs = 5_000)
+    @AsyncTest(threads = 2,
+               invocations = 2,
+               useVirtualThreads = false,
+               timeoutMs = 5_000)
     void abaDetectorRecordsEvents() {
         ABAProblemDetector detector = AsyncTestContext.abaProblemDetector();
         detector.recordValueChange("x", "A", "B");
@@ -149,8 +142,10 @@ class AsyncTestContextTest {
     private final AtomicReference<ABAProblemDetector> capturedDetector = new AtomicReference<>();
     private final AtomicBoolean sameInstanceAcrossRounds = new AtomicBoolean(true);
 
-    @AsyncTest(threads = 2, invocations = 3, useVirtualThreads = false,
-               detectABAProblem = true, timeoutMs = 5_000)
+    @AsyncTest(threads = 2,
+               invocations = 3,
+               useVirtualThreads = false,
+               timeoutMs = 5_000)
     void sameDetectorInstanceAcrossInvocationRounds() {
         ABAProblemDetector current = AsyncTestContext.abaProblemDetector();
         if (!capturedDetector.compareAndSet(null, current)) {

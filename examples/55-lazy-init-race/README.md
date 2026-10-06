@@ -26,7 +26,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 on the null-check / initialization of the `resource` field.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLazyInitRace = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.LAZY_INIT_RACE)
 void test_concurrent_detectsBug() { ... }
 ```
 

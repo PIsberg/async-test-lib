@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -30,7 +31,7 @@ class CompletableFutureObtrudeTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by CompletableFutureObtrudeDetector")
-    @AsyncTest(threads = 4, invocations = 10, detectAll = false, detectCompletableFutureObtrudeAbuse = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 4, invocations = 10, failOn = FailOn.LOW, includes = DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE)
     void test_concurrent_detectsObtrudeAbuse() {
         var mon = AsyncTestContext.completableFutureObtrudeDetector();
         Thread thread = Thread.currentThread();

@@ -90,7 +90,7 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
 <project_guardrails>
   <locked_files>
     <file path="se.deversity.asynctest.DetectorType">
-      <reason>Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) &amp;&amp; !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.</reason>
+      <reason>Adding or removing a constant requires synchronized changes in three places: (1) the AsyncTestConfig public flag and its derivation enabled.contains(TYPE), with the Builder setter that calls flag(TYPE, v), (2) the DetectorRegistry field and its factory row create(DetectorType.TYPE, X::new), and (3) the registry&#39;s ifIssue analysis call. Adding a value here in isolation compiles and detects nothing. The @AsyncTest attribute and the build() resolution line it once also needed are gone (#917, #920). The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.</reason>
     </file>
     <file path="se.deversity.asynctest.runner.OfflineLicense.VENDOR_VERIFY_KEY_B64">
       <reason>Every offline licence file already issued to a customer verifies against this key, and its private half exists only on the operator machine. A changed value denies each of those files with OFFLINE_FILE_SIGNATURE_INVALID on the customer&#39;s next build. Rotation means re-issuing every file first: a release decision, not a code edit.</reason>
@@ -129,7 +129,7 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
   <core_elements>
     <element path="se.deversity.asynctest.AsyncTestConfig">
       <sensitivity>Critical</sensitivity>
-      <note>Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation, the Builder setter that calls flag(TYPE, v), and the from(AsyncTest) read; never reintroduce a per-detector resolution expression in build().</note>
+      <note>Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 2.0.0 (#920). Never reintroduce a per-detector resolution expression in build().</note>
     </element>
     <element path="se.deversity.asynctest.AsyncTestContext">
       <sensitivity>Critical</sensitivity>

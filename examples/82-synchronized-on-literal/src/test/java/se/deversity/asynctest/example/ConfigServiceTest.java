@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -69,7 +70,7 @@ class ConfigServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see literal lock detected by SynchronizedOnLiteralDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedOnLiteral = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SYNCHRONIZED_ON_LITERAL)
     void test_concurrent_detectsLiteralLock() {
         var detector = AsyncTestContext.get().synchronizedOnLiteralDetector();
 

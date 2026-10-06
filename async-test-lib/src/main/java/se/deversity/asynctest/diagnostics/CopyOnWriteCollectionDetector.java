@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectCopyOnWriteCollectionIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.COPY_ON_WRITE_COLLECTIONS)
  * void testCopyOnWriteUsage() {
  *     CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
  *     AsyncTestContext.copyOnWriteCollectionDetector()

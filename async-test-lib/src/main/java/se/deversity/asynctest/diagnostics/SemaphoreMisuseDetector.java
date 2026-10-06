@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, monitorSemaphore = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SEMAPHORE)
  * void testSemaphore() throws InterruptedException {
  *     semaphore.acquire();
  *     AsyncTestContext.semaphoreMisuseDetector()

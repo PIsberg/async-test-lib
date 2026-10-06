@@ -5,6 +5,7 @@ import se.deversity.asynctest.AsyncAssert;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.NoopAsyncTestListener;
 import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.example.service.PaymentService;
@@ -150,15 +151,14 @@ class FeatureTourTest {
 
     // ---- 8) Bonus: a Phase 13 detector in action — SharedSecureRandom ----
 
-    // Pattern: opt into ONE detector via detectAll=false + per-flag=true.
-    // (Preset.NONE plus per-flag overrides does NOT work — the preset's
-    // effective excludes force every per-flag back to false; use detectAll=false
-    // when you want only the flags you list to be active.)
+    // Pattern: opt into ONE detector with includes. (Under 1.x this example used
+    // detectAll = false plus detectSharedSecureRandom = true, which in fact left
+    // every other attribute at its default of true; 2.0.0 removed the per-detector
+    // attributes, and includes says what the old pattern meant.)
     @AsyncTest(
         threads = 4,
         invocations = 1,
-        detectAll = false,                                  // disable everything else
-        detectSharedSecureRandom = true,                    // … then turn this one on
+        includes = DetectorType.SHARED_SECURE_RANDOM,       // this detector and nothing else
         licenseMockMode = true
     )
     void phase13_shared_secure_random_is_detected() {

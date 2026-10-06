@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -186,8 +187,10 @@ class BackgroundWorkerTest {
     // and stopped being so when the runner's platform workers became daemon threads too (#730).
     // The finding comes from the service's ThreadFactory instead, which decides the daemon flag
     // whoever calls it - so this fires on the runner everybody actually gets, the default one.
-    @AsyncTest(threads = 8, invocations = 5, detectAll = false,
-            detectDaemonThreadHygiene = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 5,
+            failOn = FailOn.LOW,
+            includes = DetectorType.DAEMON_THREAD_HYGIENE)
     void testStart_concurrent_detectsNonDaemonThread() {
         // A poller, not a thousand additions. The detector reports non-daemon threads that are
         // still alive when the run is analysed, and the old task was over in microseconds.

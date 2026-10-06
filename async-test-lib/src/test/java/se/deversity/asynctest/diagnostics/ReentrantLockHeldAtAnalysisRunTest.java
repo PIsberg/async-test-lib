@@ -5,6 +5,7 @@ import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.E2E;
@@ -75,9 +76,13 @@ class ReentrantLockHeldAtAnalysisRunTest {
         private final ReentrantLock lock = new ReentrantLock();
         private final AtomicReference<Thread> holder = new AtomicReference<>();
 
-        @AsyncTest(threads = 4, invocations = 2, timeoutMs = 20_000, detectAll = false,
-                detectDeadlocks = false, detectReentrantLockIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true, useVirtualThreads = true)
+        @AsyncTest(threads = 4,
+                invocations = 2,
+                timeoutMs = 20_000,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                useVirtualThreads = true,
+                includes = DetectorType.REENTRANT_LOCK)
         void increment() throws InterruptedException {
             ReentrantLockDetector detector = AsyncTestContext.reentrantLockDetector();
             detector.registerLock(lock, "leaky-counter-lock");
@@ -105,9 +110,12 @@ class ReentrantLockHeldAtAnalysisRunTest {
 
         static final ReentrantLock LOCK = new ReentrantLock();
 
-        @AsyncTest(threads = 4, invocations = 3, timeoutMs = 20_000, detectAll = false,
-                detectDeadlocks = false, detectReentrantLockIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 4,
+                invocations = 3,
+                timeoutMs = 20_000,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.REENTRANT_LOCK)
         void increment() throws InterruptedException {
             ReentrantLockDetector detector = AsyncTestContext.reentrantLockDetector();
             detector.registerLock(LOCK, "counter-lock");

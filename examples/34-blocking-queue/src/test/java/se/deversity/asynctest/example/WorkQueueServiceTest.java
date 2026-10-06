@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -151,8 +152,10 @@ class WorkQueueServiceTest {
      * 3. Fix: use put() so producers block for space, or handle the false from offer()
      */
     @Disabled("Remove @Disabled to see queue saturation detected by BlockingQueueDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
-            detectBlockingQueueIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            failOn = FailOn.LOW,
+            includes = DetectorType.BLOCKING_QUEUE)
     void testWorkQueue_concurrent_detectsSaturation() {
         BlockingQueue<String> queue = service.getQueue();
         BlockingQueueDetector monitor = AsyncTestContext.blockingQueueDetector();

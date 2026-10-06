@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectStringBuilderIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.STRING_BUILDER)
  * void testStringBuilderSharing() {
  *     StringBuilder sb = new StringBuilder();
  *     AsyncTestContext.stringBuilderDetector()

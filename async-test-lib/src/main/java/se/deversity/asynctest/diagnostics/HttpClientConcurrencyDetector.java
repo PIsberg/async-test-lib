@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 10, detectHttpClientIssues = true)
+ * @AsyncTest(threads = 10, includes = DetectorType.HTTP_CLIENT)
  * void testHttpClient() throws Exception {
  *     HttpClient client = HttpClient.newHttpClient();
  *     AsyncTestContext.httpClientDetector()

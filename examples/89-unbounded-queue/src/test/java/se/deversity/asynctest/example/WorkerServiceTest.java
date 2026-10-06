@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -57,7 +58,7 @@ class WorkerServiceTest {
      * enqueues work on that queue with no dequeue backpressure.
      */
     @Disabled("Remove @Disabled to see bug detected by UnboundedQueueDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectUnboundedQueue = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.UNBOUNDED_QUEUE)
     void test_concurrent_detectsUnboundedQueue() {
         var detector = AsyncTestContext.unboundedQueueDetector();
 

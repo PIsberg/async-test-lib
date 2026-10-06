@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -234,8 +235,10 @@ class LockFreeStackTest {
      * 3. Fix: use AtomicStampedReference<Node<T>> instead of AtomicReference
      */
     @Disabled("Remove @Disabled to see ABA problem detected by ABAProblemDetector")
-    @AsyncTest(threads = 4, invocations = 20, detectAll = false,
-            detectABAProblem = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 4,
+            invocations = 20,
+            failOn = FailOn.LOW,
+            includes = DetectorType.ABA_PROBLEM)
     void testPop_concurrent_detectsABAProblem() {
         // This demonstration used to write out three recordValueChange calls and one
         // recordCASAttempt by hand, into a locally constructed detector, and assert on the

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -49,7 +50,7 @@ class UserRepositoryTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by JdbcConnectionSharedDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectJdbcConnectionShared = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.JDBC_CONNECTION_SHARED)
     void test_concurrent_detectsBug() {
         // Record the shared connection being accessed from this thread
         AsyncTestContext.jdbcConnectionSharedDetector()

@@ -75,11 +75,19 @@ handful of cases where the obvious rewrite is wrong.
 
 ### The boolean attributes on `@AsyncTest`
 
-All 146 `detect*` / `validate*` / `monitor*` boolean attributes are deprecated in favour of
-`preset`, `includes` and `excludes`. The rewrite is mechanical: an attribute set to `true` becomes
-its `DetectorType` in `includes`, and one set to `false` becomes its `DetectorType` in `excludes`.
-Under `detectAll = true`, the default, a flag set to `false` never opted its detector out, so that
-rewrite turns off a detector that was running; drop the attribute instead if you want to keep it.
+All 146 `detect*` / `validate*` / `monitor*` boolean attributes were deprecated in favour of
+`preset`, `includes` and `excludes`, and 2.0.0 removes them (#920). The rewrite is mechanical: an
+attribute set to `true` becomes its `DetectorType` in `includes`, and one set to `false` becomes its
+`DetectorType` in `excludes`. Under `detectAll = true`, the default, a flag set to `false` never
+opted its detector out, so that rewrite turns off a detector that was running; drop the attribute
+instead if you want to keep it.
+
+**`detectAll = false` did not mean "only the flags I set".** 144 of the 146 attributes defaulted
+to `true`, so `@AsyncTest(detectAll = false, detectFalseSharing = true)` ran every detector except
+`VISIBILITY` and `LIVELOCKS`, measured through `AsyncTestConfig.from` on 1.12.4. In 2.0.0
+`detectAll = false` on its own selects nothing. If you relied on the 1.x behaviour, say so with
+`excludes = { DetectorType.VISIBILITY, DetectorType.LIVELOCKS }`; if you meant the flags you set,
+that is `includes`, which is what the rewrite above produces.
 
 ```java
 // 1.x, deprecated

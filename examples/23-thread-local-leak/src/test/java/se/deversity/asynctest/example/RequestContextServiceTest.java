@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -166,7 +167,7 @@ class RequestContextServiceTest {
      * 3. Fix: add a finally block that always calls endRequest()
      */
     @Disabled("Remove @Disabled to see ThreadLocal leak detected by ThreadLocalMonitor")
-    @AsyncTest(threads = 8, invocations = 20, detectAll = false, detectThreadLocalLeaks = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 20, failOn = FailOn.LOW, includes = DetectorType.THREAD_LOCAL_LEAKS)
     void testBeginRequest_concurrent_detectsThreadLocalLeak() {
         // The monitor has to be the one the run owns. This demonstration used to record into a
         // locally constructed ThreadLocalMonitor and assert on it from @AfterEach; the library

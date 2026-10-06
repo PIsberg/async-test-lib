@@ -1,7 +1,7 @@
 # Example 87 — Thread Starvation
 
 **Detector**: `ThreadStarvationDetector`  
-**Flag**: `detectThreadStarvation = true`
+**Select it with**: `includes = DetectorType.THREAD_STARVATION`
 
 ## The Problem
 

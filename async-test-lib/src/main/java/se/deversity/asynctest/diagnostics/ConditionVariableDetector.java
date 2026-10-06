@@ -97,7 +97,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectConditionVariableIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.CONDITION_VARIABLES)
  * void consumerAndProducer() throws InterruptedException {
  *     var monitor = AsyncTestContext.conditionVariableDetector();
  *     // lock: the ReentrantLock that made it; the predicate is what the waiter waits for

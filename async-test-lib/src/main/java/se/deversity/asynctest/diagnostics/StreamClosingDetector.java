@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 10, detectStreamClosing = true)
+ * @AsyncTest(threads = 10, includes = DetectorType.STREAM_CLOSING)
  * void testStreams() throws IOException {
  *     InputStream is = new FileInputStream("data.txt");
  *     AsyncTestContext.streamClosingDetector()

@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 4, detectCompletableFutureCompletionLeaks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS)
  * void testCompletableFuture() {
  *     CompletableFuture<String> future = new CompletableFuture<>();
  *

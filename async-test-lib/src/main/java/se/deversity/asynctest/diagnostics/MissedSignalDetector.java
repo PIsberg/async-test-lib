@@ -93,7 +93,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectMissedSignals = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.MISSED_SIGNAL)
  * void testMissedSignal() throws InterruptedException {
  *     MissedSignalDetector detector = AsyncTestContext.missedSignalDetector();
  *

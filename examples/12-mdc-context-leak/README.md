@@ -25,7 +25,7 @@ The test verifies the result but ignores what the thread's MDC looks like afterw
 ## How `@AsyncTest` Exposes the Bug
 
 ```java
-@AsyncTest(threads = 4, invocations = 3, detectMdcContextLeak = true, timeoutMs = 5000)
+@AsyncTest(threads = 4, invocations = 3, timeoutMs = 5000, includes = DetectorType.MDC_CONTEXT_LEAK)
 void part2_detectMdcLeak() {
     var d = AsyncTestContext.mdcContextLeakDetector();
     Map<String,String> before = new HashMap<>(MDC_STORE.get());

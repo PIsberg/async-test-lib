@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectNestedMonitorLockout = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.NESTED_MONITOR_LOCKOUT)
  * void testNestedLock() {
  *     NestedMonitorLockoutDetector mon = AsyncTestContext.nestedMonitorLockoutDetector();
  *     synchronized (lockA) {

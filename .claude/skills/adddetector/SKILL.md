@@ -1,11 +1,11 @@
 ---
 name: adddetector
-description: Scaffold a new async-test-lib concurrency detector from just its name and wire it in completely. Use when the user runs /adddetector <Name>, or asks to add / create / scaffold a new detector. Generates the detector + test, performs every synchronized wiring edit (DetectorType, AsyncTest, AsyncTestConfig, DetectorRegistry), updates docs, and verifies with the build.
+description: Scaffold a new async-test-lib concurrency detector from just its name and wire it in completely. Use when the user runs /adddetector <Name>, or asks to add / create / scaffold a new detector. Generates the detector + test, performs every synchronized wiring edit (DetectorType, AsyncTestConfig, DetectorRegistry), updates docs, and verifies with the build.
 ---
 
 # Add a detector
 
-Adding a detector to async-test-lib is a **synchronized change across ~9 files**. A field
+Adding a detector to async-test-lib is a **synchronized change across ~7 files**. A field
 without its construction, or an enum constant without a factory, *silently disables detection*
 or *fails a wiring test* — never a compile error you'd notice by eye. This skill does the whole
 set atomically so nothing is left half-wired.
@@ -29,7 +29,7 @@ From the base, derive every identifier (worked example: base = `SharedFoo`):
 | **`{{CONSTANT}}`** enum | PascalCase → SCREAMING_SNAKE: regex `([a-z0-9])([A-Z])` → `$1_$2`, then upper | `SHARED_FOO` |
 | **`{{FLAG}}`** config | `detect` + base | `detectSharedFoo` |
 | **`{{FIELD}}`** registry | base with lower first char + `Detector` | `sharedFooDetector` |
-| **`{{FACTORY}}`** inner class | = base | `SharedFoo` |
+| **`{{FACTORY}}`** short name | = base; the name the detector's `Violation`s carry | `SharedFoo` |
 
 SCREAMING_SNAKE examples to sanity-check your transform: `HttpClientConcurrency` →
 `HTTP_CLIENT_CONCURRENCY`, `JdbcConnectionShared` → `JDBC_CONNECTION_SHARED`.
@@ -95,25 +95,7 @@ The last constant has **no trailing comma**. Add a comma to it, then append the 
 ```
 (Anchor: the last constant before the closing `}` — currently `SHARED_KDF`.)
 
-### 4. `AsyncTest.java` — deprecated boolean attribute
-Append after the last `detectXxx()` attribute (currently `detectSharedKdf()`). Match the exact
-shape, including the blank line after `@Deprecated`:
-
-```java
-    /**
-     * Enable {{CONSTANT}} detection. See
-     * {@link se.deversity.asynctest.diagnostics.{{CLASS}}}.
-     * @since {{VERSION}}
-     *
-     * @deprecated Prefer {@link #preset()}, {@link #includes()}, or {@link #excludes()}
-     *     with {@link DetectorType#{{CONSTANT}}} instead of this per-detector boolean flag.
-     */
-    @Deprecated
-
-    boolean {{FLAG}}() default true;
-```
-
-### 5. `AsyncTestConfig.java` — **four** edits (immutable class; keep 1:1 mapping)
+### 4. `AsyncTestConfig.java` — **three** edits (immutable class; keep 1:1 mapping)
 Anchor every one after the current-last detector's line (`detectSharedKdf`). The columns are
 alignment-padded — copy the surrounding spacing.
 
@@ -125,11 +107,7 @@ alignment-padded — copy the surrounding spacing.
    ```java
    {{FLAG}} = enabled.contains(DetectorType.{{CONSTANT}});
    ```
-3. **`from(AsyncTest ann)` chain** (~L561) — append to the builder call chain:
-   ```java
-   .{{FLAG}}(ann.{{FLAG}}())
-   ```
-4. **Builder setter** (~L861) — it adds or removes its type in the builder's `explicit` set; there
+3. **Builder setter** (~L861) — it adds or removes its type in the builder's `explicit` set; there
    is no per-detector builder field:
    ```java
    public Builder {{FLAG}}(boolean v) { return flag(DetectorType.{{CONSTANT}}, v); }
@@ -137,7 +115,7 @@ alignment-padded — copy the surrounding spacing.
    > Resolution in `build()` is one `EnumSet` (#917): `detectAll`, `includes`, `excludes` and
    > presets iterate `DetectorType`, so they need no per-detector edit.
 
-### 6. `DetectorRegistry.java` — **four** edits (root package: `se.deversity.asynctest`)
+### 5. `DetectorRegistry.java` — **four** edits (root package: `se.deversity.asynctest`)
 This is the class that actually runs detectors. All four are required — a field without
 construction, or construction without an `analyzeAll` call, silently skips detection.
 
@@ -161,7 +139,7 @@ construction, or construction without an `analyzeAll` call, silently skips detec
            {{CLASS}}.Report::hasIssues, out);
    ```
 
-### 7. Docs (increment counts + catalog entry)
+### 6. Docs (increment counts + catalog entry)
 - `docs/detector-catalog/` — add a numbered `### N. Name` entry (next number after the highest)
   to the phase file it belongs in, usually the last one; a new phase gets a new `NN-*.md` file,
   plus its row in the `DETECTOR_CATALOG.md` hub table and in `docs/INDEX.md`. Then bump the
@@ -173,7 +151,7 @@ construction, or construction without an `analyzeAll` call, silently skips detec
   > Report the current `DetectorType.values().length` and let the user reconcile — don't invent a
   > number.
 
-### 8. Optional: `AsyncTestContext.java` accessor
+### 7. Optional: `AsyncTestContext.java` accessor
 Only if the user wants the `AsyncTestContext.{{FIELD}}()` convenience accessor (some detectors
 expose one, e.g. `sharedKdfDetector()`). It's not required for the detector to run via the SPI.
 `AsyncTestContext` is audit-listed for **thread safety** — if you add an accessor, keep

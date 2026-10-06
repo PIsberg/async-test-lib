@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectCompletableFutureExceptions = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)
  * void testCompletableFuture() {
  *     CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
  *         AsyncTestContext.completableFutureExceptionDetector()

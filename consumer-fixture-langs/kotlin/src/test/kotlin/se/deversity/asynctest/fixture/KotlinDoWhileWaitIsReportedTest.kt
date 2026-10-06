@@ -57,7 +57,6 @@ class KotlinDoWhileWaitIsReportedTest {
     @AsyncTest(
         threads = 4,
         invocations = 10,
-        detectMissedSignals = true,
         failOn = FailOn.NONE,
         licenseMockMode = true
     )

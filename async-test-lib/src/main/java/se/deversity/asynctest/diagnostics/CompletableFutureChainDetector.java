@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 10, detectCompletableFutureChainIssues = true)
+ * @AsyncTest(threads = 10, includes = DetectorType.COMPLETABLEFUTURE_CHAIN)
  * void testCompletableFutureChain() {
  *     CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> "result");
  *     AsyncTestContext.cfChainDetector()

@@ -29,7 +29,7 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectParallelStreamIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.PARALLEL_STREAMS)
  * void testParallelStream() {
  *     List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
  *     AtomicInteger counter = new AtomicInteger();

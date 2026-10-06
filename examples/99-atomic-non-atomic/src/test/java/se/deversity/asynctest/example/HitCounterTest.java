@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -84,7 +85,7 @@ class HitCounterTest {
      * 3. To fix: replace counter.set(counter.get() + 1) with counter.incrementAndGet()
      */
     @Disabled("Remove @Disabled to see the bug detected by AtomicNonAtomicUpdateDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectAtomicNonAtomicUpdates = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.ATOMIC_NON_ATOMIC_UPDATE)
     void test_concurrent_detectsNonAtomicUpdate() {
         var mon = AsyncTestContext.atomicNonAtomicUpdateDetector();
         var raw = counter.getCounter();

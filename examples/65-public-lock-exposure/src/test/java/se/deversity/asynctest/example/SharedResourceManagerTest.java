@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -154,8 +155,10 @@ class SharedResourceManagerTest {
      * 3. Fix: move the guard to a private final Object nobody else can reach
      */
     @Disabled("Remove @Disabled to see exposed lock detected by PublicLockExposureDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
-            detectPublicLockExposure = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            failOn = FailOn.LOW,
+            includes = DetectorType.PUBLIC_LOCK_EXPOSURE)
     void testAccessResource_concurrent_detectsExposedLock() {
         PublicLockExposureDetector detector = AsyncTestContext.publicLockExposureDetector();
         SharedResourceManager.observePublication(published ->

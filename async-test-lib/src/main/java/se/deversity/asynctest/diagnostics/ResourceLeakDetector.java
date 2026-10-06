@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectResourceLeaks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.RESOURCE_LEAKS)
  * void testResourceUsage() throws IOException {
  *     FileInputStream fis = new FileInputStream("data.txt");
  *     AsyncTestContext.resourceLeakDetector()

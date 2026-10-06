@@ -1,7 +1,7 @@
 # Example 83 — Thread Factory
 
 **Detector**: `ThreadFactoryDetector`  
-**Flag**: `detectThreadFactoryIssues = true`
+**Select it with**: `includes = DetectorType.THREAD_FACTORY`
 
 ## The Problem
 

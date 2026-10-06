@@ -30,7 +30,7 @@ API is never reached.
 ## How `@AsyncTest` Exposes the Bug
 
 ```java
-@AsyncTest(threads = 4, invocations = 2, detectDeprecatedThreadApi = true, timeoutMs = 5000)
+@AsyncTest(threads = 4, invocations = 2, timeoutMs = 5000, includes = DetectorType.DEPRECATED_THREAD_API)
 void part2_detectDeprecatedApi() {
     var d = AsyncTestContext.deprecatedThreadApiDetector();
     d.recordApiUse("Thread.stop", Thread.currentThread());

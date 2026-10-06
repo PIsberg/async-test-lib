@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -184,8 +185,10 @@ class ReportGenerationServiceTest {
      * 3. Fix: submit subtasks to a dedicated separate executor
      */
     @Disabled("Remove @Disabled to see executor self-deadlock detected by ExecutorDeadlockDetector")
-    @AsyncTest(threads = 4, invocations = 2, detectAll = false,
-            detectExecutorDeadlock = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 4,
+            invocations = 2,
+            failOn = FailOn.LOW,
+            includes = DetectorType.EXECUTOR_DEADLOCK)
     void testGenerateReport_concurrent_detectsExecutorDeadlock() {
         // This demonstration used to hand-record a lifecycle into a locally constructed
         // detector and assert on it, without ever calling the service. It proved that the

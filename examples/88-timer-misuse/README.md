@@ -1,7 +1,7 @@
 # Example 88 — Timer Misuse
 
 **Detector**: `TimerDetector`  
-**Flag**: `detectTimerIssues = true`
+**Select it with**: `includes = DetectorType.TIMER`
 
 ## The Problem
 

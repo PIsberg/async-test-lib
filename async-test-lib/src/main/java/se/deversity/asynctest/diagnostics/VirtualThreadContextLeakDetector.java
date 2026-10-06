@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <pre>{@code
  * private static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
  *
- * @AsyncTest(threads = 20, useVirtualThreads = true, detectVirtualThreadContextLeaks = true)
+ * @AsyncTest(threads = 20, useVirtualThreads = true, includes = DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS)
  * void testRequestScopedData() {
  *     var detector = AsyncTestContext.virtualThreadContextLeakDetector();
  *     String key = "REQUEST_ID";

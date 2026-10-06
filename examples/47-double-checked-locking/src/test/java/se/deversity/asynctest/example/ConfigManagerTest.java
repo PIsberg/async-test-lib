@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -84,7 +85,7 @@ class ConfigManagerTest {
      * 3. To fix: add `volatile` to the instance field in ConfigManager
      */
     @Disabled("Remove @Disabled to see the bug detected by DoubleCheckedLockingDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectDoubleCheckedLocking = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.DOUBLE_CHECKED_LOCKING)
     void testGetInstance_concurrent_detectsBrokenDCL() {
         // Register the DCL pattern: field is not volatile, first-check + second-check
         // + synchronized block are all present — the classic broken DCL structure

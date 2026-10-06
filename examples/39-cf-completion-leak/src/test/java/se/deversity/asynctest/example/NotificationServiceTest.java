@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -76,7 +77,7 @@ class NotificationServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see completion leaks detected by CompletableFutureCompletionLeakDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCompletableFutureCompletionLeaks = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS)
     void testNotify_concurrent_detectsCompletionLeak() {
         String message = "notification-" + Thread.currentThread().getId();
 

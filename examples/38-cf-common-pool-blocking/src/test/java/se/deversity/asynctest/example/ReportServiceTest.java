@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -153,8 +154,10 @@ class ReportServiceTest {
     // invocations was held at 5 while the detector emitted one line per blocking call: 400 body
     // executions produced 400 near-identical lines. The report now collapses identical findings
     // and counts them, so this is back at 50. See issue #351.
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
-            detectCFCommonPoolBlocking = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            failOn = FailOn.LOW,
+            includes = DetectorType.CF_COMMON_POOL_BLOCKING)
     void testGenerateReport_concurrent_detectsPoolBlocking() {
         // This demonstration used to call recordBlockingCall(null, ...) from the test body.
         // The detector returns immediately on a null future, and ignores any future it was not

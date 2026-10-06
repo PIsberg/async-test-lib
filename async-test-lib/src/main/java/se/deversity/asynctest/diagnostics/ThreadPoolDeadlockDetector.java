@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 4, detectThreadPoolDeadlocks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.THREAD_POOL_DEADLOCK)
  * void testThreadPool() {
  *     ExecutorService pool = Executors.newFixedThreadPool(4);
  *

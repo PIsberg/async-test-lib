@@ -120,6 +120,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed (2.0.0)
 
+- **The 146 per-detector boolean attributes on `@AsyncTest`.** `detectRaceConditions = true` and the
+  other 145 are gone; select detectors by `DetectorType` with `includes`, `excludes` and `preset`.
+  The attributes were a trap as well as an edit tax: 144 defaulted to `true`, so
+  `@AsyncTest(detectAll = false, detectX = true)`, which this repository's own fixtures described
+  as "only X", ran every detector except `VISIBILITY` and `LIVELOCKS`. `detectAll = false` on its
+  own now selects nothing. The detector-not-active error now names the `DetectorType` to add to
+  `includes`. 360 annotations across the tests, fixtures and examples were rewritten by intent
+  (flags under `detectAll = false` became `includes`; flags the default `detectAll` ignored were
+  dropped). `AsyncTestConfig`'s public flags and builder setters stay (#383). `docs/MIGRATION.md`
+  has the rewrite (#920).
 - **The 42 deprecated `*Monitor()` accessors on `AsyncTestContext`.** Each was a second name for
   the instance its `*Detector()` replacement returns, deprecated since 1.7 and naming that
   replacement. 38 differ only in the suffix; `semaphoreMonitor`, `completableFutureMonitor`,

@@ -155,7 +155,7 @@ class CoreFlowsBddTest {
     public static class CountingBody {
         static final AtomicInteger executions = new AtomicInteger();
 
-        @AsyncTest(threads = 3, invocations = 4, detectAll = false, failOn = FailOn.NONE)
+        @AsyncTest(threads = 3, invocations = 4, failOn = FailOn.NONE, preset = Preset.NONE)
         void count() {
             executions.incrementAndGet();
         }

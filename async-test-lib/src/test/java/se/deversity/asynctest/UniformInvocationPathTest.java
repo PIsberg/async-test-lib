@@ -57,9 +57,10 @@ class UniformInvocationPathTest {
         static final AtomicInteger executionCount  = new AtomicInteger(0);
         static final AtomicInteger contextNullCount = new AtomicInteger(0);
 
-        @AsyncTest(threads = THREADS, invocations = INVOCATIONS,
+        @AsyncTest(threads = THREADS,
+                   invocations = INVOCATIONS,
                    useVirtualThreads = false,
-                   detectFalseSharing = true, timeoutMs = 5_000, detectDeadlocks = false)
+                   timeoutMs = 5_000)
         void countExecutions() {
             executionCount.incrementAndGet();
             if (AsyncTestContext.get() == null) {

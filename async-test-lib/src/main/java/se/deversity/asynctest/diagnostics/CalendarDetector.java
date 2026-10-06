@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectCalendarIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.CALENDAR)
  * void testCalendarUsage() {
  *     Calendar cal = Calendar.getInstance();
  *     AsyncTestContext.calendarDetector()

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -61,7 +62,7 @@ class TaskOrchestratorTest {
      */
     @Disabled("Remove @Disabled: the round times out on the nested-submission deadlock, and the failure "
             + "names ThreadPoolDeadlockDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadPoolDeadlocks = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.THREAD_POOL_DEADLOCK)
     void test_concurrent_detectsDeadlockRisk() {
         var detector = AsyncTestContext.threadPoolDeadlockDetector();
 

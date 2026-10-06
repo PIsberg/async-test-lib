@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSimpleDateFormatIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SIMPLE_DATE_FORMAT)
  * void testDateFormatUsage() {
  *     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
  *     AsyncTestContext.simpleDateFormatDetector()

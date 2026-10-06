@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  *
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSharedRandom = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SHARED_RANDOM)
  * void testRandomUsage() {
  *     Random random = new Random();
  *     AsyncTestContext.sharedRandomDetector()

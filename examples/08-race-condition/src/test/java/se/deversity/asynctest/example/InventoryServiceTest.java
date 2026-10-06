@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * stock between the check and the write, so the balance is always consistent.
  *
  * WHY @AsyncTest DETECTS THE ISSUE:
- * RaceConditionDetector is activated by {@code detectRaceConditions = true}, and it is
+ * RaceConditionDetector is activated by {@code includes = DetectorType.RACE_CONDITIONS}, and it is
  * recording-fed: it only sees the accesses the code under test hands it, through
  * {@code recordFieldRead} / {@code recordFieldWrite}. The demonstration wires those two
  * methods into InventoryService.observeStockAccess, so the read on either side of the
@@ -137,7 +137,7 @@ class InventoryServiceTest {
      *    the update indivisible
      */
     @Disabled("Remove @Disabled to see race condition detected by RaceConditionDetector")
-    @AsyncTest(threads = 8, invocations = 100, detectRaceConditions = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW)
     void testReserveItem_concurrent_detectsRaceCondition() {
         // RaceConditionDetector is recording-fed: nothing reaches it unless the code under test
         // says which object and field it touched. This demonstration used to record nothing at

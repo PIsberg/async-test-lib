@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -36,7 +37,7 @@ class WorkerCoordinatorTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by MissedSignalDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMissedSignals = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.MISSED_SIGNAL)
     void test_concurrent_detectsBug() throws InterruptedException {
         var detector = AsyncTestContext.missedSignalDetector();
         // One coordinator per execution, so the only signal this worker could receive is its own.
