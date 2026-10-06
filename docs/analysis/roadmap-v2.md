@@ -121,7 +121,10 @@ done behind the existing API. Only deletions must wait for 2.0.
   preset/includes/excludes/detectAll/legacy booleans. Keep every existing public boolean
   field, now assigned as a one-line derivation (`this.detectXxx = enabled.contains(XXX)`).
   Binary compatibility: unchanged — fields keep their signatures and values.
-* **Registry table** (#916): replace the 127 hand-written conditional constructions in
+* **Registry table** (#916, **done 2026-10-06**: each construction is one row,
+  `field = create(DetectorType.TYPE, Xxx::new)`, keyed on `enabledDetectors()`; a separate
+  `Map<DetectorType, Supplier>` beside the fields would have added an edit site, not removed one):
+  replace the 127 hand-written conditional constructions in
   `DetectorRegistry` with a `Map<DetectorType, Supplier<Object>>` factory table iterated
   against `config.enabledDetectors`. The per-detector fields and accessors remain, assigned
   from the table's output, so `AsyncTestContext` and all tests are untouched.

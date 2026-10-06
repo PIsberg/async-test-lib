@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   used to be its own resolution line, 146 expressions that could each be wrong; a test now checks
   across 200 random selections that the flags and the set agree, and goes red when one flag is
   derived from the wrong type (#917).
+- **`DetectorRegistry` builds its detectors from the enabled set, keyed by type.** Each of the 146
+  constructions read a config flag of its own, `cfg.detectXxx ? new Xxx() : null`, so a
+  construction keyed on the wrong flag compiled and built the wrong detector. Each is now one row,
+  `create(DetectorType.XXX, Xxx::new)`, and a test checks across 50 random selections that the
+  registry built exactly the selected types, one instance each (#916).
 - **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
   workers to meet after the start built a `CyclicBarrier` of its own, and had to get the party
   count, the timeout and the reuse across rounds right by hand; five `@AsyncTest` classes in this

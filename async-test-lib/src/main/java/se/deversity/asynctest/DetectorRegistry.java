@@ -151,9 +151,13 @@ import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Holds all Phase 2 detector instances for a single test run and orchestrates
@@ -171,7 +175,7 @@ import java.util.function.Function;
  * static accessors can read them directly without reflection overhead.
  */
 @AIContext(
-    focus = "Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) conditional construction in the constructor keyed on the config flag, (3) an analyzeAll() call in the correct phase block. All three steps must be added together.",
+    focus = "Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) its factory-table row in the constructor, field = create(DetectorType.TYPE, Detector::new), keyed on the type and never on a config flag (#916), (3) an analyzeAll() call in the correct phase block. All three steps must be added together.",
     avoids = "partial patterns — a field without construction or analysis silently skips detection"
 )
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "No locks: every detector field is final and assigned in the constructor, before ConcurrencyRunner publishes the registry to its workers, so every worker of a run reads the same instances and each detector carries its own thread safety. The last* maps are written only by analyzeAllNamed(), which the runner calls on its own thread after the workers have quiesced.")
@@ -365,32 +369,43 @@ final class DetectorRegistry {
     final @Nullable ScopeResultEscapeDetector scopeResultEscapeDetector;
     final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
 
+    /** The run's selection, read by {@link #create} while the constructor runs. */
+    private final Set<DetectorType> enabled;
+
     /**
-     * Instantiates detectors based on the enabled flags in {@code cfg}.
-     * Detectors whose flag is {@code false} are set to {@code null} and incur
-     * zero overhead during the test run.
+     * The factory table's output: every detector this registry built, keyed by its type (#916).
+     * Written only by {@link #create} during construction, so it is frozen with the final fields.
+     */
+    private final Map<DetectorType, Object> instances = new EnumMap<>(DetectorType.class);
+
+    /**
+     * Instantiates the detectors {@link AsyncTestConfig#enabledDetectors()} names, one per type.
+     * Every other field stays {@code null} and costs nothing during the run.
+     *
+     * <p>Each line below is one row of the factory table: a {@link DetectorType} and the
+     * constructor that builds it. Construction is keyed on the type, not on a config flag of its
+     * own, so there is nothing per detector left to pair with the wrong flag, and
+     * {@code DetectorRegistryFactoryTableTest} compares what was built with what was asked for.
      */
     DetectorRegistry(AsyncTestConfig cfg) {
-        deadlockDetector           = cfg.detectDeadlocks                ? new DeadlockDetector()           : null;
-        visibilityMonitor          = cfg.detectVisibility               ? new VisibilityMonitor()           : null;
-        livelockDetector           = cfg.detectLivelocks                ? new LivelockDetector()            : null;
-        falseSharingDetector       = cfg.detectFalseSharing             ? new FalseSharingDetector()       : null;
-        wakeupDetector             = cfg.detectWakeupIssues             ? new WakeupDetector()             : null;
-        constructorSafetyValidator = cfg.validateConstructorSafety      ? new ConstructorSafetyValidator() : null;
-        abaProblemDetector         = cfg.detectABAProblem               ? new ABAProblemDetector()         : null;
-        lockOrderValidator         = cfg.validateLockOrder              ? new LockOrderValidator()         : null;
-        synchronizerMonitor        = cfg.monitorSynchronizers           ? new SynchronizerMonitor()        : null;
-        threadPoolMonitor          = cfg.monitorThreadPool              ? new ThreadPoolMonitor()          : null;
-        memoryOrderingMonitor      = cfg.detectMemoryOrderingViolations ? new MemoryOrderingMonitor()      : null;
-        pipelineMonitor            = cfg.monitorAsyncPipeline           ? new PipelineMonitor()            : null;
-        readWriteLockMonitor       = cfg.monitorReadWriteLockFairness   ? new ReadWriteLockMonitor()       : null;
-        semaphoreMisuseDetector    = cfg.monitorSemaphore               ? new SemaphoreMisuseDetector()    : null;
-        completableFutureExceptionDetector = cfg.detectCompletableFutureExceptions
-                ? new CompletableFutureExceptionDetector() : null;
-        completableFutureCompletionLeakDetector = cfg.detectCompletableFutureCompletionLeaks
-                ? new CompletableFutureCompletionLeakDetector() : null;
-        virtualThreadPinningDetector = cfg.detectVirtualThreadPinning
-                ? new VirtualThreadPinningDetector() : null;
+        enabled = cfg.enabledDetectors();
+        deadlockDetector           = create(DetectorType.DEADLOCKS, DeadlockDetector::new);
+        visibilityMonitor          = create(DetectorType.VISIBILITY, VisibilityMonitor::new);
+        livelockDetector           = create(DetectorType.LIVELOCKS, LivelockDetector::new);
+        falseSharingDetector       = create(DetectorType.FALSE_SHARING, FalseSharingDetector::new);
+        wakeupDetector             = create(DetectorType.WAKEUP_ISSUES, WakeupDetector::new);
+        constructorSafetyValidator = create(DetectorType.CONSTRUCTOR_SAFETY, ConstructorSafetyValidator::new);
+        abaProblemDetector         = create(DetectorType.ABA_PROBLEM, ABAProblemDetector::new);
+        lockOrderValidator         = create(DetectorType.LOCK_ORDER, LockOrderValidator::new);
+        synchronizerMonitor        = create(DetectorType.SYNCHRONIZERS, SynchronizerMonitor::new);
+        threadPoolMonitor          = create(DetectorType.THREAD_POOL, ThreadPoolMonitor::new);
+        memoryOrderingMonitor      = create(DetectorType.MEMORY_ORDERING, MemoryOrderingMonitor::new);
+        pipelineMonitor            = create(DetectorType.ASYNC_PIPELINE, PipelineMonitor::new);
+        readWriteLockMonitor       = create(DetectorType.READ_WRITE_LOCK_FAIRNESS, ReadWriteLockMonitor::new);
+        semaphoreMisuseDetector    = create(DetectorType.SEMAPHORE, SemaphoreMisuseDetector::new);
+        completableFutureExceptionDetector = create(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, CompletableFutureExceptionDetector::new);
+        completableFutureCompletionLeakDetector = create(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, CompletableFutureCompletionLeakDetector::new);
+        virtualThreadPinningDetector = create(DetectorType.VIRTUAL_THREAD_PINNING, VirtualThreadPinningDetector::new);
         // The same defect SleepInLockDetector had below: recordBlockingOperation and
         // recordSynchronizedBlock both return early on a monitoring flag that defaults to false,
         // and nothing in main code turned it on - the javadoc, the fixture and example 92 each
@@ -399,40 +414,38 @@ final class DetectorRegistry {
         if (virtualThreadPinningDetector != null) {
             virtualThreadPinningDetector.startMonitoring();
         }
-        threadPoolDeadlockDetector = cfg.detectThreadPoolDeadlocks
-                ? new ThreadPoolDeadlockDetector() : null;
-        concurrentModificationDetector = cfg.detectConcurrentModifications
-                ? new ConcurrentModificationDetector() : null;
-        lockLeakDetector           = cfg.detectLockLeaks                ? new LockLeakDetector()           : null;
-        sharedRandomDetector       = cfg.detectSharedRandom             ? new SharedRandomDetector()       : null;
-        blockingQueueDetector      = cfg.detectBlockingQueueIssues      ? new BlockingQueueDetector()      : null;
-        conditionVariableDetector  = cfg.detectConditionVariableIssues  ? new ConditionVariableDetector()  : null;
-        simpleDateFormatDetector   = cfg.detectSimpleDateFormatIssues   ? new SimpleDateFormatDetector()   : null;
-        parallelStreamDetector     = cfg.detectParallelStreamIssues     ? new ParallelStreamDetector()     : null;
-        resourceLeakDetector       = cfg.detectResourceLeaks            ? new ResourceLeakDetector()       : null;
-        countDownLatchDetector     = cfg.detectCountDownLatchIssues     ? new CountDownLatchDetector()     : null;
-        cyclicBarrierDetector      = cfg.detectCyclicBarrierIssues      ? new CyclicBarrierDetector()      : null;
-        reentrantLockDetector      = cfg.detectReentrantLockIssues      ? new ReentrantLockDetector()      : null;
-        volatileArrayDetector      = cfg.detectVolatileArrayIssues      ? new VolatileArrayDetector()      : null;
-        doubleCheckedLockingDetector = cfg.detectDoubleCheckedLocking   ? new DoubleCheckedLockingDetector() : null;
-        waitTimeoutDetector        = cfg.detectWaitTimeout              ? new WaitTimeoutDetector()        : null;
-        lockContentionDetector     = cfg.detectLockContention           ? new LockContentionDetector()     : null;
-        synchronizedNonFinalDetector = cfg.detectSynchronizedNonFinal   ? new SynchronizedNonFinalDetector() : null;
-        missedSignalDetector       = cfg.detectMissedSignals            ? new MissedSignalDetector()       : null;
-        lazyInitRaceDetector       = cfg.detectLazyInitRace             ? new LazyInitRaceDetector()       : null;
-        phaserDetector             = cfg.detectPhaserIssues             ? new PhaserDetector()             : null;
-        stampedLockDetector        = cfg.detectStampedLockIssues        ? new StampedLockDetector()        : null;
-        exchangerDetector          = cfg.detectExchangerIssues          ? new ExchangerDetector()          : null;
-        scheduledExecutorDetector  = cfg.detectScheduledExecutorIssues  ? new ScheduledExecutorDetector()  : null;
-        forkJoinPoolDetector       = cfg.detectForkJoinPoolIssues       ? new ForkJoinPoolDetector()       : null;
-        threadFactoryDetector      = cfg.detectThreadFactoryIssues      ? new ThreadFactoryDetector()      : null;
-        raceConditionDetector      = cfg.detectRaceConditions           ? new RaceConditionDetector()      : null;
-        threadLocalMonitor         = cfg.detectThreadLocalLeaks         ? new ThreadLocalMonitor()          : null;
-        busyWaitDetector           = cfg.detectBusyWaiting              ? new BusyWaitDetector()            : null;
-        atomicityValidator         = cfg.detectAtomicityViolations      ? new AtomicityValidator()          : null;
-        interruptMonitor           = cfg.detectInterruptMishandling     ? new InterruptMonitor()            : null;
-        threadLeakDetector         = cfg.detectThreadLeaks              ? new ThreadLeakDetector()         : null;
-        sleepInLockDetector        = cfg.detectSleepInLock              ? new SleepInLockDetector()        : null;
+        threadPoolDeadlockDetector = create(DetectorType.THREAD_POOL_DEADLOCK, ThreadPoolDeadlockDetector::new);
+        concurrentModificationDetector = create(DetectorType.CONCURRENT_MODIFICATIONS, ConcurrentModificationDetector::new);
+        lockLeakDetector           = create(DetectorType.LOCK_LEAKS, LockLeakDetector::new);
+        sharedRandomDetector       = create(DetectorType.SHARED_RANDOM, SharedRandomDetector::new);
+        blockingQueueDetector      = create(DetectorType.BLOCKING_QUEUE, BlockingQueueDetector::new);
+        conditionVariableDetector  = create(DetectorType.CONDITION_VARIABLES, ConditionVariableDetector::new);
+        simpleDateFormatDetector   = create(DetectorType.SIMPLE_DATE_FORMAT, SimpleDateFormatDetector::new);
+        parallelStreamDetector     = create(DetectorType.PARALLEL_STREAMS, ParallelStreamDetector::new);
+        resourceLeakDetector       = create(DetectorType.RESOURCE_LEAKS, ResourceLeakDetector::new);
+        countDownLatchDetector     = create(DetectorType.COUNTDOWN_LATCH, CountDownLatchDetector::new);
+        cyclicBarrierDetector      = create(DetectorType.CYCLIC_BARRIER, CyclicBarrierDetector::new);
+        reentrantLockDetector      = create(DetectorType.REENTRANT_LOCK, ReentrantLockDetector::new);
+        volatileArrayDetector      = create(DetectorType.VOLATILE_ARRAY, VolatileArrayDetector::new);
+        doubleCheckedLockingDetector = create(DetectorType.DOUBLE_CHECKED_LOCKING, DoubleCheckedLockingDetector::new);
+        waitTimeoutDetector        = create(DetectorType.WAIT_TIMEOUT, WaitTimeoutDetector::new);
+        lockContentionDetector     = create(DetectorType.LOCK_CONTENTION, LockContentionDetector::new);
+        synchronizedNonFinalDetector = create(DetectorType.SYNCHRONIZED_NON_FINAL, SynchronizedNonFinalDetector::new);
+        missedSignalDetector       = create(DetectorType.MISSED_SIGNAL, MissedSignalDetector::new);
+        lazyInitRaceDetector       = create(DetectorType.LAZY_INIT_RACE, LazyInitRaceDetector::new);
+        phaserDetector             = create(DetectorType.PHASER, PhaserDetector::new);
+        stampedLockDetector        = create(DetectorType.STAMPED_LOCK, StampedLockDetector::new);
+        exchangerDetector          = create(DetectorType.EXCHANGER, ExchangerDetector::new);
+        scheduledExecutorDetector  = create(DetectorType.SCHEDULED_EXECUTOR, ScheduledExecutorDetector::new);
+        forkJoinPoolDetector       = create(DetectorType.FORK_JOIN_POOL, ForkJoinPoolDetector::new);
+        threadFactoryDetector      = create(DetectorType.THREAD_FACTORY, ThreadFactoryDetector::new);
+        raceConditionDetector      = create(DetectorType.RACE_CONDITIONS, RaceConditionDetector::new);
+        threadLocalMonitor         = create(DetectorType.THREAD_LOCAL_LEAKS, ThreadLocalMonitor::new);
+        busyWaitDetector           = create(DetectorType.BUSY_WAITING, BusyWaitDetector::new);
+        atomicityValidator         = create(DetectorType.ATOMICITY_VIOLATIONS, AtomicityValidator::new);
+        interruptMonitor           = create(DetectorType.INTERRUPT_MISHANDLING, InterruptMonitor::new);
+        threadLeakDetector         = create(DetectorType.THREAD_LEAKS, ThreadLeakDetector::new);
+        sleepInLockDetector        = create(DetectorType.SLEEP_IN_LOCK, SleepInLockDetector::new);
         // Without this the detector is inert: every recordSleep returns early on a monitoring
         // flag that defaults to false, and nothing in main code had ever turned it on - only its
         // own unit test did. Constructing it and never starting it meant detectSleepInLock=true
@@ -440,105 +453,80 @@ final class DetectorRegistry {
         if (sleepInLockDetector != null) {
             sleepInLockDetector.startMonitoring();
         }
-        unboundedQueueDetector     = cfg.detectUnboundedQueue           ? new UnboundedQueueDetector()     : null;
-        threadStarvationDetector   = cfg.detectThreadStarvation         ? new ThreadStarvationDetector()   : null;
-        calendarDetector           = cfg.detectCalendarIssues           ? new CalendarDetector()           : null;
-        sharedCollectionDetector   = cfg.detectSharedCollections        ? new SharedCollectionDetector()   : null;
-        timerDetector              = cfg.detectTimerIssues              ? new TimerDetector()              : null;
-        copyOnWriteCollectionDetector = cfg.detectCopyOnWriteCollectionIssues
-                ? new CopyOnWriteCollectionDetector() : null;
-        stringBuilderDetector      = cfg.detectStringBuilderIssues               ? new StringBuilderDetector()               : null;
-        structuredConcurrencyMisuseDetector = cfg.detectStructuredConcurrencyIssues
-                ? new StructuredConcurrencyMisuseDetector() : null;
-        virtualThreadContextLeakDetector = cfg.detectVirtualThreadContextLeaks
-                ? new VirtualThreadContextLeakDetector() : null;
-        scopedValueMisuseDetector = cfg.detectScopedValueMisuse
-                ? new ScopedValueMisuseDetector() : null;
-        virtualThreadCpuBoundTaskDetector = cfg.detectVirtualThreadCpuBoundTasks
-                ? new VirtualThreadCpuBoundTaskDetector() : null;
-        virtualThreadCarrierExhaustionDetector = cfg.detectVirtualThreadCarrierExhaustion
-                ? new VirtualThreadCarrierExhaustionDetector() : null;
+        unboundedQueueDetector     = create(DetectorType.UNBOUNDED_QUEUE, UnboundedQueueDetector::new);
+        threadStarvationDetector   = create(DetectorType.THREAD_STARVATION, ThreadStarvationDetector::new);
+        calendarDetector           = create(DetectorType.CALENDAR, CalendarDetector::new);
+        sharedCollectionDetector   = create(DetectorType.SHARED_COLLECTIONS, SharedCollectionDetector::new);
+        timerDetector              = create(DetectorType.TIMER, TimerDetector::new);
+        copyOnWriteCollectionDetector = create(DetectorType.COPY_ON_WRITE_COLLECTIONS, CopyOnWriteCollectionDetector::new);
+        stringBuilderDetector      = create(DetectorType.STRING_BUILDER, StringBuilderDetector::new);
+        structuredConcurrencyMisuseDetector = create(DetectorType.STRUCTURED_CONCURRENCY, StructuredConcurrencyMisuseDetector::new);
+        virtualThreadContextLeakDetector = create(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, VirtualThreadContextLeakDetector::new);
+        scopedValueMisuseDetector = create(DetectorType.SCOPED_VALUE, ScopedValueMisuseDetector::new);
+        virtualThreadCpuBoundTaskDetector = create(DetectorType.VIRTUAL_THREAD_CPU_BOUND, VirtualThreadCpuBoundTaskDetector::new);
+        virtualThreadCarrierExhaustionDetector = create(DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION, VirtualThreadCarrierExhaustionDetector::new);
 
         // ---- Phase 7: High-Level Concurrency Patterns ----
-        httpClientConcurrencyDetector = cfg.detectHttpClientIssues
-                ? new HttpClientConcurrencyDetector() : null;
-        streamClosingDetector = cfg.detectStreamClosing
-                ? new StreamClosingDetector() : null;
-        cacheConcurrencyDetector = cfg.detectCacheConcurrency
-                ? new CacheConcurrencyDetector() : null;
-        completableFutureChainDetector = cfg.detectCompletableFutureChainIssues
-                ? new CompletableFutureChainDetector() : null;
+        httpClientConcurrencyDetector = create(DetectorType.HTTP_CLIENT, HttpClientConcurrencyDetector::new);
+        streamClosingDetector = create(DetectorType.STREAM_CLOSING, StreamClosingDetector::new);
+        cacheConcurrencyDetector = create(DetectorType.CACHE_CONCURRENCY, CacheConcurrencyDetector::new);
+        completableFutureChainDetector = create(DetectorType.COMPLETABLEFUTURE_CHAIN, CompletableFutureChainDetector::new);
 
         // ---- Phase 8: Lifecycle & Structural Correctness ----
-        executorShutdownDetector = cfg.detectExecutorShutdown
-                ? new ExecutorShutdownDetector() : null;
-        mutableMapKeyDetector = cfg.detectMutableMapKeys
-                ? new MutableMapKeyDetector() : null;
-        nestedMonitorLockoutDetector = cfg.detectNestedMonitorLockout
-                ? new NestedMonitorLockoutDetector() : null;
-        lockDowngradeDetector = cfg.detectLockDowngrade
-                ? new LockDowngradeDetector() : null;
-        inheritableThreadLocalMisuseDetector = cfg.detectInheritableThreadLocalMisuse
-                ? new InheritableThreadLocalMisuseDetector() : null;
+        executorShutdownDetector = create(DetectorType.EXECUTOR_SHUTDOWN, ExecutorShutdownDetector::new);
+        mutableMapKeyDetector = create(DetectorType.MUTABLE_MAP_KEY, MutableMapKeyDetector::new);
+        nestedMonitorLockoutDetector = create(DetectorType.NESTED_MONITOR_LOCKOUT, NestedMonitorLockoutDetector::new);
+        lockDowngradeDetector = create(DetectorType.LOCK_DOWNGRADE, LockDowngradeDetector::new);
+        inheritableThreadLocalMisuseDetector = create(DetectorType.INHERITABLE_THREAD_LOCAL, InheritableThreadLocalMisuseDetector::new);
 
         // ---- Phase 10: API Traps & Subtle Concurrency Bugs ----
-        threadLocalContaminationDetector = cfg.detectThreadLocalContamination
-                ? new ThreadLocalContaminationDetector() : null;
-        atomicNonAtomicUpdateDetector = cfg.detectAtomicNonAtomicUpdates
-                ? new AtomicNonAtomicUpdateDetector() : null;
-        synchronizedCollectionIterationDetector = cfg.detectSynchronizedCollectionIteration
-                ? new SynchronizedCollectionIterationDetector() : null;
-        sharedFormatterDetector = cfg.detectSharedFormatter
-                ? new SharedFormatterDetector() : null;
-        concurrentMapComputeRecursionDetector = cfg.detectConcurrentMapComputeRecursion
-                ? new ConcurrentMapComputeRecursionDetector() : null;
-        synchronizedOnLiteralDetector = cfg.detectSynchronizedOnLiteral
-                ? new SynchronizedOnLiteralDetector() : null;
-        publicLockExposureDetector = cfg.detectPublicLockExposure
-                ? new PublicLockExposureDetector() : null;
-        forkJoinTaskBlockingDetector = cfg.detectForkJoinTaskBlocking
-                ? new ForkJoinTaskBlockingDetector() : null;
-        optimisticReadValidationDetector = cfg.detectOptimisticReadValidation
-                ? new OptimisticReadValidationDetector() : null;
-        cfCommonPoolBlockingDetector = cfg.detectCFCommonPoolBlocking
-                ? new CompletableFutureCommonPoolBlockingDetector() : null;
+        threadLocalContaminationDetector = create(DetectorType.THREAD_LOCAL_CONTAMINATION, ThreadLocalContaminationDetector::new);
+        atomicNonAtomicUpdateDetector = create(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, AtomicNonAtomicUpdateDetector::new);
+        synchronizedCollectionIterationDetector = create(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, SynchronizedCollectionIterationDetector::new);
+        sharedFormatterDetector = create(DetectorType.SHARED_FORMATTER, SharedFormatterDetector::new);
+        concurrentMapComputeRecursionDetector = create(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, ConcurrentMapComputeRecursionDetector::new);
+        synchronizedOnLiteralDetector = create(DetectorType.SYNCHRONIZED_ON_LITERAL, SynchronizedOnLiteralDetector::new);
+        publicLockExposureDetector = create(DetectorType.PUBLIC_LOCK_EXPOSURE, PublicLockExposureDetector::new);
+        forkJoinTaskBlockingDetector = create(DetectorType.FORK_JOIN_TASK_BLOCKING, ForkJoinTaskBlockingDetector::new);
+        optimisticReadValidationDetector = create(DetectorType.OPTIMISTIC_READ_VALIDATION, OptimisticReadValidationDetector::new);
+        cfCommonPoolBlockingDetector = create(DetectorType.CF_COMMON_POOL_BLOCKING, CompletableFutureCommonPoolBlockingDetector::new);
 
         // ---- Phase 11: Thread-Safety of Additional Types & Patterns ----
-        sharedMatcherDetector       = cfg.detectSharedMatcher       ? new SharedMatcherDetector()       : null;
-        sharedDecimalFormatDetector = cfg.detectSharedDecimalFormat  ? new SharedDecimalFormatDetector() : null;
-        weakReferenceRaceDetector   = cfg.detectWeakReferenceRace    ? new WeakReferenceRaceDetector()   : null;
-        statefulLambdaDetector      = cfg.detectStatefulLambda       ? new StatefulLambdaDetector()      : null;
-        sharedMessageDigestDetector = cfg.detectSharedMessageDigest  ? new SharedMessageDigestDetector() : null;
+        sharedMatcherDetector       = create(DetectorType.SHARED_MATCHER, SharedMatcherDetector::new);
+        sharedDecimalFormatDetector = create(DetectorType.SHARED_DECIMAL_FORMAT, SharedDecimalFormatDetector::new);
+        weakReferenceRaceDetector   = create(DetectorType.WEAK_REFERENCE_RACE, WeakReferenceRaceDetector::new);
+        statefulLambdaDetector      = create(DetectorType.STATEFUL_LAMBDA, StatefulLambdaDetector::new);
+        sharedMessageDigestDetector = create(DetectorType.SHARED_MESSAGE_DIGEST, SharedMessageDigestDetector::new);
 
         // ---- Phase 12: Operational & Hygiene Concurrency Issues ----
-        interruptSwallowingDetector      = cfg.detectInterruptSwallowing     ? new InterruptSwallowingDetector()      : null;
-        mdcContextLeakDetector           = cfg.detectMdcContextLeak          ? new MdcContextLeakDetector()           : null;
-        systemPropertyMutationDetector   = cfg.detectSystemPropertyMutation  ? new SystemPropertyMutationDetector()   : null;
-        futureIgnoredDetector            = cfg.detectFutureIgnored           ? new FutureIgnoredDetector()            : null;
-        explicitGcDetector               = cfg.detectExplicitGc              ? new ExplicitGcDetector()               : null;
-        deprecatedThreadApiDetector      = cfg.detectDeprecatedThreadApi     ? new DeprecatedThreadApiDetector()      : null;
-        sharedXmlParserDetector          = cfg.detectSharedXmlParser         ? new SharedXmlParserDetector()          : null;
-        boxedPrimitiveLockDetector       = cfg.detectBoxedPrimitiveLock      ? new BoxedPrimitiveLockDetector()       : null;
-        sharedTimeZoneDetector           = cfg.detectSharedTimeZone          ? new SharedTimeZoneDetector()           : null;
-        uncaughtExceptionHandlerDetector = cfg.detectUncaughtExceptionHandler ? new UncaughtExceptionHandlerDetector() : null;
+        interruptSwallowingDetector      = create(DetectorType.INTERRUPT_SWALLOWING, InterruptSwallowingDetector::new);
+        mdcContextLeakDetector           = create(DetectorType.MDC_CONTEXT_LEAK, MdcContextLeakDetector::new);
+        systemPropertyMutationDetector   = create(DetectorType.SYSTEM_PROPERTY_MUTATION, SystemPropertyMutationDetector::new);
+        futureIgnoredDetector            = create(DetectorType.FUTURE_IGNORED, FutureIgnoredDetector::new);
+        explicitGcDetector               = create(DetectorType.EXPLICIT_GC, ExplicitGcDetector::new);
+        deprecatedThreadApiDetector      = create(DetectorType.DEPRECATED_THREAD_API, DeprecatedThreadApiDetector::new);
+        sharedXmlParserDetector          = create(DetectorType.SHARED_XML_PARSER, SharedXmlParserDetector::new);
+        boxedPrimitiveLockDetector       = create(DetectorType.BOXED_PRIMITIVE_LOCK, BoxedPrimitiveLockDetector::new);
+        sharedTimeZoneDetector           = create(DetectorType.SHARED_TIMEZONE, SharedTimeZoneDetector::new);
+        uncaughtExceptionHandlerDetector = create(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, UncaughtExceptionHandlerDetector::new);
 
         // ---- Phase 13: Additional concurrency-bug categories (1.0.0+) ----
-        daemonThreadHygieneDetector  = cfg.detectDaemonThreadHygiene  ? new DaemonThreadHygieneDetector()  : null;
-        notifyWithoutMonitorDetector = cfg.detectNotifyWithoutMonitor ? new NotifyWithoutMonitorDetector() : null;
-        sharedSecureRandomDetector   = cfg.detectSharedSecureRandom   ? new SharedSecureRandomDetector()   : null;
-        weakHashMapSharedDetector    = cfg.detectWeakHashMapShared    ? new WeakHashMapSharedDetector()    : null;
-        jdbcConnectionSharedDetector = cfg.detectJdbcConnectionShared ? new JdbcConnectionSharedDetector() : null;
+        daemonThreadHygieneDetector  = create(DetectorType.DAEMON_THREAD_HYGIENE, DaemonThreadHygieneDetector::new);
+        notifyWithoutMonitorDetector = create(DetectorType.NOTIFY_WITHOUT_MONITOR, NotifyWithoutMonitorDetector::new);
+        sharedSecureRandomDetector   = create(DetectorType.SHARED_SECURE_RANDOM, SharedSecureRandomDetector::new);
+        weakHashMapSharedDetector    = create(DetectorType.WEAK_HASH_MAP_SHARED, WeakHashMapSharedDetector::new);
+        jdbcConnectionSharedDetector = create(DetectorType.JDBC_CONNECTION_SHARED, JdbcConnectionSharedDetector::new);
 
         // ---- Phase 14: Additional thread-unsafe primitives & publication hazards (1.7.0+) ----
-        sharedStatefulCryptoDetector         = cfg.detectSharedStatefulCrypto      ? new SharedStatefulCryptoDetector()         : null;
-        nonAtomicConcurrentMapUpdateDetector = cfg.detectConcurrentMapCheckThenAct ? new NonAtomicConcurrentMapUpdateDetector() : null;
-        sharedDeflaterDetector               = cfg.detectSharedDeflater            ? new SharedDeflaterDetector()               : null;
-        thisEscapeDetector                   = cfg.detectThisEscape                ? new ThisEscapeDetector()                   : null;
-        threadLocalRandomMisuseDetector      = cfg.detectThreadLocalRandomMisuse   ? new ThreadLocalRandomMisuseDetector()      : null;
+        sharedStatefulCryptoDetector         = create(DetectorType.SHARED_STATEFUL_CRYPTO, SharedStatefulCryptoDetector::new);
+        nonAtomicConcurrentMapUpdateDetector = create(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, NonAtomicConcurrentMapUpdateDetector::new);
+        sharedDeflaterDetector               = create(DetectorType.SHARED_DEFLATER, SharedDeflaterDetector::new);
+        thisEscapeDetector                   = create(DetectorType.THIS_ESCAPE, ThisEscapeDetector::new);
+        threadLocalRandomMisuseDetector      = create(DetectorType.THREAD_LOCAL_RANDOM_MISUSE, ThreadLocalRandomMisuseDetector::new);
         // Phase 15
-        completableFutureObtrudeDetector = cfg.detectCompletableFutureObtrudeAbuse ? new CompletableFutureObtrudeDetector() : null;
-        spuriousWakeupHazardDetector     = cfg.detectSpuriousWakeupHazard          ? new SpuriousWakeupDetector()           : null;
-        lockUpgradeDeadlockDetector      = cfg.detectLockUpgradeDeadlock           ? new LockUpgradeDeadlockDetector()      : null;
+        completableFutureObtrudeDetector = create(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, CompletableFutureObtrudeDetector::new);
+        spuriousWakeupHazardDetector     = create(DetectorType.SPURIOUS_WAKEUP_HAZARD, SpuriousWakeupDetector::new);
+        lockUpgradeDeadlockDetector      = create(DetectorType.LOCK_UPGRADE_DEADLOCK, LockUpgradeDeadlockDetector::new);
 
         // One upgrade is one finding. LockDowngradeDetector sees the same read-to-write upgrade
         // LockUpgradeDeadlockDetector is named for, and a run with both enabled and both fed
@@ -568,47 +556,70 @@ final class DetectorRegistry {
         if (reentrantLockDetector != null && lockLeakDetector != null) {
             reentrantLockDetector.deferLeakReportingTo(lockLeakDetector);
         }
-        tryLockMisuseDetector            = cfg.detectTryLockMisuse                 ? new TryLockMisuseDetector()            : null;
-        cfBlockingCallbackDetector       = cfg.detectCFBlockingCallback            ? new CompletableFutureBlockingCallbackDetector() : null;
+        tryLockMisuseDetector            = create(DetectorType.TRY_LOCK_MISUSE, TryLockMisuseDetector::new);
+        cfBlockingCallbackDetector       = create(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, CompletableFutureBlockingCallbackDetector::new);
         // ---- Phase 16: JDK 25/26 preview-era concurrency detectors ----
-        stableValueMisuseDetector         = cfg.detectStableValueMisuse            ? new StableValueMisuseDetector()         : null;
-        structuredTaskScopeMisuseDetector = cfg.detectStructuredTaskScopeMisuse    ? new StructuredTaskScopeMisuseDetector() : null;
-        gathererConcurrencyMisuseDetector = cfg.detectGathererConcurrencyMisuse    ? new GathererConcurrencyMisuseDetector() : null;
+        stableValueMisuseDetector         = create(DetectorType.STABLE_VALUE_MISUSE, StableValueMisuseDetector::new);
+        structuredTaskScopeMisuseDetector = create(DetectorType.STRUCTURED_TASK_SCOPE_MISUSE, StructuredTaskScopeMisuseDetector::new);
+        gathererConcurrencyMisuseDetector = create(DetectorType.GATHERER_CONCURRENCY_MISUSE, GathererConcurrencyMisuseDetector::new);
         // ---- Phase 17: Shared stateful JDK objects, I/O position races & contention advisories ----
-        sharedByteBufferDetector         = cfg.detectSharedByteBuffer         ? new SharedByteBufferDetector()         : null;
-        sharedCharsetCoderDetector       = cfg.detectSharedCharsetCoder       ? new SharedCharsetCoderDetector()       : null;
-        sharedChecksumDetector           = cfg.detectSharedChecksum           ? new SharedChecksumDetector()           : null;
-        fileChannelPositionRaceDetector  = cfg.detectFileChannelPositionRace  ? new FileChannelPositionRaceDetector()  : null;
-        sharedIteratorDetector           = cfg.detectSharedIterator           ? new SharedIteratorDetector()           : null;
-        highContentionAtomicDetector     = cfg.detectHighContentionAtomic     ? new HighContentionAtomicDetector()     : null;
-        sharedJsonMapperReconfigDetector = cfg.detectSharedJsonMapperReconfig ? new SharedJsonMapperReconfigDetector() : null;
+        sharedByteBufferDetector         = create(DetectorType.SHARED_BYTE_BUFFER, SharedByteBufferDetector::new);
+        sharedCharsetCoderDetector       = create(DetectorType.SHARED_CHARSET_CODER, SharedCharsetCoderDetector::new);
+        sharedChecksumDetector           = create(DetectorType.SHARED_CHECKSUM, SharedChecksumDetector::new);
+        fileChannelPositionRaceDetector  = create(DetectorType.FILE_CHANNEL_POSITION_RACE, FileChannelPositionRaceDetector::new);
+        sharedIteratorDetector           = create(DetectorType.SHARED_ITERATOR, SharedIteratorDetector::new);
+        highContentionAtomicDetector     = create(DetectorType.HIGH_CONTENTION_ATOMIC, HighContentionAtomicDetector::new);
+        sharedJsonMapperReconfigDetector = create(DetectorType.SHARED_JSON_MAPPER_RECONFIG, SharedJsonMapperReconfigDetector::new);
         // ---- Phase 18: JDK 25/26 GA-era concurrency detectors ----
-        lazyConstantMisuseDetector       = cfg.detectLazyConstantMisuse       ? new LazyConstantMisuseDetector()       : null;
-        finalFieldMutationDetector       = cfg.detectFinalFieldMutation       ? new FinalFieldMutationDetector()       : null;
-        sharedKdfDetector                = cfg.detectSharedKdf                ? new SharedKdfDetector()                : null;
-        latchMisuseDetector              = cfg.detectLatchMisuse              ? new LatchMisuseDetector()              : null;
-        executorDeadlockDetector         = cfg.detectExecutorDeadlock         ? new ExecutorDeadlockDetector()         : null;
-        futureBlockingDetector           = cfg.detectFutureBlocking           ? new FutureBlockingDetector()           : null;
-        flowPublisherConcurrencyDetector = cfg.detectFlowPublisherConcurrency ? new FlowPublisherConcurrencyDetector() : null;
-        confinedArenaThreadEscapeDetector  = cfg.detectConfinedArenaThreadEscape  ? new ConfinedArenaThreadEscapeDetector()  : null;
-        sharedMemorySegmentRaceDetector    = cfg.detectSharedMemorySegmentRace    ? new SharedMemorySegmentRaceDetector()    : null;
-        varHandleNonAtomicUpdateDetector   = cfg.detectVarHandleNonAtomicUpdate   ? new VarHandleNonAtomicUpdateDetector()   : null;
-        recordMutableComponentLeakDetector = cfg.detectRecordMutableComponentLeak ? new RecordMutableComponentLeakDetector() : null;
-        staticInitDeadlockDetector         = cfg.detectStaticInitDeadlock         ? new StaticInitDeadlockDetector()         : null;
-        virtualThreadPoolingDetector       = cfg.detectVirtualThreadPooling       ? new VirtualThreadPoolingDetector()       : null;
-        platformThreadPerTaskDetector      = cfg.detectPlatformThreadPerTask      ? new PlatformThreadPerTaskDetector()      : null;
-        sharedSplittableRandomDetector     = cfg.detectSharedSplittableRandom     ? new SharedSplittableRandomDetector()     : null;
-        completableFutureCompletionRaceDetector          = cfg.detectCompletableFutureCompletionRace          ? new CompletableFutureCompletionRaceDetector()          : null;
-        completableFutureCancellationPropagationDetector = cfg.detectCompletableFutureCancellationPropagation ? new CompletableFutureCancellationPropagationDetector() : null;
-        completableFutureCombinatorMisuseDetector        = cfg.detectCompletableFutureCombinatorMisuse        ? new CompletableFutureCombinatorMisuseDetector()        : null;
-        lambdaLostUpdateDetector                         = cfg.detectLambdaLostUpdate                         ? new LambdaLostUpdateDetector()                         : null;
-        virtualThreadResourceSaturationDetector          = cfg.detectVirtualThreadResourceSaturation          ? new VirtualThreadResourceSaturationDetector()          : null;
-        virtualThreadMonitorSerializationDetector        = cfg.detectVirtualThreadMonitorSerialization        ? new VirtualThreadMonitorSerializationDetector()        : null;
-        threadLocalCacheDegradationDetector              = cfg.detectThreadLocalCacheDegradation              ? new ThreadLocalCacheDegradationDetector()              : null;
-        scopeJoinerMisuseDetector = cfg.detectScopeJoinerMisuse ? new ScopeJoinerMisuseDetector() : null;
-        scopeConfigurationMisuseDetector = cfg.detectScopeConfigurationMisuse ? new ScopeConfigurationMisuseDetector() : null;
-        scopeResultEscapeDetector = cfg.detectScopeResultEscape ? new ScopeResultEscapeDetector() : null;
-        lazyCollectionMisuseDetector = cfg.detectLazyCollectionMisuse ? new LazyCollectionMisuseDetector() : null;
+        lazyConstantMisuseDetector       = create(DetectorType.LAZY_CONSTANT_MISUSE, LazyConstantMisuseDetector::new);
+        finalFieldMutationDetector       = create(DetectorType.FINAL_FIELD_MUTATION, FinalFieldMutationDetector::new);
+        sharedKdfDetector                = create(DetectorType.SHARED_KDF, SharedKdfDetector::new);
+        latchMisuseDetector              = create(DetectorType.LATCH_MISUSE, LatchMisuseDetector::new);
+        executorDeadlockDetector         = create(DetectorType.EXECUTOR_DEADLOCK, ExecutorDeadlockDetector::new);
+        futureBlockingDetector           = create(DetectorType.FUTURE_BLOCKING, FutureBlockingDetector::new);
+        flowPublisherConcurrencyDetector = create(DetectorType.FLOW_PUBLISHER_CONCURRENCY, FlowPublisherConcurrencyDetector::new);
+        confinedArenaThreadEscapeDetector  = create(DetectorType.CONFINED_ARENA_THREAD_ESCAPE, ConfinedArenaThreadEscapeDetector::new);
+        sharedMemorySegmentRaceDetector    = create(DetectorType.SHARED_MEMORY_SEGMENT_RACE, SharedMemorySegmentRaceDetector::new);
+        varHandleNonAtomicUpdateDetector   = create(DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE, VarHandleNonAtomicUpdateDetector::new);
+        recordMutableComponentLeakDetector = create(DetectorType.RECORD_MUTABLE_COMPONENT_LEAK, RecordMutableComponentLeakDetector::new);
+        staticInitDeadlockDetector         = create(DetectorType.STATIC_INIT_DEADLOCK, StaticInitDeadlockDetector::new);
+        virtualThreadPoolingDetector       = create(DetectorType.VIRTUAL_THREAD_POOLING, VirtualThreadPoolingDetector::new);
+        platformThreadPerTaskDetector      = create(DetectorType.PLATFORM_THREAD_PER_TASK, PlatformThreadPerTaskDetector::new);
+        sharedSplittableRandomDetector     = create(DetectorType.SHARED_SPLITTABLE_RANDOM, SharedSplittableRandomDetector::new);
+        completableFutureCompletionRaceDetector          = create(DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE, CompletableFutureCompletionRaceDetector::new);
+        completableFutureCancellationPropagationDetector = create(DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION, CompletableFutureCancellationPropagationDetector::new);
+        completableFutureCombinatorMisuseDetector        = create(DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE, CompletableFutureCombinatorMisuseDetector::new);
+        lambdaLostUpdateDetector                         = create(DetectorType.LAMBDA_LOST_UPDATE, LambdaLostUpdateDetector::new);
+        virtualThreadResourceSaturationDetector          = create(DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION, VirtualThreadResourceSaturationDetector::new);
+        virtualThreadMonitorSerializationDetector        = create(DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION, VirtualThreadMonitorSerializationDetector::new);
+        threadLocalCacheDegradationDetector              = create(DetectorType.THREAD_LOCAL_CACHE_DEGRADATION, ThreadLocalCacheDegradationDetector::new);
+        scopeJoinerMisuseDetector = create(DetectorType.SCOPE_JOINER_MISUSE, ScopeJoinerMisuseDetector::new);
+        scopeConfigurationMisuseDetector = create(DetectorType.SCOPE_CONFIGURATION_MISUSE, ScopeConfigurationMisuseDetector::new);
+        scopeResultEscapeDetector = create(DetectorType.SCOPE_RESULT_ESCAPE, ScopeResultEscapeDetector::new);
+        lazyCollectionMisuseDetector = create(DetectorType.LAZY_COLLECTION_MISUSE, LazyCollectionMisuseDetector::new);
+    }
+
+    /**
+     * {@return a fresh detector from {@code factory} when the run enables {@code type}, otherwise
+     * {@code null}}
+     *
+     * @throws IllegalStateException when a second row names the same type: two factories for one
+     *                               type would leave one of the two fields unreachable by excludes
+     */
+    private <T> @Nullable T create(DetectorType type, Supplier<T> factory) {
+        if (!enabled.contains(type)) {
+            return null;
+        }
+        T detector = factory.get();
+        if (instances.putIfAbsent(type, detector) != null) {
+            throw new IllegalStateException(type + " has two rows in DetectorRegistry's factory table");
+        }
+        return detector;
+    }
+
+    /** {@return every detector this registry built, keyed by type; for tests} */
+    Map<DetectorType, Object> instances() {
+        return Collections.unmodifiableMap(instances);
     }
 
     /**

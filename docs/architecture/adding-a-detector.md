@@ -22,8 +22,9 @@ One new `DetectorType` constant requires simultaneous changes in five files, all
    is one `EnumSet` and needs no per-detector line. See
    [configuration-resolution.md](configuration-resolution.md).
 4. **`DetectorRegistry.java`** — three steps that must land together: (a) the final field,
-   (b) conditional construction in the constructor keyed on the config flag, (c) an `analyzeAll()`
-   call in the correct phase block.
+   (b) its factory-table row in the constructor, `field = create(DetectorType.TYPE, Xxx::new);`,
+   keyed on the type rather than a config flag (#916), (c) an `analyzeAll()` call in the correct
+   phase block. `DetectorRegistryFactoryTableTest` fails on a type with no row, or two.
 5. **`AsyncTestContext.java`** — the field copied from the registry plus the static accessor used by
    instrumented code, keeping ThreadLocal install/uninstall symmetric. See
    [execution-flow.md](execution-flow.md).

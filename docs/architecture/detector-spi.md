@@ -120,8 +120,8 @@ extend by adding strategies, never by widening branch conditionals.
 Two classes share the name `DetectorRegistry`: `spi/DetectorRegistry.java` (an effectively-immutable
 `EnumMap` populated only in its private constructor, safe to publish) and the package-root
 `se.deversity.asynctest.DetectorRegistry` wiring class. The package-root one holds a final field per
-detector, constructs each conditionally on its config flag, and calls each `analyzeAll()` in phase
-order — the three-step contract in [adding-a-detector.md](adding-a-detector.md).
+detector, builds each from its factory-table row `create(DetectorType.X, Xxx::new)` when the run
+enables that type (#916), and calls each `analyzeAll()` in phase order — the three-step contract in [adding-a-detector.md](adding-a-detector.md).
 
 Built-in detectors are bridged through `spi/adapters/LegacyDetectorAdapter` (reflection-based, once
 per round per detector). Its structure is deliberately legacy-shaped — do not refactor it.

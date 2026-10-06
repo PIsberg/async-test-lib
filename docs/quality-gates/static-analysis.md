@@ -72,9 +72,10 @@ same sources throughout, so this closed a duplicate-coverage hole rather than an
 ### NullAway
 
 Nullness is the one defect class the other analysers do not check, and this codebase is built out
-of nullable references: every one of the 146 detectors is `cfg.detectX ? new XDetector() : null`, so
+of nullable references: every one of the 146 detectors is built by
+`create(DetectorType.X, XDetector::new)`, which returns `null` for a type the run does not enable, so
 a `Phase1DetectorSet` field, a `DetectorRegistry` field and every accessor that reaches one is null
-whenever its flag is off. Whether each read site guards for that was, until now, enforced by
+whenever its detector is off. Whether each read site guards for that was, until now, enforced by
 convention.
 
 NullAway runs as an Error Prone check on main sources, configured in the parent POM:

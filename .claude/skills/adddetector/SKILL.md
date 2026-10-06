@@ -58,7 +58,8 @@ Call this out when you run: "editing the locked DetectorType.java as part of the
 
 `DetectorRegistry.java`, `AsyncTestConfig.java`, and `AsyncTestContext.java` are also
 Critical/audit-listed. Preserve their invariants: `AsyncTestConfig` stays immutable (all fields
-`final`, no setters); `DetectorRegistry` construction stays keyed on the config flag; any
+`final`, no setters); `DetectorRegistry` construction stays one `create(DetectorType.X, Xxx::new)` row keyed on the
+type, never on a config flag; any
 `AsyncTestContext` accessor you add must keep ThreadLocal install/uninstall symmetric.
 
 ---
@@ -148,9 +149,9 @@ construction, or construction without an `analyzeAll` call, silently skips detec
    ```java
    final {{CLASS}}                     {{FIELD}};
    ```
-3. **Constructor construction**, keyed on the flag (~L500):
+3. **Factory-table row** in the constructor, keyed on the type (~L500):
    ```java
-   {{FIELD}}                = cfg.{{FLAG}}                ? new {{CLASS}}()                : null;
+   {{FIELD}}                = create(DetectorType.{{CONSTANT}}, {{CLASS}}::new);
    ```
 4. **`analyzeAll()` phase call** — append at the end of the last phase block (~L934), before
    `return out;`:
