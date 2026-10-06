@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linearizability pairs on corpus libraries (#932).** `LinearizabilityLibraryPairsTest` in
+  corpus-eval checks Guava's `AtomicLongMap` (linearizable, silent) against a read-modify-write over
+  commons-lang3's `MutableInt` (reported as not linearizable), whole history and key by key, through
+  drawn scenarios and `verifiedAgainst`. Found on the way: a second `generate()` call in a round
+  restarted the worker's stream and drew the same operations again; streams now persist per round
+  and worker. Measured limit: a bare `MutableInt.incrementAndGet()` was caught on 16 cores in 10 of
+  10 runs and on 2 cores in 0 of 6, so the broken twins align their read and write with
+  `rendezvous()`; the design note says so.
 - **`OperationHistory.verifiedAgainst(spec)`: a failed linearizability check is a finding (#934).**
   The check was only an `@AfterAll` assertion, invisible to `failOn`, the reports and listeners. A
   verified history checks each run's rounds at analysis and reports a round with no linearization as

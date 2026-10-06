@@ -148,7 +148,20 @@ because the rendezvous makes every worker read the same value. Verified the gate
 the search ignore real-time order turns three checker tests red, and handing every round the same
 subject turns the atomic-counter case red ("Round 2 is not linearizable").
 
-## What is left out of the prototype
+## Corpus pairs (#932)
 
-- **No corpus subjects yet.** The issue asked for prototype cases drawn from the corpus; the tests
-  use JDK subjects (`AtomicInteger`, `ConcurrentLinkedQueue`) and a hand-written lost update.
+`corpus-eval`'s `LinearizabilityLibraryPairsTest` runs the check on the corpus's own library
+dependencies, both directions, whole history and key by key. The correct twins are Guava's
+`AtomicLongMap` under drawn scenarios, reported through the run, and stay silent. The broken twins
+are the read-modify-write users write over commons-lang3's `MutableInt` (`getValue()` then
+`setValue(read + 1)`), alone and inside a `ConcurrentHashMap`, and are reported as not linearizable,
+not merely as over the size bound. Each was run 3 times pinned to 2 CPUs and 3 times on 16.
+
+## Limits
+
+- **Observation cannot force a race.** The check proves a history impossible; it cannot make a
+  narrow race happen. A bare `MutableInt.incrementAndGet()` under drawn scenarios was caught in 10 of
+  10 runs on 16 cores and 0 of 6 pinned to 2, so the corpus's broken twins place a `rendezvous()`
+  between the read and the write. A suite relying on chance overlap should expect the same.
+- **No scenario search or shrinking.** `generate` draws a scenario per round from the replay seed;
+  unlike Lincheck it does not explore scenarios systematically or minimise a failing one.
