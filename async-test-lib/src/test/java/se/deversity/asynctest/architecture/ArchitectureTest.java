@@ -56,7 +56,7 @@ class ArchitectureTest {
      * would invert the dependency direction and prevent third-party detector authors
      * from implementing the SPI without pulling in the full library internals.
      *
-     * Until 2.0.0 the spi.adapters sub-package was exempt: it bridged every built-in detector
+     * Until 1.13.0 the spi.adapters sub-package was exempt: it bridged every built-in detector
      * into the SPI and so depended on diagnostics by design. That bridge was deleted (#922), so
      * the rule now covers the whole spi tree.
      */

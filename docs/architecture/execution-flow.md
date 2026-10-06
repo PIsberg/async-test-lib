@@ -13,8 +13,8 @@ invariants the runner must not break.
 
 1. **`AsyncTest` annotation** — declares `threads`, `invocations`, `timeoutMs`, the detector
    selection (`includes`, `excludes`, `preset`, `detectAll`; the per-detector flags were removed in
-   2.0.0) and (since 1.6.0) `threadCounts` and `replaySeed`. A bare annotation runs
-   `Preset.ESSENTIALS` (2.0.0); `detectAll = true` enables every detector, `preset = Preset.X`
+   1.13.0) and (since 1.6.0) `threadCounts` and `replaySeed`. A bare annotation runs
+   `Preset.ESSENTIALS` (1.13.0); `detectAll = true` enables every detector, `preset = Preset.X`
    picks another curated bundle (`ALL` / `STRICT` / `CI_FAST` / `NONE`), and `excludes` is what
    opts a detector out.
 

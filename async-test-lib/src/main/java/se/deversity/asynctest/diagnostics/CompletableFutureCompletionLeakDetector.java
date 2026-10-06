@@ -233,7 +233,7 @@ public class CompletableFutureCompletionLeakDetector {
          * {@return whether this report should surface as a finding}
          *
          * <p>The canonical predicate the report path binds to ({@code DetectorRegistry.ifIssue}, and
-         * until 2.0.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
+         * until 1.13.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
          * adapter resolved {@code analyze()}, found no {@code hasIssues()} on the returned report,
          * and emitted an empty violation list on every call — leaving this detector registered,
          * addressable and structurally silent. Pinned by {@code DetectorFiringContractTest}.

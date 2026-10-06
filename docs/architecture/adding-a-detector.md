@@ -14,7 +14,7 @@ One new `DetectorType` constant requires simultaneous changes in four files, all
 
 1. **`DetectorType.java`** — the new enum constant. This file is `@AILocked`; edit only with
    explicit owner sign-off. Users select it by this name with `includes` / `excludes`; there is
-   no `@AsyncTest` attribute to add (the per-detector attributes were removed in 2.0.0, #920).
+   no `@AsyncTest` attribute to add (the per-detector attributes were removed in 1.13.0, #920).
 2. **`AsyncTestConfig.java`** — public final flag field derived in the constructor
    (`flag = enabled.contains(DetectorType.TYPE);`) and the same-named `Builder` setter
    (`return flag(DetectorType.TYPE, v);`). Resolution itself is one `EnumSet` and needs no
@@ -94,7 +94,7 @@ Integration-style coverage typically uses the `EngineTestKit` dummy pattern — 
 
 ## No SPI factory
 
-A built-in detector needs no `DetectorFactory`. Until 2.0.0 each also had a bridge factory in
+A built-in detector needs no `DetectorFactory`. Until 1.13.0 each also had a bridge factory in
 `spi/adapters/LegacyDetectorFactories.java` and a line in `builtin-detector-factories`; that path
 observed nothing and was removed (#922). The SPI is for detectors the library does not ship
 ([detector-spi.md](detector-spi.md)).

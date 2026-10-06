@@ -60,35 +60,36 @@ void test4() { }
 The presets are `ALL`, `ESSENTIALS`, `STRICT`, `CI_FAST` and `NONE`.
 [CONFIGURATION.md](CONFIGURATION.md) covers what each selects.
 
-## From 1.x to 2.0.0
+## From 1.12 to 1.13.0
 
-2.0.0 removes what 1.x deprecated, and changes one default: a bare `@AsyncTest` runs
+1.13.0 removes what 1.12 deprecated, and changes one default, in a minor release by the owner's
+choice ([SUPPORT_POLICY.md](SUPPORT_POLICY.md) records the exception): a bare `@AsyncTest` runs
 `Preset.ESSENTIALS` instead of every detector ([below](#the-default-selection)). Apart from that
 default nothing in this section is a behaviour change: every replacement already exists and
-already works in 1.x, so **the whole migration can be done on your current version, verified
-green, and only then followed by the version bump**. That ordering matters, because a 1.x build
-that is clean of deprecation warnings is a build that compiles against 2.0.0 unchanged, and adding
-`detectAll = true` where you relied on the old default is a no-op in 1.x.
+already works in 1.12, so **the whole migration can be done on your current version, verified
+green, and only then followed by the version bump**. That ordering matters, because a 1.12 build
+that is clean of deprecation warnings is a build that compiles against 1.13.0 unchanged, and adding
+`detectAll = true` where you relied on the old default is a no-op in 1.12.
 
 Every deprecated element names its replacement in its own `@deprecated` javadoc, and
-`DeprecationsNameTheirReplacementTest` kept that true for all 188 of them in 1.x, so your IDE's
+`DeprecationsNameTheirReplacementTest` kept that true for all 188 of them in 1.12, so your IDE's
 deprecation warning is a complete instruction. This section is the shape of the work and the
 handful of cases where the obvious rewrite is wrong.
 
 ### The boolean attributes on `@AsyncTest`
 
 All 146 `detect*` / `validate*` / `monitor*` boolean attributes were deprecated in favour of
-`preset`, `includes` and `excludes`, and 2.0.0 removes them (#920). The rewrite is mechanical: an
+`preset`, `includes` and `excludes`, and 1.13.0 removes them (#920). The rewrite is mechanical: an
 attribute set to `true` becomes its `DetectorType` in `includes`, and one set to `false` becomes its
-`DetectorType` in `excludes`. Under `detectAll = true`, the 1.x default, a flag set to `false`
+`DetectorType` in `excludes`. Under `detectAll = true`, the 1.12 default, a flag set to `false`
 never opted its detector out, so that rewrite turns off a detector that was running; drop the attribute
 instead if you want to keep it.
 
 **`detectAll = false` did not mean "only the flags I set".** 144 of the 146 attributes defaulted
 to `true`, so `@AsyncTest(detectAll = false, detectFalseSharing = true)` ran every detector except
-`VISIBILITY` and `LIVELOCKS`, measured through `AsyncTestConfig.from` on 1.12.4. In 2.0.0
+`VISIBILITY` and `LIVELOCKS`, measured through `AsyncTestConfig.from` on 1.12.4. In 1.13.0
 `detectAll = false` only declines the every-detector opt-in, so on its own it runs the default
-preset, `ESSENTIALS`. If you relied on the 1.x behaviour, say so with
+preset, `ESSENTIALS`. If you relied on the 1.12 behaviour, say so with
 `excludes = { DetectorType.VISIBILITY, DetectorType.LIVELOCKS }`; if you meant the flags you set,
 that is `includes`, which is what the rewrite above produces.
 
@@ -113,7 +114,7 @@ The attribute's own javadoc names its `DetectorType`; there is no table to consu
 
 ### The `*Monitor()` accessors on `AsyncTestContext`
 
-All 42 were deprecated in favour of a `*Detector()` name, and 2.0.0 removes them (#921). For 38 of
+All 42 were deprecated in favour of a `*Detector()` name, and 1.13.0 removes them (#921). For 38 of
 them the suffix is the only difference:
 
 ```java
@@ -143,19 +144,19 @@ Anchor the replacement to the end of the identifier and all 42 are covered.
 
 ### The default selection
 
-A bare `@AsyncTest` ran every detector in 1.x; in 2.0.0 it runs `Preset.ESSENTIALS`, 12 detectors
-none of which sits at the ADVISORY trust tier (#923). The defaults behind it are
+A bare `@AsyncTest` ran every detector in 1.12; in 1.13.0 it runs `Preset.ESSENTIALS`, whose 12
+members include none at the ADVISORY trust tier (#923). The defaults behind it are
 `detectAll = false` and `preset = Preset.ESSENTIALS`, and `detectAll = true` is the explicit opt-in
 to every detector, whatever the preset says. `includes` still beats both.
 
-This is the one change in 2.0.0 that alters what an unchanged, warning-free test detects, and it
+This is the one change in 1.13.0 that alters what an unchanged, warning-free test detects, and it
 does so silently: the test still compiles and still passes, it just reads fewer detectors. To keep
-the 1.x selection, add `detectAll = true` to every `@AsyncTest` that sets none of `includes`,
+the 1.12 selection, add `detectAll = true` to every `@AsyncTest` that sets none of `includes`,
 `preset` or `detectAll`, including annotations on classes and composed annotations. This repository
 did exactly that to 694 annotations in 95 files before flipping the default.
 
 ```java
-// 1.x: every detector.  2.0.0: Preset.ESSENTIALS
+// 1.12: every detector.  1.13.0: Preset.ESSENTIALS
 @AsyncTest(threads = 8)
 
 // Every detector, in both
@@ -170,14 +171,14 @@ detector beside your own. Your own `DetectorFactory` keeps working through `buil
 which the runner already used. Code that called `build(config)` wanted one of two things:
 
 ```java
-// 1.x: which detectors does this config select?
+// 1.12: which detectors does this config select?
 DetectorRegistry.build(cfg).all()
-// 2.0.0
+// 1.13.0
 cfg.enabledDetectors()                        // Set<DetectorType>; also cfg.isEnabled(type)
 
-// 1.x: find my third-party detector
+// 1.12: find my third-party detector
 DetectorRegistry.build(cfg).get(MyDetector.class)
-// 2.0.0
+// 1.13.0
 DetectorRegistry.buildExternal(cfg).get(MyDetector.class)   // or .get("com.acme.my-detector")
 ```
 
@@ -185,7 +186,7 @@ DetectorRegistry.buildExternal(cfg).get(MyDetector.class)   // or .get("com.acme
 
 The default selection is the one change a compiler cannot show you; search for `@AsyncTest`
 without `includes`, `preset` or `detectAll` and decide for each one. For everything else, compile
-with deprecation warnings visible. A build with none left is a build that survives 2.0.0.
+with deprecation warnings visible. A build with none left is a build that survives 1.13.0.
 Verified on this repo: the Maven flag turns javac to `[debug deprecation target 21]` and reports every
 deprecated call site.
 

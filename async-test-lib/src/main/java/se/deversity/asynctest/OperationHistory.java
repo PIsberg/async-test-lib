@@ -48,9 +48,9 @@ import java.util.function.Supplier;
  * {@code docs/analysis/linearizability-checking.md}.
  *
  * @param <S> the type of the object under test
- * @since 2.0.0
+ * @since 1.13.0
  */
-@API(status = Status.EXPERIMENTAL, since = "2.0.0")
+@API(status = Status.EXPERIMENTAL, since = "1.13.0")
 public final class OperationHistory<S> {
 
     /**

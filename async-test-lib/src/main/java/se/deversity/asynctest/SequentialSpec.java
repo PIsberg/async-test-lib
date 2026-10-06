@@ -20,9 +20,9 @@ import java.util.function.UnaryOperator;
  * (placed operations, state) pair it already ruled out; arrays are compared by content.
  *
  * @param <M> the model's state
- * @since 2.0.0
+ * @since 1.13.0
  */
-@API(status = Status.EXPERIMENTAL, since = "2.0.0")
+@API(status = Status.EXPERIMENTAL, since = "1.13.0")
 public interface SequentialSpec<M> {
 
     /** {@return a fresh model in the state the object under test starts in} */

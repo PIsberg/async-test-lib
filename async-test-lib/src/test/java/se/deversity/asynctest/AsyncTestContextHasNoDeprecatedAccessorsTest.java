@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 2.0.0 removes the 42 {@code *Monitor()} accessors 1.7 renamed to {@code *Detector()} (#921).
+ * 1.13.0 removes the 42 {@code *Monitor()} accessors 1.7 renamed to {@code *Detector()} (#921).
  *
  * <p>Each was a second name for the same instance, deprecated for five minor releases and naming its
  * replacement. Kept, they doubled the static surface of the class users read first and made every
@@ -38,7 +38,7 @@ class AsyncTestContextHasNoDeprecatedAccessorsTest {
                 .map(Method::getName)
                 .sorted()
                 .toList();
-        assertTrue(deprecated.isEmpty(), "2.0.0 removes what 1.x deprecated: " + deprecated);
+        assertTrue(deprecated.isEmpty(), "1.13.0 removes what 1.12 deprecated: " + deprecated);
     }
 
     @Test

@@ -151,9 +151,9 @@ class FeatureTourTest {
 
     // ---- 8) Bonus: a Phase 13 detector in action — SharedSecureRandom ----
 
-    // Pattern: opt into ONE detector with includes. (Under 1.x this example used
+    // Pattern: opt into ONE detector with includes. (Under 1.12 this example used
     // detectAll = false plus detectSharedSecureRandom = true, which in fact left
-    // every other attribute at its default of true; 2.0.0 removed the per-detector
+    // every other attribute at its default of true; 1.13.0 removed the per-detector
     // attributes, and includes says what the old pattern meant.)
     @AsyncTest(
         threads = 4,

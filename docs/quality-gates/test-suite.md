@@ -48,8 +48,8 @@ reads that finding's severity from its text, and only a hand-written driver in
 `StructuredViolationCoverageTest` could notice. Because the check sits where the report is built, a
 detector's own unit tests that call `analyze()` drive it, not only the tests that fire the detector
 through the registry. The no-context `Phase1DetectorSet.printReports()` reads the list for the
-severity it hands listeners, and is covered by the same call. Until 2.0.0 the SPI bridge
-`LegacyDetectorAdapter` made the same check on its own path (#841); 2.0.0 removed that path (#922).
+severity it hands listeners, and is covered by the same call. Until 1.13.0 the SPI bridge
+`LegacyDetectorAdapter` made the same check on its own path (#841); 1.13.0 removed that path (#922).
 With the flag off the check returns before looking at the report and writes nothing.
 `StructuredFindingsStrictModeTest` pins both halves.
 

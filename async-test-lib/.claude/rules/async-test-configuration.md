@@ -15,7 +15,7 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 ### se.deversity.asynctest.DetectorType
 - **Rule**: Free to change, but every mirror must change in the same commit.
 - **Mirrors**: se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorRegistry
-- **Reason**: A detector is only reachable from the public API when all of these agree. The enum constant is the name users type in @AsyncTest(includes=..., excludes=...); the config field derives from the enabled set; and the registry's factory row builds it. Adding the constant alone compiles and silently detects nothing. The SPI bridge that mirrored every constant a second time was deleted in 2.0.0 (#922).
+- **Reason**: A detector is only reachable from the public API when all of these agree. The enum constant is the name users type in @AsyncTest(includes=..., excludes=...); the config field derives from the enabled set; and the registry's factory row builds it. Adding the constant alone compiles and silently detects nothing. The SPI bridge that mirrored every constant a second time was deleted in 1.13.0 (#922).
 - **Enforced by**: se.deversity.asynctest.DetectorRegistryFactoryTableTest
 
 ## Context & Focus
@@ -32,7 +32,7 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 
 ### se.deversity.asynctest.AsyncTestConfig
 - **Sensitivity**: Critical
-- **Note**: Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 2.0.0 (#920). Never reintroduce a per-detector resolution expression in build().
+- **Note**: Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 1.13.0 (#920). Never reintroduce a per-detector resolution expression in build().
 
 ## Immutable Type
 - **Rule**: These types are immutable. Never introduce non-final fields, setters, or mutating methods.
@@ -62,7 +62,7 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 
 ### se.deversity.asynctest.AsyncTest
 - **Constraint**: You may change internal logic, but MUST NOT modify the method name, parameters, return type, or checked exceptions.
-- **Reason**: Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 2.0.0, #920). The bare-annotation selection is Preset.ESSENTIALS with detectAll = false (2.0.0, #923): a different default changes what every unchanged test in every consumer detects.
+- **Reason**: Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 1.13.0, #920). The bare-annotation selection is Preset.ESSENTIALS with detectAll = false (1.13.0, #923): a different default changes what every unchanged test in every consumer detects.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.

@@ -107,7 +107,7 @@ the order the pieces appear in a run, not alphabetical.
 | [architecture/configuration-resolution.md](architecture/configuration-resolution.md) | How `includes` / `excludes` / `detectAll` / `Preset` resolve, and the `failOn` gate |
 | [architecture/contention-engine.md](architecture/contention-engine.md) | `SpinContentionBarrier`, telemetry ring buffer, agent, pinning scanner |
 | [architecture/detector-architecture.md](architecture/detector-architecture.md) | The 18 phases, the common detector pattern, wiring a new one |
-| [architecture/detector-spi.md](architecture/detector-spi.md) | `Detector` / `DetectorFactory` SPI for third-party detectors: identity by `id()`, `excludeIds`, and why 2.0.0 removed the built-in bridge |
+| [architecture/detector-spi.md](architecture/detector-spi.md) | `Detector` / `DetectorFactory` SPI for third-party detectors: identity by `id()`, `excludeIds`, and why 1.13.0 removed the built-in bridge |
 | [architecture/reporting-pipeline.md](architecture/reporting-pipeline.md) | `Violation` → `Formatter` → report listeners |
 | [architecture/observability.md](architecture/observability.md) | Listener system, seen from the inside |
 | [architecture/logging.md](architecture/logging.md) | The two output channels, the `domain.event key=value` format, and which log events are pinned by tests |

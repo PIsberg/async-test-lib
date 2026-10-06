@@ -45,7 +45,7 @@ public interface DetectorFactory {
      *
      * @return the id; never {@code null}
      * @throws IllegalStateException when the factory overrides neither this nor {@link #type()}
-     * @since 2.0.0
+     * @since 1.13.0
      */
     default String id() {
         DetectorType type = type();

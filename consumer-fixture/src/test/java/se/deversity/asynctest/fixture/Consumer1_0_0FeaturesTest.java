@@ -161,7 +161,7 @@ class Consumer1_0_0FeaturesTest {
 
     @Test
     void spi_registry_holds_only_third_party_detectors() {
-        // Since 2.0.0 the built-in detectors have one registry, the runner's; the public SPI
+        // Since 1.13.0 the built-in detectors have one registry, the runner's; the public SPI
         // registry carries what a consumer adds, and this fixture adds none.
         AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
         DetectorRegistry reg = DetectorRegistry.buildExternal(cfg);
@@ -171,7 +171,7 @@ class Consumer1_0_0FeaturesTest {
 
     // ---- 8) Phase 13 detectors: AsyncTestContext accessors compile + return ----
 
-    // detectAll = true enables every detector; a bare @AsyncTest runs Preset.ESSENTIALS (2.0.0).
+    // detectAll = true enables every detector; a bare @AsyncTest runs Preset.ESSENTIALS (1.13.0).
     @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
     void phase13_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.daemonThreadHygieneDetector());

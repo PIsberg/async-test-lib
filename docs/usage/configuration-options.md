@@ -13,11 +13,11 @@ Part of the [Usage guide](../USAGE.md).
 | `timeoutMs` | long | 5000 | Test timeout in milliseconds |
 | `useVirtualThreads` | boolean | true | Use Java 21+ virtual threads |
 | `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
-| `preset` | Preset | ESSENTIALS | Curated detector bundle, used when neither `includes` nor `detectAll = true` is set. A bare `@AsyncTest` runs `ESSENTIALS` (2.0.0) |
+| `preset` | Preset | ESSENTIALS | Curated detector bundle, used when neither `includes` nor `detectAll = true` is set. A bare `@AsyncTest` runs `ESSENTIALS` (1.13.0) |
 | `detectAll` | boolean | false | Enable every detector, whatever `preset` says; `includes` still wins. `false` leaves `preset` in charge |
 | `includes` | DetectorType[] | {} | Enable exactly these detectors; overrides `preset` and `detectAll` when non-empty |
 | `excludes` | DetectorType[] | {} | Detectors to skip from whatever `includes`, `preset` or `detectAll` selected |
-| `excludeIds` | String[] | {} | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (2.0.0+) |
+| `excludeIds` | String[] | {} | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (1.13.0+) |
 
 ### Phase 1 Detectors (Enabled by detectAll = true)
 

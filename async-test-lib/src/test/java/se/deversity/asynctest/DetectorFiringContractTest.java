@@ -118,7 +118,7 @@ class DetectorFiringContractTest {
     /**
      * Every built detector is analysed: its registry field is handed to an {@code ifIssue} call.
      *
-     * <p>Until 2.0.0 this asked whether the SPI bridge could find each detector's report method by
+     * <p>Until 1.13.0 this asked whether the SPI bridge could find each detector's report method by
      * reflection, because a detector it could not bind was silently inert there: LOCK_ORDER and
      * CONSTRUCTOR_SAFETY were, their report methods being named validate*. The bridge is gone
      * (#922); the report path users read is the registry's {@code ifIssue} calls, which the compiler

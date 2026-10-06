@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Detectors used to be wired twice: the runner's own {@code se.deversity.asynctest.DetectorRegistry}
  * built and analysed the built-ins, and 146 bridge factories in {@code spi.adapters} built a second,
  * blind copy of each for an all-inclusive {@code build(config)} view that only tests called. The
- * bridge cost every new detector two more edit sites and observed nothing. 2.0.0 deletes it: the
+ * bridge cost every new detector two more edit sites and observed nothing. 1.13.0 deletes it: the
  * built-ins have one registry, and {@link DetectorRegistry#buildExternal} carries the detectors a
  * user adds.
  */

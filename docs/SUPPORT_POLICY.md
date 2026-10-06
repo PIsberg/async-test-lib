@@ -23,6 +23,14 @@ Binary compatibility against the previous release is enforced by
 [japicmp](https://siom79.github.io/japicmp/) in the `async-test-lib` module's build, not by
 review. A breaking change that has not had its major bump fails the build.
 
+**The 1.13.0 exception.** 1.13.0 is a minor release that breaks the public API: it removes what
+1.12 deprecated (the per-detector `@AsyncTest` attributes, the `*Monitor()` accessors, the
+`spi.adapters` bridge), makes three SPI methods default, and changes what a bare `@AsyncTest`
+selects. The owner chose on 2026-10-06 to keep the 1.x line rather than call it 2.0.0.
+`docs/MIGRATION.md` describes every change. japicmp waives exactly those breaks by name in
+`async-test-lib/pom.xml`; any other break still fails the build, and the waiver goes when the
+baseline moves to 1.13.0.
+
 **What is not covered.** Anything in a package containing `internal`,
 the exact text of a report or an assertion message, and the `async-test-agent` and
 `async-test-analysis` artifacts' internals. The agent's `-javaagent` contract and the analysis
@@ -72,8 +80,8 @@ a vulnerability.
 
 A public element is deprecated for at least one minor release before removal, carrying
 `@Deprecated` and a javadoc `@deprecated` line naming the replacement. Removal happens in the next
-major. The per-detector `detectXxx()` booleans on `@AsyncTest` are deprecated in favour of
-`preset()` / `includes()` / `excludes()` and are on that path.
+major. The per-detector `detectXxx()` booleans on `@AsyncTest`, deprecated in favour of
+`preset()` / `includes()` / `excludes()`, were removed in 1.13.0 under the exception above.
 
 ## Files at rest
 

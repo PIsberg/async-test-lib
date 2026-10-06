@@ -22,8 +22,8 @@ Non-detector knobs: `threads`, `invocations`, `timeoutMs`, `useVirtualThreads`,
 `includes` if it is non-empty, otherwise every type when `detectAll = true` or the preset is
 `ALL`/`STRICT`, otherwise the preset's own set. `excludes` and `excludeIds` apply on top. The
 defaults are `detectAll = false` and `preset = ESSENTIALS`, so a bare annotation runs the 12
-`ESSENTIALS` detectors (2.0.0, #923; `LeanDefaultSelectionTest`). The annotation has no
-per-detector attribute since 2.0.0 (#920); under 1.x, 144 of those attributes defaulted to `true`,
+`ESSENTIALS` detectors (1.13.0, #923; `LeanDefaultSelectionTest`). The annotation has no
+per-detector attribute since 1.13.0 (#920); under 1.12, 144 of those attributes defaulted to `true`,
 so `detectAll = false` left almost every detector on.
 
 `AsyncTestConfig.Builder.build()` resolves the selection once, into one `EnumSet<DetectorType>`

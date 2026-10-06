@@ -45,7 +45,7 @@ src/main/java/se/deversity/asynctest/
 ├── spi/                              # NEW package in 1.6.0 — Detector SPI
 │   ├── Detector.java                 # SPI interface: id(), type(), analyze(), lifecycle hooks
 │   ├── DetectorFactory.java          # ServiceLoader-discovered factory
-│   └── DetectorRegistry.java         # third-party detectors only, keyed by id (built-in bridge removed in 2.0.0)
+│   └── DetectorRegistry.java         # third-party detectors only, keyed by id (built-in bridge removed in 1.13.0)
 └── benchmark/                        # Benchmarking module
     ├── BenchmarkRecorder.java
     ├── BenchmarkComparator.java

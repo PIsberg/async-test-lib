@@ -47,7 +47,7 @@ A synchronized change across `DetectorType` (an `@AILocked` enum — edit only w
 sign-off), the `@AsyncTest` flag, `AsyncTestConfig` (field / builder default / setter / `from()` /
 the enabled-set derivation), the runner's `DetectorRegistry` (field / factory-table row /
 `analyzeAll`) and the `AsyncTestContext` accessor. `DetectorRegistryFactoryTableTest` fails loudly
-if a type has no row. The SPI bridge these detectors also needed until 2.0.0 is gone (#922).
+if a type has no row. The SPI bridge these detectors also needed until 1.13.0 is gone (#922).
 
 ## Source-line attribution
 

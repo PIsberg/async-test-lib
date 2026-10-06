@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * What an {@code @AsyncTest} annotation selects, read through {@link AsyncTestConfig#from(AsyncTest)}.
  *
- * <p>2.0.0 removed the per-detector boolean attributes (#920). Under 1.x {@code detectAll = false}
+ * <p>1.13.0 removed the per-detector boolean attributes (#920). Under 1.12 {@code detectAll = false}
  * did not mean "none": it left every attribute at its default, and 144 of the 146 defaulted to
  * {@code true}. A selection is now said with {@code includes}, {@code excludes} and {@code preset},
  * and {@code detectAll = false} only declines the every-detector opt-in, leaving the preset in

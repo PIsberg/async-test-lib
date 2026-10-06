@@ -25,7 +25,7 @@ import java.util.Set;
  * void tight_loop_under_stress() { ... }
  * }</pre>
  *
- * <p>{@link #ESSENTIALS} is the default since 2.0.0 (#923): a bare {@code @AsyncTest} runs it.
+ * <p>{@link #ESSENTIALS} is the default since 1.13.0 (#923): a bare {@code @AsyncTest} runs it.
  * {@link #ALL} and {@link #STRICT} run every detector, as {@code detectAll = true} does; the
  * other presets enable only the listed {@link DetectorType}s.
  *
@@ -38,7 +38,7 @@ public enum Preset {
 
     /**
      * Run every available detector, the same selection as {@code @AsyncTest(detectAll = true)}
-     * and the default before 2.0.0. Picks up new detectors automatically
+     * and the default before 1.13.0. Picks up new detectors automatically
      * as they are added in future releases. Highest signal, highest cost.
      */
     ALL(null),
@@ -47,7 +47,7 @@ public enum Preset {
      * High-signal detectors covering the bugs that production teams encounter
      * most often: deadlocks, races, atomicity violations, lock/thread leaks,
      * interrupt mishandling, concurrent modification, and CompletableFuture
-     * exception loss. The default since 2.0.0 (#923): what a bare {@code @AsyncTest} runs. It
+     * exception loss. The default since 1.13.0 (#923): what a bare {@code @AsyncTest} runs. It
      * holds no {@link se.deversity.asynctest.diagnostics.TrustTier#ADVISORY} detector, and
      * {@code LeanDefaultSelectionTest} keeps it that way.
      */

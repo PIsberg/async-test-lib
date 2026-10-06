@@ -2,7 +2,7 @@
 
 > Part of the [architecture documentation](../ARCHITECTURE.md).
 
-## What the SPI is for (2.0.0)
+## What the SPI is for (1.13.0)
 
 `se.deversity.asynctest.spi` is the extension point for detectors the library does not ship. A
 user adds a `DetectorFactory` to `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`,
@@ -38,7 +38,7 @@ List<Violation>                                  ← merged into the run's repor
   styles: typed `get(Class<T>)`, id-keyed `get(String)` and `get(DetectorType)`,
   which is `get(type.name())`. `analyzeAll()` aggregates structured violations.
 
-**Open detector identity (2.0.0, #919).** A detector's identity is its `id()`. A
+**Open detector identity (1.13.0, #919).** A detector's identity is its `id()`. A
 built-in's id is its `DetectorType` name, which `id()` defaults to through
 `type()`. A genuinely new third-party detector leaves `type()` alone and returns an
 id of its own, preferably reverse-DNS (`"com.acme.pool-misuse"`), so it no longer
@@ -67,7 +67,7 @@ A built-in name in `excludeIds` excludes that type, as `excludes` would.
 `ExternalDetectorSpiWiringTest` pins this end to end. Third-party detectors are unknown to
 `DetectorTrust` and resolve to `TrustTier.PROMPT`.
 
-## The built-in bridge, removed in 2.0.0 (#922)
+## The built-in bridge, removed in 1.13.0 (#922)
 
 From 1.6.0 to 1.12.x every built-in detector was wired twice. Beside the runner's registry,
 `spi.adapters.LegacyDetectorFactories` held one bridge factory per `DetectorType`, listed in
@@ -77,7 +77,7 @@ were disconnected from the ones user code records into, so they observed nothing
 called only by tests. `buildExternal` already left them out at runtime, because loading them cost
 about 340 ms per forked JVM and allocated about 120 blind detectors per test.
 
-The bridge was the losing path of the two, and 2.0.0 deleted it: the package, the list resource,
+The bridge was the losing path of the two, and 1.13.0 deleted it: the package, the list resource,
 `build(config)` and the typed `SharedMessageDigestDetectorFactory` template. What its gates
 checked moved to the registry users actually read: `DetectorRegistryFactoryTableTest` (every type
 has one row), `DetectorFiringContractTest` (every built detector is silent on empty input and is

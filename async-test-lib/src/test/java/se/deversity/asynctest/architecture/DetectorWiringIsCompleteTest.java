@@ -24,11 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A detector is selected through {@code DetectorType}, and only through it.
  *
- * <p><strong>What this replaced.</strong> Until 2.0.0 {@code @AsyncTest} carried one boolean
+ * <p><strong>What this replaced.</strong> Until 1.13.0 {@code @AsyncTest} carried one boolean
  * attribute per detector, 146 of them, each read in {@code AsyncTestConfig.from} and resolved in
  * {@code build()}. Every new detector cost three more edit sites, and the attributes were a trap:
  * almost all defaulted to {@code true}, so {@code @AsyncTest(detectAll = false, detectX = true)},
- * which this repository's own fixtures described as "only X", enabled about 144 detectors. 2.0.0
+ * which this repository's own fixtures described as "only X", enabled about 144 detectors. 1.13.0
  * removed them (#920); {@code includes}, {@code excludes} and {@code preset} say the same thing in
  * one vocabulary. This test keeps a per-detector switch from coming back, and keeps every public
  * detector flag on {@link AsyncTestConfig} derived from the one enabled set.
@@ -61,7 +61,7 @@ class DetectorWiringIsCompleteTest {
         assertTrue(switches.isEmpty(),
                 "These boolean attributes switch a single detector: " + switches + ". Detectors are "
                         + "selected with includes/excludes/preset over DetectorType; a per-detector "
-                        + "attribute is three more edit sites per detector and was removed in 2.0.0 "
+                        + "attribute is three more edit sites per detector and was removed in 1.13.0 "
                         + "(#920). If a new attribute is deliberately not a detector, add it to "
                         + "NOT_A_DETECTOR_SWITCH with a reason.");
     }

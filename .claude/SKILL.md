@@ -15,14 +15,14 @@
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>2.0.0</version>
+    <version>1.13.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 **Gradle (Kotlin DSL)**
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:2.0.0")
+testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.0")
 ```
 
 ---
@@ -45,7 +45,7 @@ class CounterTest {
 
 `@AsyncTest` launches `threads` concurrent threads per invocation, repeats `invocations` times, and reports exactly which detector fired and why. The same test with plain `@Test` would pass silently.
 
-> **2.0.0:** the per-detector boolean attributes (`detectRaceConditions = true` and the other 145) are gone. Select detectors by `DetectorType`: `includes = {…}` for exactly these, `excludes = {…}` to drop some, or a `preset`. A bare `@AsyncTest` runs `Preset.ESSENTIALS` (12 detectors, none of them ADVISORY tier); every detector is the explicit `detectAll = true`.
+> **1.13.0:** the per-detector boolean attributes (`detectRaceConditions = true` and the other 145) are gone. Select detectors by `DetectorType`: `includes = {…}` for exactly these, `excludes = {…}` to drop some, or a `preset`. A bare `@AsyncTest` runs `Preset.ESSENTIALS` (12 members, none of them ADVISORY tier); every detector is the explicit `detectAll = true`.
 
 ---
 
@@ -59,10 +59,10 @@ class CounterTest {
 | `useVirtualThreads` | boolean | true | Use Project Loom virtual threads (Java 21+) |
 | `timeoutMs` | long | 5000 | Milliseconds before timeout (triggers deadlock analysis) |
 | `virtualThreadStressMode` | String | `"OFF"` | `OFF` / `LOW` / `MEDIUM` / `HIGH` / `EXTREME` — pins carrier threads to increase contention |
-| `preset` | `Preset` | `Preset.ESSENTIALS` | **Curated detector bundle.** `ESSENTIALS` / `ALL` / `STRICT` / `CI_FAST` / `NONE`. Used when neither `includes` nor `detectAll = true` is set (1.6.0+; default `ESSENTIALS` since 2.0.0) |
-| `detectAll` | boolean | false | Enable every detector at once, whatever `preset` says; `includes` still wins. The opt-in that replaced the 1.x default (2.0.0) |
+| `preset` | `Preset` | `Preset.ESSENTIALS` | **Curated detector bundle.** `ESSENTIALS` / `ALL` / `STRICT` / `CI_FAST` / `NONE`. Used when neither `includes` nor `detectAll = true` is set (1.6.0+; default `ESSENTIALS` since 1.13.0) |
+| `detectAll` | boolean | false | Enable every detector at once, whatever `preset` says; `includes` still wins. The opt-in that replaced the 1.12 default (1.13.0) |
 | `excludes` | DetectorType[] | `{}` | Detectors to skip — layers on top of any preset |
-| `excludeIds` | String[] | `{}` | Detectors to skip by id: a third-party detector's own id, or a built-in's `DetectorType` name (2.0.0+) |
+| `excludeIds` | String[] | `{}` | Detectors to skip by id: a third-party detector's own id, or a built-in's `DetectorType` name (1.13.0+) |
 | `replaySeed` | long | 0 | **Per-round RNG seed.** `0` = fresh seed per round, printed on failure for paste-and-reproduce. Set explicitly to reproduce a failing schedule (1.6.0+) |
 | `enableBenchmarking` | boolean | false | Record timing data for regression detection |
 | `benchmarkRegressionThreshold` | double | 0.2 | Regression threshold as a decimal (0.2 = 20%) |
@@ -127,7 +127,7 @@ void testAsyncPipeline() {
 ```
 `awaitAsync` blocks until the chain completes and unwraps `ExecutionException` so user assertions/exceptions surface as their original types. This is the supported way to exercise async APIs from `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate` return types at discovery.
 
-### Make the workers meet mid-body: `AsyncTestContext.rendezvous()` (2.0.0+)
+### Make the workers meet mid-body: `AsyncTestContext.rendezvous()` (1.13.0+)
 ```java
 @AsyncTest(threads = 4, invocations = 100)
 void transfer() {
@@ -138,7 +138,7 @@ void transfer() {
 ```
 Waits until every worker of the current round has called it, bounded by the time the round has left (`rendezvous(Duration)` for a tighter bound). Every worker must call it the same number of times; each call is one meeting point. Do not build a `CyclicBarrier` in the test for this: a worker that throws breaks the rendezvous, so its peers fail at once ("The rendezvous was broken") next to the real exception, where a hand-rolled barrier waits out the round and reports a timeout that hides it. A timeout says how many workers arrived. Outside an `@AsyncTest` worker it throws `IllegalStateException`.
 
-### Assert a run did something exactly once: `RunOutcomes` (2.0.0+)
+### Assert a run did something exactly once: `RunOutcomes` (1.13.0+)
 ```java
 import se.deversity.asynctest.RunOutcomes;
 
@@ -158,7 +158,7 @@ static void check() {
 ```
 Totals are per run, not per round. A failure names the count and the first threads that recorded the event. Prefer it to a static `AtomicInteger` plus a hand-written `@AfterAll`: the check is easy to write so that it holds whatever the code does (asserting a `ConcurrentHashMap`'s size, for example). Lock-free, so it adds no contention of its own.
 
-### Check that results are linearizable: `OperationHistory` (2.0.0+, experimental)
+### Check that results are linearizable: `OperationHistory` (1.13.0+, experimental)
 ```java
 import se.deversity.asynctest.OperationHistory;
 import se.deversity.asynctest.SequentialSpec;
@@ -663,7 +663,7 @@ For custom detectors and tooling: `se.deversity.asynctest.spi.{Detector, Detecto
 
 ```java
 public final class MyDetectorFactory implements DetectorFactory {
-    @Override public String id() { return "com.acme.my-detector"; }   // its own identity (2.0.0+)
+    @Override public String id() { return "com.acme.my-detector"; }   // its own identity (1.13.0+)
     @Override public Detector create(AsyncTestConfig cfg) { return new MyDetector(); }
     // isEnabledFor defaults to cfg.isEnabled(id()): on unless @AsyncTest(excludeIds = "com.acme.my-detector")
 }
@@ -679,7 +679,7 @@ MyDetector mine = reg.get(MyDetector.class);
 Detector byId = reg.get("com.acme.my-detector");
 ```
 
-The built-in detectors are not in the SPI registry: since 2.0.0 they have one registry, the runner's, and `DetectorRegistry.build(config)` (which added a blind bridge copy of each) is gone. The runner builds `buildExternal(config)` for every `@AsyncTest`, so a registered factory's findings reach the reports and the `failOn` gate without further wiring.
+The built-in detectors are not in the SPI registry: since 1.13.0 they have one registry, the runner's, and `DetectorRegistry.build(config)` (which added a blind bridge copy of each) is gone. The runner builds `buildExternal(config)` for every `@AsyncTest`, so a registered factory's findings reach the reports and the `failOn` gate without further wiring.
 
 ---
 

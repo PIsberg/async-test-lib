@@ -22,7 +22,7 @@ import java.util.Set;
  */
 @AICore(
     sensitivity = "Critical",
-    note = "Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 2.0.0 (#920). Never reintroduce a per-detector resolution expression in build()."
+    note = "Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 1.13.0 (#920). Never reintroduce a per-detector resolution expression in build()."
 )
 @AIContext(
     focus = "Keep one public flag per DetectorType, each derived from the enabled set, and the selection in from(AsyncTest) and build() expressed only through includes, excludes, preset and detectAll",
@@ -618,7 +618,7 @@ public final class AsyncTestConfig {
      * {@code includes}, {@code excludes} and a preset are all resolved into it, and every public
      * detector flag on this class reads from it.
      *
-     * @since 2.0.0
+     * @since 1.13.0
      */
     public Set<DetectorType> enabledDetectors() {
         return enabledDetectors;
@@ -628,7 +628,7 @@ public final class AsyncTestConfig {
      * {@return whether this run enables {@code type}}
      *
      * @param type the detector to ask about
-     * @since 2.0.0
+     * @since 1.13.0
      */
     public boolean isEnabled(DetectorType type) {
         return enabledDetectors.contains(type);
@@ -642,7 +642,7 @@ public final class AsyncTestConfig {
      * {@code excludeIds}, because the detector is on the classpath only when the user put it there.
      *
      * @param id a {@link se.deversity.asynctest.spi.Detector#id() detector id}
-     * @since 2.0.0
+     * @since 1.13.0
      */
     public boolean isEnabled(String id) {
         for (DetectorType type : DetectorType.values()) {
@@ -656,7 +656,7 @@ public final class AsyncTestConfig {
     /**
      * {@return the detector ids this run switched off, as an unmodifiable set}
      *
-     * @since 2.0.0
+     * @since 1.13.0
      */
     public Set<String> excludedIds() {
         return excludedIds;
@@ -691,7 +691,7 @@ public final class AsyncTestConfig {
         // Resolve the selection: includes(), else detectAll = true or a preset that means every
         // detector (ALL, STRICT), else the preset's own set. Each is expressed as detectAll plus
         // the excludes that carve the selection out of every type, so build() resolves it like
-        // any other. A bare annotation lands in the last branch with Preset.ESSENTIALS (2.0.0,
+        // any other. A bare annotation lands in the last branch with Preset.ESSENTIALS (1.13.0,
         // #923); detectAll = false only declines the opt-in and leaves the preset in charge.
         // User-supplied excludes() always layer on top and win on conflict.
         Preset preset = ann.preset();
@@ -1783,7 +1783,7 @@ public final class AsyncTestConfig {
          * Switches detectors off by id. Mirrors {@link AsyncTest#excludeIds()}: a third-party
          * detector's own id, or a built-in's {@link DetectorType} name, which excludes that type.
          *
-         * @since 2.0.0
+         * @since 1.13.0
          *
          * @param ids the detector ids to switch off; {@code null} entries and blanks are ignored
          * @return this builder

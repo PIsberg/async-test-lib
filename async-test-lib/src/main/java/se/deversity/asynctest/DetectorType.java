@@ -20,7 +20,7 @@ import se.deversity.vibetags.annotations.AILocked;
            + "constant is the name users type in @AsyncTest(includes=..., excludes=...); the config "
            + "field derives from the enabled set; and the registry's factory row builds it. Adding the "
            + "constant alone compiles and silently detects nothing. The SPI bridge that mirrored every "
-           + "constant a second time was deleted in 2.0.0 (#922).",
+           + "constant a second time was deleted in 1.13.0 (#922).",
     enforcedBy = "se.deversity.asynctest.DetectorRegistryFactoryTableTest"
 )
 @API(status = Status.STABLE)

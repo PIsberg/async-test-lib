@@ -47,9 +47,9 @@ import java.lang.annotation.Target;
  * {@link #preset()} a curated bundle, {@link #detectAll()} every one, and {@link #excludes()}
  * removes from any of these. A bare {@code @AsyncTest} runs {@link Preset#ESSENTIALS}; every
  * detector is the explicit {@code detectAll = true} (#923). The 146 per-detector boolean
- * attributes of 1.x ({@code detectRaceConditions = true} and the rest) were removed in 2.0.0 (#920).
+ * attributes of 1.12 ({@code detectRaceConditions = true} and the rest) were removed in 1.13.0 (#920).
  */
-@AIContract(reason = "Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 2.0.0, #920). The bare-annotation selection is Preset.ESSENTIALS with detectAll = false (2.0.0, #923): a different default changes what every unchanged test in every consumer detects.")
+@AIContract(reason = "Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 1.13.0, #920). The bare-annotation selection is Preset.ESSENTIALS with detectAll = false (1.13.0, #923): a different default changes what every unchanged test in every consumer detects.")
 @AIPublicAPI
 @Target({ElementType.METHOD, ElementType.TYPE, ElementType.ANNOTATION_TYPE})
 @Retention(RetentionPolicy.RUNTIME)
@@ -132,7 +132,7 @@ public @interface AsyncTest {
     /**
      * Enable every detector, whatever {@link #preset()} says. {@link #includes()} takes precedence
      * over it, and {@link #excludes()} removes detectors from the selection.
-     * <p><strong>Default is {@code false}</strong> since 2.0.0 (#923): {@code @AsyncTest} alone runs
+     * <p><strong>Default is {@code false}</strong> since 1.13.0 (#923): {@code @AsyncTest} alone runs
      * {@link Preset#ESSENTIALS}, and {@code detectAll = true} is the explicit opt-in to every
      * detector. {@code false} leaves {@link #preset()} in charge.
      * <p>Example: {@code @AsyncTest(detectAll = true)} — every detector.
@@ -147,7 +147,7 @@ public @interface AsyncTest {
      * is set.
      *
      * <ul>
-     *   <li>{@link Preset#ESSENTIALS} — 12 high-signal detectors for everyday CI (default since 2.0.0, #923).</li>
+     *   <li>{@link Preset#ESSENTIALS} — 12 high-signal detectors for everyday CI (default since 1.13.0, #923).</li>
      *   <li>{@link Preset#ALL} — every detector, the same selection as {@code detectAll = true}.</li>
      *   <li>{@link Preset#STRICT} — same as ALL, named explicitly.</li>
      *   <li>{@link Preset#CI_FAST} — minimal set for pull-request gates.</li>
@@ -210,7 +210,7 @@ public @interface AsyncTest {
      *
      * <p>Example: {@code @AsyncTest(excludeIds = {"com.acme.pool-misuse"})}
      *
-     * @since 2.0.0
+     * @since 1.13.0
      *
      * @return the detector ids to switch off; an id no detector declares is ignored
      */

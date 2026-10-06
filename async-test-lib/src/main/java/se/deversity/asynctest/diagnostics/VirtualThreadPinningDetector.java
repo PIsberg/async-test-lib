@@ -348,7 +348,7 @@ public class VirtualThreadPinningDetector {
          * {@return whether this report should surface as a finding}
          *
          * <p>The canonical predicate the report path binds to ({@code DetectorRegistry.ifIssue}, and
-         * until 2.0.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
+         * until 1.13.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
          * adapter resolved {@code analyze()}, failed to find {@code hasIssues()} on the returned
          * report, and returned an empty violation list on every call — so this detector was
          * registered, addressable, named in the README, and structurally unable to emit a

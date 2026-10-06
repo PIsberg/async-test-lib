@@ -51,7 +51,7 @@ you are editing here.
   <core_elements>
     <element path="se.deversity.asynctest.AsyncTestConfig">
       <sensitivity>Critical</sensitivity>
-      <note>Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 2.0.0 (#920). Never reintroduce a per-detector resolution expression in build().</note>
+      <note>Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 1.13.0 (#920). Never reintroduce a per-detector resolution expression in build().</note>
     </element>
     <element path="se.deversity.asynctest.AsyncTestContext">
       <sensitivity>Critical</sensitivity>

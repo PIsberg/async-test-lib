@@ -124,7 +124,7 @@ public final class DetectorDefaultSeverity {
      * <p>Built-in reports that hold their findings as {@link Violation}s beside the text expose
      * them in a public {@code List<Violation> structuredViolations} field. There is no shared
      * interface for it, so the field is read by name, the way the SPI bridge read
-     * {@code analyze()} until 2.0.0. A report without the field, or with an empty list, yields empty and the
+     * {@code analyze()} until 1.13.0. A report without the field, or with an empty list, yields empty and the
      * caller falls back to the text. {@code DetectorSeverityMarkerTest} relies on the same field
      * name to decide which detectors state their own severity.
      *

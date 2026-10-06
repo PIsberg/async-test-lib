@@ -176,7 +176,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-lib</artifactId>
-       <version>2.0.0</version>
+       <version>1.13.0</version>
        <scope>test</scope>
    </dependency>
    ```
@@ -229,7 +229,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 1. **Add the dependency** to `build.gradle.kts`:
    ```kotlin
-   testImplementation("se.deversity.async-test-lib:async-test-lib:2.0.0")
+   testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.0")
    ```
 
 2. **Write your first stress test**:
@@ -393,7 +393,7 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `detectAll` | false | Enable every detector, whatever `preset` says (`includes` still wins) |
 | `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll` when non-empty |
 | `excludes` | `{}` | Detectors to skip — layers on top of any preset or `includes` and wins on conflict |
-| `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (2.0.0+) |
+| `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (1.13.0+) |
 | `failOn` | `FailOn.NONE` | Severity gate: findings at/above this level (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) fail the test; `NONE` = report-only |
 | `replaySeed` | 0 | Per-round RNG seed. `0` = fresh per round (printed on failure); set explicitly to reproduce a failing schedule |
 

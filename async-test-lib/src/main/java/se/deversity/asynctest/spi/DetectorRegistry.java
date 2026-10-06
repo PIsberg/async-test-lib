@@ -24,9 +24,9 @@ import java.util.ServiceLoader;
  *
  * <p>The built-in detectors are not here. The runner's own
  * {@code se.deversity.asynctest.DetectorRegistry} builds and analyses them, and holds the very
- * instances user code records into. Until 2.0.0 this class also offered {@code build(config)}, a
+ * instances user code records into. Until 1.13.0 this class also offered {@code build(config)}, a
  * view that added a bridge factory per built-in detector, each constructing a fresh instance that
- * observed nothing; only tests called it, and every new detector paid two edit sites for it. 2.0.0
+ * observed nothing; only tests called it, and every new detector paid two edit sites for it. 1.13.0
  * deleted that path (#922): this registry is the third-party extension point and nothing else.
  *
  * @since 1.6.0
@@ -124,7 +124,7 @@ public final class DetectorRegistry {
      *
      * @param id the {@link Detector#id()} to look up
      * @return the active detector with that id, or {@code null} when it is not enabled
-     * @since 2.0.0
+     * @since 1.13.0
      */
     public @Nullable Detector get(String id) {
         return byId.get(id);

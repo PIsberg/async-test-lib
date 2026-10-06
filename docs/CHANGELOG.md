@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **A bare `@AsyncTest` runs `Preset.ESSENTIALS`, not every detector (breaking, 2.0.0).** The
+- **A bare `@AsyncTest` runs `Preset.ESSENTIALS`, not every detector (breaking, 1.13.0).** The
   defaults are now `detectAll = false` and `preset = Preset.ESSENTIALS`, and `detectAll = true` is
   the explicit opt-in to every detector, whatever the preset says; `includes` still wins over both.
   Every test paid for all 146 detectors' setup and read findings from every trust tier while most
@@ -127,7 +127,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   applies; and `LicenseGuard`'s fingerprint record is `@AIPrivacy`, the library's first, because
   its generated `toString()` prints the licence key and the user's email together.
 
-### Removed (2.0.0)
+### Removed (1.13.0)
+
+1.13.0 breaks the public API in a minor release, by the owner's decision (2026-10-06) rather than
+a 2.0.0. `docs/SUPPORT_POLICY.md` records the exception, `docs/MIGRATION.md` the rewrite, and
+japicmp waives exactly these removals by name; checked by narrowing an unrelated public method,
+which still fails the build.
 
 - **The 146 per-detector boolean attributes on `@AsyncTest`.** `detectRaceConditions = true` and the
   other 145 are gone; select detectors by `DetectorType` with `includes`, `excludes` and `preset`.

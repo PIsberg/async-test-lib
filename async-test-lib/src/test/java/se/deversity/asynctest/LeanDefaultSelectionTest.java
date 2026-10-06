@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * A bare {@code @AsyncTest} runs {@link Preset#ESSENTIALS}, and every detector is one explicit
  * {@code detectAll = true} away (#923).
  *
- * <p>Until 2.0.0 the bare annotation enabled every detector: each test paid for every detector's
+ * <p>Until 1.13.0 the bare annotation enabled every detector: each test paid for every detector's
  * setup and report, and read findings from detectors at every trust tier, while most suites want a
  * curated subset. The lean default is settled against {@link DetectorTrust}: no detector in it
  * may sit at {@link TrustTier#ADVISORY}, the tier whose findings are hints rather than defects.

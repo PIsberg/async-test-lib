@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and that removal is the {@code @deprecated} tag. {@code @Deprecated} on its own compiles to a
  * warning that something is going away; it does not say where the behaviour went, so the consumer
  * reads the diff of a release they did not write. With 188 deprecated public elements across the
- * 1.x API, that difference decided whether upgrading to 2.0.0 was a scripted rename or an
- * afternoon of guessing; 2.0.0 removed all of them, and the next deprecation is held to the same bar.
+ * 1.12 API, that difference decided whether upgrading to 1.13.0 was a scripted rename or an
+ * afternoon of guessing; 1.13.0 removed all of them, and the next deprecation is held to the same bar.
  *
  * <p>The gap this pins was real rather than hypothetical. Seven of the 146 deprecated
  * {@code @AsyncTest} attributes carried {@code @Deprecated} with no {@code @deprecated} tag at
@@ -69,7 +69,7 @@ class DeprecationsNameTheirReplacementTest {
             }
         }
 
-        // 2.0.0 removed all 188 deprecated elements (#920, #921), so zero deprecations is the
+        // 1.13.0 removed all 188 deprecated elements (#920, #921), so zero deprecations is the
         // expected count until the next one lands. The scan itself must still see the sources.
         assertTrue(scanned > 200,
                 "Expected to scan the library's main sources but saw only " + scanned
