@@ -109,17 +109,19 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="LicenseValidationCache">
   <title>LicenseValidationCache [CLASS]</title>
-  <rect class="node-rect" x="224.0" y="114.0" width="180.0" height="175.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="224.0" y="114.0" width="180.0" height="205.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="314.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.3" font-weight="bold" fill="#1f2937">LicenseValidationCache</text>
   <line x1="224.0" y1="158.0" x2="404.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="232.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEFAULT_TTL_HOURS: long</text>
-  <line x1="224.0" y1="185.0" x2="404.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="232.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hash(String): String</text>
-  <text x="232.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isFresh(String): boolean</text>
-  <text x="232.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hasRecord(String): boolean</text>
-  <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">record(String): void</text>
-  <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fileFor(String): Path</text>
-  <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ttlHours(): long</text>
+  <text x="232.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">READ_ATTEMPTS: int</text>
+  <line x1="224.0" y1="200.0" x2="404.0" y2="200.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hash(String): String</text>
+  <text x="232.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isFresh(String): boolean</text>
+  <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">readRetrying(Path): String</text>
+  <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">hasRecord(String): boolean</text>
+  <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">record(String): void</text>
+  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fileFor(String): Path</text>
+  <text x="232.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
 </g>
 <g id="OfflineLicense">
   <title>OfflineLicense [CLASS]</title>
