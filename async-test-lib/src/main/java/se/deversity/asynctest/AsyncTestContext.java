@@ -1149,7 +1149,7 @@ public final class AsyncTestContext {
      *
      * @param workers        the round's worker count, which every rendezvous waits for
      * @param roundTimeoutMs the time left in the round, the default rendezvous bound
-     * @since 1.12.5
+     * @since 2.0.0
      */
     public void openRendezvousForRound(int workers, long roundTimeoutMs) {
         this.roundDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(roundTimeoutMs);
@@ -1172,7 +1172,7 @@ public final class AsyncTestContext {
      * waiting at this round's rendezvous, and any that arrive later, fail at once instead of
      * waiting out the round for a worker that will never come.
      *
-     * @since 1.12.5
+     * @since 2.0.0
      */
     public void breakRendezvous() {
         Phaser rendezvous = roundRendezvous;
@@ -1197,9 +1197,9 @@ public final class AsyncTestContext {
      *
      * @throws IllegalStateException outside an {@code @AsyncTest} worker, or in a round of more than
      *                               65,535 workers
-     * @since 1.12.5
+     * @since 2.0.0
      */
-    @API(status = Status.EXPERIMENTAL, since = "1.12.5")
+    @API(status = Status.EXPERIMENTAL, since = "2.0.0")
     public static void rendezvous() {
         awaitRendezvous(null);
     }
@@ -1212,9 +1212,9 @@ public final class AsyncTestContext {
      * @param timeout how long this worker waits for the rest of the round
      * @throws IllegalStateException outside an {@code @AsyncTest} worker, or in a round of more than
      *                               65,535 workers
-     * @since 1.12.5
+     * @since 2.0.0
      */
-    @API(status = Status.EXPERIMENTAL, since = "1.12.5")
+    @API(status = Status.EXPERIMENTAL, since = "2.0.0")
     public static void rendezvous(Duration timeout) {
         awaitRendezvous(Objects.requireNonNull(timeout, "timeout"));
     }

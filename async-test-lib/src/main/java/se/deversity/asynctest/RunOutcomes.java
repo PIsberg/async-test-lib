@@ -42,12 +42,12 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * run, not per round. Recording costs one counter increment, plus one name for each of the first
  * few recordings of an event; nothing here is visible to the detectors.
  *
- * @since 1.12.5
+ * @since 2.0.0
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.LOCK_FREE, note = "Counts are LongAdders and values"
         + " sit in a ConcurrentHashMap merge, so concurrent recorders never lose an update; the"
         + " assertions read totals after the run, when no worker is still recording.")
-@API(status = Status.EXPERIMENTAL, since = "1.12.5")
+@API(status = Status.EXPERIMENTAL, since = "2.0.0")
 public final class RunOutcomes {
 
     /** How many recorders of one event a failure message names. */

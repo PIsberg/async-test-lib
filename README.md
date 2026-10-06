@@ -176,7 +176,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-lib</artifactId>
-       <version>1.12.4</version>
+       <version>2.0.0</version>
        <scope>test</scope>
    </dependency>
    ```
@@ -229,7 +229,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 1. **Add the dependency** to `build.gradle.kts`:
    ```kotlin
-   testImplementation("se.deversity.async-test-lib:async-test-lib:1.12.4")
+   testImplementation("se.deversity.async-test-lib:async-test-lib:2.0.0")
    ```
 
 2. **Write your first stress test**:

@@ -15,14 +15,14 @@
 <dependency>
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-lib</artifactId>
-    <version>1.12.4</version>
+    <version>2.0.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 **Gradle (Kotlin DSL)**
 ```kotlin
-testImplementation("se.deversity.async-test-lib:async-test-lib:1.12.4")
+testImplementation("se.deversity.async-test-lib:async-test-lib:2.0.0")
 ```
 
 ---
@@ -127,7 +127,7 @@ void testAsyncPipeline() {
 ```
 `awaitAsync` blocks until the chain completes and unwraps `ExecutionException` so user assertions/exceptions surface as their original types. This is the supported way to exercise async APIs from `@AsyncTest`, since JUnit Jupiter rejects non-void `@TestTemplate` return types at discovery.
 
-### Make the workers meet mid-body: `AsyncTestContext.rendezvous()` (1.12.5+)
+### Make the workers meet mid-body: `AsyncTestContext.rendezvous()` (2.0.0+)
 ```java
 @AsyncTest(threads = 4, invocations = 100)
 void transfer() {
@@ -138,7 +138,7 @@ void transfer() {
 ```
 Waits until every worker of the current round has called it, bounded by the time the round has left (`rendezvous(Duration)` for a tighter bound). Every worker must call it the same number of times; each call is one meeting point. Do not build a `CyclicBarrier` in the test for this: a worker that throws breaks the rendezvous, so its peers fail at once ("The rendezvous was broken") next to the real exception, where a hand-rolled barrier waits out the round and reports a timeout that hides it. A timeout says how many workers arrived. Outside an `@AsyncTest` worker it throws `IllegalStateException`.
 
-### Assert a run did something exactly once: `RunOutcomes` (1.12.5+)
+### Assert a run did something exactly once: `RunOutcomes` (2.0.0+)
 ```java
 import se.deversity.asynctest.RunOutcomes;
 
