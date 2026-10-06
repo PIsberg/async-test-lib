@@ -18,7 +18,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * End-to-end proof of the offline licensing path with the <em>real</em> Deversity AB file and
@@ -27,9 +26,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * keypair; this class proves the actual issued artifact and the actual embedded public key
  * agree, which is the property a customer's build depends on.
  *
- * <p><b>Where it runs.</b> Only where {@code ~/.config/deversity/e2e-license.env} has been
- * sourced (the operator machine): each test assumes {@code ATL_E2E_LICENSE_FILE} points at the
- * issued file and skips cleanly elsewhere. Run it with:
+ * <p><b>Where it runs.</b> In the {@code license-e2e.yml} workflow, which writes the issued file
+ * from a repository secret, and on the operator machine once
+ * {@code ~/.config/deversity/e2e-license.env} is sourced. With {@code ATL_E2E_LICENSE_FILE} unset
+ * it skips; set to a path that is not a file, or unset where {@code ATL_E2E_REQUIRED=true}, it
+ * fails ({@link LicenseE2eEnvironment}). On Windows the path must be {@code C:/...}: an MSYS
+ * {@code /c/...} path does not resolve in Java, and before this check that skipped the class on
+ * the operator machine itself. Run it with:
  *
  * <pre>{@code
  * set -a; . ~/.config/deversity/e2e-license.env; set +a
@@ -57,9 +60,8 @@ class RealOfflineLicenseE2eTest {
 
     @BeforeEach
     void setUp() {
-        licenseFile = System.getenv("ATL_E2E_LICENSE_FILE");
-        assumeTrue(licenseFile != null && !licenseFile.isBlank() && Files.isRegularFile(Path.of(licenseFile)),
-            "operator-machine test: source ~/.config/deversity/e2e-license.env to run it");
+        licenseFile = LicenseE2eEnvironment.requireFile(System.getenv(), "ATL_E2E_LICENSE_FILE")
+            .toString();
 
         resetCache();
         // Surefire sets license.mock.mode=true for the whole build; this test exists to

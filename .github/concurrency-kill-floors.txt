@@ -1,0 +1,21 @@
+# The share of a class's PIT mutants that its @ConcurrencyTestFor test detects on its own.
+#
+# .github/scripts/concurrency_test_kills.py runs PIT once per marker pair, with the named class
+# (and its nested classes) as the only target and the marked test as the only test, and fails the
+# weekly mutation.yml run when a pair falls below its floor here, when a marked class has no line,
+# or when a line names a class no marker does (#909). The point is the property #906 cannot check
+# from source: a test that names a class and runs it concurrently, but would pass if it broke.
+#
+# Format:  <Class simple name> <floor percent> # <what was measured>
+#
+# Measured on 2026-10-05 (Windows, JDK 21), detected / all mutants. Floors sit 5 to 10 points
+# under the measurement, because the dogfood tests are concurrent and their kills vary between
+# runs (LicenseGuard measured 59% and 61%). Raise a floor when a test gets stronger; lowering one
+# needs the reason in the commit. AsyncTestContext and DetectorRegistry are low by construction:
+# most of their mutants sit in per-detector accessors that a ThreadLocal test never reaches.
+
+AsyncTestContext 4 # 31/494 by AsyncTestContextTest
+DetectorRegistry 4 # 21/324 by AsyncTestContextTest
+ConcurrencyRunner 32 # 95/250 by ConcurrencyRunnerCollisionDogfoodTest
+LicenseGuard 52 # 65/106 by LicenseGuardGateOnceDogfoodTest
+LicenseValidationCache 32 # 12/28 by LicenseValidationCacheDogfoodTest

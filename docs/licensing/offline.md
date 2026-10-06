@@ -125,8 +125,12 @@ against the live Keygen account and the real offline file. They pin `license.net
 and `license.cache.ttl.hours=-1` so neither outage grace nor a cached validation can fake the
 grant, and each carries the denial direction (a same-domain decoy for Keygen's exact binding; a
 foreign domain and a tampered copy for the offline file), so a green run proves enforcement
-rather than the absence of errors. They skip cleanly anywhere the credentials are absent; to run
-them:
+rather than the absence of errors.
+
+They skip only where no `ATL_E2E_*` variable is set, which is every leg of `tests.yml`. A partial
+set, or an `ATL_E2E_LICENSE_FILE` that is not a file, fails instead (`LicenseE2eEnvironment`). On
+Windows that path must be `C:/...`: Java cannot open an MSYS `/c/...` path, and before that check
+the offline class skipped on the operator machine itself. To run them there:
 
 ```bash
 set -a; . ~/.config/deversity/e2e-license.env; set +a
@@ -134,8 +138,21 @@ mvn -pl async-test-lib test -Dtest='RealKeygenLicenseE2eTest,RealOfflineLicenseE
   -Dsurefire.failIfNoSpecifiedTests=false -P e2e
 ```
 
+In CI they run in `license-e2e.yml`: on pull requests and pushes to `main` that touch the licence
+code or these tests, every Monday, and on dispatch. It reads five repository secrets,
+`ATL_E2E_KEYGEN_ACCOUNT_ID`, `ATL_E2E_KEYGEN_PRODUCT_ID`, `ATL_E2E_LICENSE_KEY`,
+`ATL_E2E_LICENSE_EMAIL` and `ATL_E2E_LICENSE_FILE_CONTENT` (the issued file's text), sets
+`ATL_E2E_REQUIRED=true` so a missing value fails rather than skips, and checks the reports for five
+tests run and none skipped. Without the secrets (a fork, Dependabot) the job is skipped, not passed.
+
 When the licence or the file expires, both tests start failing with the corresponding expiry
-reason - that is the renewal reminder working, not a defect.
+reason - that is the renewal reminder working, not a defect. Renewing means updating the env file
+and the secrets together:
+
+```bash
+gh secret set ATL_E2E_LICENSE_KEY            # paste the new key
+gh secret set ATL_E2E_LICENSE_FILE_CONTENT < ~/.config/deversity/deversity-ab.atl-license
+```
 
 `license.provider`, `ls.store.id`, `ls.product.id`, `ls.email.binding` and `license.key` are all
 part of `LicenseGuard`'s cache fingerprint, so changing any of them within a JVM recomputes the

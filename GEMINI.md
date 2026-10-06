@@ -40,6 +40,7 @@ The following elements are well-tested core components. Make changes with extrem
 Do not suggest modifications to the following files:
 
 - `se.deversity.asynctest.DetectorType`: Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) && !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.
+- `se.deversity.asynctest.runner.OfflineLicense.VENDOR_VERIFY_KEY_B64`: Every offline licence file already issued to a customer verifies against this key, and its private half exists only on the operator machine. A changed value denies each of those files with OFFLINE_FILE_SIGNATURE_INVALID on the customer's next build. Rotation means re-issuing every file first: a release decision, not a code edit.
 
 ## CONTINUOUS AUDIT REQUIREMENTS
 You are acting as a Senior Staff Engineer. Whenever you write code for the files listed below, you must ensure your completions and chat responses strictly prevent the listed vulnerabilities:
@@ -58,6 +59,13 @@ The following elements must be completely excluded from AI context and completio
 
 - `se.deversity.asynctest.NoopAsyncTestListener` - Trivial no-op implementation of AsyncTestListener. All methods are intentionally empty — no logic to review or change here.
 
+## PII / PRIVACY GUARDRAILS
+The following elements handle Personally Identifiable Information (PII).
+Never include their runtime values in logs, console output, external API calls,
+test fixtures, mock data, or code suggestions.
+
+- `se.deversity.asynctest.runner.LicenseGuard.Fingerprint`: Holds the licence key and the licensed user's email, and the record's generated toString() prints both, so never log or format a Fingerprint whole. The email may reach the licence provider (Keygen user scope, LemonSqueezy binding) and a denial message in that user's own build; disk sees either value only inside the SHA-256 LicenseValidationCache stores. Never put one in an INFO line, a report, SARIF or JUnit XML: those end up in CI logs and published artifacts.
+
 ## CORE FUNCTIONALITY (EXTREME CAUTION)
 The following elements are well-tested core components. Make changes with extreme caution:
 
@@ -73,6 +81,7 @@ Do not weaken security properties of these elements. Flag any change for securit
 - `se.deversity.asynctest.diagnostics.SharedSecureRandomDetector`: Security-critical code [cryptography (RNG quality)]. Do not weaken security properties. Flag any change for security review.
 - `se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector`: Security-critical code [cryptography (confidentiality / integrity / authenticity state)]. Do not weaken security properties. Flag any change for security review.
 - `se.deversity.asynctest.runner.LicenseGuard`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
+- `se.deversity.asynctest.runner.LicenseValidationCache`: Security-critical code [authorization (isFresh skips online validation; hasRecord admits outage grace)]. Do not weaken security properties. Flag any change for security review.
 - `se.deversity.asynctest.runner.OfflineLicense`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
 
 ## Scoped Rules Index

@@ -1,0 +1,41 @@
+# Tests that are known to skip in CI, and why.
+#
+# .github/scripts/skipped_tests_gate.py runs after every job that runs a suite (tests.yml,
+# corpus.yml, e2e-tests.yml, license-e2e.yml, gradle-tests.yml, load-tests.yml;
+# SkippedTestsGateWiringTest pins
+# the list) and fails in both directions: a skip that is not listed here hides a test, and a
+# listed skip that ran hides a reason that no longer holds (#905). The licence E2E tests skipped
+# on every leg for about two months before anything noticed (#901).
+#
+# Format:  <class>#<method> <context>[,<context>...] # <reason>
+#
+# <method> may be * for every method of the class, and may end in ? when the test's own
+# assumption depends on timing: the skip is then allowed but not required, never stale. Use ? only
+# for a skip the test cannot make deterministic, and say why. A context is a pattern over
+# "<job context>/<report directory>", where the job context is what the workflow passes
+# (tests/jdk21, gradle/jdk21, corpus/jdk25, ...). Use the narrowest pattern that holds.
+#
+# Measured from main's CI on 2026-10-05: Tests & Build run 37348860914 (all nine legs), Corpus
+# Eval 37354962742, E2E Tests 37171092507. The examples reactors are not checked here: their
+# skips are the @Disabled demonstrations, which ExampleDisabledDemoTest and example-demos.yml gate.
+
+# Stream Gatherers became a final API in JDK 24 (JEP 485); on 21 these four assume it and skip.
+se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#jdkEvaluatesAGathererWithoutACombinerSequentiallyOnAParallelStream tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
+se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#detectorFedByARealGathererWithoutACombinerDoesNotClaimLostResults tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
+se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#twoParallelStreamsSharingOneStateThroughTheInitializerFire tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
+se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#oneParallelStreamHandingItsStateBetweenThreadsStaysSilentOnEnterAndExit tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
+# On 24+ it also skips when the JDK keeps all integration on one thread in five attempts, which a
+# loaded runner does: JDK 26 in PR #911's first run, with two surefire forks on a 4-core runner.
+se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#oneParallelStreamHandingItsStateBetweenThreadsStaysSilentOnEnterAndExit? tests/*,gradle/* # needs the JDK to hand the state between threads
+
+# The real-licence tests need the ATL_E2E_* secrets. license-e2e.yml runs them with
+# ATL_E2E_REQUIRED=true, and is checked here with no entry, so a skip there fails.
+se.deversity.asynctest.runner.RealKeygenLicenseE2eTest#theRealKeyValidatesAgainstTheLiveProvider tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
+se.deversity.asynctest.runner.RealKeygenLicenseE2eTest#aColleagueOnTheSameDomainIsDeniedByTheExactOwnerBinding tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
+se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#theRealFileCoversEveryAddressOnTheLicensedDomain tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
+se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#aForeignDomainIsDenied tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
+se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#aTamperedCopyOfTheRealFileIsDenied tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
+
+# Lane five reruns lane four's library rows with the libraries excluded from weaving; its JDK
+# rows have nothing to say there and are disabled by LibraryRowsOnly (46 of 80 on 2026-10-05).
+com.example.corpus.CorpusAgentPairLaneTest#* corpus/*/surefire-reports-agent-pairs-library-excluded # lane five runs library rows only

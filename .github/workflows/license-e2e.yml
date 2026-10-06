@@ -1,0 +1,134 @@
+name: License E2E
+
+# The only run that exercises a real licence grant: RealKeygenLicenseE2eTest against the live
+# Keygen account and RealOfflineLicenseE2eTest against the issued offline file, both with the
+# standing Deversity AB licence. Every other licence test is hermetic, and in tests.yml these two
+# skip because no ATL_E2E_* variable is set there. From 1.9.1 until this workflow they skipped on
+# every leg of every run, so a key the provider stopped accepting, or an issued file the embedded
+# vendor key no longer verifies, could not have turned anything red.
+#
+# ATL_E2E_REQUIRED=true makes LicenseE2eEnvironment fail instead of skip, and the last step counts
+# the reports, so this job cannot go green without all five tests having run. The weekly schedule
+# is the renewal reminder: the licence and the file expire 2027-08-11, and from then on this run
+# fails with LICENSE_EXPIRED / OFFLINE_LICENSE_EXPIRED until the secrets are renewed.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'async-test-lib/src/main/java/se/deversity/asynctest/runner/*License*.java'
+      - 'async-test-lib/src/test/java/se/deversity/asynctest/runner/*License*.java'
+      - '.github/workflows/license-e2e.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'async-test-lib/src/main/java/se/deversity/asynctest/runner/*License*.java'
+      - 'async-test-lib/src/test/java/se/deversity/asynctest/runner/*License*.java'
+      - '.github/workflows/license-e2e.yml'
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Secrets do not reach pull requests from forks or Dependabot. Without them the job is skipped,
+  # not run with every step skipped, so it can never report a pass it did not earn (#868).
+  preflight:
+    name: Check for the licence secrets
+    runs-on: ubuntu-latest
+    outputs:
+      has-secrets: ${{ steps.secrets.outputs.has-secrets }}
+    steps:
+      - name: Harden the runner (Block egress, allowlist only)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+
+      - name: Report whether the secrets are configured
+        id: secrets
+        env:
+          HAS_SECRETS: ${{ secrets.ATL_E2E_LICENSE_KEY != '' }}
+        run: |
+          echo "has-secrets=$HAS_SECRETS" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_SECRETS" != "true" ]; then
+            echo "SKIPPED: the ATL_E2E_* secrets are not available to this run; no licence was checked." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::License E2E skipped: the ATL_E2E_* secrets are not available. Skipped is not passed."
+          fi
+
+  license-e2e:
+    name: License E2E (live Keygen + offline file)
+    needs: preflight
+    if: needs.preflight.outputs.has-secrets == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          # api.keygen.sh is the point of the job: the Keygen test validates the real key there.
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.github.com:443
+            api.keygen.sh:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Write the issued offline licence file
+        env:
+          LICENSE_FILE_CONTENT: ${{ secrets.ATL_E2E_LICENSE_FILE_CONTENT }}
+        run: printf '%s\n' "$LICENSE_FILE_CONTENT" > "$RUNNER_TEMP/deversity-ab.atl-license"
+
+      - name: Run the real-licence E2E tests
+        env:
+          ATL_E2E_REQUIRED: 'true'
+          ATL_E2E_KEYGEN_ACCOUNT_ID: ${{ secrets.ATL_E2E_KEYGEN_ACCOUNT_ID }}
+          ATL_E2E_KEYGEN_PRODUCT_ID: ${{ secrets.ATL_E2E_KEYGEN_PRODUCT_ID }}
+          ATL_E2E_LICENSE_KEY: ${{ secrets.ATL_E2E_LICENSE_KEY }}
+          ATL_E2E_LICENSE_EMAIL: ${{ secrets.ATL_E2E_LICENSE_EMAIL }}
+        run: |
+          export ATL_E2E_LICENSE_FILE="$RUNNER_TEMP/deversity-ab.atl-license"
+          mvn -B -pl async-test-lib -am test -P e2e -Djacoco.skip=true \
+            -Dtest='RealKeygenLicenseE2eTest,RealOfflineLicenseE2eTest' \
+            -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905). No entry covers this job, so any skip here fails.
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "license-e2e" async-test-lib
+
+      # -Dsurefire.failIfNoSpecifiedTests=false is needed for the parent module, and it would
+      # also let a renamed class match nothing and pass. The reports are the ground truth.
+      - name: Require all five tests to have run
+        run: |
+          set -euo pipefail
+          dir=async-test-lib/target/surefire-reports
+          ran=$(cat "$dir"/TEST-*Real*LicenseE2eTest.xml | grep -c '<testcase ') || true
+          skipped=$(cat "$dir"/TEST-*Real*LicenseE2eTest.xml | grep -c '<skipped') || true
+          echo "real-licence E2E: $ran ran, $skipped skipped" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ran" -ne 5 ] || [ "$skipped" -ne 0 ]; then
+            echo "::error::Expected 5 real-licence E2E tests run and 0 skipped; got $ran run, $skipped skipped."
+            exit 1
+          fi

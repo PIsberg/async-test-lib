@@ -1,6 +1,7 @@
 package se.deversity.asynctest.runner;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.vibetags.annotations.AILocked;
 import se.deversity.vibetags.annotations.AISecure;
 
 import java.io.IOException;
@@ -54,6 +55,10 @@ final class OfflineLicense {
      * Rotating it invalidates every file issued so far against builds carrying the new key, which
      * is why {@code IssueOfflineLicense keygen} refuses to overwrite an existing private key.
      */
+    @AILocked(reason = "Every offline licence file already issued to a customer verifies against "
+        + "this key, and its private half exists only on the operator machine. A changed value "
+        + "denies each of those files with OFFLINE_FILE_SIGNATURE_INVALID on the customer's next "
+        + "build. Rotation means re-issuing every file first: a release decision, not a code edit.")
     private static final String VENDOR_VERIFY_KEY_B64 =
         "MCowBQYDK2VwAyEADqzMqb40PGwHTxJ0zVGBgrOOjbZ0fBfvG45h0RrUO7E=";
 

@@ -103,6 +103,12 @@ jobs:
             ${{ inputs.asyncTestVersion && format('-PasyncTestVersion={0}', inputs.asyncTestVersion) || '' }} \
             -PloadTestFast=true
 
+      - name: Check skipped tests against the baseline
+        # Nothing in load-tests/ can skip (no assumption, @Disabled or condition; fast mode only
+        # shrinks the parameters), so no baseline line covers this job and any skip fails (#905, #908).
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "load-tests" load-tests
+
       # Trend line, not gate: compares the sweep just written (the newest results dir) with the
       # newest committed baseline and prints ::warning:: lines above the band. Exit code is
       # always 0 by design; read the step summary on scheduled runs.

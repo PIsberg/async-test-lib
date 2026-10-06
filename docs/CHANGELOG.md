@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The real-licence E2E tests run in CI.** `RealKeygenLicenseE2eTest` and
+  `RealOfflineLicenseE2eTest` had skipped on every CI leg since 1.9.1, and the offline class also
+  skipped on the Windows operator machine, because the env file's MSYS path (`/c/Users/...`) does
+  not resolve in Java and a missing file read as "not configured". The new `license-e2e.yml`
+  workflow runs them from repository secrets with `ATL_E2E_REQUIRED=true`, and
+  `LicenseE2eEnvironment` now fails on a partial configuration or an unopenable file instead of
+  skipping. Nothing configured still skips, so contributor machines and `tests.yml` are unchanged.
+- **The licence validation cache no longer litters `~/.asynctest` on Windows.** When concurrent
+  writers recorded the same validation, Windows refused to replace the record another writer had
+  open; the failure was dropped by design, but the temporary file being moved was left behind. A
+  new `@AsyncTest` dogfood test measured about 1,265 stray files per 1,600 concurrent writes, on
+  every run. `record` now deletes its temporary file when the move does not consume it, and names
+  it uniquely: the old name came from the thread id, which the main thread of every forked test
+  JVM shares, so parallel forks could move each other's half-written record into place.
+
+### Changed
+
+- **A docs-only pull request can no longer wait forever on `E2E Tests` (#910).** The check is
+  required, but `e2e-tests.yml` skipped pull requests that touch only docs, so the context would
+  never report. Its pull-request trigger is no longer path-filtered, and
+  `RequiredCheckIsNeverPathFilteredTest`, whose copy of the required checks lacked `E2E Tests` and
+  `Corpus Eval`, now lists them and reads only pull-request filters.
+- **Two surefire forks on the Ubuntu CI legs is a recorded decision (#898).** Shipped in 1.12.4
+  ahead of its soak. The soak is now in: 17 Tests & Build runs (51 Ubuntu legs) with no failure and
+  no timeout, and the test step's median fell from 1,049 to 619 s on JDK 25 and from 1,066 to
+  947 s on JDK 21. The pom comment and `docs/BUILDING.md` record the numbers.
+- **CI fails when the set of skipped tests changes (#905).** Skips used to be a count in a log
+  line, and the real-licence E2E tests skipped unnoticed for two months. Every job that runs a
+  suite now runs `.github/scripts/skipped_tests_gate.py`, which fails when a test skips that
+  `.github/skipped-tests.txt` does not list, or a listed skip ran. `SkippedTestsGateWiringTest`
+  requires every test-running job to call it or carry a reason it does not.
+- **A Windows-only regression can fail a pull request (#907).** The full suite's Windows and
+  macOS legs are advisory and skip pull requests, so `LicenseValidationCacheDogfoodTest`, which
+  guards a temp-file leak only Windows produces, could go red on no leg that blocks anything. Test
+  classes like it carry the new `@OsSensitive` tag, and Tests & Build's `OS-Sensitive Tests` job
+  runs that tag on Windows and macOS on every event, as an ordinary failing job that also fails
+  when the tag selects nothing. Both legs are required checks on `main`.
+- **The weekly PIT run checks that each concurrency test would fail if its class broke (#909).**
+  `.github/scripts/concurrency_test_kills.py` mutates each `@ConcurrencyTestFor` class with only its
+  marked test, and fails below a per-class floor in `.github/concurrency-kill-floors.txt`. A test
+  weakened the way `LicenseGuard`'s old one was drops from 61% to 22% of the class's mutants and is
+  named.
+- **Every `@AIThreadSafe` class has a test that can fail when the claim breaks (#906).**
+  `ThreadSafetyClaimsAreTestedConcurrentlyTest` requires each class outside the detectors that
+  carries the annotation to be named with `@ConcurrencyTestFor` by a test that runs it through
+  `@AsyncTest` or a `CyclicBarrier`. The five such classes are covered; the new
+  `ConcurrencyRunnerCollisionDogfoodTest` checks that every worker of a round is in the body at once
+  and that rounds never overlap. `DetectorRegistry` claimed `SYNCHRONIZED` while holding no lock;
+  its claim now describes what makes it safe (final fields published before the workers start).
+- **Three licence guardrails reach the always-loaded `CLAUDE.md`.** `OfflineLicense`'s embedded
+  vendor key is `@AILocked`, so the Locked Files Guard stops any change that would deny every
+  offline file already issued; `LicenseValidationCache` is `@AISecure`, joining `LicenseGuard` and
+  `OfflineLicense`, because it decides when online validation is skipped and when outage grace
+  applies; and `LicenseGuard`'s fingerprint record is `@AIPrivacy`, the library's first, because
+  its generated `toString()` prints the licence key and the user's email together.
+
 ## [1.12.4] - 2026-10-04
 
 ### Changed

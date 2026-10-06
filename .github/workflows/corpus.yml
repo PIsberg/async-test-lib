@@ -135,6 +135,11 @@ jobs:
       - name: Run corpus eval
         run: mvn -f corpus-eval/pom.xml test
 
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905). Lane five disables its JDK rows by design; the baseline says so.
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "corpus/jdk${{ matrix.java-version }}" corpus-eval
+
       - name: Upload corpus eval report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
