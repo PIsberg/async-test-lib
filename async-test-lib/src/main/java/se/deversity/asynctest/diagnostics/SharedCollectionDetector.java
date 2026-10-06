@@ -253,11 +253,11 @@ public class SharedCollectionDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.concurrentWriteViolations) {
-                report.structuredViolations.add(new Violation("SharedCollection", severity,
+                report.structuredViolations.add(new Violation("SharedCollections", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.mixedAccessViolations) {
-                report.structuredViolations.add(new Violation("SharedCollection", severity,
+                report.structuredViolations.add(new Violation("SharedCollections", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

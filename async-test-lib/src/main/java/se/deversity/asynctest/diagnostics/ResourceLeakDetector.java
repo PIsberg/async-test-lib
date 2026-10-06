@@ -169,11 +169,11 @@ public class ResourceLeakDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.MEDIUM);
             for (String finding : report.resourceLeaks) {
-                report.structuredViolations.add(new Violation("ResourceLeak", severity,
+                report.structuredViolations.add(new Violation("ResourceLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.openResources) {
-                report.structuredViolations.add(new Violation("ResourceLeak", severity,
+                report.structuredViolations.add(new Violation("ResourceLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

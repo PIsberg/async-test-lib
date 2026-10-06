@@ -161,11 +161,11 @@ public class InheritableThreadLocalMisuseDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.pooledGetIssues) {
-                report.structuredViolations.add(new Violation("InheritableThreadLocalMisuse", severity,
+                report.structuredViolations.add(new Violation("InheritableThreadLocal", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.pooledSetIssues) {
-                report.structuredViolations.add(new Violation("InheritableThreadLocalMisuse", severity,
+                report.structuredViolations.add(new Violation("InheritableThreadLocal", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

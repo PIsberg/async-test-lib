@@ -274,7 +274,7 @@ public class CompletableFutureCompletionLeakDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
             for (LeakedFuture lf : leakedFutures) {
-                structuredViolations.add(new Violation("CompletableFutureCompletionLeak", severity,
+                structuredViolations.add(new Violation("CompletableFutureCompletionLeaks", severity,
                         lf.name + " (created by thread #" + lf.creatorThreadId + ", " + lf.ageMillis
                                 + "ms ago) never completed",
                         List.of(), Map.of(), Instant.now()));

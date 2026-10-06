@@ -714,7 +714,7 @@ public class ConditionVariableDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
             for (String waiter : stuckWaiters) {
-                structuredViolations.add(new Violation("ConditionVariable", severity,
+                structuredViolations.add(new Violation("ConditionVariables", severity,
                         waiter, List.of(), Map.of(), Instant.now()));
             }
         }

@@ -249,16 +249,16 @@ public class LivelockDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.CRITICAL);
             for (String thread : starvedThreads) {
-                structuredViolations.add(new Violation("Livelock", severity,
+                structuredViolations.add(new Violation("Livelocks", severity,
                         thread + ": starved, never got CPU time", List.of(), Map.of(), Instant.now()));
             }
             for (String thread : livelockCandidates) {
-                structuredViolations.add(new Violation("Livelock", severity,
+                structuredViolations.add(new Violation("Livelocks", severity,
                         thread + ": livelock candidate, changing state without progress",
                         List.of(), Map.of(), Instant.now()));
             }
             for (String thread : noProgressThreads) {
-                structuredViolations.add(new Violation("Livelock", severity,
+                structuredViolations.add(new Violation("Livelocks", severity,
                         thread + ": no progress", List.of(), Map.of(), Instant.now()));
             }
         }

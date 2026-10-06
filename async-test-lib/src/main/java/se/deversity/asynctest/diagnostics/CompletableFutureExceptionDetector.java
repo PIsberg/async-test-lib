@@ -193,15 +193,15 @@ public class CompletableFutureExceptionDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.unhandledExceptions) {
-                report.structuredViolations.add(new Violation("CompletableFutureException", severity,
+                report.structuredViolations.add(new Violation("CompletableFutureExceptions", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.missingHandlers) {
-                report.structuredViolations.add(new Violation("CompletableFutureException", severity,
+                report.structuredViolations.add(new Violation("CompletableFutureExceptions", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.swallowedExceptions) {
-                report.structuredViolations.add(new Violation("CompletableFutureException", severity,
+                report.structuredViolations.add(new Violation("CompletableFutureExceptions", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

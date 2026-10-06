@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **21 detectors' structured findings now carry a name `DetectorTrust` resolves (#930).** Their
+  `Violation.detector()` literal was a third spelling, neither the class name nor the alias
+  (`"BusyWait"` beside `"BusyWaiting"`), so `DetectorTrust.tierOfDetector(v.detector())` answered
+  PROMPT for them whatever their tier. 44 literals now use the alias the other 125 detectors already
+  use. Listeners and `AsyncFindings` were not affected: they receive the class name. A new check in
+  `DetectorTrustCoverageTest` resolves every literal; it listed all 44 before the fix.
 - **The weekly concurrency kill check measures every test marked for a class.** It keyed its
   results by class, so a second `@ConcurrencyTestFor` for the same class silently replaced the
   first. It now runs PIT once per class with all of its marked tests together, and `RendezvousTest`

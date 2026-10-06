@@ -178,15 +178,15 @@ public class SemaphoreMisuseDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.permitLeaks) {
-                report.structuredViolations.add(new Violation("SemaphoreMisuse", severity,
+                report.structuredViolations.add(new Violation("Semaphore", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.overReleases) {
-                report.structuredViolations.add(new Violation("SemaphoreMisuse", severity,
+                report.structuredViolations.add(new Violation("Semaphore", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.unreleasedPermits) {
-                report.structuredViolations.add(new Violation("SemaphoreMisuse", severity,
+                report.structuredViolations.add(new Violation("Semaphore", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

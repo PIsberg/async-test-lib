@@ -315,15 +315,15 @@ public class ConcurrentModificationDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.concurrentModifications) {
-                report.structuredViolations.add(new Violation("ConcurrentModification", severity,
+                report.structuredViolations.add(new Violation("ConcurrentModifications", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.concurrentIterations) {
-                report.structuredViolations.add(new Violation("ConcurrentModification", severity,
+                report.structuredViolations.add(new Violation("ConcurrentModifications", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.concurrentMutations) {
-                report.structuredViolations.add(new Violation("ConcurrentModification", severity,
+                report.structuredViolations.add(new Violation("ConcurrentModifications", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

@@ -146,7 +146,7 @@ public class CopyOnWriteCollectionDetector {
                         state.name, state.collectionType,
                         writeRatio * 100, writes, reads);
                 report.writeHeavyViolations.add(finding);
-                report.structuredViolations.add(new Violation("CopyOnWriteCollection", IssueSeverity.MEDIUM,
+                report.structuredViolations.add(new Violation("CopyOnWriteCollections", IssueSeverity.MEDIUM,
                         finding, List.of(), Map.of(), Instant.now()));
             }
 

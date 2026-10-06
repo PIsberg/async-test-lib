@@ -262,15 +262,15 @@ public class HttpClientConcurrencyDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.pendingRequests) {
-                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                report.structuredViolations.add(new Violation("HttpClient", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.uncompletedRequests) {
-                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                report.structuredViolations.add(new Violation("HttpClient", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.poolExhaustionRisk) {
-                report.structuredViolations.add(new Violation("HttpClientConcurrency", severity,
+                report.structuredViolations.add(new Violation("HttpClient", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

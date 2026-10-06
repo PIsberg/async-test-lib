@@ -209,15 +209,15 @@ public class ParallelStreamDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.statefulLambdas) {
-                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                report.structuredViolations.add(new Violation("ParallelStreams", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.nonThreadSafeCollectors) {
-                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                report.structuredViolations.add(new Violation("ParallelStreams", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.sideEffects) {
-                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                report.structuredViolations.add(new Violation("ParallelStreams", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

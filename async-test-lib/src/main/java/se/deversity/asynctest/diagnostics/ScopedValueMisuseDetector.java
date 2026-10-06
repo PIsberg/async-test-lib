@@ -179,11 +179,11 @@ public class ScopedValueMisuseDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
                 for (String finding : unboundGetIssues) {
-                    structuredViolations.add(new Violation("ScopedValueMisuse", severity,
+                    structuredViolations.add(new Violation("ScopedValue", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : rebindIssues) {
-                    structuredViolations.add(new Violation("ScopedValueMisuse", severity,
+                    structuredViolations.add(new Violation("ScopedValue", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
         }

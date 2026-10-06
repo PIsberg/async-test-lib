@@ -495,6 +495,44 @@ class DetectorTrustCoverageTest {
                         + "commented line: " + contradictions);
     }
 
+    /**
+     * A detector's structured findings name it the way {@link DetectorTrust} resolves it (#930).
+     *
+     * <p>{@code Violation.detector()} on a detector's own {@code structuredViolations} is a string
+     * literal in its source. 21 detectors used a third spelling, neither the class name nor the
+     * alias the table also accepts ({@code "BusyWait"} beside {@code "BusyWaiting"}), so
+     * {@code tierOfDetector(v.detector())} answered PROMPT for them whatever their tier, and
+     * {@code typeOfDetector} answered empty.
+     */
+    @Test
+    @DisplayName("every structured violation names a detector DetectorTrust resolves to its own type")
+    void everyStructuredViolationResolvesToItsOwnDetector() {
+        Path diagnostics = repoRoot().resolve("async-test-lib/src/main/java/se/deversity/asynctest/diagnostics");
+        Pattern literal = Pattern.compile("new Violation\\(\\s*\"(\\w+)\"");
+        List<String> wrong = new ArrayList<>();
+        int scanned = 0;
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            Path source = diagnostics.resolve(row.detectorClass() + ".java");
+            if (!Files.isRegularFile(source)) {
+                continue;
+            }
+            Matcher m = literal.matcher(read(source));
+            while (m.find()) {
+                scanned++;
+                String name = m.group(1);
+                if (!DetectorTrust.typeOfDetector(name).equals(java.util.Optional.of(row.type()))) {
+                    wrong.add(row.detectorClass() + " reports as \"" + name + "\" (resolves to "
+                            + DetectorTrust.typeOfDetector(name).map(Enum::name).orElse("nothing")
+                            + ", alias is \"" + row.spiName() + "\")");
+                }
+            }
+        }
+        assertTrue(scanned > 100, "expected the scan to find the detectors' Violation literals, found " + scanned);
+        assertTrue(wrong.isEmpty(), wrong.size() + " detectors name their structured findings with a "
+                + "string DetectorTrust does not resolve to their own type, so a consumer asking for "
+                + "the tier of one of those findings gets PROMPT:\n  " + String.join("\n  ", wrong));
+    }
+
     private static Path repoRoot() {
         Path dir = Path.of("").toAbsolutePath();
         for (int i = 0; i < 6 && dir != null; i++) {

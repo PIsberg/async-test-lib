@@ -219,7 +219,7 @@ public class VirtualThreadCpuBoundTaskDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
                 for (String finding : violations) {
-                    structuredViolations.add(new Violation("VirtualThreadCpuBoundTask", severity,
+                    structuredViolations.add(new Violation("VirtualThreadCpuBound", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
         }

@@ -212,19 +212,19 @@ public class StructuredConcurrencyMisuseDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
                 for (String finding : unclosedScopes) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : closedWithoutJoin) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : resultAccessedBeforeJoin) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : emptyScopes) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
         }

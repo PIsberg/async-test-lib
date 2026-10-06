@@ -230,15 +230,15 @@ public class LockLeakDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.CRITICAL);
             for (String finding : report.lockLeaks) {
-                report.structuredViolations.add(new Violation("LockLeak", severity,
+                report.structuredViolations.add(new Violation("LockLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.heldLocks) {
-                report.structuredViolations.add(new Violation("LockLeak", severity,
+                report.structuredViolations.add(new Violation("LockLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.excessiveHoldTimes) {
-                report.structuredViolations.add(new Violation("LockLeak", severity,
+                report.structuredViolations.add(new Violation("LockLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

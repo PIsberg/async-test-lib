@@ -76,8 +76,9 @@ public final class DetectorTrust {
      * @param type          the public {@link DetectorType} constant
      * @param detectorClass simple name of the detector class, which is the key
      *                      {@code DetectorRegistry.ifIssue} puts in the report map
-     * @param spiName       short name the SPI bridge reported as {@code Violation.detector()} until
-     *                      1.13.0 deleted it (#922); still accepted as a lookup alias
+     * @param spiName       the short name a detector's own structured violations carry as
+     *                      {@code Violation.detector()} (#930), also what the SPI bridge reported
+     *                      until 1.13.0 deleted it (#922); accepted as a lookup alias
      * @param tier          the weakest tier this detector can produce
      */
     public record Row(DetectorType type, String detectorClass, String spiName, TrustTier tier) { }

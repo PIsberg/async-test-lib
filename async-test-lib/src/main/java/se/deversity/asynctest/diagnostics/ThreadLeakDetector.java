@@ -309,7 +309,7 @@ public class ThreadLeakDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.MEDIUM);
             for (ThreadLeakEvent leak : leaks) {
-                structuredViolations.add(new Violation("ThreadLeak", severity,
+                structuredViolations.add(new Violation("ThreadLeaks", severity,
                         leak.threadName + ": " + leak.reason, List.of(), Map.of(), Instant.now()));
             }
         }

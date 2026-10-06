@@ -207,11 +207,11 @@ public class VirtualThreadContextLeakDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
                 for (String finding : leaks) {
-                    structuredViolations.add(new Violation("VirtualThreadContextLeak", severity,
+                    structuredViolations.add(new Violation("VirtualThreadContextLeaks", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : inheritableInVirtualIssues) {
-                    structuredViolations.add(new Violation("VirtualThreadContextLeak", severity,
+                    structuredViolations.add(new Violation("VirtualThreadContextLeaks", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
         }
