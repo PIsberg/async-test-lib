@@ -2,6 +2,7 @@ package se.deversity.asynctest.runner;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import se.deversity.asynctest.OsSensitive;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -33,7 +34,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * file so their loops overlap rather than being staggered by JVM startup, then record and read
  * back {@link #ITERATIONS} times each. Every read-back must be fresh, and the directory must end
  * holding the one record and nothing else.
+ *
+ * <p>{@code @OsSensitive}: whether a move onto a record another process has open succeeds is the
+ * platform's call, and Windows refuses it, so the end-state assertion means most on Windows (#907).
  */
+@OsSensitive
 class LicenseValidationCacheCrossJvmTest {
 
     private static final int FORKS = 4;

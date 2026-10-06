@@ -65,6 +65,19 @@ When a change is OS-sensitive, ask for the full matrix on the branch:
 `gh workflow run tests.yml --ref <branch>`. A dispatch is not a pull request, so it runs
 all nine legs.
 
+That leaves a gap for a test whose defect only Windows or macOS produces: no leg that runs it
+can fail. `LicenseValidationCacheDogfoodTest` is one. It guards a temp-file leak that Windows
+produces and Linux cannot (#904), so if the leak came back, nothing would go red, before or after
+the merge. Such a class carries `@OsSensitive` (the `os-sensitive` tag), and Tests & Build's
+`OS-Sensitive Tests` job runs only those classes on `windows-latest` and `macos-latest`, on every
+event and without `continue-on-error`, and both legs are required checks on `main` since
+2026-10-05 (#907). It takes minutes rather than eighteen, and a step
+after the run fails it when the tag selected no class, so a lost tag cannot pass empty.
+`OsSensitiveTestsBlockOnEveryOsTest` pins the tag id, the tagged classes and the job's shape.
+Verified on Windows by restoring the pre-#904 `record()`: the job's command fails with 1,274
+stray files, and passes with the fix. Tag a class only when its failure depends on the platform's
+file system, process or scheduling semantics; every tagged class runs on two more runners per push.
+
 The other half of #484 was that nine of the nineteen workflows had no `concurrency:` group, so
 a force-push left the previous run alive to compete for runners with the one replacing it.
 `WorkflowConcurrencyTest` holds that closed from both directions a new workflow can open it:

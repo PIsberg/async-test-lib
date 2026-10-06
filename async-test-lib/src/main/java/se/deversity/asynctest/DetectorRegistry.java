@@ -174,7 +174,7 @@ import java.util.function.Function;
     focus = "Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) conditional construction in the constructor keyed on the config flag, (3) an analyzeAll() call in the correct phase block. All three steps must be added together.",
     avoids = "partial patterns — a field without construction or analysis silently skips detection"
 )
-@AIThreadSafe(strategy = AIThreadSafe.Strategy.SYNCHRONIZED, note = "Guards conditional access to internal detector initialization and phase blocks.")
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "No locks: every detector field is final and assigned in the constructor, before ConcurrencyRunner publishes the registry to its workers, so every worker of a run reads the same instances and each detector carries its own thread safety. The last* maps are written only by analyzeAllNamed(), which the runner calls on its own thread after the workers have quiesced.")
 final class DetectorRegistry {
 
     // ---- Phase 1 ----

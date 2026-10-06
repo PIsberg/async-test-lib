@@ -93,6 +93,11 @@ jobs:
       - name: Run JVM language fixtures (Kotlin, Groovy, Scala)
         run: ./gradlew -p consumer-fixture-langs test
 
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905).
+        shell: bash
+        run: $(command -v python3 || command -v python) .github/scripts/skipped_tests_gate.py . "gradle/jdk${{ matrix.java-version }}" .
+
       - name: Check coverage file exists
         run: |
           if [ -f ./async-test-lib/build/reports/jacoco/test/jacocoTestReport.xml ]; then
@@ -164,6 +169,12 @@ jobs:
       - name: Run plugin tests and build the plugin ZIP
         working-directory: intellij-plugin
         run: ./gradlew test buildPlugin
+
+      - name: Check skipped tests against the baseline
+        # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905).
+        shell: bash
+        working-directory: intellij-plugin
+        run: $(command -v python3 || command -v python) ../.github/scripts/skipped_tests_gate.py .. "intellij" .
 
       # A green Gradle run does not prove the suite executed. Fail unless a result file exists
       # and reports at least one test.
