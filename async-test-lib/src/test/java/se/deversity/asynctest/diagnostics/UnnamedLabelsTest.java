@@ -72,4 +72,25 @@ class UnnamedLabelsTest {
         }
         assertEquals(threads * perThread, seen.size(), "every object got its own number");
     }
+
+    /**
+     * A label does not keep its object alive (#929). The label map held a strong key per unnamed
+     * object, so every detector using it kept every object a test recorded without a name for the
+     * whole run, even where the detector's own state was weak.
+     */
+    @Test
+    void aLabelledObjectCanStillBeCollected() throws Exception {
+        UnnamedLabels labels = new UnnamedLabels();
+        AbstractInstanceDetectorTest.assertNotRetained(subject -> labels.of(subject, "item"));
+        AbstractInstanceDetectorTest.assertNotRetained(subject -> labels.of(new IdentityKey(subject), "item"));
+    }
+
+    @Test
+    void aLiveObjectKeepsItsLabelThroughEitherOverload() {
+        UnnamedLabels labels = new UnnamedLabels();
+        Object subject = new Object();
+        String first = labels.of(subject, "item");
+        assertEquals(first, labels.of(new IdentityKey(subject), "item"));
+        assertEquals(first, labels.of(subject, "item"));
+    }
 }

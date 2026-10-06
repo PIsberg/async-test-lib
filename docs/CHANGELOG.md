@@ -63,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A detector no longer keeps an unnamed subject alive through its label (#929).**
+  `UnnamedLabels`, which 70 detectors use to name objects a test recorded without a name, held a
+  strong key per object, so each such object stayed reachable for the whole run even where the
+  detector's own state was weak. It now keys weakly; a live object keeps its label. Retention tests
+  for both lookup paths and for `AbstractInstanceDetector` with an unnamed subject were red (still
+  held after 50 collections) before the change.
 - **21 detectors' structured findings now carry a name `DetectorTrust` resolves (#930).** Their
   `Violation.detector()` literal was a third spelling, neither the class name nor the alias
   (`"BusyWait"` beside `"BusyWaiting"`), so `DetectorTrust.tierOfDetector(v.detector())` answered

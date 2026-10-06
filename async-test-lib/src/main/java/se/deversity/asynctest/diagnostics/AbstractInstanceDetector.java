@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentMap;
  * so a detector does not keep alive an object the code under test dropped. The entry is never
  * removed: once the instance is collected its key equals only itself, the state stays, and so does
  * any finding the state already latched. What is released is the object, never the evidence.
- * An unnamed instance's label is kept by {@link UnnamedLabels}, which still holds the object.
+ * An unnamed instance's label is kept by {@link UnnamedLabels}, which keys it weakly too (#929).
  *
  * <p>Subclasses stay in this package; the class is not API.
  *

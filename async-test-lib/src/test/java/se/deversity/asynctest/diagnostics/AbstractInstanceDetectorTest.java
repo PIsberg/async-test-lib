@@ -105,6 +105,12 @@ class AbstractInstanceDetectorTest {
         assertEquals(1, probe.states().size(), "the state, and any finding in it, outlives the subject");
     }
 
+    @Test
+    void anUnnamedSubjectIsNotKeptAliveByItsLabel() throws Exception {
+        Probe probe = new Probe();
+        assertNotRetained(instance -> probe.record(instance, null));
+    }
+
     /**
      * Fails unless an object recorded through {@code record}, then dropped, can be collected: the
      * retention property every detector built on {@link AbstractInstanceDetector} has. Each
