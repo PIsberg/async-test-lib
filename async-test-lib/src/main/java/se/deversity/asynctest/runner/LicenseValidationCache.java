@@ -1,5 +1,6 @@
 package se.deversity.asynctest.runner;
 
+import org.jspecify.annotations.Nullable;
 import se.deversity.vibetags.annotations.AISecure;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -7,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
@@ -39,12 +41,20 @@ import java.util.HexFormat;
     strategy = AIThreadSafe.Strategy.OTHER,
     note = "Stateless static methods over the filesystem. Concurrent writers race on an atomic "
         + "temp-file move where the losing write is equivalent to the winning one; readers see "
-        + "either the old complete file or the new complete file, never a partial write."
+        + "either the old complete file or the new complete file, never a partial write. On "
+        + "Windows a read that meets a replace in progress fails with AccessDeniedException, so "
+        + "isFresh retries any read failure but a missing file for up to 127 ms (#928)."
 )
 @AISecure(aspect = "authorization (isFresh skips online validation; hasRecord admits outage grace)")
 final class LicenseValidationCache {
 
     private static final long DEFAULT_TTL_HOURS = 24;
+
+    /**
+     * Reads of an existing record before {@link #isFresh} gives up: backoff 1, 2, 4 ... 64 ms,
+     * 127 ms in all, paid only while the file cannot be read.
+     */
+    private static final int READ_ATTEMPTS = 8;
 
     private LicenseValidationCache() {}
 
@@ -65,14 +75,47 @@ final class LicenseValidationCache {
             return false;
         }
         try {
-            Path file = fileFor(hash);
-            if (!Files.isRegularFile(file)) {
+            String content = readRetrying(fileFor(hash));
+            if (content == null) {
                 return false;
             }
-            long validatedAt = Long.parseLong(Files.readString(file, StandardCharsets.UTF_8).trim());
+            long validatedAt = Long.parseLong(content.trim());
             return System.currentTimeMillis() - validatedAt < ttlHours * 3_600_000L;
         } catch (IOException | RuntimeException e) {
             return false;
+        }
+    }
+
+    /**
+     * {@return the record's content, or {@code null} when there is no record}
+     *
+     * <p>Only a missing file means no record. Every forked JVM of a licensed build writes the same
+     * file, and on Windows a read that meets a replace in progress fails with
+     * {@code AccessDeniedException}: measured once in eight runs of the concurrent-writers dogfood
+     * test under CPU load (#928). Read as "no record", that sends a licensed run back online, so
+     * any other failure is retried with backoff before it is thrown. The retry changes nothing about
+     * what is accepted: the content must still parse to a timestamp within the TTL.
+     */
+    private static @Nullable String readRetrying(Path file) throws IOException {
+        long backoffMs = 1;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return Files.readString(file, StandardCharsets.UTF_8);
+            } catch (NoSuchFileException e) {
+                return null;
+            } catch (IOException e) {
+                if (attempt >= READ_ATTEMPTS) {
+                    throw e;
+                }
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    e.addSuppressed(interrupted);
+                    throw e;
+                }
+                backoffMs *= 2;
+            }
         }
     }
 

@@ -63,6 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A licensed run no longer revalidates online because the cache file was being replaced (#928).**
+  On Windows, a read that meets another JVM's replace of the validation record fails with
+  `AccessDeniedException`, and `LicenseValidationCache.isFresh` read every failure as "no fresh
+  record". Measured: one failure in eight runs of the concurrent-writers dogfood test under eight
+  CPU-bound threads, and the exception was that one. Only a missing file now means no record; any
+  other read failure is retried with backoff for up to 127 ms. What is accepted is unchanged: the
+  content must still parse to a timestamp within the TTL. `LicenseValidationCacheTransientReadTest`
+  holds an exclusive lock on the record for 50 ms; it failed 3 of 3 times before the change.
 - **A detector no longer keeps an unnamed subject alive through its label (#929).**
   `UnnamedLabels`, which 70 detectors use to name objects a test recorded without a name, held a
   strong key per object, so each such object stayed reachable for the whole run even where the

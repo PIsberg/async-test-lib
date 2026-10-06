@@ -35,7 +35,8 @@ class OsSensitiveTestsBlockOnEveryOsTest {
     /** Classes whose defect only reproduces off Linux; each one's javadoc says why. */
     private static final List<String> KNOWN = List.of(
             "se.deversity.asynctest.runner.LicenseValidationCacheDogfoodTest",
-            "se.deversity.asynctest.runner.LicenseValidationCacheCrossJvmTest");
+            "se.deversity.asynctest.runner.LicenseValidationCacheCrossJvmTest",
+            "se.deversity.asynctest.runner.LicenseValidationCacheTransientReadTest");
 
     @Test
     @DisplayName("@OsSensitive carries the tag id the job selects")
