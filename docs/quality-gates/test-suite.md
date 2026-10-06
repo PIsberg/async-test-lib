@@ -113,14 +113,16 @@ covers the runner's own claim, and goes red when the runner serializes its worke
 
 Naming a class and running it concurrently is not yet a test that fails when the class breaks, and
 source cannot tell the difference. The weekly mutation run can: `.github/scripts/concurrency_test_kills.py`
-runs PIT once per marker pair, with the class as the only target and the marked test as the only
-test, and fails when the share of mutants that test detects falls below the class's floor in
+runs PIT once per marked class, with the class as the only target and the tests marked for it as
+the only tests (all of them together, so a second marker cannot silently replace the first, #925),
+and fails when the share of mutants that test detects falls below the class's floor in
 `.github/concurrency-kill-floors.txt` (#909). A full PIT run cannot answer it, because without the
 full mutation matrix `mutations.xml` names only the first test to kill a mutant, and the slow
 `@AsyncTest` tests are rarely first. Measured on 2026-10-05, the marked tests alone detect 61% of
 `LicenseGuard`'s mutants, 42% of `LicenseValidationCache`'s, 38% of `ConcurrencyRunner`'s and 6% of
 `AsyncTestContext`'s and `DetectorRegistry`'s, whose mutants sit mostly in per-detector accessors a
-ThreadLocal test never reaches. Floors sit 5 to 10 points under those numbers. Verified by
+ThreadLocal test never reaches. Adding `RendezvousTest` beside `AsyncTestContextTest` on 2026-10-06
+raised `AsyncTestContext` to 21% (109/512, 78 of the kills its own). Floors sit 5 to 10 points under those numbers. Verified by
 weakening `LicenseGuardGateOnceDogfoodTest` so it no longer asserts that the provider was asked
 once: `LicenseGuard` falls to 22% and the check names it. A scoped run scores below the pom's 76%
 suite threshold by design, and that threshold is a POM literal that `-DmutationThreshold` cannot

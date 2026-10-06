@@ -1,7 +1,7 @@
 # The share of a class's PIT mutants that its @ConcurrencyTestFor test detects on its own.
 #
-# .github/scripts/concurrency_test_kills.py runs PIT once per marker pair, with the named class
-# (and its nested classes) as the only target and the marked test as the only test, and fails the
+# .github/scripts/concurrency_test_kills.py runs PIT once per marked class, with the class (and its
+# nested classes) as the only target and every test marked for it as the only tests (#925), and fails the
 # weekly mutation.yml run when a pair falls below its floor here, when a marked class has no line,
 # or when a line names a class no marker does (#909). The point is the property #906 cannot check
 # from source: a test that names a class and runs it concurrently, but would pass if it broke.
@@ -14,7 +14,7 @@
 # needs the reason in the commit. AsyncTestContext and DetectorRegistry are low by construction:
 # most of their mutants sit in per-detector accessors that a ThreadLocal test never reaches.
 
-AsyncTestContext 4 # 31/494 by AsyncTestContextTest
+AsyncTestContext 14 # 109/512 by AsyncTestContextTest and RendezvousTest together, 78 of them RendezvousTest's (2026-10-06)
 DetectorRegistry 4 # 21/324 by AsyncTestContextTest
 ConcurrencyRunner 32 # 95/250 by ConcurrencyRunnerCollisionDogfoodTest
 LicenseGuard 52 # 65/106 by LicenseGuardGateOnceDogfoodTest

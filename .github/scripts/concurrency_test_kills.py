@@ -7,6 +7,7 @@ breaks: LicenseGuard's old cacheIsThreadSafe asserted a ConcurrentHashMap's size
 whatever the gate does (#904). Mutation testing asks the question directly (#909). For each
 marker pair this runs PIT on the named class with only the marked test, and fails when the share
 of mutants that test detects falls below the class's floor in .github/concurrency-kill-floors.txt.
+A class marked by several tests is mutated once, with all of them together (#925).
 
 A full PIT run cannot answer it: without the full mutation matrix, mutations.xml records only the
 first test that killed a mutant, and the slow @AsyncTest tests are rarely first.
@@ -15,7 +16,7 @@ Usage:
     concurrency_test_kills.py <repo-root>                 run PIT per pair, check the floors
     concurrency_test_kills.py <repo-root> --self-test     parser and floor logic on known input
 
-Needs mvn on PATH. Each pair takes one scoped PIT run, about one to three minutes.
+Needs mvn on PATH. Each marked class takes one scoped PIT run, about one to three minutes.
 """
 import re
 import shutil
@@ -52,6 +53,21 @@ def pairs(repo_root):
                 for name in CLASS_LITERAL.findall(marker.group(1)):
                     found.append((module, name, main_by_name.get(name, name), fqn(test)))
     return found
+
+
+def targets(found):
+    """{class simple name: (module, class fqn, [test fqn])}, every marked test for a class kept.
+
+    Keying the pairs by class alone let a second marker for a class silently replace the first
+    (#925), so the floor measured whichever test the scan met last. All of a class's tests run in
+    one PIT run instead, and its floor is the share they detect together.
+    """
+    grouped = {}
+    for module, name, cls, test in found:
+        tests = grouped.setdefault(name, (module, cls, []))[2]
+        if test not in tests:
+            tests.append(test)
+    return grouped
 
 
 def load_floors(text):
@@ -96,8 +112,8 @@ def check(results, floors):
         errors.append(f"{FLOORS_FILE} has a floor for {name}, but no @ConcurrencyTestFor names it")
     return errors
 
-def run_pit(repo_root, module, class_fqn, test_fqn):
-    """Run PIT on one class (and its nested classes) with one test; return (detected, total)."""
+def run_pit(repo_root, module, class_fqn, test_fqns):
+    """Run PIT on one class (and its nested classes) with its marked tests; return (detected, total)."""
     reports = repo_root / module / "target" / "pit-concurrency" / class_fqn.rsplit(".", 1)[-1]
     shutil.rmtree(reports, ignore_errors=True)
     # The pom's <mutationThreshold> is a literal, which beats -DmutationThreshold, and one class
@@ -106,7 +122,7 @@ def run_pit(repo_root, module, class_fqn, test_fqn):
     # against this class's own floor.
     command = [shutil.which("mvn") or "mvn", "-B", "-q", "-pl", module, "test-compile",
                "org.pitest:pitest-maven:mutationCoverage",
-               f"-DtargetClasses={class_fqn},{class_fqn}$*", f"-DtargetTests={test_fqn}",
+               f"-DtargetClasses={class_fqn},{class_fqn}$*", f"-DtargetTests={','.join(test_fqns)}",
                f"-DreportsDirectory={reports}", "-Djacoco.skip=true", "-Dlicense.mock.mode=true"]
     print("running:", " ".join(command[4:]), flush=True)
     subprocess.run(command, cwd=repo_root, check=False)
@@ -146,9 +162,16 @@ def self_test(repo_root):
         except ValueError:
             pass
 
+    grouped = targets([("m", "A", "p.A", "t.X"), ("m", "B", "p.B", "t.X"), ("m", "A", "p.A", "t.Y")])
+    expect(grouped == {"A": ("m", "p.A", ["t.X", "t.Y"]), "B": ("m", "p.B", ["t.X"])},
+           f"every marked test for a class runs together, none replaces another: {grouped}")
+
     found = pairs(repo_root)
     names = {name for _, name, _, _ in found}
     expect({"LicenseGuard", "ConcurrencyRunner"} <= names, f"the marker scan sees the pairs: {found}")
+    context_tests = targets(found).get("AsyncTestContext", ("", "", []))[2]
+    expect("se.deversity.asynctest.RendezvousTest" in context_tests,
+           f"RendezvousTest drives AsyncTestContext.rendezvous() and must be marked for it (#925): {context_tests}")
     expect(all("." in cls for _, _, cls, _ in found), f"every target resolves to a main class: {found}")
     try:
         real = load_floors((repo_root / FLOORS_FILE).read_text(encoding="utf-8"))
@@ -173,9 +196,10 @@ def main(argv):
         return 2
     floors = load_floors((repo_root / FLOORS_FILE).read_text(encoding="utf-8"))
     results, failed = {}, []
-    for module, name, class_fqn, test_fqn in pairs(repo_root):
+    for name, (module, class_fqn, test_fqns) in sorted(targets(pairs(repo_root)).items()):
+        test_fqn = ", ".join(test_fqns)
         try:
-            detected, total = run_pit(repo_root, module, class_fqn, test_fqn)
+            detected, total = run_pit(repo_root, module, class_fqn, test_fqns)
         except RuntimeError as e:
             # One broken pair (often the marked test failing unmutated) must not hide the rest.
             failed.append(f"{name}: {e}")

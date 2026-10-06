@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The weekly concurrency kill check measures every test marked for a class.** It keyed its
+  results by class, so a second `@ConcurrencyTestFor` for the same class silently replaced the
+  first. It now runs PIT once per class with all of its marked tests together, and `RendezvousTest`
+  is marked for `AsyncTestContext`: the class's kill share rose from 6% to 21% (109/512), and its
+  floor from 4% to 14% (#925).
 - **The real-licence E2E tests run in CI.** `RealKeygenLicenseE2eTest` and
   `RealOfflineLicenseE2eTest` had skipped on every CI leg since 1.9.1, and the offline class also
   skipped on the Windows operator machine, because the env file's MSYS path (`/c/Users/...`) does

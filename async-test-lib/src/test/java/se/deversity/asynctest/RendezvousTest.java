@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * The failure directions (a peer that throws, a peer that never arrives) need the engine and are in
  * {@code RendezvousFailureE2eTest}.
  */
+@ConcurrencyTestFor(AsyncTestContext.class)
 class RendezvousTest {
 
     private static final int THREADS = 4;
