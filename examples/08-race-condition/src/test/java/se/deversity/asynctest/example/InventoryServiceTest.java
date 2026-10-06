@@ -137,7 +137,7 @@ class InventoryServiceTest {
      *    the update indivisible
      */
     @Disabled("Remove @Disabled to see race condition detected by RaceConditionDetector")
-    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW, detectAll = true)
     void testReserveItem_concurrent_detectsRaceCondition() {
         // RaceConditionDetector is recording-fed: nothing reaches it unless the code under test
         // says which object and field it touched. This demonstration used to record nothing at

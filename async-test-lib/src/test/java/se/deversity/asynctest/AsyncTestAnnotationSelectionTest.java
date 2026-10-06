@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * <p>2.0.0 removed the per-detector boolean attributes (#920). Under 1.x {@code detectAll = false}
  * did not mean "none": it left every attribute at its default, and 144 of the 146 defaulted to
  * {@code true}. A selection is now said with {@code includes}, {@code excludes} and {@code preset},
- * and {@code detectAll = false} on its own selects nothing.
+ * and {@code detectAll = false} only declines the every-detector opt-in, leaving the preset in
+ * charge (#923; what a bare annotation selects is {@link LeanDefaultSelectionTest}'s subject).
  */
 class AsyncTestAnnotationSelectionTest {
 
@@ -23,8 +24,8 @@ class AsyncTestAnnotationSelectionTest {
     }
 
     @Test
-    void detectAllFalseOnItsOwnSelectsNothing() throws Exception {
-        assertEquals(EnumSet.noneOf(DetectorType.class), selectionOf("detectAllFalse"));
+    void detectAllFalseLeavesANamedPresetInCharge() throws Exception {
+        assertEquals(Preset.CI_FAST.enabled(), selectionOf("detectAllFalseCiFast"));
     }
 
     @Test
@@ -47,8 +48,8 @@ class AsyncTestAnnotationSelectionTest {
     }
 
     static class Fixtures {
-        @AsyncTest(detectAll = false)
-        void detectAllFalse() { }
+        @AsyncTest(detectAll = false, preset = Preset.CI_FAST)
+        void detectAllFalseCiFast() { }
 
         @AsyncTest(includes = {DetectorType.FALSE_SHARING, DetectorType.TIMER})
         void includesTwo() { }

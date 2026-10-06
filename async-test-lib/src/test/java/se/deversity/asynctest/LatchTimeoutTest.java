@@ -57,7 +57,8 @@ class LatchTimeoutTest {
         @AsyncTest(threads = 2,
                    invocations = 1,
                    timeoutMs = 300,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void oneThreadHangsForever() throws InterruptedException {
             if (role.getAndIncrement() == 0) {
                 // this thread never reaches latch.countDown()

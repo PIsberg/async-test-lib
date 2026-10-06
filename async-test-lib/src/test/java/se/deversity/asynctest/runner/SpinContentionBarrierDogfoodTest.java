@@ -40,7 +40,7 @@ class SpinContentionBarrierDogfoodTest {
 
     private static final AtomicInteger BODY_EXECUTIONS = new AtomicInteger();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000, detectAll = true)
     void noThreadIsReleasedBeforeEveryPeerHasArrived() throws InterruptedException {
         BODY_EXECUTIONS.incrementAndGet();
         arrived.incrementAndGet();

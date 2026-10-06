@@ -46,7 +46,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class CrossRoundOnly {
         static final AtomicInteger EXECUTIONS = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 2)
+        @AsyncTest(threads = 2, invocations = 2, detectAll = true)
         void body() {
             // Rounds are totally ordered by the runner, so the first two executions are round
             // one and the next two are round two. Thread ids are passed explicitly so the
@@ -65,7 +65,7 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class SameRound {
         static final AtomicInteger EXECUTIONS = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 2)
+        @AsyncTest(threads = 2, invocations = 2, detectAll = true)
         void body() {
             int n = EXECUTIONS.getAndIncrement();
             AtomicityValidator validator = AsyncTestContext.get().sharedAtomicityValidator();
@@ -107,7 +107,8 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
         // round one would pair with the set in round two unless the runner resets the epoch.
         @AsyncTest(threads = 1,
                    invocations = 2,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void body() {
             int n = EXECUTIONS.getAndIncrement();
             AtomicNonAtomicUpdateDetector d = AsyncTestContext.atomicNonAtomicUpdateDetector();
@@ -124,7 +125,8 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
         @AsyncTest(threads = 1,
                    invocations = 1,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void body() {
             AtomicNonAtomicUpdateDetector d = AsyncTestContext.atomicNonAtomicUpdateDetector();
             d.recordGet(SUBJECT, "subject", Thread.currentThread());
@@ -156,7 +158,8 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
 
         @AsyncTest(threads = 1,
                    invocations = 2,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void body() {
             int n = EXECUTIONS.getAndIncrement();
             var d = AsyncTestContext.cfCancellationPropagationDetector();
@@ -173,7 +176,8 @@ class ConcurrencyRunnerInvocationEpochBindingTest {
     public static class CfSameRound {
         @AsyncTest(threads = 1,
                    invocations = 1,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void body() {
             var d = AsyncTestContext.cfCancellationPropagationDetector();
             d.cancel(new java.util.concurrent.CompletableFuture<String>(), "report", "view", false);

@@ -43,7 +43,7 @@ class ConcurrencyRunnerCollisionDogfoodTest {
     /** Workers currently inside the body; more than THREADS means two rounds overlapped. */
     private final AtomicInteger inBody = new AtomicInteger();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 60_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 60_000, detectAll = true)
     void everyWorkerOfARoundIsInTheBodyAtOnce()
             throws InterruptedException, BrokenBarrierException {
         BODY_EXECUTIONS.incrementAndGet();

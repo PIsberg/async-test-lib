@@ -43,7 +43,7 @@ class CalendarMutatorWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void fourThreadsMoveOneCalendar() {
         shared.advance();
     }

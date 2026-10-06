@@ -139,7 +139,8 @@ class BankTransferServiceTest {
             invocations = 50,
             useVirtualThreads = false,
             timeoutMs = 5000,
-            failOn = FailOn.LOW)
+            failOn = FailOn.LOW,
+            detectAll = true)
     void testTransfer_concurrent_detectsDeadlock() {
         // Alternate transfer direction based on thread ID — reliably creates A→B and
         // B→A transfers in parallel, forming a circular-wait deadlock.

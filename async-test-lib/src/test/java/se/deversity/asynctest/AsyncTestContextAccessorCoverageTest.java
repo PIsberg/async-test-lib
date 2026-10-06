@@ -47,9 +47,9 @@ class AsyncTestContextAccessorCoverageTest {
                 "expected the full detector-accessor surface, found " + detectorAccessors().size());
     }
 
-    @AsyncTest(threads = 1, invocations = 1)
+    @AsyncTest(threads = 1, invocations = 1, detectAll = true)
     void everyAccessor_returnsNonNull_insideDetectAllContext() throws Exception {
-        // Inside @AsyncTest with detectAll (the default), ConcurrencyRunner installs a
+        // Inside @AsyncTest with detectAll = true, ConcurrencyRunner installs a
         // context in which every detector is enabled, so every accessor must resolve.
         List<String> failures = new ArrayList<>();
         for (Method m : detectorAccessors()) {
@@ -77,7 +77,7 @@ class AsyncTestContextAccessorCoverageTest {
         return out;
     }
 
-    @AsyncTest(threads = 1, invocations = 1)
+    @AsyncTest(threads = 1, invocations = 1, detectAll = true)
     void everySharedAccessor_hasAPublicCounterpart_returningTheSameInstance() throws Exception {
         // The sharedXxx() methods are documented as internal — "public only so
         // Phase1DetectorSet can call it" — and return null instead of throwing when the
@@ -123,7 +123,7 @@ class AsyncTestContextAccessorCoverageTest {
                 "detectors reachable from the registry but not from the public API: " + unreachable);
     }
 
-    @AsyncTest(threads = 1, invocations = 1)
+    @AsyncTest(threads = 1, invocations = 1, detectAll = true)
     void deadlockDetector_isReachable() {
         // DEADLOCKS has no sharedXxx() pair, so the test above cannot see it. Its instance
         // analyze() is the only per-round part of its API — the rest is static.

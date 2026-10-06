@@ -52,7 +52,7 @@ class LockWeavingDoesNotFlagConsistentOrderTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void consistentLockOrder() {
         if ((Thread.currentThread().threadId() & 1L) == 0L) {
             consistent.forward();

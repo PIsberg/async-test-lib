@@ -116,7 +116,7 @@ class ReadHeavyCacheTest {
      * 3. Fix: change ReentrantReadWriteLock(false) to ReentrantReadWriteLock(true)
      */
     @Disabled("Remove @Disabled to see writer starvation detected by ReadWriteLockMonitor")
-    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW, detectAll = true)
     void testCache_concurrent_detectsWriterStarvation() {
         ReentrantReadWriteLock rwLock = (ReentrantReadWriteLock) cache.getLock();
 

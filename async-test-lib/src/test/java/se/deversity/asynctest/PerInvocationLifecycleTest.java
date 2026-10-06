@@ -38,7 +38,8 @@ class PerInvocationLifecycleTest {
         @AsyncTest(threads = THREADS,
                    invocations = INVOCATIONS,
                    timeoutMs = 5_000,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void increment() {
             counter++;
         }
@@ -84,7 +85,8 @@ class PerInvocationLifecycleTest {
         @AsyncTest(threads = 2,
                    invocations = 3,
                    timeoutMs = 5_000,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEachInvocation
@@ -117,7 +119,8 @@ class PerInvocationLifecycleTest {
         @AsyncTest(threads = 2,
                    invocations = 2,
                    timeoutMs = 5_000,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void alwaysFails() {
             throw new AssertionError("intentional");
         }
@@ -145,7 +148,8 @@ class PerInvocationLifecycleTest {
         @AsyncTest(threads = 2,
                    invocations = 1,
                    timeoutMs = 5_000,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void alwaysFails() {
             throw new AssertionError("the failure the user needs to see");
         }
@@ -228,7 +232,8 @@ class PerInvocationLifecycleTest {
         @AsyncTest(threads = 2,
                    invocations = 2,
                    timeoutMs = 5_000,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEach
@@ -245,7 +250,8 @@ class PerInvocationLifecycleTest {
         @AsyncTest(threads = 2,
                    invocations = 2,
                    timeoutMs = 5_000,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEach
@@ -266,7 +272,8 @@ class PerInvocationLifecycleTest {
         @AsyncTest(threads = 2,
                    invocations = 1,
                    timeoutMs = 5_000,
-                   useVirtualThreads = false)
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEach

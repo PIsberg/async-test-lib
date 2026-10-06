@@ -62,7 +62,7 @@ paths: ["**/DetectorType.java", "**/AsyncTestConfig.java", "**/DetectorRegistry.
 
 ### se.deversity.asynctest.AsyncTest
 - **Constraint**: You may change internal logic, but MUST NOT modify the method name, parameters, return type, or checked exceptions.
-- **Reason**: Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 2.0.0, #920).
+- **Reason**: Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 2.0.0, #920). The bare-annotation selection is Preset.ESSENTIALS with detectAll = false (2.0.0, #923): a different default changes what every unchanged test in every consumer detects.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.

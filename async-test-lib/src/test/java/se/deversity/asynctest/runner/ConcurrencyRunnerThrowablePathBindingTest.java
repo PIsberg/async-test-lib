@@ -50,7 +50,7 @@ class ConcurrencyRunnerThrowablePathBindingTest {
             throw new IllegalStateException("boom from the hook");
         }
 
-        @AsyncTest(threads = 2, invocations = 1)
+        @AsyncTest(threads = 2, invocations = 1, detectAll = true)
         void body() {
             // Never reached: the hook fails first.
         }

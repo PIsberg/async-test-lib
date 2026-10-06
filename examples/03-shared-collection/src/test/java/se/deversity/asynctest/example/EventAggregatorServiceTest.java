@@ -99,7 +99,7 @@ class EventAggregatorServiceTest {
      *            replace HashMap with ConcurrentHashMap
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedCollectionDetector")
-    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW, detectAll = true)
 
     void testRecordEvent_concurrent_detectsSharedCollectionUse() {
         // The recording has to name the collection the threads actually mutate. Recording

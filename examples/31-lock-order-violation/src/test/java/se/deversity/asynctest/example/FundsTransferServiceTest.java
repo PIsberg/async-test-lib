@@ -106,7 +106,7 @@ class FundsTransferServiceTest {
      * 3. Fix: always lock the lower-ID account first
      */
     @Disabled("Remove @Disabled to see lock order violation detected by LockOrderValidator")
-    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, detectAll = true)
     void testTransfer_concurrent_detectsLockOrderViolation() {
         // Alternate the transfer direction across threads to produce both orderings
         boolean forward = Thread.currentThread().threadId() % 2 == 0;

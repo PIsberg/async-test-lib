@@ -36,7 +36,7 @@ class CounterTest {
 
     private int counter = 0; // BUG: not thread-safe
 
-    @AsyncTest    // all detectors enabled by default
+    @AsyncTest    // Preset.ESSENTIALS: the 12 high-signal detectors
     void increment() {
         counter++;            // Caught: race condition / atomicity violation
     }
@@ -45,7 +45,7 @@ class CounterTest {
 
 `@AsyncTest` launches `threads` concurrent threads per invocation, repeats `invocations` times, and reports exactly which detector fired and why. The same test with plain `@Test` would pass silently.
 
-> **2.0.0:** the per-detector boolean attributes (`detectRaceConditions = true` and the other 145) are gone. Select detectors by `DetectorType`: `includes = {…}` for exactly these, `excludes = {…}` to drop some, or a `preset`. A bare `@AsyncTest` still enables every detector.
+> **2.0.0:** the per-detector boolean attributes (`detectRaceConditions = true` and the other 145) are gone. Select detectors by `DetectorType`: `includes = {…}` for exactly these, `excludes = {…}` to drop some, or a `preset`. A bare `@AsyncTest` runs `Preset.ESSENTIALS` (12 detectors, none of them ADVISORY tier); every detector is the explicit `detectAll = true`.
 
 ---
 
@@ -59,8 +59,8 @@ class CounterTest {
 | `useVirtualThreads` | boolean | true | Use Project Loom virtual threads (Java 21+) |
 | `timeoutMs` | long | 5000 | Milliseconds before timeout (triggers deadlock analysis) |
 | `virtualThreadStressMode` | String | `"OFF"` | `OFF` / `LOW` / `MEDIUM` / `HIGH` / `EXTREME` — pins carrier threads to increase contention |
-| `preset` | `Preset` | `Preset.ALL` | **Curated detector bundle.** `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`. Overrides `detectAll` for any value other than `ALL` (1.6.0+) |
-| `detectAll` | boolean | **true** | Enable every detector at once. Honored when `preset = ALL`; ignored otherwise. `false` on its own selects nothing; name detectors with `includes` instead |
+| `preset` | `Preset` | `Preset.ESSENTIALS` | **Curated detector bundle.** `ESSENTIALS` / `ALL` / `STRICT` / `CI_FAST` / `NONE`. Used when neither `includes` nor `detectAll = true` is set (1.6.0+; default `ESSENTIALS` since 2.0.0) |
+| `detectAll` | boolean | false | Enable every detector at once, whatever `preset` says; `includes` still wins. The opt-in that replaced the 1.x default (2.0.0) |
 | `excludes` | DetectorType[] | `{}` | Detectors to skip — layers on top of any preset |
 | `excludeIds` | String[] | `{}` | Detectors to skip by id: a third-party detector's own id, or a built-in's `DetectorType` name (2.0.0+) |
 | `replaySeed` | long | 0 | **Per-round RNG seed.** `0` = fresh seed per round, printed on failure for paste-and-reproduce. Set explicitly to reproduce a failing schedule (1.6.0+) |
@@ -90,7 +90,7 @@ Detectors are named by `DetectorType` (the full list further down). To run a tin
 ```java
 @AsyncTest
 void testMyService() {
-    myService.process(request);   // every detector active
+    myService.process(request);   // Preset.ESSENTIALS; detectAll = true for every detector
 }
 ```
 
@@ -236,6 +236,7 @@ import se.deversity.asynctest.DetectorType;
 @AsyncTest(
     threads = 16,
     invocations = 200,
+    detectAll = true,
     excludes = { DetectorType.BUSY_WAITING, DetectorType.FALSE_SHARING }
 )
 void testMyService() {
@@ -249,7 +250,8 @@ void testMyService() {
     threads = 50,
     invocations = 100,
     useVirtualThreads = true,
-    virtualThreadStressMode = "HIGH"
+    virtualThreadStressMode = "HIGH",
+    includes = DetectorType.VIRTUAL_THREAD_PINNING
 )
 void testVirtualThreadSafety() {
     service.handleRequest();
@@ -526,7 +528,7 @@ the worker threads of an `@AsyncTest`.
 | `SharedKdfDetector` (1.8.0+) | `javax.crypto.KDF` — JEP 510, final JDK 25 | `recordAccess(kdf, algorithm, operation, thread)` | one KDF instance accessed from multiple threads — documented not thread-safe, silently derives wrong keys |
 
 ```java
-@AsyncTest(threads = 16, invocations = 50)
+@AsyncTest(threads = 16, invocations = 50, includes = DetectorType.LAZY_CONSTANT_MISUSE)
 void lazyConfig() {
     var detector = AsyncTestContext.lazyConstantMisuseDetector();
     detector.recordGet("CONFIG", Thread.currentThread());
@@ -683,7 +685,7 @@ The built-in detectors are not in the SPI registry: since 2.0.0 they have one re
 
 ## Tips
 
-- **Bare `@AsyncTest` is the right starting point** — every detector is on by default. Narrow with `excludes`, or name the detectors you want with `includes` once you understand the failures.
+- **Bare `@AsyncTest` is the right starting point** — it runs `Preset.ESSENTIALS`. Widen with `detectAll = true` when hunting, narrow with `excludes`, or name exactly the detectors you want with `includes`.
 - **Increase `invocations` before `threads`** — more rounds give detectors more chances to observe bad interleavings. 200–1000 invocations is a good baseline.
 - **Use `@BeforeEachInvocation` to reset shared state** between rounds; not doing so causes round N's leftover state to pollute round N+1.
 - **`timeoutMs`** controls how long a round can run before deadlock analysis fires. Lower it for tests that should complete quickly.

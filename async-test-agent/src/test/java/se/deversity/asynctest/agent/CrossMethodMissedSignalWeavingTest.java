@@ -40,7 +40,7 @@ class CrossMethodMissedSignalWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 10)
+    @AsyncTest(threads = 4, invocations = 10, detectAll = true)
     void pollingInACrossMethodPredicateLoopAfterTheSignalWasLost() throws InterruptedException {
         handOff.signalThenAwait();
     }

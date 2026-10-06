@@ -58,7 +58,8 @@ class KotlinDoWhileWaitIsReportedTest {
         threads = 4,
         invocations = 10,
         failOn = FailOn.NONE,
-        licenseMockMode = true
+        licenseMockMode = true,
+        detectAll = true
     )
     fun waitingInADoWhileLoopAfterTheSignalWasLost() {
         handOff.signalThenAwait()

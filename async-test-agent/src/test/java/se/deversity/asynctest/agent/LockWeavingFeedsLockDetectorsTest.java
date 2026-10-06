@@ -55,7 +55,7 @@ class LockWeavingFeedsLockDetectorsTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void invertedLockOrder() {
         if ((Thread.currentThread().threadId() & 1L) == 0L) {
             inverted.forward();

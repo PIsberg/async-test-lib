@@ -31,7 +31,7 @@
 ## Why async-test?
 
 - **One annotation** — `@AsyncTest` runs your test body on N threads × M rounds, collided on a `CyclicBarrier` so every round starts at the same instant. No executor boilerplate, no `CountDownLatch`, no `Thread.join` loops.
-- **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more, all on by default. See [Detectors](#detectors) for what feeds them.
+- **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more; a bare `@AsyncTest` runs the 12 in `Preset.ESSENTIALS` and `detectAll = true` runs them all. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
 - **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **25 of them can see code you did not modify** instead of 3. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
@@ -302,17 +302,17 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-146 detectors enabled by default with a single flag, or cherry-pick:
+146 detectors. A bare `@AsyncTest` runs the curated `ESSENTIALS` preset; one flag turns on every detector, or cherry-pick:
 
 ```java
-// Everything on (default for bare @AsyncTest)
+// The default: Preset.ESSENTIALS, 12 high-signal detectors
 @AsyncTest
 
-// Curated preset for everyday CI
-@AsyncTest(preset = Preset.ESSENTIALS)
+// Everything on
+@AsyncTest(detectAll = true)
 
 // Everything on except false sharing (too slow for this suite)
-@AsyncTest(excludes = { DetectorType.FALSE_SHARING })
+@AsyncTest(detectAll = true, excludes = { DetectorType.FALSE_SHARING })
 
 // Explicit opt-in
 @AsyncTest(includes = {DetectorType.DEADLOCKS, DetectorType.RACE_CONDITIONS})
@@ -389,8 +389,8 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `invocations` | 100 | Number of barrier rounds |
 | `timeoutMs` | 5000 | Whole-test timeout (ms) |
 | `useVirtualThreads` | true | Use `Thread.ofVirtual()` (Java 21+) |
-| `preset` | `Preset.ALL` | Curated bundle: `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE` |
-| `detectAll` | true | Enable all detectors in one shot (honored when `preset = ALL`) |
+| `preset` | `Preset.ESSENTIALS` | Curated bundle: `ESSENTIALS` / `ALL` / `STRICT` / `CI_FAST` / `NONE` |
+| `detectAll` | false | Enable every detector, whatever `preset` says (`includes` still wins) |
 | `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll` when non-empty |
 | `excludes` | `{}` | Detectors to skip — layers on top of any preset or `includes` and wins on conflict |
 | `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (2.0.0+) |

@@ -50,13 +50,13 @@ class AccessOrderedMapWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void plainAccessOrderedMap() {
         plain.lookup("key");
         plain.store("key", "value");
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void accessOrderedSubclass() {
         subclassed.lookup("key");
         subclassed.store("key", "value");

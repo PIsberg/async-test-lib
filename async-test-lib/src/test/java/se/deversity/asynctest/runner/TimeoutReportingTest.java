@@ -88,7 +88,8 @@ class TimeoutReportingTest {
         @AsyncTest(threads = 1,
                 invocations = 6,
                 timeoutMs = 200,
-                licenseMockMode = true)
+                licenseMockMode = true,
+                detectAll = true)
         void instantBody() {
             // Intentionally empty: the deadline is consumed by burnBudget(), not here.
         }

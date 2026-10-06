@@ -67,7 +67,7 @@ class ConsumerFindingsAssertionTest {
 
     // ---- 1) A real run leaves assertable findings behind ----
 
-    @AsyncTest(threads = 4, invocations = 10, failOn = FailOn.NONE, licenseMockMode = true)
+    @AsyncTest(threads = 4, invocations = 10, failOn = FailOn.NONE, licenseMockMode = true, detectAll = true)
     void unsynchronised_increment_is_reported_rather_than_thrown() {
         AsyncTestContext ctx = AsyncTestContext.get();
         if (ctx != null) {

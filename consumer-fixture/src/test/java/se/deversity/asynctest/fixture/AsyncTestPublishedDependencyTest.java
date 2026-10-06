@@ -29,7 +29,8 @@ class AsyncTestPublishedDependencyTest {
 
     @AsyncTest(threads = 3,
         invocations = 4,
-        timeoutMs = 5_000)
+        timeoutMs = 5_000,
+        detectAll = true)
     void asyncTestWorksFromPublishedDependency() {
         totalExecutions.incrementAndGet();
         roundCounter.incrementAndGet();

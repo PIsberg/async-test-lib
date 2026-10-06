@@ -137,8 +137,8 @@ public class ReentrantLockDetector {
     /**
      * Sends acquire and release records to {@code peer}, which is the detector that reports leaks.
      *
-     * <p>Called by {@code DetectorRegistry} when both detectors are enabled, which {@code
-     * detectAll} makes the default. With no peer set this detector's own behaviour is unchanged.
+     * <p>Called by {@code DetectorRegistry} when both detectors are enabled, as {@code
+     * detectAll = true} and the default {@code Preset.ESSENTIALS} both do. With no peer set this detector's own behaviour is unchanged.
      *
      * @param peer the detector that will report lock leaks, or {@code null} to forward nothing
      */

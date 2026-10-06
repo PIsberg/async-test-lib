@@ -216,7 +216,7 @@ class CoreFlowsBddTest {
 
     /** The silent-zero-execution shape: must be refused at configuration time. */
     public static class ZeroInvocations {
-        @AsyncTest(threads = 2, invocations = 0)
+        @AsyncTest(threads = 2, invocations = 0, detectAll = true)
         void neverRuns() {
             throw new AssertionError("the body must never run when invocations is 0");
         }

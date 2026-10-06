@@ -89,7 +89,7 @@ class DaemonDecisionWeavingTest {
         builtOnNonDaemonDecidedUnwoven = UnwovenThreadMaker.decideDaemon(built.get());
     }
 
-    @AsyncTest(threads = 1, invocations = 1)
+    @AsyncTest(threads = 1, invocations = 1, detectAll = true)
     void startingEveryShapeInsideRun() {
         Runnable lingering = () -> {
             try {

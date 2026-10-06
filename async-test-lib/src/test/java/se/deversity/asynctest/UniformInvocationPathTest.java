@@ -60,7 +60,8 @@ class UniformInvocationPathTest {
         @AsyncTest(threads = THREADS,
                    invocations = INVOCATIONS,
                    useVirtualThreads = false,
-                   timeoutMs = 5_000)
+                   timeoutMs = 5_000,
+                   detectAll = true)
         void countExecutions() {
             executionCount.incrementAndGet();
             if (AsyncTestContext.get() == null) {

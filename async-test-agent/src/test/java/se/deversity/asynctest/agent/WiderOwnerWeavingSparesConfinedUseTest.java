@@ -47,7 +47,7 @@ class WiderOwnerWeavingSparesConfinedUseTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void confinedAndSafeReceiversThroughTheWiderTypes() throws ParseException, IOException {
         confined.formatDate();
         confined.parseNumber();

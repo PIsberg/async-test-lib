@@ -25,7 +25,8 @@ class AsyncTestContextTest {
     @AsyncTest(threads = 3,
         invocations = 2,
         useVirtualThreads = false,
-        timeoutMs = 5_000)
+        timeoutMs = 5_000,
+        detectAll = true)
     void phase2ContextIsActiveInsideTest() {
         // All Phase 2 detectors must be accessible without throwing
         assertNotNull(AsyncTestContext.get(), "context must be non-null inside @AsyncTest");
@@ -93,7 +94,8 @@ class AsyncTestContextTest {
     @AsyncTest(threads = 3,
                invocations = 2,
                useVirtualThreads = false,
-               timeoutMs = 5_000)
+               timeoutMs = 5_000,
+               detectAll = true)
     void falseSharingDetectorIsSharedAcrossThreads() {
         // All threads use the same detector instance — events accumulate
         FalseSharingDetector detector = AsyncTestContext.falseSharingDetector();
@@ -105,7 +107,8 @@ class AsyncTestContextTest {
     @AsyncTest(threads = 2,
                invocations = 2,
                useVirtualThreads = false,
-               timeoutMs = 5_000)
+               timeoutMs = 5_000,
+               detectAll = true)
     void abaDetectorRecordsEvents() {
         ABAProblemDetector detector = AsyncTestContext.abaProblemDetector();
         detector.recordValueChange("x", "A", "B");
@@ -145,7 +148,8 @@ class AsyncTestContextTest {
     @AsyncTest(threads = 2,
                invocations = 3,
                useVirtualThreads = false,
-               timeoutMs = 5_000)
+               timeoutMs = 5_000,
+               detectAll = true)
     void sameDetectorInstanceAcrossInvocationRounds() {
         ABAProblemDetector current = AsyncTestContext.abaProblemDetector();
         if (!capturedDetector.compareAndSet(null, current)) {

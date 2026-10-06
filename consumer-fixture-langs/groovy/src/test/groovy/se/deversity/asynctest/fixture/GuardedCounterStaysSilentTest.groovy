@@ -33,7 +33,7 @@ class GuardedCounterStaysSilentTest {
 
     private int counter = 0
 
-    @AsyncTest(threads = 8, invocations = 200, failOn = FailOn.NONE, licenseMockMode = true)
+    @AsyncTest(threads = 8, invocations = 200, failOn = FailOn.NONE, licenseMockMode = true, detectAll = true)
     void guardedWritesFromEightThreads() {
         synchronized (this) {
             AsyncTestContext.get()?.sharedRaceConditionDetector()?.recordFieldWrite(this, "counter")

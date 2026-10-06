@@ -1150,7 +1150,7 @@ class CorpusRecordingLaneTest {
      * once would collect 240 executions' worth of counts and report on arithmetic that has
      * nothing to do with what the row is claiming.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_latch_countedDownPastItsCount() {
         CountDownLatch latch = new CountDownLatch(1);
         AsyncTestContext.latchMisuseDetector().registerLatch(latch, "corpus-latch", 1);
@@ -1160,7 +1160,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same registration and await, counted down exactly once. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_latch_countedDownExactly() {
         CountDownLatch latch = new CountDownLatch(1);
         AsyncTestContext.latchMisuseDetector().registerLatch(latch, "corpus-latch", 1);
@@ -1175,7 +1175,7 @@ class CorpusRecordingLaneTest {
      * function of the interleaving unless nothing removes anything. Nothing here does, which makes
      * the peak monotone and the outcome the same however the threads were scheduled.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingQueue_filledToCapacity() {
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
         AsyncTestContext.blockingQueueDetector()
@@ -1188,7 +1188,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same capacity, with every offer followed by a poll, so the peak stays at one. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingQueue_drainedAsItFilled() {
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
         AsyncTestContext.blockingQueueDetector()
@@ -1205,7 +1205,7 @@ class CorpusRecordingLaneTest {
     // --- The rest of the shared-instance family ----------------------------------------------
 
     /** Every thread records against the one CRC32, holding nothing. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_checksum_sharedAcrossThreads() {
         SHARED_CHECKSUM.update(PAYLOAD_BYTES);
         AsyncTestContext.sharedChecksumDetector()
@@ -1213,7 +1213,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A CRC32 per thread, through the same recorded call. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_checksum_oneInstancePerThread() {
         CRC32 mine = CONFINED_CHECKSUM.get();
         mine.update(PAYLOAD_BYTES);
@@ -1222,14 +1222,14 @@ class CorpusRecordingLaneTest {
     }
 
     /** Every thread records against the one Deflater. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_deflater_sharedAcrossThreads() {
         AsyncTestContext.sharedDeflaterDetector()
                 .recordAccess(SHARED_DEFLATER, "corpus-deflater", Thread.currentThread());
     }
 
     /** A Deflater per thread, through the same overload. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_deflater_oneInstancePerThread() {
         AsyncTestContext.sharedDeflaterDetector()
                 .recordAccess(CONFINED_DEFLATER.get(), "corpus-deflater", Thread.currentThread());
@@ -1243,7 +1243,7 @@ class CorpusRecordingLaneTest {
      * runs on 21. The detector's parameter is {@code Object} for exactly that reason, so the
      * substitution is the one its author anticipated rather than a way around a type.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_kdf_sharedAcrossThreads() {
         AsyncTestContext.sharedKdfDetector()
                 .recordAccess(sharedKeyFactory, KDF_ALGORITHM, "deriveKey",
@@ -1251,7 +1251,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same one object, with every record made inside its own monitor. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_kdf_guardedByItsOwnMonitor() {
         synchronized (sharedKeyFactory) {
             AsyncTestContext.sharedKdfDetector()
@@ -1261,7 +1261,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Every thread mutates and records the one zone. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_timeZone_mutatedByEveryThread() {
         SHARED_TIME_ZONE.setRawOffset(3_600_000);
         AsyncTestContext.sharedTimeZoneDetector()
@@ -1269,7 +1269,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Each thread mutates and records its own zone. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_timeZone_oneInstancePerThread() {
         TimeZone mine = CONFINED_TIME_ZONE.get();
         mine.setRawOffset(3_600_000);
@@ -1278,7 +1278,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Every thread records against the one DocumentBuilder. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_xmlParser_sharedAcrossThreads() {
         sharedDocumentBuilder.reset();
         AsyncTestContext.sharedXmlParserDetector()
@@ -1292,7 +1292,7 @@ class CorpusRecordingLaneTest {
      * thread-safe. Sharing the factory and confining the builder must read as correct, or the
      * detector is flagging the API rather than its misuse.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_xmlParser_oneInstancePerThread() {
         DocumentBuilder mine = CONFINED_DOCUMENT_BUILDER.get();
         mine.reset();
@@ -1321,7 +1321,7 @@ class CorpusRecordingLaneTest {
      * returns can never be initialised again for the life of the classloader - the corpus would be
      * poisoning itself to observe one finding.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_classInit_twoThreadsWaitingOnEachOther() {
         Thread me = Thread.currentThread();
         boolean alphaSide = me.threadId() % 2 == 0;
@@ -1332,7 +1332,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same two calls, with each thread finishing the initialiser it started. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_classInit_eachInitialiserCompleted() {
         Thread me = Thread.currentThread();
         boolean alphaSide = me.threadId() % 2 == 0;
@@ -1353,7 +1353,7 @@ class CorpusRecordingLaneTest {
      * a use in the first round, so from the second round on the precondition is met by
      * construction rather than by luck - which is why the gate can require a finding.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_objectMapper_reconfigureWhileWriting() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedJsonMapperReconfigDetector().recordUse(reconfiguredMapper);
@@ -1368,7 +1368,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Records uses and never a mutation: config-then-use, which is the documented safe pattern. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_objectMapper_configuredThenShared() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedJsonMapperReconfigDetector().recordUse(configuredMapper);
@@ -1388,7 +1388,7 @@ class CorpusRecordingLaneTest {
      * per-thread register scatters one shared subject across duplicate entries and the
      * cross-thread contention the detector measures becomes invisible exactly when it is real.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lruMap_getAndPut() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.cacheConcurrencyDetector().recordPut(lruMap, "lru-cache", "key", "value");
@@ -1404,7 +1404,7 @@ class CorpusRecordingLaneTest {
      * separate them, which is the whole test: Caffeine's view implements {@code ConcurrentMap}
      * and keeps the contract, so a finding here is noise on correct code.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_caffeineAsMap_getAndPut() {
         CorpusRecorder.countBodyExecution();
         ConcurrentMap<String, String> view = caffeineCache.asMap();
@@ -1423,7 +1423,7 @@ class CorpusRecordingLaneTest {
      * reports. The row exists to make the lane's ground truth explicit: here the class is right
      * and the caller is wrong, which is the opposite of what the unmodified lanes measure.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_concurrentReferenceHashMap_checkThenAct() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.nonAtomicConcurrentMapUpdateDetector()
@@ -1447,7 +1447,7 @@ class CorpusRecordingLaneTest {
      * those would make every checkout look like a different resource, and the reuse this row
      * exists to measure would be invisible.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_hikariPool_checkoutPerThread() {
         CorpusRecorder.countBodyExecution();
         try (Connection pooled = pool.getConnection()) {
@@ -1471,7 +1471,7 @@ class CorpusRecordingLaneTest {
      * reports it. HikariDataSource is thread-safe and the caller defeated it, which is exactly the
      * distinction this pair exists to draw.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_hoistedConnection_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.jdbcConnectionSharedDetector()
@@ -1489,7 +1489,7 @@ class CorpusRecordingLaneTest {
      * the JDK's own {@code MessageDigest}, whose class javadoc states that instances are not
      * safe for use by multiple threads without external synchronization.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_messageDigest_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedMessageDigestDetector()
@@ -1508,7 +1508,7 @@ class CorpusRecordingLaneTest {
      * multi-thread half of the rule is met and the unguarded half is not. A detector that fires
      * here is telling someone who fixed their race that it is still broken.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_messageDigest_guardedByItsOwnMonitor() {
         CorpusRecorder.countBodyExecution();
         synchronized (guardedDigest) {
@@ -1527,7 +1527,7 @@ class CorpusRecordingLaneTest {
      * the two crypto pairs both documented fixes are covered. {@code Mac} is stateful across
      * {@code update} and {@code doFinal}, and its javadoc makes no thread-safety promise.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_mac_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedStatefulCryptoDetector()
@@ -1543,7 +1543,7 @@ class CorpusRecordingLaneTest {
      * This is the direction that catches a detector keyed on the class rather than on the
      * instance: one keyed on {@code Mac} would report six correct threads as a race.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_mac_confinedToOneThreadEach() {
         CorpusRecorder.countBodyExecution();
         Mac mine = CONFINED_MAC.get();
@@ -1568,7 +1568,7 @@ class CorpusRecordingLaneTest {
      * happened to end on an acquire would report a still-open resource on correct code. That
      * would be a flaky row, which is worse than an absent one.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_nettyByteBuf_releasedAfterUse() {
         CorpusRecorder.countBodyExecution();
         ByteBuf buffer = Unpooled.buffer(16);
@@ -1589,7 +1589,7 @@ class CorpusRecordingLaneTest {
      * the counts rather than from a race. The buffers are unpooled and heap-backed, so what
      * leaks here is reclaimed by the collector rather than by an allocator.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_nettyByteBuf_neverReleased() {
         CorpusRecorder.countBodyExecution();
         ByteBuf buffer = Unpooled.buffer(16);
@@ -1610,7 +1610,7 @@ class CorpusRecordingLaneTest {
      * invocations before the row was written: 240 of 240 nested mapping functions ran, nothing
      * thrown.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_caffeineAsMap_crossKeyMerge() {
         CorpusRecorder.countBodyExecution();
         ConcurrentMap<String, String> view = crossKeyCache.asMap();
@@ -1645,7 +1645,7 @@ class CorpusRecordingLaneTest {
      * number and nesting to the row above; only the receiver of the inner merge differs, which is
      * exactly the thing that decides whether the contract was broken.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_caffeineTwoMaps_nestedMerge() {
         CorpusRecorder.countBodyExecution();
         ConcurrentMap<String, String> outer = outerCache.asMap();
@@ -1696,7 +1696,7 @@ class CorpusRecordingLaneTest {
      * <p>The key is seeded when the cache is built rather than by the body, because a body that
      * seeded it would take the absent-key path on its first execution and throw.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_caffeineAsMap_recursiveMerge() {
         CorpusRecorder.countBodyExecution();
         ConcurrentMap<String, String> view = recursiveCache.asMap();
@@ -1731,7 +1731,7 @@ class CorpusRecordingLaneTest {
      * it is the direction that catches a detector keyed on the map rather than on the map, key
      * and thread together: six threads merging the same key concurrently is not recursion.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_caffeineAsMap_selfContainedMerge() {
         CorpusRecorder.countBodyExecution();
         ConcurrentMap<String, String> view = selfContainedCache.asMap();
@@ -1799,7 +1799,7 @@ class CorpusRecordingLaneTest {
      * exception the class javadoc calls out, and it is the caller's to get right: the class is
      * documented thread-safe and this body is still wrong.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_synchronizedCollection_iteratedWithoutLock() {
         CorpusRecorder.countBodyExecution();
         declareOnce(unlockedDeclared, unlockedCollection, "unlocked-collection");
@@ -1815,7 +1815,7 @@ class CorpusRecordingLaneTest {
      * mutates either collection, so neither row can throw; what separates them is only whether
      * the lock was held, which is exactly the model being measured.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_synchronizedCollection_iteratedHoldingLock() {
         CorpusRecorder.countBodyExecution();
         declareOnce(lockedDeclared, lockedCollection, "locked-collection");
@@ -1857,7 +1857,7 @@ class CorpusRecordingLaneTest {
      * detector's message says so - the hazard stands "even when that collection is itself a
      * concurrent collection".
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_concurrentHashMultiset_sharedIterator() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedIteratorDetector().recordAccess(sharedIterator, "hasNext");
@@ -1876,7 +1876,7 @@ class CorpusRecordingLaneTest {
      * detector's per-instance thread count never reaches two. This is the fix, and reporting it
      * would mean reporting every correct traversal of a concurrent collection there is.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_concurrentHashMultiset_iteratorPerThread() {
         CorpusRecorder.countBodyExecution();
         Iterator<String> own = concurrentMultiset.iterator();
@@ -1892,7 +1892,7 @@ class CorpusRecordingLaneTest {
      * <p>Tolerated, because that is what the subject is: a linked list mutated from six threads
      * can corrupt its own pointers, and the record has already happened when it does.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cursorableLinkedList_concurrentAdd() {
         CorpusRecorder.countBodyExecution();
         declareCollectionOnce(cursorableDeclared, cursorableList, "cursorable-list");
@@ -1908,7 +1908,7 @@ class CorpusRecordingLaneTest {
      * positive was measured on. It is the silent half of the pair and the row that keeps that
      * fix honest.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_concurrentMultiset_concurrentAdd() {
         CorpusRecorder.countBodyExecution();
         declareCollectionOnce(concurrentMultisetDeclared, concurrentMultisetForModification,
@@ -1927,7 +1927,7 @@ class CorpusRecordingLaneTest {
      * nothing. Six threads on a barrier all take the same monitor here, so the intersection holds
      * and the silence is the rule firing rather than the detector failing to look.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cursorableLinkedList_mutatedUnderItsOwnMonitor() {
         CorpusRecorder.countBodyExecution();
         declareCollectionOnce(guardedCursorableDeclared, guardedCursorableList,
@@ -1947,7 +1947,7 @@ class CorpusRecordingLaneTest {
      * meets another on a key, so the site count stays at one thread throughout and the detector
      * has a decision to make rather than nothing to look at.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_concurrentReferenceHashMap_checkThenActOnPrivateKeys() {
         CorpusRecorder.countBodyExecution();
         String key = "key-" + Thread.currentThread().threadId();
@@ -1974,7 +1974,7 @@ class CorpusRecordingLaneTest {
      * it is a hash-contract defect, not a race - which is why the row exists on a class whose
      * own javadoc already says it is not thread safe.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_mutableIntKey_mutatedAfterInsertion() {
         CorpusRecorder.countBodyExecution();
         fileKeyOnce(mutatedKeyFiled, mutatedKey, "mutated-key");
@@ -1990,7 +1990,7 @@ class CorpusRecordingLaneTest {
      * <p>Mutability is a hazard only when exercised. A detector that reported the type would
      * report every correct use of {@code MutableInt} as a key, which is most of them.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_mutableIntKey_neverMutated() {
         CorpusRecorder.countBodyExecution();
         fileKeyOnce(untouchedKeyFiled, untouchedKey, "untouched-key");
@@ -2015,7 +2015,7 @@ class CorpusRecordingLaneTest {
      * few in-flight bodies from zero and no interleaving can reach the 256-byte limit: the row
      * measures the sharing, not an underflow ending the run.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_byteBuffer_relativeGetsShared() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedByteBufferDetector().recordPositionalAccess(relativeBuffer, "rewind");
@@ -2032,7 +2032,7 @@ class CorpusRecordingLaneTest {
      * them. The input is identical to the loud row's in every respect but the overload, which
      * leaves the operation-kind distinction as the only thing deciding the outcome.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_byteBuffer_absoluteGetsShared() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedByteBufferDetector().recordAbsoluteAccess(absoluteBuffer, "get(int)");
@@ -2053,7 +2053,7 @@ class CorpusRecordingLaneTest {
      * interleaving did to the file: every read of 8 bytes at offset 64 stays inside the 4096-byte
      * file wherever another thread's read left the cursor.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_fileChannel_seekThenReadShared() throws IOException {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.fileChannelPositionRaceDetector()
@@ -2071,7 +2071,7 @@ class CorpusRecordingLaneTest {
      * it, which is when the guard probe answers truthfully, so no other call can land between a
      * seek and its read.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_fileChannel_seekThenReadUnderItsOwnMonitor() throws IOException {
         CorpusRecorder.countBodyExecution();
         synchronized (guardedChannel) {
@@ -2092,7 +2092,7 @@ class CorpusRecordingLaneTest {
      * and no thread relied on where the cursor was: the detector records the calls and has no
      * sequence to report. 240 reads of 8 bytes stay inside the 4096-byte file.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_fileChannel_selfContainedReadsShared() throws IOException {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.fileChannelPositionRaceDetector()
@@ -2109,7 +2109,7 @@ class CorpusRecordingLaneTest {
      * still tracks the instance, so its silence is a classification of the recorded calls
      * rather than an instance it never saw.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_fileChannel_positionalReadsShared() throws IOException {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.fileChannelPositionRaceDetector()
@@ -2128,7 +2128,7 @@ class CorpusRecordingLaneTest {
      * sharing the javadoc forbids, not reference-queue behaviour the scheduler may or may not
      * trigger.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_weakHashMap_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.weakHashMapSharedDetector()
@@ -2147,7 +2147,7 @@ class CorpusRecordingLaneTest {
      * finding here would tell someone who fixed their race that the fix is as broken as the
      * bug, which is the direction that stops people using the detector at all.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_weakHashMap_guardedByItsOwnMonitor() {
         CorpusRecorder.countBodyExecution();
         synchronized (guardedWeakMap) {
@@ -2170,7 +2170,7 @@ class CorpusRecordingLaneTest {
      * IllegalStateException out of an interleaved transition is the subject corrupting, which
      * the lane tolerates and counts rather than fails on.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_charsetEncoder_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedCharsetCoderDetector()
@@ -2189,7 +2189,7 @@ class CorpusRecordingLaneTest {
      * catches a detector keyed on the coder class rather than the instance, which would report
      * six correct threads as a race.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_charsetEncoder_encoderPerThread() {
         CorpusRecorder.countBodyExecution();
         CharsetEncoder mine = CONFINED_ENCODER.get();
@@ -2210,7 +2210,7 @@ class CorpusRecordingLaneTest {
      * never called. reportAndGate closes the pool after the measurement, unrecorded, so the
      * fork does not carry the leak the row exists to demonstrate.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_executor_neverShutDown() {
         CorpusRecorder.countBodyExecution();
         if (leakedPoolDeclared.compareAndSet(false, true)) {
@@ -2230,7 +2230,7 @@ class CorpusRecordingLaneTest {
      * same reason as the released-ByteBuf row: a shared instance's flags would be whatever the
      * last writer left, and the row must not depend on which write that was.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_executor_shutdownAndAwaited() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         ExecutorService mine = Executors.newFixedThreadPool(1);
@@ -2255,7 +2255,7 @@ class CorpusRecordingLaneTest {
      * precedes analysis by construction rather than by schedule. The detector reference is
      * captured on the worker thread because the timer's own thread has no AsyncTestContext.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_timer_taskExceptionKillsThread() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (failingTimerArmed.compareAndSet(false, true)) {
@@ -2287,7 +2287,7 @@ class CorpusRecordingLaneTest {
      * The silence is structural: until #575 this row had to leave recordTaskRun out, because the
      * run-to-complete distance was judged against 100 ms and a GC pause could break it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_timer_tasksCompleteWithoutException() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (cleanTimerArmed.compareAndSet(false, true)) {
@@ -2318,7 +2318,7 @@ class CorpusRecordingLaneTest {
      * timer thread was scheduled, and the detector reads both instants from the tasks themselves.
      * The body awaits the waiter, so every record precedes analysis.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_timer_taskStarvedBehindAnother() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (starvedTimerArmed.compareAndSet(false, true)) {
@@ -2356,7 +2356,7 @@ class CorpusRecordingLaneTest {
      * it ran: the waiter is scheduled from the body after the holder recorded its completion, so its
      * due instant is after the holder's run by construction. A long run alone starves nobody.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_timer_slowTaskWithNothingDueBehindIt() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (unblockedTimerArmed.compareAndSet(false, true)) {
@@ -2411,7 +2411,7 @@ class CorpusRecordingLaneTest {
      * for the run: the detector keys instances by identity hash, and a collected Future could
      * hand its key to a later one.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_future_submittedAndNeverInspected() {
         CorpusRecorder.countBodyExecution();
         Future<?> ignored = futuresPool.submit(() -> { });
@@ -2427,7 +2427,7 @@ class CorpusRecordingLaneTest {
      * before the body returns, so every record the detector holds at analysis says the caller
      * looked, and a finding here would report every correctly awaited task in existence.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_future_inspectedAfterSubmit() throws Exception {
         CorpusRecorder.countBodyExecution();
         Future<?> awaited = futuresPool.submit(() -> { });
@@ -2450,7 +2450,7 @@ class CorpusRecordingLaneTest {
      * all 240 findings is verified by the platform rather than asserted by this comment. Once
      * rather than every body, because 240 identical crashes would bury the report.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_notify_withoutHoldingTheMonitor() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.notifyWithoutMonitorDetector()
@@ -2474,7 +2474,7 @@ class CorpusRecordingLaneTest {
      * silence correct rather than lucky. A detector that reported here would fire on almost
      * every legal wait/notify in existence.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_notify_holdingTheMonitor() {
         CorpusRecorder.countBodyExecution();
         synchronized (NOTIFY_MONITOR) {
@@ -2493,7 +2493,7 @@ class CorpusRecordingLaneTest {
      * flag is already set when {@code sleep} is entered, and the JDK clears it on throw. Leaving
      * it cleared is the swallow, and every layer above loses the cancellation signal.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_interruptedException_swallowed() {
         CorpusRecorder.countBodyExecution();
         Thread.currentThread().interrupt();
@@ -2513,7 +2513,7 @@ class CorpusRecordingLaneTest {
      * it is the fix under test, not something to hand to the runner's barrier, and clearing it
      * after the record cannot change what the detector already saw.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_interruptedException_flagRestored() {
         CorpusRecorder.countBodyExecution();
         Thread.currentThread().interrupt();
@@ -2538,7 +2538,7 @@ class CorpusRecordingLaneTest {
      * rather than demonstrate anything. {@code reportAndGate} closes it unrecorded, after the
      * measurement.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_inputStream_openedAndNeverClosed() {
         CorpusRecorder.countBodyExecution();
         if (leakedStreamDeclared.compareAndSet(false, true)) {
@@ -2554,7 +2554,7 @@ class CorpusRecordingLaneTest {
      * closed by a thread other than its opener. Per body rather than shared, so at most one
      * descriptor per worker is ever live and the concurrent-open ceiling is never approached.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_inputStream_closedInTheOpeningThread() throws IOException {
         CorpusRecorder.countBodyExecution();
         InputStream mine = Files.newInputStream(streamFile);
@@ -2577,7 +2577,7 @@ class CorpusRecordingLaneTest {
      * outcome follows from the order of the three recorded calls, so no interleaving can change
      * it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingCall_insideAMonitor() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.nestedMonitorLockoutDetector();
@@ -2590,7 +2590,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical calls with the release moved before the block: the fix, and ordinary code. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingCall_afterReleasingTheMonitor() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.nestedMonitorLockoutDetector();
@@ -2608,7 +2608,7 @@ class CorpusRecordingLaneTest {
      * <p>A pool worker parked on anything but its own join starves the pool it belongs to, which
      * is the reason {@code ForkJoinPool.managedBlock} exists.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingCall_insideAForkJoinTask() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.forkJoinTaskBlockingDetector();
@@ -2619,7 +2619,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same calls with the block after the exit: blocking on a plain thread is not a defect. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingCall_afterLeavingTheForkJoinTask() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.forkJoinTaskBlockingDetector();
@@ -2635,7 +2635,7 @@ class CorpusRecordingLaneTest {
      * <p>It blocks the thread that is supposed to be running continuations, so every other stage
      * sharing that thread waits behind it. The class is thread-safe and the caller is wrong.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingCall_insideACompletableFutureCallback() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cfBlockingCallbackDetector();
@@ -2646,7 +2646,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical join recorded after the callback returned, which is where waiting belongs. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingCall_afterTheCallbackReturned() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cfBlockingCallbackDetector();
@@ -2664,7 +2664,7 @@ class CorpusRecordingLaneTest {
      * <p>Unrelated code locking the same text shares this lock with neither side able to see the
      * other. {@code String} is immutable and thread-safe; using one as a monitor is the defect.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_synchronized_onAnInternedLiteral() {
         CorpusRecorder.countBodyExecution();
         synchronized (INTERNED_LOCK) {
@@ -2674,7 +2674,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same acquisition on a private final Object: the documented idiom, unreachable by name. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_synchronized_onAPrivateLockObject() {
         CorpusRecorder.countBodyExecution();
         synchronized (PRIVATE_LOCK) {
@@ -2689,7 +2689,7 @@ class CorpusRecordingLaneTest {
      * <p>Two unrelated places boxing the same number get the same object, so the sharing is
      * invisible at the call site - which is exactly what makes it worth reporting.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lock_onABoxedInteger() {
         CorpusRecorder.countBodyExecution();
         synchronized (BOXED_LOCK) {
@@ -2699,7 +2699,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same acquisition on a private Object with no cache behind it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lock_onAPrivateObject() {
         CorpusRecorder.countBodyExecution();
         synchronized (PRIVATE_LOCK) {
@@ -2716,7 +2716,7 @@ class CorpusRecordingLaneTest {
      * <p>Each call is atomic and the sequence is not: an update landing between them is
      * overwritten and lost, which is the reason {@code compareAndSet} exists.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_atomicInteger_getThenSet() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -2728,7 +2728,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same read followed by a recorded compare-and-set: the primitive the finding names. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_atomicInteger_getThenCompareAndSet() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -2748,7 +2748,7 @@ class CorpusRecordingLaneTest {
      * callers must re-check their condition in a loop. A caller treating the return as the
      * condition proceeds on a state that never held, whatever the schedule did.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_wait_withoutALoop() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.spuriousWakeupHazardDetector()
@@ -2756,7 +2756,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same wait declared as sitting inside its condition loop: the shape the javadoc prints. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_wait_insideAConditionLoop() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.spuriousWakeupHazardDetector()
@@ -2771,7 +2771,7 @@ class CorpusRecordingLaneTest {
      * <p>On a pooled thread that key is inherited by whatever task runs next, which is how one
      * request's id ends up on another request's log lines.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_mdc_keyLeftBehindAtTaskEnd() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -2781,7 +2781,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same task ending with exactly the context it began with: the finally-block guarantee. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_mdc_contextClearedBeforeTaskEnd() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -2794,7 +2794,7 @@ class CorpusRecordingLaneTest {
     // --- The wait/notify protocol family ------------------------------------------------------
 
     /** An untimed wait: the thread parks until somebody else chooses to release it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_wait_withNoTimeout() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.waitTimeoutDetector()
@@ -2802,7 +2802,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same wait with a bound and a notify behind it: the version that recovers on its own. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_wait_withATimeoutAndANotify() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.waitTimeoutDetector();
@@ -2818,7 +2818,7 @@ class CorpusRecordingLaneTest {
      * nobody waiting is not enough on its own: a predicate-guarded waiter never waits for it
      * (#586). Each execution uses its own monitor, so no other thread's notify can reach it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_notify_withNobodyWaiting() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
@@ -2829,7 +2829,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same three calls with the wait first, so the notify reaches it: the whole handshake. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_notify_afterAWaiterArrived() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
@@ -2850,7 +2850,7 @@ class CorpusRecordingLaneTest {
      * unconfirmed and the lost notify before it is the finding. Each execution uses its own
      * monitor, so no other thread's notify can reach it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_missedSignal_repeatedIfCheck() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
@@ -2883,7 +2883,7 @@ class CorpusRecordingLaneTest {
      * does not: it confirms the wait as guarded, and a guarded wait is never reported. The state
      * is set by the body after its wait, standing in for the producer whose flag the loop reads.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_missedSignal_whileLoopRecheck() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
@@ -2950,7 +2950,7 @@ class CorpusRecordingLaneTest {
      * the loop exiting (#656); outside every marked loop the wait is an {@code if}'s (#669). Each
      * execution uses its own monitor, so no other thread's notify can reach it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_missedSignal_markedIfThenSatisfiedCheck() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
@@ -2970,7 +2970,7 @@ class CorpusRecordingLaneTest {
      * back-edge and the last check as a bounded poll giving up (#656); outside every marked loop
      * neither wait is a loop's (#669).
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_missedSignal_markedConsecutiveIfs() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
@@ -2989,7 +2989,7 @@ class CorpusRecordingLaneTest {
      * The same monitor and lost notify, with the wait inside a marked {@code while (!ready)} loop
      * that re-checks after the wakeup and exits. The twin of both rows above (#669).
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_missedSignal_markedWhileLoop() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.missedSignalDetector();
@@ -3022,7 +3022,7 @@ class CorpusRecordingLaneTest {
      * missing call is the defect. A validation that comes back false is not: it is the idiom's cue
      * to re-read under the lock, and the detector no longer reports it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_optimisticRead_usedWithoutValidating() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3033,7 +3033,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical three calls with a validation that succeeds: the documented protocol. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_optimisticRead_validatedBeforeUse() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3056,7 +3056,7 @@ class CorpusRecordingLaneTest {
      * the lock rather than from the declaration (#566). The write acquire itself is not made,
      * because it would never return.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_readLock_upgradedWithoutReleasing() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3077,7 +3077,7 @@ class CorpusRecordingLaneTest {
      * <p>Both locks are really taken, and the write acquire really returns, which is what makes
      * the silence correct rather than an absence of calls.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_readLock_releasedBeforeWriting() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3097,7 +3097,7 @@ class CorpusRecordingLaneTest {
     // --- ScopedValue ---------------------------------------------------------------------------
 
     /** A read on a thread that never entered a binding: outside the scope the value has none. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scopedValue_readOutsideItsBinding() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.scopedValueMisuseDetector()
@@ -3105,7 +3105,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same read between a recorded entry and exit, which is the only place it is defined. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scopedValue_readInsideItsBinding() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3118,7 +3118,7 @@ class CorpusRecordingLaneTest {
     // --- StatefulLambda ------------------------------------------------------------------------
 
     /** One lambda instance executed by six threads, mutating the state it captured. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lambda_sharedAndMutatingItsCapture() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3128,7 +3128,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A lambda per thread: stateful is only a hazard once the instance escapes its thread. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lambda_confinedToItsOwnThread() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3146,7 +3146,7 @@ class CorpusRecordingLaneTest {
      * <p>The properties table is synchronized, so nothing corrupts - and that is the point. The
      * race is over which value the rest of the JVM reads, and it reaches every library in it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_systemProperty_mutatedByEveryThread() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.systemPropertyMutationDetector()
@@ -3154,7 +3154,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same writes to a key private to each thread: a single-threaded mutation, not a race. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_systemProperty_mutatedOnAPrivateKey() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3163,7 +3163,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The firing row's writers of one shared key, each holding the properties table's monitor. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_systemProperty_mutatedByEveryThreadUnderThePropertiesMonitor() {
         CorpusRecorder.countBodyExecution();
         synchronized (System.getProperties()) {
@@ -3175,7 +3175,7 @@ class CorpusRecordingLaneTest {
     // --- WeakReferenceRace ---------------------------------------------------------------------
 
     /** A get recorded as having returned null where the caller expected its referent. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_weakReference_dereferencedAfterClearing() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.weakReferenceRaceDetector()
@@ -3183,7 +3183,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same read of a reference whose referent is held strongly, so it cannot come back empty. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_weakReference_readWithAStrongReferent() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.weakReferenceRaceDetector()
@@ -3199,7 +3199,7 @@ class CorpusRecordingLaneTest {
      * the elements, which is the most-repeated misreading of the keyword and the reason this
      * shape survives review.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_volatileArray_elementsWrittenByEveryThread() {
         CorpusRecorder.countBodyExecution();
         if (sharedArrayRegistered.compareAndSet(false, true)) {
@@ -3211,7 +3211,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** An array per thread, so no element is ever reached by a second one. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_volatileArray_confinedToOneThread() {
         CorpusRecorder.countBodyExecution();
         int[] mine = CONFINED_ARRAY.get();
@@ -3224,7 +3224,7 @@ class CorpusRecordingLaneTest {
     // --- The CompletableFuture lifecycle family -----------------------------------------------
 
     /** A future that fails with no handler recorded: the exception dies inside it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_failedWithNoHandler() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.completableFutureExceptionDetector();
@@ -3235,7 +3235,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical failure with a handler recorded first, which is what exceptionally is for. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_failureHandled() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.completableFutureExceptionDetector();
@@ -3248,7 +3248,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A future created and never completed: whatever waits on it waits forever. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_neverCompleted() {
         CorpusRecorder.countBodyExecution();
         CompletableFuture<String> future = new CompletableFuture<>();
@@ -3257,7 +3257,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same creation completed before the body returns, so no tracked future is left open. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_completedBeforeTheBodyReturned() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.completableFutureCompletionLeakDetector();
@@ -3270,7 +3270,7 @@ class CorpusRecordingLaneTest {
     // --- UnboundedQueue -------------------------------------------------------------------------
 
     /** A queue declared with no bound: backpressure becomes heap growth. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingQueue_createdUnbounded() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.unboundedQueueDetector()
@@ -3278,7 +3278,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same declaration with a capacity, plus real traffic through it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_blockingQueue_createdWithACapacity() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.unboundedQueueDetector();
@@ -3293,7 +3293,7 @@ class CorpusRecordingLaneTest {
     // --- CopyOnWriteCollections -----------------------------------------------------------------
 
     /** Writes dominating a copy-on-write list: correct, and the wrong data structure. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_copyOnWrite_underAWriteHeavyWorkload() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.copyOnWriteCollectionDetector();
@@ -3303,7 +3303,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same class under the mix it was designed for: many reads to one write. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_copyOnWrite_underAReadHeavyWorkload() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.copyOnWriteCollectionDetector();
@@ -3321,7 +3321,7 @@ class CorpusRecordingLaneTest {
     // --- ParallelStreams ------------------------------------------------------------------------
 
     /** A stateful operation in a parallel pipeline, which the stream contract forbids. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_parallelStream_withAStatefulOperation() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.parallelStreamDetector();
@@ -3330,7 +3330,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same pipeline with a stateless operation: what the contract asks for. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_parallelStream_withStatelessOperations() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.parallelStreamDetector();
@@ -3341,7 +3341,7 @@ class CorpusRecordingLaneTest {
     // --- ThreadLocalLeaks -----------------------------------------------------------------------
 
     /** Initialised and never cleaned: on a pooled thread the value outlives every task. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocal_initialisedAndNeverCleaned() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.threadLocalMonitor().recordThreadLocalInit(LEAKED_THREAD_LOCAL, "leaked-tl");
@@ -3349,7 +3349,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same initialisation with the remove() every correct use has in its finally block. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocal_cleanedUpAfterUse() {
         CorpusRecorder.countBodyExecution();
         var monitor = AsyncTestContext.threadLocalMonitor();
@@ -3362,7 +3362,7 @@ class CorpusRecordingLaneTest {
     // --- DoubleCheckedLocking -------------------------------------------------------------------
 
     /** Both checks, inside synchronized, on a non-volatile field: the broken singleton. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_doubleCheckedLocking_withoutVolatile() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.doubleCheckedLockingDetector();
@@ -3371,7 +3371,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical declaration with the field volatile: the fix, correct since Java 5. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_doubleCheckedLocking_withVolatile() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.doubleCheckedLockingDetector();
@@ -3389,7 +3389,7 @@ class CorpusRecordingLaneTest {
      * field looks like. The owner is named: without it a changing monitor is also what every
      * instance with its own final lock looks like, and the detector no longer reports that.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_synchronized_onAReassignableLock() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.synchronizedNonFinalDetector()
@@ -3398,7 +3398,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** One final lock object for the run: the idiom every guide prints. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_synchronized_onAFinalLock() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.synchronizedNonFinalDetector()
@@ -3408,7 +3408,7 @@ class CorpusRecordingLaneTest {
     // --- FinalFieldMutation ---------------------------------------------------------------------
 
     /** A final field recorded as written, which voids the freeze the memory model relies on. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_finalField_mutatedReflectively() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.finalFieldMutationDetector()
@@ -3416,7 +3416,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same field read by every thread and never written: what final fields are for. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_finalField_onlyRead() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.finalFieldMutationDetector()
@@ -3426,7 +3426,7 @@ class CorpusRecordingLaneTest {
     // --- PublicLockExposure ---------------------------------------------------------------------
 
     /** The object being synchronized on is the one the API hands out. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lock_publishedThroughTheApi() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.publicLockExposureDetector();
@@ -3435,7 +3435,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same two calls with the published object being a value rather than the monitor. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lock_keptPrivate() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.publicLockExposureDetector();
@@ -3453,7 +3453,7 @@ class CorpusRecordingLaneTest {
      * fails at once too, and keeps failing until a reset. Each body retries itself, because a body
      * runs on a fresh virtual thread and reuse is judged per party (#665).
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cyclicBarrier_awaitedWhileBroken() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
@@ -3471,7 +3471,7 @@ class CorpusRecordingLaneTest {
      * {@link #recorded_cyclicBarrier_cancelledAndDropped}: the same three calls on a barrier that
      * does not outlive the body.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cyclicBarrier_awaitedAgainNextRound() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
@@ -3484,7 +3484,7 @@ class CorpusRecordingLaneTest {
      * {@code BrokenBarrierException} and drops it without a reset, which is correct (#665). The
      * loud twin makes the same calls and comes back to its barrier.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cyclicBarrier_cancelledAndDropped() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
@@ -3515,7 +3515,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same barrier through a whole cycle: arrive, await, complete, never broken. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cyclicBarrier_completedItsCycle() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
@@ -3530,7 +3530,7 @@ class CorpusRecordingLaneTest {
      * calls {@code reset()}, which is the reuse report's own fix (#662). The loud twin is the same
      * await with no reset, so the barrier stays broken for every later party.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cyclicBarrier_resetAfterABreak() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
@@ -3563,7 +3563,7 @@ class CorpusRecordingLaneTest {
      * is still parked at analysis, a party short for good (#631). The detector reads the recording
      * thread's state and stack, never the barrier.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cyclicBarrier_partyLeftShortUntimed() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
@@ -3576,7 +3576,7 @@ class CorpusRecordingLaneTest {
      * ends by itself and breaks the barrier for every party, which is the report's own fix, so the
      * party still parked at analysis is not stranded.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_cyclicBarrier_partyLeftShortTimed() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
@@ -3634,7 +3634,7 @@ class CorpusRecordingLaneTest {
      * still taken once the bodies are done, which the detector reads from the lock itself. Some
      * worker always takes the lock first, so the outcome does not depend on the interleaving.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_reentrantLock_holdLeftTaken() {
         CorpusRecorder.countBodyExecution();
         String self = Thread.currentThread().getName();
@@ -3658,7 +3658,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A lock every worker takes with lock() and releases: contended, never left held, no timeout. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_reentrantLock_acquiredAndReleased() {
         CorpusRecorder.countBodyExecution();
         String self = Thread.currentThread().getName();
@@ -3677,7 +3677,7 @@ class CorpusRecordingLaneTest {
      * A party arriving at a phaser its only party already left: the arrival returns a negative
      * phase instead of synchronizing with anyone.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_phaser_terminated() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.phaserDetector();
@@ -3691,7 +3691,7 @@ class CorpusRecordingLaneTest {
      * has its own: concurrent arrivals on one shared single-party phaser can land inside another
      * arrival's advance window, where the phaser throws instead of returning a phase.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_phaser_advancedThroughItsPhase() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.phaserDetector();
@@ -3702,7 +3702,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** An exchange that completes carrying nothing: a rendezvous that transferred no value. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_exchanger_exchangedNothing() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.exchangerDetector();
@@ -3722,7 +3722,7 @@ class CorpusRecordingLaneTest {
      * not normal is an exchange that was entered and never left, so the body records the start and
      * nothing that ends it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_exchanger_leftWithNoPartner() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.exchangerDetector();
@@ -3731,7 +3731,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same rendezvous recorded start to finish with a real payload. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_exchanger_exchangedAPayload() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.exchangerDetector();
@@ -3746,7 +3746,7 @@ class CorpusRecordingLaneTest {
      * shows the consumer parked while its predicate holds: a stuck waiter, not an idle one (#592,
      * #618, #661). Every producer has released the lock by then, so no thread is queued on it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_condition_awaitedWithNoSignal() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
@@ -3769,7 +3769,7 @@ class CorpusRecordingLaneTest {
      * threads signal a different condition. Parked with its predicate false is how a correct
      * consumer loop spends an idle queue (#643), so it must stay silent (#661).
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_condition_consumerIdleOnAnEmptyQueue() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
@@ -3837,7 +3837,7 @@ class CorpusRecordingLaneTest {
      * The same waiter on a condition registered with its lock, correctly signalled and joined
      * so the lock shows no thread parked at analysis (#592, #618).
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_condition_awaitedAndSignalled() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
@@ -3899,7 +3899,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A read of A held across another thread's A to B to A, then a compareAndSet that succeeds. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_aba_premiseReadBeforeAnotherThreadsToggle() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.abaProblemDetector();
@@ -3913,7 +3913,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same toggle and compareAndSet, with the read taken after the toggle finished. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_aba_premiseReadAfterAnotherThreadsToggle() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.abaProblemDetector();
@@ -3927,7 +3927,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A read of a write-once holder nothing has set. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_stableValue_readBeforeItWasSet() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.stableValueMisuseDetector()
@@ -3935,7 +3935,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same read with its set recorded first, on a name unique to this invocation. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_stableValue_setBeforeItWasRead() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3946,7 +3946,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A plain get and a plain set as one read-modify-write: no atomicity, no ordering. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_varHandle_plainGetThenPlainSet() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3958,7 +3958,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same update expressed as a volatile read and a recorded atomic update. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_varHandle_volatileGetThenAtomicUpdate() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -3969,7 +3969,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The firing row's plain get and plain set, with every thread holding the receiver's monitor. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_varHandle_plainGetThenPlainSetUnderTheReceiversMonitor() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4000,14 +4000,14 @@ class CorpusRecordingLaneTest {
      * this uses the parked thread rather than starting 240 of its own. It is a daemon, so even
      * if the release were missed it could not hold the JVM open.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_thread_startedAndNeverJoined() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.threadLeakDetector().recordThreadStart(parkedDaemon, "parked-daemon");
     }
 
     /** The same calls with a join between them, so the thread is gone before analysis. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_thread_startedAndJoined() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadLeakDetector();
@@ -4019,7 +4019,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A thread with no custom handler recorded as dying from an uncaught exception. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_thread_diedWithNoHandler() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.uncaughtExceptionHandlerDetector();
@@ -4029,7 +4029,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical death on a thread that had a handler installed before it started. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_thread_diedWithAHandlerInstalled() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.uncaughtExceptionHandlerDetector();
@@ -4040,21 +4040,21 @@ class CorpusRecordingLaneTest {
     }
 
     /** A live non-daemon thread: the one kind that keeps the JVM from exiting. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_thread_leftNonDaemonAndAlive() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.daemonThreadHygieneDetector().recordThread(parkedNonDaemon, "parked-user");
     }
 
     /** The same recording of a daemon thread, which the JVM abandons at exit. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_thread_leftAsADaemon() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.daemonThreadHygieneDetector().recordThread(parkedDaemon, "parked-daemon");
     }
 
     /** A factory handing back a default-named, non-daemon, handler-less thread. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadFactory_producedARawThread() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadFactoryDetector();
@@ -4063,7 +4063,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same factory call producing a named daemon thread with a handler. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadFactory_producedAConfiguredThread() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadFactoryDetector();
@@ -4075,7 +4075,7 @@ class CorpusRecordingLaneTest {
     // --- Per-thread state that outlives its task ------------------------------------------------
 
     /** An inheritable thread-local set on a thread the body declares as pooled. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_inheritableThreadLocal_setOnAPoolThread() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.inheritableThreadLocalMisuseDetector();
@@ -4084,7 +4084,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same set and get under a name private to each thread, never declared pooled. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_inheritableThreadLocal_confinedToItsOwnName() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.inheritableThreadLocalMisuseDetector();
@@ -4094,7 +4094,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A value set during one task and still readable in the next task on the same thread. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocal_readAcrossATaskBoundary() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4106,7 +4106,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same two tasks with the value read inside its own task and absent in the next. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocal_clearedAtTheTaskBoundary() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4121,7 +4121,7 @@ class CorpusRecordingLaneTest {
     // --- Three more confinement shapes -----------------------------------------------------------
 
     /** Six threads read-modify-writing one lambda's captured counter with nothing held. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lambda_readModifyWriteWithNoGuard() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.lambdaLostUpdateDetector()
@@ -4129,7 +4129,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical sequence with the guard the caller held named to the detector. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lambda_readModifyWriteUnderAGuard() {
         CorpusRecorder.countBodyExecution();
         synchronized (LAMBDA_GUARD) {
@@ -4139,7 +4139,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A record holding a mutable list, shared across threads. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_record_sharedWithAMutableComponent() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.recordMutableComponentLeakDetector()
@@ -4147,7 +4147,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same sharing of a record whose components are all immutable. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_record_sharedWithImmutableComponents() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.recordMutableComponentLeakDetector()
@@ -4155,7 +4155,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** One SplittableRandom recorded from six threads: its javadoc says not thread-safe. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_splittableRandom_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.sharedSplittableRandomDetector();
@@ -4165,7 +4165,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A generator per thread, which is what split() exists for. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_splittableRandom_splitPerThread() {
         CorpusRecorder.countBodyExecution();
         java.util.SplittableRandom mine = CONFINED_SPLITTABLE.get();
@@ -4183,7 +4183,7 @@ class CorpusRecordingLaneTest {
      * <p>The obtain is recorded for the thread that made it, the one that initialised this class;
      * the worker drawing from the capture never called {@code current()} itself.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocalRandom_capturedOnAnotherThread() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadLocalRandomMisuseDetector();
@@ -4193,7 +4193,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same use, with the worker calling current() itself first: the documented idiom. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocalRandom_currentOnTheUsingThread() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadLocalRandomMisuseDetector();
@@ -4206,7 +4206,7 @@ class CorpusRecordingLaneTest {
     // --- The CompletableFuture protocol family --------------------------------------------------
 
     /** A chain created and never joined or handled: nothing observes its outcome. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_chainNeverJoined() {
         CorpusRecorder.countBodyExecution();
         CompletableFuture<String> orphan = new CompletableFuture<>();
@@ -4214,7 +4214,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same creation with a chain operation, a handler and a join recorded. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_chainJoined() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cfChainDetector();
@@ -4228,7 +4228,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A join recorded on a common-pool future, from a thread that pool runs. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_blockedOnItsOwnPool() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4239,7 +4239,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical join against a future that was never submitted to the common pool. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_blockedOnADedicatedPool() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4251,7 +4251,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Two completion attempts on one future: one wins and one is silently discarded. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_completedTwice() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4262,7 +4262,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** One attempt per future, each future private to its invocation, so nothing ever loses. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_completedOnce() {
         CorpusRecorder.countBodyExecution();
         CompletableFuture<String> mine = new CompletableFuture<>();
@@ -4272,7 +4272,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A cancel asking for interruption, which CompletableFuture documents as having no effect. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_cancelDidNotReachTheWork() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.cfCancellationPropagationDetector()
@@ -4280,7 +4280,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A stage recorded as started and finished before a cancel that asks for no interruption. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_cancelAfterTheWorkFinished() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4292,7 +4292,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** An allOf recorded and never awaited: the constituents' failures go nowhere. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_combinatorNeverAwaited() {
         CorpusRecorder.countBodyExecution();
         CompletableFuture<Void> dropped = CompletableFuture.allOf();
@@ -4301,7 +4301,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same combinator with both constituents completed and a recorded await. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_completableFuture_combinatorAwaited() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4317,7 +4317,7 @@ class CorpusRecordingLaneTest {
     // --- The structured-concurrency family ------------------------------------------------------
 
     /** A scope opened and closed with nothing forked into it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scope_closedWithoutForking() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
@@ -4326,7 +4326,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same scope with a subtask forked, joined and read before the close. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scope_forkedJoinedAndRead() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
@@ -4338,7 +4338,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A subtask forked and the scope closed with no join: the work is abandoned mid-flight. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_taskScope_closedWithoutJoining() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4350,7 +4350,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical fork with the join and result read in between. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_taskScope_joinedBeforeClosing() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4364,7 +4364,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** One joiner bound to two different scopes: two scopes' outcomes merge into one accumulator. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scopeJoiner_boundToTwoScopes() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4375,7 +4375,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A joiner per invocation bound once and taken through its whole callback lifecycle. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scopeJoiner_boundToOneScope() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4390,7 +4390,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The configuration asked for and the one in force differ. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scope_configurationSilentlyIgnored() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4401,7 +4401,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same scope whose effective configuration matches what was requested. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scope_configurationApplied() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4416,7 +4416,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A result handle read after its scope closed. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scopeResult_readAfterTheScopeClosed() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4430,7 +4430,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same handle read after the join and before the close: the window the API defines. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scopeResult_readBeforeTheScopeClosed() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4447,7 +4447,7 @@ class CorpusRecordingLaneTest {
     // --- The harness-model family ---------------------------------------------------------------
 
     /** One field identifier recorded with a different value from every thread. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_field_readInconsistentlyAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.visibilityMonitor()
@@ -4455,14 +4455,14 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same field recorded with one value every thread agrees on. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_field_readConsistentlyAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.visibilityMonitor().recordFieldAccess("confined.value", 42L);
     }
 
     /** A wait recorded as returning with no notify, and a body that goes on without waiting again. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_wait_returnedWithoutANotify() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.wakeupDetector();
@@ -4471,7 +4471,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same unsignalled return, then the loop's second wait, ended by a recorded notifyAll. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_wait_returnedWithoutANotify_thenWaitedAgain() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.wakeupDetector();
@@ -4483,7 +4483,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A constructor that registers itself, and the listener reads it from another thread. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_object_accessedDuringConstruction() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.constructorSafetyValidator();
@@ -4491,7 +4491,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same listener, registered after the constructor has returned. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_object_accessedAfterConstruction() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.constructorSafetyValidator();
@@ -4500,7 +4500,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A synchronizer expecting a thousand parties and receiving six. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_barrier_partiesNeverArrived() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.synchronizerMonitor();
@@ -4509,7 +4509,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A synchronizer sized to the parties that arrive, recorded through an advance. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_barrier_partiesArrivedAndAdvanced() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.synchronizerMonitor();
@@ -4519,7 +4519,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A task recorded as rejected by a pool of one with a queue of one. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadPool_rejectedItsWork() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadPoolMonitor();
@@ -4529,7 +4529,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A pool sized for the work, recorded through submit, start and completion. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadPool_ranItsWorkToCompletion() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadPoolMonitor();
@@ -4540,7 +4540,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Events published to a stage and never accounted for. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_pipelineStage_publishedAndDropped() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.pipelineMonitor();
@@ -4549,7 +4549,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same events published and each recorded as processed. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_pipelineStage_publishedAndProcessed() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.pipelineMonitor();
@@ -4560,7 +4560,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Readers outnumbering writers by an order of magnitude on one lock. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_readWriteLock_starvedItsWriter() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.readWriteLockMonitor();
@@ -4574,7 +4574,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same lock with its reads and writes in balance. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_readWriteLock_balancedItsTraffic() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.readWriteLockMonitor();
@@ -4586,7 +4586,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** One field recorded as initialised by every thread that looked at it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lazyInit_initialisedMoreThanOnce() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.lazyInitRaceDetector();
@@ -4595,7 +4595,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same field null-checked by every thread and initialised exactly once. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lazyInit_initialisedOnce() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.lazyInitRaceDetector();
@@ -4606,7 +4606,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A monitor recorded as contended on most of the attempts to take it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lock_contendedRepeatedly() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.lockContentionDetector();
@@ -4619,7 +4619,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same attempts acquired and released with no contention recorded at all. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lock_takenWithoutContention() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.lockContentionDetector();
@@ -4629,14 +4629,14 @@ class CorpusRecordingLaneTest {
     }
 
     /** Six threads writing one object's field with nothing held: the textbook data race. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_field_writtenByEveryThreadUnguarded() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.raceConditionDetector().recordFieldWrite(RACED_TARGET, "counter");
     }
 
     /** The identical writes made inside synchronized on the object itself. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_field_writtenUnderTheObjectsMonitor() {
         CorpusRecorder.countBodyExecution();
         synchronized (GUARDED_TARGET) {
@@ -4647,7 +4647,7 @@ class CorpusRecordingLaneTest {
     // --- The virtual-thread family ----------------------------------------------------------------
 
     /** An inheritable thread-local set on a virtual thread and never removed. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_virtualThread_contextNeverRemoved() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.virtualThreadContextLeakDetector()
@@ -4655,7 +4655,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same set, not inheritable, with a recorded removal behind it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_virtualThread_contextRemoved() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.virtualThreadContextLeakDetector();
@@ -4665,7 +4665,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** More virtual threads queue for a resource of capacity one than it can ever serve. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_virtualThreads_saturatedAScarceResource() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.vthreadResourceSaturationDetector();
@@ -4676,7 +4676,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same acquisitions against a resource sized well above the demand. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_virtualThreads_withinResourceCapacity() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.vthreadResourceSaturationDetector();
@@ -4688,7 +4688,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Four virtual threads entering one monitor and none acquiring it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_virtualThreads_serialisedOnAMonitor() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.vthreadMonitorSerializationDetector();
@@ -4698,7 +4698,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same entries recorded as acquired, on a monitor private to each invocation. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_virtualThreads_acquiredTheMonitor() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.vthreadMonitorSerializationDetector();
@@ -4711,7 +4711,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A distinct cached instance recorded for each virtual thread. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocalCache_onePerVirtualThread() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadLocalCacheDegradationDetector();
@@ -4721,7 +4721,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same recordings of one shared instance. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_threadLocalCache_sharedAcrossVirtualThreads() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.threadLocalCacheDegradationDetector();
@@ -4731,7 +4731,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A fixed pool built over a virtual-thread factory: pooling what costs nothing to create. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_executor_pooledItsVirtualThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.virtualThreadPoolingDetector()
@@ -4739,7 +4739,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The identical pool over the default platform factory, which is what pooling is for. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_executor_pooledItsPlatformThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.virtualThreadPoolingDetector()
@@ -4749,7 +4749,7 @@ class CorpusRecordingLaneTest {
     // --- The foreign-memory family ------------------------------------------------------------
 
     /** Six threads writing the same eight bytes of one segment with no guard named. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_memorySegment_overlappingWrites() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedMemorySegmentRaceDetector()
@@ -4758,7 +4758,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same segment written at offsets that cannot overlap. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_memorySegment_disjointWrites() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4771,7 +4771,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A segment from a confined arena accessed by threads other than its owner. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_confinedArena_accessedFromAnotherThread() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.confinedArenaThreadEscapeDetector();
@@ -4788,7 +4788,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** An arena per invocation, allocated, accessed and closed by the thread that opened it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_confinedArena_accessedByItsOwner() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4804,7 +4804,7 @@ class CorpusRecordingLaneTest {
     // --- Three value-lifecycle stragglers -------------------------------------------------------
 
     /** A gatherer declared parallel with no combiner, integrated from six threads. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_gatherer_parallelWithoutACombiner() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.gathererConcurrencyMisuseDetector();
@@ -4813,7 +4813,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A parallel gatherer with a combiner, each segment integrating its own state. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_gatherer_parallelWithACombiner() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.gathererConcurrencyMisuseDetector();
@@ -4823,7 +4823,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A lazy constant whose computation finishes with no value. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lazyConstant_computedToNothing() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4834,7 +4834,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same computation ending with a value, on a name unique to this invocation. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lazyConstant_computedToAValue() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4846,7 +4846,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A lazily computed entry that finishes with no value, so the key stays absent. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lazyCollection_entryComputedToNothing() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4857,7 +4857,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same computation producing a value, under a key unique to this invocation. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_lazyCollection_entryComputedToAValue() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -4871,7 +4871,7 @@ class CorpusRecordingLaneTest {
     // --- The last of the pairable set ------------------------------------------------------------
 
     /** One Random contended by six threads: thread-safe, and a contention note all the same. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_random_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.sharedRandomDetector();
@@ -4881,7 +4881,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A Random per thread, which is what removes the contention the row above reports. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_random_confinedToOneThreadEach() {
         CorpusRecorder.countBodyExecution();
         java.util.Random mine = CONFINED_RANDOM.get();
@@ -4892,7 +4892,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A task on a single-threaded scheduler recorded as taking five seconds. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scheduledExecutor_taskOverranItsPeriod() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.scheduledExecutorDetector();
@@ -4906,7 +4906,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same scheduler through schedule, start, a millisecond completion and a shutdown. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_scheduledExecutor_taskFinishedPromptly() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.scheduledExecutorDetector();
@@ -4918,7 +4918,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A task recorded as forked and never joined: its result and its exception both go. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_forkJoin_forkedWithoutJoining() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.forkJoinPoolDetector()
@@ -4926,7 +4926,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same fork with its join recorded behind it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_forkJoin_forkedAndJoined() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.forkJoinPoolDetector();
@@ -4944,7 +4944,7 @@ class CorpusRecordingLaneTest {
      * detector, so one body reaching it is what the finding needs, and doing it 240 times would
      * add 2.4 million calls to the lane for no extra evidence.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_spinLoop_ranWithoutYielding() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.busyWaitDetector();
@@ -4957,7 +4957,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A hundred iterations between yields: the fast path of an ordinary lock. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_spinLoop_yieldedOften() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.busyWaitDetector();
@@ -4968,7 +4968,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A request recorded as sent with no response ever recorded for it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_httpRequest_sentWithNoResponse() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.httpClientDetector();
@@ -4978,7 +4978,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same request with its response recorded under the same unique name. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_httpRequest_answered() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.httpClientDetector();
@@ -4990,7 +4990,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Every recorded compare-and-set fails: work thrown away and retried. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_atomic_casRetriedUnderContention() {
         CorpusRecorder.countBodyExecution();
         // Ten per body, so the run clears the detector's 1000-attempt threshold with room to
@@ -5004,7 +5004,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same attempts, every one succeeding: an uncontended atomic. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_atomic_casSucceededFirstTime() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.highContentionAtomicDetector();
@@ -5014,7 +5014,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A task on a pool of one waiting for a sibling that pool can never start. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_executor_taskWaitedOnItsSibling() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.executorDeadlockDetector();
@@ -5034,7 +5034,7 @@ class CorpusRecordingLaneTest {
      * The same wait on a pool of two that each call creates, the way a test writes
      * {@code Executors.newFixedThreadPool(2)}: the second thread runs the sibling, so the wait ends.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_executor_taskWaitedWithThreadsToSpare() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.executorDeadlockDetector();
@@ -5051,7 +5051,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** Every thread of a pool of one recorded blocked waiting on a future. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_future_blockedOnAFullPool() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.futureBlockingDetector();
@@ -5063,7 +5063,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same blocking wait on a per-call pool of two, whose second thread runs the future. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_future_blockedWithThreadsToSpare() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.futureBlockingDetector();
@@ -5080,7 +5080,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** An onNext delivered after the subscriber was completed: onComplete is terminal. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_flowSubscriber_signalledAfterCompletion() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -5092,7 +5092,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A subscriber per invocation taken through the protocol in the order it specifies. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_flowSubscriber_signalledInOrder() {
         CorpusRecorder.countBodyExecution();
         Thread self = Thread.currentThread();
@@ -5108,7 +5108,7 @@ class CorpusRecordingLaneTest {
     // --- The last three -------------------------------------------------------------------------
 
     /** A write stamp taken and never released: StampedLock has no owner to recover it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_stampedLock_stampNeverReleased() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.stampedLockDetector();
@@ -5125,7 +5125,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same acquisition released in a finally block, with its unlock recorded. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_stampedLock_stampReleased() {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.stampedLockDetector();
@@ -5141,7 +5141,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** A caught InterruptedException with no restore recorded against it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_interruptedException_swallowedWholesale() {
         CorpusRecorder.countBodyExecution();
         Thread.currentThread().interrupt();
@@ -5153,7 +5153,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** The same catch with the restore recorded behind it, so catches and restores balance. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_interruptedException_restoredAfterCatching() {
         CorpusRecorder.countBodyExecution();
         var monitor = AsyncTestContext.interruptMonitor();
@@ -5171,7 +5171,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** One SecureRandom recorded from six threads: a contention note, not a corruption claim. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_secureRandom_sharedAcrossThreads() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedSecureRandomDetector()
@@ -5179,7 +5179,7 @@ class CorpusRecordingLaneTest {
     }
 
     /** An instance per thread, which is what removes the contention. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void recorded_secureRandom_confinedToOneThreadEach() {
         CorpusRecorder.countBodyExecution();
         AsyncTestContext.sharedSecureRandomDetector()

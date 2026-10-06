@@ -44,7 +44,7 @@ class MissedSignalWeavingSparesPredicateLoopTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 10)
+    @AsyncTest(threads = 4, invocations = 10, detectAll = true)
     void pollingInAPredicateLoopAfterTheSignalWasLost() throws InterruptedException {
         handOff.signalThenAwait();
     }

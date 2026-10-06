@@ -52,7 +52,7 @@ class LicenseValidationCacheDogfoodTest {
         set("license.cache.ttl.hours", "24");
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 60_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 60_000, detectAll = true)
     void everyWorkerRecordsTheSameValidationAndReadsItBack() {
         LicenseValidationCache.record(HASH);
         assertTrue(LicenseValidationCache.isFresh(HASH),

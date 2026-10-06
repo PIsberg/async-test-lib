@@ -45,7 +45,7 @@ class WorkerThreadsAreDaemonTest {
      */
     public static class PlatformWorkerDummy {
 
-        @AsyncTest(threads = 3, invocations = 2, useVirtualThreads = false)
+        @AsyncTest(threads = 3, invocations = 2, useVirtualThreads = false, detectAll = true)
         void recordWhatKindOfThreadRunsMe() {
             Thread self = Thread.currentThread();
             (self.isDaemon() ? DAEMON : NON_DAEMON).add(self.getName());

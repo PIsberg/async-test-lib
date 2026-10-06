@@ -32,7 +32,7 @@ class RendezvousTest {
     /** Workers that have read {@link #arrived} this phase; the last one resets both. */
     private final AtomicInteger departed = new AtomicInteger();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 60_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 60_000, detectAll = true)
     void noWorkerPassesTheRendezvousBeforeEveryPeerOfItsRoundArrives() {
         BODY_EXECUTIONS.incrementAndGet();
         for (int phase = 0; phase < 3; phase++) {
@@ -62,7 +62,7 @@ class RendezvousTest {
         assertEquals(true, e.getMessage().contains("@AsyncTest"), e.getMessage());
     }
 
-    @AsyncTest(threads = 1, invocations = 3, timeoutMs = 10_000)
+    @AsyncTest(threads = 1, invocations = 3, timeoutMs = 10_000, detectAll = true)
     void aSingleWorkerPassesStraightThrough() {
         AsyncTestContext.rendezvous();
     }

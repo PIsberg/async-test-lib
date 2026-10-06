@@ -406,7 +406,7 @@ class ConcurrencyRunnerLogContractTest {
     static class NarratedDummy {
         private final AtomicInteger counter = new AtomicInteger();
 
-        @AsyncTest(threads = 3, invocations = 2)
+        @AsyncTest(threads = 3, invocations = 2, detectAll = true)
         void narrated() {
             counter.incrementAndGet();
         }
@@ -416,7 +416,7 @@ class ConcurrencyRunnerLogContractTest {
     static class PlatformThreadDummy {
         private final AtomicInteger counter = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false)
+        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false, detectAll = true)
         void onPlatformThreads() {
             counter.incrementAndGet();
         }

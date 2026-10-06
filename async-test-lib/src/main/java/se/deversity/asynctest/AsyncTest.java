@@ -45,10 +45,11 @@ import java.lang.annotation.Target;
  * <h2>Selecting detectors</h2>
  * Detectors are named by {@link DetectorType}: {@link #includes()} selects exactly the listed ones,
  * {@link #preset()} a curated bundle, {@link #detectAll()} every one, and {@link #excludes()}
- * removes from any of these. The 146 per-detector boolean attributes of 1.x
- * ({@code detectRaceConditions = true} and the rest) were removed in 2.0.0 (#920).
+ * removes from any of these. A bare {@code @AsyncTest} runs {@link Preset#ESSENTIALS}; every
+ * detector is the explicit {@code detectAll = true} (#923). The 146 per-detector boolean
+ * attributes of 1.x ({@code detectRaceConditions = true} and the rest) were removed in 2.0.0 (#920).
  */
-@AIContract(reason = "Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 2.0.0, #920).")
+@AIContract(reason = "Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 2.0.0, #920). The bare-annotation selection is Preset.ESSENTIALS with detectAll = false (2.0.0, #923): a different default changes what every unchanged test in every consumer detects.")
 @AIPublicAPI
 @Target({ElementType.METHOD, ElementType.TYPE, ElementType.ANNOTATION_TYPE})
 @Retention(RetentionPolicy.RUNTIME)
@@ -129,26 +130,25 @@ public @interface AsyncTest {
     String virtualThreadStressMode() default "OFF";
 
     /**
-     * Enable ALL detectors in one shot, under the default {@link Preset#ALL}.
-     * {@link #excludes()} removes detectors from the selection; {@link #includes()} and any other
-     * preset take precedence over it.
-     * <p><strong>Default is {@code true}</strong> — {@code @AsyncTest} alone enables all detectors.
-     * {@code false} on its own selects nothing: under 1.x it left the 144 per-detector attributes
-     * that defaulted to {@code true} switched on, which is why those attributes were removed (#920).
-     * <p>Example: {@code @AsyncTest} — all detectors enabled automatically.
+     * Enable every detector, whatever {@link #preset()} says. {@link #includes()} takes precedence
+     * over it, and {@link #excludes()} removes detectors from the selection.
+     * <p><strong>Default is {@code false}</strong> since 2.0.0 (#923): {@code @AsyncTest} alone runs
+     * {@link Preset#ESSENTIALS}, and {@code detectAll = true} is the explicit opt-in to every
+     * detector. {@code false} leaves {@link #preset()} in charge.
+     * <p>Example: {@code @AsyncTest(detectAll = true)} — every detector.
      * <p>Example: {@code @AsyncTest(includes = DetectorType.DEADLOCKS)} — only deadlock detection.
      *
-     * @return {@code true} to enable every detector, subject to {@link #excludes()}
+     * @return {@code true} to enable every detector, subject to {@link #includes()} and {@link #excludes()}
      */
-    boolean detectAll() default true;
+    boolean detectAll() default false;
 
     /**
-     * Curated detector bundle. Overrides {@link #detectAll()} when set to anything other than
-     * {@link Preset#ALL} or {@link Preset#STRICT}.
+     * Curated detector bundle, used when neither {@link #includes()} nor {@code detectAll = true}
+     * is set.
      *
      * <ul>
-     *   <li>{@link Preset#ALL} — every detector (default; equivalent to legacy {@code detectAll = true}).</li>
-     *   <li>{@link Preset#ESSENTIALS} — ~12 high-signal detectors for everyday CI.</li>
+     *   <li>{@link Preset#ESSENTIALS} — 12 high-signal detectors for everyday CI (default since 2.0.0, #923).</li>
+     *   <li>{@link Preset#ALL} — every detector, the same selection as {@code detectAll = true}.</li>
      *   <li>{@link Preset#STRICT} — same as ALL, named explicitly.</li>
      *   <li>{@link Preset#CI_FAST} — minimal set for pull-request gates.</li>
      *   <li>{@link Preset#NONE} — disable all detectors; concurrent execution only.</li>
@@ -161,7 +161,7 @@ public @interface AsyncTest {
      *
      * @return the curated detector bundle to enable
      */
-    Preset preset() default Preset.ALL;
+    Preset preset() default Preset.ESSENTIALS;
 
     /**
      * Replay seed for deterministic re-runs.
@@ -195,8 +195,8 @@ public @interface AsyncTest {
     long replaySeed() default 0L;
 
     /**
-     * Specific detectors to exclude when {@code detectAll = true}.
-     * Use {@link DetectorType} to specify which detectors to skip.
+     * Specific detectors to exclude from whatever {@link #includes()}, {@link #preset()} or
+     * {@link #detectAll()} selected. Use {@link DetectorType} to specify which detectors to skip.
      * <p>Example: {@code @AsyncTest(detectAll = true, excludes = {DetectorType.BUSY_WAITING})}
      *
      * @return the detectors to switch off, which win over every other selection

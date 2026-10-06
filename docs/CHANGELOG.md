@@ -79,6 +79,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A bare `@AsyncTest` runs `Preset.ESSENTIALS`, not every detector (breaking, 2.0.0).** The
+  defaults are now `detectAll = false` and `preset = Preset.ESSENTIALS`, and `detectAll = true` is
+  the explicit opt-in to every detector, whatever the preset says; `includes` still wins over both.
+  Every test paid for all 146 detectors' setup and read findings from every trust tier while most
+  suites want a curated subset. `ESSENTIALS` holds 12 detectors and none at the ADVISORY tier, which
+  `LeanDefaultSelectionTest` keeps true. That test went red first: a bare annotation resolved to all
+  146 types and `detectAll = false` to none. `detectAll = false` beside a named preset now resolves to
+  that preset. The 694 annotations in this repository that relied on the old default now say
+  `detectAll = true`, so what they test did not shrink. `docs/MIGRATION.md` has the rewrite (#923).
 - **A docs-only pull request can no longer wait forever on `E2E Tests` (#910).** The check is
   required, but `e2e-tests.yml` skipped pull requests that touch only docs, so the context would
   never report. Its pull-request trigger is no longer path-filtered, and

@@ -149,7 +149,8 @@ class Phase3DetectorsTest {
 
         @AsyncTest(threads = 3,
             invocations = 3,
-            timeoutMs = 2_000)
+            timeoutMs = 2_000,
+            detectAll = true)
         void runsWithPhase3FlagsEnabled() {
             counter.incrementAndGet();
         }

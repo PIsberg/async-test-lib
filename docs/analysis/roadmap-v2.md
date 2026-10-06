@@ -185,8 +185,9 @@ name their replacement. Each item below says whether it is ready.
   stays as the third-party path, keyed by id after #919. Originally: either the legacy hand-wired path (SPI becomes the
   runtime) or the dead SPI duplication — decided during Train 2 based on how the
   id-keyed SPI shakes out.
-* Flip the default from detect-everything to a lean preset (#923) (e.g. `Preset.ESSENTIALS`);
-  `detectAll` stays available as an explicit opt-in.
+* Flip the default from detect-everything to a lean preset (#923, **done 2026-10-06**: a bare
+  `@AsyncTest` runs `Preset.ESSENTIALS`, 12 detectors with none at the ADVISORY tier, pinned by
+  `LeanDefaultSelectionTest`); `detectAll = true` is the explicit opt-in.
 
 ## Feature roadmap, beside the trains
 

@@ -51,7 +51,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 4,
                   invocations = 10,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testCacheLineContention() {
             // Two threads contend on adjacent fields
             int threadId = threadAssigner.getAndIncrement();
@@ -89,7 +90,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 2,
                   invocations = 5,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testSpuriousWakeup() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -134,7 +136,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 3,
                   invocations = 5,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testObjectPublicationRace() {
             if (counter.getAndIncrement() == 0) {
                 // This thread constructs and publishes
@@ -171,7 +174,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 2,
                   invocations = 3,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testABAProblem() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -220,7 +224,8 @@ public class Phase2AsyncIntegrationTest {
         @AsyncTest(threads = 2,
                   invocations = 2,
                   timeoutMs = 5000,
-                  useVirtualThreads = false)
+                  useVirtualThreads = false,
+                  detectAll = true)
         void testInconsistentLockOrder() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -262,7 +267,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 3,
                   invocations = 2,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testBarrierSynchronization() throws BrokenBarrierException, InterruptedException {
             barrier.await();
             counter.incrementAndGet();
@@ -291,7 +297,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 3,
                   invocations = 2,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testPoolQueueSaturation() throws InterruptedException {
             Future<?> future = executor.submit(() -> {
                 try { Thread.sleep(100); } catch (Exception e) {}
@@ -328,7 +335,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 2,
                   invocations = 5,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testMemoryOrdering() {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -366,7 +374,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 4,
                   invocations = 2,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testPipelineFlow() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 4 == 0) {
@@ -412,7 +421,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 5,
                   invocations = 3,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testReaderWriterInteraction() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 5 == 0) {
@@ -465,7 +475,8 @@ public class Phase2AsyncIntegrationTest {
         @AsyncTest(threads = 2,
                   invocations = 2,
                   timeoutMs = 5000,
-                  useVirtualThreads = false)
+                  useVirtualThreads = false,
+                  detectAll = true)
         void testMultipleDetectors() throws InterruptedException {
             int id = threadId.getAndIncrement();
             if (id % 2 == 0) {
@@ -509,7 +520,8 @@ public class Phase2AsyncIntegrationTest {
 
         @AsyncTest(threads = 3,
                   invocations = 2,
-                  timeoutMs = 5000)
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testPhasesCombined() throws InterruptedException {
             int id = threadAssigner.getAndIncrement();
             synchronized (lock) {

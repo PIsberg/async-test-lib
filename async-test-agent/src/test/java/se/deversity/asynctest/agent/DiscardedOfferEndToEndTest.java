@@ -55,12 +55,12 @@ class DiscardedOfferEndToEndTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void offeringAndNeverLooking() {
         dropping.enqueue("element");
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void offeringAndChecking() {
         checked.enqueue("element");
     }

@@ -688,12 +688,12 @@ public final class AsyncTestConfig {
         // Check for global benchmarking system property
         boolean globalBenchmarkingEnabled = Boolean.getBoolean("async-test.benchmarking.enabled");
 
-        // Resolve the selection: includes(), else a preset other than ALL/STRICT, else
-        // detectAll(). Each is expressed as detectAll plus the excludes that carve the selection
-        // out of every type, so build() resolves it like any other. The per-detector boolean
-        // attributes that used to feed build() were removed in 2.0.0 (#920), so detectAll = false
-        // under ALL selects nothing; under 1.x it left 144 of those attributes at their default
-        // of true. User-supplied excludes() always layer on top and win on conflict.
+        // Resolve the selection: includes(), else detectAll = true or a preset that means every
+        // detector (ALL, STRICT), else the preset's own set. Each is expressed as detectAll plus
+        // the excludes that carve the selection out of every type, so build() resolves it like
+        // any other. A bare annotation lands in the last branch with Preset.ESSENTIALS (2.0.0,
+        // #923); detectAll = false only declines the opt-in and leaves the preset in charge.
+        // User-supplied excludes() always layer on top and win on conflict.
         Preset preset = ann.preset();
         boolean effectiveDetectAll = true;
         Set<DetectorType> effectiveExcludes = EnumSet.noneOf(DetectorType.class);
@@ -703,13 +703,9 @@ public final class AsyncTestConfig {
             for (DetectorType t : DetectorType.values()) {
                 if (!included.contains(t)) effectiveExcludes.add(t);
             }
-        } else if (preset.isAll()) {
-            effectiveDetectAll = ann.detectAll();
-            if (!effectiveDetectAll) {
-                effectiveExcludes.addAll(EnumSet.allOf(DetectorType.class));
-            }
-        } else {
-            // Non-null here: the isAll() branch above owns every preset whose set is null.
+        } else if (!ann.detectAll() && !preset.isAll()) {
+            // Otherwise every detector: effectiveDetectAll stays true and nothing is carved out.
+            // Non-null here: isAll() owns every preset whose set is null.
             Set<DetectorType> enabled = Objects.requireNonNull(
                 preset.enabled(), "non-all preset must enumerate its detectors");
             for (DetectorType t : DetectorType.values()) {

@@ -55,12 +55,12 @@ class SleepOverloadWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 10)
+    @AsyncTest(threads = 4, invocations = 10, detectAll = true)
     void sleepingADurationInsideASynchronizedMethod() throws InterruptedException {
         duration.process();
     }
 
-    @AsyncTest(threads = 4, invocations = 10)
+    @AsyncTest(threads = 4, invocations = 10, detectAll = true)
     void sleepingSubMillisecondInsideASynchronizedMethod() throws InterruptedException {
         nanos.process();
     }

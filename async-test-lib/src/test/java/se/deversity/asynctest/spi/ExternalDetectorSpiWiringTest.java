@@ -111,7 +111,8 @@ class ExternalDetectorSpiWiringTest {
     static class ExternalDetectorFixture {
 
         @AsyncTest(threads = 2, invocations = 1, timeoutMs = 10_000,
-                failOn = FailOn.MEDIUM, licenseMockMode = true)
+                failOn = FailOn.MEDIUM, licenseMockMode = true,
+                detectAll = true)
         void passingBodyWithAnExternalFinding() {
             // Intentionally empty: the finding comes from the SPI detector, not the body.
         }

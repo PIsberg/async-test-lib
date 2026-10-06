@@ -375,7 +375,7 @@ public class Phase2DetectorsTest {
 
     // ============= Semaphore Misuse Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testSemaphorePermitLeak() throws InterruptedException {
         Semaphore semaphore = new Semaphore(2);
         AsyncTestContext.semaphoreMisuseDetector()
@@ -387,7 +387,7 @@ public class Phase2DetectorsTest {
         // Intentional: not releasing - simulates permit leak
     }
 
-    @AsyncTest(threads = 2, timeoutMs = 15000)
+    @AsyncTest(threads = 2, timeoutMs = 15000, detectAll = true)
     void testSemaphoreNormalUsage() throws InterruptedException {
         Semaphore semaphore = new Semaphore(2);
         AsyncTestContext.semaphoreMisuseDetector()
@@ -406,7 +406,7 @@ public class Phase2DetectorsTest {
 
     // ============= CompletableFuture Exception Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testCompletableFutureUnhandledException() {
         CompletableFuture<String> future = new CompletableFuture<>();
         AsyncTestContext.completableFutureExceptionDetector()
@@ -418,7 +418,7 @@ public class Phase2DetectorsTest {
             .recordFutureCompleted(future, "unhandled-async-task", false);
     }
 
-    @AsyncTest(threads = 2, timeoutMs = 15000)
+    @AsyncTest(threads = 2, timeoutMs = 15000, detectAll = true)
     void testCompletableFutureWithHandler() {
         CompletableFuture<String> future = new CompletableFuture<>();
         AsyncTestContext.completableFutureExceptionDetector()
@@ -438,7 +438,7 @@ public class Phase2DetectorsTest {
 
     // ============= Concurrent Modification Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testConcurrentCollectionModification() {
         List<String> list = new CopyOnWriteArrayList<>();
         AsyncTestContext.concurrentModificationDetector()
@@ -459,7 +459,7 @@ public class Phase2DetectorsTest {
             .recordModification(list, "concurrent-list", "add");
     }
 
-    @AsyncTest(threads = 2, timeoutMs = 15000)
+    @AsyncTest(threads = 2, timeoutMs = 15000, detectAll = true)
     void testConcurrentCollectionMutation() {
         List<String> list = new CopyOnWriteArrayList<>();
         AsyncTestContext.concurrentModificationDetector()
@@ -473,7 +473,7 @@ public class Phase2DetectorsTest {
 
     // ============= Lock Leak Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testLockNormalUsage() {
         ReentrantLock lock = new ReentrantLock();
         AsyncTestContext.lockLeakDetector()
@@ -491,7 +491,7 @@ public class Phase2DetectorsTest {
         }
     }
 
-    @AsyncTest(threads = 2, timeoutMs = 15000)
+    @AsyncTest(threads = 2, timeoutMs = 15000, detectAll = true)
     void testLockLeakScenario() {
         ReentrantLock lock = new ReentrantLock();
         AsyncTestContext.lockLeakDetector()
@@ -506,7 +506,7 @@ public class Phase2DetectorsTest {
 
     // ============= Shared Random Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testSharedRandomDetection() {
         Random random = new Random();
         AsyncTestContext.sharedRandomDetector()
@@ -518,7 +518,7 @@ public class Phase2DetectorsTest {
             .recordRandomAccess(random, "shared-random", "nextInt");
     }
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testThreadLocalRandomUsage() {
         // Proper way: use ThreadLocalRandom for concurrent access
         int value = java.util.concurrent.ThreadLocalRandom.current().nextInt();
@@ -527,7 +527,7 @@ public class Phase2DetectorsTest {
 
     // ============= Blocking Queue Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testBlockingQueueUsage() throws InterruptedException {
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
         AsyncTestContext.blockingQueueDetector()
@@ -544,7 +544,7 @@ public class Phase2DetectorsTest {
             .recordPoll(queue, "work-queue", item != null);
     }
 
-    @AsyncTest(threads = 2, timeoutMs = 15000)
+    @AsyncTest(threads = 2, timeoutMs = 15000, detectAll = true)
     void testBlockingQueueSaturation() throws InterruptedException {
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(2);
         AsyncTestContext.blockingQueueDetector()
@@ -566,7 +566,7 @@ public class Phase2DetectorsTest {
 
     // ============= Condition Variable Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testConditionVariableUsage() throws InterruptedException {
         ReentrantLock lock = new ReentrantLock();
         Condition condition = lock.newCondition();
@@ -586,7 +586,7 @@ public class Phase2DetectorsTest {
 
     // ============= SimpleDateFormat Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testSimpleDateFormatUsage() {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         AsyncTestContext.simpleDateFormatDetector()
@@ -600,7 +600,7 @@ public class Phase2DetectorsTest {
 
     // ============= Parallel Stream Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testParallelStreamStatefulLambda() {
         List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
         AtomicInteger counter = new AtomicInteger();
@@ -614,7 +614,7 @@ public class Phase2DetectorsTest {
             .recordStatefulOperation("stateful-stream", "forEach");
     }
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testParallelStreamSafeUsage() {
         List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
         
@@ -637,7 +637,7 @@ public class Phase2DetectorsTest {
 
     // ============= Resource Leak Tests =============
 
-    @AsyncTest(threads = 4, timeoutMs = 15000)
+    @AsyncTest(threads = 4, timeoutMs = 15000, detectAll = true)
     void testResourceLeakProperUsage() throws Exception {
         java.io.StringReader reader = new java.io.StringReader("test data");
         AsyncTestContext.resourceLeakDetector()
@@ -654,7 +654,7 @@ public class Phase2DetectorsTest {
         }
     }
 
-    @AsyncTest(threads = 2, timeoutMs = 15000)
+    @AsyncTest(threads = 2, timeoutMs = 15000, detectAll = true)
     void testResourceLeakScenario() throws Exception {
         java.io.StringReader reader = new java.io.StringReader("test data");
         AsyncTestContext.resourceLeakDetector()

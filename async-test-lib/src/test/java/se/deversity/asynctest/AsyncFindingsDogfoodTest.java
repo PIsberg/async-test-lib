@@ -40,7 +40,7 @@ class AsyncFindingsDogfoodTest {
 
     private static final AtomicInteger NEXT_TAG = new AtomicInteger();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000, detectAll = true)
     void collectorTakesEveryViolationWhileItIsBeingRead() {
         int tag = NEXT_TAG.incrementAndGet();
         FINDINGS.onViolation(new Violation(

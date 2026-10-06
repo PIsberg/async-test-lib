@@ -13,11 +13,13 @@ Part of the [Usage guide](../USAGE.md).
 | `timeoutMs` | long | 5000 | Test timeout in milliseconds |
 | `useVirtualThreads` | boolean | true | Use Java 21+ virtual threads |
 | `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
-| `detectAll` | boolean | true | **Enable ALL detectors in one shot (Recommended)**. `false` on its own selects nothing; name detectors with `includes`, drop them with `excludes` |
-| `excludes` | DetectorType[] | {} | Detectors to skip when `detectAll = true` |
+| `preset` | Preset | ESSENTIALS | Curated detector bundle, used when neither `includes` nor `detectAll = true` is set. A bare `@AsyncTest` runs `ESSENTIALS` (2.0.0) |
+| `detectAll` | boolean | false | Enable every detector, whatever `preset` says; `includes` still wins. `false` leaves `preset` in charge |
+| `includes` | DetectorType[] | {} | Enable exactly these detectors; overrides `preset` and `detectAll` when non-empty |
+| `excludes` | DetectorType[] | {} | Detectors to skip from whatever `includes`, `preset` or `detectAll` selected |
 | `excludeIds` | String[] | {} | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (2.0.0+) |
 
-### Phase 1 Detectors (Enabled by default if detectAll=true)
+### Phase 1 Detectors (Enabled by detectAll = true)
 
 | DetectorType | Description |
 |--------------|-------------|
@@ -25,7 +27,7 @@ Part of the [Usage guide](../USAGE.md).
 | `VISIBILITY` | Detect missing volatile keywords |
 | `LIVELOCKS` | Detect thread spinning and starvation |
 
-### Phase 2 Detectors (Enabled by default if detectAll=true)
+### Phase 2 Detectors (Enabled by detectAll = true)
 
 | DetectorType | Description |
 |--------------|-------------|
@@ -40,7 +42,7 @@ Part of the [Usage guide](../USAGE.md).
 | `ASYNC_PIPELINE` | Monitor event flow through async pipelines |
 | `READ_WRITE_LOCK_FAIRNESS` | Detect writer starvation and unfair locks |
 
-### Phase 3 Detectors (Enabled by default if detectAll=true)
+### Phase 3 Detectors (Enabled by detectAll = true)
 
 | DetectorType | Description |
 |--------------|-------------|
@@ -50,7 +52,7 @@ Part of the [Usage guide](../USAGE.md).
 | `ATOMICITY_VIOLATIONS` | Detect non-atomic compound operations |
 | `INTERRUPT_MISHANDLING` | Detect swallowed interrupts and missing restoration |
 
-### Phase 5 Detectors — Thread-Safety of Common Types (Enabled by default if detectAll=true)
+### Phase 5 Detectors — Thread-Safety of Common Types (Enabled by detectAll = true)
 
 These detectors catch misuse of common Java standard-library types that are **not thread-safe**
 but are frequently shared across threads by mistake.

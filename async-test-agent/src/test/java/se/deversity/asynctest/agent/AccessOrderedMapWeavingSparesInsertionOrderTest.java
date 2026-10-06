@@ -45,19 +45,19 @@ class AccessOrderedMapWeavingSparesInsertionOrderTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void plainInsertionOrderedMap() {
         plain.lookup("key");
         plain.store("key", "value");
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void insertionOrderedSubclass() {
         subclassed.lookup("key");
         subclassed.store("key", "value");
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void accessOrderedControl() {
         control.lookup("key");
         control.store("key", "value");

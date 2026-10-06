@@ -171,8 +171,8 @@ class Consumer1_0_0FeaturesTest {
 
     // ---- 8) Phase 13 detectors: AsyncTestContext accessors compile + return ----
 
-    // Default Preset.ALL + detectAll=true enables every detector.
-    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    // detectAll = true enables every detector; a bare @AsyncTest runs Preset.ESSENTIALS (2.0.0).
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
     void phase13_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.daemonThreadHygieneDetector());
         assertNotNull(AsyncTestContext.notifyWithoutMonitorDetector());
@@ -181,7 +181,7 @@ class Consumer1_0_0FeaturesTest {
         assertNotNull(AsyncTestContext.jdbcConnectionSharedDetector());
     }
 
-    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
     void phase14_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.sharedStatefulCryptoDetector());
         assertNotNull(AsyncTestContext.nonAtomicConcurrentMapUpdateDetector());
@@ -190,7 +190,7 @@ class Consumer1_0_0FeaturesTest {
         assertNotNull(AsyncTestContext.threadLocalRandomMisuseDetector());
     }
 
-    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
     void phase15_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.completableFutureObtrudeDetector());
         assertNotNull(AsyncTestContext.spuriousWakeupHazardDetector());
