@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`OperationHistory.operation(...)` and `generate(n)`: drawn linearizability scenarios (#935).**
+  The test author declares what a worker may do; each worker of each round draws its own sequence
+  from the replay seed, the round and its slot, so a pasted `replaySeed` reproduces a failing
+  scenario. A drawn `increment`/`get` mix stays linearizable on an `AtomicInteger` and fails on a
+  read-sleep-write counter with no interleaving scripted; workers sharing one stream turns the
+  replay test red.
 - **`OperationHistory.assertLinearizable(spec, partition)` checks one independent object at a
   time (#933).** One search takes at most 64 operations, so a round of more could not be checked at
   all. Linearizability is local, so grouping a round's operations by the object they touch, such as

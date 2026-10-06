@@ -180,7 +180,23 @@ no operations at all.
 For an object made of independent parts, such as a map whose keys never interact, check each part
 on its own: `HISTORY.assertLinearizable(spec, (operation, argument) -> argument)` searches each
 key's operations separately against a `spec` that models one key, so a round may record up to
-1,024 operations as long as no key gets more than 64. A failure names the key. The design and its limits are in
+1,024 operations as long as no key gets more than 64. A failure names the key.
+
+To leave the order to the runner, declare the operations once and draw them in the body:
+
+```java
+private static final OperationHistory<AtomicInteger> HISTORY = OperationHistory.of(AtomicInteger::new)
+        .operation("increment", random -> null, (counter, unused) -> counter.incrementAndGet())
+        .operation("get", random -> null, (counter, unused) -> counter.get());
+
+@AsyncTest(threads = 4, invocations = 50)
+void counter() {
+    HISTORY.generate(8);   // this worker's 8 operations, drawn from the replay seed
+}
+```
+
+Each worker draws its own sequence from the round's replay seed, so the seed the runner prints on a
+failure reproduces the scenario. The design and its limits are in
 [analysis/linearizability-checking.md](analysis/linearizability-checking.md).
 
 ## Asserting on what the workers did: `RunOutcomes` (1.13.0)

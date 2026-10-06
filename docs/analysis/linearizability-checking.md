@@ -94,6 +94,19 @@ caller's claim; an operation that touches several partitions, such as a map's `s
 checked this way. A failure names the partition (`Round 1, partition 7, is not linearizable`) and
 lists only its operations.
 
+## Drawn scenarios: name the operations, not the order (#935)
+
+`operation(name, argument, action)` declares what a worker may do, and `generate(n)` in the body
+draws `n` of them for this worker and records each as `call` would. Each worker of each round draws
+from its own `SplittableRandom`, seeded by the round's replay seed, the round number and the
+worker's slot, so the scenario differs between workers and rounds but a pasted
+`@AsyncTest(replaySeed = ...)` replays it. `LinearizabilityScenarioTest` checks both: the same seed
+draws the same 12 per-worker sequences, another seed draws others, and dropping the worker slot from
+the seed (workers sharing one stream) turns that test red. In both directions, a drawn mix of
+`increment` and `get` on an `AtomicInteger` stays linearizable over 10 rounds, and the same mix on a
+counter that reads, sleeps 1 ms and writes fails, with no interleaving scripted by the test. Unlike
+Lincheck, the runner does not search over scenarios or shrink a failing one; it draws per round.
+
 ## The report
 
 On failure, `assertLinearizable` throws an `AssertionError` for the first round with no
@@ -128,4 +141,3 @@ subject turns the atomic-counter case red ("Round 2 is not linearizable").
   use JDK subjects (`AtomicInteger`, `ConcurrentLinkedQueue`) and a hand-written lost update.
 - **No integration with `failOn` or the reports.** The check is an assertion the test calls, like
   `RunOutcomes`; findings do not flow through the detector pipeline.
-- **No automatic scenario generation.** The test author chooses the operations, unlike Lincheck.

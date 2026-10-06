@@ -5,6 +5,7 @@ import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.LinearizabilityChecker.Op;
 import se.deversity.asynctest.LinearizabilityChecker.Verdict;
+import se.deversity.asynctest.diagnostics.WorkerSlot;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -12,9 +13,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.SplittableRandom;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.random.RandomGenerator;
 
 /**
  * Records the operations an {@code @AsyncTest} body performs on a concurrent object and checks that
@@ -75,6 +81,13 @@ public final class OperationHistory<S> {
     private final Supplier<? extends S> fresh;
     private final Map<Object, S> subjects = new ConcurrentHashMap<>();
     private final Map<Object, RoundLog> rounds = new ConcurrentHashMap<>();
+    private final List<Declared<S>> declared = new CopyOnWriteArrayList<>();
+
+    /**
+     * Each worker's draw stream, per round and slot, so a second {@link #generate} call in the
+     * same round continues the stream instead of drawing the first operations again.
+     */
+    private final Map<List<Object>, RandomGenerator> streams = new ConcurrentHashMap<>();
 
     private OperationHistory(Supplier<? extends S> fresh) {
         this.fresh = fresh;
@@ -146,6 +159,83 @@ public final class OperationHistory<S> {
             return null;
         });
     }
+
+    /**
+     * Declares an operation {@link #generate(int)} may draw (#935). Declare every operation before
+     * the run; the order of declaration is part of what a replay seed reproduces.
+     *
+     * <pre>{@code
+     * private static final OperationHistory<ConcurrentLinkedQueue<Integer>> HISTORY =
+     *         OperationHistory.of(ConcurrentLinkedQueue<Integer>::new)
+     *                 .operation("offer", random -> random.nextInt(100), (queue, value) -> queue.offer((Integer) value))
+     *                 .operation("poll", random -> null, (queue, unused) -> queue.poll());
+     *
+     * @AsyncTest(threads = 4, invocations = 50)
+     * void queue() {
+     *     HISTORY.generate(8);   // each worker draws its own 8 operations
+     * }
+     * }</pre>
+     *
+     * @param name     the operation's name, as the {@link SequentialSpec} knows it
+     * @param argument draws the operation's argument; may return {@code null}
+     * @param action   performs the operation on the round's subject with that argument
+     * @return this history, to declare the next operation
+     * @since 1.13.0
+     */
+    public OperationHistory<S> operation(String name, Function<? super RandomGenerator, ?> argument,
+                                         BiFunction<? super S, Object, ?> action) {
+        declared.add(new Declared<>(Objects.requireNonNull(name, "name"),
+                Objects.requireNonNull(argument, "argument"), Objects.requireNonNull(action, "action")));
+        return this;
+    }
+
+    /**
+     * Draws {@code operations} operations from those declared with {@link #operation} and performs
+     * each on the round's {@link #subject()}, recording it as {@link #call} does (#935).
+     *
+     * <p>The test author names what a worker may do, not the order: each worker of each round draws
+     * from its own stream, seeded by the round's {@link AsyncTestContext#replaySeed()}, the round
+     * number and the worker's slot. A failing scenario is reproduced by pasting the seed the runner
+     * prints into {@code @AsyncTest(replaySeed = ...)}, which every round then shares.
+     *
+     * @param operations how many operations this worker performs in this round, not negative
+     * @throws IllegalStateException when no operation was declared
+     * @since 1.13.0
+     */
+    public void generate(int operations) {
+        if (operations < 0) {
+            throw new IllegalArgumentException("operations must not be negative, was " + operations);
+        }
+        List<Declared<S>> choices = List.copyOf(declared);
+        if (choices.isEmpty()) {
+            throw new IllegalStateException("generate() draws from the operations declared with "
+                    + "operation(name, argument, action), and none were declared");
+        }
+        Object round = roundKey();
+        int slot = WorkerSlot.current();
+        RandomGenerator random = streams.computeIfAbsent(List.of(round, slot),
+                key -> new SplittableRandom(drawSeed(round, slot)));
+        S subject = subject();
+        for (int i = 0; i < operations; i++) {
+            Declared<S> op = choices.get(random.nextInt(choices.size()));
+            Object arg = op.argument().apply(random);
+            call(op.name(), arg, () -> op.action().apply(subject, arg));
+        }
+    }
+
+    /**
+     * The seed of one worker's stream: one per (replay seed, round, worker slot). Only that worker
+     * draws from it, so the stream needs no lock.
+     */
+    private static long drawSeed(Object round, int workerSlot) {
+        long number = round instanceof AsyncTestContext.Round r ? r.number() : 0;
+        long slot = workerSlot + 1L;
+        return AsyncTestContext.replaySeed() ^ (number * 0x9E3779B97F4A7C15L) ^ (slot * 0xC2B2AE3D27D4EB4FL);
+    }
+
+    /** One operation {@link #generate} may draw. */
+    private record Declared<S>(String name, Function<? super RandomGenerator, ?> argument,
+                               BiFunction<? super S, Object, ?> action) { }
 
     /**
      * Checks every recorded round against {@code spec}.
