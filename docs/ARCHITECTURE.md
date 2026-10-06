@@ -9,8 +9,9 @@ deterministic concurrency testing by forcing thread collisions and detecting con
 Each topic below lives in its own file under [`architecture/`](architecture/). Read the one you need
 rather than the whole set.
 
-> **Note.** The Detector SPI covers **every** `DetectorType` value via `LegacyDetectorFactories`
-> (it was canary-only when the SPI was introduced in 1.6.0). The PlantUML diagrams still reflect the
+> **Note.** Since 2.0.0 the Detector SPI carries third-party detectors only; the built-ins have one
+> registry, the runner's, and the `LegacyDetectorFactories` bridge that mirrored them into the SPI is
+> gone (#922). The PlantUML diagrams still reflect the
 > pre-1.6.0 detector wiring; they remain accurate for the legacy registry and will be regenerated in
 > the next docs sweep.
 
@@ -47,7 +48,7 @@ question in [docs/analysis/roadmap-v2.md](analysis/roadmap-v2.md) Train 3 is set
 | Document | What it covers |
 |----------|----------------|
 | [detector-architecture.md](architecture/detector-architecture.md) | Detector categories, phases, and the JDK 25/26 preview-era standalone detectors |
-| [detector-spi.md](architecture/detector-spi.md) | The pluggable `Detector` / `DetectorFactory` SPI and `LegacyDetectorFactories` |
+| [detector-spi.md](architecture/detector-spi.md) | The pluggable `Detector` / `DetectorFactory` SPI for third-party detectors, and the built-in bridge 2.0.0 removed |
 | [adding-a-detector.md](architecture/adding-a-detector.md) | The synchronized five-file change, thread-safety idiom, hot-path constraints |
 | [configuration-resolution.md](architecture/configuration-resolution.md) | How `includes` / `excludes` / `detectAll` / `Preset` resolve, and the `failOn` gate |
 

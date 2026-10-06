@@ -23,7 +23,7 @@ Binary compatibility against the previous release is enforced by
 [japicmp](https://siom79.github.io/japicmp/) in the `async-test-lib` module's build, not by
 review. A breaking change that has not had its major bump fails the build.
 
-**What is not covered.** Anything in a package containing `internal`, the `spi.adapters` package,
+**What is not covered.** Anything in a package containing `internal`,
 the exact text of a report or an assertion message, and the `async-test-agent` and
 `async-test-analysis` artifacts' internals. The agent's `-javaagent` contract and the analysis
 module's `StaticPinningScanner` entry point *are* covered.

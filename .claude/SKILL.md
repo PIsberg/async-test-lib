@@ -677,13 +677,13 @@ public final class MyDetectorFactory implements DetectorFactory {
 `type()` instead, and its id is the `DetectorType` name.
 
 ```java
-DetectorRegistry reg = DetectorRegistry.build(config);
+DetectorRegistry reg = DetectorRegistry.buildExternal(config);   // the detectors you added
 List<Violation> all = reg.analyzeAll();
 MyDetector mine = reg.get(MyDetector.class);
 Detector byId = reg.get("com.acme.my-detector");
 ```
 
-The legacy `se.deversity.asynctest.DetectorRegistry` continues to power the existing 90+ detectors; the SPI registry coexists for new detectors and incremental migrations.
+The built-in detectors are not in the SPI registry: since 2.0.0 they have one registry, the runner's, and `DetectorRegistry.build(config)` (which added a blind bridge copy of each) is gone. The runner builds `buildExternal(config)` for every `@AsyncTest`, so a registered factory's findings reach the reports and the `failOn` gate without further wiring.
 
 ---
 

@@ -130,20 +130,22 @@ class FeatureTourTest {
         assertTrue(md.contains("threads: `4`"));
     }
 
-    // ---- 7) SPI registry: programmatic discovery of every detector ----
+    // ---- 7) SPI registry: programmatic discovery of third-party detectors ----
 
     @Test
-    void spi_registry_instantiates_all_detectors() {
+    void spi_registry_discovers_third_party_detectors() {
         var cfg = se.deversity.asynctest.AsyncTestConfig.builder()
             .detectAll(true)
             .build();
-        DetectorRegistry reg = DetectorRegistry.build(cfg);
+        // The resolved selection: one entry per DetectorType under detectAll.
+        assertTrue(cfg.enabledDetectors().size() == se.deversity.asynctest.DetectorType.values().length,
+            "detectAll should select every DetectorType");
 
-        // Every DetectorType value is discoverable via the SPI as of 1.0.0.
-        // For a real test, lookups would target specific detector classes:
-        // reg.get(MyDetector.class) → typed instance.
-        assertTrue(reg.all().size() == se.deversity.asynctest.DetectorType.values().length,
-            "SPI registry should instantiate one detector per DetectorType");
+        // The SPI registry holds the detectors a user adds through META-INF/services; this
+        // example adds none. For a real one: reg.get("com.acme.my-detector") or
+        // reg.get(MyDetector.class).
+        DetectorRegistry reg = DetectorRegistry.buildExternal(cfg);
+        assertTrue(reg.isEmpty(), "no third-party detector is on this example's classpath");
     }
 
     // ---- 8) Bonus: a Phase 13 detector in action — SharedSecureRandom ----

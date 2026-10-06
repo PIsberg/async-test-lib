@@ -1,6 +1,6 @@
 ---
 name: adddetector
-description: Scaffold a new async-test-lib concurrency detector from just its name and wire it in completely. Use when the user runs /adddetector <Name>, or asks to add / create / scaffold a new detector. Generates the detector + test, performs every synchronized wiring edit (DetectorType, AsyncTest, AsyncTestConfig, DetectorRegistry, LegacyDetectorFactories, the built-in factory list), updates docs, and verifies with the build.
+description: Scaffold a new async-test-lib concurrency detector from just its name and wire it in completely. Use when the user runs /adddetector <Name>, or asks to add / create / scaffold a new detector. Generates the detector + test, performs every synchronized wiring edit (DetectorType, AsyncTest, AsyncTestConfig, DetectorRegistry), updates docs, and verifies with the build.
 ---
 
 # Add a detector
@@ -74,8 +74,8 @@ Copy `templates/Detector.java.tmpl` (in this skill dir) to the main file, substi
 `{{CLASS}}`, `{{FACTORY}}`, `{{VERSION}}`. The template is a generic multi-thread-access stub —
 its `analyze()` rule is a **placeholder marked TODO**. This skill wires the plumbing; the *actual
 detection logic is out of scope* and left for the user (or a follow-up prompt) to fill in.
-Keep the SPI-facing shape intact: a public no-arg **`analyze()`** returning a nested **`Report`**
-with a public **`hasIssues()`** — `LegacyDetectorAdapter` finds both by reflection.
+Keep the report shape intact: a public no-arg **`analyze()`** returning a nested **`Report`**
+with a public **`hasIssues()`**; the registry's `ifIssue` call binds both.
 
 ### 2. Test *(new file)*
 Copy `templates/DetectorTest.java.tmpl` to the test file, substituting `{{CLASS}}`. Required, not
@@ -161,32 +161,7 @@ construction, or construction without an `analyzeAll` call, silently skips detec
            {{CLASS}}.Report::hasIssues, out);
    ```
 
-### 7. `LegacyDetectorFactories.java` — SPI factory
-1. **Import** with the other detector imports:
-   ```java
-   import se.deversity.asynctest.diagnostics.{{CLASS}};
-   ```
-2. **Factory inner class**, appended before the final closing `}` of the outer class:
-   ```java
-   public static final class {{FACTORY}} implements DetectorFactory {
-       @Override public DetectorType type() { return DetectorType.{{CONSTANT}}; }
-       @Override public boolean isEnabledFor(AsyncTestConfig c) { return c.{{FLAG}}; }
-       @Override public Detector create(AsyncTestConfig c) {
-           return new LegacyDetectorAdapter<>(new {{CLASS}}(), DetectorType.{{CONSTANT}}, "{{FACTORY}}");
-       }
-   }
-   ```
-
-### 8. `META-INF/async-test/builtin-detector-factories`
-Append the fully-qualified nested factory name (note the `$`). This is deliberately not a
-`META-INF/services` file: ServiceLoader must load a provider class to read its type, and built-ins
-are addressability shims the runtime skips, so listing them for discovery cost ~340 ms per forked
-JVM. `AllDetectorsSpiCoverageTest` fails if you forget this line.
-```
-se.deversity.asynctest.spi.adapters.LegacyDetectorFactories${{FACTORY}}
-```
-
-### 9. Docs (increment counts + catalog entry)
+### 7. Docs (increment counts + catalog entry)
 - `docs/detector-catalog/` — add a numbered `### N. Name` entry (next number after the highest)
   to the phase file it belongs in, usually the last one; a new phase gets a new `NN-*.md` file,
   plus its row in the `DETECTOR_CATALOG.md` hub table and in `docs/INDEX.md`. Then bump the
@@ -198,7 +173,7 @@ se.deversity.asynctest.spi.adapters.LegacyDetectorFactories${{FACTORY}}
   > Report the current `DetectorType.values().length` and let the user reconcile — don't invent a
   > number.
 
-### 10. Optional: `AsyncTestContext.java` accessor
+### 8. Optional: `AsyncTestContext.java` accessor
 Only if the user wants the `AsyncTestContext.{{FIELD}}()` convenience accessor (some detectors
 expose one, e.g. `sharedKdfDetector()`). It's not required for the detector to run via the SPI.
 `AsyncTestContext` is audit-listed for **thread safety** — if you add an accessor, keep
@@ -213,14 +188,13 @@ The wiring tests are the safety net — they fail loudly on any missed step:
 
 ```bash
 mvn -q -Dlicense.mock.mode=true \
-  -Dtest='AllDetectorsSpiCoverageTest,DetectorRegistrySpiTest,AsyncTestConfigBuildResolutionTest,StructuredViolationCoverageTest,{{CLASS}}Test' \
+  -Dtest='DetectorRegistryFactoryTableTest,DetectorFiringContractTest,AsyncTestConfigBuildResolutionTest,StructuredViolationCoverageTest,{{CLASS}}Test' \
   test
 ```
 
-- `AllDetectorsSpiCoverageTest#everyDetectorTypeHasARegisteredFactory` → catches a missing
-  factory or services line (steps 7–8).
-- `DetectorRegistrySpiTest` / SPI instantiation → catches enum↔factory gaps.
-- `AsyncTestConfigBuildResolutionTest` → catches a missing config flag / build-block line.
+- `DetectorRegistryFactoryTableTest` → catches a type with no factory-table row, or two.
+- `DetectorFiringContractTest` → catches a built detector never handed to an `ifIssue` call.
+- `AsyncTestConfigBuildResolutionTest` → catches a missing config flag or derivation.
 - `{{CLASS}}Test` → the new detector's own tests.
 - `StructuredViolationCoverageTest` → the report must keep `structuredViolations` and `analyze()`
   must return it through `DetectorFailurePolicy.checkedReport(this, r)` (the template does both),

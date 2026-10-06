@@ -82,7 +82,7 @@ The decision per detector (#816):
 | `WakeupDetector`, `SharedByteBufferDetector` | nothing | a notify with nobody waiting, and absolute-only buffer access from many threads, both what correct code does |
 | `CyclicBarrierDetector`, `ABAProblemDetector`, `LockDowngradeDetector`, `BlockingQueueDetector` | nothing | their context (what broke a barrier, A-B-A cycles, downgrade-shaped sequences, queue context) is printed only inside a finding |
 
-The SPI path (`LegacyDetectorAdapter`) carries no notes.
+A third-party detector on the SPI path carries no notes.
 
 ## 8. Troubleshooting
 

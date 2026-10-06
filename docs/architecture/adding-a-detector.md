@@ -94,11 +94,9 @@ Every detector has a mandated JUnit 5 test at
 Integration-style coverage typically uses the `EngineTestKit` dummy pattern — see
 [../QUALITY_GATES.md](../QUALITY_GATES.md).
 
-## Also register the factory
+## No SPI factory
 
-`spi/adapters/LegacyDetectorFactories.java` exposes each detector through the `DetectorFactory`
-`ServiceLoader` path via `LegacyDetectorAdapter`. `AllDetectorsSpiCoverageTest` fails loudly if the
-SPI side is incomplete.
-
-The adapter's structure is deliberately legacy-shaped — do not modernize it; touch its business
-logic only when explicitly asked.
+A built-in detector needs no `DetectorFactory`. Until 2.0.0 each also had a bridge factory in
+`spi/adapters/LegacyDetectorFactories.java` and a line in `builtin-detector-factories`; that path
+observed nothing and was removed (#922). The SPI is for detectors the library does not ship
+([detector-spi.md](detector-spi.md)).

@@ -2,10 +2,6 @@ package se.deversity.asynctest;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import se.deversity.asynctest.spi.Detector;
-import se.deversity.asynctest.spi.DetectorRegistry;
-import se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter;
-import se.deversity.asynctest.report.Violation;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -13,8 +9,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -30,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code RaceConditionDetector} could not see it under any configuration: weaving bound to
  * JavaBean getters and setters, and a field touched inside a method body compiles to a
  * {@code GETFIELD} with no accessor call to bind to. Every existing gate passed. The detector was
- * registered ({@code AllDetectorsSpiCoverageTest}), constructible, enabled by default, and had a
+ * registered (the SPI coverage gate of the time), constructible, enabled by default, and had a
  * unit test proving its analyser worked when handed records by hand. Nothing anywhere asked the
  * question that mattered: <em>can this thing actually fire?</em>
  *
@@ -101,98 +99,55 @@ class DetectorFiringContractTest {
     @DisplayName("no detector reports a finding when nothing has been recorded")
     void detectorsAreSilentOnEmptyInput() {
         AsyncTestConfig config = AsyncTestConfig.builder().detectAll(true).build();
-        List<Detector> detectors = DetectorRegistry.build(config).all();
+        DetectorRegistry registry = new DetectorRegistry(config);
 
-        assertTrue(detectors.size() > 100,
-                "Expected the full built-in detector set; got " + detectors.size()
-                        + ". If the registry stopped returning built-ins this test is no longer "
-                        + "checking anything.");
+        assertEquals(DetectorType.values().length, registry.instances().size(),
+                "Expected the full built-in detector set; if the registry stopped building every "
+                        + "type this test is no longer checking anything.");
 
-        List<String> noisy = new ArrayList<>();
-        for (Detector detector : detectors) {
-            List<Violation> violations;
-            try {
-                violations = detector.analyze();
-            } catch (RuntimeException e) {
-                noisy.add(detector.type() + " threw " + e);
-                continue;
-            }
-            if (violations != null && !violations.isEmpty()) {
-                noisy.add(detector.type() + " reported " + violations.size() + ": " + violations);
-            }
-        }
+        Map<String, String> noisy = registry.analyzeAllNamed();
 
         assertTrue(noisy.isEmpty(),
                 "A detector that reports with nothing recorded fires on every run of every "
                         + "consumer's test suite, and under failOn it fails their build over code "
                         + "it never observed. It is also the hardest kind of false positive to "
                         + "notice from inside the project, because it looks like the detector is "
-                        + "working. Offenders:\n  " + String.join("\n  ", noisy));
+                        + "working. Offenders:\n  " + String.join("\n  ", noisy.keySet()));
     }
 
+    /**
+     * Every built detector is analysed: its registry field is handed to an {@code ifIssue} call.
+     *
+     * <p>Until 2.0.0 this asked whether the SPI bridge could find each detector's report method by
+     * reflection, because a detector it could not bind was silently inert there: LOCK_ORDER and
+     * CONSTRUCTOR_SAFETY were, their report methods being named validate*. The bridge is gone
+     * (#922); the report path users read is the registry's {@code ifIssue} calls, which the compiler
+     * binds, so the question left is whether a built detector reaches one at all.
+     */
     @Test
-    @DisplayName("every registered detector can emit a Violation at all")
-    void everyRegisteredDetectorCanProduceAViolation() {
-        AsyncTestConfig config = AsyncTestConfig.builder().detectAll(true).build();
-        List<Detector> detectors = DetectorRegistry.build(config).all();
+    @DisplayName("every built detector is handed to an ifIssue analysis call")
+    void everyBuiltDetectorIsAnalysed() throws IOException {
+        String registry = Files.readString(
+                Path.of("src/main/java/se/deversity/asynctest/DetectorRegistry.java"), StandardCharsets.UTF_8);
+        // Anchored to a line start, so the example row in the class's own @AIContext text is not one.
+        Matcher row = Pattern.compile("(?m)^\\s+(\\w+)\\s*= create\\(DetectorType\\.(\\w+),").matcher(registry);
 
+        Set<String> types = new TreeSet<>();
         List<String> inert = new ArrayList<>();
-        for (Detector detector : detectors) {
-            if (!(detector instanceof LegacyDetectorAdapter<?> adapter)) {
-                continue;   // A native SPI Detector implements analyze() directly.
-            }
-            Object delegate = adapter.delegate();
-            if (findReportMethod(delegate.getClass()) == null) {
-                inert.add(detector.type() + " (" + delegate.getClass().getSimpleName() + ")");
+        while (row.find()) {
+            types.add(row.group(2));
+            if (!Pattern.compile("ifIssue\\(\\s*" + row.group(1) + "\\s*,").matcher(registry).find()) {
+                inert.add(row.group(2) + " (" + row.group(1) + ")");
             }
         }
 
+        assertEquals(DetectorType.values().length, types.size(),
+                "the factory-table scan must see every type, or it is checking less than it thinks");
         assertTrue(inert.isEmpty(),
-                "These detectors are registered and addressable but cannot emit a Violation "
-                        + "under any input:\n  " + String.join("\n  ", inert)
-                        + "\n\nLegacyDetectorAdapter binds the delegate's report method "
-                        + "reflectively and every failure path in analyze() returns an empty "
-                        + "list, so a detector whose report method it cannot find is silently "
-                        + "inert — it passes AllDetectorsSpiCoverageTest, it has working unit "
-                        + "tests, and it reports nothing forever. LOCK_ORDER and "
-                        + "CONSTRUCTOR_SAFETY were both in that state because their report "
-                        + "methods are named validateLockOrder() and "
-                        + "validateConstructorSafety() rather than analyze().\n\n"
-                        + "Give the detector a public no-arg report method named analyze* or "
-                        + "validate*, returning a report that exposes boolean hasIssues().");
-    }
-
-    /** Mirrors {@code LegacyDetectorAdapter}'s resolution rule, so this gate checks the real one. */
-    private static java.lang.reflect.Method findReportMethod(Class<?> detectorClass) {
-        java.lang.reflect.Method best = null;
-        for (java.lang.reflect.Method m : detectorClass.getMethods()) {
-            if (m.getParameterCount() != 0 || m.getReturnType() == void.class) {
-                continue;
-            }
-            String name = m.getName();
-            if (!name.equals("analyze") && !name.startsWith("analyze") && !name.startsWith("validate")) {
-                continue;
-            }
-            if (!hasIssuesOn(m.getReturnType())) {
-                continue;
-            }
-            if (best == null || name.compareTo(best.getName()) < 0) {
-                best = m;
-            }
-        }
-        return best;
-    }
-
-    private static boolean hasIssuesOn(Class<?> reportClass) {
-        for (Class<?> c = reportClass; c != null && c != Object.class; c = c.getSuperclass()) {
-            try {
-                c.getMethod("hasIssues");
-                return true;
-            } catch (NoSuchMethodException ignored) {
-                // keep walking
-            }
-        }
-        return false;
+                "These detectors are built but never analysed, so they report nothing forever:\n  "
+                        + String.join("\n  ", inert)
+                        + "\n\nAdd an ifIssue(field, Detector::analyze, Report::hasIssues, out) "
+                        + "call for each in DetectorRegistry.analyzeAllNamed().");
     }
 
     @Test

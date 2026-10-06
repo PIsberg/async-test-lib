@@ -56,17 +56,17 @@ class ArchitectureTest {
      * would invert the dependency direction and prevent third-party detector authors
      * from implementing the SPI without pulling in the full library internals.
      *
-     * Note: spi.adapters is intentionally excluded from this rule. The adapters
-     * sub-package is the designated glue layer that bridges the legacy diagnostics
-     * detectors into the SPI, so its dependency on diagnostics is by design.
+     * Until 2.0.0 the spi.adapters sub-package was exempt: it bridged every built-in detector
+     * into the SPI and so depended on diagnostics by design. That bridge was deleted (#922), so
+     * the rule now covers the whole spi tree.
      */
     @ArchTest
     static final ArchRule spi_core_does_not_depend_on_diagnostics =
             noClasses()
-                    .that().resideInAPackage("se.deversity.asynctest.spi")
+                    .that().resideInAPackage("se.deversity.asynctest.spi..")
                     .should().dependOnClassesThat()
                     .resideInAPackage("se.deversity.asynctest.diagnostics..")
-                    .because("spi core interfaces are the stable contract layer; only spi.adapters (the glue layer) may reference concrete diagnostics");
+                    .because("the spi is the stable contract layer third-party detectors implement; it must not pull in the built-in detectors");
 
     @ArchTest
     static final ArchRule spi_does_not_depend_on_runner =
@@ -241,7 +241,7 @@ class ArchitectureTest {
                                     || pkg.startsWith("se.deversity.asynctest.report")) {
                                 return SliceIdentifier.of("detection-model");
                             }
-                            // spi and spi.adapters are one slice (adapters is the glue layer).
+                            // spi and any sub-package are one slice.
                             if (pkg.startsWith("se.deversity.asynctest.spi")) {
                                 return SliceIdentifier.of("spi");
                             }

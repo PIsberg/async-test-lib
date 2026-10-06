@@ -130,6 +130,25 @@ AsyncTestContext.nestedMonitorLockoutDetector()  // 2.0.0, not nestedDetectorLoc
 
 Anchor the replacement to the end of the identifier and all 42 are covered.
 
+### `spi.DetectorRegistry.build(config)` and `spi.adapters`
+
+The built-in SPI bridge is gone (#922): the `se.deversity.asynctest.spi.adapters` package and
+`spi.DetectorRegistry.build(config)`, which returned a fresh, unobserving copy of every built-in
+detector beside your own. Your own `DetectorFactory` keeps working through `buildExternal(config)`,
+which the runner already used. Code that called `build(config)` wanted one of two things:
+
+```java
+// 1.x: which detectors does this config select?
+DetectorRegistry.build(cfg).all()
+// 2.0.0
+cfg.enabledDetectors()                        // Set<DetectorType>; also cfg.isEnabled(type)
+
+// 1.x: find my third-party detector
+DetectorRegistry.build(cfg).get(MyDetector.class)
+// 2.0.0
+DetectorRegistry.buildExternal(cfg).get(MyDetector.class)   // or .get("com.acme.my-detector")
+```
+
 ### Checking your suite is ready
 
 Compile with deprecation warnings visible. A build with none left is a build that survives 2.0.0.

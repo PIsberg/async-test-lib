@@ -7,17 +7,6 @@
 This element is strictly excluded from AI context. Do not reference it.
 - **Reason**: Trivial no-op implementation of AsyncTestListener. All methods are intentionally empty — no logic to review or change here.
 
-## Performance Constraints
-
-### se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter
-- **Rule**: Optimal complexity required. O(n^2) is forbidden on hot paths.
-- **Constraint**: analyze() does Method.getMethod + invoke each call; only invoked once per round per detector, not on the hot recordAccess path. If profiling shows reflection overhead, cache the Method handles in the constructor.
-
-## Legacy Compatibility Bridge
-
-### se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter
-- **Rule**: Compatibility bridge. Do not attempt to modernize, elegant-ize, or refactor structural patterns. Only modify internal business logic as explicitly requested.
-
 ## Contract-Frozen Signature
 - **Constraint**: You may change internal logic, but MUST NOT modify the method name, parameters, return type, or checked exceptions.
 
@@ -76,18 +65,10 @@ This element is strictly excluded from AI context. Do not reference it.
 - **Note**: Java record — fields are final by language. Collection fields are deep-copied to immutable views in the canonical constructor.
 
 ### se.deversity.asynctest.spi.DetectorRegistry
-- **Note**: Effectively immutable after build() — the id-keyed map is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over a map populated once at construction.
+- **Note**: Effectively immutable after buildExternal() — the id-keyed map is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over a map populated once at construction.
 
 ## Input Sanitization
 - **Target Filters**: XSS
 - **Rule**: Run raw input strings through approved sanitizers.
 - **Applies to**: `se.deversity.asynctest.report.JUnitXmlReportListener.onStructuredReport(java.lang.String,se.deversity.asynctest.diagnostics.IssueSeverity,java.lang.String)#report`, `se.deversity.asynctest.report.JsonReportListener.onStructuredReport(java.lang.String,se.deversity.asynctest.diagnostics.IssueSeverity,java.lang.String)#report`
-
-## Mirrored — Keep In Sync
-
-### se.deversity.asynctest.spi.adapters.LegacyDetectorFactories
-- **Rule**: Free to change, but every mirror must change in the same commit.
-- **Mirrors**: se.deversity.asynctest.diagnostics.DetectorTrust, META-INF/services/se.deversity.asynctest.spi.DetectorFactory
-- **Reason**: Every DetectorTrust row names the detector class an adapter here must construct, and the gate reads this file by path to check that each row is backed. Removing, renaming or forgetting to register an inner class leaves that row unbacked, and a row that does not resolve costs its detector the trust tier the failOn gate filters on.
-- **Enforced by**: se.deversity.asynctest.architecture.DetectorTrustCoverageTest
 <!-- VIBETAGS-END -->

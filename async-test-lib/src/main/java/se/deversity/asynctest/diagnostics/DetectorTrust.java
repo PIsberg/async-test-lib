@@ -55,13 +55,13 @@ import java.util.Optional;
 @AIKeepInSync(
     mirrors = {
         "se.deversity.asynctest.DetectorType",
-        "se.deversity.asynctest.spi.adapters.LegacyDetectorFactories",
+        "se.deversity.asynctest.DetectorRegistry",
         "docs/DETECTOR_CATALOG.md"
     },
     reason = "Every DetectorType needs exactly one row, and each row names the detector class whose "
-           + "simple name keys the report map (DetectorRegistry.ifIssue) plus the short name the SPI "
-           + "adapter reports. A row naming a class the factory does not create silently stops "
-           + "resolving, and the finding loses its tier without anything going red.",
+           + "simple name keys the report map (DetectorRegistry.ifIssue). A row naming a class the "
+           + "registry's factory row does not create silently stops resolving, and the finding loses "
+           + "its tier without anything going red.",
     enforcedBy = "se.deversity.asynctest.architecture.DetectorTrustCoverageTest"
 )
 @API(status = Status.EXPERIMENTAL)
@@ -76,7 +76,8 @@ public final class DetectorTrust {
      * @param type          the public {@link DetectorType} constant
      * @param detectorClass simple name of the detector class, which is the key
      *                      {@code DetectorRegistry.ifIssue} puts in the report map
-     * @param spiName       short name the SPI adapter reports as {@code Violation.detector()}
+     * @param spiName       short name the SPI bridge reported as {@code Violation.detector()} until
+     *                      2.0.0 deleted it (#922); still accepted as a lookup alias
      * @param tier          the weakest tier this detector can produce
      */
     public record Row(DetectorType type, String detectorClass, String spiName, TrustTier tier) { }

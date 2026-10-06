@@ -118,6 +118,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   applies; and `LicenseGuard`'s fingerprint record is `@AIPrivacy`, the library's first, because
   its generated `toString()` prints the licence key and the user's email together.
 
+### Removed (2.0.0)
+
+- **The built-in SPI bridge.** `se.deversity.asynctest.spi.adapters` (`LegacyDetectorFactories`,
+  `LegacyDetectorAdapter`, `SharedMessageDigestDetectorFactory`), the
+  `META-INF/async-test/builtin-detector-factories` list and `spi.DetectorRegistry.build(config)`
+  are gone. Each built-in detector was wired twice: once in the runner's registry, which the run
+  reads, and once as a bridge factory building a fresh instance that observed nothing, reachable
+  only through `build(config)`, which only tests called. The SPI stays as the path for detectors
+  the library does not ship: `buildExternal(config)` is unchanged. Migration: replace
+  `DetectorRegistry.build(cfg)` with `AsyncTestConfig.enabledDetectors()` to ask what is selected,
+  or `buildExternal(cfg)` for third-party detectors (#922).
+
 ## [1.12.4] - 2026-10-04
 
 ### Changed

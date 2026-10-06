@@ -15,16 +15,14 @@ import se.deversity.vibetags.annotations.AILocked;
     mirrors = {
         "se.deversity.asynctest.AsyncTest",
         "se.deversity.asynctest.AsyncTestConfig",
-        "se.deversity.asynctest.DetectorRegistry",
-        "se.deversity.asynctest.spi.adapters.LegacyDetectorFactories",
-        "META-INF/async-test/builtin-detector-factories"
+        "se.deversity.asynctest.DetectorRegistry"
     },
     reason = "A detector is only reachable from the public API when all of these agree. The enum "
-           + "constant is the name users type in @AsyncTest(excludes=...); the annotation attribute, "
-           + "the config field and its Builder default carry it through resolution; the registry "
-           + "constructor instantiates it; and the SPI factory plus its entry in the built-in factory list are "
-           + "what detectAll loads. Adding the constant alone compiles and silently detects nothing.",
-    enforcedBy = "se.deversity.asynctest.spi.AllDetectorsSpiCoverageTest"
+           + "constant is the name users type in @AsyncTest(includes=..., excludes=...); the config "
+           + "field derives from the enabled set; and the registry's factory row builds it. Adding the "
+           + "constant alone compiles and silently detects nothing. The SPI bridge that mirrored every "
+           + "constant a second time was deleted in 2.0.0 (#922).",
+    enforcedBy = "se.deversity.asynctest.DetectorRegistryFactoryTableTest"
 )
 @API(status = Status.STABLE)
 public enum DetectorType {

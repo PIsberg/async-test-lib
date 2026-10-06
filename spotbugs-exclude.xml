@@ -32,11 +32,14 @@
         <Bug pattern="URF_UNREAD_FIELD"/>
         <Class name="se.deversity.asynctest.runner.SpinContentionBarrier"/>
     </Match>
-    <!-- AsyncTestConfig.detectAll is a public API config field read by DetectorRegistry -->
+    <!-- AsyncTestConfig's public detector flags (detectAll and one per DetectorType) are public
+         API that consumers read (#383). The library itself reads the enabled set instead: the
+         registry builds from it (#916) and the SPI bridge that read them is gone (#922), so most flags have no
+         reader inside this jar. -->
     <Match>
         <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
         <Class name="se.deversity.asynctest.AsyncTestConfig"/>
-        <Field name="detectAll"/>
+        <Field name="~(detect|validate|monitor)[A-Z].*"/>
     </Match>
 
     <!-- ================================================================

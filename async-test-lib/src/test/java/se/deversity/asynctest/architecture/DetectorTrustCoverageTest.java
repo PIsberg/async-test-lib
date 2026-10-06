@@ -83,18 +83,9 @@ class DetectorTrustCoverageTest {
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorFiresOnAFutureThatIsNeverCompleted",
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorStaysSilentWhenTheFutureIsCompleted"))
     );
-    /**
-     * The one {@link DetectorType} with no row in {@code LegacyDetectorFactories}.
-     *
-     * <p>It has a dedicated typed adapter instead, {@code SharedMessageDigestDetectorFactory},
-     * because it surfaces structured violations directly. Listed here so the parse below can tell
-     * a deliberate omission from a detector that lost its factory.
-     */
-    private static final DetectorType FACTORY_EXEMPT = DetectorType.SHARED_MESSAGE_DIGEST;
-
-    /** Source of truth for what each detector factory constructs. */
-    private static final String FACTORIES =
-            "async-test-lib/src/main/java/se/deversity/asynctest/spi/adapters/LegacyDetectorFactories.java";
+    /** Source of truth for what each detector type constructs: the registry's factory table (#916). */
+    private static final String REGISTRY =
+            "async-test-lib/src/main/java/se/deversity/asynctest/DetectorRegistry.java";
 
     @Test
     @DisplayName("every detector is classified, exactly once, in declaration order")
@@ -247,55 +238,39 @@ class DetectorTrustCoverageTest {
     }
 
     @Test
-    @DisplayName("each row names the detector class the factories actually construct")
-    void detectorClassNamesMatchTheFactories() {
-        Map<String, String[]> constructed = parseFactories(read(repoRoot().resolve(FACTORIES)));
+    @DisplayName("each row names the detector class the registry actually constructs")
+    void detectorClassNamesMatchTheRegistry() {
+        Map<String, String> constructed = parseRegistry(read(repoRoot().resolve(REGISTRY)));
 
         List<String> wrong = new ArrayList<>();
         for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            if (row.type() == FACTORY_EXEMPT) continue;
-            String[] actual = constructed.get(row.type().name());
+            String actual = constructed.get(row.type().name());
             if (actual == null) {
-                wrong.add(row.type() + ": no factory constructs it");
-            } else if (!actual[0].equals(row.detectorClass()) || !actual[1].equals(row.spiName())) {
-                wrong.add(row.type() + ": table says " + row.detectorClass() + "/" + row.spiName()
-                        + ", factory constructs " + actual[0] + "/" + actual[1]);
+                wrong.add(row.type() + ": the registry has no factory row for it");
+            } else if (!actual.equals(row.detectorClass())) {
+                wrong.add(row.type() + ": table says " + row.detectorClass() + ", registry constructs " + actual);
             }
         }
         assertTrue(wrong.isEmpty(),
                 "A row whose detector class name does not match the constructed detector stops resolving: "
                         + "the report map is keyed by that simple name (DetectorRegistry.ifIssue), so the "
                         + "finding silently loses its tier. Mismatches: " + wrong);
-        assertEquals(DetectorType.values().length - 1, constructed.size(),
-                "every detector except " + FACTORY_EXEMPT + " is constructed by a legacy factory; a change "
-                        + "in that shape means this parse is reading less than it thinks");
+        assertEquals(DetectorType.values().length, constructed.size(),
+                "every detector is constructed by one registry row; a change in that shape means this "
+                        + "parse is reading less than it thinks");
     }
 
     /**
-     * Reads the (DetectorType, detector class, SPI name) triples out of the factory source.
-     *
-     * <p>A plain scan rather than a regular expression on purpose. The pattern needs four escaped
-     * parentheses and an escaped quote, which is exactly the kind of line that rots quietly, and
-     * this gate exists to catch drift rather than to be clever.
+     * Reads the (DetectorType, detector class) pairs out of the registry's factory rows,
+     * {@code field = create(DetectorType.TYPE, DetectorClass::new);}.
      */
-    private static Map<String, String[]> parseFactories(String source) {
-        String marker = "new LegacyDetectorAdapter<>(new ";
-        String typeToken = "DetectorType.";
-        Map<String, String[]> out = new HashMap<>();
-        int at = source.indexOf(marker);
-        while (at >= 0) {
-            int cursor = at + marker.length();
-            int classEnd = source.indexOf("()", cursor);
-            int typeAt = source.indexOf(typeToken, cursor);
-            int quoteOpen = source.indexOf('"', cursor);
-            if (classEnd < 0 || typeAt < 0 || quoteOpen < 0) break;
-            int typeEnd = source.indexOf(',', typeAt);
-            int quoteClose = source.indexOf('"', quoteOpen + 1);
-            if (typeEnd < 0 || quoteClose < 0) break;
-            out.putIfAbsent(source.substring(typeAt + typeToken.length(), typeEnd).trim(),
-                    new String[] {source.substring(cursor, classEnd),
-                                  source.substring(quoteOpen + 1, quoteClose)});
-            at = source.indexOf(marker, quoteClose);
+    private static Map<String, String> parseRegistry(String source) {
+        Map<String, String> out = new HashMap<>();
+        java.util.regex.Matcher row = Pattern
+                .compile("(?m)^\\s+\\w+\\s*= create\\(DetectorType\\.(\\w+),\\s*(\\w+)::new\\)")
+                .matcher(source);
+        while (row.find()) {
+            out.putIfAbsent(row.group(1), row.group(2));
         }
         return out;
     }

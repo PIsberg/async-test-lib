@@ -46,15 +46,13 @@ class ExternalDetectorSpiWiringTest {
     }
 
     @Test
-    void buildExternalSkipsTheBuiltInBridgeFactories() {
+    void buildExternalBuildsOnlyTheThirdPartyFactory() {
         ExternalTestDetector.arm();
         AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
 
         assertEquals(1, DetectorRegistry.buildExternal(cfg).all().size(),
-                "only the third-party factory may be built; the built-in bridges would be "
-                        + "~120 duplicate detectors that observe nothing");
-        assertTrue(DetectorRegistry.build(cfg).all().size() > 100,
-                "the unfiltered build() must still see every built-in factory");
+                "only the third-party factory may be built; the built-ins are the runner "
+                        + "registry's, and a second copy of each would observe nothing");
     }
 
     @Test

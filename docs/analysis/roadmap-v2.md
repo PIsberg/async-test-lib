@@ -178,7 +178,9 @@ name their replacement. Each item below says whether it is ready.
   `*Detector()` aliases shipped in 1.7). Ready: all 42 name their replacement. Four are not a
   suffix swap and one defeats a global `Monitor` to `Detector` replace; `docs/MIGRATION.md` lists
   them.
-* Delete whichever registry lost (#922): either the legacy hand-wired path (SPI becomes the
+* Delete whichever registry lost (#922). **Done 2026-10-06:** the built-in SPI bridge lost and is
+  deleted (`spi.adapters`, the built-in factory list, `spi.DetectorRegistry.build(config)`); the SPI
+  stays as the third-party path, keyed by id after #919. Originally: either the legacy hand-wired path (SPI becomes the
   runtime) or the dead SPI duplication — decided during Train 2 based on how the
   id-keyed SPI shakes out.
 * Flip the default from detect-everything to a lean preset (#923) (e.g. `Preset.ESSENTIALS`);
