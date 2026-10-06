@@ -509,6 +509,26 @@ class AsyncPipelineTest {
 // awaitAsync unwraps ExecutionException — failures surface as the real exception type
 ```
 
+### Make the workers meet mid-body, and count what they did
+
+```java
+class LazyInitTest {
+    private static final RunOutcomes OUTCOMES = new RunOutcomes();
+
+    @AsyncTest(threads = 8, invocations = 100)
+    void initialise() {
+        Config config = Config.load();               // each worker prepares its own input
+        AsyncTestContext.rendezvous();               // all 8 meet here before anyone initialises
+        if (service.initialiseIfNeeded(config)) OUTCOMES.record("initialised");
+    }
+
+    @AfterAll
+    static void ranOnce() {
+        OUTCOMES.assertExactlyOnce("initialised");   // names the threads if it ran twice
+    }
+}
+```
+
 ### Reproduce a flaky failure
 
 ```java

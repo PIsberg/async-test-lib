@@ -57,7 +57,7 @@ Three paths, depending on why you came.
 | [detector-catalog/10-jdk-25-26.md](detector-catalog/10-jdk-25-26.md) | Entries 121 to 126. Phases 16 and 18: StableValue, StructuredTaskScope, Gatherer, LazyConstant, final-field mutation and KDF, wired into `detectAll` |
 | [detector-catalog/11-flow-and-ffm.md](detector-catalog/11-flow-and-ffm.md) | Entries 127 to 135. Phases 19 and 20: Flow publishers, confined arenas, memory segments, VarHandle, records, static-init deadlock, virtual-thread pooling, thread-per-task, SplittableRandom |
 | [detector-catalog/12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 146. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
-| [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously — `AsyncFindings`, for asserting on what the detectors reported, and `AsyncTestContext.rendezvous()`, for making a round's workers meet mid-body |
+| [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously — `AsyncFindings`, for asserting on what the detectors reported, `AsyncTestContext.rendezvous()`, for making a round's workers meet mid-body, and `RunOutcomes`, for asserting that something happened exactly once, at most once, or with distinct values |
 | [MIGRATION.md](MIGRATION.md) | Moving an existing test suite onto `@AsyncTest` |
 
 ### Reading what it found

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounded by the time the round has left (or by `rendezvous(Duration)`). A worker whose body throws
   breaks it, so its peers fail at once with "the rendezvous was broken" next to the real exception,
   instead of waiting out the round and reporting a timeout that hides it.
+- **`RunOutcomes`: assert that something happened exactly once, at most once, or with distinct
+  values.** Record from the body, assert after the run. It replaces the static counter and the
+  hand-written `@AfterAll` such checks needed, one of which asserted something that held whatever
+  the code did (#904). A failure names the count and the first threads that recorded the event.
 
 ### Fixed
 

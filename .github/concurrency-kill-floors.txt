@@ -19,3 +19,4 @@ DetectorRegistry 4 # 21/324 by AsyncTestContextTest
 ConcurrencyRunner 32 # 95/250 by ConcurrencyRunnerCollisionDogfoodTest
 LicenseGuard 52 # 65/106 by LicenseGuardGateOnceDogfoodTest
 LicenseValidationCache 32 # 12/28 by LicenseValidationCacheDogfoodTest
+RunOutcomes 80 # 21/23 by RunOutcomesTest (2026-10-06)

@@ -144,3 +144,38 @@ out the timeout:
 
 Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
 65,535 workers opens no rendezvous, and calling it there throws the same.
+
+## Asserting on what the workers did: `RunOutcomes` (1.12.5)
+
+`AsyncFindings` asserts on what the detectors saw. `RunOutcomes` asserts on what the workers did:
+that a gate ran exactly once across every worker of every round, that a lock was won at most once,
+that every id handed out was different. Record from the body, assert after the run:
+
+```java
+private static final RunOutcomes OUTCOMES = new RunOutcomes();
+
+@AsyncTest(threads = 8, invocations = 100)
+void initialise() {
+    if (service.initialiseIfNeeded()) OUTCOMES.record("initialised");
+    OUTCOMES.recordValue(idGenerator.next());
+}
+
+@AfterAll
+static void check() {
+    OUTCOMES.assertExactlyOnce("initialised");
+    OUTCOMES.assertDistinct();
+}
+```
+
+| Call | Asserts |
+|---|---|
+| `record(event)` / `count(event)` | records one occurrence on this thread / reads the total |
+| `assertExactlyOnce(event)` | the event happened once in the whole run |
+| `assertAtMostOnce(event)` | it happened zero or one times |
+| `assertCount(event, n)` | it happened exactly `n` times |
+| `recordValue(value)` / `assertDistinct()` | no value was recorded twice (compared with `equals`) |
+
+A failure names the count and the first threads that recorded the event, or lists the duplicated
+values. Totals are per run, not per round. The collector is lock-free, so it adds no contention of
+its own and no detector sees it. An instance field works as well as a static one, because the
+runner drives every round against one test instance; assert in `@AfterEach` then.
