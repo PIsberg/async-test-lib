@@ -113,6 +113,7 @@ you are editing here.
     <element path="se.deversity.asynctest.DetectorRegistry" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.DetectorType" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.Preset" rules=".claude/rules/async-test-configuration.md"/>
+    <element path="se.deversity.asynctest.RunOutcomes"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkComparator" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector" rules=".claude/rules/async-test-detectors.md"/>

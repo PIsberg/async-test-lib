@@ -115,3 +115,67 @@ between tests.
 
 The same data is available to any listener through
 [`AsyncTestListener.onViolation(Violation)`](OBSERVABILITY.md).
+
+## Meeting mid-body: `AsyncTestContext.rendezvous()` (1.12.5)
+
+The runner releases a round's workers together at the start of the body. When they also need to
+meet later, for example after each has prepared its own state and before any of them acts on a
+peer's, call `AsyncTestContext.rendezvous()`:
+
+```java
+@AsyncTest(threads = 4, invocations = 100)
+void transfer() {
+    Account mine = bank.open(100);       // each worker prepares its own state
+    AsyncTestContext.rendezvous();       // nobody moves money until every account exists
+    bank.transfer(mine, bank.randomOtherAccount(), 10);
+}
+```
+
+Every worker of the round must call it the same number of times; each call is one meeting point.
+It waits for as long as the round has left, or for `rendezvous(Duration)` when the meeting should
+take far less than that. A round that cannot meet fails at once and says why, instead of waiting
+out the timeout:
+
+| What happened | What the waiting workers report |
+|---|---|
+| a peer threw before reaching it | "The rendezvous was broken", reported next to the peer's own exception |
+| a peer returned, or is blocked, before calling it | "The rendezvous timed out after N ms with K of M workers arrived" |
+| the round was cancelled | "Interrupted while waiting at the rendezvous" |
+
+Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
+65,535 workers opens no rendezvous, and calling it there throws the same.
+
+## Asserting on what the workers did: `RunOutcomes` (1.12.5)
+
+`AsyncFindings` asserts on what the detectors saw. `RunOutcomes` asserts on what the workers did:
+that a gate ran exactly once across every worker of every round, that a lock was won at most once,
+that every id handed out was different. Record from the body, assert after the run:
+
+```java
+private static final RunOutcomes OUTCOMES = new RunOutcomes();
+
+@AsyncTest(threads = 8, invocations = 100)
+void initialise() {
+    if (service.initialiseIfNeeded()) OUTCOMES.record("initialised");
+    OUTCOMES.recordValue(idGenerator.next());
+}
+
+@AfterAll
+static void check() {
+    OUTCOMES.assertExactlyOnce("initialised");
+    OUTCOMES.assertDistinct();
+}
+```
+
+| Call | Asserts |
+|---|---|
+| `record(event)` / `count(event)` | records one occurrence on this thread / reads the total |
+| `assertExactlyOnce(event)` | the event happened once in the whole run |
+| `assertAtMostOnce(event)` | it happened zero or one times |
+| `assertCount(event, n)` | it happened exactly `n` times |
+| `recordValue(value)` / `assertDistinct()` | no value was recorded twice (compared with `equals`) |
+
+A failure names the count and the first threads that recorded the event, or lists the duplicated
+values. Totals are per run, not per round. The collector is lock-free, so it adds no contention of
+its own and no detector sees it. An instance field works as well as a static one, because the
+runner drives every round against one test instance; assert in `@AfterEach` then.
