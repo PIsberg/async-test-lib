@@ -104,9 +104,9 @@ class GraphServiceTest {
         // execution and nothing nested, which is what this test used to do and why it reported
         // nothing however long it ran.
         service.observeComputes(
-                key -> AsyncTestContext.get().concurrentMapComputeRecursionMonitor()
+                key -> AsyncTestContext.get().concurrentMapComputeRecursionDetector()
                         .recordComputeStart(map, key, Thread.currentThread(), "adjacency-map"),
-                key -> AsyncTestContext.get().concurrentMapComputeRecursionMonitor()
+                key -> AsyncTestContext.get().concurrentMapComputeRecursionDetector()
                         .recordComputeEnd(map, key, Thread.currentThread()));
 
         List<String> neighbors = service.getNeighbors("A");

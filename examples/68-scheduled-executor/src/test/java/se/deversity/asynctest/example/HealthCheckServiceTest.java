@@ -85,11 +85,11 @@ class HealthCheckServiceTest {
         ScheduledExecutorService scheduler = service.getScheduler();
         if (scheduler != null) {
             // Register the executor with the detector
-            AsyncTestContext.scheduledExecutorMonitor()
+            AsyncTestContext.scheduledExecutorDetector()
                     .registerExecutor(scheduler, "health-check-scheduler", 1);
 
             // Record a scheduled task
-            AsyncTestContext.scheduledExecutorMonitor()
+            AsyncTestContext.scheduledExecutorDetector()
                     .recordSchedule(scheduler, "health-check-scheduler", "health-check-task");
 
             // BUG: recordShutdown() is never called — detector flags the leak

@@ -104,17 +104,17 @@ class RequestContextHolderTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectInheritableThreadLocalMisuse = true, failOn = FailOn.LOW)
     void testGetRequestId_concurrent_detectsStaleContext() {
         // Mark this thread as a pool thread so the detector knows context may be stale
-        AsyncTestContext.inheritableThreadLocalMisuseMonitor()
+        AsyncTestContext.inheritableThreadLocalMisuseDetector()
                 .registerPoolThread(Thread.currentThread());
 
         // Set a request-scoped ID
         String requestId = "req-" + Thread.currentThread().threadId();
-        AsyncTestContext.inheritableThreadLocalMisuseMonitor()
+        AsyncTestContext.inheritableThreadLocalMisuseDetector()
                 .recordSet(RequestContextHolder.getThreadLocal(), "REQUEST_ID", requestId);
         RequestContextHolder.setRequestId(requestId);
 
         // Read it back — on a reused pool thread this may return a stale value
-        AsyncTestContext.inheritableThreadLocalMisuseMonitor()
+        AsyncTestContext.inheritableThreadLocalMisuseDetector()
                 .recordGet(RequestContextHolder.getThreadLocal(), "REQUEST_ID");
         String observed = RequestContextHolder.getRequestId();
 

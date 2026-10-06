@@ -125,7 +125,7 @@ class RequestScopedServiceTest {
     void test_concurrent_detectsContamination() {
         Thread thread = Thread.currentThread();
         ThreadLocalContaminationDetector monitor =
-                AsyncTestContext.threadLocalContaminationMonitor();
+                AsyncTestContext.threadLocalContaminationDetector();
         service.observeContext(
                 () -> monitor.recordSet(thread, RequestScopedService.REQUEST_ID, "REQUEST_ID"),
                 value -> monitor.recordGet(thread, RequestScopedService.REQUEST_ID,

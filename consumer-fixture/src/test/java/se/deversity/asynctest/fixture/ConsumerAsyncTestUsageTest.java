@@ -768,23 +768,23 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
     void testCountDownLatchUsage() throws Exception {
         java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(2);
-        AsyncTestContext.countDownLatchMonitor()
+        AsyncTestContext.countDownLatchDetector()
             .registerLatch(latch, "startupLatch", 2);
 
         // First thread counts down
-        AsyncTestContext.countDownLatchMonitor().recordCountDown(latch);
+        AsyncTestContext.countDownLatchDetector().recordCountDown(latch);
         latch.countDown();
 
         // Second thread counts down
-        AsyncTestContext.countDownLatchMonitor().recordCountDown(latch);
+        AsyncTestContext.countDownLatchDetector().recordCountDown(latch);
         latch.countDown();
 
         // Third thread waits (should succeed since count reaches 0)
-        AsyncTestContext.countDownLatchMonitor().recordAwaitSuccess(latch);
+        AsyncTestContext.countDownLatchDetector().recordAwaitSuccess(latch);
         latch.await();
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.countDownLatchMonitor().analyze();
+        var report = AsyncTestContext.countDownLatchDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -794,18 +794,18 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
     void testCyclicBarrierUsage() throws Exception {
-        AsyncTestContext.cyclicBarrierMonitor()
+        AsyncTestContext.cyclicBarrierDetector()
             .registerBarrier(barrier3, "phaseBarrier", 3);
 
         // Record arrival at barrier
-        AsyncTestContext.cyclicBarrierMonitor().recordArrival(barrier3);
+        AsyncTestContext.cyclicBarrierDetector().recordArrival(barrier3);
         barrier3.await();
 
         // Record successful barrier completion
-        AsyncTestContext.cyclicBarrierMonitor().recordBarrierComplete(barrier3);
+        AsyncTestContext.cyclicBarrierDetector().recordBarrierComplete(barrier3);
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.cyclicBarrierMonitor().analyze();
+        var report = AsyncTestContext.cyclicBarrierDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -816,23 +816,23 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testReentrantLockUsage() throws Exception {
         java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
-        AsyncTestContext.reentrantLockMonitor()
+        AsyncTestContext.reentrantLockDetector()
             .registerLock(lock, "dataLock");
 
         lock.lock();
-        AsyncTestContext.reentrantLockMonitor()
+        AsyncTestContext.reentrantLockDetector()
             .recordLockAcquired(lock, "dataLock");
         try {
             // critical section
             Thread.sleep(1);
         } finally {
             lock.unlock();
-            AsyncTestContext.reentrantLockMonitor()
+            AsyncTestContext.reentrantLockDetector()
                 .recordLockReleased(lock, "dataLock");
         }
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.reentrantLockMonitor().analyze();
+        var report = AsyncTestContext.reentrantLockDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -843,12 +843,12 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testVolatileArrayUsage() {
         int[] array = new int[10];  // Note: even if field is volatile, elements are NOT
-        AsyncTestContext.volatileArrayMonitor()
+        AsyncTestContext.volatileArrayDetector()
             .registerArray(array, "sharedArray", int.class);
 
         // Bug: volatile only applies to array reference, not elements
         int index = (int) (Thread.currentThread().getId() % 10);
-        AsyncTestContext.volatileArrayMonitor()
+        AsyncTestContext.volatileArrayDetector()
             .recordElementWrite(array, index, "sharedArray");
         array[index] = 42;
 
@@ -856,7 +856,7 @@ class ConsumerAsyncTestUsageTest {
         // AtomicIntegerArray atomicArray = new AtomicIntegerArray(10);
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.volatileArrayMonitor().analyze();
+        var report = AsyncTestContext.volatileArrayDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -867,7 +867,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testDoubleCheckedLocking() {
         // Simulate broken DCL pattern detection
-        AsyncTestContext.doubleCheckedLockingMonitor().registerDCL(
+        AsyncTestContext.doubleCheckedLockingDetector().registerDCL(
             "singletonInstance",
             false,  // isVolatile = false (bug!)
             true,   // hasFirstCheck
@@ -885,7 +885,7 @@ class ConsumerAsyncTestUsageTest {
         }
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.doubleCheckedLockingMonitor().analyze();
+        var report = AsyncTestContext.doubleCheckedLockingDetector().analyze();
         // In real usage, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -897,13 +897,13 @@ class ConsumerAsyncTestUsageTest {
     void testWaitTimeout() throws Exception {
         // Use wait with timeout (safe pattern) - short timeout to avoid test timeout
         synchronized (waitLock) {
-            AsyncTestContext.waitTimeoutMonitor()
+            AsyncTestContext.waitTimeoutDetector()
                 .recordTimedWait(waitLock, "monitorLock", Thread.currentThread().getName(), 10);
             waitLock.wait(10);  // 10ms timeout - very short to avoid test timeout
         }
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.waitTimeoutMonitor().analyze();
+        var report = AsyncTestContext.waitTimeoutDetector().analyze();
         // In real usage with infinite waits, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -1027,18 +1027,18 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 3, detectAll = true, timeoutMs = 3000)
     void testPhaserUsage() throws Exception {
-        AsyncTestContext.phaserMonitor()
+        AsyncTestContext.phaserDetector()
             .registerPhaser(phaser3, "phasePhaser", 3);
 
         // Record arrival at phaser
-        AsyncTestContext.phaserMonitor().recordArrive(phaser3);
+        AsyncTestContext.phaserDetector().recordArrive(phaser3);
         phaser3.arriveAndAwaitAdvance();
 
         // Record successful phase completion
-        AsyncTestContext.phaserMonitor().recordPhaseComplete(phaser3, 1);
+        AsyncTestContext.phaserDetector().recordPhaseComplete(phaser3, 1);
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.phaserMonitor().analyze();
+        var report = AsyncTestContext.phaserDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -1049,12 +1049,12 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 4, detectAll = true, timeoutMs = 3000)
     void testStampedLockUsage() {
         java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
-        AsyncTestContext.stampedLockMonitor()
+        AsyncTestContext.stampedLockDetector()
             .registerLock(lock, "dataLock");
 
         // Optimistic read
         long stamp = lock.tryOptimisticRead();
-        AsyncTestContext.stampedLockMonitor()
+        AsyncTestContext.stampedLockDetector()
             .recordOptimisticRead(lock, "dataLock", stamp);
         
         // Read data...
@@ -1062,11 +1062,11 @@ class ConsumerAsyncTestUsageTest {
         
         // Validate optimistic read
         boolean validated = lock.validate(stamp);
-        AsyncTestContext.stampedLockMonitor()
+        AsyncTestContext.stampedLockDetector()
             .recordOptimisticValidation(lock, "dataLock", stamp, validated);
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.stampedLockMonitor().analyze();
+        var report = AsyncTestContext.stampedLockDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -1076,22 +1076,22 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testExchangerUsage() throws Exception {
-        AsyncTestContext.exchangerMonitor()
+        AsyncTestContext.exchangerDetector()
             .registerExchanger(exchanger, "dataExchanger");
 
         // Record exchange start
-        AsyncTestContext.exchangerMonitor()
+        AsyncTestContext.exchangerDetector()
             .recordExchangeStart(exchanger, "dataExchanger");
 
         // Perform exchange (2 threads will exchange with each other)
         String result = exchanger.exchange("data-" + Thread.currentThread().getId(), 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
 
         // Record exchange complete
-        AsyncTestContext.exchangerMonitor()
+        AsyncTestContext.exchangerDetector()
             .recordExchangeComplete(exchanger, "dataExchanger", result);
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.exchangerMonitor().analyze();
+        var report = AsyncTestContext.exchangerDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -1103,24 +1103,24 @@ class ConsumerAsyncTestUsageTest {
     void testScheduledExecutorUsage() throws Exception {
         java.util.concurrent.ScheduledExecutorService executor = 
             java.util.concurrent.Executors.newScheduledThreadPool(2);
-        AsyncTestContext.scheduledExecutorMonitor()
+        AsyncTestContext.scheduledExecutorDetector()
             .registerExecutor(executor, "scheduledPool", 2);
 
         try {
             // Schedule a task
-            AsyncTestContext.scheduledExecutorMonitor()
+            AsyncTestContext.scheduledExecutorDetector()
                 .recordSchedule(executor, "scheduledPool", "periodicTask");
             
             java.util.concurrent.Future<?> future = executor.scheduleAtFixedRate(
                 () -> {
-                    AsyncTestContext.scheduledExecutorMonitor()
+                    AsyncTestContext.scheduledExecutorDetector()
                         .recordTaskStart(executor, "scheduledPool", "periodicTask");
                     try {
                         Thread.sleep(1);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    AsyncTestContext.scheduledExecutorMonitor()
+                    AsyncTestContext.scheduledExecutorDetector()
                         .recordTaskComplete(executor, "scheduledPool", "periodicTask", 1L);
                 },
                 0, 10, java.util.concurrent.TimeUnit.MILLISECONDS
@@ -1130,12 +1130,12 @@ class ConsumerAsyncTestUsageTest {
             future.cancel(true);
         } finally {
             // Properly shut down executor
-            AsyncTestContext.scheduledExecutorMonitor().recordShutdown(executor);
+            AsyncTestContext.scheduledExecutorDetector().recordShutdown(executor);
             executor.shutdown();
         }
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.scheduledExecutorMonitor().analyze();
+        var report = AsyncTestContext.scheduledExecutorDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -1146,7 +1146,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 2, detectAll = true, timeoutMs = 3000)
     void testForkJoinPoolUsage() throws Exception {
         java.util.concurrent.ForkJoinPool pool = new java.util.concurrent.ForkJoinPool(2);
-        AsyncTestContext.forkJoinPoolMonitor()
+        AsyncTestContext.forkJoinPoolDetector()
             .registerPool(pool, "forkJoinPool", 2);
 
         try {
@@ -1158,23 +1158,23 @@ class ConsumerAsyncTestUsageTest {
                 }
             };
             
-            AsyncTestContext.forkJoinPoolMonitor()
+            AsyncTestContext.forkJoinPoolDetector()
                 .recordFork(pool, "forkJoinPool", "recursiveTask");
             task.fork();
             
             // Join the task (proper usage)
-            AsyncTestContext.forkJoinPoolMonitor()
+            AsyncTestContext.forkJoinPoolDetector()
                 .recordJoin(pool, "forkJoinPool", "recursiveTask");
             Integer result = task.join();
             
-            AsyncTestContext.forkJoinPoolMonitor()
+            AsyncTestContext.forkJoinPoolDetector()
                 .recordTaskTime(pool, "forkJoinPool", 1L);
         } finally {
             pool.shutdown();
         }
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.forkJoinPoolMonitor().analyze();
+        var report = AsyncTestContext.forkJoinPoolDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -1197,18 +1197,18 @@ class ConsumerAsyncTestUsageTest {
             }
         };
         
-        AsyncTestContext.threadFactoryMonitor()
+        AsyncTestContext.threadFactoryDetector()
             .registerFactory(factory, "customFactory");
         
         Thread thread = factory.newThread(() -> {
             // Thread work
         });
         
-        AsyncTestContext.threadFactoryMonitor()
+        AsyncTestContext.threadFactoryDetector()
             .recordThreadCreated(factory, "customFactory", thread);
 
         // Analyze and report (for demonstration, we just print the report)
-        var report = AsyncTestContext.threadFactoryMonitor().analyze();
+        var report = AsyncTestContext.threadFactoryDetector().analyze();
         // In real usage with issues, you would assert: assertTrue(report.hasIssues())
     }
 
@@ -1410,16 +1410,16 @@ class ConsumerAsyncTestUsageTest {
     void testCalendarSharingDetection() {
         java.util.Calendar cal = java.util.Calendar.getInstance();
 
-        AsyncTestContext.calendarMonitor()
+        AsyncTestContext.calendarDetector()
             .registerCalendar(cal, "shared-calendar");
 
         // Simulate set + get cycle (data race without synchronisation)
         cal.set(java.util.Calendar.YEAR, 2024);
-        AsyncTestContext.calendarMonitor()
+        AsyncTestContext.calendarDetector()
             .recordSet(cal, "shared-calendar");
 
         cal.get(java.util.Calendar.YEAR);
-        AsyncTestContext.calendarMonitor()
+        AsyncTestContext.calendarDetector()
             .recordGet(cal, "shared-calendar");
     }
 
@@ -1431,11 +1431,11 @@ class ConsumerAsyncTestUsageTest {
     void testSharedCollectionDetection() {
         java.util.List<String> sharedList = new java.util.ArrayList<>();
 
-        AsyncTestContext.sharedCollectionMonitor()
+        AsyncTestContext.sharedCollectionDetector()
             .registerCollection(sharedList, "event-list", "ArrayList");
 
         sharedList.add("event-" + Thread.currentThread().getId());
-        AsyncTestContext.sharedCollectionMonitor()
+        AsyncTestContext.sharedCollectionDetector()
             .recordWrite(sharedList, "event-list", "add");
     }
 
@@ -1448,14 +1448,14 @@ class ConsumerAsyncTestUsageTest {
     void testTimerMisuseDetection() {
         java.util.Timer timer = new java.util.Timer("demo-timer");
 
-        AsyncTestContext.timerMonitor()
+        AsyncTestContext.timerDetector()
             .registerTimer(timer, "demo-timer");
 
-        AsyncTestContext.timerMonitor()
+        AsyncTestContext.timerDetector()
             .recordTaskSchedule(timer, "demo-timer", "periodic-task");
-        AsyncTestContext.timerMonitor()
+        AsyncTestContext.timerDetector()
             .recordTaskRun(timer, "demo-timer", "periodic-task");
-        AsyncTestContext.timerMonitor()
+        AsyncTestContext.timerDetector()
             .recordTaskComplete(timer, "demo-timer", "periodic-task");
 
         timer.cancel();
@@ -1469,18 +1469,18 @@ class ConsumerAsyncTestUsageTest {
     void testCopyOnWriteCollectionDetection() {
         java.util.concurrent.CopyOnWriteArrayList<String> cowList = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-        AsyncTestContext.copyOnWriteMonitor()
+        AsyncTestContext.copyOnWriteCollectionDetector()
             .registerCollection(cowList, "cow-event-list");
 
         // Simulate write-heavy usage
         for (int i = 0; i < 10; i++) {
             cowList.add("entry-" + i);
-            AsyncTestContext.copyOnWriteMonitor()
+            AsyncTestContext.copyOnWriteCollectionDetector()
                 .recordWrite(cowList, "cow-event-list");
         }
         // Only one read — ~90% write ratio triggers the detector
         cowList.size();
-        AsyncTestContext.copyOnWriteMonitor()
+        AsyncTestContext.copyOnWriteCollectionDetector()
             .recordRead(cowList, "cow-event-list");
     }
 
@@ -1492,11 +1492,11 @@ class ConsumerAsyncTestUsageTest {
     void testStringBuilderSharingDetection() {
         StringBuilder sharedSb = new StringBuilder();
 
-        AsyncTestContext.stringBuilderMonitor()
+        AsyncTestContext.stringBuilderDetector()
             .registerBuilder(sharedSb, "log-builder");
 
         sharedSb.append("thread-").append(Thread.currentThread().getId()).append("|");
-        AsyncTestContext.stringBuilderMonitor()
+        AsyncTestContext.stringBuilderDetector()
             .recordAppend(sharedSb, "log-builder");
     }
 
@@ -1774,19 +1774,19 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 1, invocations = 2, detectExecutorShutdown = true, timeoutMs = 5000)
     void testExecutorShutdownDetection() throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
-        AsyncTestContext.executorShutdownMonitor()
+        AsyncTestContext.executorShutdownDetector()
             .recordExecutorCreated(executor, "lifecycle-pool");
 
         executor.submit(() -> {});
-        AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(executor);
+        AsyncTestContext.executorShutdownDetector().recordTaskSubmitted(executor);
 
         // Proper shutdown with awaitTermination
         executor.shutdown();
-        AsyncTestContext.executorShutdownMonitor().recordShutdownCalled(executor, false);
+        AsyncTestContext.executorShutdownDetector().recordShutdownCalled(executor, false);
         executor.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS);
-        AsyncTestContext.executorShutdownMonitor().recordAwaitTerminationCalled(executor);
+        AsyncTestContext.executorShutdownDetector().recordAwaitTerminationCalled(executor);
 
-        var report = AsyncTestContext.executorShutdownMonitor().analyze();
+        var report = AsyncTestContext.executorShutdownDetector().analyze();
         assertFalse(report.hasIssues(), "Properly shut-down executor should not be flagged");
     }
 
@@ -1796,7 +1796,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, invocations = 2, detectMutableMapKeys = true, timeoutMs = 3000)
     void testMutableMapKeyDetection() {
-        MutableMapKeyDetector detector = AsyncTestContext.mutableMapKeyMonitor();
+        MutableMapKeyDetector detector = AsyncTestContext.mutableMapKeyDetector();
 
         // Safe: key recorded at insertion, not mutated
         String key = "stable-key-" + Thread.currentThread().getId();
@@ -1815,7 +1815,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, invocations = 2, detectNestedMonitorLockout = true, timeoutMs = 3000)
     void testNestedMonitorLockoutDetection() {
-        NestedMonitorLockoutDetector detector = AsyncTestContext.nestedMonitorLockoutMonitor();
+        NestedMonitorLockoutDetector detector = AsyncTestContext.nestedMonitorLockoutDetector();
         Object lockA = new Object();
 
         synchronized (lockA) {
@@ -1834,7 +1834,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, invocations = 2, detectLockDowngrade = true, timeoutMs = 3000)
     void testLockDowngradeDetection() {
-        LockDowngradeDetector detector = AsyncTestContext.lockDowngradeMonitor();
+        LockDowngradeDetector detector = AsyncTestContext.lockDowngradeDetector();
         ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
         // Correct downgrade: write → read → release write → release read
@@ -1862,7 +1862,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 2, invocations = 2, detectInheritableThreadLocalMisuse = true, timeoutMs = 3000)
     void testInheritableThreadLocalMisuseDetection() {
         InheritableThreadLocalMisuseDetector detector =
-            AsyncTestContext.inheritableThreadLocalMisuseMonitor();
+            AsyncTestContext.inheritableThreadLocalMisuseDetector();
 
         InheritableThreadLocal<String> itl = new InheritableThreadLocal<>();
         itl.set("request-context");
@@ -1886,7 +1886,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 1, invocations = 1, detectThreadLocalContamination = true, timeoutMs = 3000)
     void testThreadLocalContaminationDetection() {
         ThreadLocalContaminationDetector detector =
-            AsyncTestContext.threadLocalContaminationMonitor();
+            AsyncTestContext.threadLocalContaminationDetector();
         ThreadLocal<String> tl = new ThreadLocal<>();
 
         // Task A: set a value
@@ -1914,7 +1914,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, invocations = 5, detectAtomicNonAtomicUpdates = true, timeoutMs = 3000)
     void testAtomicNonAtomicUpdateDetection() {
-        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.atomicNonAtomicUpdateMonitor();
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.atomicNonAtomicUpdateDetector();
         AtomicInteger counter = new AtomicInteger(0);
 
         // Safe: using updateAndGet — CAS-based, no race
@@ -1932,7 +1932,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 2, invocations = 5, detectSynchronizedCollectionIteration = true, timeoutMs = 3000)
     void testSynchronizedCollectionIterationDetection() {
         SynchronizedCollectionIterationDetector detector =
-            AsyncTestContext.synchronizedCollectionIterationMonitor();
+            AsyncTestContext.synchronizedCollectionIterationDetector();
 
         java.util.List<String> list = Collections.synchronizedList(new java.util.ArrayList<>());
         detector.recordWrapperCreated(list, "sync-event-list");
@@ -1953,7 +1953,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 1, invocations = 1, detectSharedFormatter = true, timeoutMs = 3000)
     void testSharedFormatterDetection() {
-        SharedFormatterDetector detector = AsyncTestContext.sharedFormatterMonitor();
+        SharedFormatterDetector detector = AsyncTestContext.sharedFormatterDetector();
         java.io.PrintWriter pw = new java.io.PrintWriter(java.io.Writer.nullWriter());
 
         detector.recordAccess(pw, "null-writer", Thread.currentThread());
@@ -1970,7 +1970,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 2, invocations = 5, detectConcurrentMapComputeRecursion = true, timeoutMs = 3000)
     void testConcurrentMapComputeRecursionDetection() {
         ConcurrentMapComputeRecursionDetector detector =
-            AsyncTestContext.concurrentMapComputeRecursionMonitor();
+            AsyncTestContext.concurrentMapComputeRecursionDetector();
         java.util.concurrent.ConcurrentHashMap<String, String> map = new java.util.concurrent.ConcurrentHashMap<>();
 
         // Safe non-recursive compute
@@ -1989,7 +1989,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, invocations = 5, detectSynchronizedOnLiteral = true, timeoutMs = 3000)
     void testSynchronizedOnLiteralDetection() {
-        SynchronizedOnLiteralDetector detector = AsyncTestContext.synchronizedOnLiteralMonitor();
+        SynchronizedOnLiteralDetector detector = AsyncTestContext.synchronizedOnLiteralDetector();
         Object privateLock = new Object();  // correct: private, non-interned lock object
 
         synchronized (privateLock) {
@@ -2006,7 +2006,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, invocations = 5, detectPublicLockExposure = true, timeoutMs = 3000)
     void testPublicLockExposureDetection() {
-        PublicLockExposureDetector detector = AsyncTestContext.publicLockExposureMonitor();
+        PublicLockExposureDetector detector = AsyncTestContext.publicLockExposureDetector();
         Object privateLock = new Object();
 
         // Not published — safe usage
@@ -2025,7 +2025,7 @@ class ConsumerAsyncTestUsageTest {
      */
     @AsyncTest(threads = 2, invocations = 5, detectForkJoinTaskBlocking = true, timeoutMs = 3000)
     void testForkJoinTaskBlockingDetection() {
-        ForkJoinTaskBlockingDetector detector = AsyncTestContext.forkJoinTaskBlockingMonitor();
+        ForkJoinTaskBlockingDetector detector = AsyncTestContext.forkJoinTaskBlockingDetector();
         Thread current = Thread.currentThread();
 
         // Safe: enter and exit without blocking
@@ -2046,7 +2046,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 1, invocations = 5, detectOptimisticReadValidation = true, timeoutMs = 3000)
     void testOptimisticReadValidationDetection() {
         OptimisticReadValidationDetector detector =
-            AsyncTestContext.optimisticReadValidationMonitor();
+            AsyncTestContext.optimisticReadValidationDetector();
         java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
         Thread current = Thread.currentThread();
 
@@ -2076,7 +2076,7 @@ class ConsumerAsyncTestUsageTest {
     @AsyncTest(threads = 2, invocations = 5, detectCFCommonPoolBlocking = true, timeoutMs = 3000)
     void testCFCommonPoolBlockingDetection() {
         CompletableFutureCommonPoolBlockingDetector detector =
-            AsyncTestContext.cfCommonPoolBlockingMonitor();
+            AsyncTestContext.cfCommonPoolBlockingDetector();
 
         CompletableFuture<String> future = new CompletableFuture<>();
         // Not recorded as a common-pool submission — no issue expected

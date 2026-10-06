@@ -84,7 +84,7 @@ class CounterServiceTest {
             detectReentrantLockIssues = true, failOn = FailOn.LOW)
 
     void testIncrement_concurrent_detectsLockImbalance() throws InterruptedException {
-        var detector = AsyncTestContext.reentrantLockMonitor();
+        var detector = AsyncTestContext.reentrantLockDetector();
         detector.registerLock(service.lock, "counter-service-lock");
 
         // Bounded, because increment() leaks a hold: it locks twice and unlocks once, so the

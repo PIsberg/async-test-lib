@@ -84,11 +84,11 @@ class FileProcessorServiceTest {
             String name = "input-stream-" + Thread.currentThread().getName();
 
             // Register the resource with the detector
-            AsyncTestContext.resourceLeakMonitor()
+            AsyncTestContext.resourceLeakDetector()
                     .registerResource(leaked, name, "InputStream");
 
             // Record that it was opened
-            AsyncTestContext.resourceLeakMonitor()
+            AsyncTestContext.resourceLeakDetector()
                     .recordResourceOpened(leaked, name);
 
             // BUG: recordResourceClosed() is never called — the stream leaks

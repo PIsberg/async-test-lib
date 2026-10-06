@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.publicLockExposureMonitor();
+ * var mon = AsyncTestContext.publicLockExposureDetector();
  * mon.recordSynchronizedOnThis(this, Thread.currentThread(), getClass().getSimpleName());
  * mon.recordObjectPublished(this, "returned from getService()");
  * }</pre>

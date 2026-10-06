@@ -160,7 +160,7 @@ class ReportServiceTest {
         // The detector returns immediately on a null future, and ignores any future it was not
         // first told about through recordCommonPoolSubmission, so the call was a no-op twice
         // over and the run reported nothing. See issue #346.
-        var detector = AsyncTestContext.cfCommonPoolBlockingMonitor();
+        var detector = AsyncTestContext.cfCommonPoolBlockingDetector();
         service.observeCommonPool(
                 (future, name) ->
                         detector.recordCommonPoolSubmission(future, Thread.currentThread(), name),

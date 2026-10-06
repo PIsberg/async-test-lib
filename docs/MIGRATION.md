@@ -69,7 +69,7 @@ matters, because a 1.x build that is clean of deprecation warnings is a build th
 against 2.0.0 unchanged.
 
 Every deprecated element names its replacement in its own `@deprecated` javadoc, and
-`DeprecationsNameTheirReplacementTest` keeps that true for all 188 of them, so your IDE's
+`DeprecationsNameTheirReplacementTest` kept that true for all 188 of them in 1.x, so your IDE's
 deprecation warning is a complete instruction. This section is the shape of the work and the
 handful of cases where the obvious rewrite is wrong.
 
@@ -102,8 +102,8 @@ The attribute's own javadoc names its `DetectorType`; there is no table to consu
 
 ### The `*Monitor()` accessors on `AsyncTestContext`
 
-All 42 are deprecated in favour of a `*Detector()` name. For 38 of them the suffix is the only
-difference:
+All 42 were deprecated in favour of a `*Detector()` name, and 2.0.0 removes them (#921). For 38 of
+them the suffix is the only difference:
 
 ```java
 AsyncTestContext.lockLeakMonitor()   // 1.x, deprecated

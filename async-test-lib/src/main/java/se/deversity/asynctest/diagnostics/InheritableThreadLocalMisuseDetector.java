@@ -38,7 +38,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * @AsyncTest(threads = 4, detectInheritableThreadLocalMisuse = true)
  * void testContextPropagation() {
  *     InheritableThreadLocalMisuseDetector mon =
- *         AsyncTestContext.inheritableThreadLocalMisuseMonitor();
+ *         AsyncTestContext.inheritableThreadLocalMisuseDetector();
  *     // Mark the thread pool's worker threads so the detector knows they are pooled
  *     mon.registerPoolThread(Thread.currentThread());
  *

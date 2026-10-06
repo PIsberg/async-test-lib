@@ -81,7 +81,7 @@ class PositionTrackerTest {
             detectStampedLockIssues = true, failOn = FailOn.LOW)
 
     void test_concurrent_detectsUnreleasedStamp() throws InterruptedException {
-        var detector = AsyncTestContext.get().stampedLockMonitor();
+        var detector = AsyncTestContext.get().stampedLockDetector();
         var lock = tracker.getLock();
 
         detector.registerLock(lock, "position-lock");

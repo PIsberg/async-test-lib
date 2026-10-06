@@ -43,7 +43,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.optimisticReadValidationMonitor();
+ * var mon = AsyncTestContext.optimisticReadValidationDetector();
  * long stamp = lock.tryOptimisticRead();
  * mon.recordOptimisticReadStarted(lock, stamp, Thread.currentThread());
  *

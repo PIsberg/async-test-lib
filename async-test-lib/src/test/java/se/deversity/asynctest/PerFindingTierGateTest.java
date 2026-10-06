@@ -252,7 +252,7 @@ class PerFindingTierGateTest {
                    detectAll = false, detectLockLeaks = true, useVirtualThreads = true)
         void leaveTheLockTaken() throws InterruptedException {
             if (lock.tryLock()) {
-                AsyncTestContext.lockLeakMonitor().recordLockAcquired(lock, "leaked");
+                AsyncTestContext.lockLeakDetector().recordLockAcquired(lock, "leaked");
                 holder.set(Thread.currentThread());
                 return;
             }
@@ -272,10 +272,10 @@ class PerFindingTierGateTest {
         void releaseTheLock() {
             lock.lock();
             try {
-                AsyncTestContext.lockLeakMonitor().recordLockAcquired(lock, "released");
+                AsyncTestContext.lockLeakDetector().recordLockAcquired(lock, "released");
             } finally {
                 lock.unlock();
-                AsyncTestContext.lockLeakMonitor().recordLockReleased(lock, "released");
+                AsyncTestContext.lockLeakDetector().recordLockReleased(lock, "released");
             }
         }
     }

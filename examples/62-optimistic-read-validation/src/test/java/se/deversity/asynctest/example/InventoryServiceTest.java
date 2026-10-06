@@ -113,15 +113,15 @@ class InventoryServiceTest {
 
         // Record that an optimistic read was started
         long stamp = service.lock.tryOptimisticRead();
-        AsyncTestContext.optimisticReadValidationMonitor()
+        AsyncTestContext.optimisticReadValidationDetector()
                 .recordOptimisticReadStarted(service.lock, stamp, current);
 
         // Record that data was accessed (without validation)
-        AsyncTestContext.optimisticReadValidationMonitor()
+        AsyncTestContext.optimisticReadValidationDetector()
                 .recordDataAccessed(service.lock, stamp, current, "stock");
 
         // BUG: validate() is never called — the detector expects it here
-        // AsyncTestContext.optimisticReadValidationMonitor()
+        // AsyncTestContext.optimisticReadValidationDetector()
         //         .recordValidateCalled(service.lock, stamp, service.lock.validate(stamp), current);
 
         // Interleave with writes to create race conditions
@@ -141,7 +141,7 @@ class InventoryServiceTest {
             service.addStock(1);
             return;
         }
-        var monitor = AsyncTestContext.optimisticReadValidationMonitor();
+        var monitor = AsyncTestContext.optimisticReadValidationDetector();
 
         long stamp = service.lock.tryOptimisticRead();
         monitor.recordOptimisticReadStarted(service.lock, stamp, current);

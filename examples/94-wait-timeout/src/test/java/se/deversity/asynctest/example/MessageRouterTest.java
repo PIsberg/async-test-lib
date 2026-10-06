@@ -89,7 +89,7 @@ class MessageRouterTest {
         String threadName = Thread.currentThread().getName();
 
         // Instrument: record this thread is about to call wait() with no timeout
-        AsyncTestContext.waitTimeoutMonitor()
+        AsyncTestContext.waitTimeoutDetector()
                 .recordInfiniteWait(lock, "message-router-lock", threadName);
 
         // Simulate the concurrent scenario: half threads wait, half deliver
@@ -101,7 +101,7 @@ class MessageRouterTest {
             }
         } else {
             router.deliver("msg-" + threadName);
-            AsyncTestContext.waitTimeoutMonitor()
+            AsyncTestContext.waitTimeoutDetector()
                     .recordNotifyAll(lock, "message-router-lock");
         }
     }

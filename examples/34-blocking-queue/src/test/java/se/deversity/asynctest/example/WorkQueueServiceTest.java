@@ -155,7 +155,7 @@ class WorkQueueServiceTest {
             detectBlockingQueueIssues = true, failOn = FailOn.LOW)
     void testWorkQueue_concurrent_detectsSaturation() {
         BlockingQueue<String> queue = service.getQueue();
-        BlockingQueueDetector monitor = AsyncTestContext.blockingQueueMonitor();
+        BlockingQueueDetector monitor = AsyncTestContext.blockingQueueDetector();
 
         // Registration is putIfAbsent, so every worker calling it registers the queue once.
         monitor.registerQueue(queue, "work-queue", service.capacity());

@@ -25,14 +25,14 @@ import org.jspecify.annotations.Nullable;
  * @AsyncTest(threads = 4, detectCompletableFutureExceptions = true)
  * void testCompletableFuture() {
  *     CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordFutureCreated(future, "async-task");
  *         return "result";
  *     });
  *     
  *     // Register exception handler
  *     future.exceptionally(ex -> {
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordExceptionHandled(future, "async-task", ex);
  *         return "default";
  *     });
@@ -40,10 +40,10 @@ import org.jspecify.annotations.Nullable;
  *     // Or track get/join calls
  *     try {
  *         future.join();
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordFutureCompleted(future, "async-task", true);
  *     } catch (Exception e) {
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordFutureCompleted(future, "async-task", false);
  *     }
  * }

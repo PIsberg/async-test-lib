@@ -86,19 +86,19 @@ class RecursiveCounterTest {
         Thread current = Thread.currentThread();
 
         // Tell the detector we are entering a ForkJoin task context
-        AsyncTestContext.forkJoinTaskBlockingMonitor()
+        AsyncTestContext.forkJoinTaskBlockingDetector()
                 .recordForkJoinTaskEntered(current);
 
         // Simulate what RecursiveCounter does: sleep inside the task
         // (The detector intercepts this and records a blocking call)
-        AsyncTestContext.forkJoinTaskBlockingMonitor()
+        AsyncTestContext.forkJoinTaskBlockingDetector()
                 .recordBlockingCallAttempted(current, "Thread.sleep");
 
         RecursiveCounter counter = new RecursiveCounter(1, 50);
         long result = ForkJoinPool.commonPool().invoke(counter);
 
         // Signal exit from the ForkJoin task
-        AsyncTestContext.forkJoinTaskBlockingMonitor()
+        AsyncTestContext.forkJoinTaskBlockingDetector()
                 .recordForkJoinTaskExited(current);
 
         assertEquals(1275L, result, "Sum of 1..50 should be 1275");

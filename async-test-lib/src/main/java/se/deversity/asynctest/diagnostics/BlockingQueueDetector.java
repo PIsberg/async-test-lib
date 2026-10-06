@@ -29,17 +29,17 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @AsyncTest(threads = 4, detectBlockingQueueIssues = true)
  * void testQueueUsage() {
  *     BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
- *     AsyncTestContext.blockingQueueMonitor()
+ *     AsyncTestContext.blockingQueueDetector()
  *         .registerQueue(queue, "work-queue", 10);
  *     
  *     // Producer
  *     boolean added = queue.offer("item");
- *     AsyncTestContext.blockingQueueMonitor()
+ *     AsyncTestContext.blockingQueueDetector()
  *         .recordOffer(queue, "work-queue", added);
  *     
  *     // Consumer
  *     String item = queue.poll();
- *     AsyncTestContext.blockingQueueMonitor()
+ *     AsyncTestContext.blockingQueueDetector()
  *         .recordPoll(queue, "work-queue", item != null);
  * }
  * }</pre>

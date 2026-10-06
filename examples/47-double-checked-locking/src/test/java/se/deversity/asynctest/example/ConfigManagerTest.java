@@ -88,7 +88,7 @@ class ConfigManagerTest {
     void testGetInstance_concurrent_detectsBrokenDCL() {
         // Register the DCL pattern: field is not volatile, first-check + second-check
         // + synchronized block are all present — the classic broken DCL structure
-        AsyncTestContext.doubleCheckedLockingMonitor()
+        AsyncTestContext.doubleCheckedLockingDetector()
                 .registerDCL(
                         "ConfigManager.instance",
                         false,  // isVolatile — BUG: should be true
@@ -98,7 +98,7 @@ class ConfigManagerTest {
                 );
 
         // Read access that exercises the first (unsynchronized) check
-        AsyncTestContext.doubleCheckedLockingMonitor()
+        AsyncTestContext.doubleCheckedLockingDetector()
                 .recordAccess("ConfigManager.instance", true, false);
 
         ConfigManager cfg = ConfigManager.getInstance();

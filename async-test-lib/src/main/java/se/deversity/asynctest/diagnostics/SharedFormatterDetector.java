@@ -26,7 +26,7 @@ import java.util.Map;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.sharedFormatterMonitor();
+ * var mon = AsyncTestContext.sharedFormatterDetector();
  * mon.recordAccess(sharedFormatter, "sharedFormatter", Thread.currentThread());
  * }</pre>
  */

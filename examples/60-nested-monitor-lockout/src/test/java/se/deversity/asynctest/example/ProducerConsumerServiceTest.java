@@ -43,20 +43,20 @@ class ProducerConsumerServiceTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNestedMonitorLockout = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Record acquiring lockA (outer monitor)
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorAcquired(service.lockA);
 
         // Record attempting a blocking operation (wait) while lockA is held
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordBlockingOperationAttempted("wait on lockB while holding lockA");
 
         // Record acquiring lockB (inner monitor — the deadlock point)
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorAcquired(service.lockB);
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorReleased(service.lockB);
 
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorReleased(service.lockA);
 
         // Drive the actual service

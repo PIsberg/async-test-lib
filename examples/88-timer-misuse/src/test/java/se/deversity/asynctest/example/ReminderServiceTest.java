@@ -205,7 +205,7 @@ class ReminderServiceTest {
     @AsyncTest(threads = 8, invocations = 1, detectAll = false,
             detectTimerIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsTimerIssues() throws Exception {
-        TimerDetector detector = AsyncTestContext.timerMonitor();
+        TimerDetector detector = AsyncTestContext.timerDetector();
         detector.registerTimer(service.getTimer(), "reminder-timer");
         service.observeTimer(
                 name -> detector.recordTaskSchedule(service.getTimer(), "reminder-timer", name),

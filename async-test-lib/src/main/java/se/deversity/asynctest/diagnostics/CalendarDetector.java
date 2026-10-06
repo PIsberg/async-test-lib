@@ -40,12 +40,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @AsyncTest(threads = 4, detectCalendarIssues = true)
  * void testCalendarUsage() {
  *     Calendar cal = Calendar.getInstance();
- *     AsyncTestContext.calendarMonitor()
+ *     AsyncTestContext.calendarDetector()
  *         .registerCalendar(cal, "shared-calendar");
  *
  *     // This will be flagged — multiple threads sharing one Calendar
  *     cal.set(Calendar.YEAR, 2024);
- *     AsyncTestContext.calendarMonitor()
+ *     AsyncTestContext.calendarDetector()
  *         .recordSet(cal, "shared-calendar");
  * }
  * }</pre>

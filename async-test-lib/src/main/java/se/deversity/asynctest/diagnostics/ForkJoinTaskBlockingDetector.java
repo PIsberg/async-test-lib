@@ -21,7 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.forkJoinTaskBlockingMonitor();
+ * var mon = AsyncTestContext.forkJoinTaskBlockingDetector();
  * mon.recordForkJoinTaskEntered(Thread.currentThread());
  * try {
  *     Thread.sleep(100); // BUG: blocks carrier thread

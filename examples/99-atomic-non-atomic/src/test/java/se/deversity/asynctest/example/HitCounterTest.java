@@ -86,7 +86,7 @@ class HitCounterTest {
     @Disabled("Remove @Disabled to see the bug detected by AtomicNonAtomicUpdateDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectAtomicNonAtomicUpdates = true, failOn = FailOn.LOW)
     void test_concurrent_detectsNonAtomicUpdate() {
-        var mon = AsyncTestContext.atomicNonAtomicUpdateMonitor();
+        var mon = AsyncTestContext.atomicNonAtomicUpdateDetector();
         var raw = counter.getCounter();
         Thread thread = Thread.currentThread();
 

@@ -174,7 +174,8 @@ name their replacement. Each item below says whether it is ready.
   `EnumSet` is the source of truth, each field becomes a one-line derivation of it and stops being
   an independent resolution that can be wrong. The annotation attributes and the `*Monitor()`
   accessors are unaffected by this decision and stay on the list below.
-* Remove the 42 deprecated `*Monitor()` accessors from `AsyncTestContext` (#921) (renamed
+* Remove the 42 deprecated `*Monitor()` accessors from `AsyncTestContext` (#921, **done
+  2026-10-06**: 504 lines removed, 77 files moved to the new names) (renamed
   `*Detector()` aliases shipped in 1.7). Ready: all 42 name their replacement. Four are not a
   suffix swap and one defeats a global `Monitor` to `Detector` replace; `docs/MIGRATION.md` lists
   them.
@@ -213,7 +214,7 @@ that says what it would take.
   not only on a 2.0 branch, because the previous setting
   (`breakBuildOnBinaryIncompatibleModifications`) failed on any break whatever the version said,
   which made 2.0.0 unbuildable rather than merely gated. Measured at the time of the change, with
-  the version set to 2.0.0 and `AsyncTestContext.semaphoreMonitor()` deleted: it failed with
+  the version set to 2.0.0 and `AsyncTestContext.semaphoreMisuseDetector()` deleted: it failed with
   `METHOD_REMOVED` before, passes after. The same removal still fails at 1.10.0 and at 1.9.9, and
   adding public API in a patch release still passes, so nothing was weakened.
   `JapicmpBaselineFreshnessTest` pins the setting and was verified to behave correctly at 2.0.0

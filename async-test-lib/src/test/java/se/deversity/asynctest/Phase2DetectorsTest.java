@@ -378,11 +378,11 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, monitorSemaphore = true, timeoutMs = 15000)
     void testSemaphorePermitLeak() throws InterruptedException {
         Semaphore semaphore = new Semaphore(2);
-        AsyncTestContext.semaphoreMonitor()
+        AsyncTestContext.semaphoreMisuseDetector()
             .registerSemaphore(semaphore, "resource-pool", 2);
         
         semaphore.acquire();
-        AsyncTestContext.semaphoreMonitor()
+        AsyncTestContext.semaphoreMisuseDetector()
             .recordAcquire(semaphore, "resource-pool");
         // Intentional: not releasing - simulates permit leak
     }
@@ -390,16 +390,16 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 2, monitorSemaphore = true, timeoutMs = 15000)
     void testSemaphoreNormalUsage() throws InterruptedException {
         Semaphore semaphore = new Semaphore(2);
-        AsyncTestContext.semaphoreMonitor()
+        AsyncTestContext.semaphoreMisuseDetector()
             .registerSemaphore(semaphore, "clean-pool", 2);
         
         try {
             semaphore.acquire();
-            AsyncTestContext.semaphoreMonitor()
+            AsyncTestContext.semaphoreMisuseDetector()
                 .recordAcquire(semaphore, "clean-pool");
         } finally {
             semaphore.release();
-            AsyncTestContext.semaphoreMonitor()
+            AsyncTestContext.semaphoreMisuseDetector()
                 .recordRelease(semaphore, "clean-pool");
         }
     }
@@ -409,30 +409,30 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, detectCompletableFutureExceptions = true, timeoutMs = 15000)
     void testCompletableFutureUnhandledException() {
         CompletableFuture<String> future = new CompletableFuture<>();
-        AsyncTestContext.completableFutureMonitor()
+        AsyncTestContext.completableFutureExceptionDetector()
             .recordFutureCreated(future, "unhandled-async-task");
         
         // Complete exceptionally without handler
         future.completeExceptionally(new RuntimeException("async error"));
-        AsyncTestContext.completableFutureMonitor()
+        AsyncTestContext.completableFutureExceptionDetector()
             .recordFutureCompleted(future, "unhandled-async-task", false);
     }
 
     @AsyncTest(threads = 2, detectCompletableFutureExceptions = true, timeoutMs = 15000)
     void testCompletableFutureWithHandler() {
         CompletableFuture<String> future = new CompletableFuture<>();
-        AsyncTestContext.completableFutureMonitor()
+        AsyncTestContext.completableFutureExceptionDetector()
             .recordFutureCreated(future, "handled-async-task");
         
         // Register exception handler
         future.exceptionally(ex -> {
-            AsyncTestContext.completableFutureMonitor()
+            AsyncTestContext.completableFutureExceptionDetector()
                 .recordExceptionHandled(future, "handled-async-task", ex);
             return "default";
         });
         
         future.completeExceptionally(new RuntimeException("async error"));
-        AsyncTestContext.completableFutureMonitor()
+        AsyncTestContext.completableFutureExceptionDetector()
             .recordFutureCompleted(future, "handled-async-task", false);
     }
 
@@ -441,33 +441,33 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, detectConcurrentModifications = true, timeoutMs = 15000)
     void testConcurrentCollectionModification() {
         List<String> list = new CopyOnWriteArrayList<>();
-        AsyncTestContext.concurrentModificationMonitor()
+        AsyncTestContext.concurrentModificationDetector()
             .registerCollection(list, "concurrent-list");
         
         // Safe iteration with CopyOnWriteArrayList
-        AsyncTestContext.concurrentModificationMonitor()
+        AsyncTestContext.concurrentModificationDetector()
             .recordIterationStarted(list, "concurrent-list");
         for (String item : list) {
             // Read-only iteration
         }
-        AsyncTestContext.concurrentModificationMonitor()
+        AsyncTestContext.concurrentModificationDetector()
             .recordIterationEnded(list, "concurrent-list");
         
         // Safe modification
         list.add("new-item");
-        AsyncTestContext.concurrentModificationMonitor()
+        AsyncTestContext.concurrentModificationDetector()
             .recordModification(list, "concurrent-list", "add");
     }
 
     @AsyncTest(threads = 2, detectConcurrentModifications = true, timeoutMs = 15000)
     void testConcurrentCollectionMutation() {
         List<String> list = new CopyOnWriteArrayList<>();
-        AsyncTestContext.concurrentModificationMonitor()
+        AsyncTestContext.concurrentModificationDetector()
             .registerCollection(list, "mutated-list");
         
         // Multiple threads modifying same collection
         list.add("item-" + Thread.currentThread().threadId());
-        AsyncTestContext.concurrentModificationMonitor()
+        AsyncTestContext.concurrentModificationDetector()
             .recordModification(list, "mutated-list", "add");
     }
 
@@ -476,17 +476,17 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, detectLockLeaks = true, timeoutMs = 15000)
     void testLockNormalUsage() {
         ReentrantLock lock = new ReentrantLock();
-        AsyncTestContext.lockLeakMonitor()
+        AsyncTestContext.lockLeakDetector()
             .registerLock(lock, "proper-lock");
         
         lock.lock();
-        AsyncTestContext.lockLeakMonitor()
+        AsyncTestContext.lockLeakDetector()
             .recordLockAcquired(lock, "proper-lock");
         try {
             // critical section
         } finally {
             lock.unlock();
-            AsyncTestContext.lockLeakMonitor()
+            AsyncTestContext.lockLeakDetector()
                 .recordLockReleased(lock, "proper-lock");
         }
     }
@@ -494,11 +494,11 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 2, detectLockLeaks = true, timeoutMs = 15000)
     void testLockLeakScenario() {
         ReentrantLock lock = new ReentrantLock();
-        AsyncTestContext.lockLeakMonitor()
+        AsyncTestContext.lockLeakDetector()
             .registerLock(lock, "leaky-lock");
         
         lock.lock();
-        AsyncTestContext.lockLeakMonitor()
+        AsyncTestContext.lockLeakDetector()
             .recordLockAcquired(lock, "leaky-lock");
         // Intentional: not releasing - simulates lock leak
         // In real code this would be: } finally { lock.unlock(); }
@@ -509,12 +509,12 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, detectSharedRandom = true, timeoutMs = 15000)
     void testSharedRandomDetection() {
         Random random = new Random();
-        AsyncTestContext.sharedRandomMonitor()
+        AsyncTestContext.sharedRandomDetector()
             .registerRandom(random, "shared-random");
         
         // Multiple threads accessing same Random - not recommended
         int value = random.nextInt();
-        AsyncTestContext.sharedRandomMonitor()
+        AsyncTestContext.sharedRandomDetector()
             .recordRandomAccess(random, "shared-random", "nextInt");
     }
 
@@ -530,37 +530,37 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, detectBlockingQueueIssues = true, timeoutMs = 15000)
     void testBlockingQueueUsage() throws InterruptedException {
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
-        AsyncTestContext.blockingQueueMonitor()
+        AsyncTestContext.blockingQueueDetector()
             .registerQueue(queue, "work-queue", 10);
         
         // Producer
         boolean added = queue.offer("item-" + Thread.currentThread().threadId());
-        AsyncTestContext.blockingQueueMonitor()
+        AsyncTestContext.blockingQueueDetector()
             .recordOffer(queue, "work-queue", added);
         
         // Consumer
         String item = queue.poll();
-        AsyncTestContext.blockingQueueMonitor()
+        AsyncTestContext.blockingQueueDetector()
             .recordPoll(queue, "work-queue", item != null);
     }
 
     @AsyncTest(threads = 2, detectBlockingQueueIssues = true, timeoutMs = 15000)
     void testBlockingQueueSaturation() throws InterruptedException {
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(2);
-        AsyncTestContext.blockingQueueMonitor()
+        AsyncTestContext.blockingQueueDetector()
             .registerQueue(queue, "small-queue", 2);
         
         // Fill the queue
         queue.offer("item1");
-        AsyncTestContext.blockingQueueMonitor()
+        AsyncTestContext.blockingQueueDetector()
             .recordOffer(queue, "small-queue", true);
         queue.offer("item2");
-        AsyncTestContext.blockingQueueMonitor()
+        AsyncTestContext.blockingQueueDetector()
             .recordOffer(queue, "small-queue", true);
         
         // This will fail (queue full)
         boolean added = queue.offer("item3");
-        AsyncTestContext.blockingQueueMonitor()
+        AsyncTestContext.blockingQueueDetector()
             .recordOffer(queue, "small-queue", added);
     }
 
@@ -570,13 +570,13 @@ public class Phase2DetectorsTest {
     void testConditionVariableUsage() throws InterruptedException {
         ReentrantLock lock = new ReentrantLock();
         Condition condition = lock.newCondition();
-        AsyncTestContext.conditionMonitor()
+        AsyncTestContext.conditionVariableDetector()
             .registerCondition(condition, "data-ready");
         
         lock.lock();
         try {
             // Signal (may be lost if no waiters)
-            AsyncTestContext.conditionMonitor()
+            AsyncTestContext.conditionVariableDetector()
                 .recordSignal(condition, "data-ready", false);
             condition.signal();
         } finally {
@@ -589,12 +589,12 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, detectSimpleDateFormatIssues = true, timeoutMs = 15000)
     void testSimpleDateFormatUsage() {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-        AsyncTestContext.simpleDateFormatMonitor()
+        AsyncTestContext.simpleDateFormatDetector()
             .registerFormatter(sdf, "date-formatter");
         
         // Not thread-safe - will be detected
         String formatted = sdf.format(new java.util.Date());
-        AsyncTestContext.simpleDateFormatMonitor()
+        AsyncTestContext.simpleDateFormatDetector()
             .recordFormat(sdf, "date-formatter");
     }
 
@@ -605,12 +605,12 @@ public class Phase2DetectorsTest {
         List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
         AtomicInteger counter = new AtomicInteger();
         
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
             .recordParallelStream("stateful-stream");
         
         // Bug: stateful lambda modifying external state
         list.parallelStream().forEach(i -> counter.incrementAndGet());
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
             .recordStatefulOperation("stateful-stream", "forEach");
     }
 
@@ -618,7 +618,7 @@ public class Phase2DetectorsTest {
     void testParallelStreamSafeUsage() {
         List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
         
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
             .recordParallelStream("safe-stream");
         
         // Safe: stateless operations
@@ -627,11 +627,11 @@ public class Phase2DetectorsTest {
             .filter(i -> i > 5)
             .reduce(0, Integer::sum);
         
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
             .recordStatelessOperation("safe-stream", "map");
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
             .recordStatelessOperation("safe-stream", "filter");
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
             .recordStatelessOperation("safe-stream", "reduce");
     }
 
@@ -640,16 +640,16 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 4, detectResourceLeaks = true, timeoutMs = 15000)
     void testResourceLeakProperUsage() throws Exception {
         java.io.StringReader reader = new java.io.StringReader("test data");
-        AsyncTestContext.resourceLeakMonitor()
+        AsyncTestContext.resourceLeakDetector()
             .registerResource(reader, "proper-resource", "StringReader");
         
         try {
             reader.read();
-            AsyncTestContext.resourceLeakMonitor()
+            AsyncTestContext.resourceLeakDetector()
                 .recordResourceOpened(reader, "proper-resource");
         } finally {
             reader.close();
-            AsyncTestContext.resourceLeakMonitor()
+            AsyncTestContext.resourceLeakDetector()
                 .recordResourceClosed(reader, "proper-resource");
         }
     }
@@ -657,10 +657,10 @@ public class Phase2DetectorsTest {
     @AsyncTest(threads = 2, detectResourceLeaks = true, timeoutMs = 15000)
     void testResourceLeakScenario() throws Exception {
         java.io.StringReader reader = new java.io.StringReader("test data");
-        AsyncTestContext.resourceLeakMonitor()
+        AsyncTestContext.resourceLeakDetector()
             .registerResource(reader, "leaky-resource", "StringReader");
         
-        AsyncTestContext.resourceLeakMonitor()
+        AsyncTestContext.resourceLeakDetector()
             .recordResourceOpened(reader, "leaky-resource");
         // Intentional: not closing - simulates resource leak
         // In real code this would be: } finally { reader.close(); }

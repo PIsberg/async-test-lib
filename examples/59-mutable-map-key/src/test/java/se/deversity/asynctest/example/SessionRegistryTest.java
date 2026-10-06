@@ -51,7 +51,7 @@ class SessionRegistryTest {
         String oldId = session.getId();
 
         // Record the key being inserted
-        AsyncTestContext.mutableMapKeyMonitor()
+        AsyncTestContext.mutableMapKeyDetector()
                 .recordKeyInserted(registry.size() == 0 ? new java.util.HashMap<>() : new java.util.HashMap<>(),
                         session, "SessionRegistry.sessions");
 
@@ -59,7 +59,7 @@ class SessionRegistryTest {
 
         // Mutate the key after insertion — this is the bug
         String newId = oldId + "-updated";
-        AsyncTestContext.mutableMapKeyMonitor()
+        AsyncTestContext.mutableMapKeyDetector()
                 .recordKeyMutation(session, "id", oldId, newId);
 
         session.setId(newId);

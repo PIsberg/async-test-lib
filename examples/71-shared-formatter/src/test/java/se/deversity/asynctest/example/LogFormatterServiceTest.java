@@ -75,7 +75,7 @@ class LogFormatterServiceTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedFormatter = true, failOn = FailOn.LOW)
     void testFormatEntry_concurrent_detectsSharedFormatter() {
         // Record access on the shared Formatter instance — core anti-pattern
-        AsyncTestContext.sharedFormatterMonitor()
+        AsyncTestContext.sharedFormatterDetector()
                 .recordAccess(service.getFormatter(), "log-formatter", Thread.currentThread());
 
         // Call the buggy format method — concurrent calls garble the buffer

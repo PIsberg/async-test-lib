@@ -2214,10 +2214,10 @@ class CorpusRecordingLaneTest {
     void recorded_executor_neverShutDown() {
         CorpusRecorder.countBodyExecution();
         if (leakedPoolDeclared.compareAndSet(false, true)) {
-            AsyncTestContext.executorShutdownMonitor()
+            AsyncTestContext.executorShutdownDetector()
                     .recordExecutorCreated(leakedPool, "leaked-pool");
         }
-        AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(leakedPool);
+        AsyncTestContext.executorShutdownDetector().recordTaskSubmitted(leakedPool);
         leakedPool.submit(() -> { });
     }
 
@@ -2234,13 +2234,13 @@ class CorpusRecordingLaneTest {
     void recorded_executor_shutdownAndAwaited() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         ExecutorService mine = Executors.newFixedThreadPool(1);
-        AsyncTestContext.executorShutdownMonitor().recordExecutorCreated(mine, "closed-pool");
-        AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(mine);
+        AsyncTestContext.executorShutdownDetector().recordExecutorCreated(mine, "closed-pool");
+        AsyncTestContext.executorShutdownDetector().recordTaskSubmitted(mine);
         mine.submit(() -> { });
         mine.shutdown();
-        AsyncTestContext.executorShutdownMonitor().recordShutdownCalled(mine, false);
+        AsyncTestContext.executorShutdownDetector().recordShutdownCalled(mine, false);
         mine.awaitTermination(5, TimeUnit.SECONDS);
-        AsyncTestContext.executorShutdownMonitor().recordAwaitTerminationCalled(mine);
+        AsyncTestContext.executorShutdownDetector().recordAwaitTerminationCalled(mine);
     }
 
     // --- Timer -------------------------------------------------------------------------------
@@ -2259,7 +2259,7 @@ class CorpusRecordingLaneTest {
     void recorded_timer_taskExceptionKillsThread() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (failingTimerArmed.compareAndSet(false, true)) {
-            var monitor = AsyncTestContext.timerMonitor();
+            var monitor = AsyncTestContext.timerDetector();
             monitor.registerTimer(failingTimer, "failing-timer");
             monitor.recordTaskSchedule(failingTimer, "failing-timer", "boom");
             CountDownLatch recorded = new CountDownLatch(1);
@@ -2291,7 +2291,7 @@ class CorpusRecordingLaneTest {
     void recorded_timer_tasksCompleteWithoutException() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (cleanTimerArmed.compareAndSet(false, true)) {
-            var monitor = AsyncTestContext.timerMonitor();
+            var monitor = AsyncTestContext.timerDetector();
             monitor.registerTimer(cleanTimer, "clean-timer");
             monitor.recordTaskSchedule(cleanTimer, "clean-timer", "tick");
             CountDownLatch completed = new CountDownLatch(1);
@@ -2322,7 +2322,7 @@ class CorpusRecordingLaneTest {
     void recorded_timer_taskStarvedBehindAnother() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (starvedTimerArmed.compareAndSet(false, true)) {
-            var monitor = AsyncTestContext.timerMonitor();
+            var monitor = AsyncTestContext.timerDetector();
             monitor.registerTimer(starvedTimer, "starved-timer");
             CountDownLatch waiterRan = new CountDownLatch(1);
             TimerTask waiter = new TimerTask() {
@@ -2360,7 +2360,7 @@ class CorpusRecordingLaneTest {
     void recorded_timer_slowTaskWithNothingDueBehindIt() throws InterruptedException {
         CorpusRecorder.countBodyExecution();
         if (unblockedTimerArmed.compareAndSet(false, true)) {
-            var monitor = AsyncTestContext.timerMonitor();
+            var monitor = AsyncTestContext.timerDetector();
             monitor.registerTimer(unblockedTimer, "unblocked-timer");
             CountDownLatch holderDone = new CountDownLatch(1);
             unblockedTimer.schedule(new TimerTask() {

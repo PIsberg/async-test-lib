@@ -151,7 +151,7 @@ class ParallelSorterTest {
     @AsyncTest(threads = 8, invocations = 20, detectAll = false,
             detectForkJoinPoolIssues = true, failOn = FailOn.LOW)
     void testSort_concurrent_detectsForkWithoutJoin() {
-        ForkJoinPoolDetector detector = AsyncTestContext.forkJoinPoolMonitor();
+        ForkJoinPoolDetector detector = AsyncTestContext.forkJoinPoolDetector();
         ForkJoinPool pool = ForkJoinPool.commonPool();
         detector.registerPool(pool, "common-pool", pool.getParallelism());
         sorter.observeForkJoin(

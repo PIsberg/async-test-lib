@@ -120,6 +120,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed (2.0.0)
 
+- **The 42 deprecated `*Monitor()` accessors on `AsyncTestContext`.** Each was a second name for
+  the instance its `*Detector()` replacement returns, deprecated since 1.7 and naming that
+  replacement. 38 differ only in the suffix; `semaphoreMonitor`, `completableFutureMonitor`,
+  `conditionMonitor` and `copyOnWriteMonitor` were renamed to say what they detect, and
+  `nestedMonitorLockoutMonitor` becomes `nestedMonitorLockoutDetector`. `docs/MIGRATION.md` has the
+  table (#921).
 - **The built-in SPI bridge.** `se.deversity.asynctest.spi.adapters` (`LegacyDetectorFactories`,
   `LegacyDetectorAdapter`, `SharedMessageDigestDetectorFactory`), the
   `META-INF/async-test/builtin-detector-factories` list and `spi.DetectorRegistry.build(config)`

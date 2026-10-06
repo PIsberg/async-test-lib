@@ -33,18 +33,18 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @AsyncTest(threads = 4, detectConcurrentModifications = true)
  * void testCollectionIteration() {
  *     List<String> list = new ArrayList<>();
- *     AsyncTestContext.concurrentModificationMonitor()
+ *     AsyncTestContext.concurrentModificationDetector()
  *         .registerCollection(list, "shared-list");
  *     
  *     // Track iteration
  *     Iterator<String> it = list.iterator();
- *     AsyncTestContext.concurrentModificationMonitor()
+ *     AsyncTestContext.concurrentModificationDetector()
  *         .recordIterationStarted(list, "shared-list");
  *     
  *     while (it.hasNext()) {
  *         String item = it.next();
  *         // Bug: modifying collection during iteration!
- *         AsyncTestContext.concurrentModificationMonitor()
+ *         AsyncTestContext.concurrentModificationDetector()
  *             .recordModificationDuringIteration(list, "shared-list", "add");
  *         list.add("new-item");
  *     }

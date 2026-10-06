@@ -51,9 +51,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @AsyncTest(threads = 4, detectExecutorShutdown = true)
  * void testExecutorLifecycle() {
  *     ExecutorService ex = Executors.newFixedThreadPool(2);   // created here, so owned here
- *     AsyncTestContext.executorShutdownMonitor().recordExecutorCreated(ex, "my-pool");
+ *     AsyncTestContext.executorShutdownDetector().recordExecutorCreated(ex, "my-pool");
  *     ex.submit(() -> doWork());
- *     AsyncTestContext.executorShutdownMonitor().recordTaskSubmitted(ex);
+ *     AsyncTestContext.executorShutdownDetector().recordTaskSubmitted(ex);
  *     // Missing: ex.shutdown() + awaitTermination -> will be detected
  * }
  * }</pre>

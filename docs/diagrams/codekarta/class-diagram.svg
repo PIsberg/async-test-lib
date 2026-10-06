@@ -1136,7 +1136,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedThreadLocalMonitor()…</text>
   <text x="3376.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedBusyWaitDetector(): …</text>
   <text x="3376.0" y="453.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedAtomicityValidator()…</text>
-  <text x="3376.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+240 more)</text>
+  <text x="3376.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+198 more)</text>
 </g>
 <g id="DetectorRegistry">
   <title>DetectorRegistry [CLASS]</title>

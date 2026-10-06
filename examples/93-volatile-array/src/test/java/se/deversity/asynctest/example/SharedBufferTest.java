@@ -54,7 +54,7 @@ class SharedBufferTest {
     @Disabled("Remove @Disabled to see bug detected by VolatileArrayDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectVolatileArrayIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsVolatileArrayIssue() {
-        var detector = AsyncTestContext.volatileArrayMonitor();
+        var detector = AsyncTestContext.volatileArrayDetector();
         int[] raw = buffer.getBuffer();
         String arrayName = "shared-buffer";
 

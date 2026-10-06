@@ -83,14 +83,14 @@ class RateLimiterTest {
         String name = "rate-limiter-semaphore";
 
         // Register the semaphore with the detector
-        AsyncTestContext.semaphoreMonitor()
+        AsyncTestContext.semaphoreMisuseDetector()
                 .registerSemaphore(sem, name, 5);
 
         AtomicInteger failCount = new AtomicInteger(0);
 
         try {
             // Record the acquire
-            AsyncTestContext.semaphoreMonitor().recordAcquire(sem, name);
+            AsyncTestContext.semaphoreMisuseDetector().recordAcquire(sem, name);
 
             // Submit a task that sometimes throws — simulating real failures
             limiter.executeRequest(() -> {
@@ -100,7 +100,7 @@ class RateLimiterTest {
             });
 
             // Record the release only on the happy path
-            AsyncTestContext.semaphoreMonitor().recordRelease(sem, name);
+            AsyncTestContext.semaphoreMisuseDetector().recordRelease(sem, name);
 
         } catch (RuntimeException e) {
             failCount.incrementAndGet();

@@ -66,11 +66,11 @@ but are frequently shared across threads by mistake.
 #### Context accessors for Phase 5 detectors
 
 ```java
-AsyncTestContext.calendarMonitor()           // CalendarDetector
-AsyncTestContext.sharedCollectionMonitor()   // SharedCollectionDetector
-AsyncTestContext.timerMonitor()              // TimerDetector
-AsyncTestContext.copyOnWriteMonitor()        // CopyOnWriteCollectionDetector
-AsyncTestContext.stringBuilderMonitor()      // StringBuilderDetector
+AsyncTestContext.calendarDetector()           // CalendarDetector
+AsyncTestContext.sharedCollectionDetector()   // SharedCollectionDetector
+AsyncTestContext.timerDetector()              // TimerDetector
+AsyncTestContext.copyOnWriteCollectionDetector()        // CopyOnWriteCollectionDetector
+AsyncTestContext.stringBuilderDetector()      // StringBuilderDetector
 ```
 
 #### CalendarDetector example
@@ -79,11 +79,11 @@ AsyncTestContext.stringBuilderMonitor()      // StringBuilderDetector
 @AsyncTest(threads = 4, detectCalendarIssues = true)
 void testCalendarSharing() {
     Calendar cal = Calendar.getInstance();
-    AsyncTestContext.calendarMonitor()
+    AsyncTestContext.calendarDetector()
         .registerCalendar(cal, "shared-calendar");
 
     cal.set(Calendar.YEAR, 2024);
-    AsyncTestContext.calendarMonitor()
+    AsyncTestContext.calendarDetector()
         .recordSet(cal, "shared-calendar");
 }
 // Fix: use LocalDate/ZonedDateTime from java.time.* (immutable, thread-safe)
@@ -95,11 +95,11 @@ void testCalendarSharing() {
 @AsyncTest(threads = 4, detectSharedCollections = true)
 void testSharedList() {
     List<String> list = new ArrayList<>();   // BUG: not thread-safe
-    AsyncTestContext.sharedCollectionMonitor()
+    AsyncTestContext.sharedCollectionDetector()
         .registerCollection(list, "item-list", "ArrayList");
 
     list.add("item");
-    AsyncTestContext.sharedCollectionMonitor()
+    AsyncTestContext.sharedCollectionDetector()
         .recordWrite(list, "item-list", "add");
 }
 // Fix: use ConcurrentHashMap, CopyOnWriteArrayList, or Collections.synchronizedList()
@@ -111,7 +111,7 @@ void testSharedList() {
 @AsyncTest(threads = 2, detectTimerIssues = true)
 void testTimerUsage() {
     Timer timer = new Timer("my-timer");
-    TimerDetector detector = AsyncTestContext.timerMonitor();
+    TimerDetector detector = AsyncTestContext.timerDetector();
     detector.registerTimer(timer, "my-timer");
 
     timer.schedule(new TimerTask() {
@@ -133,11 +133,11 @@ void testTimerUsage() {
 @AsyncTest(threads = 4, detectCopyOnWriteCollectionIssues = true)
 void testWriteHeavyCopyOnWrite() {
     CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
-    AsyncTestContext.copyOnWriteMonitor()
+    AsyncTestContext.copyOnWriteCollectionDetector()
         .registerCollection(list, "event-list");
 
     list.add("event");
-    AsyncTestContext.copyOnWriteMonitor()
+    AsyncTestContext.copyOnWriteCollectionDetector()
         .recordWrite(list, "event-list");
 }
 // Fix: use ConcurrentHashMap.newKeySet() or ConcurrentLinkedQueue for write-heavy workloads
@@ -149,11 +149,11 @@ void testWriteHeavyCopyOnWrite() {
 @AsyncTest(threads = 4, detectStringBuilderIssues = true)
 void testSharedStringBuilder() {
     StringBuilder sb = new StringBuilder();   // BUG: not thread-safe
-    AsyncTestContext.stringBuilderMonitor()
+    AsyncTestContext.stringBuilderDetector()
         .registerBuilder(sb, "log-builder");
 
     sb.append("entry");
-    AsyncTestContext.stringBuilderMonitor()
+    AsyncTestContext.stringBuilderDetector()
         .recordAppend(sb, "log-builder");
 }
 // Fix: use ThreadLocal<StringBuilder> or build strings per-thread and join at the end
@@ -172,11 +172,11 @@ void testSharedStringBuilder() {
 #### Context accessors for Phase 8 detectors
 
 ```java
-AsyncTestContext.executorShutdownMonitor()             // ExecutorShutdownDetector
-AsyncTestContext.mutableMapKeyMonitor()                // MutableMapKeyDetector
-AsyncTestContext.nestedMonitorLockoutMonitor()         // NestedMonitorLockoutDetector
-AsyncTestContext.lockDowngradeMonitor()                // LockDowngradeDetector
-AsyncTestContext.inheritableThreadLocalMisuseMonitor() // InheritableThreadLocalMisuseDetector
+AsyncTestContext.executorShutdownDetector()             // ExecutorShutdownDetector
+AsyncTestContext.mutableMapKeyDetector()                // MutableMapKeyDetector
+AsyncTestContext.nestedMonitorLockoutDetector()         // NestedMonitorLockoutDetector
+AsyncTestContext.lockDowngradeDetector()                // LockDowngradeDetector
+AsyncTestContext.inheritableThreadLocalMisuseDetector() // InheritableThreadLocalMisuseDetector
 ```
 
 ### Phase 10: API Traps & Subtle Concurrency Bugs (v1.6.0)
@@ -197,16 +197,16 @@ AsyncTestContext.inheritableThreadLocalMisuseMonitor() // InheritableThreadLocal
 #### Context accessors for Phase 10 detectors
 
 ```java
-AsyncTestContext.threadLocalContaminationMonitor()         // ThreadLocalContaminationDetector
-AsyncTestContext.atomicNonAtomicUpdateMonitor()            // AtomicNonAtomicUpdateDetector
-AsyncTestContext.synchronizedCollectionIterationMonitor()  // SynchronizedCollectionIterationDetector
-AsyncTestContext.sharedFormatterMonitor()                  // SharedFormatterDetector
-AsyncTestContext.concurrentMapComputeRecursionMonitor()    // ConcurrentMapComputeRecursionDetector
-AsyncTestContext.synchronizedOnLiteralMonitor()            // SynchronizedOnLiteralDetector
-AsyncTestContext.publicLockExposureMonitor()               // PublicLockExposureDetector
-AsyncTestContext.forkJoinTaskBlockingMonitor()             // ForkJoinTaskBlockingDetector
-AsyncTestContext.optimisticReadValidationMonitor()         // OptimisticReadValidationDetector
-AsyncTestContext.cfCommonPoolBlockingMonitor()             // CompletableFutureCommonPoolBlockingDetector
+AsyncTestContext.threadLocalContaminationDetector()         // ThreadLocalContaminationDetector
+AsyncTestContext.atomicNonAtomicUpdateDetector()            // AtomicNonAtomicUpdateDetector
+AsyncTestContext.synchronizedCollectionIterationDetector()  // SynchronizedCollectionIterationDetector
+AsyncTestContext.sharedFormatterDetector()                  // SharedFormatterDetector
+AsyncTestContext.concurrentMapComputeRecursionDetector()    // ConcurrentMapComputeRecursionDetector
+AsyncTestContext.synchronizedOnLiteralDetector()            // SynchronizedOnLiteralDetector
+AsyncTestContext.publicLockExposureDetector()               // PublicLockExposureDetector
+AsyncTestContext.forkJoinTaskBlockingDetector()             // ForkJoinTaskBlockingDetector
+AsyncTestContext.optimisticReadValidationDetector()         // OptimisticReadValidationDetector
+AsyncTestContext.cfCommonPoolBlockingDetector()             // CompletableFutureCommonPoolBlockingDetector
 ```
 
 ### Phase 12: Operational & Hygiene Concurrency Issues (v0.10.0)

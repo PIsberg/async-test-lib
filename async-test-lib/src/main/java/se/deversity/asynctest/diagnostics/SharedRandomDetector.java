@@ -31,12 +31,12 @@ import org.jspecify.annotations.Nullable;
  * @AsyncTest(threads = 4, detectSharedRandom = true)
  * void testRandomUsage() {
  *     Random random = new Random();
- *     AsyncTestContext.sharedRandomMonitor()
+ *     AsyncTestContext.sharedRandomDetector()
  *         .registerRandom(random, "shared-random");
  *     
  *     // This will be detected as shared access
  *     int value = random.nextInt();
- *     AsyncTestContext.sharedRandomMonitor()
+ *     AsyncTestContext.sharedRandomDetector()
  *         .recordRandomAccess(random, "shared-random", "nextInt");
  * }
  * }</pre>

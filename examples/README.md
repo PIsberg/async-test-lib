@@ -29,7 +29,7 @@ The other thing these examples make concrete is how a detector gets its data. On
 tell them what happened, which is why you will see calls like
 
 ```java
-AsyncTestContext.sharedCollectionMonitor().recordWrite(events, "event-log", "add");
+AsyncTestContext.sharedCollectionDetector().recordWrite(events, "event-log", "add");
 ```
 
 in the disabled demonstrations. The alternative to writing those by hand is the agent, which weaves

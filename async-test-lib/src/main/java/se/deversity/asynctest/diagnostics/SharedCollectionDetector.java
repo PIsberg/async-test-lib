@@ -53,11 +53,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @AsyncTest(threads = 4, detectSharedCollections = true)
  * void testSharedList() {
  *     List<String> shared = new ArrayList<>();
- *     AsyncTestContext.sharedCollectionMonitor()
+ *     AsyncTestContext.sharedCollectionDetector()
  *         .registerCollection(shared, "item-list", "ArrayList");
  *
  *     shared.add("item");
- *     AsyncTestContext.sharedCollectionMonitor()
+ *     AsyncTestContext.sharedCollectionDetector()
  *         .recordWrite(shared, "item-list", "add");
  * }
  * }</pre>

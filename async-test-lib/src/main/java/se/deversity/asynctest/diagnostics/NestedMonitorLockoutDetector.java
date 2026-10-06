@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
  * <pre>{@code
  * @AsyncTest(threads = 4, detectNestedMonitorLockout = true)
  * void testNestedLock() {
- *     NestedMonitorLockoutDetector mon = AsyncTestContext.nestedMonitorLockoutMonitor();
+ *     NestedMonitorLockoutDetector mon = AsyncTestContext.nestedMonitorLockoutDetector();
  *     synchronized (lockA) {
  *         mon.recordMonitorAcquired(lockA);
  *         // --- BUG: blocking on a Future while holding lockA ---

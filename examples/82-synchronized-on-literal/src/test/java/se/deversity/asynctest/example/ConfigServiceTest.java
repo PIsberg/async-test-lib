@@ -71,7 +71,7 @@ class ConfigServiceTest {
     @Disabled("Remove @Disabled to see literal lock detected by SynchronizedOnLiteralDetector")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedOnLiteral = true, failOn = FailOn.LOW)
     void test_concurrent_detectsLiteralLock() {
-        var detector = AsyncTestContext.get().synchronizedOnLiteralMonitor();
+        var detector = AsyncTestContext.get().synchronizedOnLiteralDetector();
 
         // The monitor passed here is the interned String literal "config-lock".
         // describeIfLiteral() will identify it as a String literal and flag it.

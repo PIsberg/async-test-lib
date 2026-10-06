@@ -40,11 +40,11 @@ import org.jspecify.annotations.Nullable;
  * @AsyncTest(threads = 4, detectStringBuilderIssues = true)
  * void testStringBuilderSharing() {
  *     StringBuilder sb = new StringBuilder();
- *     AsyncTestContext.stringBuilderMonitor()
+ *     AsyncTestContext.stringBuilderDetector()
  *         .registerBuilder(sb, "shared-log-builder");
  *
  *     sb.append("entry");
- *     AsyncTestContext.stringBuilderMonitor()
+ *     AsyncTestContext.stringBuilderDetector()
  *         .recordAppend(sb, "shared-log-builder");
  * }
  * }</pre>

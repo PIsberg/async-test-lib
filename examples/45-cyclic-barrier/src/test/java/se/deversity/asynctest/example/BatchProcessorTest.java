@@ -107,7 +107,7 @@ class BatchProcessorTest {
             + "rounds arrive at it broken, and the failure names CyclicBarrierDetector's finding")
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCyclicBarrierIssues = true, failOn = FailOn.LOW)
     void testProcessPhase_concurrent_detectsBrokenBarrier() {
-        var monitor = AsyncTestContext.cyclicBarrierMonitor();
+        var monitor = AsyncTestContext.cyclicBarrierDetector();
         monitor.registerBarrier(processor.getBarrier(), "phase-barrier", 4);
 
         // A worker runs its phases in order. The detector asks the barrier at each arrival

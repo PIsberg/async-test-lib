@@ -34,12 +34,12 @@ import org.jspecify.annotations.Nullable;
  *     List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
  *     AtomicInteger counter = new AtomicInteger();
  *     
- *     AsyncTestContext.parallelStreamMonitor()
+ *     AsyncTestContext.parallelStreamDetector()
  *         .recordParallelStream("stateful-stream");
  *     
  *     // Bug: stateful lambda modifying external state
  *     list.parallelStream().forEach(i -> counter.incrementAndGet());
- *     AsyncTestContext.parallelStreamMonitor()
+ *     AsyncTestContext.parallelStreamDetector()
  *         .recordStatefulOperation("stateful-stream", "forEach");
  * }
  * }</pre>

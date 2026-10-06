@@ -77,11 +77,11 @@ class TokenGeneratorTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedRandom = true, failOn = FailOn.LOW)
     void testGenerateToken_concurrent_detectsSharedRandom() {
         // Register the shared static Random with the detector
-        AsyncTestContext.sharedRandomMonitor()
+        AsyncTestContext.sharedRandomDetector()
                 .registerRandom(TokenGenerator.getRandom(), "token-generator-random");
 
         // Record that this thread is accessing the shared Random
-        AsyncTestContext.sharedRandomMonitor()
+        AsyncTestContext.sharedRandomDetector()
                 .recordRandomAccess(TokenGenerator.getRandom(),
                         "token-generator-random", "nextInt");
 

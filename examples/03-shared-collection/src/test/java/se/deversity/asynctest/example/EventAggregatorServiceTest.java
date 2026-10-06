@@ -107,7 +107,7 @@ class EventAggregatorServiceTest {
         // saw 800 collections with one writer each rather than one collection with eight, and it
         // reported nothing however long the test ran. See issue #346.
         service.observeCollectionWrites((collection, operation) ->
-                AsyncTestContext.sharedCollectionMonitor()
+                AsyncTestContext.sharedCollectionDetector()
                         .recordWrite(collection, collection instanceof java.util.Map
                                 ? "event-counts" : "event-log", operation));
 

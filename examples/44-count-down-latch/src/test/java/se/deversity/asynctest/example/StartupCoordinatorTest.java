@@ -152,7 +152,7 @@ class StartupCoordinatorTest {
     @AsyncTest(threads = 8, invocations = 10, detectAll = false,
             detectCountDownLatchIssues = true, failOn = FailOn.LOW)
     void testInitialize_concurrent_detectsMissingCountDown() throws Exception {
-        CountDownLatchDetector monitor = AsyncTestContext.countDownLatchMonitor();
+        CountDownLatchDetector monitor = AsyncTestContext.countDownLatchDetector();
         CountDownLatch latch = coordinator.getLatch();
         coordinator.observeLatch(
                 () -> monitor.recordCountDown(latch),

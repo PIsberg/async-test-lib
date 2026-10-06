@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.synchronizedCollectionIterationMonitor();
+ * var mon = AsyncTestContext.synchronizedCollectionIterationDetector();
  * List<String> list = Collections.synchronizedList(new ArrayList<>());
  * mon.recordWrapperCreated(list, "my-list");
  * // later — holdingLock = false means not inside synchronized(list) { }

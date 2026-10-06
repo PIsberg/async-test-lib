@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * @AsyncTest(threads = 4, detectResourceLeaks = true)
  * void testResourceUsage() throws IOException {
  *     FileInputStream fis = new FileInputStream("data.txt");
- *     AsyncTestContext.resourceLeakMonitor()
+ *     AsyncTestContext.resourceLeakDetector()
  *         .registerResource(fis, "file-input", "FileInputStream");
  *     
  *     try {
@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  *         fis.read();
  *     } finally {
  *         fis.close();
- *         AsyncTestContext.resourceLeakMonitor()
+ *         AsyncTestContext.resourceLeakDetector()
  *             .recordResourceClosed(fis, "file-input");
  *     }
  * }

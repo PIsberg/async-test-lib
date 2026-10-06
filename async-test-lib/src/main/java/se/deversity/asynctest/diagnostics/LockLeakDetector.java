@@ -27,17 +27,17 @@ import org.jspecify.annotations.Nullable;
  * @AsyncTest(threads = 4, detectLockLeaks = true)
  * void testLockUsage() {
  *     ReentrantLock lock = new ReentrantLock();
- *     AsyncTestContext.lockLeakMonitor()
+ *     AsyncTestContext.lockLeakDetector()
  *         .registerLock(lock, "resource-lock");
  *     
  *     lock.lock();
- *     AsyncTestContext.lockLeakMonitor()
+ *     AsyncTestContext.lockLeakDetector()
  *         .recordLockAcquired(lock, "resource-lock");
  *     try {
  *         // critical section
  *     } finally {
  *         lock.unlock();
- *         AsyncTestContext.lockLeakMonitor()
+ *         AsyncTestContext.lockLeakDetector()
  *             .recordLockReleased(lock, "resource-lock");
  *     }
  * }

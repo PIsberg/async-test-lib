@@ -87,7 +87,7 @@ class MultiPhaseProcessorTest {
 
     void testRunPhase_concurrent_detectsPhaserMisuse() throws InterruptedException {
         Phaser phaser = processor.getPhaser();
-        var detector = AsyncTestContext.phaserMonitor();
+        var detector = AsyncTestContext.phaserDetector();
 
         detector.registerPhaser(phaser, "multi-phase-processor-phaser", 2);
         detector.recordArriveAwaitAdvance(phaser);

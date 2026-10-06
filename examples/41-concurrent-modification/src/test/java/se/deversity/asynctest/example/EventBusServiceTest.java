@@ -84,7 +84,7 @@ class EventBusServiceTest {
 
     void testEventBus_concurrent_detectsModification() {
         var listeners = service.getListeners();
-        var detector = AsyncTestContext.get().concurrentModificationMonitor();
+        var detector = AsyncTestContext.get().concurrentModificationDetector();
 
         // Registration is not optional. Every record* method on this detector starts with a
         // lookup by System.identityHashCode and returns silently when the collection is

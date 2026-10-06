@@ -80,7 +80,7 @@ class SyncListServiceTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedCollectionIteration = true, failOn = FailOn.LOW)
 
     void test_concurrent_detectsUnsafeIteration() {
-        var detector = AsyncTestContext.get().synchronizedCollectionIterationMonitor();
+        var detector = AsyncTestContext.get().synchronizedCollectionIterationDetector();
         var items = service.getItems();
 
         // Register the wrapper once; detector deduplicates by identity.

@@ -38,11 +38,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @AsyncTest(threads = 4, detectCopyOnWriteCollectionIssues = true)
  * void testCopyOnWriteUsage() {
  *     CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
- *     AsyncTestContext.copyOnWriteMonitor()
+ *     AsyncTestContext.copyOnWriteCollectionDetector()
  *         .registerCollection(list, "event-list");
  *
  *     list.add("event");
- *     AsyncTestContext.copyOnWriteMonitor()
+ *     AsyncTestContext.copyOnWriteCollectionDetector()
  *         .recordWrite(list, "event-list");
  * }
  * }</pre>

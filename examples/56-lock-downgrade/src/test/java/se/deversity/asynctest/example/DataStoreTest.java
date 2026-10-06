@@ -193,7 +193,7 @@ class DataStoreTest {
     @AsyncTest(threads = 8, invocations = 20, detectAll = false,
             detectLockDowngrade = true, failOn = FailOn.LOW)
     void testUpdateAndRead_concurrent_detectsUnsafeDowngrade() {
-        LockDowngradeDetector detector = AsyncTestContext.lockDowngradeMonitor();
+        LockDowngradeDetector detector = AsyncTestContext.lockDowngradeDetector();
         wire(detector);
 
         // The return value is deliberately not asserted: reading back somebody else's value is

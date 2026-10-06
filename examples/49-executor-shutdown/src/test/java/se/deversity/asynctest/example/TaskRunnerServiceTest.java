@@ -95,11 +95,11 @@ class TaskRunnerServiceTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectExecutorShutdown = true, failOn = FailOn.LOW)
     void testRunTask_concurrent_detectsMissingShutdown() {
         // Register the executor with the detector
-        AsyncTestContext.executorShutdownMonitor()
+        AsyncTestContext.executorShutdownDetector()
                 .recordExecutorCreated(service.getExecutor(), "task-runner-pool");
 
         // Submit a task — detector tracks that work was done
-        AsyncTestContext.executorShutdownMonitor()
+        AsyncTestContext.executorShutdownDetector()
                 .recordTaskSubmitted(service.getExecutor());
 
         service.runTask(() -> {

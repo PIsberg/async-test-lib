@@ -25,13 +25,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @AsyncTest(threads = 4, monitorSemaphore = true)
  * void testSemaphore() throws InterruptedException {
  *     semaphore.acquire();
- *     AsyncTestContext.semaphoreMonitor()
+ *     AsyncTestContext.semaphoreMisuseDetector()
  *         .recordAcquire(semaphore, "resource-pool");
  *     try {
  *         // work
  *     } finally {
  *         semaphore.release();
- *         AsyncTestContext.semaphoreMonitor()
+ *         AsyncTestContext.semaphoreMisuseDetector()
  *             .recordRelease(semaphore, "resource-pool");
  *     }
  * }

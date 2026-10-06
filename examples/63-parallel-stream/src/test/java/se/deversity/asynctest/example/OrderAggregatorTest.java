@@ -44,15 +44,15 @@ class OrderAggregatorTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectParallelStreamIssues = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Inform the detector that a parallel stream is being used
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
                 .recordParallelStream("OrderAggregator.processOrders");
 
         // Record the side effect: forEach writes into a non-thread-safe collection
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
                 .recordSideEffect("OrderAggregator.processOrders", "ArrayList.add on shared results");
 
         // Record using a non-thread-safe collector pattern
-        AsyncTestContext.parallelStreamMonitor()
+        AsyncTestContext.parallelStreamDetector()
                 .recordNonThreadSafeCollector("OrderAggregator.processOrders", "ArrayList");
 
         // Drive the actual buggy method — concurrent invocations hit the same results list

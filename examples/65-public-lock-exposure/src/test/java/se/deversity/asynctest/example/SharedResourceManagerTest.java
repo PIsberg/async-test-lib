@@ -157,7 +157,7 @@ class SharedResourceManagerTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false,
             detectPublicLockExposure = true, failOn = FailOn.LOW)
     void testAccessResource_concurrent_detectsExposedLock() {
-        PublicLockExposureDetector detector = AsyncTestContext.publicLockExposureMonitor();
+        PublicLockExposureDetector detector = AsyncTestContext.publicLockExposureDetector();
         SharedResourceManager.observePublication(published ->
                 detector.recordObjectPublished(
                         published, "returned from SharedResourceManager.forResource(...)"));

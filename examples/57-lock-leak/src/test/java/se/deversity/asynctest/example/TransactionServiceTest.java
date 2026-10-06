@@ -45,8 +45,8 @@ class TransactionServiceTest {
     @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockLeaks = true, failOn = FailOn.LOW)
     void test_concurrent_detectsBug() {
         // Register the lock and record acquire/release to let the detector track it
-        AsyncTestContext.lockLeakMonitor().registerLock(service.lock, "TransactionService.lock");
-        AsyncTestContext.lockLeakMonitor().recordLockAcquired(service.lock, "TransactionService.lock");
+        AsyncTestContext.lockLeakDetector().registerLock(service.lock, "TransactionService.lock");
+        AsyncTestContext.lockLeakDetector().recordLockAcquired(service.lock, "TransactionService.lock");
 
         try {
             // Simulate work that may throw — causing commitTransaction() to be skipped
@@ -56,7 +56,7 @@ class TransactionServiceTest {
                     throw new RuntimeException("Simulated work failure");
                 }
             });
-            AsyncTestContext.lockLeakMonitor().recordLockReleased(service.lock, "TransactionService.lock");
+            AsyncTestContext.lockLeakDetector().recordLockReleased(service.lock, "TransactionService.lock");
         } catch (RuntimeException ignored) {
             // Lock was never released — this is the bug
         }

@@ -28,11 +28,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * void testMapKeyMutation() {
  *     MutableKey key = new MutableKey("initial");
  *     map.put(key, "value");
- *     AsyncTestContext.mutableMapKeyMonitor()
+ *     AsyncTestContext.mutableMapKeyDetector()
  *         .recordKeyInserted(map, key, "my-map");
  *
  *     key.setName("mutated");  // BUG: key mutated after insertion
- *     AsyncTestContext.mutableMapKeyMonitor()
+ *     AsyncTestContext.mutableMapKeyDetector()
  *         .recordKeyMutation(key, "name", "initial", "mutated");
  * }
  * }</pre>
