@@ -196,7 +196,12 @@ void counter() {
 ```
 
 Each worker draws its own sequence from the round's replay seed, so the seed the runner prints on a
-failure reproduces the scenario. The design and its limits are in
+failure reproduces the scenario.
+
+To make a failed check a finding instead of an assertion, verify the history when you build it:
+`OperationHistory.of(AtomicInteger::new).verifiedAgainst(spec)`. Each run then checks its own rounds
+at analysis and reports a round with no linearization as `Linearizability` (severity HIGH, trust
+FACT), so `failOn`, the reports and `AsyncFindings.assertReported("Linearizability")` see it. The design and its limits are in
 [analysis/linearizability-checking.md](analysis/linearizability-checking.md).
 
 ## Asserting on what the workers did: `RunOutcomes` (1.13.0)

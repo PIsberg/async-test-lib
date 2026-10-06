@@ -5,7 +5,9 @@ import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.LinearizabilityChecker.Op;
 import se.deversity.asynctest.LinearizabilityChecker.Verdict;
+import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.WorkerSlot;
+import se.deversity.asynctest.report.Violation;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.random.RandomGenerator;
@@ -89,6 +92,15 @@ public final class OperationHistory<S> {
      */
     private final Map<List<Object>, RandomGenerator> streams = new ConcurrentHashMap<>();
 
+    /**
+     * The name a failed check is reported under; {@code DetectorTrust} grades it FACT, because a
+     * history no order can explain is a proof, not a pattern match.
+     */
+    static final String FINDING = "Linearizability";
+
+    /** The per-round check {@link #verifiedAgainst} installed, run at the end of each run. */
+    private volatile @Nullable Consumer<RoundLog> verifier;
+
     private OperationHistory(Supplier<? extends S> fresh) {
         this.fresh = fresh;
     }
@@ -130,6 +142,10 @@ public final class OperationHistory<S> {
         Objects.requireNonNull(operation, "operation");
         Objects.requireNonNull(action, "action");
         RoundLog log = rounds.computeIfAbsent(roundKey(), RoundLog::new);
+        AsyncTestContext context = log.context;
+        if (verifier != null && context != null) {
+            context.addRunCheck(this, () -> findings(context));
+        }
         String thread = Thread.currentThread().getName();
         long invoke = TICKETS.incrementAndGet();
         R result;
@@ -238,6 +254,76 @@ public final class OperationHistory<S> {
                                BiFunction<? super S, Object, ?> action) { }
 
     /**
+     * Checks each round against {@code spec} at the end of its run, and reports a round with no
+     * linearization as a finding named {@code Linearizability} (#934).
+     *
+     * <p>The finding goes where a detector's does: the run's report, every listener and
+     * {@link AsyncFindings}, and the {@code failOn} gate, at severity HIGH and trust tier FACT. A
+     * test needs no {@code @AfterAll} assertion, and a suite that gates on findings gates on this
+     * one too. {@link #assertLinearizable} keeps working beside it.
+     *
+     * @param <M>  the model's state
+     * @param spec the sequential behaviour the object must be explainable by
+     * @return this history
+     * @since 1.13.0
+     */
+    public <M> OperationHistory<S> verifiedAgainst(SequentialSpec<M> spec) {
+        Objects.requireNonNull(spec, "spec");
+        verifier = log -> checkWhole(log, spec);
+        return this;
+    }
+
+    /**
+     * As {@link #verifiedAgainst(SequentialSpec)}, one partition at a time, as
+     * {@link #assertLinearizable(SequentialSpec, Partition)} checks.
+     *
+     * @param <M>       the model of one partition
+     * @param spec      the sequential behaviour of one partition
+     * @param partition the partition an operation belongs to
+     * @return this history
+     * @since 1.13.0
+     */
+    public <M> OperationHistory<S> verifiedAgainst(SequentialSpec<M> spec, Partition partition) {
+        Objects.requireNonNull(spec, "spec");
+        Objects.requireNonNull(partition, "partition");
+        verifier = log -> checkPartitioned(log, spec, partition);
+        return this;
+    }
+
+    /**
+     * {@return a finding per round of {@code context}'s run that fails the installed check}
+     *
+     * <p>Runs on the runner thread at analysis, after the workers have finished. It never throws:
+     * a spec that throws is reported as a round it could not check, because an exception here
+     * would cost the run every detector's findings.
+     */
+    private List<Violation> findings(AsyncTestContext context) {
+        Consumer<RoundLog> check = verifier;
+        if (check == null) {
+            return List.of();
+        }
+        List<RoundLog> logs = new ArrayList<>();
+        for (RoundLog log : rounds.values()) {
+            if (log.context == context) { // NOPMD CompareObjectsWithEquals - the run is an identity
+                logs.add(log);
+            }
+        }
+        logs.sort(Comparator.comparingInt(log -> log.number));
+        List<Violation> found = new ArrayList<>();
+        for (RoundLog log : logs) {
+            try {
+                check.accept(log);
+            } catch (AssertionError e) {
+                found.add(new Violation(FINDING, IssueSeverity.HIGH, String.valueOf(e.getMessage()), List.of(), Map.of(), java.time.Instant.now()));
+            } catch (RuntimeException e) {
+                found.add(new Violation(FINDING, IssueSeverity.HIGH, roundName(log.number)
+                        + " could not be checked: the spec threw " + e, List.of(), Map.of(), java.time.Instant.now()));
+            }
+        }
+        return found;
+    }
+
+    /**
      * Checks every recorded round against {@code spec}.
      *
      * @param <M>  the model's state
@@ -251,15 +337,19 @@ public final class OperationHistory<S> {
     public <M> void assertLinearizable(SequentialSpec<M> spec) {
         Objects.requireNonNull(spec, "spec");
         for (RoundLog log : recordedRounds()) {
-            List<Op> ops = log.snapshot();
-            if (ops.size() > LinearizabilityChecker.MAX_OPERATIONS) {
-                throw new AssertionError(roundName(log.number) + " recorded " + ops.size()
-                        + " operations; one search takes at most " + LinearizabilityChecker.MAX_OPERATIONS
-                        + ". Partition the history, assertLinearizable(spec, partition), to search each "
-                        + "independent object (one key of a map, one queue of several) on its own.");
-            }
-            check(roundName(log.number), ops, spec);
+            checkWhole(log, spec);
         }
+    }
+
+    private static <M> void checkWhole(RoundLog log, SequentialSpec<M> spec) {
+        List<Op> ops = log.snapshot();
+        if (ops.size() > LinearizabilityChecker.MAX_OPERATIONS) {
+            throw new AssertionError(roundName(log.number) + " recorded " + ops.size()
+                    + " operations; one search takes at most " + LinearizabilityChecker.MAX_OPERATIONS
+                    + ". Partition the history, assertLinearizable(spec, partition), to search each "
+                    + "independent object (one key of a map, one queue of several) on its own.");
+        }
+        check(roundName(log.number), ops, spec);
     }
 
     /**
@@ -284,21 +374,25 @@ public final class OperationHistory<S> {
         Objects.requireNonNull(spec, "spec");
         Objects.requireNonNull(partition, "partition");
         for (RoundLog log : recordedRounds()) {
-            Map<Object, List<Op>> parts = new LinkedHashMap<>();
-            for (Op op : log.snapshot()) {
-                Object key = Objects.requireNonNull(partition.keyOf(op.operation(), op.argument()),
-                        () -> "the partition of " + op.operation() + "(" + op.argument() + ") is null");
-                parts.computeIfAbsent(key, k -> new ArrayList<>()).add(op);
+            checkPartitioned(log, spec, partition);
+        }
+    }
+
+    private static <M> void checkPartitioned(RoundLog log, SequentialSpec<M> spec, Partition partition) {
+        Map<Object, List<Op>> parts = new LinkedHashMap<>();
+        for (Op op : log.snapshot()) {
+            Object key = Objects.requireNonNull(partition.keyOf(op.operation(), op.argument()),
+                    () -> "the partition of " + op.operation() + "(" + op.argument() + ") is null");
+            parts.computeIfAbsent(key, k -> new ArrayList<>()).add(op);
+        }
+        for (Map.Entry<Object, List<Op>> part : parts.entrySet()) {
+            String name = roundName(log.number) + ", partition " + part.getKey() + ",";
+            if (part.getValue().size() > LinearizabilityChecker.MAX_OPERATIONS) {
+                throw new AssertionError(name + " recorded " + part.getValue().size()
+                        + " operations; one search takes at most " + LinearizabilityChecker.MAX_OPERATIONS
+                        + ". Partition more finely, or record fewer operations per round.");
             }
-            for (Map.Entry<Object, List<Op>> part : parts.entrySet()) {
-                String name = roundName(log.number) + ", partition " + part.getKey() + ",";
-                if (part.getValue().size() > LinearizabilityChecker.MAX_OPERATIONS) {
-                    throw new AssertionError(name + " recorded " + part.getValue().size()
-                            + " operations; one search takes at most " + LinearizabilityChecker.MAX_OPERATIONS
-                            + ". Partition more finely, or record fewer operations per round.");
-                }
-                check(name, part.getValue(), spec);
-            }
+            check(name, part.getValue(), spec);
         }
     }
 
@@ -377,10 +471,13 @@ public final class OperationHistory<S> {
     /** One round's operations, bounded at {@link #MAX_OPERATIONS_PER_ROUND}. */
     private static final class RoundLog {
         final int number;
+        /** The run the round belongs to, or {@code null} outside one. */
+        final @Nullable AsyncTestContext context;
         private final List<Op> ops = new ArrayList<>();
 
         RoundLog(Object key) {
             this.number = key instanceof AsyncTestContext.Round round ? round.number() : 0;
+            this.context = AsyncTestContext.currentContext();
         }
 
         synchronized void add(Op op) {

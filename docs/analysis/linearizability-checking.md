@@ -107,6 +107,19 @@ the seed (workers sharing one stream) turns that test red. In both directions, a
 counter that reads, sleeps 1 ms and writes fails, with no interleaving scripted by the test. Unlike
 Lincheck, the runner does not search over scenarios or shrink a failing one; it draws per round.
 
+## Reporting through the run (#934)
+
+`verifiedAgainst(spec)`, or `verifiedAgainst(spec, partition)`, installs the check on the history
+instead of leaving it to an `@AfterAll` assertion. The first call in a run registers the history
+with that run's `AsyncTestContext`, and at analysis, with the detectors, each round of the run is
+checked; a round with no linearization becomes a finding named `Linearizability`, severity HIGH.
+It reaches the console report, every listener and `AsyncFindings`, and the `failOn` gate.
+`DetectorTrust` grades the name FACT, since a history no order explains is a proof over what the
+workers observed, so `minTrust = FACT` still gates on it. `LinearizabilityReportingTest` runs both
+directions: the read-then-write counter is reported and fails `failOn = HIGH` with `minTrust =
+FACT`, an `AtomicInteger` stays silent under the same gate, and an unverified history reports
+nothing; skipping the run checks at analysis turns two of its five tests red.
+
 ## The report
 
 On failure, `assertLinearizable` throws an `AssertionError` for the first round with no
@@ -139,5 +152,3 @@ subject turns the atomic-counter case red ("Round 2 is not linearizable").
 
 - **No corpus subjects yet.** The issue asked for prototype cases drawn from the corpus; the tests
   use JDK subjects (`AtomicInteger`, `ConcurrentLinkedQueue`) and a hand-written lost update.
-- **No integration with `failOn` or the reports.** The check is an assertion the test calls, like
-  `RunOutcomes`; findings do not flow through the detector pipeline.

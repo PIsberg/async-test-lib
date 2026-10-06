@@ -415,8 +415,18 @@ public final class DetectorTrust {
      */
     public static TrustTier tierOfDetector(String detectorName) {
         Row found = detectorName == null ? null : BY_NAME.get(detectorName);
-        return found == null ? TrustTier.PROMPT : found.tier();
+        if (found != null) {
+            return found.tier();
+        }
+        return detectorName == null ? TrustTier.PROMPT : HARNESS.getOrDefault(detectorName, TrustTier.PROMPT);
     }
+
+    /**
+     * Findings the harness raises itself, with no {@link DetectorType}: a verified
+     * {@code OperationHistory} round that no order of its operations explains (#934). That is a
+     * proof over what the workers observed, so it is FACT, not the PROMPT an unknown name gets.
+     */
+    private static final Map<String, TrustTier> HARNESS = Map.of("Linearizability", TrustTier.FACT);
 
     /**
      * {@return the {@link DetectorType} behind a reporting detector's name, when it is a built-in}

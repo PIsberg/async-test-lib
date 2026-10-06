@@ -1308,7 +1308,39 @@ public final class AsyncTestContext {
         stopLending();
         Map<String, String> reports = registry.analyzeAllNamed();
         appendExternalFindings(reports);
+        appendRunChecks(reports);
         return reports;
+    }
+
+    /**
+     * Checks the test body registered for this run, such as a verified {@link OperationHistory}
+     * (#934), keyed by owner so a body that registers on every call registers once. Written by
+     * workers, read by the runner thread at analysis after they have finished.
+     */
+    private final Map<Object, java.util.function.Supplier<List<Violation>>> runChecks =
+            new ConcurrentHashMap<>();
+
+    /**
+     * Registers {@code check} for this run, once per {@code owner}; its findings join the
+     * reports at analysis exactly as a third-party detector's do. The check must not throw.
+     */
+    void addRunCheck(Object owner, java.util.function.Supplier<List<Violation>> check) {
+        runChecks.putIfAbsent(owner, check);
+    }
+
+    /** {@return the context installed on the calling worker, or {@code null} outside a run} */
+    static @Nullable AsyncTestContext currentContext() {
+        return CURRENT.get();
+    }
+
+    /** Merges the registered run checks' findings into {@code reports}, as external ones are. */
+    private void appendRunChecks(Map<String, String> reports) {
+        for (java.util.function.Supplier<List<Violation>> check : runChecks.values()) {
+            for (Violation v : check.get()) {
+                String line = v.severity().getLabel() + " " + v.detector() + ": " + v.message();
+                reports.merge(v.detector(), line, (existing, added) -> existing + "\n" + added);
+            }
+        }
     }
 
     /**

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`OperationHistory.verifiedAgainst(spec)`: a failed linearizability check is a finding (#934).**
+  The check was only an `@AfterAll` assertion, invisible to `failOn`, the reports and listeners. A
+  verified history checks each run's rounds at analysis and reports a round with no linearization as
+  `Linearizability`, severity HIGH, trust tier FACT. Both directions tested; dropping the run checks
+  from analysis turns two of the five tests red.
 - **`OperationHistory.operation(...)` and `generate(n)`: drawn linearizability scenarios (#935).**
   The test author declares what a worker may do; each worker of each round draws its own sequence
   from the replay seed, the round and its slot, so a pasted `replaySeed` reproduces a failing
