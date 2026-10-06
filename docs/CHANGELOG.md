@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`AsyncTestConfig.Builder.preset(Preset)`.** A programmatic run could not ask for the
+  annotation's default, `Preset.ESSENTIALS`, except by listing its 12 types in `includes`, although
+  `AsyncTestRunner`'s javadoc and the usage docs already told readers to call `preset(...)`. It
+  resolves as `@AsyncTest(preset = ...)` does: `includes` first, then `detectAll(true)`, then the
+  preset, with `excludes` on top. `builder()` alone still starts from deadlock detection, so no
+  existing caller changes (#931).
 - **`OperationHistory`: check that a concurrent object's results are linearizable** (experimental).
   The detectors recognise known race shapes; nothing checked whether the workers' results could be
   explained at all. Record each operation with `call(...)` from the body, then

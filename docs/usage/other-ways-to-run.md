@@ -46,10 +46,10 @@ findings.assertReported("RaceConditionDetector");
 
 Three things to know, each different from the annotation:
 
-- **Detectors are opt-in on the builder.** The annotation defaults to `detectAll = true`;
-  `AsyncTestConfig.builder()` defaults every detector to off. A config without `detectAll(true)`,
-  a `preset(...)` or individual `detectXxx(true)` calls runs the body under contention and
-  detects nothing.
+- **Detectors are opt-in on the builder.** A bare `@AsyncTest` runs `Preset.ESSENTIALS`;
+  `AsyncTestConfig.builder()` starts from deadlock detection alone. Say which detectors you want:
+  `preset(Preset.ESSENTIALS)` for the annotation's default (1.13.0+, #931), `detectAll(true)` for
+  every detector, or `includes(...)` / individual `detectXxx(true)` calls.
 - **What it throws is what the annotated path throws.** A failing body surfaces as the engine's
   `AssertionError` with the body's exception as its cause (N workers on one defect are collapsed
   into one error); a hung body as the timeout `AssertionError`; findings at or above `failOn` as

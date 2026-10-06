@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.vibetags.annotations.AIContext;
@@ -771,6 +772,7 @@ public final class AsyncTestConfig {
         private final Set<String> excludeIds = new java.util.LinkedHashSet<>();
         private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
         private Set<DetectorType> includes = EnumSet.noneOf(DetectorType.class);
+        private @Nullable Preset preset;
 
         /**
          * Sets {@link AsyncTestConfig#threads}.
@@ -808,6 +810,23 @@ public final class AsyncTestConfig {
          * @return this builder
          */
         public Builder detectAll(boolean v)                  { detectAll = v; return this; }
+        /**
+         * Selects a curated bundle, resolved as {@link AsyncTest#preset()} is: {@code includes}
+         * wins over it, then {@code detectAll(true)}, and {@code excludes} apply on top. When set,
+         * it replaces the per-detector setters, as {@code detectAll(true)} does. {@link Preset#ALL}
+         * and {@link Preset#STRICT} select every detector and read as {@code detectAll}.
+         *
+         * <p>{@code builder()} alone still starts from deadlock detection only; pass
+         * {@link Preset#ESSENTIALS} for what a bare {@code @AsyncTest} runs (#931).
+         *
+         * @param v the preset to select
+         * @return this builder
+         * @since 1.13.0
+         */
+        public Builder preset(Preset v) {
+            preset = Objects.requireNonNull(v, "preset");
+            return this;
+        }
         /**
          * Sets {@link AsyncTestConfig#replaySeed}.
          * @param v the value to use
@@ -1834,9 +1853,10 @@ public final class AsyncTestConfig {
             if (threads < 1) {
                 throw new IllegalArgumentException("threads must be >= 1, was " + threads);
             }
-            if (!includes.isEmpty()) {
+            if (!includes.isEmpty() || (preset != null && preset.isAll())) {
                 // includes wins over detectAll and the per-detector setters, and the resolved
-                // detectAll field has always read true for it.
+                // detectAll field has always read true for it; so does a preset of every
+                // detector, as it does through the annotation.
                 detectAll = true;
             }
             // One set, computed once, and every public detector flag is a membership test
@@ -1845,7 +1865,9 @@ public final class AsyncTestConfig {
             // be wrong; nothing per type is left to write, so nothing per type can be forgotten.
             // EnumSet.copyOf takes the EnumSet branch for these, so an empty set copies safely.
             Set<DetectorType> enabled = !includes.isEmpty() ? EnumSet.copyOf(includes)
-                    : detectAll ? EnumSet.allOf(DetectorType.class) : EnumSet.copyOf(explicit);
+                    : detectAll ? EnumSet.allOf(DetectorType.class)
+                    : preset != null ? presetSet(preset)
+                    : EnumSet.copyOf(explicit);
             enabled.removeAll(excludes);
             for (DetectorType type : DetectorType.values()) {
                 if (excludeIds.contains(type.name())) {
@@ -1853,6 +1875,13 @@ public final class AsyncTestConfig {
                 }
             }
             return new AsyncTestConfig(this, enabled);
+        }
+
+        /** A non-all preset's set as an EnumSet; {@code NONE}'s is empty, which copyOf refuses. */
+        private static Set<DetectorType> presetSet(Preset p) {
+            Set<DetectorType> out = EnumSet.noneOf(DetectorType.class);
+            out.addAll(Objects.requireNonNull(p.enabled(), "a preset that is not ALL or STRICT enumerates its detectors"));
+            return out;
         }
     }
 }
