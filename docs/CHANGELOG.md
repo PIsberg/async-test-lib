@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`OperationHistory`: check that a concurrent object's results are linearizable** (experimental).
+  The detectors recognise known race shapes; nothing checked whether the workers' results could be
+  explained at all. Record each operation with `call(...)` from the body, then
+  `assertLinearizable(SequentialSpec)` searches every round for an order of its operations, one
+  at a time and consistent with real time, that gives the same results. A round with none fails with
+  its operations and their tickets. Tested both ways: `AtomicInteger` and `ConcurrentLinkedQueue`
+  stay linearizable over 30 rounds, a read-then-write counter fails on round 1; letting the search
+  ignore real-time order turns three checker tests red (#924).
 - **`AsyncTestConfig.enabledDetectors()` and `isEnabled(DetectorType)`: the resolved selection as
   one set.** `build()` now resolves `detectAll`, the per-detector setters, `includes` and `excludes`
   into one `EnumSet`, and every public detector flag is a membership test against it. Each flag

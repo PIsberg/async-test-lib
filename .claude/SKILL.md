@@ -158,6 +158,26 @@ static void check() {
 ```
 Totals are per run, not per round. A failure names the count and the first threads that recorded the event. Prefer it to a static `AtomicInteger` plus a hand-written `@AfterAll`: the check is easy to write so that it holds whatever the code does (asserting a `ConcurrentHashMap`'s size, for example). Lock-free, so it adds no contention of its own.
 
+### Check that results are linearizable: `OperationHistory` (2.0.0+, experimental)
+```java
+import se.deversity.asynctest.OperationHistory;
+import se.deversity.asynctest.SequentialSpec;
+
+private static final OperationHistory<AtomicInteger> HISTORY = OperationHistory.of(AtomicInteger::new);
+
+@AsyncTest(threads = 3, invocations = 100)
+void increments() {
+    AtomicInteger counter = HISTORY.subject();          // one fresh object per round
+    HISTORY.call("increment", null, counter::incrementAndGet);
+}
+
+@AfterAll
+static void linearizable() {
+    HISTORY.assertLinearizable(SequentialSpec.of(() -> new int[1], int[]::clone, (s, op, arg) -> ++s[0]));
+}
+```
+Fails when no real-time-consistent order of a round's operations gives the results the workers saw, and lists that round's operations with their tickets. Use it when the bug's shape is unknown and no detector would recognise it. At most 64 operations per round; an undecided search and an empty history fail rather than pass.
+
 ### Reproduce a flaky failure with `replaySeed` (1.6.0+)
 ```java
 import se.deversity.asynctest.AsyncTestContext;

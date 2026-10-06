@@ -189,7 +189,9 @@ name their replacement. Each item below says whether it is ready.
 The trains reshape the internals; these items add what a test author can do. Each has an issue
 that says what it would take.
 
-* **History-based (linearizability) checking** (#924). The detectors recognise known race
+* **History-based (linearizability) checking** (#924, **prototype shipped 2026-10-06** as the
+  experimental `OperationHistory` and `SequentialSpec`; design in
+  [linearizability-checking.md](linearizability-checking.md)). The detectors recognise known race
   patterns; nothing checks whether a concurrent object's results are explainable at all. Record
   each worker's operations with their invocation and response, then search for a real-time
   consistent sequential order in which a sequential model gives the same results; if none exists,

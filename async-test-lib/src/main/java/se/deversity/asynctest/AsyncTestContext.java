@@ -1121,6 +1121,29 @@ public final class AsyncTestContext {
     private volatile long roundDeadlineNanos;
 
     /**
+     * One invocation round of one run. Compared by identity, so round 1 of one run is never round
+     * 1 of another; {@link OperationHistory} keys a round's operations and subject on it (#924).
+     */
+    static final class Round {
+        private final int number;
+
+        Round(int number) {
+            this.number = number;
+        }
+
+        /** {@return the round's position in its run, from 1} */
+        int number() {
+            return number;
+        }
+    }
+
+    /** The round in progress, replaced at every round start before its workers exist. */
+    private volatile @Nullable Round currentRound;
+
+    /** Rounds opened so far; written only by the runner thread, between rounds. */
+    private int roundsOpened;
+
+    /**
      * Internal: called by {@code ConcurrencyRunner} before it starts a round's workers, with the
      * number of workers and the time the round has left.
      *
@@ -1131,6 +1154,17 @@ public final class AsyncTestContext {
     public void openRendezvousForRound(int workers, long roundTimeoutMs) {
         this.roundDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(roundTimeoutMs);
         this.roundRendezvous = workers <= MAX_RENDEZVOUS_PARTIES ? new Phaser(workers) : null;
+        roundsOpened++;
+        this.currentRound = new Round(roundsOpened);
+    }
+
+    /**
+     * {@return the round the calling worker is in, or {@code null} outside an {@code @AsyncTest}
+     * round}
+     */
+    static @Nullable Round currentRound() {
+        AsyncTestContext ctx = CURRENT.get();
+        return ctx == null ? null : ctx.currentRound;
     }
 
     /**

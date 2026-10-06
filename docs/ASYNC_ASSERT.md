@@ -145,6 +145,39 @@ out the timeout:
 Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
 65,535 workers opens no rendezvous, and calling it there throws the same.
 
+## Checking that results are linearizable: `OperationHistory` (2.0.0, experimental)
+
+`RunOutcomes` asserts a property you name. `OperationHistory` asserts one you do not have to: that
+every round's results can be explained by some order of the workers' operations, one at a time,
+that respects real time. A counter whose increment is a read followed by a write fails it the first
+time two overlapping increments return the same value, whether or not a detector knows the shape.
+
+```java
+private static final OperationHistory<AtomicInteger> HISTORY = OperationHistory.of(AtomicInteger::new);
+
+@AsyncTest(threads = 3, invocations = 100)
+void increments() {
+    AtomicInteger counter = HISTORY.subject();          // one fresh object per round
+    HISTORY.call("increment", null, counter::incrementAndGet);
+    HISTORY.call("increment", null, counter::incrementAndGet);
+}
+
+@AfterAll
+static void linearizable() {
+    HISTORY.assertLinearizable(SequentialSpec.of(
+            () -> new int[1], int[]::clone, (state, op, arg) -> ++state[0]));
+}
+```
+
+`call(operation, argument, action)` records one operation with a ticket before and after it;
+`run(...)` records one that returns nothing. The `SequentialSpec` says what each operation does
+when it runs alone: an initial state, a copy of a state, and the step, which returns the result the
+operation should give. A failure names the round and lists its operations with their tickets, so the
+overlap that made the results impossible is visible. A round may record at most 64 operations; a
+round the search cannot decide within its budget fails rather than passes, and so does a check over
+no operations at all. The design and its limits are in
+[analysis/linearizability-checking.md](analysis/linearizability-checking.md).
+
 ## Asserting on what the workers did: `RunOutcomes` (1.12.5)
 
 `AsyncFindings` asserts on what the detectors saw. `RunOutcomes` asserts on what the workers did:
