@@ -79,6 +79,9 @@ public final class AsyncTestConfig {
      */
     private final Set<DetectorType> enabledDetectors;
 
+    /** The detector ids the test switched off; see {@link #isEnabled(String)}. */
+    private final Set<String> excludedIds;
+
     // ---- Phase 1 ----
     /** Resolved value of {@link AsyncTest#detectDeadlocks()} for this run. */
     public final boolean detectDeadlocks;
@@ -433,8 +436,9 @@ public final class AsyncTestConfig {
     @AIFeatureFlag(flag = "license.mock.mode", defaultValue = false)
     public final boolean licenseMockMode;
 
-    private AsyncTestConfig(Builder b, EnumSet<DetectorType> enabled) {
+    private AsyncTestConfig(Builder b, Set<DetectorType> enabled) {
         enabledDetectors               = Collections.unmodifiableSet(EnumSet.copyOf(enabled));
+        excludedIds                    = Set.copyOf(b.excludeIds);
         threads                        = b.threads;
         invocations                    = b.invocations;
         useVirtualThreads              = b.useVirtualThreads;
@@ -628,6 +632,34 @@ public final class AsyncTestConfig {
      */
     public boolean isEnabled(DetectorType type) {
         return enabledDetectors.contains(type);
+    }
+
+    /**
+     * {@return whether this run enables the detector with {@code id}}
+     *
+     * <p>An id that names a {@link DetectorType} is that type's selection. Any other id belongs to
+     * a third-party detector (#919): it is enabled unless the test switched it off with
+     * {@code excludeIds}, because the detector is on the classpath only when the user put it there.
+     *
+     * @param id a {@link se.deversity.asynctest.spi.Detector#id() detector id}
+     * @since 2.0.0
+     */
+    public boolean isEnabled(String id) {
+        for (DetectorType type : DetectorType.values()) {
+            if (type.name().equals(id)) {
+                return isEnabled(type);
+            }
+        }
+        return !excludedIds.contains(id);
+    }
+
+    /**
+     * {@return the detector ids this run switched off, as an unmodifiable set}
+     *
+     * @since 2.0.0
+     */
+    public Set<String> excludedIds() {
+        return excludedIds;
     }
 
     /**
@@ -853,6 +885,7 @@ public final class AsyncTestConfig {
             .licenseKey(ann.licenseKey())
             .licenseMockMode(ann.licenseMockMode())
             .excludes(effectiveExcludes.toArray(new DetectorType[0]))
+            .excludeIds(ann.excludeIds())
             .build();
     }
 
@@ -885,7 +918,8 @@ public final class AsyncTestConfig {
         // The per-detector setters, as one set: a setter adds or removes its own type, and
         // build() resolves the whole selection from it (#917). Deadlock detection is on by
         // default, as its boolean was.
-        private final EnumSet<DetectorType> explicit = EnumSet.of(DetectorType.DEADLOCKS);
+        private final Set<DetectorType> explicit = EnumSet.of(DetectorType.DEADLOCKS);
+        private final Set<String> excludeIds = new java.util.LinkedHashSet<>();
         private Set<DetectorType> excludes = EnumSet.noneOf(DetectorType.class);
         private Set<DetectorType> includes = EnumSet.noneOf(DetectorType.class);
 
@@ -1897,6 +1931,26 @@ public final class AsyncTestConfig {
         }
 
         /**
+         * Switches detectors off by id. Mirrors {@link AsyncTest#excludeIds()}: a third-party
+         * detector's own id, or a built-in's {@link DetectorType} name, which excludes that type.
+         *
+         * @since 2.0.0
+         *
+         * @param ids the detector ids to switch off; {@code null} entries and blanks are ignored
+         * @return this builder
+         */
+        public Builder excludeIds(String... ids) {
+            if (ids != null) {
+                for (String id : ids) {
+                    if (id != null && !id.isBlank()) {
+                        excludeIds.add(id.strip());
+                    }
+                }
+            }
+            return this;
+        }
+
+        /**
          * Enable exactly the listed detectors and nothing else. Mirrors
          * {@link AsyncTest#includes()}: when non-empty it overrides
          * {@link #detectAll(boolean)} and the per-detector setters;
@@ -1940,9 +1994,15 @@ public final class AsyncTestConfig {
             // against it (#917). Each flag used to have its own resolution line here,
             // (detectAll || flag) && !excludes.contains(TYPE), 146 expressions that could each
             // be wrong; nothing per type is left to write, so nothing per type can be forgotten.
-            EnumSet<DetectorType> enabled = !includes.isEmpty() ? EnumSet.copyOf(includes)
+            // EnumSet.copyOf takes the EnumSet branch for these, so an empty set copies safely.
+            Set<DetectorType> enabled = !includes.isEmpty() ? EnumSet.copyOf(includes)
                     : detectAll ? EnumSet.allOf(DetectorType.class) : EnumSet.copyOf(explicit);
             enabled.removeAll(excludes);
+            for (DetectorType type : DetectorType.values()) {
+                if (excludeIds.contains(type.name())) {
+                    enabled.remove(type);
+                }
+            }
             return new AsyncTestConfig(this, enabled);
         }
     }

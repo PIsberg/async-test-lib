@@ -136,6 +136,7 @@ class PresetResolutionTest {
         @Override public long replaySeed() { return def("replaySeed"); }
         @Override public DetectorType[] excludes() { return excludes; }
         @Override public DetectorType[] includes() { return def("includes"); }
+        @Override public String[] excludeIds() { return def("excludeIds"); }
         @Override public FailOn failOn() { return def("failOn"); }
         @Override public se.deversity.asynctest.diagnostics.TrustTier minTrust() { return def("minTrust"); }
         @Override public boolean detectFalseSharing() { return def("detectFalseSharing"); }

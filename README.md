@@ -393,6 +393,7 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `detectAll` | true | Enable all detectors in one shot (honored when `preset = ALL`) |
 | `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll`/per-detector flags when non-empty |
 | `excludes` | `{}` | Detectors to skip — layers on top of any preset or `includes` and wins on conflict |
+| `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (2.0.0+) |
 | `failOn` | `FailOn.NONE` | Severity gate: findings at/above this level (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) fail the test; `NONE` = report-only |
 | `replaySeed` | 0 | Per-round RNG seed. `0` = fresh per round (printed on failure); set explicitly to reproduce a failing schedule |
 

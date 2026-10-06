@@ -17,7 +17,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -30,7 +30,9 @@ import java.util.ServiceLoader;
  * if-blocks (one per type), this registry discovers detectors via
  * {@link ServiceLoader}, builds per-test instances from
  * {@link DetectorFactory#isEnabledFor(AsyncTestConfig) enabled} factories, and
- * exposes them via a single generic typed accessor.
+ * exposes them via a single generic typed accessor. Detectors are keyed by
+ * {@link Detector#id() id} (#919), so a third-party detector with an identity of
+ * its own sits beside the built-ins instead of borrowing one of their types.
  *
  * <p>Both registries currently coexist; the SPI is the path forward for new
  * detectors, the legacy registry preserves wiring for the existing 106 until
@@ -39,14 +41,14 @@ import java.util.ServiceLoader;
  * @since 1.6.0
  */
 @AIPublicAPI
-@AIImmutable(note = "Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over an EnumMap populated once at construction.")
+@AIImmutable(note = "Effectively immutable after build() — the id-keyed map is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over a map populated once at construction.")
 @API(status = Status.STABLE)
 public final class DetectorRegistry {
 
-    private final Map<DetectorType, Detector> byType = new EnumMap<>(DetectorType.class);
+    private final Map<String, Detector> byId = new LinkedHashMap<>();
 
-    private DetectorRegistry(Map<DetectorType, Detector> detectors) {
-        byType.putAll(detectors);
+    private DetectorRegistry(Map<String, Detector> detectors) {
+        byId.putAll(detectors);
     }
 
     /**
@@ -75,7 +77,7 @@ public final class DetectorRegistry {
      * @return a registry holding every enabled detector, built-in and third-party
      */
     public static DetectorRegistry build(AsyncTestConfig config) {
-        Map<DetectorType, Detector> detectors = new EnumMap<>(DetectorType.class);
+        Map<String, Detector> detectors = new LinkedHashMap<>();
         addEnabled(builtInFactories(), config, detectors);
         addEnabled(externalFactories(), config, detectors);
         return new DetectorRegistry(detectors);
@@ -107,16 +109,19 @@ public final class DetectorRegistry {
      * @return a registry holding only the enabled third-party detectors
      */
     public static DetectorRegistry buildExternal(AsyncTestConfig config) {
-        Map<DetectorType, Detector> detectors = new EnumMap<>(DetectorType.class);
+        Map<String, Detector> detectors = new LinkedHashMap<>();
         addEnabled(externalFactories(), config, detectors);
         return new DetectorRegistry(detectors);
     }
 
     private static void addEnabled(List<DetectorFactory> factories, AsyncTestConfig config,
-                                   Map<DetectorType, Detector> into) {
+                                   Map<String, Detector> into) {
         for (DetectorFactory factory : factories) {
-            if (factory.isEnabledFor(config)) {
-                into.put(factory.type(), factory.create(config));
+            String id = factory.id();
+            // An id the test excludes is never built, whatever the factory's own answer: a
+            // third-party isEnabledFor that ignores the config cannot defeat excludeIds (#919).
+            if (!config.excludedIds().contains(id) && factory.isEnabledFor(config)) {
+                into.put(id, factory.create(config));
             }
         }
     }
@@ -185,7 +190,7 @@ public final class DetectorRegistry {
      * {@return {@code true} when no detector is active in this registry}
      */
     public boolean isEmpty() {
-        return byType.isEmpty();
+        return byId.isEmpty();
     }
 
     /**
@@ -201,29 +206,40 @@ public final class DetectorRegistry {
      */
     @SuppressWarnings("unchecked")
     public <T extends Detector> @Nullable T get(Class<T> detectorClass) {
-        for (Detector d : byType.values()) {
+        for (Detector d : byId.values()) {
             if (detectorClass.isInstance(d)) return (T) d;
         }
         return null;
     }
 
     /**
-     * Type-keyed lookup.
+     * Type-keyed lookup: the detector whose id is {@code type.name()}.
      *
      * @param type the detector to look up
      * @return the active detector for that type, or {@code null} when it is not enabled
      */
     public @Nullable Detector get(DetectorType type) {
-        return byType.get(type);
+        return byId.get(type.name());
+    }
+
+    /**
+     * Id-keyed lookup, for a detector with an identity of its own as well as a built-in one.
+     *
+     * @param id the {@link Detector#id()} to look up
+     * @return the active detector with that id, or {@code null} when it is not enabled
+     * @since 2.0.0
+     */
+    public @Nullable Detector get(String id) {
+        return byId.get(id);
     }
 
     /**
      * All active detectors (snapshot).
      *
-     * @return the active detectors, in {@link DetectorType} order
+     * @return the active detectors, in the order they were discovered
      */
     public List<Detector> all() {
-        return new ArrayList<>(byType.values());
+        return new ArrayList<>(byId.values());
     }
 
     /**
@@ -234,7 +250,7 @@ public final class DetectorRegistry {
     @AIIdempotent(reason = "Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().")
     public List<Violation> analyzeAll() {
         List<Violation> out = new ArrayList<>();
-        for (Detector d : byType.values()) {
+        for (Detector d : byId.values()) {
             try {
                 out.addAll(d.analyze());
             } catch (RuntimeException | StackOverflowError e) {
@@ -253,12 +269,12 @@ public final class DetectorRegistry {
      * Fire on test start.
      */
     public void fireOnTestStart() {
-        for (Detector d : byType.values()) d.onTestStart();
+        for (Detector d : byId.values()) d.onTestStart();
     }
     /**
      * Fire on test end.
      */
     public void fireOnTestEnd() {
-        for (Detector d : byType.values()) d.onTestEnd();
+        for (Detector d : byId.values()) d.onTestEnd();
     }
 }

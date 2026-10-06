@@ -142,7 +142,9 @@ done behind the existing API. Only deletions must wait for 2.0.
   detector surface (additive). Detectors populate `Violation` records; the existing string
   reports become rendered views of them. The runner gates on `Violation.severity()` instead
   of parsing prose; `JsonFormatter`/`MarkdownFormatter` become reachable end-to-end.
-* **Open detector identity (additive)** (#919): add `default String id()` to `spi.Detector`
+* **Open detector identity (additive)** (#919, **done 2026-10-06**: `Detector.id()` and
+  `DetectorFactory.id()`, `type()` now optional, the SPI registry keyed by id, and
+  `@AsyncTest(excludeIds = ...)`. The registry that survives 2.0 is decided in #922): add `default String id()` to `spi.Detector`
   (defaulting to `type().name()`), and an id-keyed enablement path in the SPI, so third
   parties can ship genuinely new detectors without touching the sealed enum.
 

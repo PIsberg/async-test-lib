@@ -258,6 +258,19 @@ public @interface AsyncTest {
     DetectorType[] excludes() default {};
 
     /**
+     * Detectors to switch off by id: a third-party detector's own
+     * {@link se.deversity.asynctest.spi.Detector#id() id}, or a built-in's
+     * {@link DetectorType} name, which then excludes that type as {@link #excludes()} would.
+     *
+     * <p>Example: {@code @AsyncTest(excludeIds = {"com.acme.pool-misuse"})}
+     *
+     * @since 2.0.0
+     *
+     * @return the detector ids to switch off; an id no detector declares is ignored
+     */
+    String[] excludeIds() default {};
+
+    /**
      * Enable exactly the listed detectors and nothing else.
      *
      * <p>When non-empty, this attribute takes precedence over {@link #preset()},

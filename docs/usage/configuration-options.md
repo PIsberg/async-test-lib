@@ -15,6 +15,7 @@ Part of the [Usage guide](../USAGE.md).
 | `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
 | `detectAll` | boolean | true | **Enable ALL detectors in one shot (Recommended)**. An individual flag set to `false` does not opt out while this is `true`; use `excludes` |
 | `excludes` | DetectorType[] | {} | Detectors to skip when `detectAll = true` |
+| `excludeIds` | String[] | {} | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (2.0.0+) |
 
 ### Phase 1 Detectors (Enabled by default if detectAll=true)
 

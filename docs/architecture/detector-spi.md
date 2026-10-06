@@ -27,16 +27,29 @@ List<Violation>                                  ← structured stream
 
 **SPI contracts:**
 
-- `Detector` — `type() → DetectorType`, `analyze() → List<Violation>`, optional
+- `Detector` — `id() → String`, `analyze() → List<Violation>`, optional
+  `type() → DetectorType` for one that stands for a built-in, optional
   `onTestStart()` / `onTestEnd()` lifecycle hooks. Per-test instance lifecycle.
-- `DetectorFactory` — `type()`, `isEnabledFor(AsyncTestConfig)`,
-  `create(AsyncTestConfig)`. `isEnabledFor` reads whichever boolean field on
-  `AsyncTestConfig` corresponds to the detector — no automatic mapping (each
-  factory is explicit, keeping the addressable surface intact).
+- `DetectorFactory` — `id()` (or `type()`), `create(AsyncTestConfig)`, and
+  `isEnabledFor(AsyncTestConfig)`, which defaults to `config.isEnabled(id())`.
 - `DetectorRegistry` (in the `spi` package, distinct from the legacy one) —
-  `build(config)` discovers via ServiceLoader, filters by `isEnabledFor`,
-  instantiates. Two lookup styles: typed `get(Class<T>)` and enum-keyed
-  `get(DetectorType)`. `analyzeAll()` aggregates structured violations.
+  `build(config)` discovers via ServiceLoader, filters by `isEnabledFor` and
+  `excludeIds`, instantiates, and keys each detector by its id. Three lookup
+  styles: typed `get(Class<T>)`, id-keyed `get(String)` and `get(DetectorType)`,
+  which is `get(type.name())`. `analyzeAll()` aggregates structured violations.
+
+**Open detector identity (2.0.0, #919).** A detector's identity is its `id()`. A
+built-in's id is its `DetectorType` name, which `id()` defaults to through
+`type()`. A genuinely new third-party detector leaves `type()` alone and returns an
+id of its own, preferably reverse-DNS (`"com.acme.pool-misuse"`), so it no longer
+has to borrow a built-in constant, and two such detectors no longer replace each
+other in a type-keyed map. A test switches one off with
+`@AsyncTest(excludeIds = {"com.acme.pool-misuse"})` or
+`AsyncTestConfig.Builder.excludeIds(...)`; an id the test excludes is never built,
+whatever the factory's own `isEnabledFor` says. An id that is not excluded is
+enabled, because the detector is on the classpath only when the user put it there.
+A built-in name in `excludeIds` excludes that type, as `excludes` would.
+`OpenDetectorIdentityTest` pins each of these.
 
 **Full SPI coverage (1.6.0+).** Every `DetectorType` value — all 100 of them —
 is registered as a `DetectorFactory` and discoverable via `ServiceLoader`.

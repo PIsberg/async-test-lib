@@ -62,6 +62,7 @@ class CounterTest {
 | `preset` | `Preset` | `Preset.ALL` | **Curated detector bundle.** `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE`. Overrides `detectAll` for any value other than `ALL` (1.6.0+) |
 | `detectAll` | boolean | **true** | Enable every detector at once. Honored when `preset = ALL`; ignored otherwise. Set `false` to only run individually-flagged detectors |
 | `excludes` | DetectorType[] | `{}` | Detectors to skip — layers on top of any preset |
+| `excludeIds` | String[] | `{}` | Detectors to skip by id: a third-party detector's own id, or a built-in's `DetectorType` name (2.0.0+) |
 | `replaySeed` | long | 0 | **Per-round RNG seed.** `0` = fresh seed per round, printed on failure for paste-and-reproduce. Set explicitly to reproduce a failing schedule (1.6.0+) |
 | `enableBenchmarking` | boolean | false | Record timing data for regression detection |
 | `benchmarkRegressionThreshold` | double | 0.2 | Regression threshold as a decimal (0.2 = 20%) |
@@ -646,16 +647,20 @@ For custom detectors and tooling: `se.deversity.asynctest.spi.{Detector, Detecto
 
 ```java
 public final class MyDetectorFactory implements DetectorFactory {
-    @Override public DetectorType type() { return DetectorType.SOMETHING; }
-    @Override public boolean isEnabledFor(AsyncTestConfig cfg) { return cfg.detectSomething; }
+    @Override public String id() { return "com.acme.my-detector"; }   // its own identity (2.0.0+)
     @Override public Detector create(AsyncTestConfig cfg) { return new MyDetector(); }
+    // isEnabledFor defaults to cfg.isEnabled(id()): on unless @AsyncTest(excludeIds = "com.acme.my-detector")
 }
 ```
+
+`MyDetector` overrides `id()` the same way. A detector that stands for a built-in overrides
+`type()` instead, and its id is the `DetectorType` name.
 
 ```java
 DetectorRegistry reg = DetectorRegistry.build(config);
 List<Violation> all = reg.analyzeAll();
 MyDetector mine = reg.get(MyDetector.class);
+Detector byId = reg.get("com.acme.my-detector");
 ```
 
 The legacy `se.deversity.asynctest.DetectorRegistry` continues to power the existing 90+ detectors; the SPI registry coexists for new detectors and incremental migrations.

@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   construction keyed on the wrong flag compiled and built the wrong detector. Each is now one row,
   `create(DetectorType.XXX, Xxx::new)`, and a test checks across 50 random selections that the
   registry built exactly the selected types, one instance each (#916).
+- **A third-party detector can have an identity of its own.** `Detector.id()` and
+  `DetectorFactory.id()` default to the `DetectorType` name, and `type()` is now optional, so a
+  genuinely new detector returns an id such as `"com.acme.pool-misuse"` instead of borrowing a
+  built-in constant; two detectors that borrowed one constant used to replace each other in the
+  type-keyed SPI registry. The registry is keyed by id (`get(String)`), and
+  `@AsyncTest(excludeIds = ...)` and `AsyncTestConfig.Builder.excludeIds(...)` switch a detector
+  off by id, even when its factory ignores the config (#919).
 - **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
   workers to meet after the start built a `CyclicBarrier` of its own, and had to get the party
   count, the timeout and the reuse across rounds right by hand; five `@AsyncTest` classes in this

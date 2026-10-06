@@ -1,3 +1,5 @@
 # Test-scope only: stands in for a detector shipped by a user of the library.
 # Inert unless ExternalTestDetector.arm() has been called (see its Javadoc).
 se.deversity.asynctest.spi.ExternalTestDetectorFactory
+# Inert unless NovelIdTestDetector.arm(): a detector with its own id and no DetectorType (#919).
+se.deversity.asynctest.spi.NovelIdTestDetectorFactory
