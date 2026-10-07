@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -55,7 +56,7 @@ public class MdcContextLeakDetector {
     /** The keys tasks on one thread left behind, over every task that thread ran. */
     private static class ThreadLeaks {
         final String      threadName;
-        final Set<String> keys = Collections.synchronizedSet(new LinkedHashSet<>());
+        final Set<String> keys = ConcurrentHashMap.newKeySet();
 
         ThreadLeaks(String threadName) {
             this.threadName = threadName;
@@ -103,10 +104,7 @@ public class MdcContextLeakDetector {
     public MdcContextLeakReport analyze() {
         MdcContextLeakReport r = new MdcContextLeakReport();
         for (ThreadLeaks t : leaks.values()) {
-            Set<String> leaked;
-            synchronized (t.keys) {
-                leaked = new LinkedHashSet<>(t.keys);
-            }
+            Set<String> leaked = new TreeSet<>(t.keys);
             String finding = String.format(
                     "Thread '%s' left %d MDC key(s) behind after task completion: %s — "
                             + "these will contaminate the next task run on this thread",
