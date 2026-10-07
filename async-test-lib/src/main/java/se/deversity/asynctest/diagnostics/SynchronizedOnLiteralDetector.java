@@ -34,9 +34,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *     .recordMonitorAcquired(lock, Thread.currentThread(), "MyService.doWork");
  * }</pre>
  */
-public class SynchronizedOnLiteralDetector {
+public class SynchronizedOnLiteralDetector extends AbstractInstanceDetector<SynchronizedOnLiteralDetector.LiteralUsage> {
 
-    private static class LiteralUsage {
+    static final class LiteralUsage {
         final String      description;
         final Set<Long>   threadIds    = ConcurrentHashMap.newKeySet();
         final Set<String> contexts     = ConcurrentHashMap.newKeySet();
@@ -44,7 +44,10 @@ public class SynchronizedOnLiteralDetector {
         LiteralUsage(String description) { this.description = description; }
     }
 
-    private final Map<IdentityKey, LiteralUsage> literals = new ConcurrentHashMap<>();
+    @Override
+    LiteralUsage newState(Object instance, String label) {
+        return new LiteralUsage(label);
+    }
 
     /**
      * Record a {@code synchronized(monitor)} acquisition.
@@ -60,8 +63,8 @@ public class SynchronizedOnLiteralDetector {
         String description = describeIfLiteral(monitor);
         if (description == null) return;
         // Identity on purpose: the interned instance itself is the JVM-wide monitor.
-        LiteralUsage u = literals.computeIfAbsent(
-            new IdentityKey(monitor), k -> new LiteralUsage(description));
+        // The description is the label, so no unnamed label is numbered.
+        LiteralUsage u = stateFor(monitor, description);
         u.threadIds.add(thread.threadId());
         if (context != null) u.contexts.add(context);
     }
@@ -92,7 +95,7 @@ public class SynchronizedOnLiteralDetector {
      */
     public SynchronizedOnLiteralReport analyze() {
         SynchronizedOnLiteralReport r = new SynchronizedOnLiteralReport();
-        for (LiteralUsage u : literals.values()) {
+        for (LiteralUsage u : states()) {
             String finding = String.format(
                 "synchronized on %s (acquired from %d thread(s)%s) — "
                 + "this monitor may be shared JVM-wide, causing unintended coupling and potential deadlock",

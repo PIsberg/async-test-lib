@@ -170,4 +170,11 @@ public class LockContentionDetectorTest {
                 DetectorDefaultSeverity.structuredIn(report).orElse(null)),
             "the bare word HIGH in the report text must not decide a hot lock's severity: MEDIUM");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        LockContentionDetector d = new LockContentionDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordAcquireAttempt(m, null));
+    }
 }

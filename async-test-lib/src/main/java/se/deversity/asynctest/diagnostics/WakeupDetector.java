@@ -8,7 +8,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects a waiter that acts on a wakeup no notify accounted for: a {@code wait()} that returned
@@ -55,10 +54,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * give-up and then acts on the condition anyway, hides it. Each wait is matched to the exit
  * recorded by the same thread; an exit from a thread with no open wait changes nothing.
  */
-public class WakeupDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class WakeupDetector extends AbstractInstanceDetector<WakeupDetector.MonitorState> {
 
     /** A recorded wait whose exit has not been recorded yet. */
     private static final class OpenWait {
@@ -72,7 +68,7 @@ public class WakeupDetector {
     }
 
     /** One monitor's wait/notify history. Every field is guarded by the instance's monitor. */
-    private static final class MonitorState {
+    static final class MonitorState {
         final String label;
         private final List<OpenWait> openWaits = new ArrayList<>();
         /** Threads whose last return was unaccounted for and that have not waited again. */
@@ -175,7 +171,10 @@ public class WakeupDetector {
         }
     }
 
-    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
+    @Override
+    MonitorState newState(Object instance, String label) {
+        return new MonitorState(label);
+    }
     private volatile boolean enabled = true;
 
     /**
@@ -200,7 +199,7 @@ public class WakeupDetector {
      */
     public void recordWaitExit(Object monitor, boolean wasNotified) {
         if (!enabled || monitor == null) return;
-        MonitorState state = monitors.get(new IdentityKey(monitor));
+        MonitorState state = trackedState(monitor);
         if (state == null) return;
         state.waitExited(Thread.currentThread(), wasNotified);
     }
@@ -222,7 +221,7 @@ public class WakeupDetector {
      */
     public void recordGaveUp(Object monitor) {
         if (!enabled || monitor == null) return;
-        MonitorState state = monitors.get(new IdentityKey(monitor));
+        MonitorState state = trackedState(monitor);
         if (state == null) return;
         state.gaveUp(Thread.currentThread());
     }
@@ -248,7 +247,7 @@ public class WakeupDetector {
      * @since 1.12.1
      */
     public void markInvocationStart() {
-        for (MonitorState state : monitors.values()) {
+        for (MonitorState state : states()) {
             state.closeRound();
         }
     }
@@ -260,7 +259,7 @@ public class WakeupDetector {
      */
     public WakeupReport analyzeWakeups() {
         WakeupReport report = new WakeupReport();
-        for (MonitorState state : monitors.values()) {
+        for (MonitorState state : states()) {
             state.describeInto(report);
         }
         if (report.hasIssues()) {
@@ -288,7 +287,7 @@ public class WakeupDetector {
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
-        monitors.clear();
+        clearStates();
     }
     /**
      * Disable.
@@ -304,8 +303,7 @@ public class WakeupDetector {
     }
 
     private MonitorState stateFor(Object monitor) {
-        return monitors.computeIfAbsent(new IdentityKey(monitor),
-                key -> new MonitorState(unnamedLabels.next(key.referent().getClass().getSimpleName())));
+        return stateFor(monitor, null);
     }
 
     public static class WakeupReport {

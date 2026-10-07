@@ -44,15 +44,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class LockContentionDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class LockContentionDetector extends AbstractInstanceDetector<LockContentionDetector.MonitorState> {
 
     /** Contention ratio threshold above which a monitor is reported as hot. */
     private static final double CONTENTION_THRESHOLD = 0.20;
 
-    private static final class MonitorState {
+    static final class MonitorState {
         final String name;
         final AtomicInteger acquireAttempts = new AtomicInteger();
         final AtomicInteger contentionEvents = new AtomicInteger();
@@ -63,7 +60,10 @@ public class LockContentionDetector {
         }
     }
 
-    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
+    @Override
+    MonitorState newState(Object instance, String label) {
+        return new MonitorState(label);
+    }
 
     // ---- Public API --------------------------------------------------------
 
@@ -129,7 +129,7 @@ public class LockContentionDetector {
     public LockContentionReport analyze() {
         LockContentionReport report = new LockContentionReport();
 
-        for (MonitorState state : monitors.values()) {
+        for (MonitorState state : states()) {
             int attempts = state.acquireAttempts.get();
             int contended = state.contentionEvents.get();
             if (attempts == 0) continue;
@@ -151,12 +151,7 @@ public class LockContentionDetector {
     // ---- Internal ----------------------------------------------------------
 
     private MonitorState resolve(Object monitor, String name) {
-        return monitors.computeIfAbsent(new IdentityKey(monitor), k -> {
-            String label = (name != null)
-                    ? name
-                    : unnamedLabels.of(k, monitor.getClass().getSimpleName());
-            return new MonitorState(label);
-        });
+        return stateFor(monitor, name);
     }
 
     // ---- Report ------------------------------------------------------------

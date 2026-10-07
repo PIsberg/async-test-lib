@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Readers blocked by writer preference
  * - Unfair lock distribution
  */
-public class ReadWriteLockMonitor {
+public class ReadWriteLockMonitor extends AbstractInstanceDetector<ReadWriteLockMonitor.LockState> {
 
     /** Write-lock wait, in milliseconds, past which a reader-heavy lock counts a writer starvation (#756). */
     private static final long WRITER_STARVATION_WAIT_THRESHOLD_MS = 100;
@@ -34,7 +34,7 @@ public class ReadWriteLockMonitor {
     /** Longest write wait, in milliseconds, above which a lock is reported. */
     private static final long LONG_WRITE_WAIT_THRESHOLD_MS = 50;
     
-    private static class LockState {
+    static final class LockState {
         final String lockName;
         final AtomicLong readLockCount = new AtomicLong(0);
         final AtomicLong writeLockCount = new AtomicLong(0);
@@ -53,7 +53,10 @@ public class ReadWriteLockMonitor {
      * entry: the second registration was dropped as a duplicate and its reads and writes were
      * counted, and reported, under the first lock's name.
      */
-    private final Map<IdentityKey, LockState> locks = new ConcurrentHashMap<>();
+    @Override
+    LockState newState(Object instance, String label) {
+        return new LockState(label);
+    }
     private volatile boolean enabled = true;
     
     /**
@@ -66,7 +69,7 @@ public class ReadWriteLockMonitor {
         if (!enabled) return;
         
         if (rwLock == null) return;
-        locks.putIfAbsent(new IdentityKey(rwLock), new LockState(name));
+        stateFor(rwLock, name);
     }
     
     /**
@@ -138,7 +141,7 @@ public class ReadWriteLockMonitor {
     }
     
     private @Nullable LockState stateOf(@Nullable Object rwLock) {
-        return rwLock == null ? null : locks.get(new IdentityKey(rwLock));
+        return rwLock == null ? null : trackedState(rwLock);
     }
 
     /**
@@ -149,7 +152,7 @@ public class ReadWriteLockMonitor {
     public ReadWriteLockReport analyzeFairness() {
         ReadWriteLockReport report = new ReadWriteLockReport();
         
-        for (LockState state : locks.values()) {
+        for (LockState state : states()) {
             long reads = state.readLockCount.get();
             long writes = state.writeLockCount.get();
             
@@ -207,7 +210,7 @@ public class ReadWriteLockMonitor {
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
-        locks.clear();
+        clearStates();
     }
     /**
      * Disable.

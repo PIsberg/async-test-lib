@@ -155,4 +155,11 @@ class SynchronizerMonitorTest {
         assertFalse(monitor.analyzeSynchronizers().duplicateArrivals.isEmpty(),
             "two arrivals by one thread before the barrier trips is the real defect");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SynchronizerMonitor d = new SynchronizerMonitor();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, s -> d.registerSynchronizer(s, 2));
+    }
 }

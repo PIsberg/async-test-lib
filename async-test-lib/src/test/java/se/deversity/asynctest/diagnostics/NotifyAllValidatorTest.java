@@ -98,4 +98,11 @@ class NotifyAllValidatorTest {
         NotifyAllValidator.NotifyAllReport report = validator.analyze();
         assertFalse(report.hasIssues());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        NotifyAllValidator d = new NotifyAllValidator();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordWaiterAdded(m, null));
+    }
 }

@@ -37,12 +37,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class SemaphoreMisuseDetector {
+public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreMisuseDetector.SemaphoreState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class SemaphoreState {
+    static final class SemaphoreState {
         final String name;
         final Semaphore semaphore;
         final AtomicInteger initialPermits;
@@ -60,7 +57,10 @@ public class SemaphoreMisuseDetector {
         }
     }
 
-    private final Map<IdentityKey, SemaphoreState> semaphores = new ConcurrentHashMap<>();
+    @Override
+    SemaphoreState newState(Object instance, String label) {
+        return new SemaphoreState((Semaphore) instance, label, -1);
+    }
     private volatile boolean enabled = true;
 
     /**
@@ -77,8 +77,7 @@ public class SemaphoreMisuseDetector {
         if (!enabled || semaphore == null) {
             return;
         }
-        semaphores.putIfAbsent(new IdentityKey(semaphore), 
-            new SemaphoreState(semaphore, name, initialPermits));
+        stateFor(semaphore, name, "semaphore", label -> new SemaphoreState(semaphore, label, initialPermits));
     }
 
     /**
@@ -91,16 +90,10 @@ public class SemaphoreMisuseDetector {
         if (!enabled || semaphore == null) {
             return;
         }
-        IdentityKey key = new IdentityKey(semaphore);
-        SemaphoreState state = semaphores.get(key);
-        if (state == null) {
-            // Auto-register with unknown permits, atomically. get-then-put let two threads
-            // racing on an unregistered semaphore each keep a private state, so acquiringThreads
-            // and currentAcquires undercounted exactly when contention made them matter.
-            final String label = name != null ? name : unnamedLabels.of(key, "semaphore");
-            state = semaphores.computeIfAbsent(key,
-                k -> new SemaphoreState(semaphore, label, -1));
-        }
+        // Auto-registers with unknown permits, once: get-then-put let two racing threads each
+        // keep a private state, so acquiringThreads and currentAcquires undercounted exactly when
+        // contention made them matter.
+        SemaphoreState state = stateFor(semaphore, name, "semaphore");
         state.acquireCount.incrementAndGet();
         state.acquiringThreads.add(Thread.currentThread().threadId());
         int current = state.currentAcquires.incrementAndGet();
@@ -117,7 +110,7 @@ public class SemaphoreMisuseDetector {
         if (!enabled || semaphore == null) {
             return;
         }
-        SemaphoreState state = semaphores.get(new IdentityKey(semaphore));
+        SemaphoreState state = trackedState(semaphore);
         if (state != null) {
             state.releaseCount.incrementAndGet();
             state.releasingThreads.add(Thread.currentThread().threadId());
@@ -134,7 +127,7 @@ public class SemaphoreMisuseDetector {
         SemaphoreMisuseReport report = new SemaphoreMisuseReport();
         report.enabled = enabled;
 
-        for (SemaphoreState state : semaphores.values()) {
+        for (SemaphoreState state : states()) {
             int acquires = state.acquireCount.get();
             int releases = state.releaseCount.get();
             int available = state.semaphore.availablePermits();

@@ -117,4 +117,11 @@ class ReadWriteLockMonitorTest {
         assertTrue(report.readerDominatedLocks.iterator().next().startsWith("second:"),
                 "the reads were taken on the lock registered as 'second': " + report.readerDominatedLocks);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ReadWriteLockMonitor d = new ReadWriteLockMonitor();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, l -> d.registerLock(l, null));
+    }
 }

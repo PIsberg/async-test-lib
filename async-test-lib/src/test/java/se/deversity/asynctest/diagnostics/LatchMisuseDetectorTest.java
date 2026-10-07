@@ -144,4 +144,11 @@ class LatchMisuseDetectorTest {
                 "a latch registered with no name is labelled apart from every other one: "
                         + report.missingCountDowns);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        LatchMisuseDetector d = new LatchMisuseDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, l -> d.registerLatch(l, null, 1));
+    }
 }

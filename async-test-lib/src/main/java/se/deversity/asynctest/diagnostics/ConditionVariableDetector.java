@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -124,10 +123,7 @@ import org.jspecify.annotations.Nullable;
  * //   ready.signalAll();
  * }</pre>
  */
-public class ConditionVariableDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class ConditionVariableDetector extends AbstractInstanceDetector<ConditionVariableDetector.ConditionState> {
 
     /** {@code waitQueue} result: the lock was held by another thread, so it was not read. */
     private static final int LOCK_HELD = -1;
@@ -135,7 +131,7 @@ public class ConditionVariableDetector {
     private static final int NOT_OWNED = -2;
 
     /** Query result for a condition's wait queue and its waiter predicate. */
-    private static final class WaitQueueResult {
+    static final class WaitQueueResult {
         final int parked;
         final boolean hasPredicate;
         final boolean predicateSatisfied;
@@ -162,12 +158,12 @@ public class ConditionVariableDetector {
     }
 
     @FunctionalInterface
-    private interface WaitQueueQuery {
+    interface WaitQueueQuery {
         WaitQueueResult query();
     }
 
     /** Everything recorded about one condition; every field is guarded by the state's monitor. */
-    private static final class ConditionState {
+    static final class ConditionState {
         final String name;
         /**
          * Threads currently inside a recorded await on this condition, each with the invocation
@@ -194,12 +190,15 @@ public class ConditionVariableDetector {
         @Nullable WaitQueueQuery waitQueue;
         boolean hasPredicate;
 
-        ConditionState(Condition condition, @Nullable String name, UnnamedLabels labels) {
-            this.name = name != null ? name : labels.of(condition, "condition");
+        ConditionState(String name) {
+            this.name = name;
         }
     }
 
-    private final Map<IdentityKey, ConditionState> conditions = new ConcurrentHashMap<>();
+    @Override
+    ConditionState newState(Object instance, String label) {
+        return new ConditionState(label);
+    }
     /** Bumped at the start of every invocation round; read on the recording threads. */
     private final AtomicLong invocationEpoch = new AtomicLong();
     private volatile boolean enabled = true;
@@ -386,9 +385,8 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return null;
         }
-        ConditionState fresh = new ConditionState(condition, name, unnamedLabels);
-        ConditionState prior = conditions.putIfAbsent(new IdentityKey(condition), fresh);
-        return prior != null ? prior : fresh;
+        // Registers once; a putIfAbsent of a fresh state built one on every call.
+        return stateFor(condition, name, "condition");
     }
 
     private static void attachWaitQueue(ConditionState state, WaitQueueQuery waitQueue, boolean hasPredicate) {
@@ -421,7 +419,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return;
         }
-        ConditionState state = conditions.get(new IdentityKey(condition));
+        ConditionState state = trackedState(condition);
         if (state == null) {
             return;
         }
@@ -455,7 +453,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return;
         }
-        ConditionState state = conditions.get(new IdentityKey(condition));
+        ConditionState state = trackedState(condition);
         if (state == null) {
             return;
         }
@@ -489,7 +487,7 @@ public class ConditionVariableDetector {
         if (!enabled || condition == null) {
             return;
         }
-        ConditionState state = conditions.get(new IdentityKey(condition));
+        ConditionState state = trackedState(condition);
         if (state == null) {
             return;
         }
@@ -522,7 +520,7 @@ public class ConditionVariableDetector {
         ConditionVariableReport report = new ConditionVariableReport();
         report.enabled = enabled;
 
-        for (ConditionState state : conditions.values()) {
+        for (ConditionState state : states()) {
             synchronized (state) {
                 analyze(state, report);
             }

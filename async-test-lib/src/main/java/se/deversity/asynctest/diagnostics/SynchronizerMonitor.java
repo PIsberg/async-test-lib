@@ -20,9 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Barrier resets while threads still waiting
  * - Deadlock in synchronizers
  */
-public class SynchronizerMonitor {
+public class SynchronizerMonitor extends AbstractInstanceDetector<SynchronizerMonitor.BarrierState> {
     
-    private static class BarrierState {
+    static final class BarrierState {
         final String synchronizerName;
         final int expectedParties;
         final AtomicInteger arrivedCount = new AtomicInteger(0);
@@ -35,7 +35,6 @@ public class SynchronizerMonitor {
         }
     }
     
-    private final Map<IdentityKey, BarrierState> synchronizers = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -47,10 +46,9 @@ public class SynchronizerMonitor {
     public void registerSynchronizer(Object synchronizer, int expectedParties) {
         if (!enabled || synchronizer == null) return;
         
-        synchronizers.putIfAbsent(new IdentityKey(synchronizer), new BarrierState(
-            synchronizer.getClass().getSimpleName(), 
-            expectedParties
-        ));
+        // The class name is the label, passed as the name so no unnamed label is numbered.
+        stateFor(synchronizer, synchronizer.getClass().getSimpleName(), "synchronizer",
+                label -> new BarrierState(label, expectedParties));
     }
     
     /**
@@ -61,9 +59,9 @@ public class SynchronizerMonitor {
     public void recordBarrierArrival(Object synchronizer) {
         if (!enabled || synchronizer == null) return;
         
-        BarrierState state = synchronizers.get(new IdentityKey(synchronizer));
+        BarrierState state = trackedState(synchronizer);
         if (state == null) return;
-        
+
         long threadId = Thread.currentThread().threadId();
         int count = state.arrivedCount.incrementAndGet();
         // The barrier trips every expectedParties arrivals and is reused for the next generation;
@@ -94,9 +92,9 @@ public class SynchronizerMonitor {
     public void recordBarrierReset(Object synchronizer) {
         if (!enabled || synchronizer == null) return;
         
-        BarrierState state = synchronizers.get(new IdentityKey(synchronizer));
+        BarrierState state = trackedState(synchronizer);
         if (state == null) return;
-        
+
         state.arrivedCount.set(0);
         state.lastGenerationByThread.clear();
     }
@@ -109,7 +107,7 @@ public class SynchronizerMonitor {
     public SynchronizerReport analyzeSynchronizers() {
         SynchronizerReport report = new SynchronizerReport();
         
-        for (BarrierState state : synchronizers.values()) {
+        for (BarrierState state : states()) {
             // Check for partial arrivals
             int count = state.arrivedCount.get();
             if (count > 0 && state.expectedParties > 0 && count % state.expectedParties != 0) {
@@ -157,7 +155,7 @@ public class SynchronizerMonitor {
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
-        synchronizers.clear();
+        clearStates();
     }
     /**
      * Disable.

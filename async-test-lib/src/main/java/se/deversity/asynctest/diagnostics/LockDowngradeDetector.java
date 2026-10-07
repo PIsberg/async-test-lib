@@ -85,10 +85,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * }
  * }</pre>
  */
-public class LockDowngradeDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class LockDowngradeDetector extends AbstractInstanceDetector<LockDowngradeDetector.LockState> {
 
     /**
      * Per-thread hold counters. A single "R or W" marker cannot represent the
@@ -97,7 +94,7 @@ public class LockDowngradeDetector {
      * upgrade), and the write release then erased the read record entirely
      * (missing a genuine read-to-write upgrade attempted after a downgrade).
      */
-    private static final class Holds {
+    static final class Holds {
         int read;
         int write;
         /**
@@ -119,7 +116,7 @@ public class LockDowngradeDetector {
         long gapOpenedInEpoch;
     }
 
-    private static class LockState {
+    static final class LockState {
         final String name;
         final Map<Long, Holds> threadHolds = new ConcurrentHashMap<>();
         final AtomicInteger upgradeAttempts = new AtomicInteger(0);
@@ -145,7 +142,10 @@ public class LockDowngradeDetector {
      * lock: a read hold on one and a write acquire on the other read as an upgrade, and a write
      * on one inside the other's downgrade gap as the evidence that makes the gap a finding.
      */
-    private final Map<IdentityKey, LockState> locks = new ConcurrentHashMap<>();
+    @Override
+    LockState newState(Object instance, String label) {
+        return new LockState(label);
+    }
     /**
      * Current invocation round, bumped by {@link #markInvocationStart()}. Standalone use without
      * round marks leaves every gap in epoch 0, which preserves the single-run behaviour.
@@ -207,10 +207,7 @@ public class LockDowngradeDetector {
 
 
     private LockState stateFor(ReadWriteLock lock, String name) {
-        return locks.computeIfAbsent(new IdentityKey(lock), k -> {
-            String resolved = name != null ? name : unnamedLabels.of(k, "rwlock");
-            return new LockState(resolved);
-        });
+        return stateFor(lock, name, "rwlock");
     }
 
     /**
@@ -355,7 +352,7 @@ public class LockDowngradeDetector {
     public LockDowngradeReport analyze() {
         LockDowngradeReport report = new LockDowngradeReport();
         boolean upgradesReportedElsewhere = upgradeReporter != null;
-        for (LockState state : locks.values()) {
+        for (LockState state : states()) {
             int upgrades = state.upgradeAttempts.get();
             // Counted either way, so a caller reading this detector directly still sees the
             // number; only the report line stands down, and only when the detector named for
