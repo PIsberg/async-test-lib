@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -179,8 +180,11 @@ class DataSyncServiceTest {
     // them all find a partner and nobody is left waiting: with threads = 8 this demonstration
     // reported nothing, three runs out of three, because the bug it demonstrates could not happen.
     // The odd caller each round is the one left holding the payload. See issue #346.
-    @AsyncTest(threads = 7, invocations = 5, timeoutMs = 2000, detectAll = false,
-            detectExchangerIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 7,
+            invocations = 5,
+            timeoutMs = 2000,
+            failOn = FailOn.LOW,
+            includes = DetectorType.EXCHANGER)
     void testExchangeData_concurrent_detectsOrphanedCaller() throws InterruptedException {
         ExchangerDetector detector = AsyncTestContext.exchangerDetector();
         detector.registerExchanger(service.getExchanger(), NAME);

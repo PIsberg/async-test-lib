@@ -39,9 +39,7 @@ Each call serialises naturally: `reset()` finishes before the next `reset()` sta
 @AsyncTest(
     threads = 8,
     invocations = 20,
-    detectSharedMatcher       = true,
-    detectSharedDecimalFormat = true,
-    detectSharedMessageDigest = true
+    includes = {DetectorType.SHARED_MATCHER, DetectorType.SHARED_DECIMAL_FORMAT, DetectorType.SHARED_MESSAGE_DIGEST}
 )
 void testValidateAndFormat_Concurrent() {
     var d1 = AsyncTestContext.sharedMatcherDetector();

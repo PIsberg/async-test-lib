@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectUnboundedQueue = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.UNBOUNDED_QUEUE)
  * void testUnboundedQueue() {
  *     BlockingQueue<String> queue = new LinkedBlockingQueue<>();  // Unbounded!
  *     AsyncTestContext.unboundedQueueDetector()

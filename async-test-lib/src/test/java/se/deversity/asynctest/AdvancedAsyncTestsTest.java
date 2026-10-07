@@ -41,8 +41,11 @@ public class AdvancedAsyncTestsTest {
         private final Object lock2 = new Object();
         private final AtomicInteger threadId = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500,
-                  detectDeadlocks = true, useVirtualThreads = false)
+        @AsyncTest(threads = 2,
+                  invocations = 1,
+                  timeoutMs = 1500,
+                  useVirtualThreads = false,
+                  detectAll = true)
         void testClassicDeadlock() throws InterruptedException {
             int id = threadId.getAndIncrement();
             if (id % 2 == 0) {
@@ -81,8 +84,11 @@ public class AdvancedAsyncTestsTest {
         private boolean flag = false;
         private final AtomicInteger assigner = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2000,
-                  detectVisibility = true, useVirtualThreads = false)
+        @AsyncTest(threads = 2,
+                  invocations = 1,
+                  timeoutMs = 2000,
+                  useVirtualThreads = false,
+                  detectAll = true)
         void testMissingVolatile() throws Exception {
             if (assigner.getAndIncrement() % 2 == 0) {
                 Thread.sleep(100);
@@ -116,7 +122,7 @@ public class AdvancedAsyncTestsTest {
         private volatile int counter1 = 0;
         private volatile int counter2 = 0;
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 15000, detectLivelocks = true)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 15000, detectAll = true)
         void testLivelock() throws InterruptedException {
             if (Thread.currentThread().threadId() % 2 == 0) {
                 for (int i = 0; i < 100; i++) {
@@ -164,7 +170,8 @@ public class AdvancedAsyncTestsTest {
 
     public static class VirtualThreadLowStressDummy {
         @AsyncTest(threads = 8, invocations = 2, useVirtualThreads = true,
-                  virtualThreadStressMode = "OFF", timeoutMs = 10000)
+                  virtualThreadStressMode = "OFF", timeoutMs = 10000,
+                  detectAll = true)
         void stressVirtualThreadsLow() throws InterruptedException {
             Thread.sleep(1);
         }
@@ -185,7 +192,8 @@ public class AdvancedAsyncTestsTest {
 
     public static class VirtualThreadMediumStressDummy {
         @AsyncTest(threads = 24, invocations = 3, useVirtualThreads = true,
-                  virtualThreadStressMode = "OFF", timeoutMs = 15000)
+                  virtualThreadStressMode = "OFF", timeoutMs = 15000,
+                  detectAll = true)
         void stressVirtualThreadsMedium() throws InterruptedException {
             Thread.sleep(1);
         }
@@ -209,7 +217,8 @@ public class AdvancedAsyncTestsTest {
 
     public static class ThreadPinningDummy {
         @AsyncTest(threads = 12, invocations = 2, useVirtualThreads = true,
-                  virtualThreadStressMode = "OFF", timeoutMs = 10000)
+                  virtualThreadStressMode = "OFF", timeoutMs = 10000,
+                  detectAll = true)
         void stressWithoutPinning() {
             // Perform non-pinning operations
             int sum = 0;
@@ -238,7 +247,8 @@ public class AdvancedAsyncTestsTest {
         private final Object lock = new Object();
 
         @AsyncTest(threads = 1000, invocations = 1, useVirtualThreads = true,
-                  virtualThreadStressMode = "MEDIUM", timeoutMs = 15000)
+                  virtualThreadStressMode = "MEDIUM", timeoutMs = 15000,
+                  detectAll = true)
         void stressWithSynchronization() {
             synchronized (lock) {
                 // This synchronized block may pin virtual threads
@@ -267,7 +277,7 @@ public class AdvancedAsyncTestsTest {
     public static class ComplexRaceConditionDummy {
         private int[] array = new int[10];
 
-        @AsyncTest(threads = 50, invocations = 100)
+        @AsyncTest(threads = 50, invocations = 100, detectAll = true)
         void testArrayRaceCondition() {
             int index = System.identityHashCode(Thread.currentThread()) % array.length;
             int current = array[index];

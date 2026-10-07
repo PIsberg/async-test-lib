@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -83,12 +84,12 @@ class AuditLoggerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared SDF race detected by SimpleDateFormatDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSimpleDateFormatIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SIMPLE_DATE_FORMAT)
 
     void testFormatTimestamp_concurrent_detectsSharedSdf() {
         SimpleDateFormat sdf = AuditLogger.getSdf();
 
-        AsyncTestContext.simpleDateFormatMonitor()
+        AsyncTestContext.simpleDateFormatDetector()
                 .registerFormatter(sdf, "audit-logger-sdf");
 
         // The corruption is recorded, not thrown. A shared SimpleDateFormat does not fail
@@ -99,13 +100,13 @@ class AuditLoggerTest {
         // detector's report should be, and the example proves the bug instead of the
         // detector finding it. See issue #363.
         try {
-            AsyncTestContext.simpleDateFormatMonitor().recordFormat(sdf, "audit-logger-sdf");
+            AsyncTestContext.simpleDateFormatDetector().recordFormat(sdf, "audit-logger-sdf");
             String formatted = logger.formatTimestamp(new Date());
 
-            AsyncTestContext.simpleDateFormatMonitor().recordParse(sdf, "audit-logger-sdf");
+            AsyncTestContext.simpleDateFormatDetector().recordParse(sdf, "audit-logger-sdf");
             logger.parseTimestamp(formatted);
         } catch (ParseException | RuntimeException corrupted) {
-            AsyncTestContext.simpleDateFormatMonitor()
+            AsyncTestContext.simpleDateFormatDetector()
                     .recordError(sdf, "audit-logger-sdf", corrupted.getClass().getSimpleName());
         }
     }

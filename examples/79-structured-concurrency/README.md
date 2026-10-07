@@ -1,7 +1,7 @@
 # Example 79 — Structured Concurrency Misuse
 
 **Detector**: `StructuredConcurrencyMisuseDetector`  
-**Flag**: `detectStructuredConcurrencyIssues = true`
+**Select it with**: `includes = DetectorType.STRUCTURED_CONCURRENCY`
 
 ## The Problem
 

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.testkit.engine.EngineExecutionResults;
 import org.junit.platform.testkit.engine.EngineTestKit;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListener;
@@ -82,8 +83,11 @@ class DaemonThreadHygieneObservabilityTest {
 
     /** A bare {@code new Thread(...)}, the shape every "forgot setDaemon(true)" example uses. */
     static class BareThreadFixture {
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, useVirtualThreads = false,
-                detectDaemonThreadHygiene = true, failOn = FailOn.LOW)
+        @AsyncTest(threads = 2,
+                invocations = 1,
+                useVirtualThreads = false,
+                failOn = FailOn.LOW,
+                includes = DetectorType.DAEMON_THREAD_HYGIENE)
         void body() {
             Thread leaked = new Thread(parkUntilReleased(), "bare-" + Thread.currentThread().threadId());
             leaked.start();
@@ -93,8 +97,11 @@ class DaemonThreadHygieneObservabilityTest {
 
     /** The same leak through the factory every JDK thread pool uses, which sets the flag itself. */
     static class FactoryThreadFixture {
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, useVirtualThreads = false,
-                detectDaemonThreadHygiene = true, failOn = FailOn.LOW)
+        @AsyncTest(threads = 2,
+                invocations = 1,
+                useVirtualThreads = false,
+                failOn = FailOn.LOW,
+                includes = DetectorType.DAEMON_THREAD_HYGIENE)
         void body() {
             Thread leaked = Executors.defaultThreadFactory().newThread(parkUntilReleased());
             leaked.start();

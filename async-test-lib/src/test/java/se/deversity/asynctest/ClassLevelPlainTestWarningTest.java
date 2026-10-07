@@ -93,7 +93,7 @@ class ClassLevelPlainTestWarningTest {
     }
 
     /** Fixture: the mistake. */
-    @AsyncTest(threads = 2, invocations = 2, detectDeadlocks = false)
+    @AsyncTest(threads = 2, invocations = 2, detectAll = true)
     static class AsyncTestAnnotatedClass {
         @Test
         void plainTestMethod() {
@@ -103,7 +103,7 @@ class ClassLevelPlainTestWarningTest {
 
     /** Fixture: the correct spelling, which must stay silent. */
     static class MethodLevelAsyncTest {
-        @AsyncTest(threads = 2, invocations = 2, detectDeadlocks = false)
+        @AsyncTest(threads = 2, invocations = 2, detectAll = true)
         void properlyAnnotated() {
             assertTrue(true);
         }

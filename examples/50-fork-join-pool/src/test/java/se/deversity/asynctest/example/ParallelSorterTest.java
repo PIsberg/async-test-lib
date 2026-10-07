@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -148,10 +149,12 @@ class ParallelSorterTest {
      * 3. Fix: call sortFixed(), which joins both halves
      */
     @Disabled("Remove @Disabled to see the bug detected by ForkJoinPoolDetector")
-    @AsyncTest(threads = 8, invocations = 20, detectAll = false,
-            detectForkJoinPoolIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 20,
+            failOn = FailOn.LOW,
+            includes = DetectorType.FORK_JOIN_POOL)
     void testSort_concurrent_detectsForkWithoutJoin() {
-        ForkJoinPoolDetector detector = AsyncTestContext.forkJoinPoolMonitor();
+        ForkJoinPoolDetector detector = AsyncTestContext.forkJoinPoolDetector();
         ForkJoinPool pool = ForkJoinPool.commonPool();
         detector.registerPool(pool, "common-pool", pool.getParallelism());
         sorter.observeForkJoin(

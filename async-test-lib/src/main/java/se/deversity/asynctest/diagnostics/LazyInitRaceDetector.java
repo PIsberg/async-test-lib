@@ -52,7 +52,7 @@ import org.apiguardian.api.API.Status;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 8, detectLazyInitRace = true)
+ * @AsyncTest(threads = 8, includes = DetectorType.LAZY_INIT_RACE)
  * void testLazyInit() {
  *     LazyInitRaceDetector d = AsyncTestContext.lazyInitRaceDetector();
  *

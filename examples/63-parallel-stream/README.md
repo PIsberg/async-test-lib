@@ -31,7 +31,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 side effect inside the parallel stream.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectParallelStreamIssues = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.PARALLEL_STREAMS)
 void test_concurrent_detectsBug() { ... }
 ```
 

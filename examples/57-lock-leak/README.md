@@ -36,7 +36,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 but never released.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockLeaks = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.LOCK_LEAKS)
 void test_concurrent_detectsBug() { ... }
 ```
 

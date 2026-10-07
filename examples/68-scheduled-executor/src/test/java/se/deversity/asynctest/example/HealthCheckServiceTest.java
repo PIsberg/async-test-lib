@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -77,7 +78,7 @@ class HealthCheckServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see executor leak detected by ScheduledExecutorDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScheduledExecutorIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SCHEDULED_EXECUTOR)
     void testStartChecks_concurrent_detectsExecutorLeak() {
         // Start checks — creates a new executor and never shuts it down
         service.startChecks();
@@ -85,11 +86,11 @@ class HealthCheckServiceTest {
         ScheduledExecutorService scheduler = service.getScheduler();
         if (scheduler != null) {
             // Register the executor with the detector
-            AsyncTestContext.scheduledExecutorMonitor()
+            AsyncTestContext.scheduledExecutorDetector()
                     .registerExecutor(scheduler, "health-check-scheduler", 1);
 
             // Record a scheduled task
-            AsyncTestContext.scheduledExecutorMonitor()
+            AsyncTestContext.scheduledExecutorDetector()
                     .recordSchedule(scheduler, "health-check-scheduler", "health-check-task");
 
             // BUG: recordShutdown() is never called — detector flags the leak

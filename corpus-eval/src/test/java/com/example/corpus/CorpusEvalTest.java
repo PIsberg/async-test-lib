@@ -581,17 +581,17 @@ class CorpusEvalTest {
 
     // --- subjects documented as NOT thread-safe -------------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void mutableInt_incrementAndGet() {
         unsafeOperation(mutableInt::incrementAndGet);
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void mutableLong_incrementAndGet() {
         unsafeOperation(mutableLong::incrementAndGet);
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void stopWatch_splitAndGet() {
         unsafeOperation(() -> {
             stopWatch.split();
@@ -600,7 +600,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void lruMap_putAndGet() {
         unsafeOperation(() -> {
             lruMap.put("key", "value");
@@ -608,7 +608,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void flat3Map_putAndGet() {
         unsafeOperation(() -> {
             flat3Map.put("key", "value");
@@ -616,7 +616,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void listOrderedMap_putAndGet() {
         unsafeOperation(() -> {
             listOrderedMap.put("key", "value");
@@ -624,7 +624,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void passiveExpiringMap_putAndGet() {
         unsafeOperation(() -> {
             passiveExpiringMap.put("key", "value");
@@ -632,7 +632,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void arrayListMultimap_put() {
         unsafeOperation(() -> {
             multimap.put("key", "value");
@@ -640,7 +640,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void evictingQueue_addAndPoll() {
         unsafeOperation(() -> {
             evictingQueue.add("element");
@@ -650,12 +650,12 @@ class CorpusEvalTest {
 
     // --- subjects documented as thread-safe ------------------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void fastDateFormat_format() {
         safeOperation(() -> fastDateFormat.format(new Date(1_700_000_000_000L)));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicSafeInitializer_get() {
         safeOperation(() -> {
             try {
@@ -666,7 +666,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void lazyInitializer_get() {
         safeOperation(() -> {
             try {
@@ -677,7 +677,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedBag_addAndCount() {
         safeOperation(() -> {
             synchronizedBag.add("element");
@@ -685,17 +685,17 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void rateLimiter_tryAcquire() {
         safeOperation(() -> rateLimiter.tryAcquire(1, 0, TimeUnit.MILLISECONDS));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void eventBus_post() {
         safeOperation(() -> eventBus.post("event"));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void bloomFilter_putAndMightContain() {
         safeOperation(() -> {
             bloomFilter.put("element");
@@ -703,12 +703,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicLongMap_incrementAndGet() {
         safeOperation(() -> atomicLongMap.incrementAndGet("key"));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void sequenceWriter_write() {
         unsafeOperation(() -> {
             try {
@@ -719,7 +719,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void hashBasedTable_put() {
         unsafeOperation(() -> {
             hashBasedTable.put("row", "column", "value");
@@ -727,12 +727,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaLoadingCache_get() {
         safeOperation(() -> guavaLoadingCache.getUnchecked("key"));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentHashMultiset_add() {
         safeOperation(() -> {
             concurrentMultiset.add("element");
@@ -740,14 +740,14 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void memoizedSupplier_get() {
         safeOperation(memoized::get);
     }
 
     // --- subjects documented as NOT thread-safe, second wave --------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaStopwatch_startStop() {
         unsafeOperation(() -> {
             if (stopwatch.isRunning()) {
@@ -758,12 +758,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void statsAccumulator_add() {
         unsafeOperation(() -> statsAccumulator.add(1.5));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void hashMultimap_put() {
         unsafeOperation(() -> {
             hashMultimap.put("key", "value");
@@ -771,7 +771,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void linkedListMultimap_put() {
         unsafeOperation(() -> {
             linkedListMultimap.put("key", "value");
@@ -779,7 +779,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void minMaxPriorityQueue_addAndPoll() {
         unsafeOperation(() -> {
             minMaxQueue.add(7);
@@ -787,7 +787,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void hashedMap_putAndGet() {
         unsafeOperation(() -> {
             hashedMap.put("key", "value");
@@ -795,7 +795,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void linkedMap_putAndGet() {
         unsafeOperation(() -> {
             linkedMap.put("key", "value");
@@ -803,7 +803,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void multiKeyMap_putAndGet() {
         unsafeOperation(() -> {
             multiKeyMap.put("first", "second", "value");
@@ -811,7 +811,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void caseInsensitiveMap_putAndGet() {
         unsafeOperation(() -> {
             caseInsensitiveMap.put("Key", "value");
@@ -819,29 +819,29 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void lazyMap_get() {
         unsafeOperation(() -> lazyMap.get("key"));
     }
 
     // --- subjects documented as thread-safe, second wave ------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void joiner_join() {
         safeOperation(() -> JOINER.join("a", "b", "c"));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void splitter_splitToList() {
         safeOperation(() -> SPLITTER.splitToList("a, b, c"));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void patternFilenameFilter_accept() {
         safeOperation(() -> filenameFilter.accept(new java.io.File("."), "notes.txt"));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void fixedOrderComparator_compare() {
         safeOperation(() -> fixedOrderComparator.compare("a", "c"));
     }
@@ -852,7 +852,7 @@ class CorpusEvalTest {
      * Writes then resets, so every body both reads and writes the {@code @GuardedBy("this")}
      * fields ({@code out}, {@code memory}, {@code file}) through {@code synchronized} methods.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void fileBackedOutputStream_writeAndReset() {
         safeOperation(() -> {
             try {
@@ -871,7 +871,7 @@ class CorpusEvalTest {
      * the case that makes an {@code ObjectMapper} unsafe. The safe half of the same contract is
      * {@link #objectMapper_configuredThenShared()}, on a different instance.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void objectMapper_reconfigureWhileWriting() {
         unsafeOperation(() -> {
             try {
@@ -885,7 +885,7 @@ class CorpusEvalTest {
 
     // --- fourth wave: documented thread-safe -------------------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void objectMapper_configuredThenShared() {
         safeOperation(() -> {
             try {
@@ -896,7 +896,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void objectReader_readValue() {
         safeOperation(() -> {
             try {
@@ -907,7 +907,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void objectWriter_writeValueAsString() {
         safeOperation(() -> {
             try {
@@ -919,7 +919,7 @@ class CorpusEvalTest {
     }
 
     /** The instance is Caffeine's {@code BoundedLocalCache}, reached through {@code Cache}. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void caffeineCache_getAndPut() {
         safeOperation(() -> {
             caffeineCache.put("key", "value");
@@ -928,13 +928,13 @@ class CorpusEvalTest {
     }
 
     /** The {@code asMap()} view, whose javadoc promises the computation runs atomically. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void caffeineAsMap_computeIfAbsent() {
         safeOperation(() -> caffeineAsMapCache.asMap().computeIfAbsent("key", key -> "computed"));
     }
 
     /** The instance is a {@code PooledByteBufAllocator}, reached through {@code ByteBufAllocator}. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void pooledByteBufAllocator_bufferAndRelease() {
         safeOperation(() -> {
             ByteBuf buffer = pooledAllocator.heapBuffer(64);
@@ -946,7 +946,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentReferenceHashMap_putAndGet() {
         safeOperation(() -> {
             referenceMap.put("key", "value");
@@ -956,7 +956,7 @@ class CorpusEvalTest {
 
     // --- subjects documented as thread-safe, fifth wave: the JDK's own concurrent types --------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentHashMap_putAndGet() {
         safeOperation(() -> {
             concurrentHashMap.put("key", "value");
@@ -965,7 +965,7 @@ class CorpusEvalTest {
     }
 
     /** Adds and then iterates, which is the read the copy-on-write contract exists to make safe. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void copyOnWriteArrayList_addAndIterate() {
         safeOperation(() -> {
             copyOnWriteList.add("element");
@@ -975,7 +975,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void stringBuffer_appendAndLength() {
         safeOperation(() -> {
             stringBuffer.append('x');
@@ -983,7 +983,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentLinkedQueue_addAndPoll() {
         safeOperation(() -> {
             concurrentQueue.add("element");
@@ -992,7 +992,7 @@ class CorpusEvalTest {
     }
 
     /** The contract is stated on {@code BlockingQueue}; the instance is a LinkedBlockingQueue. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void linkedBlockingQueue_offerAndPoll() {
         safeOperation(() -> {
             blockingQueue.offer("element");
@@ -1000,7 +1000,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void hashtable_putAndGet() {
         safeOperation(() -> {
             hashtable.put("key", "value");
@@ -1008,7 +1008,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentSkipListMap_putAndGet() {
         safeOperation(() -> {
             skipListMap.put("key", "value");
@@ -1021,7 +1021,7 @@ class CorpusEvalTest {
      * attaches to its guarantee. A subject that broke that condition would belong on the other
      * side of the corpus.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedList_addUnderItsMonitor() {
         safeOperation(() -> {
             synchronizedList.add("element");
@@ -1033,12 +1033,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void threadLocalRandom_nextInt() {
         safeOperation(() -> java.util.concurrent.ThreadLocalRandom.current().nextInt(100));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicInteger_incrementAndGet() {
         safeOperation(atomicInteger::incrementAndGet);
     }
@@ -1046,17 +1046,17 @@ class CorpusEvalTest {
     // --- subjects documented as thread-safe, fifth wave: commons ------------------------------
 
     /** The threshold is Long.MAX_VALUE, so the breaker never opens and the body only contends. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void thresholdCircuitBreaker_incrementAndCheckState() {
         safeOperation(() -> thresholdBreaker.incrementAndCheckState(1L));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void eventCountCircuitBreaker_incrementAndCheckState() {
         safeOperation(eventCountBreaker::incrementAndCheckState);
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void memoizer_compute() {
         safeOperation(() -> {
             try {
@@ -1068,7 +1068,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void constantInitializer_get() {
         safeOperation(() -> {
             try {
@@ -1079,7 +1079,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicInitializer_get() {
         safeOperation(() -> {
             try {
@@ -1090,12 +1090,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void range_contains() {
         safeOperation(() -> range.contains(5));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void staticBucketMap_putAndGet() {
         safeOperation(() -> {
             staticBucketMap.put("key", "value");
@@ -1103,7 +1103,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void commonsReferenceHashMap_putAndGet() {
         safeOperation(() -> {
             commonsReferenceMap.put("key", "value");
@@ -1111,7 +1111,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedCollection_addAndSize() {
         safeOperation(() -> {
             synchronizedCollection.add("element");
@@ -1119,7 +1119,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedSortedBag_addAndCount() {
         safeOperation(() -> {
             synchronizedSortedBag.add("element");
@@ -1127,7 +1127,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedMultiSet_addAndCount() {
         safeOperation(() -> {
             synchronizedMultiSet.add("element");
@@ -1135,7 +1135,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedQueue_addAndPoll() {
         safeOperation(() -> {
             synchronizedQueue.add("element");
@@ -1145,17 +1145,17 @@ class CorpusEvalTest {
 
     // --- subjects documented as thread-safe, fifth wave: guava ---------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void strongInterner_intern() {
         safeOperation(() -> strongInterner.intern(new String("shared")));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void weakInterner_intern() {
         safeOperation(() -> weakInterner.intern(new String("shared")));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaSynchronizedQueue_addAndPoll() {
         safeOperation(() -> {
             guavaSynchronizedQueue.add("element");
@@ -1163,7 +1163,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaSynchronizedDeque_addAndPoll() {
         safeOperation(() -> {
             guavaSynchronizedDeque.addLast("element");
@@ -1171,7 +1171,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedTable_putAndGet() {
         safeOperation(() -> {
             synchronizedTable.put("row", "column", "value");
@@ -1179,7 +1179,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentHashSet_addAndContains() {
         safeOperation(() -> {
             concurrentHashSet.add("element");
@@ -1187,12 +1187,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void hashFunction_hashString() {
         safeOperation(() -> hashFunction.hashString("payload", StandardCharsets.UTF_8));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void mapMakerMap_putAndGet() {
         safeOperation(() -> {
             mapMakerMap.put("key", "value");
@@ -1200,12 +1200,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedSupplier_get() {
         safeOperation(synchronizedSupplier::get);
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaCache_getAndPut() {
         safeOperation(() -> {
             guavaCache.put("key", "value");
@@ -1215,23 +1215,23 @@ class CorpusEvalTest {
 
     // --- subjects documented as thread-safe, fifth wave: caffeine, netty, spring ---------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void asyncCache_getAndJoin() {
         safeOperation(() -> asyncCache.get("key", key -> key + "-computed").join());
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void asyncLoadingCache_getAndJoin() {
         safeOperation(() -> asyncLoadingCache.get("key").join());
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void caffeineLoadingCache_get() {
         safeOperation(() -> caffeineLoadingCache.get("key"));
     }
 
     /** The instance is an {@code UnpooledByteBufAllocator}, reached through {@code ByteBufAllocator}. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void unpooledByteBufAllocator_bufferAndRelease() {
         safeOperation(() -> {
             ByteBuf buffer = unpooledAllocator.heapBuffer(64);
@@ -1243,14 +1243,14 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void conversionService_convert() {
         safeOperation(() -> conversionService.convert("42", Integer.class));
     }
 
     // --- Sixth wave, documented thread-safe: guava ------------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedBiMap_forcePutAndInverse() {
         safeOperation(() -> {
             synchronizedBiMap.forcePut("key", "value");
@@ -1258,7 +1258,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaSynchronizedNavigableMap_putAndPollFirst() {
         safeOperation(() -> {
             guavaSynchronizedNavigableMap.put("key", "value");
@@ -1267,7 +1267,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaSynchronizedNavigableSet_addAndPollFirst() {
         safeOperation(() -> {
             guavaSynchronizedNavigableSet.add("key");
@@ -1276,7 +1276,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedSetMultimap_putAndRemove() {
         safeOperation(() -> {
             synchronizedSetMultimap.put("key", "value");
@@ -1285,7 +1285,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedListMultimap_putAndRemove() {
         safeOperation(() -> {
             synchronizedListMultimap.put("key", "value");
@@ -1294,12 +1294,12 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void expiringMemoizedSupplier_get() {
         safeOperation(expiringMemoized::get);
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicDouble_addAndCompareAndSet() {
         safeOperation(() -> {
             atomicDouble.addAndGet(1.0);
@@ -1308,7 +1308,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicDoubleArray_addAndCompareAndSet() {
         safeOperation(() -> {
             int slot = (int) (Thread.currentThread().threadId() % 4);
@@ -1318,7 +1318,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void simpleStatsCounter_recordAndSnapshot() {
         safeOperation(() -> {
             simpleStatsCounter.recordHits(1);
@@ -1328,7 +1328,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void guavaCacheAsMap_merge() {
         safeOperation(() -> {
             guavaMapCache.asMap().merge("key", 1, Integer::sum);
@@ -1340,7 +1340,7 @@ class CorpusEvalTest {
      * A fresh subscriber per execution. Two threads unregistering one shared subscriber would make
      * one of them throw by contract, which is a usage error rather than the bus's thread-safety.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void eventBus_registerAndUnregister() {
         safeOperation(() -> {
             CountingSubscriber subscriber = new CountingSubscriber();
@@ -1351,7 +1351,7 @@ class CorpusEvalTest {
 
     // --- Sixth wave, documented thread-safe: commons ----------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void timedSemaphore_tryAcquire() {
         safeOperation(() -> {
             timedSemaphore.tryAcquire();
@@ -1359,7 +1359,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void backgroundInitializer_startAndGet() {
         safeOperation(() -> {
             backgroundInitializer.start();
@@ -1371,7 +1371,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void basicThreadFactory_newThread() {
         safeOperation(() -> {
             basicThreadFactory.newThread(() -> { });
@@ -1379,7 +1379,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void readWriteLockVisitor_writeAndRead() {
         safeOperation(() -> {
             long element = Thread.currentThread().threadId() % 4;
@@ -1393,7 +1393,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void stampedLockVisitor_writeAndRead() {
         safeOperation(() -> {
             long element = Thread.currentThread().threadId() % 4;
@@ -1407,7 +1407,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedCircularFifoQueue_addAndPoll() {
         safeOperation(() -> {
             synchronizedFifoQueue.add("element");
@@ -1417,7 +1417,7 @@ class CorpusEvalTest {
 
     // --- Sixth wave, documented thread-safe: JDK --------------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentLinkedDeque_offerFirstAndPollLast() {
         safeOperation(() -> {
             concurrentDeque.offerFirst("element");
@@ -1425,7 +1425,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void linkedBlockingDeque_offerAndPollLast() {
         safeOperation(() -> {
             blockingDeque.offer("a");
@@ -1435,7 +1435,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void arrayBlockingQueue_offerAndPoll() {
         safeOperation(() -> {
             arrayBlockingQueue.offer("element");
@@ -1443,7 +1443,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void priorityBlockingQueue_offerAndPoll() {
         safeOperation(() -> {
             priorityBlockingQueue.offer(java.util.concurrent.ThreadLocalRandom.current().nextInt(100));
@@ -1451,7 +1451,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void linkedTransferQueue_offerAndPoll() {
         safeOperation(() -> {
             transferQueue.offer("element");
@@ -1459,7 +1459,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentSkipListSet_addAndContains() {
         safeOperation(() -> {
             int element = java.util.concurrent.ThreadLocalRandom.current().nextInt(16);
@@ -1468,7 +1468,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void copyOnWriteArraySet_addAndIterate() {
         safeOperation(() -> {
             copyOnWriteSet.add("e" + java.util.concurrent.ThreadLocalRandom.current().nextInt(8));
@@ -1478,7 +1478,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void vector_addAndGet() {
         safeOperation(() -> {
             vector.add("element");
@@ -1486,7 +1486,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedMap_putAndGet() {
         safeOperation(() -> {
             synchronizedMap.put("key", "value");
@@ -1494,7 +1494,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedNavigableMap_putAndCeilingKey() {
         safeOperation(() -> {
             int key = java.util.concurrent.ThreadLocalRandom.current().nextInt(16);
@@ -1503,7 +1503,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void synchronizedSet_addAndContains() {
         safeOperation(() -> {
             synchronizedSet.add("element");
@@ -1511,17 +1511,17 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void random_nextInt() {
         safeOperation(() -> random.nextInt(100));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void secureRandom_nextBytes() {
         safeOperation(() -> SECURE_RANDOM.nextBytes(new byte[16]));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void properties_setPropertyAndGetProperty() {
         safeOperation(() -> {
             properties.setProperty("key", "value");
@@ -1529,19 +1529,19 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicLong_incrementAndGet() {
         safeOperation(atomicLong::incrementAndGet);
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void atomicReference_updateAndGet() {
         safeOperation(() -> atomicReference.updateAndGet(value -> value + 1));
     }
 
     // --- Sixth wave, documented thread-safe: jackson, caffeine, netty -----------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void jacksonLruMap_putAndEvict() {
         safeOperation(() -> {
             String key = "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(32);
@@ -1550,19 +1550,19 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void caffeineStrongInterner_intern() {
         safeOperation(() -> caffeineStrongInterner.intern(
                 "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(16)));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void caffeineWeakInterner_intern() {
         safeOperation(() -> caffeineWeakInterner.intern(
                 "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(16)));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void caffeineBoundedCache_evictUnderPressure() {
         safeOperation(() -> {
             String key = "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(32);
@@ -1571,13 +1571,13 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void asyncCacheSynchronous_asMapMerge() {
         safeOperation(() -> mergeAsyncCache.synchronous().asMap().merge(
                 "k" + java.util.concurrent.ThreadLocalRandom.current().nextInt(4), 1, Integer::sum));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void concurrentStatsCounter_recordAndSnapshot() {
         safeOperation(() -> {
             caffeineStatsCounter.recordHits(1);
@@ -1587,7 +1587,7 @@ class CorpusEvalTest {
     }
 
     /** The instance is an {@code AdaptiveByteBufAllocator}, reached through {@code ByteBufAllocator}. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void adaptiveByteBufAllocator_bufferAndRelease() {
         safeOperation(() -> {
             ByteBuf buffer = ADAPTIVE_ALLOCATOR.heapBuffer(64);
@@ -1601,7 +1601,7 @@ class CorpusEvalTest {
 
     // --- Sixth wave, documented NOT thread-safe: JDK ----------------------------------------
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void stringBuilder_appendAndLength() {
         unsafeOperation(() -> {
             sharedStringBuilder.append("x");
@@ -1610,20 +1610,20 @@ class CorpusEvalTest {
     }
 
     /** The date varies so an interleaving that corrupts the calendar produces a visible difference. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void simpleDateFormat_format() {
         unsafeOperation(() -> simpleDateFormat.format(new Date(
                 java.util.concurrent.ThreadLocalRandom.current().nextLong(0, 4_000_000_000_000L))));
     }
 
     /** Held as a {@code DateFormat}, which is how libraries hold one; the runtime type is SimpleDateFormat. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void dateFormat_formatThroughSupertype() {
         unsafeOperation(() -> dateFormat.format(new Date(
                 java.util.concurrent.ThreadLocalRandom.current().nextLong(0, 4_000_000_000_000L))));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void matcher_resetFindAndGroup() {
         unsafeOperation(() -> {
             sharedMatcher.reset();
@@ -1633,18 +1633,18 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void decimalFormat_format() {
         unsafeOperation(() -> decimalFormat.format(
                 java.util.concurrent.ThreadLocalRandom.current().nextDouble(1e6)));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void formatter_format() {
         unsafeOperation(() -> sharedFormatter.format("%d;", 1));
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void arrayDeque_offerAndPoll() {
         unsafeOperation(() -> {
             arrayDeque.offer("element");
@@ -1652,7 +1652,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void priorityQueue_offerAndPoll() {
         unsafeOperation(() -> {
             priorityQueue.offer(java.util.concurrent.ThreadLocalRandom.current().nextInt(100));
@@ -1666,7 +1666,7 @@ class CorpusEvalTest {
     // rotations can cycle, and a body that then loops until the round timeout would measure the
     // harness rather than the detectors.
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void treeMultimap_putAndRemove() {
         unsafeOperation(() -> {
             treeMultimap.put("key", "value");
@@ -1674,7 +1674,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void linkedHashMultimap_putAndRemove() {
         unsafeOperation(() -> {
             linkedHashMultimap.put("key", "value");
@@ -1682,7 +1682,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void treeBasedTable_putAndRemove() {
         unsafeOperation(() -> {
             treeBasedTable.put("key", "column", "value");
@@ -1691,7 +1691,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void pairedStatsAccumulator_add() {
         unsafeOperation(() -> {
             double x = Thread.currentThread().threadId() % 7;
@@ -1700,7 +1700,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void hashSetValuedHashMap_put() {
         unsafeOperation(() -> {
             long value = Thread.currentThread().threadId() % 4;
@@ -1709,14 +1709,14 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void hashCodeBuilder_appendAndHash() {
         unsafeOperation(() -> hashCodeBuilder
                 .append((int) (Thread.currentThread().threadId() % 4))
                 .toHashCode());
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void springStopWatch_startStop() {
         unsafeOperation(() -> {
             springStopWatch.start("task");
@@ -1724,7 +1724,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void linkedMultiValueMap_addAndRemove() {
         unsafeOperation(() -> {
             linkedMultiValueMap.add("key", "value");
@@ -1732,7 +1732,7 @@ class CorpusEvalTest {
         });
     }
 
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void tokenBuffer_writeNumber() {
         unsafeOperation(() -> {
             try {

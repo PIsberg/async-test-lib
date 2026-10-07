@@ -485,6 +485,8 @@ public class ConcurrencyRunner {
                     phase1.atomicity.markInvocationStart();
                 }
                 phase2Context.markInvocationStart();
+                // Before the workers exist, so every one of them sees this round's rendezvous.
+                phase2Context.openRendezvousForRound(actualThreads, remainingMs);
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
                 long roundStartNanos = System.nanoTime();
                 log.debug("runner.round.start test={} round={} seed={} remainingMs={}",
@@ -705,7 +707,7 @@ public class ConcurrencyRunner {
      *
      * <p>On the console, a block none of whose findings is FACT or VERDICT grade prints as one
      * line ({@link #foldedLine}) unless {@value #FULL_REPORT_PROPERTY} is {@code true} or the
-     * block fails the run. A default run enables every detector, and printed in full those
+     * block fails the run. A detectAll run enables every detector, and printed in full those
      * blocks buried the findings the library stands behind. Listeners get the full text always.
      *
      * <p>Only called on the success path (see {@link #execute}); failure/timeout paths
@@ -931,6 +933,10 @@ public class ConcurrencyRunner {
                         }
                     } catch (Throwable ex) {
                         failures.add(unwrap(ex));
+                        // A worker that failed will never reach the round's rendezvous; release the
+                        // peers waiting there, and any still on their way, instead of letting them
+                        // wait out the round and report a timeout that hides this failure.
+                        phase2Context.breakRendezvous();
                     }
                 } catch (Throwable installErr) {
                     failures.add(installErr);
@@ -1280,7 +1286,7 @@ public class ConcurrencyRunner {
      * The one line a reader sees before a finding's own report: which detector, and how far to
      * trust it.
      *
-     * <p>A default run enables every detector, and without this line a recorded deadlock and a
+     * <p>A detectAll run enables every detector, and without this line a recorded deadlock and a
      * pattern the library cannot fully model print identically. A reader who cannot rank findings
      * treats the whole report as noise, so the rank goes first, above the detail.
      *

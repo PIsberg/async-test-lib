@@ -36,7 +36,7 @@ class TestBodyCollectionIsObservedTest {
         eventsBefore = TelemetryRegistry.publishedEvents();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void sharedHashMapFromTheTestBody() {
         shared.put("key", shared.size());
     }

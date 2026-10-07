@@ -69,7 +69,7 @@ class TelemetryBridgeCloseDogfoodTest {
         registryWasRunning = TelemetryRegistry.isRunning();
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000, detectAll = true)
     void anOpenBridgeForwardsEveryWorkersEvent() {
         int round = OPEN_SEQUENCE.getAndIncrement() / THREADS;
         CountingValidator validator = OPEN_VALIDATORS.computeIfAbsent(round,
@@ -80,7 +80,7 @@ class TelemetryBridgeCloseDogfoodTest {
         publishOne(bridge, round);
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000, detectAll = true)
     void aClosedBridgeForwardsNothing() {
         int round = CLOSED_SEQUENCE.getAndIncrement() / THREADS;
         CountingValidator validator = CLOSED_VALIDATORS.computeIfAbsent(round,

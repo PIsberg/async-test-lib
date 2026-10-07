@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -42,11 +43,11 @@ class TransactionServiceTest {
 
     @Disabled("Remove @Disabled: the round times out because the leaked lock is never released, and the failure "
             + "names LockLeakDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLockLeaks = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.LOCK_LEAKS)
     void test_concurrent_detectsBug() {
         // Register the lock and record acquire/release to let the detector track it
-        AsyncTestContext.lockLeakMonitor().registerLock(service.lock, "TransactionService.lock");
-        AsyncTestContext.lockLeakMonitor().recordLockAcquired(service.lock, "TransactionService.lock");
+        AsyncTestContext.lockLeakDetector().registerLock(service.lock, "TransactionService.lock");
+        AsyncTestContext.lockLeakDetector().recordLockAcquired(service.lock, "TransactionService.lock");
 
         try {
             // Simulate work that may throw — causing commitTransaction() to be skipped
@@ -56,7 +57,7 @@ class TransactionServiceTest {
                     throw new RuntimeException("Simulated work failure");
                 }
             });
-            AsyncTestContext.lockLeakMonitor().recordLockReleased(service.lock, "TransactionService.lock");
+            AsyncTestContext.lockLeakDetector().recordLockReleased(service.lock, "TransactionService.lock");
         } catch (RuntimeException ignored) {
             // Lock was never released — this is the bug
         }

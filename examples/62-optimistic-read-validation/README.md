@@ -46,7 +46,7 @@ missing validation call. Remove it from `test_concurrent_detectsValueUsedAfterFa
 to see a value used after a failed `validate()` reported.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectOptimisticReadValidation = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.OPTIMISTIC_READ_VALIDATION)
 void test_concurrent_detectsBug() { ... }
 ```
 

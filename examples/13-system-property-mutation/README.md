@@ -27,7 +27,7 @@ Sequential calls serialise naturally: one write then one read, no interleaving p
 ## How `@AsyncTest` Exposes the Bug
 
 ```java
-@AsyncTest(threads = 4, invocations = 3, detectSystemPropertyMutation = true, timeoutMs = 5000)
+@AsyncTest(threads = 4, invocations = 3, timeoutMs = 5000, includes = DetectorType.SYSTEM_PROPERTY_MUTATION)
 void part2_detectConcurrentPropertyMutation() {
     var d = AsyncTestContext.systemPropertyMutationDetector();
     d.recordSet("app.mode", "test", Thread.currentThread());

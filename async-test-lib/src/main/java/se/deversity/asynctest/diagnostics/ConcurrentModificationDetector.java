@@ -30,21 +30,21 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectConcurrentModifications = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.CONCURRENT_MODIFICATIONS)
  * void testCollectionIteration() {
  *     List<String> list = new ArrayList<>();
- *     AsyncTestContext.concurrentModificationMonitor()
+ *     AsyncTestContext.concurrentModificationDetector()
  *         .registerCollection(list, "shared-list");
  *     
  *     // Track iteration
  *     Iterator<String> it = list.iterator();
- *     AsyncTestContext.concurrentModificationMonitor()
+ *     AsyncTestContext.concurrentModificationDetector()
  *         .recordIterationStarted(list, "shared-list");
  *     
  *     while (it.hasNext()) {
  *         String item = it.next();
  *         // Bug: modifying collection during iteration!
- *         AsyncTestContext.concurrentModificationMonitor()
+ *         AsyncTestContext.concurrentModificationDetector()
  *             .recordModificationDuringIteration(list, "shared-list", "add");
  *         list.add("new-item");
  *     }
@@ -315,15 +315,15 @@ public class ConcurrentModificationDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.concurrentModifications) {
-                report.structuredViolations.add(new Violation("ConcurrentModification", severity,
+                report.structuredViolations.add(new Violation("ConcurrentModifications", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.concurrentIterations) {
-                report.structuredViolations.add(new Violation("ConcurrentModification", severity,
+                report.structuredViolations.add(new Violation("ConcurrentModifications", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.concurrentMutations) {
-                report.structuredViolations.add(new Violation("ConcurrentModification", severity,
+                report.structuredViolations.add(new Violation("ConcurrentModifications", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

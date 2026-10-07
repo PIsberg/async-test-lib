@@ -4,6 +4,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.io.TempDir;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.ConcurrencyTestFor;
+import se.deversity.asynctest.OsSensitive;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,8 +31,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>So the body asserts the reader's half on every execution, and the end of the run asserts the
  * directory holds the one record and nothing else. Linux replaces under an open reader, so only the
- * Windows legs could see the leak; the assertions hold on every platform.
+ * Windows legs could see the leak; the assertions hold on every platform. Tagged
+ * {@code @OsSensitive} so that a Windows leg which blocks merging runs it (#907).
  */
+@ConcurrencyTestFor(LicenseValidationCache.class)
+@OsSensitive
 class LicenseValidationCacheDogfoodTest {
 
     private static final int THREADS = 8;
@@ -47,7 +52,7 @@ class LicenseValidationCacheDogfoodTest {
         set("license.cache.ttl.hours", "24");
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 60_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 60_000, detectAll = true)
     void everyWorkerRecordsTheSameValidationAndReadsItBack() {
         LicenseValidationCache.record(HASH);
         assertTrue(LicenseValidationCache.isFresh(HASH),

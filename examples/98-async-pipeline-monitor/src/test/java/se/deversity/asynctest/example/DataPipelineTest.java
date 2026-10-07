@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -155,8 +156,10 @@ class DataPipelineTest {
      *    the false return rather than discarding it
      */
     @Disabled("Remove @Disabled to see the bug detected by PipelineMonitor")
-    @AsyncTest(threads = 8, invocations = 5, detectAll = false,
-            monitorAsyncPipeline = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 5,
+            failOn = FailOn.LOW,
+            includes = DetectorType.ASYNC_PIPELINE)
     void test_concurrent_detectsPipelineImbalance() {
         // The old demonstration recorded a published and a processed event for all three
         // stages, and only recorded a failure when processMessage threw - which it did only on

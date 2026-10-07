@@ -4,31 +4,31 @@
 ## Locked Status
 
 ### se.deversity.asynctest.DetectorType
-- **Reason**: Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) && !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.
+- **Reason**: Adding or removing a constant requires synchronized changes in three places: (1) the AsyncTestConfig public flag and its derivation enabled.contains(TYPE), with the Builder setter that calls flag(TYPE, v), (2) the DetectorRegistry field and its factory row create(DetectorType.TYPE, X::new), and (3) the registry's ifIssue analysis call. Adding a value here in isolation compiles and detects nothing. The @AsyncTest attribute and the build() resolution line it once also needed are gone (#917, #920). The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.
 
 ## Mirrored — Keep In Sync
 
 ### se.deversity.asynctest.DetectorType
 - **Rule**: Free to change, but every mirror must change in the same commit.
-- **Mirrors**: se.deversity.asynctest.AsyncTest, se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorRegistry, se.deversity.asynctest.spi.adapters.LegacyDetectorFactories, META-INF/async-test/builtin-detector-factories
-- **Reason**: A detector is only reachable from the public API when all of these agree. The enum constant is the name users type in @AsyncTest(excludes=...); the annotation attribute, the config field and its Builder default carry it through resolution; the registry constructor instantiates it; and the SPI factory plus its entry in the built-in factory list are what detectAll loads. Adding the constant alone compiles and silently detects nothing.
-- **Enforced by**: se.deversity.asynctest.spi.AllDetectorsSpiCoverageTest
+- **Mirrors**: se.deversity.asynctest.AsyncTestConfig, se.deversity.asynctest.DetectorRegistry
+- **Reason**: A detector is only reachable from the public API when all of these agree. The enum constant is the name users type in @AsyncTest(includes=..., excludes=...); the config field derives from the enabled set; and the registry's factory row builds it. Adding the constant alone compiles and silently detects nothing. The SPI bridge that mirrored every constant a second time was deleted in 1.13.0 (#922).
+- **Enforced by**: se.deversity.asynctest.DetectorRegistryFactoryTableTest
 
 ## Context & Focus
 
 ### se.deversity.asynctest.AsyncTestConfig
-- **Focus**: Maintain strict 1:1 mapping between @AsyncTest attributes, Builder fields, from(AsyncTest), build() logic, and DetectorRegistry
+- **Focus**: Keep one public flag per DetectorType, each derived from the enabled set, and the selection in from(AsyncTest) and build() expressed only through includes, excludes, preset and detectAll
 - **Avoid**: mutable state — this class must remain immutable after construction
 
 ### se.deversity.asynctest.DetectorRegistry
-- **Focus**: Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) conditional construction in the constructor keyed on the config flag, (3) an analyzeAll() call in the correct phase block. All three steps must be added together.
+- **Focus**: Each new detector requires exactly three steps in this class: (1) a final field declaration, (2) its factory-table row in the constructor, field = create(DetectorType.TYPE, Detector::new), keyed on the type and never on a config flag (#916), (3) an analyzeAll() call in the correct phase block. All three steps must be added together.
 - **Avoid**: partial patterns — a field without construction or analysis silently skips detection
 
 ## Core Functionality
 
 ### se.deversity.asynctest.AsyncTestConfig
 - **Sensitivity**: Critical
-- **Note**: Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends.
+- **Note**: Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 1.13.0 (#920). Never reintroduce a per-detector resolution expression in build().
 
 ## Immutable Type
 - **Rule**: These types are immutable. Never introduce non-final fields, setters, or mutating methods.
@@ -51,14 +51,14 @@
 ## Thread-Safety Guarantee
 
 ### se.deversity.asynctest.DetectorRegistry
-- **Strategy**: SYNCHRONIZED
-- **Note**: Guards conditional access to internal detector initialization and phase blocks.
+- **Strategy**: OTHER
+- **Note**: No locks: every detector field is final and assigned in the constructor, before ConcurrencyRunner publishes the registry to its workers, so every worker of a run reads the same instances and each detector carries its own thread safety. The last* maps are written only by analyzeAllNamed(), which the runner calls on its own thread after the workers have quiesced.
 
 ## Contract-Frozen Signature
 
 ### se.deversity.asynctest.AsyncTest
 - **Constraint**: You may change internal logic, but MUST NOT modify the method name, parameters, return type, or checked exceptions.
-- **Reason**: Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers.
+- **Reason**: Public annotation API used directly in user test methods. Attribute names, types, and defaults are part of the stable public API — any change is a breaking change for all consumers. Detector selection is by DetectorType through includes/excludes/preset/detectAll; never reintroduce a per-detector boolean attribute (removed in 1.13.0, #920). The bare-annotation selection is Preset.ESSENTIALS with detectAll = false (1.13.0, #923): a different default changes what every unchanged test in every consumer detects.
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.

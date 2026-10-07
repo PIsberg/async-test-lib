@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -158,7 +159,7 @@ class BackgroundWorkerTest {
      *    block in BackgroundWorker.doWork()
      */
     @Disabled("Remove @Disabled to see interrupt swallowing detected by InterruptMonitor")
-    @AsyncTest(threads = 6, invocations = 10, detectAll = false, detectInterruptMishandling = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 6, invocations = 10, failOn = FailOn.LOW, includes = DetectorType.INTERRUPT_MISHANDLING)
     void testDoWork_concurrent_detectsInterruptSwallowing() {
         // The monitor has to be the one the run owns. This demonstration used to record into a
         // locally constructed InterruptMonitor and assert on it from @AfterEach; the library

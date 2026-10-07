@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -77,10 +78,10 @@ class SyncListServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unsafe iteration detected by SynchronizedCollectionIterationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSynchronizedCollectionIteration = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SYNCHRONIZED_COLLECTION_ITERATION)
 
     void test_concurrent_detectsUnsafeIteration() {
-        var detector = AsyncTestContext.get().synchronizedCollectionIterationMonitor();
+        var detector = AsyncTestContext.get().synchronizedCollectionIterationDetector();
         var items = service.getItems();
 
         // Register the wrapper once; detector deduplicates by identity.

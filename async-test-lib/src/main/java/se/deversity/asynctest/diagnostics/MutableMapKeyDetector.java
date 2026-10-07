@@ -24,15 +24,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectMutableMapKeys = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.MUTABLE_MAP_KEY)
  * void testMapKeyMutation() {
  *     MutableKey key = new MutableKey("initial");
  *     map.put(key, "value");
- *     AsyncTestContext.mutableMapKeyMonitor()
+ *     AsyncTestContext.mutableMapKeyDetector()
  *         .recordKeyInserted(map, key, "my-map");
  *
  *     key.setName("mutated");  // BUG: key mutated after insertion
- *     AsyncTestContext.mutableMapKeyMonitor()
+ *     AsyncTestContext.mutableMapKeyDetector()
  *         .recordKeyMutation(key, "name", "initial", "mutated");
  * }
  * }</pre>

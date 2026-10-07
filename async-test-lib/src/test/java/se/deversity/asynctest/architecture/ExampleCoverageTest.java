@@ -173,8 +173,10 @@ class ExampleCoverageTest {
                     .map(p -> p.getFileName().toString())
                     .filter(n -> n.endsWith("Detector.java") || n.endsWith("Monitor.java"))
                     .map(n -> n.substring(0, n.length() - ".java".length()))
-                    // The SPI interface and its adapter are contracts, not detectors.
-                    .filter(n -> !n.equals("Detector") && !n.equals("LegacyDetector"))
+                    // The SPI interface and its adapter are contracts, not detectors, and the base
+                    // class detectors extend (#918) detects nothing on its own.
+                    .filter(n -> !n.equals("Detector") && !n.equals("LegacyDetector")
+                            && !n.equals("AbstractInstanceDetector"))
                     .forEach(names::add);
             return names;
         } catch (IOException e) {

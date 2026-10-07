@@ -240,7 +240,8 @@ public class ReadWriteLockMonitor {
         /**
          * {@return whether this report should surface as a finding}
          *
-         * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
+         * <p>The canonical predicate the report path binds to ({@code DetectorRegistry.ifIssue}, and
+         * until 1.13.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
          * adapter resolved the report method, found no {@code hasIssues()} on the returned type,
          * and emitted an empty violation list on every call — leaving this detector registered,
          * addressable and structurally silent. Pinned by {@code DetectorFiringContractTest}.

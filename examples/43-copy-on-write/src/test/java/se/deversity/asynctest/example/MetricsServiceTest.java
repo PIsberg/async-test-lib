@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -73,22 +74,22 @@ class MetricsServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see write-heavy CopyOnWriteArrayList detected by CopyOnWriteCollectionDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCopyOnWriteCollectionIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.COPY_ON_WRITE_COLLECTIONS)
     void testRecordEvent_concurrent_detectsWriteHeavy() {
         var timestamps = service.getTimestamps();
 
         // Register the COW collection with the detector
-        AsyncTestContext.get().copyOnWriteMonitor()
+        AsyncTestContext.get().copyOnWriteCollectionDetector()
                 .registerCollection(timestamps, "metrics-timestamps");
 
         // Record a write (the hot path — every thread writes every invocation)
-        AsyncTestContext.get().copyOnWriteMonitor()
+        AsyncTestContext.get().copyOnWriteCollectionDetector()
                 .recordWrite(timestamps, "metrics-timestamps");
         service.recordEvent();
 
         // Occasional read to give the detector a write-to-read ratio
         if (Thread.currentThread().getId() % 8 == 0) {
-            AsyncTestContext.get().copyOnWriteMonitor()
+            AsyncTestContext.get().copyOnWriteCollectionDetector()
                     .recordRead(timestamps, "metrics-timestamps");
             assertTrue(service.getEventCount() > 0,
                     "At least one event should have been recorded");

@@ -2,6 +2,7 @@ package se.deversity.asynctest.spi;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
+import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.report.Violation;
@@ -25,9 +26,9 @@ import java.util.List;
  * <p>A Detector's responsibilities:
  *
  * <ol>
- *   <li>Declare its identity via {@link #type()} — must return a value from
- *       the {@link DetectorType} enum so it remains addressable from the
- *       existing {@code excludes} / {@code preset.enabled()} surface.</li>
+ *   <li>Declare its identity: {@link #id()} for a detector of its own, which the
+ *       {@code excludeIds} surface addresses, or {@link #type()} for one that stands
+ *       for a built-in {@link DetectorType}, whose name is then its id.</li>
  *   <li>Record runtime events through whatever API the detector exposes to
  *       user test bodies (e.g. {@code recordAccess(...)}).</li>
  *   <li>Produce {@link Violation}s on {@link #analyze()}, called by the
@@ -45,19 +46,42 @@ import java.util.List;
  * @since 1.6.0
  */
 @AIPublicAPI
-@AIContract(reason = "Public SPI interface. type(), analyze(), onTestStart(), and onTestEnd() signatures are part of the stable extension contract — implementors bind to these exact names and parameter types.")
+@AIContract(reason = "Public SPI interface. id(), type(), analyze(), onTestStart(), and onTestEnd() signatures are part of the stable extension contract — implementors bind to these exact names and parameter types. id() and type() are defaults so a detector can declare an identity of its own (#919); making either abstract again breaks every implementor that overrides only the other.")
 @AIExtensible(AIExtensible.Strategy.STRATEGY_PATTERN)
 @API(status = Status.STABLE)
 public interface Detector {
 
     /**
-     * Identity of this detector. Must be a value from the {@link DetectorType}
-     * enum so that {@code @AsyncTest(excludes = {...})} and
-     * {@code Preset.enabled()} can address it.
+     * The built-in detector this one stands for, so that {@code @AsyncTest(excludes = {...})}
+     * and {@code Preset.enabled()} can address it, or {@code null} for a detector with an
+     * identity of its own, which then overrides {@link #id()}.
      *
-     * @return the constant identifying this detector
+     * @return the constant identifying this detector, or {@code null}
      */
-    DetectorType type();
+    default @Nullable DetectorType type() {
+        return null;
+    }
+
+    /**
+     * This detector's identity: the key the registry holds it under and the name
+     * {@code @AsyncTest(excludeIds = {...})} switches it off by.
+     *
+     * <p>Defaults to {@code type().name()}. A genuinely new detector overrides it with an id of its
+     * own, which should not collide with a {@link DetectorType} name; a reverse-DNS prefix such as
+     * {@code "com.acme.pool-misuse"} keeps it apart from the built-ins and from other vendors.
+     *
+     * @return the id; never {@code null}
+     * @throws IllegalStateException when the detector overrides neither this nor {@link #type()}
+     * @since 1.13.0
+     */
+    default String id() {
+        DetectorType type = type();
+        if (type == null) {
+            throw new IllegalStateException(getClass().getName()
+                    + " declares no identity: override id() with an id of its own, or type()");
+        }
+        return type.name();
+    }
 
     /**
      * Produces the violations found during the just-finished invocation round.

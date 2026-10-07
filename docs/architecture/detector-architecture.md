@@ -45,11 +45,9 @@ allocation-free on the record path) are stated once in
 
 A synchronized change across `DetectorType` (an `@AILocked` enum — edit only with explicit owner
 sign-off), the `@AsyncTest` flag, `AsyncTestConfig` (field / builder default / setter / `from()` /
-both `build()` blocks), the legacy `DetectorRegistry` (field / constructor / `analyzeAll`), the
-`AsyncTestContext` accessor, and the SPI (`LegacyDetectorFactories` class + the built-in list in
-`META-INF/async-test/builtin-detector-factories`
-line). `AllDetectorsSpiCoverageTest` fails loudly if the SPI side is incomplete. The Phase 16
-detectors were wired this way.
+the enabled-set derivation), the runner's `DetectorRegistry` (field / factory-table row /
+`analyzeAll`) and the `AsyncTestContext` accessor. `DetectorRegistryFactoryTableTest` fails loudly
+if a type has no row. The SPI bridge these detectors also needed until 1.13.0 is gone (#922).
 
 ## Source-line attribution
 
@@ -81,5 +79,5 @@ thread-safe, but have no `DetectorType` constant, so `excludes` / `preset` do no
 Instantiate the validator (one instance can be shared across an `@AsyncTest`'s worker threads), call
 its `recordXxx(...)` methods from the test body, then call `analyze()` and assert on the returned
 report's `hasIssues()`. To promote one to a full pipeline detector, add the enum constant and config
-flag, then either an `AsyncTestContext` accessor (legacy path) or a `DetectorFactory` +
-built-in factory line (SPI path) — see [detector-spi.md](detector-spi.md).
+flag, a `DetectorRegistry` factory-table row and an `AsyncTestContext` accessor; a detector the
+library does not ship uses a `DetectorFactory` instead, see [detector-spi.md](detector-spi.md).

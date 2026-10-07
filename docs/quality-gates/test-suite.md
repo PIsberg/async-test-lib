@@ -48,10 +48,10 @@ reads that finding's severity from its text, and only a hand-written driver in
 `StructuredViolationCoverageTest` could notice. Because the check sits where the report is built, a
 detector's own unit tests that call `analyze()` drive it, not only the tests that fire the detector
 through the registry. The no-context `Phase1DetectorSet.printReports()` reads the list for the
-severity it hands listeners, and is covered by the same call. The SPI `LegacyDetectorAdapter` hands
-over the list's `Violation`s and makes the same check before it falls back to the text (#841).
+severity it hands listeners, and is covered by the same call. Until 1.13.0 the SPI bridge
+`LegacyDetectorAdapter` made the same check on its own path (#841); 1.13.0 removed that path (#922).
 With the flag off the check returns before looking at the report and writes nothing.
-`StructuredFindingsStrictModeTest` pins both halves, and `LegacyDetectorAdapterTest` the SPI one.
+`StructuredFindingsStrictModeTest` pins both halves.
 
 The same switch is on wherever the detectors are measured from outside this module: every
 corpus-eval lane, `consumer-fixture` and `consumer-fixture-langs` (Maven and Gradle), the examples
@@ -62,6 +62,71 @@ green (#612). One place is lenient on purpose: `example-demos.yml`, where a demo
 fails is the expected outcome, so a crash promoted to a failure would look like a demo that fired.
 `StrictDetectorsInDownstreamBuildsTest` fails if any of these loses the switch or the demo audit
 gains it.
+
+## Skipped tests are a baseline, not a count
+
+A skip is a pass to Maven and Gradle, and the only trace is a count in a log line. The real-licence
+E2E tests skipped on every CI leg, and on the operator machine, for about two months while guarding
+the only real-grant path (#901). So every job that runs a suite now checks its skips against a
+committed list: `.github/scripts/skipped_tests_gate.py` reads the job's JUnit XML after the tests
+and fails when a test skips that `.github/skipped-tests.txt` does not list, or a listed one ran or
+never appeared (#905). Both directions matter: a new skip hides a test, and a stale line hides a
+reason that no longer holds.
+
+Each line is `<class>#<method> <contexts> # <reason>`. A context is a pattern over the job context
+the workflow passes (`tests/jdk21`, `gradle/jdk21`, `corpus/jdk25`, `license-e2e`, ...) joined to
+the report directory, so the Gatherer skips are allowed on JDK 21 legs only and lane five's
+disabled JDK rows only in lane five's reports. A method ending in `?` may skip but need not:
+that is for a test whose own assumption depends on timing, such as the Gatherer test that skips
+when the JDK keeps a parallel stream's integration on one thread, which a loaded JDK 26 leg did on
+this gate's first CI run. A job with no line in scope tolerates no skip, which
+is how `license-e2e.yml` and `OS-Sensitive Tests` are checked. A job that finds no report fails: an
+empty run must not read as a clean one. The baseline was measured from main's CI on 2026-10-05.
+
+`SkippedTestsGateWiringTest` pins the wiring: the listed jobs in `tests.yml`, `corpus.yml`,
+`e2e-tests.yml`, `license-e2e.yml`, `gradle-tests.yml` and `load-tests.yml` must call the gate, and any other job
+whose commands run a suite must be listed as exempt with a reason. The examples reactors are
+exempt because their skips are the `@Disabled` demonstrations, which
+[examples-and-demos.md](examples-and-demos.md) gates. `load-tests.yml` is gated with no line: nothing
+in `load-tests/` can skip, so any skip there is new (#908). The script's `--self-test` covers both directions on synthetic reports and
+parses the real baseline; it was also run against main's real corpus reports, where it passes with
+the baseline and names all 46 lane-five skips without it.
+
+## Thread-safety claims are tested concurrently
+
+An `@AIThreadSafe` note is a specific claim ("at-most-once gate execution under contention"), so a
+class that makes one needs a test that runs it on several threads at once and can fail when the
+claim breaks. `ThreadSafetyClaimsAreTestedConcurrentlyTest` reads every main source file in the
+three modules (the annotation is source-retained) and fails when a class carrying `@AIThreadSafe`
+is not named by a test marked `@ConcurrencyTestFor(TheClass.class)`, when a marker names a class
+that no longer makes the claim, or when a marked test runs no threads through `@AsyncTest` or a
+`CyclicBarrier` (#906). The marker is explicit so that a test which merely mentions a class does
+not count. The detectors are exempt as a package, because `@AsyncTest` feeds them by design and
+`DetectorAccuracyEvalTest` and the corpus lanes run each one in both directions; any other
+exemption goes in the test's `EXEMPT` map with its reason.
+
+Why it exists: `LicenseGuard`'s only concurrency test asserted a `ConcurrentHashMap`'s size, which
+holds even when the gate runs on every thread, and `LicenseValidationCache` had no concurrent test
+until the first one found a shipped Windows defect (#904). Verified by deleting
+`LicenseGuardGateOnceDogfoodTest`: the gate names `LicenseGuard`. `ConcurrencyRunnerCollisionDogfoodTest`
+covers the runner's own claim, and goes red when the runner serializes its workers.
+
+Naming a class and running it concurrently is not yet a test that fails when the class breaks, and
+source cannot tell the difference. The weekly mutation run can: `.github/scripts/concurrency_test_kills.py`
+runs PIT once per marked class, with the class as the only target and the tests marked for it as
+the only tests (all of them together, so a second marker cannot silently replace the first, #925),
+and fails when the share of mutants that test detects falls below the class's floor in
+`.github/concurrency-kill-floors.txt` (#909). A full PIT run cannot answer it, because without the
+full mutation matrix `mutations.xml` names only the first test to kill a mutant, and the slow
+`@AsyncTest` tests are rarely first. Measured on 2026-10-05, the marked tests alone detect 61% of
+`LicenseGuard`'s mutants, 42% of `LicenseValidationCache`'s, 38% of `ConcurrencyRunner`'s and 6% of
+`AsyncTestContext`'s and `DetectorRegistry`'s, whose mutants sit mostly in per-detector accessors a
+ThreadLocal test never reaches. Adding `RendezvousTest` beside `AsyncTestContextTest` on 2026-10-06
+raised `AsyncTestContext` to 21% (109/512, 78 of the kills its own). Floors sit 5 to 10 points under those numbers. Verified by
+weakening `LicenseGuardGateOnceDogfoodTest` so it no longer asserts that the provider was asked
+once: `LicenseGuard` falls to 22% and the check names it. A scoped run scores below the pom's 76%
+suite threshold by design, and that threshold is a POM literal that `-DmutationThreshold` cannot
+lower, so the script judges the fresh report rather than Maven's exit code.
 
 ## License guard
 

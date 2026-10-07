@@ -7,7 +7,7 @@
     <parent>
         <groupId>se.deversity.async-test-lib</groupId>
         <artifactId>async-test-parent</artifactId>
-        <version>1.12.4</version>
+        <version>1.13.0</version>
     </parent>
 
     <!-- Deliberately unchanged: this is the coordinate every existing consumer depends on. -->
@@ -121,7 +121,7 @@
             <plugin>
                 <groupId>com.github.siom79.japicmp</groupId>
                 <artifactId>japicmp-maven-plugin</artifactId>
-                <version>0.26.2</version>
+                <version>0.26.3</version>
                 <configuration>
                     <!-- Baseline: the most recent release.
 
@@ -143,7 +143,7 @@
                         <dependency>
                             <groupId>se.deversity.async-test-lib</groupId>
                             <artifactId>async-test-lib</artifactId>
-                            <version>1.12.3</version>
+                            <version>1.12.4</version>
                             <type>jar</type>
                         </dependency>
                     </oldVersion>
@@ -175,15 +175,33 @@
                              releases four times. -->
                         <breakBuildBasedOnSemanticVersioning>true</breakBuildBasedOnSemanticVersioning>
                         <ignoreMissingClasses>true</ignoreMissingClasses>
-                        <!-- No excludes.
+                        <!-- The 1.13.0 waiver, and only that.
 
-                             The previous list waived two whole packages (se.deversity.asynctest.agent
-                             and .analysis, which left this artifact when the reactor was split) and
-                             the UNCOMMITTED_CHANGES elements removed after 1.7.2. Every one of those
-                             breaks predates 1.9.1, so against this baseline they are not breaks at
-                             all and the waivers only widened the hole. The pom's own comment said to
-                             remove them "once <oldVersion> is re-pinned to a release that already had
-                             the split" - this is that. -->
+                             1.13.0 removes what 1.12 deprecated and is still a minor release: the
+                             owner chose on 2026-10-06 not to call it 2.0.0 (docs/SUPPORT_POLICY.md
+                             records the exception). Semver mode refuses every one of those breaks,
+                             788 incompatibilities measured against 1.12.4, so each entry below
+                             names one intentional removal and nothing wider: the 146 per-detector
+                             attributes on @AsyncTest (#920), the 42 *Monitor() accessors (#921;
+                             no accessor with that suffix survives), the spi.adapters package and
+                             spi.DetectorRegistry.build (#922), and the three SPI methods that went
+                             from abstract to default (#919). Any other break still fails the build;
+                             checked by deleting an unrelated public method with these in place.
+
+                             Remove the whole list when <oldVersion> is re-pinned to 1.13.0: the
+                             removed elements are then absent from the baseline too, and a stale
+                             wildcard would only hide a future break. -->
+                        <excludes>
+                            <exclude>se.deversity.asynctest.spi.adapters</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTest#detect*()</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTest#validate*()</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTest#monitor*()</exclude>
+                            <exclude>se.deversity.asynctest.AsyncTestContext#*Monitor()</exclude>
+                            <exclude>se.deversity.asynctest.spi.DetectorRegistry#build(se.deversity.asynctest.AsyncTestConfig)</exclude>
+                            <exclude>se.deversity.asynctest.spi.Detector#type()</exclude>
+                            <exclude>se.deversity.asynctest.spi.DetectorFactory#type()</exclude>
+                            <exclude>se.deversity.asynctest.spi.DetectorFactory#isEnabledFor(se.deversity.asynctest.AsyncTestConfig)</exclude>
+                        </excludes>
                     </parameter>
                 </configuration>
                 <executions>

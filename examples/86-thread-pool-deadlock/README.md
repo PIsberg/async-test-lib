@@ -1,7 +1,7 @@
 # Example 86 — Thread Pool Deadlock
 
 **Detector**: `ThreadPoolDeadlockDetector`  
-**Flag**: `detectThreadPoolDeadlocks = true`
+**Select it with**: `includes = DetectorType.THREAD_POOL_DEADLOCK`
 
 ## The Problem
 

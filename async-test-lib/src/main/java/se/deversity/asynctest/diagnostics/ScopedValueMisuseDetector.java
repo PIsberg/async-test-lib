@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <pre>{@code
  * private static final ScopedValue<String> USER_ID = ScopedValue.newInstance();
  *
- * @AsyncTest(threads = 10, useVirtualThreads = true, detectScopedValueMisuse = true)
+ * @AsyncTest(threads = 10, useVirtualThreads = true, includes = DetectorType.SCOPED_VALUE)
  * void testScopedValueUsage() {
  *     var detector = AsyncTestContext.scopedValueMisuseDetector();
  *     String svName = "USER_ID";
@@ -179,11 +179,11 @@ public class ScopedValueMisuseDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
                 for (String finding : unboundGetIssues) {
-                    structuredViolations.add(new Violation("ScopedValueMisuse", severity,
+                    structuredViolations.add(new Violation("ScopedValue", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : rebindIssues) {
-                    structuredViolations.add(new Violation("ScopedValueMisuse", severity,
+                    structuredViolations.add(new Violation("ScopedValue", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
         }

@@ -57,7 +57,7 @@ Three paths, depending on why you came.
 | [detector-catalog/10-jdk-25-26.md](detector-catalog/10-jdk-25-26.md) | Entries 121 to 126. Phases 16 and 18: StableValue, StructuredTaskScope, Gatherer, LazyConstant, final-field mutation and KDF, wired into `detectAll` |
 | [detector-catalog/11-flow-and-ffm.md](detector-catalog/11-flow-and-ffm.md) | Entries 127 to 135. Phases 19 and 20: Flow publishers, confined arenas, memory segments, VarHandle, records, static-init deadlock, virtual-thread pooling, thread-per-task, SplittableRandom |
 | [detector-catalog/12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 146. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
-| [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously — and `AsyncFindings`, for asserting on what the detectors reported |
+| [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously — `AsyncFindings`, for asserting on what the detectors reported, `AsyncTestContext.rendezvous()`, for making a round's workers meet mid-body, `RunOutcomes`, for asserting that something happened exactly once, at most once, or with distinct values, and `OperationHistory`, for asserting that every round's results are linearizable |
 | [MIGRATION.md](MIGRATION.md) | Moving an existing test suite onto `@AsyncTest` |
 
 ### Reading what it found
@@ -107,7 +107,7 @@ the order the pieces appear in a run, not alphabetical.
 | [architecture/configuration-resolution.md](architecture/configuration-resolution.md) | How `includes` / `excludes` / `detectAll` / `Preset` resolve, and the `failOn` gate |
 | [architecture/contention-engine.md](architecture/contention-engine.md) | `SpinContentionBarrier`, telemetry ring buffer, agent, pinning scanner |
 | [architecture/detector-architecture.md](architecture/detector-architecture.md) | The 18 phases, the common detector pattern, wiring a new one |
-| [architecture/detector-spi.md](architecture/detector-spi.md) | `Detector` / `DetectorFactory` SPI, `LegacyDetectorFactories` |
+| [architecture/detector-spi.md](architecture/detector-spi.md) | `Detector` / `DetectorFactory` SPI for third-party detectors: identity by `id()`, `excludeIds`, and why 1.13.0 removed the built-in bridge |
 | [architecture/reporting-pipeline.md](architecture/reporting-pipeline.md) | `Violation` → `Formatter` → report listeners |
 | [architecture/observability.md](architecture/observability.md) | Listener system, seen from the inside |
 | [architecture/logging.md](architecture/logging.md) | The two output channels, the `domain.event key=value` format, and which log events are pinned by tests |
@@ -155,7 +155,8 @@ document says so rather than being edited in place.
 
 | Document | Purpose |
 |----------|---------|
-| [analysis/roadmap-v2.md](analysis/roadmap-v2.md) | The 2.0 plan: three trains, only the last of which breaks compatibility. Carries a re-measured status section — Trains 1 and 2 have not started, and every metric the plan exists to reduce has grown |
+| [analysis/linearizability-checking.md](analysis/linearizability-checking.md) | Design note for `OperationHistory` (#924): recording each worker's operations, searching for a real-time-consistent sequential order under a `SequentialSpec`, the bounds that keep the search honest, and what the prototype leaves out |
+| [analysis/roadmap-v2.md](analysis/roadmap-v2.md) | The 2.0 plan: three trains, only the last of which breaks compatibility. Carries a re-measured status section — Trains 1 and 2 have not started, and every metric the plan exists to reduce has grown. Also the feature roadmap (history-based checking); every open item links its GitHub issue |
 | [analysis/production-readiness.md](analysis/production-readiness.md) | Remaining work to reach GA / external usability |
 | [analysis/modularization.md](analysis/modularization.md) | Investigation: should the library be split into Maven submodules, and what blocks it |
 | [analysis/test-profiles-and-detector-gaps.md](analysis/test-profiles-and-detector-gaps.md) | Investigation: splitting the suite into a fast local tier and a CI-only e2e tier, and which bug classes the detectors miss |

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -144,7 +145,7 @@ class HitCounterServiceTest {
      * 3. Fix: replace long[] with AtomicLong.incrementAndGet()
      */
     @Disabled("Remove @Disabled to see atomicity violation detected by AtomicityValidator")
-    @AsyncTest(threads = 10, invocations = 100, detectAll = false, detectAtomicityViolations = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 10, invocations = 100, failOn = FailOn.LOW, includes = DetectorType.ATOMICITY_VIOLATIONS)
     void testIncrement_concurrent_detectsAtomicityViolation() {
         // The validator has to be the one the run owns. This demonstration used to record into a
         // locally constructed AtomicityValidator and assert on it from @AfterEach; the library

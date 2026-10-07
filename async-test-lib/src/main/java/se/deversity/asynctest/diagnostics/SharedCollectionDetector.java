@@ -50,14 +50,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSharedCollections = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SHARED_COLLECTIONS)
  * void testSharedList() {
  *     List<String> shared = new ArrayList<>();
- *     AsyncTestContext.sharedCollectionMonitor()
+ *     AsyncTestContext.sharedCollectionDetector()
  *         .registerCollection(shared, "item-list", "ArrayList");
  *
  *     shared.add("item");
- *     AsyncTestContext.sharedCollectionMonitor()
+ *     AsyncTestContext.sharedCollectionDetector()
  *         .recordWrite(shared, "item-list", "add");
  * }
  * }</pre>
@@ -253,11 +253,11 @@ public class SharedCollectionDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.concurrentWriteViolations) {
-                report.structuredViolations.add(new Violation("SharedCollection", severity,
+                report.structuredViolations.add(new Violation("SharedCollections", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.mixedAccessViolations) {
-                report.structuredViolations.add(new Violation("SharedCollection", severity,
+                report.structuredViolations.add(new Violation("SharedCollections", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

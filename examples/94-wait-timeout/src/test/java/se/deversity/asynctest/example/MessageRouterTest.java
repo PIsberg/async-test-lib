@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -83,13 +84,13 @@ class MessageRouterTest {
      */
     @Disabled("Remove @Disabled: the round times out on a wait() that is never notified, and the failure "
             + "names WaitTimeoutDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWaitTimeout = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.WAIT_TIMEOUT)
     void test_concurrent_detectsInfiniteWait() {
         Object lock = router.getLock();
         String threadName = Thread.currentThread().getName();
 
         // Instrument: record this thread is about to call wait() with no timeout
-        AsyncTestContext.waitTimeoutMonitor()
+        AsyncTestContext.waitTimeoutDetector()
                 .recordInfiniteWait(lock, "message-router-lock", threadName);
 
         // Simulate the concurrent scenario: half threads wait, half deliver
@@ -101,7 +102,7 @@ class MessageRouterTest {
             }
         } else {
             router.deliver("msg-" + threadName);
-            AsyncTestContext.waitTimeoutMonitor()
+            AsyncTestContext.waitTimeoutDetector()
                     .recordNotifyAll(lock, "message-router-lock");
         }
     }

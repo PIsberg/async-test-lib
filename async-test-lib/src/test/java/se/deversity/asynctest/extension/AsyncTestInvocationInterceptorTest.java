@@ -139,8 +139,11 @@ class AsyncTestInvocationInterceptorTest {
 
         // preset = NONE keeps this fast: it disables every detector (see AsyncTestConfig.build()),
         // so the runner only drives the barrier + reflective invoke, nothing else.
-        @AsyncTest(threads = THREADS, invocations = INVOCATIONS, useVirtualThreads = false,
-                   timeoutMs = 5_000, preset = Preset.NONE, detectDeadlocks = false)
+        @AsyncTest(threads = THREADS,
+                   invocations = INVOCATIONS,
+                   useVirtualThreads = false,
+                   timeoutMs = 5_000,
+                   preset = Preset.NONE)
         void noop() {
             executions.incrementAndGet();
         }

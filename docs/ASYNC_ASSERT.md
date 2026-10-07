@@ -115,3 +115,126 @@ between tests.
 
 The same data is available to any listener through
 [`AsyncTestListener.onViolation(Violation)`](OBSERVABILITY.md).
+
+## Meeting mid-body: `AsyncTestContext.rendezvous()` (1.13.0)
+
+The runner releases a round's workers together at the start of the body. When they also need to
+meet later, for example after each has prepared its own state and before any of them acts on a
+peer's, call `AsyncTestContext.rendezvous()`:
+
+```java
+@AsyncTest(threads = 4, invocations = 100)
+void transfer() {
+    Account mine = bank.open(100);       // each worker prepares its own state
+    AsyncTestContext.rendezvous();       // nobody moves money until every account exists
+    bank.transfer(mine, bank.randomOtherAccount(), 10);
+}
+```
+
+Every worker of the round must call it the same number of times; each call is one meeting point.
+It waits for as long as the round has left, or for `rendezvous(Duration)` when the meeting should
+take far less than that. A round that cannot meet fails at once and says why, instead of waiting
+out the timeout:
+
+| What happened | What the waiting workers report |
+|---|---|
+| a peer threw before reaching it | "The rendezvous was broken", reported next to the peer's own exception |
+| a peer returned, or is blocked, before calling it | "The rendezvous timed out after N ms with K of M workers arrived" |
+| the round was cancelled | "Interrupted while waiting at the rendezvous" |
+
+Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
+65,535 workers opens no rendezvous, and calling it there throws the same.
+
+## Checking that results are linearizable: `OperationHistory` (1.13.0, experimental)
+
+`RunOutcomes` asserts a property you name. `OperationHistory` asserts one you do not have to: that
+every round's results can be explained by some order of the workers' operations, one at a time,
+that respects real time. A counter whose increment is a read followed by a write fails it the first
+time two overlapping increments return the same value, whether or not a detector knows the shape.
+
+```java
+private static final OperationHistory<AtomicInteger> HISTORY = OperationHistory.of(AtomicInteger::new);
+
+@AsyncTest(threads = 3, invocations = 100)
+void increments() {
+    AtomicInteger counter = HISTORY.subject();          // one fresh object per round
+    HISTORY.call("increment", null, counter::incrementAndGet);
+    HISTORY.call("increment", null, counter::incrementAndGet);
+}
+
+@AfterAll
+static void linearizable() {
+    HISTORY.assertLinearizable(SequentialSpec.of(
+            () -> new int[1], int[]::clone, (state, op, arg) -> ++state[0]));
+}
+```
+
+`call(operation, argument, action)` records one operation with a ticket before and after it;
+`run(...)` records one that returns nothing. The `SequentialSpec` says what each operation does
+when it runs alone: an initial state, a copy of a state, and the step, which returns the result the
+operation should give. A failure names the round and lists its operations with their tickets, so the
+overlap that made the results impossible is visible. One search takes at most 64 operations; a
+round the search cannot decide within its budget fails rather than passes, and so does a check over
+no operations at all.
+
+For an object made of independent parts, such as a map whose keys never interact, check each part
+on its own: `HISTORY.assertLinearizable(spec, (operation, argument) -> argument)` searches each
+key's operations separately against a `spec` that models one key, so a round may record up to
+1,024 operations as long as no key gets more than 64. A failure names the key.
+
+To leave the order to the runner, declare the operations once and draw them in the body:
+
+```java
+private static final OperationHistory<AtomicInteger> HISTORY = OperationHistory.of(AtomicInteger::new)
+        .operation("increment", random -> null, (counter, unused) -> counter.incrementAndGet())
+        .operation("get", random -> null, (counter, unused) -> counter.get());
+
+@AsyncTest(threads = 4, invocations = 50)
+void counter() {
+    HISTORY.generate(8);   // this worker's 8 operations, drawn from the replay seed
+}
+```
+
+Each worker draws its own sequence from the round's replay seed, so the seed the runner prints on a
+failure reproduces the scenario.
+
+To make a failed check a finding instead of an assertion, verify the history when you build it:
+`OperationHistory.of(AtomicInteger::new).verifiedAgainst(spec)`. Each run then checks its own rounds
+at analysis and reports a round with no linearization as `Linearizability` (severity HIGH, trust
+FACT), so `failOn`, the reports and `AsyncFindings.assertReported("Linearizability")` see it. The design and its limits are in
+[analysis/linearizability-checking.md](analysis/linearizability-checking.md).
+
+## Asserting on what the workers did: `RunOutcomes` (1.13.0)
+
+`AsyncFindings` asserts on what the detectors saw. `RunOutcomes` asserts on what the workers did:
+that a gate ran exactly once across every worker of every round, that a lock was won at most once,
+that every id handed out was different. Record from the body, assert after the run:
+
+```java
+private static final RunOutcomes OUTCOMES = new RunOutcomes();
+
+@AsyncTest(threads = 8, invocations = 100)
+void initialise() {
+    if (service.initialiseIfNeeded()) OUTCOMES.record("initialised");
+    OUTCOMES.recordValue(idGenerator.next());
+}
+
+@AfterAll
+static void check() {
+    OUTCOMES.assertExactlyOnce("initialised");
+    OUTCOMES.assertDistinct();
+}
+```
+
+| Call | Asserts |
+|---|---|
+| `record(event)` / `count(event)` | records one occurrence on this thread / reads the total |
+| `assertExactlyOnce(event)` | the event happened once in the whole run |
+| `assertAtMostOnce(event)` | it happened zero or one times |
+| `assertCount(event, n)` | it happened exactly `n` times |
+| `recordValue(value)` / `assertDistinct()` | no value was recorded twice (compared with `equals`) |
+
+A failure names the count and the first threads that recorded the event, or lists the duplicated
+values. Totals are per run, not per round. The collector is lock-free, so it adds no contention of
+its own and no detector sees it. An instance field works as well as a static one, because the
+runner drives every round against one test instance; assert in `@AfterEach` then.

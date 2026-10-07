@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -92,14 +93,14 @@ class TaskRunnerServiceTest {
      * 3. To fix: implement AutoCloseable and call executor.shutdown() in close()
      */
     @Disabled("Remove @Disabled to see the bug detected by ExecutorShutdownDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectExecutorShutdown = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.EXECUTOR_SHUTDOWN)
     void testRunTask_concurrent_detectsMissingShutdown() {
         // Register the executor with the detector
-        AsyncTestContext.executorShutdownMonitor()
+        AsyncTestContext.executorShutdownDetector()
                 .recordExecutorCreated(service.getExecutor(), "task-runner-pool");
 
         // Submit a task — detector tracks that work was done
-        AsyncTestContext.executorShutdownMonitor()
+        AsyncTestContext.executorShutdownDetector()
                 .recordTaskSubmitted(service.getExecutor());
 
         service.runTask(() -> {

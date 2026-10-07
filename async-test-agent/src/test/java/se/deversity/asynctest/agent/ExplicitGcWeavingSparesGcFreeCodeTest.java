@@ -47,7 +47,7 @@ class ExplicitGcWeavingSparesGcFreeCodeTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 10)
+    @AsyncTest(threads = 4, invocations = 10, detectAll = true)
     void evictingWithoutForcingACollection() throws InterruptedException {
         cache.evict();
     }

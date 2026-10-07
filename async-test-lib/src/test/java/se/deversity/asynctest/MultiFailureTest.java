@@ -104,7 +104,7 @@ class MultiFailureTest {
     // ---- Dummy tests driven via EngineTestKit ----
 
     static class AllThreadsFailDummy {
-        @AsyncTest(threads = 4, invocations = 1, timeoutMs = 2_000, detectDeadlocks = false)
+        @AsyncTest(threads = 4, invocations = 1, timeoutMs = 2_000, detectAll = true)
         void allFail() {
             throw new AssertionError("intentional failure from thread "
                 + Thread.currentThread().getName());

@@ -147,11 +147,23 @@ jobs:
           set -o pipefail
           mvn -B -pl async-test-lib -am test-compile org.pitest:pitest-maven:mutationCoverage -Djacoco.skip=true 2>&1 | tee "$LOG"
 
+      # The full run cannot say whether a @ConcurrencyTestFor test kills its class's mutants: without
+      # the full mutation matrix, mutations.xml names only the first killer, and the slow @AsyncTest
+      # tests are rarely first. One scoped PIT run per pair asks it directly and checks the floors in
+      # .github/concurrency-kill-floors.txt (#909). Runs even when the full run missed its threshold.
+      - name: Check each concurrency test kills its class's mutants
+        if: success() || failure()
+        run: |
+          python3 .github/scripts/concurrency_test_kills.py . --self-test
+          python3 .github/scripts/concurrency_test_kills.py .
+
       - name: Upload PIT mutation report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pitest-report-${{ github.run_id }}
-          path: async-test-lib/target/pit-reports/**
+          path: |
+            async-test-lib/target/pit-reports/**
+            async-test-lib/target/pit-concurrency/**
           if-no-files-found: warn
           retention-days: 90

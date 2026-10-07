@@ -123,7 +123,7 @@ public class CompletableFutureCommonPoolBlockingDetector {
             int count = e.getValue().get();
             String finding = count > 1 ? e.getKey() + " (x" + count + ")" : e.getKey();
             r.violations.add(finding);
-            r.structuredViolations.add(new Violation("CompletableFutureCommonPoolBlocking", IssueSeverity.MEDIUM,
+            r.structuredViolations.add(new Violation("CfCommonPoolBlocking", IssueSeverity.MEDIUM,
                     finding, List.of(), Map.of(), Instant.now()));
         }
         r.violations.sort(null);

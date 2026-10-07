@@ -67,7 +67,7 @@ class MdcContextLeakTest {
     // =========================================================================
     // Part 2: Upgrade to @AsyncTest (0.10.0) to detect the bug
     //
-    // @AsyncTest(threads = 4, invocations = 3, detectMdcContextLeak = true, timeoutMs = 5000)
+    // @AsyncTest(threads = 4, invocations = 3, timeoutMs = 5000, includes = DetectorType.MDC_CONTEXT_LEAK)
     // =========================================================================
 
     @Test

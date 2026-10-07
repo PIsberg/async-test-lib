@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * DETECTORS TRIGGERED:
  * LockOrderValidator — accessed via AsyncTestContext.lockOrderValidator()
  *                      (wired through DetectorRegistry, enabled via
- *                       validateLockOrder = true in @AsyncTest).
+ *                       includes = DetectorType.LOCK_ORDER in @AsyncTest).
  *
  * FIX:
  * Impose a global total order on lock acquisition. Always lock the account
@@ -106,7 +106,7 @@ class FundsTransferServiceTest {
      * 3. Fix: always lock the lower-ID account first
      */
     @Disabled("Remove @Disabled to see lock order violation detected by LockOrderValidator")
-    @AsyncTest(threads = 8, invocations = 50, validateLockOrder = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, detectAll = true)
     void testTransfer_concurrent_detectsLockOrderViolation() {
         // Alternate the transfer direction across threads to produce both orderings
         boolean forward = Thread.currentThread().threadId() % 2 == 0;

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.loadtest;
 
+import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.AsyncTest;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.openjdk.jmh.annotations.*;
@@ -67,13 +68,13 @@ public class AsyncTestBenchmark {
     // ── Target classes ───────────────────────────────────────────────────────────────────────
 
     public static class T2_I10_None {
-        @AsyncTest(threads = 2, invocations = 10, detectAll = false) public void run() {}
+        @AsyncTest(threads = 2, invocations = 10, preset = Preset.NONE) public void run() {}
     }
     public static class T4_I10_None {
-        @AsyncTest(threads = 4, invocations = 10, detectAll = false) public void run() {}
+        @AsyncTest(threads = 4, invocations = 10, preset = Preset.NONE) public void run() {}
     }
     public static class T8_I10_None {
-        @AsyncTest(threads = 8, invocations = 10, detectAll = false) public void run() {}
+        @AsyncTest(threads = 8, invocations = 10, preset = Preset.NONE) public void run() {}
     }
     public static class T2_I10_All {
         @AsyncTest(threads = 2, invocations = 10, detectAll = true) public void run() {}

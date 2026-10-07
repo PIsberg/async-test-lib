@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>A major release removes what it deprecated, and the only thing standing between a consumer
  * and that removal is the {@code @deprecated} tag. {@code @Deprecated} on its own compiles to a
  * warning that something is going away; it does not say where the behaviour went, so the consumer
- * reads the diff of a release they did not write. With 188 deprecated public elements across this
- * API, that difference decides whether upgrading to the next major is a scripted rename or an
- * afternoon of guessing.
+ * reads the diff of a release they did not write. With 188 deprecated public elements across the
+ * 1.12 API, that difference decided whether upgrading to 1.13.0 was a scripted rename or an
+ * afternoon of guessing; 1.13.0 removed all of them, and the next deprecation is held to the same bar.
  *
  * <p>The gap this pins was real rather than hypothetical. Seven of the 146 deprecated
  * {@code @AsyncTest} attributes carried {@code @Deprecated} with no {@code @deprecated} tag at
@@ -48,8 +48,10 @@ class DeprecationsNameTheirReplacementTest {
         List<String> noTag = new ArrayList<>();
         List<String> noReplacement = new ArrayList<>();
         int deprecations = 0;
+        int scanned = 0;
 
         for (Path file : mainSources()) {
+            scanned++;
             List<String> lines = readLines(file);
             for (int i = 0; i < lines.size(); i++) {
                 if (!"@Deprecated".equals(lines.get(i).trim())) {
@@ -67,10 +69,12 @@ class DeprecationsNameTheirReplacementTest {
             }
         }
 
-        assertTrue(deprecations > 100,
-                "Expected to find the deprecated public surface but saw only " + deprecations
-                        + " elements. The scan is looking in the wrong place, which would let "
-                        + "this test pass by checking nothing.");
+        // 1.13.0 removed all 188 deprecated elements (#920, #921), so zero deprecations is the
+        // expected count until the next one lands. The scan itself must still see the sources.
+        assertTrue(scanned > 200,
+                "Expected to scan the library's main sources but saw only " + scanned
+                        + " files (and " + deprecations + " deprecations). The scan is looking in "
+                        + "the wrong place, which would let this test pass by checking nothing.");
 
         assertTrue(noTag.isEmpty(),
                 noTag.size() + " deprecated element(s) carry @Deprecated with no @deprecated "

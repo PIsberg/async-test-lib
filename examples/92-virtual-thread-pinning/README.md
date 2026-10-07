@@ -1,7 +1,7 @@
 # Example 92 — Virtual Thread Pinning
 
 **Detector**: `VirtualThreadPinningDetector`  
-**Flag**: `detectVirtualThreadPinning = true`
+**Select it with**: `includes = DetectorType.VIRTUAL_THREAD_PINNING`
 
 ## The Problem
 

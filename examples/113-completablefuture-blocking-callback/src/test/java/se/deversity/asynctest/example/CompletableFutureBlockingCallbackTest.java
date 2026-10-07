@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -23,7 +24,7 @@ class CompletableFutureBlockingCallbackTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by CompletableFutureBlockingCallbackDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectCFBlockingCallback = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 2, invocations = 5, failOn = FailOn.LOW, includes = DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK)
     void test_concurrent_detectsBlockingCallback() {
         var mon = AsyncTestContext.cfBlockingCallbackDetector();
         Thread thread = Thread.currentThread();

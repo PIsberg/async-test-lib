@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -29,7 +30,7 @@ class SpuriousWakeupTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by SpuriousWakeupDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectSpuriousWakeupHazard = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 2, invocations = 5, failOn = FailOn.LOW, includes = DetectorType.SPURIOUS_WAKEUP_HAZARD)
     void test_concurrent_detectsSpuriousWakeupHazard() throws InterruptedException {
         var mon = AsyncTestContext.spuriousWakeupHazardDetector();
         Thread thread = Thread.currentThread();

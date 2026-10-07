@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 10, useVirtualThreads = true, detectVirtualThreadPinning = true)
+ * @AsyncTest(threads = 10, useVirtualThreads = true, includes = DetectorType.VIRTUAL_THREAD_PINNING)
  * void testVirtualThreadPinning() {
  *     AsyncTestContext.virtualThreadPinningDetector()
  *         .startMonitoring();
@@ -347,7 +347,8 @@ public class VirtualThreadPinningDetector {
         /**
          * {@return whether this report should surface as a finding}
          *
-         * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
+         * <p>The canonical predicate the report path binds to ({@code DetectorRegistry.ifIssue}, and
+         * until 1.13.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
          * adapter resolved {@code analyze()}, failed to find {@code hasIssues()} on the returned
          * report, and returned an empty violation list on every call — so this detector was
          * registered, addressable, named in the README, and structurally unable to emit a

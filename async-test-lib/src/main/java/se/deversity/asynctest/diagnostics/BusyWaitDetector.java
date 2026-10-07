@@ -169,11 +169,11 @@ public class BusyWaitDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.MEDIUM);
             for (String finding : report.busyWaitLoops) {
-                report.structuredViolations.add(new Violation("BusyWait", severity,
+                report.structuredViolations.add(new Violation("BusyWaiting", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.tightLoops) {
-                report.structuredViolations.add(new Violation("BusyWait", severity,
+                report.structuredViolations.add(new Violation("BusyWaiting", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

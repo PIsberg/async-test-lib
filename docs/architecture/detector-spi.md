@@ -2,129 +2,102 @@
 
 > Part of the [architecture documentation](../ARCHITECTURE.md).
 
-## Detector SPI (1.6.0)
+## What the SPI is for (1.13.0)
 
-The legacy detector architecture required synchronized edits across five places
-(annotation field, config field+builder+defaults, both `build()` branches,
-registry instantiation arm) — a documented fan-out risk in `CLAUDE.md`. The SPI
-in `se.deversity.asynctest.spi` collapses that to **one class + one
-line in `META-INF/async-test/builtin-detector-factories`**.
+`se.deversity.asynctest.spi` is the extension point for detectors the library does not ship. A
+user adds a `DetectorFactory` to `META-INF/services/se.deversity.asynctest.spi.DetectorFactory`,
+and every `@AsyncTest` run builds, starts, analyses and reports it beside the built-ins.
+
+The built-in detectors are not on this path. They have one registry, the runner's
+`se.deversity.asynctest.DetectorRegistry`, which builds each from its factory-table row and holds
+the very instances user code records into ([adding-a-detector.md](adding-a-detector.md)).
 
 ```
-META-INF/services/…DetectorFactory              ← third-party detectors only
+META-INF/services/…DetectorFactory              ← third-party factories only
         │                                          (ServiceLoader.load)
-        │   META-INF/async-test/builtin-detector-factories
-        │           │                              ← built-ins, read directly by build()
-        ▼           ▼
-DetectorFactory(s)                              ← user-implemented or built-in
+        ▼
+DetectorFactory(s)                              ← id(), isEnabledFor(config), create(config)
         │
-        ▼  build(AsyncTestConfig)
-DetectorRegistry                                 ← SPI registry (new package)
+        ▼  buildExternal(AsyncTestConfig)
+spi.DetectorRegistry                             ← one per test, keyed by id
         │
         ▼  analyzeAll()
-List<Violation>                                  ← structured stream
+List<Violation>                                  ← merged into the run's reports
 ```
 
 **SPI contracts:**
 
-- `Detector` — `type() → DetectorType`, `analyze() → List<Violation>`, optional
+- `Detector` — `id() → String`, `analyze() → List<Violation>`, optional
+  `type() → DetectorType` for one that stands for a built-in, optional
   `onTestStart()` / `onTestEnd()` lifecycle hooks. Per-test instance lifecycle.
-- `DetectorFactory` — `type()`, `isEnabledFor(AsyncTestConfig)`,
-  `create(AsyncTestConfig)`. `isEnabledFor` reads whichever boolean field on
-  `AsyncTestConfig` corresponds to the detector — no automatic mapping (each
-  factory is explicit, keeping the addressable surface intact).
-- `DetectorRegistry` (in the `spi` package, distinct from the legacy one) —
-  `build(config)` discovers via ServiceLoader, filters by `isEnabledFor`,
-  instantiates. Two lookup styles: typed `get(Class<T>)` and enum-keyed
-  `get(DetectorType)`. `analyzeAll()` aggregates structured violations.
+- `DetectorFactory` — `id()` (or `type()`), `create(AsyncTestConfig)`, and
+  `isEnabledFor(AsyncTestConfig)`, which defaults to `config.isEnabled(id())`.
+- `DetectorRegistry` (in the `spi` package, distinct from the runner's) —
+  `buildExternal(config)` discovers via ServiceLoader, filters by `isEnabledFor` and
+  `excludeIds`, instantiates, and keys each detector by its id. Three lookup
+  styles: typed `get(Class<T>)`, id-keyed `get(String)` and `get(DetectorType)`,
+  which is `get(type.name())`. `analyzeAll()` aggregates structured violations.
 
-**Full SPI coverage (1.6.0+).** Every `DetectorType` value — all 100 of them —
-is registered as a `DetectorFactory` and discoverable via `ServiceLoader`.
-Coverage is automated:
+**Open detector identity (1.13.0, #919).** A detector's identity is its `id()`. A
+built-in's id is its `DetectorType` name, which `id()` defaults to through
+`type()`. A genuinely new third-party detector leaves `type()` alone and returns an
+id of its own, preferably reverse-DNS (`"com.acme.pool-misuse"`), so it no longer
+has to borrow a built-in constant, and two such detectors no longer replace each
+other in a type-keyed map. A test switches one off with
+`@AsyncTest(excludeIds = {"com.acme.pool-misuse"})` or
+`AsyncTestConfig.Builder.excludeIds(...)`; an id the test excludes is never built,
+whatever the factory's own `isEnabledFor` says. An id that is not excluded is
+enabled, because the detector is on the classpath only when the user put it there.
+A built-in name in `excludeIds` excludes that type, as `excludes` would.
+`OpenDetectorIdentityTest` pins each of these.
 
-- **`LegacyDetectorFactories`** is a single file containing 99 inner-class
-  `DetectorFactory` implementations (one per `DetectorType`, excluding the
-  one with a dedicated typed adapter). Each declares its `type()`, reads its
-  matching `AsyncTestConfig` boolean in `isEnabledFor()`, and produces a
-  `LegacyDetectorAdapter` wrapping a fresh detector instance.
-- **`LegacyDetectorAdapter<D>`** is the generic SPI `Detector` that reflectively
-  invokes `delegate.analyze()` and the resulting report's `hasIssues()`. When
-  has-issues fires it returns the report's `structuredViolations` as they are, at
-  the severities the detector chose, or, for a report that keeps none, one
-  `Violation` carrying its `toString()` at the severity `DetectorDefaultSeverity`
-  gives that text: the same severity the `failOn` gate reads (#841). A detector
-  that throws is contained through `DetectorFailurePolicy.detectorFailed`, as on
-  the registry path, so strict mode fails the build. A detector class or report type
-  that is not public, such as a third-party detector nested in a test class, is read
-  anyway where its package is open to the library, which the class path always is:
-  the adapter calls `trySetAccessible` on the report method, `hasIssues()` and the
-  `structuredViolations` field, as JUnit does for test methods (#851). It cannot
-  open what a named module keeps closed, so a report method or `hasIssues()` there
-  fails the build under strict mode like a detector that throws (#847), and a list
-  there that it may not read gives way to the text finding, which strict mode does
-  not call empty. That fallback writes one stderr line per report type, in every
-  mode, naming the type whose list was refused, so the author learns the
-  severities it chose were not the ones the gate read (#859).
-  Detectors whose report doesn't follow the canonical
-  `analyze() → Report{hasIssues(), toString()}` shape return an empty list and
-  write nothing; `DetectorFiringContractTest` holds every built-in to that shape,
-  and `AllDetectorsSpiCoverageTest` checks every built-in report is reachable.
-- **`SharedMessageDigestDetectorFactory`** is the typed-adapter template: when
-  a legacy detector is migrated to expose `structuredViolations` natively,
-  its factory uses a typed adapter to project them directly (no reflection).
-- **`AllDetectorsSpiCoverageTest`** guards against drift: a new
-  `DetectorType` value without a matching factory fails the build with a
-  precise list of missing types.
+**What happens to a third-party detector in a run.** `AsyncTestContext` builds
+`DetectorRegistry.buildExternal(config)` once per `@AsyncTest` method. Each detector:
 
-**Coexistence with the legacy registry.** Both registries instantiate
-independently and run side-by-side. The legacy
-`se.deversity.asynctest.DetectorRegistry` continues to drive per-test
-execution for the built-in detectors and owns the `AsyncTestContext` wiring.
-
-**Third-party detectors are live (1.7.0).** `AsyncTestContext` builds a second,
-SPI-driven registry per test via `DetectorRegistry.buildExternal(config)`, which
-discovers every `DetectorFactory` on the classpath *except* the built-in bridges
-in `spi/adapters` (those wrap fresh legacy instances that observe nothing, so
-including them would allocate ~120 duplicate detectors per test). A user-supplied
-detector therefore:
-
-- is instantiated once per `@AsyncTest` method, if `isEnabledFor(config)`,
+- is instantiated once per `@AsyncTest` method, if `isEnabledFor(config)` and its id is not
+  excluded,
 - receives `onTestStart()` before the first invocation round and `onTestEnd()`
   after the run's analysis,
-- has its `Violation`s merged into `analyzeAllNamed()` — keyed by
-  `Violation.detector()`, prefixed with the severity label so the `failOn` gate
-  classifies them at the severity the detector assigned.
+- has its `Violation`s merged into `analyzeAllNamed()`, keyed by
+  `Violation.detector()` and prefixed with the severity label, so the `failOn` gate
+  classifies them at the severity the detector assigned,
+- has a failure in `analyze()` contained through `DetectorFailurePolicy.detectorFailed`, so one
+  broken detector cannot cost the others' findings, and strict mode fails the build over it.
 
-Before 1.7.0 nothing on the execution path ever built an SPI registry: the
-published extension point compiled, was discovered by `ServiceLoader` in tests,
-and then never ran inside a real test. The registry remains the surface for
-programmatic discovery and for incremental migration of each built-in detector
-to expose structured violations natively.
+`ExternalDetectorSpiWiringTest` pins this end to end. Third-party detectors are unknown to
+`DetectorTrust` and resolve to `TrustTier.PROMPT`.
 
-## The built-in-package exclusion
+## The built-in bridge, removed in 1.13.0 (#922)
 
-`AsyncTestContext` builds `spi.DetectorRegistry.buildExternal(config)` per test, taking every
-discovered factory **except** the built-in bridges in `spi/adapters`. Those bridges wrap fresh legacy
-instances that observe nothing, so including them would allocate roughly 120 blind duplicate
-detectors on every test. Keep the exclusion when touching this path.
+From 1.6.0 to 1.12.x every built-in detector was wired twice. Beside the runner's registry,
+`spi.adapters.LegacyDetectorFactories` held one bridge factory per `DetectorType`, listed in
+`META-INF/async-test/builtin-detector-factories`, each wrapping a *fresh* detector in a reflective
+`LegacyDetectorAdapter`; `spi.DetectorRegistry.build(config)` returned them all. Those instances
+were disconnected from the ones user code records into, so they observed nothing, and the view was
+called only by tests. `buildExternal` already left them out at runtime, because loading them cost
+about 340 ms per forked JVM and allocated about 120 blind detectors per test.
+
+The bridge was the losing path of the two, and 1.13.0 deleted it: the package, the list resource,
+`build(config)` and the typed `SharedMessageDigestDetectorFactory` template. What its gates
+checked moved to the registry users actually read: `DetectorRegistryFactoryTableTest` (every type
+has one row), `DetectorFiringContractTest` (every built detector is silent on empty input and is
+handed to an `ifIssue` call) and `DetectorTrustCoverageTest` (every trust row names the class the
+registry builds). `DetectorRegistrySpiTest` fails if a bridge factory, the list or `build(config)`
+comes back.
 
 ## Contract notes
 
-`spi/Detector.java` (`type()`, `analyze()`, `onTestStart()`, `onTestEnd()`) and
-`spi/DetectorFactory.java` (`type()`, `isEnabledFor()`, `create()`) are stable public contracts —
-extend by adding strategies, never by widening branch conditionals.
+`spi/Detector.java` (`id()`, `type()`, `analyze()`, `onTestStart()`, `onTestEnd()`) and
+`spi/DetectorFactory.java` (`id()`, `type()`, `isEnabledFor()`, `create()`) are stable public
+contracts. Extend by adding strategies, never by widening branch conditionals.
 
 `analyze()` must be idempotent: same observed state → same violations, no side effects.
 `DetectorRegistry.analyzeAll()` relies on it.
 
-Two classes share the name `DetectorRegistry`: `spi/DetectorRegistry.java` (an effectively-immutable
-`EnumMap` populated only in its private constructor, safe to publish) and the package-root
-`se.deversity.asynctest.DetectorRegistry` wiring class. The package-root one holds a final field per
-detector, constructs each conditionally on its config flag, and calls each `analyzeAll()` in phase
-order — the three-step contract in [adding-a-detector.md](adding-a-detector.md).
-
-Built-in detectors are bridged through `spi/adapters/LegacyDetectorAdapter` (reflection-based, once
-per round per detector). Its structure is deliberately legacy-shaped — do not refactor it.
-
----
-
+Two classes share the name `DetectorRegistry`: `spi/DetectorRegistry.java` (an effectively
+immutable id-keyed map populated only in its private constructor, safe to publish) and the
+package-root `se.deversity.asynctest.DetectorRegistry` wiring class. The package-root one holds a
+final field per detector, builds each from its factory-table row
+`create(DetectorType.X, Xxx::new)` when the run enables that type (#916), and calls each
+`analyzeAll()` in phase order: the three-step contract in
+[adding-a-detector.md](adding-a-detector.md).

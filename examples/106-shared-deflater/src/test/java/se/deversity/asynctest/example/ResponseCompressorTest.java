@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -84,7 +85,7 @@ class ResponseCompressorTest {
      * 3. To fix: use one Deflater per thread (ThreadLocal) with end() in finally
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedDeflaterDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedDeflater = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SHARED_DEFLATER)
     void test_concurrent_detectsSharedDeflater() {
         Thread thread = Thread.currentThread();
 

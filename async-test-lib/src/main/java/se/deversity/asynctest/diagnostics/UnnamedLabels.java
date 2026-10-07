@@ -19,11 +19,17 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Both maps are created on first use, so a detector that never meets an unnamed object pays one
  * small object and nothing else.
+ *
+ * <p>Objects are keyed weakly ({@link IdentityKey.Weak}): a label does not keep its object alive
+ * (#929). It used to hold a strong key, so every detector using it kept every object a test
+ * recorded without a name for the whole run, even where the detector's own state was weak. A
+ * collected object's entry stays, its key now equal only to itself, at the cost of a key and a
+ * label string, the same choice {@link AbstractInstanceDetector} makes for its states.
  */
 final class UnnamedLabels {
 
     private volatile @Nullable ConcurrentMap<String, AtomicInteger> counters;
-    private volatile @Nullable ConcurrentMap<IdentityKey, String> byObject;
+    private volatile @Nullable ConcurrentMap<Object, String> byObject;
 
     /**
      * {@return a label no earlier call on this instance returned, {@code kind@n}}
@@ -48,23 +54,24 @@ final class UnnamedLabels {
      * @param kind   what the report calls it the first time
      */
     String of(Object object, String kind) {
-        ConcurrentMap<IdentityKey, String> labels = byObject();
+        ConcurrentMap<Object, String> labels = byObject();
         String label = labels.get(IdentityKey.lookup(object));
-        return label != null ? label : labels.computeIfAbsent(new IdentityKey(object), k -> next(kind));
+        return label != null ? label : labels.computeIfAbsent(new IdentityKey.Weak(object, null), k -> next(kind));
     }
 
     /**
-     * As {@link #of(Object, String)}, for a caller that already holds the object's key; the key
-     * is stored as given.
+     * As {@link #of(Object, String)}, for a caller that already holds the object's key, which
+     * looks the label up without allocating; what is stored is a weak key, never this one.
      *
      * @param key  the unnamed object's key
      * @param kind what the report calls it the first time
      * @return the object's label
      */
     String of(IdentityKey key, String kind) {
-        ConcurrentMap<IdentityKey, String> labels = byObject();
+        ConcurrentMap<Object, String> labels = byObject();
         String label = labels.get(key);
-        return label != null ? label : labels.computeIfAbsent(key, k -> next(kind));
+        return label != null ? label
+                : labels.computeIfAbsent(new IdentityKey.Weak(key.referent(), null), k -> next(kind));
     }
 
     private ConcurrentMap<String, AtomicInteger> counters() {
@@ -81,8 +88,8 @@ final class UnnamedLabels {
         return map;
     }
 
-    private ConcurrentMap<IdentityKey, String> byObject() {
-        ConcurrentMap<IdentityKey, String> map = byObject;
+    private ConcurrentMap<Object, String> byObject() {
+        ConcurrentMap<Object, String> map = byObject;
         if (map == null) {
             synchronized (this) {
                 map = byObject;

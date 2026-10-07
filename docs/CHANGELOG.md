@@ -7,8 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Linearizability pairs on corpus libraries (#932).** `LinearizabilityLibraryPairsTest` in
+  corpus-eval checks Guava's `AtomicLongMap` (linearizable, silent) against a read-modify-write over
+  commons-lang3's `MutableInt` (reported as not linearizable), whole history and key by key, through
+  drawn scenarios and `verifiedAgainst`. Found on the way: a second `generate()` call in a round
+  restarted the worker's stream and drew the same operations again; streams now persist per round
+  and worker. Measured limit: a bare `MutableInt.incrementAndGet()` was caught on 16 cores in 10 of
+  10 runs and on 2 cores in 0 of 6, so the broken twins align their read and write with
+  `rendezvous()`; the design note says so.
+- **`OperationHistory.verifiedAgainst(spec)`: a failed linearizability check is a finding (#934).**
+  The check was only an `@AfterAll` assertion, invisible to `failOn`, the reports and listeners. A
+  verified history checks each run's rounds at analysis and reports a round with no linearization as
+  `Linearizability`, severity HIGH, trust tier FACT. Both directions tested; dropping the run checks
+  from analysis turns two of the five tests red.
+- **`OperationHistory.operation(...)` and `generate(n)`: drawn linearizability scenarios (#935).**
+  The test author declares what a worker may do; each worker of each round draws its own sequence
+  from the replay seed, the round and its slot, so a pasted `replaySeed` reproduces a failing
+  scenario. A drawn `increment`/`get` mix stays linearizable on an `AtomicInteger` and fails on a
+  read-sleep-write counter with no interleaving scripted; workers sharing one stream turns the
+  replay test red.
+- **`OperationHistory.assertLinearizable(spec, partition)` checks one independent object at a
+  time (#933).** One search takes at most 64 operations, so a round of more could not be checked at
+  all. Linearizability is local, so grouping a round's operations by the object they touch, such as
+  a map's key, and searching each group on its own proves the same thing with small searches. A
+  round may now record up to 1,024 operations; a whole-history check of more than 64 fails and says
+  to partition. Both directions: a `ConcurrentHashMap` counter at 120 operations a round passes, a
+  per-key read-then-write counter fails naming the key.
+- **`AsyncTestConfig.Builder.preset(Preset)`.** A programmatic run could not ask for the
+  annotation's default, `Preset.ESSENTIALS`, except by listing its 12 types in `includes`, although
+  `AsyncTestRunner`'s javadoc and the usage docs already told readers to call `preset(...)`. It
+  resolves as `@AsyncTest(preset = ...)` does: `includes` first, then `detectAll(true)`, then the
+  preset, with `excludes` on top. `builder()` alone still starts from deadlock detection, so no
+  existing caller changes (#931).
+- **`OperationHistory`: check that a concurrent object's results are linearizable** (experimental).
+  The detectors recognise known race shapes; nothing checked whether the workers' results could be
+  explained at all. Record each operation with `call(...)` from the body, then
+  `assertLinearizable(SequentialSpec)` searches every round for an order of its operations, one
+  at a time and consistent with real time, that gives the same results. A round with none fails with
+  its operations and their tickets. Tested both ways: `AtomicInteger` and `ConcurrentLinkedQueue`
+  stay linearizable over 30 rounds, a read-then-write counter fails on round 1; letting the search
+  ignore real-time order turns three checker tests red (#924).
+- **`AsyncTestConfig.enabledDetectors()` and `isEnabled(DetectorType)`: the resolved selection as
+  one set.** `build()` now resolves `detectAll`, the per-detector setters, `includes` and `excludes`
+  into one `EnumSet`, and every public detector flag is a membership test against it. Each flag
+  used to be its own resolution line, 146 expressions that could each be wrong; a test now checks
+  across 200 random selections that the flags and the set agree, and goes red when one flag is
+  derived from the wrong type (#917).
+- **`DetectorRegistry` builds its detectors from the enabled set, keyed by type.** Each of the 146
+  constructions read a config flag of its own, `cfg.detectXxx ? new Xxx() : null`, so a
+  construction keyed on the wrong flag compiled and built the wrong detector. Each is now one row,
+  `create(DetectorType.XXX, Xxx::new)`, and a test checks across 50 random selections that the
+  registry built exactly the selected types, one instance each (#916).
+- **A third-party detector can have an identity of its own.** `Detector.id()` and
+  `DetectorFactory.id()` default to the `DetectorType` name, and `type()` is now optional, so a
+  genuinely new detector returns an id such as `"com.acme.pool-misuse"` instead of borrowing a
+  built-in constant; two detectors that borrowed one constant used to replace each other in the
+  type-keyed SPI registry. The registry is keyed by id (`get(String)`), and
+  `@AsyncTest(excludeIds = ...)` and `AsyncTestConfig.Builder.excludeIds(...)` switch a detector
+  off by id, even when its factory ignores the config (#919).
+- **Per-instance detectors share one base class, and no longer keep what they track alive.**
+  `AbstractInstanceDetector` owns the identity-keyed map, the allocation-free lookup and the
+  single registration of a first sighting, which detectors used to copy one by one. It keys each
+  object weakly: an object the code under test dropped can be collected, while the state, and any
+  finding it latched, stays. The first wave moves `SharedDecimalFormatDetector`,
+  `SharedFormatterDetector`, `SharedMatcherDetector`, `SharedTimeZoneDetector` and
+  `SharedXmlParserDetector` onto it; each now has a test that fails if it holds a recorded object
+  strongly (#918).
+- **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
+  workers to meet after the start built a `CyclicBarrier` of its own, and had to get the party
+  count, the timeout and the reuse across rounds right by hand; five `@AsyncTest` classes in this
+  repository did. The runner now opens one rendezvous per round, sized to its workers and
+  bounded by the time the round has left (or by `rendezvous(Duration)`). A worker whose body throws
+  breaks it, so its peers fail at once with "the rendezvous was broken" next to the real exception,
+  instead of waiting out the round and reporting a timeout that hides it.
+- **`RunOutcomes`: assert that something happened exactly once, at most once, or with distinct
+  values.** Record from the body, assert after the run. It replaces the static counter and the
+  hand-written `@AfterAll` such checks needed, one of which asserted something that held whatever
+  the code did (#904). A failure names the count and the first threads that recorded the event.
+
 ### Fixed
 
+- **A licensed run no longer revalidates online because the cache file was being replaced (#928).**
+  On Windows, a read that meets another JVM's replace of the validation record fails with
+  `AccessDeniedException`, and `LicenseValidationCache.isFresh` read every failure as "no fresh
+  record". Measured: one failure in eight runs of the concurrent-writers dogfood test under eight
+  CPU-bound threads, and the exception was that one. Only a missing file now means no record; any
+  other read failure is retried with backoff for up to 127 ms. What is accepted is unchanged: the
+  content must still parse to a timestamp within the TTL. `LicenseValidationCacheTransientReadTest`
+  holds an exclusive lock on the record for 50 ms; it failed 3 of 3 times before the change.
+- **A detector no longer keeps an unnamed subject alive through its label (#929).**
+  `UnnamedLabels`, which 70 detectors use to name objects a test recorded without a name, held a
+  strong key per object, so each such object stayed reachable for the whole run even where the
+  detector's own state was weak. It now keys weakly; a live object keeps its label. Retention tests
+  for both lookup paths and for `AbstractInstanceDetector` with an unnamed subject were red (still
+  held after 50 collections) before the change.
+- **21 detectors' structured findings now carry a name `DetectorTrust` resolves (#930).** Their
+  `Violation.detector()` literal was a third spelling, neither the class name nor the alias
+  (`"BusyWait"` beside `"BusyWaiting"`), so `DetectorTrust.tierOfDetector(v.detector())` answered
+  PROMPT for them whatever their tier. 44 literals now use the alias the other 125 detectors already
+  use. Listeners and `AsyncFindings` were not affected: they receive the class name. A new check in
+  `DetectorTrustCoverageTest` resolves every literal; it listed all 44 before the fix.
+- **The weekly concurrency kill check measures every test marked for a class.** It keyed its
+  results by class, so a second `@ConcurrencyTestFor` for the same class silently replaced the
+  first. It now runs PIT once per class with all of its marked tests together, and `RendezvousTest`
+  is marked for `AsyncTestContext`: the class's kill share rose from 6% to 21% (109/512), and its
+  floor from 4% to 14% (#925).
 - **The real-licence E2E tests run in CI.** `RealKeygenLicenseE2eTest` and
   `RealOfflineLicenseE2eTest` had skipped on every CI leg since 1.9.1, and the offline class also
   skipped on the Windows operator machine, because the env file's MSYS path (`/c/Users/...`) does
@@ -26,12 +131,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A bare `@AsyncTest` runs `Preset.ESSENTIALS`, not every detector (breaking, 1.13.0).** The
+  defaults are now `detectAll = false` and `preset = Preset.ESSENTIALS`, and `detectAll = true` is
+  the explicit opt-in to every detector, whatever the preset says; `includes` still wins over both.
+  Every test paid for all 146 detectors' setup and read findings from every trust tier while most
+  suites want a curated subset. `ESSENTIALS` holds 12 detectors and none at the ADVISORY tier, which
+  `LeanDefaultSelectionTest` keeps true. That test went red first: a bare annotation resolved to all
+  146 types and `detectAll = false` to none. `detectAll = false` beside a named preset now resolves to
+  that preset. The 694 annotations in this repository that relied on the old default now say
+  `detectAll = true`, so what they test did not shrink. `docs/MIGRATION.md` has the rewrite (#923).
+- **A docs-only pull request can no longer wait forever on `E2E Tests` (#910).** The check is
+  required, but `e2e-tests.yml` skipped pull requests that touch only docs, so the context would
+  never report. Its pull-request trigger is no longer path-filtered, and
+  `RequiredCheckIsNeverPathFilteredTest`, whose copy of the required checks lacked `E2E Tests` and
+  `Corpus Eval`, now lists them and reads only pull-request filters.
+- **Two surefire forks on the Ubuntu CI legs is a recorded decision (#898).** Shipped in 1.12.4
+  ahead of its soak. The soak is now in: 17 Tests & Build runs (51 Ubuntu legs) with no failure and
+  no timeout, and the test step's median fell from 1,049 to 619 s on JDK 25 and from 1,066 to
+  947 s on JDK 21. The pom comment and `docs/BUILDING.md` record the numbers.
+- **CI fails when the set of skipped tests changes (#905).** Skips used to be a count in a log
+  line, and the real-licence E2E tests skipped unnoticed for two months. Every job that runs a
+  suite now runs `.github/scripts/skipped_tests_gate.py`, which fails when a test skips that
+  `.github/skipped-tests.txt` does not list, or a listed skip ran. `SkippedTestsGateWiringTest`
+  requires every test-running job to call it or carry a reason it does not.
+- **A Windows-only regression can fail a pull request (#907).** The full suite's Windows and
+  macOS legs are advisory and skip pull requests, so `LicenseValidationCacheDogfoodTest`, which
+  guards a temp-file leak only Windows produces, could go red on no leg that blocks anything. Test
+  classes like it carry the new `@OsSensitive` tag, and Tests & Build's `OS-Sensitive Tests` job
+  runs that tag on Windows and macOS on every event, as an ordinary failing job that also fails
+  when the tag selects nothing. Both legs are required checks on `main`.
+- **The weekly PIT run checks that each concurrency test would fail if its class broke (#909).**
+  `.github/scripts/concurrency_test_kills.py` mutates each `@ConcurrencyTestFor` class with only its
+  marked test, and fails below a per-class floor in `.github/concurrency-kill-floors.txt`. A test
+  weakened the way `LicenseGuard`'s old one was drops from 61% to 22% of the class's mutants and is
+  named.
+- **Every `@AIThreadSafe` class has a test that can fail when the claim breaks (#906).**
+  `ThreadSafetyClaimsAreTestedConcurrentlyTest` requires each class outside the detectors that
+  carries the annotation to be named with `@ConcurrencyTestFor` by a test that runs it through
+  `@AsyncTest` or a `CyclicBarrier`. The five such classes are covered; the new
+  `ConcurrencyRunnerCollisionDogfoodTest` checks that every worker of a round is in the body at once
+  and that rounds never overlap. `DetectorRegistry` claimed `SYNCHRONIZED` while holding no lock;
+  its claim now describes what makes it safe (final fields published before the workers start).
 - **Three licence guardrails reach the always-loaded `CLAUDE.md`.** `OfflineLicense`'s embedded
   vendor key is `@AILocked`, so the Locked Files Guard stops any change that would deny every
   offline file already issued; `LicenseValidationCache` is `@AISecure`, joining `LicenseGuard` and
   `OfflineLicense`, because it decides when online validation is skipped and when outage grace
   applies; and `LicenseGuard`'s fingerprint record is `@AIPrivacy`, the library's first, because
   its generated `toString()` prints the licence key and the user's email together.
+
+### Removed (1.13.0)
+
+1.13.0 breaks the public API in a minor release, by the owner's decision (2026-10-06) rather than
+a 2.0.0. `docs/SUPPORT_POLICY.md` records the exception, `docs/MIGRATION.md` the rewrite, and
+japicmp waives exactly these removals by name; checked by narrowing an unrelated public method,
+which still fails the build.
+
+- **The 146 per-detector boolean attributes on `@AsyncTest`.** `detectRaceConditions = true` and the
+  other 145 are gone; select detectors by `DetectorType` with `includes`, `excludes` and `preset`.
+  The attributes were a trap as well as an edit tax: 144 defaulted to `true`, so
+  `@AsyncTest(detectAll = false, detectX = true)`, which this repository's own fixtures described
+  as "only X", ran every detector except `VISIBILITY` and `LIVELOCKS`. `detectAll = false` on its
+  own now selects nothing. The detector-not-active error now names the `DetectorType` to add to
+  `includes`. 360 annotations across the tests, fixtures and examples were rewritten by intent
+  (flags under `detectAll = false` became `includes`; flags the default `detectAll` ignored were
+  dropped). `AsyncTestConfig`'s public flags and builder setters stay (#383). `docs/MIGRATION.md`
+  has the rewrite (#920).
+- **The 42 deprecated `*Monitor()` accessors on `AsyncTestContext`.** Each was a second name for
+  the instance its `*Detector()` replacement returns, deprecated since 1.7 and naming that
+  replacement. 38 differ only in the suffix; `semaphoreMonitor`, `completableFutureMonitor`,
+  `conditionMonitor` and `copyOnWriteMonitor` were renamed to say what they detect, and
+  `nestedMonitorLockoutMonitor` becomes `nestedMonitorLockoutDetector`. `docs/MIGRATION.md` has the
+  table (#921).
+- **The built-in SPI bridge.** `se.deversity.asynctest.spi.adapters` (`LegacyDetectorFactories`,
+  `LegacyDetectorAdapter`, `SharedMessageDigestDetectorFactory`), the
+  `META-INF/async-test/builtin-detector-factories` list and `spi.DetectorRegistry.build(config)`
+  are gone. Each built-in detector was wired twice: once in the runner's registry, which the run
+  reads, and once as a bridge factory building a fresh instance that observed nothing, reachable
+  only through `build(config)`, which only tests called. The SPI stays as the path for detectors
+  the library does not ship: `buildExternal(config)` is unchanged. Migration: replace
+  `DetectorRegistry.build(cfg)` with `AsyncTestConfig.enabledDetectors()` to ask what is selected,
+  or `buildExternal(cfg)` for third-party detectors (#922).
 
 ## [1.12.4] - 2026-10-04
 

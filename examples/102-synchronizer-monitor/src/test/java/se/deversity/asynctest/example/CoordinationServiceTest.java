@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -164,8 +165,10 @@ class CoordinationServiceTest {
      *    single ReentrantLock with a Condition on it
      */
     @Disabled("Remove @Disabled to see the bug detected by SynchronizerMonitor")
-    @AsyncTest(threads = PARTIES, invocations = 5, detectAll = false,
-            monitorSynchronizers = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = PARTIES,
+            invocations = 5,
+            failOn = FailOn.LOW,
+            includes = DetectorType.SYNCHRONIZERS)
     void test_concurrent_detectsOverSynchronization() throws Exception {
         // This demonstration used to register the Semaphore with expectedParties = 1 and record
         // one arrival per body execution. One arrival out of one expected is a barrier working,

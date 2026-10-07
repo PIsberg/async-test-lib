@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -82,7 +83,7 @@ class WeakCacheServiceTest {
      * 3. To fix: wrap cache in Collections.synchronizedMap()
      */
     @Disabled("Remove @Disabled to see the bug detected by WeakHashMapSharedDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectWeakHashMapShared = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.WEAK_HASH_MAP_SHARED)
     void test_concurrent_detectsSharedWeakHashMap() {
         Object key = new Object();
         Thread thread = Thread.currentThread();

@@ -125,8 +125,9 @@ From `clojure.test`:
     (is (seq (.violationsFrom findings "RaceConditionDetector")))))
 ```
 
-Two things the annotation does for you that the builder does not: `detectAll(true)` (the
-builder defaults every detector to off), and a per-test identity (every programmatic run is
+Two things the annotation does for you that the builder does not: a detector selection (the
+builder starts from deadlock detection alone; `preset(Preset.ESSENTIALS)` is the annotation's
+default, `detectAll(true)` every detector), and a per-test identity (every programmatic run is
 `AsyncTestRunner$BodyHolder#run` in the log and the finding baseline). The body is a `reify` of
 `AsyncTestRunner$Body`, not a fn: `Body` declares `throws Throwable` and Clojure has no SAM
 conversion for fns. Fixture, both directions, run by `clojure-maven-plugin`'s `test` goal:

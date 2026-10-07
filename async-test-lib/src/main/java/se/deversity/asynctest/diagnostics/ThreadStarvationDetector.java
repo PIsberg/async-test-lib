@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectThreadStarvation = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.THREAD_STARVATION)
  * void testStarvation() {
  *     ExecutorService executor = Executors.newFixedThreadPool(2);
  *     AsyncTestContext.threadStarvationDetector()

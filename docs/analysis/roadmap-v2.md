@@ -115,12 +115,16 @@ done behind the existing API. Only deletions must wait for 2.0.
 
 ### Train 1 — 1.8.x (fully compatible, start immediately)
 
-* **Config core**: introduce an internal `EnumSet<DetectorType> enabledDetectors` on
+* **Config core** (#917, **done 2026-10-06**: `AsyncTestConfig.enabledDetectors()`, and the 146
+  resolution lines are gone): introduce an internal `EnumSet<DetectorType> enabledDetectors` on
   `AsyncTestConfig` as the single source of truth, computed once in `build()` from
   preset/includes/excludes/detectAll/legacy booleans. Keep every existing public boolean
   field, now assigned as a one-line derivation (`this.detectXxx = enabled.contains(XXX)`).
   Binary compatibility: unchanged — fields keep their signatures and values.
-* **Registry table**: replace the 127 hand-written conditional constructions in
+* **Registry table** (#916, **done 2026-10-06**: each construction is one row,
+  `field = create(DetectorType.TYPE, Xxx::new)`, keyed on `enabledDetectors()`; a separate
+  `Map<DetectorType, Supplier>` beside the fields would have added an edit site, not removed one):
+  replace the 127 hand-written conditional constructions in
   `DetectorRegistry` with a `Map<DetectorType, Supplier<Object>>` factory table iterated
   against `config.enabledDetectors`. The per-detector fields and accessors remain, assigned
   from the table's output, so `AsyncTestContext` and all tests are untouched.
@@ -129,16 +133,21 @@ done behind the existing API. Only deletions must wait for 2.0.
 
 ### Train 2 — 1.9.x (fully compatible)
 
-* **`AbstractInstanceDetector<T>` base class**: owns the instance map, `stateFor()`
+* **`AbstractInstanceDetector<T>` base class** (#918, **first wave done 2026-10-06**: the base
+  class with weak identity keys, and the five `Shared*` detectors whose scaffolding was identical:
+  `SharedDecimalFormat`, `SharedFormatter`, `SharedMatcher`, `SharedTimeZone`, `SharedXmlParser`.
+  The rest vary in state shape and migrate in later waves): owns the instance map, `stateFor()`
   (get-then-computeIfAbsent hot path), thread-id/name key sets, enabled flag, and `reset()`.
   Migrate the ~83 scaffolding-duplicating detectors in waves — each has a dedicated test
   class to pin behavior. Fix the `identityHashCode` hazard here once, in the base class,
   with weak identity keying.
-* **Structured output beside prose**: add `default List<Violation> violations()` to the
+* **Structured output beside prose** (done: #801, PR #886, every built-in report now keeps its `Violation`s): add `default List<Violation> violations()` to the
   detector surface (additive). Detectors populate `Violation` records; the existing string
   reports become rendered views of them. The runner gates on `Violation.severity()` instead
   of parsing prose; `JsonFormatter`/`MarkdownFormatter` become reachable end-to-end.
-* **Open detector identity (additive)**: add `default String id()` to `spi.Detector`
+* **Open detector identity (additive)** (#919, **done 2026-10-06**: `Detector.id()` and
+  `DetectorFactory.id()`, `type()` now optional, the SPI registry keyed by id, and
+  `@AsyncTest(excludeIds = ...)`. The registry that survives 1.13.0 is decided in #922): add `default String id()` to `spi.Detector`
   (defaulting to `type().name()`), and an id-keyed enablement path in the SPI, so third
   parties can ship genuinely new detectors without touching the sealed enum.
 
@@ -149,7 +158,8 @@ at any time and does not wait on the `AsyncTestConfig` decision: the 146 `@Async
 and the 42 `AsyncTestContext` accessors can be removed now, because both are deprecated and both
 name their replacement. Each item below says whether it is ready.
 
-* Remove the 146 deprecated boolean attributes from `@AsyncTest`. Ready: all 146 carry a
+* Remove the 146 deprecated boolean attributes from `@AsyncTest` (#920, **done 2026-10-06**;
+  360 annotations rewritten, and `detectAll = false` now selects nothing). Ready: all 146 carry a
   `@deprecated` tag naming `preset` / `includes` / `excludes` and a `DetectorType`, and
   `DeprecationsNameTheirReplacementTest` keeps that true. Seven of them had no tag at all until
   2026-08-27.
@@ -165,15 +175,39 @@ name their replacement. Each item below says whether it is ready.
   `EnumSet` is the source of truth, each field becomes a one-line derivation of it and stops being
   an independent resolution that can be wrong. The annotation attributes and the `*Monitor()`
   accessors are unaffected by this decision and stay on the list below.
-* Remove the 42 deprecated `*Monitor()` accessors from `AsyncTestContext` (renamed
+* Remove the 42 deprecated `*Monitor()` accessors from `AsyncTestContext` (#921, **done
+  2026-10-06**: 504 lines removed, 77 files moved to the new names) (renamed
   `*Detector()` aliases shipped in 1.7). Ready: all 42 name their replacement. Four are not a
   suffix swap and one defeats a global `Monitor` to `Detector` replace; `docs/MIGRATION.md` lists
   them.
-* Delete whichever registry lost: either the legacy hand-wired path (SPI becomes the
+* Delete whichever registry lost (#922). **Done 2026-10-06:** the built-in SPI bridge lost and is
+  deleted (`spi.adapters`, the built-in factory list, `spi.DetectorRegistry.build(config)`); the SPI
+  stays as the third-party path, keyed by id after #919. Originally: either the legacy hand-wired path (SPI becomes the
   runtime) or the dead SPI duplication — decided during Train 2 based on how the
   id-keyed SPI shakes out.
-* Flip the default from detect-everything to a lean preset (e.g. `Preset.ESSENTIALS`);
-  `detectAll` stays available as an explicit opt-in.
+* Flip the default from detect-everything to a lean preset (#923, **done 2026-10-06**: a bare
+  `@AsyncTest` runs `Preset.ESSENTIALS`, 12 detectors with none at the ADVISORY tier, pinned by
+  `LeanDefaultSelectionTest`); `detectAll = true` is the explicit opt-in.
+
+## Feature roadmap, beside the trains
+
+The trains reshape the internals; these items add what a test author can do. Each has an issue
+that says what it would take.
+
+* **History-based (linearizability) checking** (#924, **prototype shipped 2026-10-06** as the
+  experimental `OperationHistory` and `SequentialSpec`; design in
+  [linearizability-checking.md](linearizability-checking.md)). The detectors recognise known race
+  patterns; nothing checks whether a concurrent object's results are explainable at all. Record
+  each worker's operations with their invocation and response, then search for a real-time
+  consistent sequential order in which a sequential model gives the same results; if none exists,
+  fail with the history as the counterexample. On the JVM the established tool is Lincheck, which
+  is Kotlin-first. A design effort rather than a helper: a recording API, a way to state the model,
+  a bounded search (the general problem is NP-complete, so histories stay small) and a report
+  format. Added 2026-10-06.
+* **Shipped 2026-10-06** as the smaller helpers proposed with it: `AsyncTestContext.rendezvous()`,
+  which makes a round's workers meet mid-body, and `RunOutcomes`, which asserts that something
+  happened exactly once, at most once, or with distinct values
+  ([ASYNC_ASSERT.md](../ASYNC_ASSERT.md)).
 
 ## Overcoming the mechanical gates
 
@@ -182,7 +216,7 @@ name their replacement. Each item below says whether it is ready.
   not only on a 2.0 branch, because the previous setting
   (`breakBuildOnBinaryIncompatibleModifications`) failed on any break whatever the version said,
   which made 2.0.0 unbuildable rather than merely gated. Measured at the time of the change, with
-  the version set to 2.0.0 and `AsyncTestContext.semaphoreMonitor()` deleted: it failed with
+  the version set to 2.0.0 and `AsyncTestContext.semaphoreMisuseDetector()` deleted: it failed with
   `METHOD_REMOVED` before, passes after. The same removal still fails at 1.10.0 and at 1.9.9, and
   adding public API in a patch release still passes, so nothing was weakened.
   `JapicmpBaselineFreshnessTest` pins the setting and was verified to behave correctly at 2.0.0

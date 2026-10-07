@@ -56,7 +56,7 @@ class SharedTimeZoneTest {
     // =========================================================================
     // Part 2: Upgrade to @AsyncTest (0.10.0) to detect the bug
     //
-    // @AsyncTest(threads = 4, invocations = 3, detectSharedTimeZone = true, timeoutMs = 5000)
+    // @AsyncTest(threads = 4, invocations = 3, timeoutMs = 5000, includes = DetectorType.SHARED_TIMEZONE)
     // =========================================================================
 
     @Test

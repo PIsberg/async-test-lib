@@ -33,18 +33,22 @@ all 148 examples build; this only moves discovery of the common failure earlier.
 
 ## What a docs-only change runs
 
-Six workflows carry no required status context and cannot be affected by prose, pictures or an
+Five workflows carry no required status context and cannot be affected by prose, pictures or an
 issue template, so since #484 they skip a diff that touches only `docs/**`, `**/*.md`,
-`.github/ISSUE_TEMPLATE/**` or `LICENSE`: `e2e-tests.yml` (the largest, at roughly fifteen jobs),
-`load-tests.yml`, `codeql.yml`, `inquisitor.yml`, `copilot-review.yml` and
-`dependency-review.yml`.
+`.github/ISSUE_TEMPLATE/**` or `LICENSE`: `load-tests.yml`, `codeql.yml`, `inquisitor.yml`,
+`copilot-review.yml` and `dependency-review.yml`. `e2e-tests.yml` keeps that filter on `push`
+only: it reports the required `E2E Tests` context, so a docs-only pull request runs it (#910).
 
-`tests.yml`, `gradle-tests.yml` and `guardrails.yml` are deliberately **not** filtered. They
-report the seven contexts `main` requires, and GitHub does not read "never ran" as "passed": a
+`tests.yml`, `gradle-tests.yml` and `guardrails.yml` are deliberately **not** filtered. With
+`e2e-tests.yml` and `corpus.yml` they report the eleven contexts `main` requires, and GitHub does
+not read "never ran" as "passed": a
 pull request whose required check never reported sits at BLOCKED with every visible check green
 and no way forward but an admin merge. That is worse than the fan-out. `corpus.yml` is not
 filtered either, because `CorpusClaimsInDocsTest` reads `README.md` and
 `docs/analysis/corpus-eval.md` - a prose change there is exactly what it checks.
 
 `RequiredCheckIsNeverPathFilteredTest` holds that line: it fails if a workflow declaring a
-required job name also declares a `paths` or `paths-ignore` filter on its triggers.
+required job name also declares a `paths` or `paths-ignore` filter on a pull-request trigger.
+Its list of required job names is a copy of branch protection and must change with it; until
+#910 it lacked `E2E Tests` and `Corpus Eval`, which is how `e2e-tests.yml` kept a filter while
+required.

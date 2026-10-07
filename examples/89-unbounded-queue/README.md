@@ -1,7 +1,7 @@
 # Example 89 — Unbounded Queue
 
 **Detector**: `UnboundedQueueDetector`  
-**Flag**: `detectUnboundedQueue = true`
+**Select it with**: `includes = DetectorType.UNBOUNDED_QUEUE`
 
 ## The Problem
 

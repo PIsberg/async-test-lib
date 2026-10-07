@@ -67,9 +67,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectLockDowngrade = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.LOCK_DOWNGRADE)
  * void testLockUpgrade() {
- *     LockDowngradeDetector mon = AsyncTestContext.lockDowngradeMonitor();
+ *     LockDowngradeDetector mon = AsyncTestContext.lockDowngradeDetector();
  *     rwLock.readLock().lock();
  *     mon.recordReadLockAcquired(rwLock, "myLock");
  *     try {

@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 10, detectCacheConcurrency = true)
+ * @AsyncTest(threads = 10, includes = DetectorType.CACHE_CONCURRENCY)
  * void testCache() {
  *     Map<String, Object> cache = new HashMap<>();
  *     AsyncTestContext.cacheConcurrencyDetector()

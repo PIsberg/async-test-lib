@@ -35,9 +35,11 @@ class PerInvocationLifecycleTest {
             counter = 0;
         }
 
-        @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 5_000,
+        @AsyncTest(threads = THREADS,
+                   invocations = INVOCATIONS,
+                   timeoutMs = 5_000,
                    useVirtualThreads = false,
-                   detectDeadlocks = false)
+                   detectAll = true)
         void increment() {
             counter++;
         }
@@ -80,8 +82,11 @@ class PerInvocationLifecycleTest {
         @BeforeEachInvocation
         void before() { beforeCount.incrementAndGet(); }
 
-        @AsyncTest(threads = 2, invocations = 3, timeoutMs = 5_000,
-                   useVirtualThreads = false, detectDeadlocks = false)
+        @AsyncTest(threads = 2,
+                   invocations = 3,
+                   timeoutMs = 5_000,
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEachInvocation
@@ -111,8 +116,11 @@ class PerInvocationLifecycleTest {
         private final AtomicInteger afterCount = new AtomicInteger(0);
         private final AtomicInteger rounds     = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000,
-                   useVirtualThreads = false, detectDeadlocks = false)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   timeoutMs = 5_000,
+                   useVirtualThreads = false,
+                   detectAll = true)
         void alwaysFails() {
             throw new AssertionError("intentional");
         }
@@ -137,8 +145,11 @@ class PerInvocationLifecycleTest {
 
     static class BothRoundAndAfterHookFail {
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 5_000,
-                   useVirtualThreads = false, detectDeadlocks = false)
+        @AsyncTest(threads = 2,
+                   invocations = 1,
+                   timeoutMs = 5_000,
+                   useVirtualThreads = false,
+                   detectAll = true)
         void alwaysFails() {
             throw new AssertionError("the failure the user needs to see");
         }
@@ -218,8 +229,11 @@ class PerInvocationLifecycleTest {
         @AfterEachInvocation
         void after() { calls.add("sub.after"); }
 
-        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000,
-                   useVirtualThreads = false, detectDeadlocks = false)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   timeoutMs = 5_000,
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEach
@@ -233,8 +247,11 @@ class PerInvocationLifecycleTest {
         @Override
         void before() { calls.add("sub.before-unannotated"); }
 
-        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000,
-                   useVirtualThreads = false, detectDeadlocks = false)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   timeoutMs = 5_000,
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEach
@@ -252,8 +269,11 @@ class PerInvocationLifecycleTest {
         @AfterEachInvocation
         void subAfter() { calls.add("sub.after"); }
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 5_000,
-                   useVirtualThreads = false, detectDeadlocks = false)
+        @AsyncTest(threads = 2,
+                   invocations = 1,
+                   timeoutMs = 5_000,
+                   useVirtualThreads = false,
+                   detectAll = true)
         void noOp() { /* nothing */ }
 
         @AfterEach

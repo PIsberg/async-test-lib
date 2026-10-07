@@ -63,8 +63,10 @@ class DeclaredSeverityGateTest {
     public static class LeakUnderHighGateDummy {
         private final Object connection = new Object();
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH,
-                   detectAll = false, detectResourceLeaks = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.HIGH,
+                   includes = DetectorType.RESOURCE_LEAKS)
         void leak() {
             AsyncTestContext.resourceLeakDetector().registerResource(connection, "db", "Connection");
             AsyncTestContext.resourceLeakDetector().recordResourceOpened(connection, "db");
@@ -75,8 +77,10 @@ class DeclaredSeverityGateTest {
     public static class LeakUnderMediumGateDummy {
         private final Object connection = new Object();
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.MEDIUM,
-                   detectAll = false, detectResourceLeaks = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.MEDIUM,
+                   includes = DetectorType.RESOURCE_LEAKS)
         void leak() {
             AsyncTestContext.resourceLeakDetector().registerResource(connection, "db", "Connection");
             AsyncTestContext.resourceLeakDetector().recordResourceOpened(connection, "db");

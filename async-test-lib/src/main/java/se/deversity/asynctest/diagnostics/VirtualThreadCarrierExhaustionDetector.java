@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <pre>{@code
  * private final Object lock = new Object();
  *
- * @AsyncTest(threads = 20, useVirtualThreads = true, detectVirtualThreadCarrierExhaustion = true)
+ * @AsyncTest(threads = 20, useVirtualThreads = true, includes = DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION)
  * void testPotentialExhaustion() {
  *     var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
  *     detector.recordBlockingStart("synchronized-lock");

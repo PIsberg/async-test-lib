@@ -1,6 +1,7 @@
 package se.deversity.asynctest.example;
 
 import com.sun.net.httpserver.HttpServer;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -140,8 +141,10 @@ class HttpApiClientTest {
      * 3. Fix: hold one client, and complete every request you start
      */
     @Disabled("Remove @Disabled to see the bug detected by HttpClientConcurrencyDetector")
-    @AsyncTest(threads = 8, invocations = 3, detectAll = false,
-            detectHttpClientIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 3,
+            failOn = FailOn.LOW,
+            includes = DetectorType.HTTP_CLIENT)
     void testNotifyAsync_concurrent_detectsAbandonedRequests() {
         HttpClientConcurrencyDetector detector = AsyncTestContext.httpClientDetector();
         client.observeHttp(

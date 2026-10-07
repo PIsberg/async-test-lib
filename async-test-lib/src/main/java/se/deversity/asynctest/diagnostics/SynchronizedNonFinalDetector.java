@@ -62,7 +62,7 @@ import java.util.concurrent.atomic.LongAdder;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSynchronizedNonFinal = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SYNCHRONIZED_NON_FINAL)
  * void testReassignableLock() {
  *     AsyncTestContext.synchronizedNonFinalDetector()
  *         .recordLockObject(lock, "MyClass.lock", MyClass.class, this);

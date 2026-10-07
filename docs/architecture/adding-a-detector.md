@@ -9,27 +9,31 @@ detector just doesn't run.
 
 ## The synchronized-change contract
 
-One new `DetectorType` constant requires simultaneous changes in five files, all under
+One new `DetectorType` constant requires simultaneous changes in four files, all under
 `async-test-lib/src/main/java/se/deversity/asynctest/`. Land them as one change, never piecemeal.
 
 1. **`DetectorType.java`** — the new enum constant. This file is `@AILocked`; edit only with
-   explicit owner sign-off.
-2. **`AsyncTest.java`** — the matching `detectXxx()` annotation attribute. Its name and default
-   become stable public API.
-3. **`AsyncTestConfig.java`** — public final flag field, `Builder` field plus same-named setter, the
-   `from(AsyncTest)` call chain, **and the resolution line in `build()`**
-   (`(detectAll || flag) && !excludes.contains(TYPE)`, one per detector). See
-   [configuration-resolution.md](configuration-resolution.md).
-4. **`DetectorRegistry.java`** — three steps that must land together: (a) the final field,
-   (b) conditional construction in the constructor keyed on the config flag, (c) an `analyzeAll()`
-   call in the correct phase block.
-5. **`AsyncTestContext.java`** — the field copied from the registry plus the static accessor used by
+   explicit owner sign-off. Users select it by this name with `includes` / `excludes`; there is
+   no `@AsyncTest` attribute to add (the per-detector attributes were removed in 1.13.0, #920).
+2. **`AsyncTestConfig.java`** — public final flag field derived in the constructor
+   (`flag = enabled.contains(DetectorType.TYPE);`) and the same-named `Builder` setter
+   (`return flag(DetectorType.TYPE, v);`). Resolution itself is one `EnumSet` and needs no
+   per-detector line. See [configuration-resolution.md](configuration-resolution.md).
+3. **`DetectorRegistry.java`** — three steps that must land together: (a) the final field,
+   (b) its factory-table row in the constructor, `field = create(DetectorType.TYPE, Xxx::new);`,
+   keyed on the type rather than a config flag (#916), (c) an `analyzeAll()` call in the correct
+   phase block. `DetectorRegistryFactoryTableTest` fails on a type with no row, or two.
+4. **`AsyncTestContext.java`** — the field copied from the registry plus the static accessor used by
    instrumented code, keeping ThreadLocal install/uninstall symmetric. See
    [execution-flow.md](execution-flow.md).
 
 ## The detector class itself
 
-New detectors live in `diagnostics/` and follow the house thread-safety idiom: per-key state in a
+New detectors live in `diagnostics/` and follow the house thread-safety idiom. A detector that
+keeps state per object it is told about extends `AbstractInstanceDetector<S>` (#918), which owns
+the weakly identity-keyed map, the get-then-`computeIfAbsent` lookup and the label of an unnamed
+object: implement `newState(instance, label)`, call `stateFor(instance, name)` on the record path
+and iterate `states()` in `analyze()`. Otherwise: per-key state in a
 `ConcurrentHashMap` with a **get-then-`computeIfAbsent`** hot path, thread-id/name sets as
 `ConcurrentHashMap.newKeySet()`, counters as `LongAdder`. Violation lists are `CopyOnWrite` or
 synchronized lists; first-registration-wins uses `putIfAbsent`.
@@ -88,11 +92,9 @@ Every detector has a mandated JUnit 5 test at
 Integration-style coverage typically uses the `EngineTestKit` dummy pattern — see
 [../QUALITY_GATES.md](../QUALITY_GATES.md).
 
-## Also register the factory
+## No SPI factory
 
-`spi/adapters/LegacyDetectorFactories.java` exposes each detector through the `DetectorFactory`
-`ServiceLoader` path via `LegacyDetectorAdapter`. `AllDetectorsSpiCoverageTest` fails loudly if the
-SPI side is incomplete.
-
-The adapter's structure is deliberately legacy-shaped — do not modernize it; touch its business
-logic only when explicitly asked.
+A built-in detector needs no `DetectorFactory`. Until 1.13.0 each also had a bridge factory in
+`spi/adapters/LegacyDetectorFactories.java` and a line in `builtin-detector-factories`; that path
+observed nothing and was removed (#922). The SPI is for detectors the library does not ship
+([detector-spi.md](detector-spi.md)).

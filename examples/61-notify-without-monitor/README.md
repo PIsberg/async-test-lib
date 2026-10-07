@@ -26,7 +26,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 attempt made without holding the required monitor.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNotifyWithoutMonitor = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.NOTIFY_WITHOUT_MONITOR)
 void test_concurrent_detectsBug() { ... }
 ```
 

@@ -193,7 +193,7 @@ prints the problems it found and still succeeds.
 
 **No findings appear even though tests ran**
 - Detectors only fire when a concurrency issue is actually detected. A clean run produces no findings — that's the expected behaviour.
-- Try running with `detectAll = true` (the default) to enable every detector.
+- Try running with `detectAll = true` to enable every detector; a bare `@AsyncTest` runs only `Preset.ESSENTIALS` since 1.13.0.
 
 **Severity shows as UNKNOWN**
 - The JSON report was written by an older version of `JsonReportListener` (before 1.6.0). Upgrade the library dependency.

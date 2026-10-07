@@ -1,7 +1,7 @@
 # Example 84 — Thread Leak
 
 **Detector**: `ThreadLeakDetector`  
-**Flag**: `detectThreadLeaks = true`
+**Select it with**: `includes = DetectorType.THREAD_LEAKS`
 
 ## The Problem
 

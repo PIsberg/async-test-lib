@@ -29,17 +29,17 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectParallelStreamIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.PARALLEL_STREAMS)
  * void testParallelStream() {
  *     List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
  *     AtomicInteger counter = new AtomicInteger();
  *     
- *     AsyncTestContext.parallelStreamMonitor()
+ *     AsyncTestContext.parallelStreamDetector()
  *         .recordParallelStream("stateful-stream");
  *     
  *     // Bug: stateful lambda modifying external state
  *     list.parallelStream().forEach(i -> counter.incrementAndGet());
- *     AsyncTestContext.parallelStreamMonitor()
+ *     AsyncTestContext.parallelStreamDetector()
  *         .recordStatefulOperation("stateful-stream", "forEach");
  * }
  * }</pre>
@@ -209,15 +209,15 @@ public class ParallelStreamDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.statefulLambdas) {
-                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                report.structuredViolations.add(new Violation("ParallelStreams", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.nonThreadSafeCollectors) {
-                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                report.structuredViolations.add(new Violation("ParallelStreams", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.sideEffects) {
-                report.structuredViolations.add(new Violation("ParallelStream", severity,
+                report.structuredViolations.add(new Violation("ParallelStreams", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

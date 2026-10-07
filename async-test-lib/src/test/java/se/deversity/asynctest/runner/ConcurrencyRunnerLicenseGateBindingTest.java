@@ -35,14 +35,15 @@ class ConcurrencyRunnerLicenseGateBindingTest {
     static class DeniedRun {
         @AsyncTest(threads = 2, invocations = 1,
                 licenseMockMode = false,
-                licenseKey = "INVALID-TEST-KEY-0000")
+                licenseKey = "INVALID-TEST-KEY-0000",
+                detectAll = true)
         void body() {
             // Never reached: the licence gate must refuse the run before workers start.
         }
     }
 
     static class MockedRun {
-        @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+        @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
         void body() { }
     }
 

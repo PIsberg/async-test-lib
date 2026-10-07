@@ -24,10 +24,10 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectResourceLeaks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.RESOURCE_LEAKS)
  * void testResourceUsage() throws IOException {
  *     FileInputStream fis = new FileInputStream("data.txt");
- *     AsyncTestContext.resourceLeakMonitor()
+ *     AsyncTestContext.resourceLeakDetector()
  *         .registerResource(fis, "file-input", "FileInputStream");
  *     
  *     try {
@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  *         fis.read();
  *     } finally {
  *         fis.close();
- *         AsyncTestContext.resourceLeakMonitor()
+ *         AsyncTestContext.resourceLeakDetector()
  *             .recordResourceClosed(fis, "file-input");
  *     }
  * }
@@ -169,11 +169,11 @@ public class ResourceLeakDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.MEDIUM);
             for (String finding : report.resourceLeaks) {
-                report.structuredViolations.add(new Violation("ResourceLeak", severity,
+                report.structuredViolations.add(new Violation("ResourceLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.openResources) {
-                report.structuredViolations.add(new Violation("ResourceLeak", severity,
+                report.structuredViolations.add(new Violation("ResourceLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

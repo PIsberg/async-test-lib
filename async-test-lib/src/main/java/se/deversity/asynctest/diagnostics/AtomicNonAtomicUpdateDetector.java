@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.atomicNonAtomicUpdateMonitor();
+ * var mon = AsyncTestContext.atomicNonAtomicUpdateDetector();
  * int v = counter.get();
  * mon.recordGet(counter, "counter", Thread.currentThread());
  * counter.set(v + 1);   // BUG: concurrent updates from other threads are silently lost

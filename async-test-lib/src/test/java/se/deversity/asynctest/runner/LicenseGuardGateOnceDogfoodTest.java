@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.io.TempDir;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestConfig;
+import se.deversity.asynctest.ConcurrencyTestFor;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -36,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * network mode and a disabled validation cache mean no grace path and no disk record can stand in
  * for the request.
  */
+@ConcurrencyTestFor(LicenseGuard.class)
 class LicenseGuardGateOnceDogfoodTest {
 
     private static final int THREADS = 8;
@@ -76,7 +78,7 @@ class LicenseGuardGateOnceDogfoodTest {
         set("license.file", null);
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 20_000, detectAll = true)
     void everyWorkerChecksTheSameConfiguration() {
         LicenseGuard.check(AsyncTestConfig.builder().licenseMockMode(false).build());
     }

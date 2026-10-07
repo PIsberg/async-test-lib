@@ -6,7 +6,7 @@
 
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>async-test-parent</artifactId>
-    <version>1.12.4</version>
+    <version>1.13.0</version>
     <packaging>pom</packaging>
 
     <name>Async Test Library (parent)</name>
@@ -75,10 +75,15 @@
              Maven side sat at 1 with no way to override it: <forkCount> was a literal, and a
              literal beats -DforkCount, so the flag was accepted and ignored (under -X Surefire
              logs "(f) forkCount = 1" while still passing forkCount through as an inert system
-             property). Left at 1 by default so CI is unchanged: CI runners have 2 to 4 cores and
-             run the e2e tier, whose timing margins were last widened in 938b4c4a precisely to
-             survive a loaded runner, and adding fork contention there is a change worth its own
-             soak. -P fast raises it locally; override anywhere with -Dsurefire.forkCount=N. -->
+             property). The default stays 1. Tests & Build's Ubuntu legs pass
+             -Dsurefire.forkCount=2 (#898), decided on a soak because CI runners have 2 to 4 cores
+             and run the e2e tier, whose timing margins were last widened in 938b4c4a to survive a
+             loaded runner. The soak: 17 runs, 51 Ubuntu legs, 2026-10-04 to 10-05, with no failure
+             and no timeout; the 66 runs before it had 17 failed legs, none a timeout. The test
+             step's median went from 1,049 to 619 s on JDK 25 and 1,072 to 636 s on JDK 26 (those
+             legs also dropped JaCoCo in #899; the one run between the two changes took 844 and
+             823 s), and from 1,066 to 947 s on JDK 21, which still runs JaCoCo. macOS and Windows
+             keep 1. -P fast raises it locally; override anywhere with -Dsurefire.forkCount=N. -->
         <surefire.forkCount>1</surefire.forkCount>
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>

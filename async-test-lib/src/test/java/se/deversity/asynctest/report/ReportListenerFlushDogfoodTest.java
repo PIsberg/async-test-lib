@@ -52,7 +52,7 @@ class ReportListenerFlushDogfoodTest {
     private static final AtomicInteger XML_SEQUENCE = new AtomicInteger();
     private static final AtomicInteger XML_WROTE = new AtomicInteger();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 30_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 30_000, detectAll = true)
     void jsonReportIsWrittenByExactlyOneFlusherPerRound() {
         int round = JSON_SEQUENCE.getAndIncrement() / THREADS;
         JsonReportListener listener = JSON.computeIfAbsent(round,
@@ -64,7 +64,7 @@ class ReportListenerFlushDogfoodTest {
         }
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 30_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 30_000, detectAll = true)
     void xmlReportIsWrittenByExactlyOneFlusherPerRound() {
         int round = XML_SEQUENCE.getAndIncrement() / THREADS;
         JUnitXmlReportListener listener = XML.computeIfAbsent(round,

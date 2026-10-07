@@ -1,7 +1,7 @@
 # Example 91 — Virtual Thread CPU-Bound Task
 
 **Detector**: `VirtualThreadCpuBoundTaskDetector`  
-**Flag**: `detectVirtualThreadCpuBoundTasks = true`
+**Select it with**: `includes = DetectorType.VIRTUAL_THREAD_CPU_BOUND`
 
 ## The Problem
 

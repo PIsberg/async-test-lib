@@ -83,7 +83,7 @@ final class SilentRowPremise {
      * {@return the {@link AsyncTestContext} accessor names that hand out {@code type}'s detector}
      *
      * <p>Resolved by return type rather than by naming convention, because the convention does not
-     * hold: {@code ExecutorShutdownDetector} is reached through {@code executorShutdownMonitor()}.
+     * hold: {@code ExecutorShutdownDetector} is reached through {@code executorShutdownDetector()}.
      *
      * @param type the detector a row names
      */

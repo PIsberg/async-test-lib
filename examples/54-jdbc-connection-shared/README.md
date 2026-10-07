@@ -21,7 +21,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 `Connection` instance was accessed from multiple threads simultaneously.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectJdbcConnectionShared = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.JDBC_CONNECTION_SHARED)
 void test_concurrent_detectsBug() { ... }
 ```
 

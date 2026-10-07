@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -38,7 +39,7 @@ class TaskQueueTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by NotifyWithoutMonitorDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNotifyWithoutMonitor = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.NOTIFY_WITHOUT_MONITOR)
     void test_concurrent_detectsBug() {
         // Record the notify() attempt on the queue object without holding its monitor.
         // Thread.holdsLock(queue) is false here — that is the bug.

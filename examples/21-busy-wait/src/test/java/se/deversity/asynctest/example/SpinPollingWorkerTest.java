@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -153,7 +154,7 @@ class SpinPollingWorkerTest {
      * 3. Fix: replace ConcurrentLinkedQueue + spin with LinkedBlockingQueue.take()
      */
     @Disabled("Remove @Disabled to see busy-waiting detected by BusyWaitDetector")
-    @AsyncTest(threads = 8, invocations = 5, detectAll = false, detectBusyWaiting = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 5, failOn = FailOn.LOW, includes = DetectorType.BUSY_WAITING)
     void testProcess_concurrent_detectsBusyWaiting() {
         // The detector has to be the one the run owns. This demonstration used to record into a
         // locally constructed BusyWaitDetector, which the library never reads, so failOn had

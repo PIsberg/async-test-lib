@@ -24,20 +24,20 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectLockLeaks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.LOCK_LEAKS)
  * void testLockUsage() {
  *     ReentrantLock lock = new ReentrantLock();
- *     AsyncTestContext.lockLeakMonitor()
+ *     AsyncTestContext.lockLeakDetector()
  *         .registerLock(lock, "resource-lock");
  *     
  *     lock.lock();
- *     AsyncTestContext.lockLeakMonitor()
+ *     AsyncTestContext.lockLeakDetector()
  *         .recordLockAcquired(lock, "resource-lock");
  *     try {
  *         // critical section
  *     } finally {
  *         lock.unlock();
- *         AsyncTestContext.lockLeakMonitor()
+ *         AsyncTestContext.lockLeakDetector()
  *             .recordLockReleased(lock, "resource-lock");
  *     }
  * }
@@ -230,15 +230,15 @@ public class LockLeakDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.CRITICAL);
             for (String finding : report.lockLeaks) {
-                report.structuredViolations.add(new Violation("LockLeak", severity,
+                report.structuredViolations.add(new Violation("LockLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.heldLocks) {
-                report.structuredViolations.add(new Violation("LockLeak", severity,
+                report.structuredViolations.add(new Violation("LockLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.excessiveHoldTimes) {
-                report.structuredViolations.add(new Violation("LockLeak", severity,
+                report.structuredViolations.add(new Violation("LockLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

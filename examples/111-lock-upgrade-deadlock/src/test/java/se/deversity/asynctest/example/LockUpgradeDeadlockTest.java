@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -41,7 +42,7 @@ class LockUpgradeDeadlockTest {
     }
 
     @Disabled("Remove @Disabled to see the bug detected by LockUpgradeDeadlockDetector")
-    @AsyncTest(threads = 2, invocations = 5, detectAll = false, detectLockUpgradeDeadlock = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 2, invocations = 5, failOn = FailOn.LOW, includes = DetectorType.LOCK_UPGRADE_DEADLOCK)
     void test_concurrent_detectsLockUpgradeDeadlock() {
         var mon = AsyncTestContext.lockUpgradeDeadlockDetector();
         Thread thread = Thread.currentThread();

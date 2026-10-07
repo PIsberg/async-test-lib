@@ -35,14 +35,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectCopyOnWriteCollectionIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.COPY_ON_WRITE_COLLECTIONS)
  * void testCopyOnWriteUsage() {
  *     CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
- *     AsyncTestContext.copyOnWriteMonitor()
+ *     AsyncTestContext.copyOnWriteCollectionDetector()
  *         .registerCollection(list, "event-list");
  *
  *     list.add("event");
- *     AsyncTestContext.copyOnWriteMonitor()
+ *     AsyncTestContext.copyOnWriteCollectionDetector()
  *         .recordWrite(list, "event-list");
  * }
  * }</pre>
@@ -146,7 +146,7 @@ public class CopyOnWriteCollectionDetector {
                         state.name, state.collectionType,
                         writeRatio * 100, writes, reads);
                 report.writeHeavyViolations.add(finding);
-                report.structuredViolations.add(new Violation("CopyOnWriteCollection", IssueSeverity.MEDIUM,
+                report.structuredViolations.add(new Violation("CopyOnWriteCollections", IssueSeverity.MEDIUM,
                         finding, List.of(), Map.of(), Instant.now()));
             }
 

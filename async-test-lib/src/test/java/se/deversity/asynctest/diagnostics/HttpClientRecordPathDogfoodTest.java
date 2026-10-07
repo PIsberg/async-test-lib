@@ -49,7 +49,7 @@ class HttpClientRecordPathDogfoodTest {
     private static final Pattern REQUESTS_SENT = Pattern.compile("(\\d+) requests sent");
     private static final Pattern THREADS_ACTIVE = Pattern.compile("(\\d+) threads made");
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000, detectAll = true)
     void everyWorkerRequestLandsOnTheClientStateThatSurvives() {
         int round = SEQUENCE.getAndIncrement() / THREADS;
         HttpClientConcurrencyDetector detector =

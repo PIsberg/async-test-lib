@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSleepInLock = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SLEEP_IN_LOCK)
  * void testSleepInLock() throws InterruptedException {
  *     synchronized (lock) {
  *         doWork();

@@ -135,8 +135,12 @@ class BankTransferServiceTest {
      */
     @Disabled("Remove @Disabled: the round times out on the deadlock, and the failure names "
             + "DeadlockDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, useVirtualThreads = false,
-            detectDeadlocks = true, timeoutMs = 5000, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            useVirtualThreads = false,
+            timeoutMs = 5000,
+            failOn = FailOn.LOW,
+            detectAll = true)
     void testTransfer_concurrent_detectsDeadlock() {
         // Alternate transfer direction based on thread ID — reliably creates A→B and
         // B→A transfers in parallel, forming a circular-wait deadlock.

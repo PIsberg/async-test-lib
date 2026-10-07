@@ -12,7 +12,7 @@ you are editing here.
 <project_guardrails>
   <locked_files>
     <file path="se.deversity.asynctest.DetectorType">
-      <reason>Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) &amp;&amp; !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.</reason>
+      <reason>Adding or removing a constant requires synchronized changes in three places: (1) the AsyncTestConfig public flag and its derivation enabled.contains(TYPE), with the Builder setter that calls flag(TYPE, v), (2) the DetectorRegistry field and its factory row create(DetectorType.TYPE, X::new), and (3) the registry&#39;s ifIssue analysis call. Adding a value here in isolation compiles and detects nothing. The @AsyncTest attribute and the build() resolution line it once also needed are gone (#917, #920). The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.</reason>
     </file>
     <file path="se.deversity.asynctest.runner.OfflineLicense.VENDOR_VERIFY_KEY_B64">
       <reason>Every offline licence file already issued to a customer verifies against this key, and its private half exists only on the operator machine. A changed value denies each of those files with OFFLINE_FILE_SIGNATURE_INVALID on the customer&#39;s next build. Rotation means re-issuing every file first: a release decision, not a code edit.</reason>
@@ -51,7 +51,7 @@ you are editing here.
   <core_elements>
     <element path="se.deversity.asynctest.AsyncTestConfig">
       <sensitivity>Critical</sensitivity>
-      <note>Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends.</note>
+      <note>Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 1.13.0 (#920). Never reintroduce a per-detector resolution expression in build().</note>
     </element>
     <element path="se.deversity.asynctest.AsyncTestContext">
       <sensitivity>Critical</sensitivity>
@@ -113,6 +113,7 @@ you are editing here.
     <element path="se.deversity.asynctest.DetectorRegistry" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.DetectorType" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.Preset" rules=".claude/rules/async-test-configuration.md"/>
+    <element path="se.deversity.asynctest.RunOutcomes"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkComparator" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector" rules=".claude/rules/async-test-detectors.md"/>
@@ -183,8 +184,6 @@ you are editing here.
     <element path="se.deversity.asynctest.spi.Detector" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorFactory" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.spi.DetectorRegistry" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter" rules=".claude/rules/async-test-public-api.md"/>
-    <element path="se.deversity.asynctest.spi.adapters.LegacyDetectorFactories" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.telemetry.TelemetryBridge" rules=".claude/rules/async-test-instrumentation.md"/>
   </scoped_rules>
 

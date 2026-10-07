@@ -11,12 +11,12 @@ invariants the runner must not break.
 
 `@AsyncTest` is a JUnit 5 `@TestTemplate`. Six pieces carry an invocation:
 
-1. **`AsyncTest` annotation** — declares `threads`, `invocations`, `timeoutMs`, the per-detector
-   flags, and (since 1.6.0) `threadCounts`, `preset` and `replaySeed`. `detectAll = true` (the
-   default) enables every detector, and an individual flag set to `false` does not change that;
-   `excludes` is what opts a detector out. `preset = Preset.X`
-   replaces the detector set with a curated bundle (`ESSENTIALS` / `CI_FAST` / `STRICT` / `NONE` /
-   `ALL`).
+1. **`AsyncTest` annotation** — declares `threads`, `invocations`, `timeoutMs`, the detector
+   selection (`includes`, `excludes`, `preset`, `detectAll`; the per-detector flags were removed in
+   1.13.0) and (since 1.6.0) `threadCounts` and `replaySeed`. A bare annotation runs
+   `Preset.ESSENTIALS` (1.13.0); `detectAll = true` enables every detector, `preset = Preset.X`
+   picks another curated bundle (`ALL` / `STRICT` / `CI_FAST` / `NONE`), and `excludes` is what
+   opts a detector out.
 
 2. **`AsyncTestExtension`** — a `TestTemplateInvocationContextProvider` producing one invocation per
    `@AsyncTest` method, or one per `threadCounts[]` entry when that matrix is non-empty. Each

@@ -112,7 +112,7 @@ class DetectionCoverageTest {
         private final Object lock2 = new Object();
         private final AtomicInteger threadAssigner = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500, useVirtualThreads = false)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500, useVirtualThreads = false, detectAll = true)
         void deadlock() throws InterruptedException {
             if (threadAssigner.getAndIncrement() % 2 == 0) {
                 synchronized (lock1) {

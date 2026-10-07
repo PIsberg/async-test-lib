@@ -1,7 +1,7 @@
 # Example 76 — Stateful Lambda
 
 **Detector**: `StatefulLambdaDetector`  
-**Flag**: `detectStatefulLambda = true`
+**Select it with**: `includes = DetectorType.STATEFUL_LAMBDA`
 
 ## The Problem
 

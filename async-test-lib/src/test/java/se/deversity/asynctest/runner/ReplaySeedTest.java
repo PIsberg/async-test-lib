@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.E2E;
 
 import org.junit.jupiter.api.Test;
@@ -81,16 +82,23 @@ class ReplaySeedTest {
     // ---- Fixtures ----
 
     static class ExplicitSeedFixture {
-        @AsyncTest(threads = 4, invocations = 3, timeoutMs = 10_000, replaySeed = 42424242L,
-                detectAll = false, licenseMockMode = true)
+        @AsyncTest(threads = 4,
+                invocations = 3,
+                timeoutMs = 10_000,
+                replaySeed = 42424242L,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void recordSeedExplicit() {
             SEEDS_OBSERVED.add(AsyncTestContext.replaySeed());
         }
     }
 
     static class DefaultSeedFixture {
-        @AsyncTest(threads = 2, invocations = 5, timeoutMs = 10_000,
-                detectAll = false, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 5,
+                timeoutMs = 10_000,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void recordSeedDefault() {
             SEEDS_OBSERVED.add(AsyncTestContext.replaySeed());
         }

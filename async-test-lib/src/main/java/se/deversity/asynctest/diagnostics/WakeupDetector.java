@@ -269,7 +269,7 @@ public class WakeupDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.monitorsWithSpuriousWakeups) {
-                report.structuredViolations.add(new Violation("Wakeup", severity,
+                report.structuredViolations.add(new Violation("WakeupIssues", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

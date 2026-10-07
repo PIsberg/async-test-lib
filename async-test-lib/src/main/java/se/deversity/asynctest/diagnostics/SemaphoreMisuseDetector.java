@@ -22,16 +22,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, monitorSemaphore = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SEMAPHORE)
  * void testSemaphore() throws InterruptedException {
  *     semaphore.acquire();
- *     AsyncTestContext.semaphoreMonitor()
+ *     AsyncTestContext.semaphoreMisuseDetector()
  *         .recordAcquire(semaphore, "resource-pool");
  *     try {
  *         // work
  *     } finally {
  *         semaphore.release();
- *         AsyncTestContext.semaphoreMonitor()
+ *         AsyncTestContext.semaphoreMisuseDetector()
  *             .recordRelease(semaphore, "resource-pool");
  *     }
  * }
@@ -178,15 +178,15 @@ public class SemaphoreMisuseDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.permitLeaks) {
-                report.structuredViolations.add(new Violation("SemaphoreMisuse", severity,
+                report.structuredViolations.add(new Violation("Semaphore", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.overReleases) {
-                report.structuredViolations.add(new Violation("SemaphoreMisuse", severity,
+                report.structuredViolations.add(new Violation("Semaphore", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.unreleasedPermits) {
-                report.structuredViolations.add(new Violation("SemaphoreMisuse", severity,
+                report.structuredViolations.add(new Violation("Semaphore", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

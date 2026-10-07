@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -107,21 +108,21 @@ class InventoryServiceTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by OptimisticReadValidationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectOptimisticReadValidation = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.OPTIMISTIC_READ_VALIDATION)
     void test_concurrent_detectsBug() {
         Thread current = Thread.currentThread();
 
         // Record that an optimistic read was started
         long stamp = service.lock.tryOptimisticRead();
-        AsyncTestContext.optimisticReadValidationMonitor()
+        AsyncTestContext.optimisticReadValidationDetector()
                 .recordOptimisticReadStarted(service.lock, stamp, current);
 
         // Record that data was accessed (without validation)
-        AsyncTestContext.optimisticReadValidationMonitor()
+        AsyncTestContext.optimisticReadValidationDetector()
                 .recordDataAccessed(service.lock, stamp, current, "stock");
 
         // BUG: validate() is never called — the detector expects it here
-        // AsyncTestContext.optimisticReadValidationMonitor()
+        // AsyncTestContext.optimisticReadValidationDetector()
         //         .recordValidateCalled(service.lock, stamp, service.lock.validate(stamp), current);
 
         // Interleave with writes to create race conditions
@@ -134,14 +135,14 @@ class InventoryServiceTest {
      * the value whatever validate() answered. Any read a restock overtook is reported.
      */
     @Disabled("Remove @Disabled to see a value used after a failed validate() detected by OptimisticReadValidationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectOptimisticReadValidation = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.OPTIMISTIC_READ_VALIDATION)
     void test_concurrent_detectsValueUsedAfterFailedValidate() throws InterruptedException {
         Thread current = Thread.currentThread();
         if (current.threadId() % 2 == 0) {
             service.addStock(1);
             return;
         }
-        var monitor = AsyncTestContext.optimisticReadValidationMonitor();
+        var monitor = AsyncTestContext.optimisticReadValidationDetector();
 
         long stamp = service.lock.tryOptimisticRead();
         monitor.recordOptimisticReadStarted(service.lock, stamp, current);

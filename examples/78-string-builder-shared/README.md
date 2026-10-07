@@ -1,7 +1,7 @@
 # Example 78 — Shared StringBuilder
 
 **Detector**: `StringBuilderDetector`  
-**Flag**: `detectStringBuilderIssues = true`
+**Select it with**: `includes = DetectorType.STRING_BUILDER`
 
 ## The Problem
 

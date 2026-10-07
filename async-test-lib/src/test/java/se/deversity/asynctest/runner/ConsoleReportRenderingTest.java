@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * What a passing run prints by default: findings the library stands behind in full, the rest as
  * one line each.
  *
- * <p><strong>Why this exists.</strong> A default run enables every detector with
+ * <p><strong>Why this exists.</strong> A detectAll run enables every detector with
  * {@code failOn = NONE}, and every PROMPT and ADVISORY block printed its whole report, "Why" and
  * "Fix" text included. The console was dominated by findings the library itself calls a prompt to
  * verify, and the verdicts drowned in them.

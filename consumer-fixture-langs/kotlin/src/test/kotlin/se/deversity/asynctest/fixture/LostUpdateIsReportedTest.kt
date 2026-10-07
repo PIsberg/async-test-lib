@@ -43,7 +43,7 @@ class LostUpdateIsReportedTest {
 
     private var counter = 0
 
-    @AsyncTest(threads = 8, invocations = 200, failOn = FailOn.NONE, licenseMockMode = true)
+    @AsyncTest(threads = 8, invocations = 200, failOn = FailOn.NONE, licenseMockMode = true, detectAll = true)
     fun unguardedWritesFromEightThreads() {
         // The hook is what makes the write observable to the detector without the agent; a
         // consumer using -Dasynctest.agent=fields=true gets the same event from the weaver.

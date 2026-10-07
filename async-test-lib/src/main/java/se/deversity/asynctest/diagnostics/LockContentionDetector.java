@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 8, detectLockContention = true)
+ * @AsyncTest(threads = 8, includes = DetectorType.LOCK_CONTENTION)
  * void testHighContention() {
  *     AsyncTestContext.lockContentionDetector()
  *         .recordAcquireAttempt(sharedLock, "sharedLock");

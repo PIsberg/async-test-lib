@@ -41,7 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectVirtualThreadPooling = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.VIRTUAL_THREAD_POOLING)
  * void testExecutorChoice() {
  *     var d = AsyncTestContext.virtualThreadPoolingDetector();
  *     d.registerExecutor(executor, "request-pool");

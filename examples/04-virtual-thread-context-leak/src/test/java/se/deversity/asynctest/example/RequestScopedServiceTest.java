@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.example.service.RequestScopedService;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * invisible; under virtual-thread stress testing it becomes a correctness/security issue.
  *
  * <p><b>Detection:</b> Run with async-test-lib 0.7.0+ and
- * {@code detectVirtualThreadContextLeaks = true} to surface the leak automatically.
+ * {@code includes = DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS} to surface the leak automatically.
  */
 class RequestScopedServiceTest {
 
@@ -53,7 +54,7 @@ class RequestScopedServiceTest {
      * Under virtual-thread concurrent stress the ThreadLocal is not reliably cleared
      * in the exception path.
      *
-     * <p>With async-test-lib 0.7.0+ and {@code detectVirtualThreadContextLeaks = true},
+     * <p>With async-test-lib 0.7.0+ and {@code includes = DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS},
      * this test would report:
      * <pre>
      * 🟠 HIGH: Virtual thread ThreadLocal context leak detected
@@ -71,7 +72,7 @@ class RequestScopedServiceTest {
     //     threads = 10,
     //     invocations = 50,
     //     useVirtualThreads = true,
-    //     detectVirtualThreadContextLeaks = true  // requires async-test-lib 0.7.0+
+    //     includes = DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS
     // )
     // void processRequest_concurrentStress_exposesContextLeak() {
     //     // Alternate between valid and invalid orders to trigger the exception path
@@ -86,18 +87,15 @@ class RequestScopedServiceTest {
     /**
      * Demonstrates the service under concurrent virtual-thread stress with basic detection.
      *
-     * <p>With async-test-lib 0.7.0+ you would add {@code detectVirtualThreadContextLeaks = true}
+     * <p>With async-test-lib 0.7.0+ you would add {@code includes = DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS}
      * to catch the ThreadLocal that is never removed. Here we use only deadlock detection
      * to stay compatible with the published library version.
      */
-    @AsyncTest(
-        threads = 10,
+    @AsyncTest(threads = 10,
         invocations = 30,
         useVirtualThreads = true,
-        detectAll = false,
-        detectDeadlocks = true,
-        timeoutMs = 15000
-    )
+        timeoutMs = 15000,
+        includes = DetectorType.DEADLOCKS)
     void processRequest_concurrentVirtualThreads() {
         // Only use valid order IDs — we're testing concurrency, not the exception path
         String userId = "user-" + Thread.currentThread().threadId();
@@ -109,14 +107,11 @@ class RequestScopedServiceTest {
     /**
      * Demonstrates that virtual thread stress mode runs without deadlocks.
      */
-    @AsyncTest(
-        useVirtualThreads = true,
+    @AsyncTest(useVirtualThreads = true,
         virtualThreadStressMode = "LOW",
         invocations = 5,
-        detectAll = false,
-        detectDeadlocks = true,
-        timeoutMs = 15000
-    )
+        timeoutMs = 15000,
+        includes = DetectorType.DEADLOCKS)
     void processRequest_virtualThreadStressMode() {
         AtomicReference<String> result = new AtomicReference<>();
         String userId = "stress-user-" + Thread.currentThread().threadId();

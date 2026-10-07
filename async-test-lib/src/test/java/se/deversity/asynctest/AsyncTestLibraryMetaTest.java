@@ -32,7 +32,7 @@ public class AsyncTestLibraryMetaTest {
     public static class RaceConditionDummy {
         private int unprotectedCounter = 0;
 
-        @AsyncTest(threads = 20, invocations = 100)
+        @AsyncTest(threads = 20, invocations = 100, detectAll = true)
         void testCounterRace() {
             int current = unprotectedCounter;
             Thread.yield();
@@ -64,7 +64,7 @@ public class AsyncTestLibraryMetaTest {
         private final Object lock2 = new Object();
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500, useVirtualThreads = false)
+        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 1500, useVirtualThreads = false, detectAll = true)
         void testDeadlock() throws InterruptedException {
             int id = threadAssigner.getAndIncrement();
             if (id % 2 == 0) {
@@ -118,7 +118,7 @@ public class AsyncTestLibraryMetaTest {
         private boolean stopHolder = false;
         private final AtomicInteger assigner = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 5, timeoutMs = 15000, useVirtualThreads = false)
+        @AsyncTest(threads = 2, invocations = 5, timeoutMs = 15000, useVirtualThreads = false, detectAll = true)
         void testVisibility() throws Exception {
             if (assigner.getAndIncrement() % 2 == 0) {
                 stopHolder = true;
@@ -145,7 +145,7 @@ public class AsyncTestLibraryMetaTest {
     }
 
     public static class VirtualThreadStressDummy {
-        @AsyncTest(threads = 250, invocations = 2, useVirtualThreads = true, timeoutMs = 45000)
+        @AsyncTest(threads = 250, invocations = 2, useVirtualThreads = true, timeoutMs = 45000, detectAll = true)
         void stress() throws InterruptedException {
             Thread.sleep(5);
         }
