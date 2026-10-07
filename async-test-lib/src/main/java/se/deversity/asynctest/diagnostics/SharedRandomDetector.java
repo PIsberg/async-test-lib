@@ -41,10 +41,7 @@ import org.jspecify.annotations.Nullable;
  * }
  * }</pre>
  */
-public class SharedRandomDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class SharedRandomDetector extends AbstractInstanceDetector<SharedRandomDetector.RandomState> {
 
     /** Accesses a shared Random needs before its rate is judged for contention (#756). */
     private static final int CONTENTION_ACCESS_THRESHOLD = 100;
@@ -52,7 +49,7 @@ public class SharedRandomDetector {
     /** Accesses per second above which a shared Random is reported contended. */
     private static final double CONTENTION_RATE_THRESHOLD = 10_000;
 
-    private static class RandomState {
+    static final class RandomState {
         final String name;
         final AtomicInteger accessCount = new AtomicInteger(0);
         final Set<Long> accessingThreads = ConcurrentHashMap.newKeySet();
@@ -60,12 +57,16 @@ public class SharedRandomDetector {
         volatile @Nullable Long firstAccessTime = null;
         volatile @Nullable Long lastAccessTime = null;
 
-        RandomState(String name, UnnamedLabels labels) {
-            this.name = name != null ? name : labels.next("random");
+        RandomState(String name) {
+            this.name = name;
         }
     }
 
-    private final Map<IdentityKey, RandomState> randoms = new ConcurrentHashMap<>();
+    @Override
+    RandomState newState(Object instance, String label) {
+        return new RandomState(label);
+    }
+
     private volatile boolean enabled = true;
 
     /**
@@ -81,7 +82,7 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        randoms.computeIfAbsent(new IdentityKey(random), k -> new RandomState(name, unnamedLabels));
+        stateFor(random, name, "random");
     }
 
     /**
@@ -95,17 +96,9 @@ public class SharedRandomDetector {
         if (!enabled || random == null) {
             return;
         }
-        // The thread's lookup key, reused while it names the same instance (#812).
-        RandomState state = randoms.get(IdentityKey.lookup(random));
-        if (state == null) {
-            IdentityKey key = new IdentityKey(random);
-            // Auto-register. computeIfAbsent, not get-then-put: two threads racing here both
-            // saw null, both built a state and the second put discarded the first, so each
-            // thread counted itself alone and analyze()'s "> 1 thread" test never tripped. A
-            // detector whose whole job is spotting concurrent sharing went silent under
-            // exactly the contention it exists to find.
-            state = randoms.computeIfAbsent(key, k -> new RandomState(name, unnamedLabels));
-        }
+        // Auto-registers, once: a get-then-put here handed racing threads two states, so each
+        // counted itself alone and analyze()'s "> 1 thread" test never tripped.
+        RandomState state = stateFor(random, name, "random");
         
         long now = System.currentTimeMillis();
         state.accessCount.incrementAndGet();
@@ -135,7 +128,7 @@ public class SharedRandomDetector {
         SharedRandomReport report = new SharedRandomReport();
         report.enabled = enabled;
 
-        for (RandomState state : randoms.values()) {
+        for (RandomState state : states()) {
             // Check for shared access (multiple threads using same Random)
             if (state.accessingThreads.size() > 1) {
                 report.sharedRandoms.add(String.format(Locale.ROOT,

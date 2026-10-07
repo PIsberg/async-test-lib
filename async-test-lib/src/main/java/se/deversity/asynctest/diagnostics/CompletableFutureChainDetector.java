@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -38,14 +37,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class CompletableFutureChainDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class CompletableFutureChainDetector extends AbstractInstanceDetector<CompletableFutureChainDetector.FutureState> {
 
     private static final java.util.regex.Pattern ARROW = java.util.regex.Pattern.compile("->");
 
-    private static class FutureState {
+    static final class FutureState {
         final String name;
         final long createdTime;
         final long createdByThread;
@@ -61,7 +57,11 @@ public class CompletableFutureChainDetector {
         }
     }
 
-    private final Map<IdentityKey, FutureState> futures = new ConcurrentHashMap<>();
+    @Override
+    FutureState newState(Object instance, String label) {
+        return new FutureState(label);
+    }
+
     private final AtomicInteger totalCreated = new AtomicInteger(0);
     private final AtomicInteger totalJoined = new AtomicInteger(0);
     private final AtomicInteger totalChained = new AtomicInteger(0);
@@ -91,9 +91,9 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        IdentityKey key = new IdentityKey(future);
-        FutureState state = new FutureState(name != null ? name : unnamedLabels.of(key, "CompletableFuture"));
-        futures.put(key, state);
+        // The first record wins: a put() here replaced the state, so recording a future again
+        // forgot that it had been joined and reported it as never joined.
+        stateFor(future, name, "CompletableFuture");
         totalCreated.incrementAndGet();
     }
 
@@ -110,18 +110,14 @@ public class CompletableFutureChainDetector {
         if (!enabled || original == null || result == null) {
             return;
         }
-        IdentityKey key = new IdentityKey(original);
-        FutureState state = futures.get(key);
+        FutureState state = trackedState(original);
         if (state != null) {
             state.chainOperations.add(operation);
         }
         
         // Track the new future too
-        IdentityKey resultKey = new IdentityKey(result);
-        if (!futures.containsKey(resultKey)) {
-            FutureState newState = new FutureState(
-                state != null ? state.name + "->" + operation : "chained-" + operation);
-            futures.put(resultKey, newState);
+        if (trackedState(result) == null) {
+            stateFor(result, state != null ? state.name + "->" + operation : "chained-" + operation);
         }
         
         totalChained.incrementAndGet();
@@ -136,13 +132,12 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        IdentityKey key = new IdentityKey(future);
-        FutureState state = futures.get(key);
+        FutureState state = trackedState(future);
         if (state != null) {
             state.exceptionallyAdded = true;
             // Mark all futures in this chain
             String baseName = ARROW.split(state.name, -1)[0];
-            for (FutureState otherState : futures.values()) {
+            for (FutureState otherState : states()) {
                 if (otherState.name.startsWith(baseName)) {
                     otherState.exceptionallyAdded = true;
                     otherState.joined = true;
@@ -160,13 +155,12 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        IdentityKey key = new IdentityKey(future);
-        FutureState state = futures.get(key);
+        FutureState state = trackedState(future);
         if (state != null) {
             state.handled = true;
             // Mark all futures in this chain
             String baseName = ARROW.split(state.name, -1)[0];
-            for (FutureState otherState : futures.values()) {
+            for (FutureState otherState : states()) {
                 if (otherState.name.startsWith(baseName)) {
                     otherState.handled = true;
                     otherState.joined = true;
@@ -185,8 +179,7 @@ public class CompletableFutureChainDetector {
         if (!enabled || future == null) {
             return;
         }
-        IdentityKey key = new IdentityKey(future);
-        FutureState state = futures.get(key);
+        FutureState state = trackedState(future);
         if (state != null) {
             state.joined = true;
         }
@@ -207,8 +200,7 @@ public class CompletableFutureChainDetector {
         report.totalChained = totalChained.get();
 
         // Check for unjoined futures
-        for (Map.Entry<IdentityKey, FutureState> entry : futures.entrySet()) {
-            FutureState state = entry.getValue();
+        for (FutureState state : states()) {
             
             if (!state.joined) {
                 long waitTime = System.currentTimeMillis() - state.createdTime;
@@ -226,7 +218,7 @@ public class CompletableFutureChainDetector {
         }
 
         // Check for futures created but never used
-        long unjoined = futures.values().stream()
+        long unjoined = states().stream()
             .filter(state -> !state.joined)
             .count();
         if (unjoined > 0) {

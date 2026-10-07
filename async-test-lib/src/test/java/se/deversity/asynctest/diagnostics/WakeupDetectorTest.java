@@ -110,4 +110,11 @@ class WakeupDetectorTest {
             detector.analyzeWakeups();
         });
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        WakeupDetector d = new WakeupDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordWaitEnter(m));
+    }
 }

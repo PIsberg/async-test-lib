@@ -9,9 +9,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import java.util.Map;
 import java.util.WeakHashMap;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link WeakHashMap} or {@link IdentityHashMap} instances accessed
@@ -54,12 +54,9 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java"
 )
-public final class WeakHashMapSharedDetector {
+public final class WeakHashMapSharedDetector extends AbstractInstanceDetector<WeakHashMapSharedDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String type;
 
@@ -69,7 +66,17 @@ public final class WeakHashMapSharedDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        // record() registers only the types typeOf names.
+        return new State(label, java.util.Objects.requireNonNull(typeOf(instance)));
+    }
+
+    private static @Nullable String typeOf(Object map) {
+        if (map instanceof WeakHashMap)    return "WeakHashMap";
+        if (map instanceof IdentityHashMap) return "IdentityHashMap";
+        return null;
+    }
 
     /**
      * Record an access to a {@link WeakHashMap} or {@link IdentityHashMap}, counted as a write.
@@ -106,19 +113,9 @@ public final class WeakHashMapSharedDetector {
 
     private void record(Map<?, ?> map, String name, boolean forWrite, Thread thread) {
         if (map == null || thread == null) return;
-        String type;
-        if (map instanceof WeakHashMap)         type = "WeakHashMap";
-        else if (map instanceof IdentityHashMap) type = "IdentityHashMap";
-        else return; // not our concern
-
-        IdentityKey key = new IdentityKey(map);
-        State s = instances.get(key);
-        if (s == null) {
-            final String finalType = type;
-            s = instances.computeIfAbsent(key, k -> new State(
-                    (name != null) ? name : unnamedLabels.of(k, finalType),
-                    finalType));
-        }
+        String type = typeOf(map);
+        if (type == null) return; // not our concern
+        State s = stateFor(map, name, type);
         // Probed on the accessing thread, which is the one inside (or outside) the guarded
         // region; the explicit thread parameter is attribution only.
         s.noteAccess(map, forWrite, thread);
@@ -130,7 +127,7 @@ public final class WeakHashMapSharedDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharedAndUnguarded()) continue;
             String specificRisk = "WeakHashMap".equals(s.type)
                     ? "GC-driven entry removal mutates the internal table on every "

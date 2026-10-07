@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -62,10 +61,8 @@ import java.util.concurrent.atomic.AtomicInteger;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/PlatformThreadPerTaskDetectorTest.java"
 )
-public final class PlatformThreadPerTaskDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public final class PlatformThreadPerTaskDetector
+        extends AbstractInstanceDetector<PlatformThreadPerTaskDetector.ExecutorState> {
 
     /** Platform-thread creations per run before the churn signal may fire. */
     public static final int DEFAULT_CHURN_THRESHOLD = 16;
@@ -77,8 +74,22 @@ public final class PlatformThreadPerTaskDetector {
 
     private final Queue<Thread> platformThreadsCreated = new ConcurrentLinkedQueue<>();
     private final AtomicInteger virtualThreadsCreated = new AtomicInteger();
-    private final Map<IdentityKey, Boolean> probedExecutors = new ConcurrentHashMap<>();
-    private final Map<IdentityKey, String> perTaskPlatformExecutors = new ConcurrentHashMap<>();
+
+    /** One registered thread-per-task executor: probed once, by the first registration. */
+    static final class ExecutorState {
+        final String label;
+        final AtomicBoolean probed = new AtomicBoolean();
+        volatile boolean platformThreads;
+
+        ExecutorState(String label) {
+            this.label = label;
+        }
+    }
+
+    @Override
+    ExecutorState newState(Object instance, String label) {
+        return new ExecutorState(label);
+    }
 
     /**
      * Adjust the churn threshold (defaults to {@link #DEFAULT_CHURN_THRESHOLD}).
@@ -123,8 +134,8 @@ public final class PlatformThreadPerTaskDetector {
         if (executor == null || !THREAD_PER_TASK_EXECUTOR.equals(executor.getClass().getName())) {
             return;
         }
-        IdentityKey id = new IdentityKey(executor);
-        if (probedExecutors.putIfAbsent(id, Boolean.TRUE) != null) {
+        ExecutorState state = stateFor(executor, name, "executor");
+        if (!state.probed.compareAndSet(false, true)) {
             return;
         }
         CountDownLatch done = new CountDownLatch(1);
@@ -144,7 +155,7 @@ public final class PlatformThreadPerTaskDetector {
             return;
         }
         if (!probeWasVirtual.get()) {
-            perTaskPlatformExecutors.put(id, name != null ? name : unnamedLabels.of(id, "executor"));
+            state.platformThreads = true;
         }
     }
 
@@ -155,7 +166,9 @@ public final class PlatformThreadPerTaskDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (String label : perTaskPlatformExecutors.values()) {
+        for (ExecutorState state : states()) {
+            if (!state.platformThreads) continue;
+            String label = state.label;
             String msg = String.format(
                     "'%s' is a thread-per-task executor backed by platform threads — every submit costs an"
                             + " OS thread with no upper bound; this is the workload virtual threads exist"

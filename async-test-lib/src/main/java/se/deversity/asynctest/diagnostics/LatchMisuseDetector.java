@@ -10,7 +10,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,12 +33,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * never came back. The remaining blind spot is a latch nobody ever awaits through a woven call
  * site, where there is nothing to observe in either direction.
  */
-public class LatchMisuseDetector {
+public class LatchMisuseDetector extends AbstractInstanceDetector<LatchMisuseDetector.LatchState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class LatchState {
+    static final class LatchState {
         final String name;
         // The count the latch started from: declared by registerLatch, or inferred by
         // observeLatch as the largest count anything has seen the latch hold. Mutable because the
@@ -60,7 +56,6 @@ public class LatchMisuseDetector {
         }
     }
 
-    private final Map<IdentityKey, LatchState> latches = new ConcurrentHashMap<>();
     /**
      * Registers latch for tracking.
      *
@@ -72,9 +67,8 @@ public class LatchMisuseDetector {
         if (latch == null) {
             return;
         }
-        latches.computeIfAbsent(new IdentityKey(latch),
-            k -> new LatchState(name == null || name.isBlank() ? unnamedLabels.next("CountDownLatch") : name,
-                initialCount));
+        stateFor(latch, name == null || name.isBlank() ? null : name, "CountDownLatch",
+                label -> new LatchState(label, initialCount));
     }
 
     /**
@@ -101,11 +95,12 @@ public class LatchMisuseDetector {
         if (!(latch instanceof CountDownLatch countDownLatch)) {
             return;
         }
-        IdentityKey key = new IdentityKey(latch);
         int observed = (int) Math.min(countDownLatch.getCount(), Integer.MAX_VALUE);
-        latches.computeIfAbsent(key,
-                absent -> new LatchState(unnamedLabels.next("CountDownLatch"), observed))
-            .initialCount.accumulateAndGet(observed, Math::max);
+        LatchState state = trackedState(latch);
+        if (state == null) {
+            state = stateFor(latch, null, "CountDownLatch", label -> new LatchState(label, observed));
+        }
+        state.initialCount.accumulateAndGet(observed, Math::max);
     }
     /**
      * Records await so it can be analysed at the end of the run.
@@ -150,7 +145,7 @@ public class LatchMisuseDetector {
     }
 
     private @Nullable LatchState stateFor(Object latch) {
-        return latch == null ? null : latches.get(new IdentityKey(latch));
+        return latch == null ? null : trackedState(latch);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -160,7 +155,7 @@ public class LatchMisuseDetector {
     public LatchMisuseReport analyze() {
         LatchMisuseReport report = new LatchMisuseReport();
 
-        for (LatchState state : latches.values()) {
+        for (LatchState state : states()) {
             // An await that returned settles it: the latch reached zero, so a shortfall in what
             // this detector recorded is a gap in observation rather than a missing countDown().
             if (state.awaitCalls.get() > 0 && state.awaitReturns.get() == 0

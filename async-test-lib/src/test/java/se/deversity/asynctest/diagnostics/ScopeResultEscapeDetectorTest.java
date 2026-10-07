@@ -175,4 +175,12 @@ class ScopeResultEscapeDetectorTest {
             "the read happened inside the reopened scope; comparing it against the previous "
                 + "round's close invented a read-after-close: " + d.analyze());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ScopeResultEscapeDetector d = new ScopeResultEscapeDetector();
+        d.recordScopeOpened("scope", Thread.currentThread());
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, h -> d.recordResultHandle(h, null, "scope"));
+    }
 }

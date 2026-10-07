@@ -51,17 +51,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class ConcurrentModificationDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class ConcurrentModificationDetector extends AbstractInstanceDetector<ConcurrentModificationDetector.CollectionState> {
 
     /**
      * Per-collection bookkeeping. The inherited lockset covers every recorded iteration start and
      * every recorded mutation together, which is what the concurrent-iteration finding asks about:
      * an iterator is safe from a writer only if one lock excluded both.
      */
-    private static class CollectionState extends SelfGuard.TrackedInstance {
+    static final class CollectionState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger modificationCount = new AtomicInteger(0);
         final AtomicInteger activeIterators = new AtomicInteger(0);
@@ -92,8 +89,8 @@ public class ConcurrentModificationDetector {
         /** Mutation is safe, iteration is not: a {@code Collections.synchronizedXxx} wrapper. */
         final boolean synchronizedWrapper;
 
-        CollectionState(Collection<?> collection, String name, UnnamedLabels labels) {
-            this.name = name != null ? name : labels.next("collection");
+        CollectionState(Collection<?> collection, String name) {
+            this.name = name;
             String type = collection == null ? "" : collection.getClass().getName();
             this.concurrentType = isConcurrentByConvention(type);
             this.synchronizedWrapper = isSynchronizedWrapperByConvention(type);
@@ -137,7 +134,11 @@ public class ConcurrentModificationDetector {
         }
     }
 
-    private final Map<IdentityKey, CollectionState> collections = new ConcurrentHashMap<>();
+    @Override
+    CollectionState newState(Object instance, String label) {
+        return new CollectionState((Collection<?>) instance, label);
+    }
+
     private volatile boolean enabled = true;
 
     /**
@@ -153,8 +154,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        collections.computeIfAbsent(new IdentityKey(collection),
-            k -> new CollectionState(collection, name, unnamedLabels));
+        stateFor(collection, name, "collection");
     }
 
     /**
@@ -167,7 +167,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(new IdentityKey(collection));
+        CollectionState state = trackedState(collection);
         if (state != null) {
             // Probed before any bookkeeping, while the caller is still inside the region.
             state.noteAccess(collection, false);
@@ -186,7 +186,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(new IdentityKey(collection));
+        CollectionState state = trackedState(collection);
         if (state != null) {
             state.activeIterators.decrementAndGet();
         }
@@ -203,7 +203,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(new IdentityKey(collection));
+        CollectionState state = trackedState(collection);
         if (state != null) {
             state.noteAccess(collection, true);
             state.modificationCount.incrementAndGet();
@@ -231,7 +231,7 @@ public class ConcurrentModificationDetector {
         if (!enabled || collection == null) {
             return;
         }
-        CollectionState state = collections.get(new IdentityKey(collection));
+        CollectionState state = trackedState(collection);
         if (state != null) {
             state.noteAccess(collection, true);
             state.concurrentModifications.incrementAndGet();
@@ -251,7 +251,7 @@ public class ConcurrentModificationDetector {
         ConcurrentModificationReport report = new ConcurrentModificationReport();
         report.enabled = enabled;
 
-        for (CollectionState state : collections.values()) {
+        for (CollectionState state : states()) {
             // What the collection's own type already guarantees. Reporting a thread count for a
             // CopyOnWriteArrayList says only that the type was used as designed: two threads adding
             // to it is correct code, and a finding there is a false positive on the ESSENTIALS

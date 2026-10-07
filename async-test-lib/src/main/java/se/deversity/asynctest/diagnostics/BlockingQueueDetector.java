@@ -5,7 +5,6 @@ import se.deversity.asynctest.report.Violation;
 import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;
-import org.jspecify.annotations.Nullable;
 
 import java.util.Locale;
 import java.util.Map;
@@ -44,15 +43,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class BlockingQueueDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueueDetector.QueueState> {
 
     /** The capacity of a queue with no bound, and the value {@code registerQueue} documents. */
     private static final int UNBOUNDED = -1;
 
-    private static class QueueState {
+    static final class QueueState {
         final String name;
         final BlockingQueue<?> queue;
         // Declared by registerQueue, or inferred by observeQueue from the queue itself. Mutable
@@ -78,14 +74,13 @@ public class BlockingQueueDetector {
         final AtomicInteger maxObservedSize = new AtomicInteger(0);
         final AtomicInteger minObservedSize = new AtomicInteger(Integer.MAX_VALUE);
 
-        QueueState(BlockingQueue<?> queue, @Nullable String name, int capacity, UnnamedLabels labels) {
+        QueueState(BlockingQueue<?> queue, String name, int capacity) {
             this.queue = queue;
-            this.name = name != null ? name : labels.next("queue");
+            this.name = name;
             this.capacity = new AtomicInteger(capacity);
         }
     }
 
-    private final Map<IdentityKey, QueueState> queues = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -114,7 +109,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        queues.computeIfAbsent(new IdentityKey(queue), k -> new QueueState(queue, name, capacity, unnamedLabels));
+        stateFor(queue, name, "queue", label -> new QueueState(queue, label, capacity));
     }
 
     /**
@@ -141,9 +136,11 @@ public class BlockingQueueDetector {
             return;
         }
         int observed = observedCapacityOf(queue);
-        queues.computeIfAbsent(new IdentityKey(queue),
-                        absent -> new QueueState(queue, null, observed, unnamedLabels))
-                .capacity.accumulateAndGet(observed, BlockingQueueDetector::widerBound);
+        QueueState state = trackedState(queue);
+        if (state == null) {
+            state = stateFor(queue, null, "queue", label -> new QueueState(queue, label, observed));
+        }
+        state.capacity.accumulateAndGet(observed, BlockingQueueDetector::widerBound);
     }
 
     /** How many times a capacity read is retried before its inconsistency is accepted. */
@@ -204,7 +201,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(new IdentityKey(queue));
+        QueueState state = trackedState(queue);
         lastOffer.set(state);
         if (state != null) {
             state.offerCount.incrementAndGet();
@@ -257,7 +254,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(new IdentityKey(queue));
+        QueueState state = trackedState(queue);
         if (state != null) {
             state.pollCount.incrementAndGet();
             if (success) {
@@ -279,7 +276,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(new IdentityKey(queue));
+        QueueState state = trackedState(queue);
         if (state != null) {
             state.putCount.incrementAndGet();
             updateSizeState(state);
@@ -296,7 +293,7 @@ public class BlockingQueueDetector {
         if (!enabled || queue == null) {
             return;
         }
-        QueueState state = queues.get(new IdentityKey(queue));
+        QueueState state = trackedState(queue);
         if (state != null) {
             state.takeCount.incrementAndGet();
             updateSizeState(state);
@@ -318,7 +315,7 @@ public class BlockingQueueDetector {
         BlockingQueueReport report = new BlockingQueueReport();
         report.enabled = enabled;
 
-        for (QueueState state : queues.values()) {
+        for (QueueState state : states()) {
             // A failed offer() is recorded because the caller read the return value and told us
             // so, which is exactly what correct backpressure looks like:
             //     if (!q.offer(x)) { retryLater(x); }

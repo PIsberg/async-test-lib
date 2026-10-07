@@ -25,9 +25,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Reachable from a test via {@code AsyncTestContext.futureBlockingDetector()} when
  * {@link se.deversity.asynctest.DetectorType#FUTURE_BLOCKING} is enabled.
  */
-public class FutureBlockingDetector {
+public class FutureBlockingDetector extends AbstractInstanceDetector<FutureBlockingDetector.ExecutorState> {
 
-    private static class ExecutorState {
+    static final class ExecutorState {
         final String name;
         final int maxThreads;
         final AtomicInteger submittedTasks = new AtomicInteger();
@@ -74,7 +74,6 @@ public class FutureBlockingDetector {
         }
     }
 
-    private final Map<IdentityKey, ExecutorState> executors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     /**
      * Disable.
@@ -95,8 +94,8 @@ public class FutureBlockingDetector {
         if (!enabled || executor == null) {
             return;
         }
-        executors.putIfAbsent(new IdentityKey(executor),
-            new ExecutorState(name == null || name.isBlank() ? "Executor" : name, maxThreads));
+        stateFor(executor, name == null || name.isBlank() ? "Executor" : name, "executor",
+                label -> new ExecutorState(label, maxThreads));
     }
     /**
      * Records task submitted so it can be analysed at the end of the run.
@@ -170,7 +169,7 @@ public class FutureBlockingDetector {
         if (!enabled || executor == null) {
             return null;
         }
-        return executors.get(new IdentityKey(executor));
+        return trackedState(executor);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -180,7 +179,7 @@ public class FutureBlockingDetector {
     public FutureBlockingReport analyze() {
         FutureBlockingReport report = new FutureBlockingReport();
 
-        for (ExecutorState state : executors.values()) {
+        for (ExecutorState state : states()) {
             // The state at analysis counts too: waits still open now are waits that never ended.
             state.noteIfSaturated();
             // Waits recorded off the pool's own threads can outnumber it; the pool has maxThreads.

@@ -131,4 +131,11 @@ class SharedCharsetCoderDetectorTest {
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedCharsetCoderDetector d = new SharedCharsetCoderDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(StandardCharsets.UTF_8::newEncoder, e -> d.recordAccess(e, "encode", Thread.currentThread()));
+    }
 }

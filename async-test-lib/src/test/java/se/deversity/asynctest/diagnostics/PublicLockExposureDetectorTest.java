@@ -74,4 +74,11 @@ public class PublicLockExposureDetectorTest {
         assertTrue(s.contains("Fix"));
         assertTrue(s.contains("private final Object lock"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        PublicLockExposureDetector d = new PublicLockExposureDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, o -> d.recordSynchronizedOnThis(o, Thread.currentThread(), null));
+    }
 }

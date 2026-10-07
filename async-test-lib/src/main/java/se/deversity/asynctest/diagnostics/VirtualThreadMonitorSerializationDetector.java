@@ -76,7 +76,7 @@ import java.util.concurrent.atomic.AtomicInteger;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadMonitorSerializationDetectorTest.java"
 )
-public final class VirtualThreadMonitorSerializationDetector {
+public final class VirtualThreadMonitorSerializationDetector extends AbstractInstanceDetector<VirtualThreadMonitorSerializationDetector.MonitorState> {
 
     /**
      * Peak number of virtual threads queued at once at which a monitor counts as serialising the
@@ -87,7 +87,7 @@ public final class VirtualThreadMonitorSerializationDetector {
      */
     public static final int DEFAULT_CONTENTION_THRESHOLD = 4;
 
-    private static final class MonitorState {
+    static final class MonitorState {
         final String        label;
         /** Threads between "about to enter" and "got in", and the most at once. */
         final AtomicInteger waiting            = new AtomicInteger();
@@ -102,7 +102,11 @@ public final class VirtualThreadMonitorSerializationDetector {
         MonitorState(String label) { this.label = label; }
     }
 
-    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
+    @Override
+    MonitorState newState(Object instance, String label) {
+        return new MonitorState(label);
+    }
+
     private final int                            contentionThreshold;
     private final int                            jdkFeatureVersion;
     private volatile boolean                     enabled = true;
@@ -137,10 +141,7 @@ public final class VirtualThreadMonitorSerializationDetector {
      */
     public void recordMonitorEnter(Object monitor, String label, Thread thread) {
         if (!enabled || monitor == null || thread == null) return;
-        IdentityKey key = new IdentityKey(monitor);
-        int id = key.hashCode();
-        String name = label != null ? label : "monitor@" + id;
-        MonitorState s = monitors.computeIfAbsent(key, k -> new MonitorState(name));
+        MonitorState s = stateFor(monitor, label, "monitor");
         raise(s.peakWaiting, s.waiting.incrementAndGet());
         if (thread.isVirtual()) {
             raise(s.peakVirtualWaiting, s.virtualWaiting.incrementAndGet());
@@ -166,7 +167,7 @@ public final class VirtualThreadMonitorSerializationDetector {
 
     private @Nullable MonitorState state(Object monitor, Thread thread) {
         if (!enabled || monitor == null || thread == null) return null;
-        return monitors.get(new IdentityKey(monitor));
+        return trackedState(monitor);
     }
 
     /** Raises {@code peak} to {@code observed} if it is higher, retrying against concurrent raisers. */
@@ -194,7 +195,7 @@ public final class VirtualThreadMonitorSerializationDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (MonitorState s : monitors.values()) {
+        for (MonitorState s : states()) {
             int peak        = s.peakWaiting.get();
             int virtualPeak = s.peakVirtualWaiting.get();
             int virtual     = s.virtualWaiters.size();

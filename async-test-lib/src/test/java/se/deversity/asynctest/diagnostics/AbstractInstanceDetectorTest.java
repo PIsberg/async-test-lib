@@ -8,8 +8,10 @@ import java.util.IdentityHashMap;
 import java.util.Set;
 import java.util.concurrent.CyclicBarrier;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -41,6 +43,14 @@ class AbstractInstanceDetectorTest {
             return stateFor(instance, name);
         }
 
+        State recordAs(Object instance, String name, String kind) {
+            return stateFor(instance, name, kind);
+        }
+
+        State register(Object instance, String name, String kind, String suffix) {
+            return stateFor(instance, name, kind, label -> new State(label + suffix));
+        }
+
         @Override
         State newState(Object instance, String label) {
             return new State(label);
@@ -67,6 +77,52 @@ class AbstractInstanceDetectorTest {
         String label = probe.record(subject, null).label;
         assertTrue(label.startsWith("StringBuilder"), label);
         assertEquals(label, probe.record(subject, null).label);
+    }
+
+    @Test
+    void anUnnamedInstanceCanBeLabelledAsTheCallersKind() {
+        Probe probe = new Probe();
+        Object first = new Object();
+
+        String label = probe.recordAs(first, null, "executor").label;
+        assertTrue(label.startsWith("executor"), label);
+        assertEquals(label, probe.recordAs(first, null, "executor").label);
+        assertNotEquals(label, probe.recordAs(new Object(), null, "executor").label,
+                "two unnamed instances of a kind are numbered apart");
+    }
+
+    @Test
+    void aFactoryBuildsTheFirstStateFromTheLabel_andIsNotCalledAgain() {
+        Probe probe = new Probe();
+        Object subject = new Object();
+
+        Probe.State first = probe.register(subject, "q", "queue", "/cap=4");
+        assertEquals("q/cap=4", first.label);
+        assertSame(first, probe.register(subject, "q", "queue", "/cap=8"), "the first registration wins");
+        assertSame(first, probe.record(subject, "q"));
+    }
+
+    @Test
+    void aLookupDoesNotRegister() {
+        Probe probe = new Probe();
+        Object subject = new Object();
+
+        assertNull(probe.trackedState(subject));
+        assertEquals(0, probe.states().size());
+        Probe.State state = probe.record(subject, "s");
+        assertSame(state, probe.trackedState(subject));
+    }
+
+    @Test
+    void clearStatesForgetsEveryInstance() {
+        Probe probe = new Probe();
+        Object subject = new Object();
+        Probe.State before = probe.record(subject, "s");
+
+        probe.clearStates();
+        assertEquals(0, probe.states().size());
+        assertNull(probe.trackedState(subject));
+        assertNotSame(before, probe.record(subject, "s"));
     }
 
     @Test
@@ -119,7 +175,19 @@ class AbstractInstanceDetectorTest {
      * @param record records its argument with the detector under test
      */
     static void assertNotRetained(Consumer<Object> record) throws InterruptedException {
-        awaitCollected(recordFromAnotherThread(record));
+        assertNotRetained(Object::new, record);
+    }
+
+    /**
+     * {@link #assertNotRetained(Consumer)} for a detector whose record method takes a typed
+     * subject.
+     *
+     * @param subject builds the fresh object to record
+     * @param record  records its argument with the detector under test
+     * @param <T>     the subject's type
+     */
+    static <T> void assertNotRetained(Supplier<T> subject, Consumer<? super T> record) throws InterruptedException {
+        awaitCollected(recordFromAnotherThread(subject, record));
     }
 
     /**
@@ -127,9 +195,14 @@ class AbstractInstanceDetectorTest {
      * recording thread's lookup key holds it, and returns a weak reference to it.
      */
     private static WeakReference<Object> recordFromAnotherThread(Consumer<Object> record) throws InterruptedException {
+        return recordFromAnotherThread(Object::new, record);
+    }
+
+    private static <T> WeakReference<Object> recordFromAnotherThread(Supplier<T> fresh, Consumer<? super T> record)
+            throws InterruptedException {
         WeakReference<Object>[] ref = new WeakReference[1];
         Thread recorder = new Thread(() -> {
-            Object subject = new Object();
+            T subject = fresh.get();
             ref[0] = new WeakReference<>(subject);
             record.accept(subject);
         });

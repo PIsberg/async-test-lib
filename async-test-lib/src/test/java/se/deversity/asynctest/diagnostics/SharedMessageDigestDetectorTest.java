@@ -1393,4 +1393,11 @@ public class SharedMessageDigestDetectorTest {
         assertEquals(java.util.Set.of("recordAtSiteA"), reportedSiteMethods(d),
                 "only the site of each thread's first access is captured");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedMessageDigestDetector d = new SharedMessageDigestDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordAccess(m, null, Thread.currentThread()));
+    }
 }

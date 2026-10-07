@@ -60,9 +60,9 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThisEscapeDetectorTest.java"
 )
-public final class ThisEscapeDetector {
+public final class ThisEscapeDetector extends AbstractInstanceDetector<ThisEscapeDetector.State> {
 
-    private static final class State {
+    static final class State {
         final String label;
         final long constructingThreadId;
         final Set<String> escapes        = ConcurrentHashMap.newKeySet();
@@ -75,8 +75,6 @@ public final class ThisEscapeDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
-
     /**
      * Record that a constructor published {@code this} before returning.
      *
@@ -86,12 +84,9 @@ public final class ThisEscapeDetector {
      */
     public void recordConstructorEscape(Object instance, String how, Thread thread) {
         if (instance == null || thread == null) return;
-        IdentityKey key = new IdentityKey(instance);
-        int id = key.hashCode();
-        State s = instances.get(key);
+        State s = trackedState(instance);
         if (s == null) {
-            final String label = instance.getClass().getSimpleName() + "@" + id;
-            s = instances.computeIfAbsent(key, k -> new State(label, thread.threadId()));
+            s = stateFor(instance, null, instance.getClass().getSimpleName(), l -> new State(l, thread.threadId()));
         }
         s.escapes.add(how != null ? how : "this published from constructor");
     }
@@ -106,7 +101,7 @@ public final class ThisEscapeDetector {
      */
     public void recordExternalAccess(Object instance, Thread thread) {
         if (instance == null || thread == null) return;
-        State s = instances.get(new IdentityKey(instance));
+        State s = trackedState(instance);
         if (s == null) return; // no escape recorded for this instance — nothing to correlate
         if (!s.completed && thread.threadId() != s.constructingThreadId) {
             s.observerThreads.add(thread.threadId());
@@ -121,7 +116,7 @@ public final class ThisEscapeDetector {
      */
     public void recordConstructionComplete(Object instance) {
         if (instance == null) return;
-        State s = instances.get(new IdentityKey(instance));
+        State s = trackedState(instance);
         if (s != null) s.completed = true;
     }
     /**
@@ -131,7 +126,7 @@ public final class ThisEscapeDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (s.escapes.isEmpty()) continue;
             boolean observed = !s.observerThreads.isEmpty();
             IssueSeverity severity = observed ? IssueSeverity.HIGH : IssueSeverity.MEDIUM;

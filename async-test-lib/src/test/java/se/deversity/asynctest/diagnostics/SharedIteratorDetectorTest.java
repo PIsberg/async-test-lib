@@ -152,4 +152,11 @@ class SharedIteratorDetectorTest {
                 + "detector already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedIteratorDetector d = new SharedIteratorDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> new ArrayList<String>().iterator(), it -> d.recordAccess(it, "next"));
+    }
 }

@@ -237,4 +237,11 @@ class HighContentionAtomicDetectorTest {
         hammer(d, counter, 100, 90);
         assertTrue(d.analyze().hasIssues());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        HighContentionAtomicDetector d = new HighContentionAtomicDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, a -> d.recordCasAttempt(a, false));
+    }
 }

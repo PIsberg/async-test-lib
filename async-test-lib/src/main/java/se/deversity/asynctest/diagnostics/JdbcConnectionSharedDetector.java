@@ -12,6 +12,7 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -79,12 +80,9 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java"
 )
-public final class JdbcConnectionSharedDetector {
+public final class JdbcConnectionSharedDetector extends AbstractInstanceDetector<JdbcConnectionSharedDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String type;
 
@@ -113,7 +111,19 @@ public final class JdbcConnectionSharedDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        // record() registers only the types typeOf names.
+        return new State(label, java.util.Objects.requireNonNull(typeOf(instance)));
+    }
+
+    private static @Nullable String typeOf(Object resource) {
+        if (resource instanceof Connection)        return "Connection";
+        if (resource instanceof PreparedStatement) return "PreparedStatement";
+        if (resource instanceof Statement)         return "Statement";
+        if (resource instanceof ResultSet)         return "ResultSet";
+        return null;
+    }
 
     /**
      * Record an access to a JDBC resource. Non-JDBC objects are silently
@@ -125,21 +135,9 @@ public final class JdbcConnectionSharedDetector {
      */
     public void recordAccess(Object resource, String name, Thread thread) {
         if (resource == null || thread == null) return;
-        String type;
-        if      (resource instanceof Connection)        type = "Connection";
-        else if (resource instanceof PreparedStatement) type = "PreparedStatement";
-        else if (resource instanceof Statement)         type = "Statement";
-        else if (resource instanceof ResultSet)         type = "ResultSet";
-        else return;
-
-        IdentityKey id = new IdentityKey(resource);
-        State s = instances.get(id);
-        if (s == null) {
-            final String finalType = type;
-            s = instances.computeIfAbsent(id, k -> new State(
-                    (name != null) ? name : unnamedLabels.of(k, finalType),
-                    finalType));
-        }
+        String type = typeOf(resource);
+        if (type == null) return;
+        State s = stateFor(resource, name, type);
         s.noteAccess(resource, thread);
         long threadId = thread.threadId();
         if (!s.currentHolders.containsKey(threadId)) {
@@ -181,7 +179,7 @@ public final class JdbcConnectionSharedDetector {
      */
     public void recordRelease(Object resource, Thread thread) {
         if (resource == null || thread == null) return;
-        State s = instances.get(new IdentityKey(resource));
+        State s = trackedState(resource);
         if (s == null) return;
         s.ownershipModelled = true;
         s.currentHolders.remove(thread.threadId());
@@ -193,7 +191,7 @@ public final class JdbcConnectionSharedDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (s.threadCount() <= 1) continue;
             // Ownership was modelled and no two threads ever held it at once: this is a pooled
             // handle doing its job, handed to one thread at a time. Reporting it would flag the

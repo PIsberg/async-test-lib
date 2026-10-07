@@ -138,4 +138,11 @@ class SharedSplittableRandomDetectorTest {
         String second = detector.analyze().toString();
         assertEquals(first, second, "analyze() must be idempotent on quiescent state");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedSplittableRandomDetector d = new SharedSplittableRandomDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(SplittableRandom::new, r -> d.recordAccess(r, null, "nextLong"));
+    }
 }

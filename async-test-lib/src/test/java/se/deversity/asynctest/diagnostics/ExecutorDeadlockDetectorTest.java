@@ -189,4 +189,11 @@ class ExecutorDeadlockDetectorTest {
             "both workers were waiting on a sibling at the same moment with the sibling queued");
         assertTrue(report.toString().contains("all 2 worker(s)"), report.toString());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ExecutorDeadlockDetector d = new ExecutorDeadlockDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, e -> d.registerExecutor(e, null, 1));
+    }
 }

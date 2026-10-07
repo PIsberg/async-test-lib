@@ -62,12 +62,12 @@ import java.util.concurrent.atomic.AtomicInteger;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VirtualThreadPoolingDetectorTest.java"
 )
-public final class VirtualThreadPoolingDetector {
+public final class VirtualThreadPoolingDetector extends AbstractInstanceDetector<VirtualThreadPoolingDetector.ExecutorInfo> {
 
     /** Tasks one virtual thread must run before it reads as pooled rather than one per task (#756). */
     private static final int POOLED_TASKS_THRESHOLD = 2;
 
-    private static final class ExecutorInfo {
+    static final class ExecutorInfo {
         final String name;
         final String executorClass;
         final int maximumPoolSize;
@@ -89,7 +89,6 @@ public final class VirtualThreadPoolingDetector {
         ThreadTasks(String threadName) { this.threadName = threadName; }
     }
 
-    private final Map<IdentityKey, ExecutorInfo> executors = new ConcurrentHashMap<>();
     private final Map<Long, ThreadTasks> tasksPerVirtualThread = new ConcurrentHashMap<>();
 
     /**
@@ -104,14 +103,11 @@ public final class VirtualThreadPoolingDetector {
         if (!(executor instanceof ThreadPoolExecutor pool)) {
             return;
         }
-        IdentityKey key = new IdentityKey(executor);
-        int id = key.hashCode();
-        if (executors.containsKey(key)) {
+        if (trackedState(executor) != null) {
             return;
         }
-        String label = name != null ? name : executor.getClass().getSimpleName() + "@" + id;
-        executors.computeIfAbsent(key, k -> new ExecutorInfo(
-                label,
+        stateFor(executor, name, executor.getClass().getSimpleName(), l -> new ExecutorInfo(
+                l,
                 executor.getClass().getName(),
                 pool.getMaximumPoolSize(),
                 manufacturesVirtualThreads(pool.getThreadFactory())));
@@ -168,7 +164,7 @@ public final class VirtualThreadPoolingDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (ExecutorInfo info : executors.values()) {
+        for (ExecutorInfo info : states()) {
             if (!info.poolsVirtualThreads) {
                 continue;
             }

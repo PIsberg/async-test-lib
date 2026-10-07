@@ -238,4 +238,11 @@ class WeakHashMapSharedDetectorTest {
             worker.join();
         }
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        WeakHashMapSharedDetector d = new WeakHashMapSharedDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(WeakHashMap::new, m -> d.recordAccess(m, null, Thread.currentThread()));
+    }
 }

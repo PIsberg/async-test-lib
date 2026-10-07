@@ -190,4 +190,11 @@ public class ResourceLeakDetectorTest {
         assertTrue(report.contains("conn: Connection: 1 threads opened, 0 threads closed, opens: 1, closes: 0"),
                 "the leaked resource's line survives beside the closed one's: " + report);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ResourceLeakDetector d = new ResourceLeakDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, r -> d.registerResource(r, null, null));
+    }
 }

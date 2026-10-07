@@ -341,4 +341,11 @@ public class ConcurrentModificationDetectorTest {
         assertTrue(report.collectionActivity.get("active-list").contains("modifications: 2"),
                    "Should report correct modification count");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ConcurrentModificationDetector d = new ConcurrentModificationDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(java.util.ArrayList<String>::new, c -> d.registerCollection(c, null));
+    }
 }

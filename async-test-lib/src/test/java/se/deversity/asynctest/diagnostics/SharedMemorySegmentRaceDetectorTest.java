@@ -254,4 +254,11 @@ class SharedMemorySegmentRaceDetectorTest {
                 + "segment the detector already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedMemorySegmentRaceDetector d = new SharedMemorySegmentRaceDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, s -> d.recordAccess(s, null, 0, 8, true, Thread.currentThread(), null));
+    }
 }

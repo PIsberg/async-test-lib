@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
@@ -57,12 +56,9 @@ import java.util.zip.Inflater;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedDeflaterDetectorTest.java"
 )
-public final class SharedDeflaterDetector {
+public final class SharedDeflaterDetector extends AbstractInstanceDetector<SharedDeflaterDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
 
@@ -72,7 +68,10 @@ public final class SharedDeflaterDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label, instance instanceof Deflater ? "Deflater" : "Inflater");
+    }
 
     /**
      * Record an access to a {@link Deflater} instance.
@@ -100,13 +99,7 @@ public final class SharedDeflaterDetector {
 
     private void record(Object instance, String name, String kind, Thread thread) {
         if (thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(instance));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(instance);
-            final String label = (name != null) ? name : unnamedLabels.of(key, kind);
-            s = instances.computeIfAbsent(key, k -> new State(label, kind));
-        }
+        State s = stateFor(instance, name, kind);
         s.noteAccess(instance, thread);
     }
     /**
@@ -116,7 +109,7 @@ public final class SharedDeflaterDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) — java.util.zip %s wraps a "

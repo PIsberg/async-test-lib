@@ -61,4 +61,11 @@ class SpuriousWakeupDetectorTest {
         assertTrue(rendered.contains("SPURIOUS WAKEUP HAZARD DETECTED"));
         assertTrue(rendered.contains("my-lock"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SpuriousWakeupDetector d = new SpuriousWakeupDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordWait(m, null, false, Thread.currentThread()));
+    }
 }

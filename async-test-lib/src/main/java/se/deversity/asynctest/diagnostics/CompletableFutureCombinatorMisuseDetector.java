@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -76,10 +75,7 @@ import java.util.concurrent.atomic.AtomicLong;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCombinatorMisuseDetectorTest.java"
 )
-public final class CompletableFutureCombinatorMisuseDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public final class CompletableFutureCombinatorMisuseDetector extends AbstractInstanceDetector<CompletableFutureCombinatorMisuseDetector.CombinatorState> {
 
     /** Await styles that return immediately instead of waiting for the group. */
     private static final Set<String> NON_BLOCKING_READS = Set.of("getNow", "isDone", "poll", "complete");
@@ -103,7 +99,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
         return false;
     }
 
-    private static final class ConstituentEvent {
+    static final class ConstituentEvent {
         final long    seq;
         final String  label;
         final boolean exceptional;
@@ -115,7 +111,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
         }
     }
 
-    private static final class AwaitEvent {
+    static final class AwaitEvent {
         final long   seq;
         final String how;
         final String threadName;
@@ -127,7 +123,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
         }
     }
 
-    private static final class CombinatorState {
+    static final class CombinatorState {
         final String                 label;
         final String                 kind;
         final int                    arity;
@@ -143,7 +139,6 @@ public final class CompletableFutureCombinatorMisuseDetector {
         }
     }
 
-    private final Map<IdentityKey, CombinatorState> combinators = new ConcurrentHashMap<>();
     private final AtomicLong                    sequence    = new AtomicLong();
     private volatile boolean                    enabled     = true;
 
@@ -160,8 +155,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
     public void recordCombinator(CompletableFuture<?> combined, String label,
                                  String kind, int arity, Thread thread) {
         if (!enabled || combined == null || thread == null) return;
-        String name = label != null ? label : unnamedLabels.of(combined, "combinator");
-        combinators.computeIfAbsent(new IdentityKey(combined), k -> new CombinatorState(
+        stateFor(combined, label, "combinator", name -> new CombinatorState(
                 name, kind != null ? kind : "allOf", Math.max(arity, 0), thread.getName()));
     }
 
@@ -176,7 +170,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
     public void recordConstituentCompleted(CompletableFuture<?> combined, String constituentLabel,
                                            boolean exceptional, Thread thread) {
         if (!enabled || combined == null || thread == null) return;
-        CombinatorState s = combinators.get(new IdentityKey(combined));
+        CombinatorState s = trackedState(combined);
         if (s == null) return;   // combinator was never registered; nothing to say about it
         s.constituents.add(new ConstituentEvent(
                 sequence.incrementAndGet(),
@@ -194,7 +188,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
      */
     public void recordAwait(CompletableFuture<?> combined, String how, Thread thread) {
         if (!enabled || combined == null || thread == null) return;
-        CombinatorState s = combinators.get(new IdentityKey(combined));
+        CombinatorState s = trackedState(combined);
         if (s == null) return;
         s.awaits.add(new AwaitEvent(
                 sequence.incrementAndGet(), how != null ? how : "join", thread.getName()));
@@ -213,7 +207,7 @@ public final class CompletableFutureCombinatorMisuseDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (CombinatorState s : combinators.values()) {
+        for (CombinatorState s : states()) {
             List<ConstituentEvent> done = new ArrayList<>(s.constituents);
             List<AwaitEvent> awaits = new ArrayList<>(s.awaits);
 

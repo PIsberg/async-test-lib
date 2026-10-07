@@ -9,7 +9,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -22,12 +21,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Queue imbalance across workers
  * - Long-running tasks blocking others
  */
-public class ThreadPoolMonitor {
+public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonitor.PoolState> {
 
     /** Longest task duration, in milliseconds, above which a pool is reported for blocking tasks (#756). */
     private static final long LONG_TASK_THRESHOLD_MS = 10_000;
     
-    private static class PoolState {
+    static final class PoolState {
         final String poolName;
         final int maxSize;
         final int queueCapacity;
@@ -61,7 +60,6 @@ public class ThreadPoolMonitor {
         }
     }
     
-    private final Map<IdentityKey, PoolState> pools = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     
     /**
@@ -76,8 +74,7 @@ public class ThreadPoolMonitor {
     public void registerPool(Object executor, String name, int coreSize, int maxSize, int queueCapacity) {
         if (!enabled || executor == null) return;
         
-        IdentityKey key = new IdentityKey(executor);
-        pools.putIfAbsent(key, new PoolState(name, maxSize, queueCapacity));
+        stateFor(executor, name, "pool", label -> new PoolState(label, maxSize, queueCapacity));
     }
     
     /**
@@ -88,8 +85,7 @@ public class ThreadPoolMonitor {
     public void recordTaskSubmitted(Object executor) {
         if (!enabled || executor == null) return;
         
-        IdentityKey key = new IdentityKey(executor);
-        PoolState state = pools.get(key);
+        PoolState state = trackedState(executor);
         if (state == null) return;
         
         state.queuedTasks.incrementAndGet();
@@ -104,8 +100,7 @@ public class ThreadPoolMonitor {
     public void recordTaskStarted(Object executor) {
         if (!enabled || executor == null) return;
         
-        IdentityKey key = new IdentityKey(executor);
-        PoolState state = pools.get(key);
+        PoolState state = trackedState(executor);
         if (state == null) return;
         
         state.activeThreads.incrementAndGet();
@@ -121,8 +116,7 @@ public class ThreadPoolMonitor {
     public void recordTaskCompleted(Object executor, long durationMs) {
         if (!enabled || executor == null) return;
         
-        IdentityKey key = new IdentityKey(executor);
-        PoolState state = pools.get(key);
+        PoolState state = trackedState(executor);
         if (state == null) return;
         
         state.activeThreads.decrementAndGet();
@@ -139,10 +133,10 @@ public class ThreadPoolMonitor {
     public void recordTaskRejected(Object executor, String reason) {
         if (!enabled || executor == null) return;
         
-        IdentityKey key = new IdentityKey(executor);
-        PoolState state = pools.computeIfAbsent(key, k -> 
-            new PoolState("Unregistered pool", 0, 0, false)
-        );
+        PoolState state = trackedState(executor);
+        if (state == null) {
+            state = stateFor(executor, "Unregistered pool", "pool", label -> new PoolState(label, 0, 0, false));
+        }
         
         state.rejectedTasks.incrementAndGet();
         state.rejections.add(reason + " (queued: " + state.queuedTasks.get() + ")");
@@ -156,7 +150,7 @@ public class ThreadPoolMonitor {
     public ThreadPoolReport analyzePoolHealth() {
         ThreadPoolReport report = new ThreadPoolReport();
         
-        for (PoolState state : pools.values()) {
+        for (PoolState state : states()) {
             if (state.rejectedTasks.get() > 0) {
                 report.poolsWithRejections.add(String.format(
                     "%s: %d tasks rejected",
@@ -223,7 +217,7 @@ public class ThreadPoolMonitor {
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
-        pools.clear();
+        clearStates();
     }
     /**
      * Disable.

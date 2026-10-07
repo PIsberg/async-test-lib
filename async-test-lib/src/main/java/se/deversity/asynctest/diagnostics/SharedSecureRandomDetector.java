@@ -56,12 +56,9 @@ import java.util.concurrent.atomic.AtomicLong;
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java"
 )
 @AISecure(aspect = "cryptography (RNG quality)")
-public final class SharedSecureRandomDetector {
+public final class SharedSecureRandomDetector extends AbstractInstanceDetector<SharedSecureRandomDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State {
+    static final class State {
         final String label;
         final String algorithm;
         final String provider;
@@ -77,7 +74,17 @@ public final class SharedSecureRandomDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return describe((SecureRandom) instance, label);
+    }
+
+    private static State describe(SecureRandom random, String label) {
+        String algorithm = safeString(random::getAlgorithm);
+        String provider  = safeString(() -> random.getProvider() != null
+                ? random.getProvider().getName() : "unknown");
+        return new State(label, algorithm, provider);
+    }
     /** Current invocation round, bumped by {@link #markInvocationStart()}. */
     private final AtomicLong invocationEpoch = new AtomicLong();
 
@@ -102,21 +109,8 @@ public final class SharedSecureRandomDetector {
      */
     public void recordAccess(SecureRandom random, String name, Thread thread) {
         if (random == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(random));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(random);
-            // Cold path — first observation of this instance.
-            s = instances.computeIfAbsent(key, k -> {
-                String label = (name != null)
-                        ? name
-                        : unnamedLabels.of(k, random.getClass().getSimpleName());
-                String algorithm = safeString(random::getAlgorithm);
-                String provider  = safeString(() -> random.getProvider() != null
-                        ? random.getProvider().getName() : "unknown");
-                return new State(label, algorithm, provider);
-            });
-        }
+        // The algorithm and provider are read once, when the instance is first seen.
+        State s = stateFor(random, name);
         SelfGuard.addThreadId(s.accessingThreadIds, thread.threadId());
         s.accessingThreadNames.add(thread.getName());
         s.sharing.record(invocationEpoch.get(), thread.threadId());
@@ -128,7 +122,7 @@ public final class SharedSecureRandomDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharing.sharedWithinARound()) continue;
             String msg = String.format(
                     "'%s' (algorithm=%s, provider=%s) accessed from %d threads (%s) — "

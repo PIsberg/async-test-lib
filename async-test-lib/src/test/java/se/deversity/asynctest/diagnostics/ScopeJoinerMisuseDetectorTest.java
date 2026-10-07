@@ -229,4 +229,11 @@ class ScopeJoinerMisuseDetectorTest {
         d.recordResult(new Object(), Thread.currentThread());
         assertFalse(d.analyze().hasIssues());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ScopeJoinerMisuseDetector d = new ScopeJoinerMisuseDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, j -> d.recordJoinerBound(j, null, "scope", Thread.currentThread()));
+    }
 }

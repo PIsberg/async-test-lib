@@ -160,4 +160,11 @@ class SharedByteBufferDetectorTest {
                 first.structuredViolations.get(0).attributes(),
                 second.structuredViolations.get(0).attributes());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedByteBufferDetector d = new SharedByteBufferDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> ByteBuffer.allocate(4), b -> d.recordPositionalAccess(b, "get"));
+    }
 }

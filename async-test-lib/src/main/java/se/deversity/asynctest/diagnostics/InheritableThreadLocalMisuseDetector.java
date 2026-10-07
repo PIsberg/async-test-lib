@@ -50,10 +50,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }
  * }</pre>
  */
-public class InheritableThreadLocalMisuseDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class InheritableThreadLocalMisuseDetector extends AbstractInstanceDetector<InheritableThreadLocalMisuseDetector.Accesses> {
 
     /** Thread IDs that belong to a thread pool (registered by test code). */
     private final Set<Long> knownPoolThreadIds = ConcurrentHashMap.newKeySet();
@@ -61,14 +58,13 @@ public class InheritableThreadLocalMisuseDetector {
     private final List<String> pooledGetIssues = new CopyOnWriteArrayList<>();
     private final List<String> pooledSetIssues = new CopyOnWriteArrayList<>();
 
-    /**
-     * Per variable object, the threads that accessed it. Keyed by identity: two variables may
-     * share a name, and keyed by the name one line counted both variables' threads (#789).
-     */
-    private final Map<IdentityKey, Accesses> accessingThreads = new ConcurrentHashMap<>();
+    @Override
+    Accesses newState(Object instance, String label) {
+        return new Accesses(label);
+    }
 
     /** The name one variable is reported under, and the IDs of the threads that accessed it. */
-    private static final class Accesses {
+    static final class Accesses {
         final String name;
         final Set<Long> threads = ConcurrentHashMap.newKeySet();
 
@@ -97,9 +93,9 @@ public class InheritableThreadLocalMisuseDetector {
     public void recordGet(InheritableThreadLocal<?> itl, String variableName) {
         if (itl == null) return;
         Thread t = Thread.currentThread();
-        String name = resolved(variableName, itl);
-        accessingThreads.computeIfAbsent(new IdentityKey(itl), k -> new Accesses(name))
-            .threads.add(t.threadId());
+        Accesses accesses = stateFor(itl, variableName, "itl");
+        accesses.threads.add(t.threadId());
+        String name = variableName != null ? variableName : accesses.name;
 
         if (knownPoolThreadIds.contains(t.threadId())) {
             pooledGetIssues.add(String.format(
@@ -121,9 +117,9 @@ public class InheritableThreadLocalMisuseDetector {
     public void recordSet(InheritableThreadLocal<?> itl, String variableName, Object value) {
         if (itl == null) return;
         Thread t = Thread.currentThread();
-        String name = resolved(variableName, itl);
-        accessingThreads.computeIfAbsent(new IdentityKey(itl), k -> new Accesses(name))
-            .threads.add(t.threadId());
+        Accesses accesses = stateFor(itl, variableName, "itl");
+        accesses.threads.add(t.threadId());
+        String name = variableName != null ? variableName : accesses.name;
 
         if (knownPoolThreadIds.contains(t.threadId())) {
             pooledSetIssues.add(String.format(
@@ -149,7 +145,7 @@ public class InheritableThreadLocalMisuseDetector {
         // holder, it was true in every run. The two findings above are the grounded ones: both
         // need the caller to have declared which threads are pooled, which is the situation this
         // detector's javadoc is actually about (#517).
-        for (Accesses accesses : accessingThreads.values()) {
+        for (Accesses accesses : states()) {
             if (accesses.threads.size() > 1) {
                 report.threadActivity.add(String.format(
                     "%s: accessed by %d threads", accesses.name, accesses.threads.size()));
@@ -170,10 +166,6 @@ public class InheritableThreadLocalMisuseDetector {
             }
         }
         return DetectorFailurePolicy.checkedReport(this, report);
-    }
-
-    private String resolved(String name, Object itl) {
-        return name != null ? name : unnamedLabels.of(itl, "itl");
     }
 
     /** Report produced by {@link #analyze()}. */

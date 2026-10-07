@@ -159,4 +159,11 @@ class LockUpgradeDeadlockDetectorTest {
         String msg = detector.analyze().violations.get(0);
         assertTrue(msg.contains("worker-1"), "a named thread keeps its name: " + msg);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        LockUpgradeDeadlockDetector d = new LockUpgradeDeadlockDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(java.util.concurrent.locks.ReentrantReadWriteLock::new, l -> d.recordReadLockAcquired(l, null, Thread.currentThread()));
+    }
 }

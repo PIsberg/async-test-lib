@@ -102,4 +102,11 @@ public class WeakReferenceRaceDetectorTest {
         String s = d.analyze().toString();
         assertTrue(s.contains("myRef"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        WeakReferenceRaceDetector d = new WeakReferenceRaceDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, r -> d.recordGet(r, null, null, Thread.currentThread()));
+    }
 }

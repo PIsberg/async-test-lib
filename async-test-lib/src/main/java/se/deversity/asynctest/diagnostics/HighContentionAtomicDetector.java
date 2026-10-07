@@ -66,10 +66,7 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/HighContentionAtomicDetectorTest.java"
 )
-public final class HighContentionAtomicDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public final class HighContentionAtomicDetector extends AbstractInstanceDetector<HighContentionAtomicDetector.State> {
 
     /** Default total-attempt count above which an instance becomes eligible for a finding. */
     public static final long DEFAULT_ATTEMPT_THRESHOLD = 1000L;
@@ -77,7 +74,7 @@ public final class HighContentionAtomicDetector {
     /** Minimum failed-CAS ratio (failures / total attempts) required to raise a finding. */
     private static final double FAILURE_RATIO_THRESHOLD = 0.10;
 
-    private static final class State {
+    static final class State {
         final String label;
         final LongAdder totalAttempts  = new LongAdder();
         final LongAdder failedAttempts = new LongAdder();
@@ -90,7 +87,11 @@ public final class HighContentionAtomicDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
+
     /** Current invocation round, bumped by {@link #markInvocationStart()}. */
     private final AtomicLong invocationEpoch = new AtomicLong();
     private final long attemptThreshold;
@@ -141,11 +142,8 @@ public final class HighContentionAtomicDetector {
     }
 
     private State stateFor(Object atomic) {
-        IdentityKey id = new IdentityKey(atomic);
-        State existing = instances.get(id);
-        if (existing != null) return existing;
-        return instances.computeIfAbsent(id,
-                k -> new State(unnamedLabels.of(k, atomic.getClass().getSimpleName())));
+        // Atomics carry no test-given name; each is labelled by its class.
+        return stateFor(atomic, null);
     }
 
     private void track(State s, Thread thread) {
@@ -172,7 +170,7 @@ public final class HighContentionAtomicDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             int threadCount = s.threadIds.size();
             long attempts = s.totalAttempts.sum();
             long failures = s.failedAttempts.sum();

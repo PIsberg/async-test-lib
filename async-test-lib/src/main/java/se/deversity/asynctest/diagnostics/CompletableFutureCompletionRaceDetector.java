@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -65,13 +64,10 @@ import java.util.concurrent.atomic.AtomicInteger;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCompletionRaceDetectorTest.java"
 )
-public final class CompletableFutureCompletionRaceDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public final class CompletableFutureCompletionRaceDetector extends AbstractInstanceDetector<CompletableFutureCompletionRaceDetector.FutureState> {
 
     /** One observed completion attempt on one future. */
-    private static final class Attempt {
+    static final class Attempt {
         final long    seq;
         final String  threadName;
         final boolean won;
@@ -87,14 +83,18 @@ public final class CompletableFutureCompletionRaceDetector {
         }
     }
 
-    private static final class FutureState {
+    static final class FutureState {
         final String        label;
         final List<Attempt> attempts = new CopyOnWriteArrayList<>();
 
         FutureState(String label) { this.label = label; }
     }
 
-    private final Map<IdentityKey, FutureState> futures  = new ConcurrentHashMap<>();
+    @Override
+    FutureState newState(Object instance, String label) {
+        return new FutureState(label);
+    }
+
     private final AtomicInteger             sequence = new AtomicInteger();
     private volatile boolean                enabled  = true;
 
@@ -167,8 +167,7 @@ public final class CompletableFutureCompletionRaceDetector {
     private void record(CompletableFuture<?> future, String label, boolean won,
                         boolean exceptional, String rendered, Thread thread) {
         if (!enabled || future == null || thread == null) return;
-        String name = label != null ? label : unnamedLabels.of(future, "CompletableFuture");
-        FutureState state = futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(name));
+        FutureState state = stateFor(future, label, "CompletableFuture");
         state.attempts.add(new Attempt(
                 sequence.incrementAndGet(), thread.getName(), won, exceptional, rendered));
     }
@@ -200,7 +199,7 @@ public final class CompletableFutureCompletionRaceDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (FutureState s : futures.values()) {
+        for (FutureState s : states()) {
             List<Attempt> all = new ArrayList<>(s.attempts);
             if (all.isEmpty()) continue;
 

@@ -325,4 +325,11 @@ public class SharedCollectionDetectorTest {
                 + bytes + " bytes over " + accesses + " accesses; a state lookup or a thread-id "
                 + "set started allocating per access");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedCollectionDetector d = new SharedCollectionDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(ArrayList::new, c -> d.recordWrite(c, null, "add"));
+    }
 }

@@ -648,4 +648,11 @@ public class RaceConditionDetectorTest {
                 "two objects raced on are two lines, even when their identity hashes collide (#854): "
                         + report);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        RaceConditionDetector d = new RaceConditionDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, o -> d.recordFieldWrite(o, "count"));
+    }
 }

@@ -41,12 +41,9 @@ import org.jspecify.annotations.Nullable;
  * }
  * }</pre>
  */
-public class ResourceLeakDetector {
+public class ResourceLeakDetector extends AbstractInstanceDetector<ResourceLeakDetector.ResourceState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class ResourceState {
+    static final class ResourceState {
         final String name;
         final String resourceType;
         final AtomicInteger openCount = new AtomicInteger(0);
@@ -56,13 +53,12 @@ public class ResourceLeakDetector {
         volatile boolean currentlyOpen = false;
         volatile @Nullable Long lastOpenTime = null;
 
-        ResourceState(Object resource, String name, String resourceType, UnnamedLabels labels) {
-            this.resourceType = resourceType != null ? resourceType : resource.getClass().getSimpleName();
-            this.name = name != null ? name : labels.of(resource, this.resourceType);
+        ResourceState(String name, String resourceType) {
+            this.resourceType = resourceType;
+            this.name = name;
         }
     }
 
-    private final Map<IdentityKey, ResourceState> resources = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
 
     /**
@@ -80,8 +76,8 @@ public class ResourceLeakDetector {
         // runner runs threads × invocations times against the same resource. A put() would
         // install a fresh ResourceState each time, wiping the open/close counts — so a resource
         // left open by an earlier invocation would be erased before analysis saw it.
-        resources.computeIfAbsent(new IdentityKey(resource),
-                                  ignored -> new ResourceState(resource, name, resourceType, unnamedLabels));
+        String type = resourceType != null ? resourceType : resource.getClass().getSimpleName();
+        stateFor(resource, name, type, label -> new ResourceState(label, type));
     }
 
     /**
@@ -94,7 +90,7 @@ public class ResourceLeakDetector {
         if (!enabled || resource == null) {
             return;
         }
-        ResourceState state = resources.get(new IdentityKey(resource));
+        ResourceState state = trackedState(resource);
         if (state != null) {
             state.openCount.incrementAndGet();
             state.openingThreads.add(Thread.currentThread().threadId());
@@ -113,7 +109,7 @@ public class ResourceLeakDetector {
         if (!enabled || resource == null) {
             return;
         }
-        ResourceState state = resources.get(new IdentityKey(resource));
+        ResourceState state = trackedState(resource);
         if (state != null) {
             state.closeCount.incrementAndGet();
             state.closingThreads.add(Thread.currentThread().threadId());
@@ -130,7 +126,7 @@ public class ResourceLeakDetector {
         ResourceLeakReport report = new ResourceLeakReport();
         report.enabled = enabled;
 
-        for (ResourceState state : resources.values()) {
+        for (ResourceState state : states()) {
             int opens = state.openCount.get();
             int closes = state.closeCount.get();
 

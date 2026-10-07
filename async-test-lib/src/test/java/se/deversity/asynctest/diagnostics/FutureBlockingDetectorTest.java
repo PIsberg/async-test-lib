@@ -184,4 +184,11 @@ class FutureBlockingDetectorTest {
             "both workers were blocked at the same moment with the awaited task queued");
         assertTrue(report.toString().contains("2/2 workers blocked"), report.toString());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        FutureBlockingDetector d = new FutureBlockingDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, e -> d.registerExecutor(e, null, 1));
+    }
 }

@@ -115,4 +115,11 @@ public class SynchronizedCollectionIterationDetectorTest {
                         + "installs fresh state discards everything learned before it. Report was: "
                         + d.analyze());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SynchronizedCollectionIterationDetector d = new SynchronizedCollectionIterationDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, w -> d.recordWrapperCreated(w, null));
+    }
 }

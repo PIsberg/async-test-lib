@@ -63,12 +63,9 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedByteBufferDetectorTest.java"
 )
-public final class SharedByteBufferDetector {
+public final class SharedByteBufferDetector extends AbstractInstanceDetector<SharedByteBufferDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.TrackedInstance {
+    static final class State extends SelfGuard.TrackedInstance {
         final String label;
         final String kind;
         final Set<Long>   positionalThreadIds   = ConcurrentHashMap.newKeySet();
@@ -84,7 +81,10 @@ public final class SharedByteBufferDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label, instance.getClass().getSimpleName());
+    }
 
     /**
      * Record a position-mutating access to a buffer instance — a relative
@@ -124,15 +124,7 @@ public final class SharedByteBufferDetector {
     }
 
     private State resolve(Object buffer) {
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(buffer));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(buffer);
-            final String kind = buffer.getClass().getSimpleName();
-            final String label = unnamedLabels.of(key, kind);
-            s = instances.computeIfAbsent(key, k -> new State(label, kind));
-        }
-        return s;
+        return stateFor(buffer, null);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -141,7 +133,7 @@ public final class SharedByteBufferDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (s.positionalThreadIds.size() <= 1 || !s.sawUnguardedSharing()) continue;
             StringBuilder msg = new StringBuilder(String.format(
                     "%s '%s' had position-mutating operations (%s) performed by %d threads (%s) — "

@@ -380,4 +380,11 @@ public class SharedRandomDetectorTest {
                             + "and registering one again does not use up a number (#860)");
         }
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedRandomDetector d = new SharedRandomDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Random::new, r -> d.recordRandomAccess(r, null, "nextInt"));
+    }
 }

@@ -143,4 +143,11 @@ public class TimerDetectorTest {
             timer.cancel();
         }
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        TimerDetector d = new TimerDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> new java.util.Timer(true), t -> d.registerTimer(t, null));
+    }
 }

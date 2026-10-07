@@ -44,12 +44,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @since 0.9.0
  */
-public class WeakReferenceRaceDetector {
+public class WeakReferenceRaceDetector extends AbstractInstanceDetector<WeakReferenceRaceDetector.RefState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class RefState {
+    static final class RefState {
         final String      name;
         final AtomicBoolean sawNonNull    = new AtomicBoolean(false);
         final AtomicBoolean sawNull       = new AtomicBoolean(false);
@@ -60,7 +57,10 @@ public class WeakReferenceRaceDetector {
         RefState(String name) { this.name = name; }
     }
 
-    private final Map<IdentityKey, RefState> refs = new ConcurrentHashMap<>();
+    @Override
+    RefState newState(Object instance, String label) {
+        return new RefState(label);
+    }
 
     /**
      * Record the result of calling {@code ref.get()}.
@@ -72,8 +72,7 @@ public class WeakReferenceRaceDetector {
      */
     public void recordGet(Object ref, String name, Object result, Thread thread) {
         if (ref == null || thread == null) return;
-        String label = name != null ? name : unnamedLabels.of(ref, "ref");
-        RefState s = refs.computeIfAbsent(new IdentityKey(ref), k -> new RefState(label));
+        RefState s = stateFor(ref, name, "ref");
         if (result != null) {
             s.sawNonNull.set(true);
             s.nonNullThreads.add(thread.getName());
@@ -94,8 +93,7 @@ public class WeakReferenceRaceDetector {
      */
     public void recordNullDereference(Object ref, String name, Thread thread) {
         if (ref == null || thread == null) return;
-        String label = name != null ? name : unnamedLabels.of(ref, "ref");
-        RefState s = refs.computeIfAbsent(new IdentityKey(ref), k -> new RefState(label));
+        RefState s = stateFor(ref, name, "ref");
         s.nullDerefs.add(thread.getName());
     }
 
@@ -104,7 +102,7 @@ public class WeakReferenceRaceDetector {
      */
     public WeakReferenceRaceReport analyze() {
         WeakReferenceRaceReport r = new WeakReferenceRaceReport();
-        for (RefState s : refs.values()) {
+        for (RefState s : states()) {
             if (!s.nullDerefs.isEmpty()) {
                 r.violations.add(String.format(
                         "'%s': WeakReference.get() result used without null check on thread(s) (%s) — "

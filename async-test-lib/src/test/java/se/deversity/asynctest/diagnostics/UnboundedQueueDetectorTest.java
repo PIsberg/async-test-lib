@@ -233,4 +233,25 @@ class UnboundedQueueDetectorTest {
         assertTrue(output.contains("UNBOUNDED QUEUE ISSUES DETECTED"));
         assertFalse(output.contains("No unbounded queue issues detected"));
     }
+
+    /**
+     * An @AsyncTest body registers its shared queue once per worker. A put() here replaced the
+     * queue's state each time and recorded one "unbounded queue" event per registration (#918).
+     */
+    @Test
+    void registeringOneQueueFromEveryWorkerReportsItOnce() {
+        UnboundedQueueDetector d = new UnboundedQueueDetector();
+        LinkedBlockingQueue<String> queue = new LinkedBlockingQueue<>();
+        for (int worker = 0; worker < 4; worker++) {
+            d.recordQueueCreation(queue, "jobs", Integer.MAX_VALUE);
+        }
+        assertEquals(1, d.analyze().getEvents().size(), d.analyze().toString());
+    }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        UnboundedQueueDetector d = new UnboundedQueueDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(LinkedBlockingQueue<String>::new, q -> d.recordQueueCreation(q, "q", 16));
+    }
 }

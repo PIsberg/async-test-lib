@@ -1,9 +1,7 @@
 package se.deversity.asynctest.diagnostics;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -18,9 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>The wired detector for the condition is {@code NotifyWithoutMonitorDetector}. See issue #374.
  */
-public class NotifyAllValidator {
+public class NotifyAllValidator extends AbstractInstanceDetector<NotifyAllValidator.MonitorState> {
 
-    private static class MonitorState {
+    static final class MonitorState {
         final String monitorName;
         final AtomicInteger waitingThreads = new AtomicInteger();
         /**
@@ -39,7 +37,6 @@ public class NotifyAllValidator {
         }
     }
 
-    private final Map<IdentityKey, MonitorState> monitors = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     /**
      * Records waiter added so it can be analysed at the end of the run.
@@ -52,12 +49,12 @@ public class NotifyAllValidator {
             return;
         }
 
-        MonitorState state = monitors.computeIfAbsent(
-            new IdentityKey(monitor),
-            ignored -> new MonitorState(monitorName == null || monitorName.isBlank()
-                ? monitor.getClass().getSimpleName()
-                : monitorName)
-        );
+        MonitorState state = trackedState(monitor);
+        if (state == null) {
+            // An unnamed monitor is labelled by its class, unnumbered.
+            String label = monitorName == null || monitorName.isBlank() ? monitor.getClass().getSimpleName() : monitorName;
+            state = stateFor(monitor, label, "monitor", MonitorState::new);
+        }
         int parked = state.waitingThreads.incrementAndGet();
         state.peakWaitingThreads.updateAndGet(peak -> Math.max(peak, parked));
     }
@@ -71,7 +68,7 @@ public class NotifyAllValidator {
             return;
         }
 
-        MonitorState state = monitors.get(new IdentityKey(monitor));
+        MonitorState state = trackedState(monitor);
         if (state != null) {
             state.waitingThreads.updateAndGet(current -> Math.max(0, current - 1));
         }
@@ -87,10 +84,10 @@ public class NotifyAllValidator {
             return;
         }
 
-        MonitorState state = monitors.computeIfAbsent(
-            new IdentityKey(monitor),
-            ignored -> new MonitorState(monitor.getClass().getSimpleName())
-        );
+        MonitorState state = trackedState(monitor);
+        if (state == null) {
+            state = stateFor(monitor, monitor.getClass().getSimpleName(), "monitor", MonitorState::new);
+        }
 
         if (notifyAll) {
             state.notifyAllCalls.incrementAndGet();
@@ -112,7 +109,7 @@ public class NotifyAllValidator {
     public NotifyAllReport analyze() {
         NotifyAllReport report = new NotifyAllReport();
 
-        for (MonitorState state : monitors.values()) {
+        for (MonitorState state : states()) {
             // Two ways to see the lost wakeup, both resting on evidence that survives the
             // waiters draining away:
             //   1. a notify() was observed while several threads were actually parked, or
@@ -138,7 +135,7 @@ public class NotifyAllValidator {
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
-        monitors.clear();
+        clearStates();
     }
     /**
      * Disable.

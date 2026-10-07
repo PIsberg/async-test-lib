@@ -203,4 +203,11 @@ public class ConditionVariableDetectorTest {
                         + "1 signalling threads, 0 signals, 1 signalAll"),
                 "the broadcast condition's line survives beside the signalled one's: " + report);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ConditionVariableDetector d = new ConditionVariableDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> new java.util.concurrent.locks.ReentrantLock().newCondition(), c -> d.registerCondition(c, null));
+    }
 }

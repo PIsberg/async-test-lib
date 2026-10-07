@@ -47,10 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class CopyOnWriteCollectionDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class CopyOnWriteCollectionDetector extends AbstractInstanceDetector<CopyOnWriteCollectionDetector.CoWState> {
 
     /**
      * Fraction of total operations that are writes above which a warning is raised.
@@ -64,7 +61,7 @@ public class CopyOnWriteCollectionDetector {
      */
     private static final int MIN_WRITE_COUNT_FOR_RATIO_CHECK = 5;
 
-    private static class CoWState {
+    static final class CoWState {
         final String name;
         final String collectionType;
         final AtomicInteger readCount  = new AtomicInteger(0);
@@ -76,7 +73,10 @@ public class CopyOnWriteCollectionDetector {
         }
     }
 
-    private final Map<IdentityKey, CoWState> collections = new ConcurrentHashMap<>();
+    @Override
+    CoWState newState(Object instance, String label) {
+        return new CoWState(label, instance.getClass().getSimpleName());
+    }
 
     /**
      * Register a Copy-on-Write collection for monitoring.
@@ -86,10 +86,7 @@ public class CopyOnWriteCollectionDetector {
      */
     public void registerCollection(Object collection, String name) {
         if (collection == null) return;
-        IdentityKey key = new IdentityKey(collection);
-        String type = collection.getClass().getSimpleName();
-        collections.computeIfAbsent(key,
-                k -> new CoWState(name != null ? name : unnamedLabels.next(type), type));
+        stateFor(collection, name);
     }
 
     /**
@@ -115,10 +112,7 @@ public class CopyOnWriteCollectionDetector {
     }
 
     private CoWState resolve(Object collection, String name) {
-        return collections.computeIfAbsent(new IdentityKey(collection), k -> {
-            String type = collection.getClass().getSimpleName();
-            return new CoWState(name != null ? name : unnamedLabels.next(type), type);
-        });
+        return stateFor(collection, name);
     }
 
     /**
@@ -129,7 +123,7 @@ public class CopyOnWriteCollectionDetector {
     public CopyOnWriteReport analyze() {
         CopyOnWriteReport report = new CopyOnWriteReport();
 
-        for (CoWState state : collections.values()) {
+        for (CoWState state : states()) {
             int reads  = state.readCount.get();
             int writes = state.writeCount.get();
             int total  = reads + writes;

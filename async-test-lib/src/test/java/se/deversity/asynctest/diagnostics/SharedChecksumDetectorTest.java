@@ -165,4 +165,11 @@ class SharedChecksumDetectorTest {
                 "the first unnamed checksum is CRC32@1 (#860): " + report);
         assertFalse(report.contains("@" + System.identityHashCode(crc)), report);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedChecksumDetector d = new SharedChecksumDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(CRC32::new, c -> d.recordAccess(c, "update", Thread.currentThread()));
+    }
 }

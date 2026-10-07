@@ -98,12 +98,9 @@ import java.util.concurrent.atomic.AtomicInteger;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ScopeJoinerMisuseDetectorTest.java"
 )
-public final class ScopeJoinerMisuseDetector {
+public final class ScopeJoinerMisuseDetector extends AbstractInstanceDetector<ScopeJoinerMisuseDetector.JoinerState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class JoinerState {
+    static final class JoinerState {
         final String        label;
         volatile long       ownerThreadId  = -1L;
         final Set<String>   scopes         = ConcurrentHashMap.newKeySet();
@@ -140,7 +137,11 @@ public final class ScopeJoinerMisuseDetector {
         JoinerState(String label) { this.label = label; }
     }
 
-    private final Map<IdentityKey, JoinerState> joiners = new ConcurrentHashMap<>();
+    @Override
+    JoinerState newState(Object instance, String label) {
+        return new JoinerState(label);
+    }
+
     private volatile boolean                enabled = true;
 
     /** Creates a detector with no recorded joiners. */
@@ -267,14 +268,12 @@ public final class ScopeJoinerMisuseDetector {
     }
 
     private JoinerState stateOrCreate(Object joiner, String label) {
-        IdentityKey id = new IdentityKey(joiner);
-        String name = label != null ? label : unnamedLabels.of(id, "joiner");
-        return joiners.computeIfAbsent(id, k -> new JoinerState(name));
+        return stateFor(joiner, label, "joiner");
     }
 
     private @Nullable JoinerState state(Object joiner) {
         if (!enabled || joiner == null) return null;
-        return joiners.get(new IdentityKey(joiner));
+        return trackedState(joiner);
     }
 
     /** Raises {@code peak} to {@code observed} if it is higher, retrying against concurrent raisers. */
@@ -298,7 +297,7 @@ public final class ScopeJoinerMisuseDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (JoinerState s : joiners.values()) {
+        for (JoinerState s : states()) {
             reuse(r, s);
             racyAccumulation(r, s);
             partialTimeoutRead(r, s);

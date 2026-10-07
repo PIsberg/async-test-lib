@@ -345,4 +345,11 @@ class VirtualThreadMonitorSerializationDetectorTest {
             throw new IllegalStateException(e);
         }
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        VirtualThreadMonitorSerializationDetector d = new VirtualThreadMonitorSerializationDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordMonitorEnter(m, null, Thread.currentThread()));
+    }
 }

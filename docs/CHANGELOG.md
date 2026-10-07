@@ -71,10 +71,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AbstractInstanceDetector` owns the identity-keyed map, the allocation-free lookup and the
   single registration of a first sighting, which detectors used to copy one by one. It keys each
   object weakly: an object the code under test dropped can be collected, while the state, and any
-  finding it latched, stays. The first wave moves `SharedDecimalFormatDetector`,
-  `SharedFormatterDetector`, `SharedMatcherDetector`, `SharedTimeZoneDetector` and
-  `SharedXmlParserDetector` onto it; each now has a test that fails if it holds a recorded object
-  strongly (#918).
+  finding it latched, stays. Every detector that keeps state per object it is told about now
+  extends it, from the `Shared*` family to the lock, executor, collection and `CompletableFuture`
+  detectors and `RaceConditionDetector`, and each has a test that fails if it holds a recorded
+  object strongly; each of those 69 tests was red against the code it replaced. The migration also took a
+  per-call key, and in most cases a capturing lambda, off record paths that still built them
+  (`RaceConditionDetector` did so on every field access), and folded detectors that kept two to
+  four parallel maps for one subject into one state each. Detectors whose state is not per
+  subject keep their own maps: transient sets that shrink on close or exit (`StreamClosing`,
+  `ConcurrentMapComputeRecursion`), registrations that replace on purpose (`MutableMapKey`,
+  `CompletableFutureCompletionLeak`), and maps whose keys are read back at
+  analysis (`LockLeak`, `ConfinedArenaThreadEscape`) (#918).
+- **Unnamed subjects are labelled, not `null`.** A lock, semaphore, pool, executor, cache or HTTP
+  client registered without a name with `ReadWriteLockMonitor`, `SemaphoreMisuseDetector`,
+  `ThreadPoolMonitor`, `ThreadPoolDeadlockDetector`, `ThreadStarvationDetector`,
+  `CacheConcurrencyDetector` or `HttpClientConcurrencyDetector` was reported under the name
+  `null`; it now gets the numbered label of its kind, like every other unnamed subject. And
+  `ThisEscapeDetector`, `ThreadLocalRandomMisuseDetector`, `VirtualThreadMonitorSerializationDetector`
+  and `VirtualThreadPoolingDetector` labelled an unnamed object by its identity hash, which two live
+  objects can share, and so did `CacheConcurrencyDetector` (`cache-` and the hash) for a cache first
+  seen by `recordGet` or `recordPut`; they now print `kind@n` too. The #860 scan that forbids such labels missed
+  them because the hash went through a local (`int id = key.hashCode()`); it now follows that
+  shape (#918).
 - **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
   workers to meet after the start built a `CyclicBarrier` of its own, and had to get the party
   count, the timeout and the reuse across rounds right by hand; five `@AsyncTest` classes in this
@@ -97,12 +115,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other read failure is retried with backoff for up to 127 ms. What is accepted is unchanged: the
   content must still parse to a timestamp within the TTL. `LicenseValidationCacheTransientReadTest`
   holds an exclusive lock on the record for 50 ms; it failed 3 of 3 times before the change.
+- **`ThreadStarvationDetector` no longer throws when an executor has no name (#918).** One
+  executor registered without a name made `recordTaskStart` and `recordTaskEnd` throw a
+  `NullPointerException` for every executor, because both compared each tracked name with
+  `equals()`. The regression test was red on the old source.
+- **`FutureIgnoredDetector` and `CompletableFutureChainDetector` no longer forget what they saw
+  (#918).** Recording a future a second time replaced its state: `FutureIgnoredDetector` reset
+  "inspected" and reported an inspected future as ignored, and `CompletableFutureChainDetector`
+  reset "joined" and reported a joined future as never joined. The first record now wins; both
+  regression tests were red on the old source.
+- **`UnboundedQueueDetector` reports a shared queue once (#918).** Registering the same queue from
+  every worker of an `@AsyncTest` body replaced its state each time, resetting its counts, and
+  recorded one "unbounded queue" event per worker: four workers, four identical findings. The first
+  registration now wins; the regression test saw 4 events on the old source and 1 now.
 - **A detector no longer keeps an unnamed subject alive through its label (#929).**
-  `UnnamedLabels`, which 70 detectors use to name objects a test recorded without a name, held a
-  strong key per object, so each such object stayed reachable for the whole run even where the
-  detector's own state was weak. It now keys weakly; a live object keeps its label. Retention tests
-  for both lookup paths and for `AbstractInstanceDetector` with an unnamed subject were red (still
-  held after 50 collections) before the change.
+  `UnnamedLabels`, which names the objects a test recorded without a name for the base class and
+  for every detector that labels its own, held a strong key per object, so each such object stayed
+  reachable for the whole run even where the detector's own state was weak. It now keys weakly; a
+  live object keeps its label. Retention tests for both lookup paths and for
+  `AbstractInstanceDetector` with an unnamed subject were red (still held after 50 collections)
+  before the change.
 - **21 detectors' structured findings now carry a name `DetectorTrust` resolves (#930).** Their
   `Violation.detector()` literal was a third spelling, neither the class name nor the alias
   (`"BusyWait"` beside `"BusyWaiting"`), so `DetectorTrust.tierOfDetector(v.detector())` answered

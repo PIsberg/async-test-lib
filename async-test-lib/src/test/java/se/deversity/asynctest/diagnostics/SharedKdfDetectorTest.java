@@ -161,4 +161,11 @@ class SharedKdfDetectorTest {
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedKdfDetector d = new SharedKdfDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, k -> d.recordAccess(k, "HKDF-SHA256", "deriveKey", Thread.currentThread()));
+    }
 }

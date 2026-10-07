@@ -5,9 +5,8 @@ import se.deversity.asynctest.report.Violation;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects classes that use {@code synchronized(this)} (or {@code synchronized} instance
@@ -30,15 +29,25 @@ import java.util.concurrent.ConcurrentHashMap;
  * mon.recordObjectPublished(this, "returned from getService()");
  * }</pre>
  */
-public class PublicLockExposureDetector {
+public class PublicLockExposureDetector extends AbstractInstanceDetector<PublicLockExposureDetector.ObjectState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+    /** What was recorded about one object: whether it locks on itself, and whether it escaped. */
+    static final class ObjectState {
+        final String label;
+        volatile boolean synchronizesOnThis;
+        volatile boolean published;
+        volatile @Nullable String className;
+        volatile @Nullable String publishContext;
 
-    private final Set<IdentityKey>          synchronizedObjects = ConcurrentHashMap.newKeySet();
-    private final Set<IdentityKey>          publishedObjects    = ConcurrentHashMap.newKeySet();
-    private final Map<IdentityKey, String>  objectNames         = new ConcurrentHashMap<>();
-    private final Map<IdentityKey, String>  publishContexts     = new ConcurrentHashMap<>();
+        ObjectState(String label) {
+            this.label = label;
+        }
+    }
+
+    @Override
+    ObjectState newState(Object instance, String label) {
+        return new ObjectState(label);
+    }
 
     /**
      * Record that {@code obj} is being used as a lock via {@code synchronized(this)}
@@ -50,9 +59,9 @@ public class PublicLockExposureDetector {
      */
     public void recordSynchronizedOnThis(Object obj, Thread thread, String className) {
         if (obj == null) return;
-        IdentityKey id = new IdentityKey(obj);
-        synchronizedObjects.add(id);
-        if (className != null) objectNames.put(id, className);
+        ObjectState s = stateFor(obj, null, "object");
+        if (className != null) s.className = className;
+        s.synchronizesOnThis = true;
     }
 
     /**
@@ -64,9 +73,9 @@ public class PublicLockExposureDetector {
      */
     public void recordObjectPublished(Object obj, String context) {
         if (obj == null) return;
-        IdentityKey id = new IdentityKey(obj);
-        publishedObjects.add(id);
-        if (context != null) publishContexts.put(id, context);
+        ObjectState s = stateFor(obj, null, "object");
+        if (context != null) s.publishContext = context;
+        s.published = true;
     }
 
     /**
@@ -74,10 +83,12 @@ public class PublicLockExposureDetector {
      */
     public PublicLockExposureReport analyze() {
         PublicLockExposureReport r = new PublicLockExposureReport();
-        for (IdentityKey id : synchronizedObjects) {
-            if (publishedObjects.contains(id)) {
-                String name = objectNames.getOrDefault(id, unnamedLabels.of(id, "object"));
-                String ctx  = publishContexts.getOrDefault(id, "external code");
+        for (ObjectState s : states()) {
+            if (s.synchronizesOnThis && s.published) {
+                String className = s.className;
+                String context = s.publishContext;
+                String name = className != null ? className : s.label;
+                String ctx  = context != null ? context : "external code";
                 String finding = String.format(
                     "%s uses synchronized(this) but is publicly exposed via %s — "
                     + "external callers can acquire its lock, causing unintended coupling or deadlock",

@@ -470,4 +470,11 @@ class SharedJsonMapperReconfigDetectorTest {
                 + "detector already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " uses");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedJsonMapperReconfigDetector d = new SharedJsonMapperReconfigDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordUse(m));
+    }
 }

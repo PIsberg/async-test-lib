@@ -53,12 +53,12 @@ import se.deversity.asynctest.report.Violation;
  * finding is therefore the same kind of claim, which is what the detector's single {@code PROMPT}
  * tier already says.
  */
-public class RaceConditionDetector {
+public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditionDetector.ObjectFieldState> {
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
 
-    private static class FieldAccess implements HappensBefore.Access {
+    static class FieldAccess implements HappensBefore.Access {
         final long threadId;
         final long timestamp;
         final boolean write;
@@ -121,7 +121,7 @@ public class RaceConditionDetector {
     }
 
     /** One field of one object: its accesses, whether it is volatile, and where it was first written. */
-    private static final class FieldState {
+    static final class FieldState {
         final Queue<FieldAccess> accesses = new ConcurrentLinkedQueue<>();
         /** Whether the tracked object's class declares a field of this name {@code volatile}. */
         final boolean volatileField;
@@ -134,7 +134,7 @@ public class RaceConditionDetector {
         }
     }
 
-    private static class ObjectFieldState {
+    static final class ObjectFieldState {
         final String className;
         final Class<?> type;
         final Map<String, FieldState> fields = new ConcurrentHashMap<>();
@@ -185,7 +185,11 @@ public class RaceConditionDetector {
         return Boolean.TRUE.equals(VOLATILE_FIELDS.get(type).get(fieldName));
     }
 
-    private final Map<IdentityKey, ObjectFieldState> objects = new ConcurrentHashMap<>();
+    @Override
+    ObjectFieldState newState(Object instance, String label) {
+        return new ObjectFieldState(instance.getClass());
+    }
+
     private final IssueDeduplicator<RaceConditionEvent> deduplicator = new IssueDeduplicator<>();
 
     /**
@@ -240,12 +244,10 @@ public class RaceConditionDetector {
     }
 
     private void recordAccess(Object object, String fieldName, boolean write) {
-        // IdentityKey compares referents by identity; see its javadoc for why bare
-        // identityHashCode keying merged distinct objects on hash collision.
-        ObjectFieldState state = objects.computeIfAbsent(
-            new IdentityKey(object),
-            key -> new ObjectFieldState(object.getClass())
-        );
+        ObjectFieldState tracked = trackedState(object);
+        // The class name stands in as the name, so registering numbers no label: the report
+        // numbers the object when it first prints it (#854), off the record path.
+        ObjectFieldState state = tracked != null ? tracked : stateFor(object, object.getClass().getSimpleName());
         FieldState field = state.fields.computeIfAbsent(fieldName,
                 name -> new FieldState(isVolatile(state.type, name)));
 
@@ -290,7 +292,7 @@ public class RaceConditionDetector {
     public RaceConditionReport analyzeRaceConditions() {
         RaceConditionReport report = new RaceConditionReport();
 
-        for (ObjectFieldState state : objects.values()) {
+        for (ObjectFieldState state : states()) {
             for (Map.Entry<String, FieldState> entry : state.fields.entrySet()) {
                 String fieldName = entry.getKey();
                 FieldState field = entry.getValue();
@@ -460,7 +462,7 @@ public class RaceConditionDetector {
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
-        objects.clear();
+        clearStates();
         deduplicator.clear();
         invocationEpoch.set(0);
     }

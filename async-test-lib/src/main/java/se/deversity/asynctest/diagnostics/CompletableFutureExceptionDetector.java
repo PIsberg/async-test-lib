@@ -49,15 +49,12 @@ import org.jspecify.annotations.Nullable;
  * }
  * }</pre>
  */
-public class CompletableFutureExceptionDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class CompletableFutureExceptionDetector extends AbstractInstanceDetector<CompletableFutureExceptionDetector.FutureState> {
 
     /** How old, in milliseconds, an incomplete future without a handler must be to be reported (#756). */
     private static final long MISSING_HANDLER_AGE_THRESHOLD_MS = 100;
 
-    private static class FutureState {
+    static final class FutureState {
         final String name;
         final long createdTime = System.nanoTime();
         final long creatorThreadId = Thread.currentThread().threadId();
@@ -67,12 +64,16 @@ public class CompletableFutureExceptionDetector {
         volatile @Nullable Exception lastException = null;
         final AtomicInteger getJoinCalls = new AtomicInteger(0);
 
-        FutureState(String name, UnnamedLabels labels) {
-            this.name = name != null ? name : labels.next("future");
+        FutureState(String name) {
+            this.name = name;
         }
     }
 
-    private final Map<IdentityKey, FutureState> futures = new ConcurrentHashMap<>();
+    @Override
+    FutureState newState(Object instance, String label) {
+        return new FutureState(label);
+    }
+
     private volatile boolean enabled = true;
 
     /**
@@ -87,7 +88,7 @@ public class CompletableFutureExceptionDetector {
         }
         // computeIfAbsent, not put: re-declaring a future already tracked would discard whether
         // a handler had been registered on it, which is the whole finding.
-        futures.computeIfAbsent(new IdentityKey(future), k -> new FutureState(name, unnamedLabels));
+        stateFor(future, name, "future");
     }
 
     /**
@@ -101,7 +102,7 @@ public class CompletableFutureExceptionDetector {
         if (!enabled || future == null) {
             return;
         }
-        FutureState state = futures.get(new IdentityKey(future));
+        FutureState state = trackedState(future);
         if (state != null) {
             state.exceptionHandlerRegistered = true;
             state.lastException = exception instanceof Exception e ? e : new Exception(exception);
@@ -119,7 +120,7 @@ public class CompletableFutureExceptionDetector {
         if (!enabled || future == null) {
             return;
         }
-        FutureState state = futures.get(new IdentityKey(future));
+        FutureState state = trackedState(future);
         if (state != null) {
             state.completed = true;
             state.completedExceptionally = !success;
@@ -137,7 +138,7 @@ public class CompletableFutureExceptionDetector {
         if (!enabled || future == null) {
             return;
         }
-        FutureState state = futures.get(new IdentityKey(future));
+        FutureState state = trackedState(future);
         if (state != null) {
             state.getJoinCalls.incrementAndGet();
             if (threwException) {
@@ -155,7 +156,7 @@ public class CompletableFutureExceptionDetector {
         CompletableFutureExceptionReport report = new CompletableFutureExceptionReport();
         report.enabled = enabled;
 
-        for (FutureState state : futures.values()) {
+        for (FutureState state : states()) {
             // Check for unhandled exceptions
             if (state.completedExceptionally && !state.exceptionHandlerRegistered) {
                 report.unhandledExceptions.add(String.format(

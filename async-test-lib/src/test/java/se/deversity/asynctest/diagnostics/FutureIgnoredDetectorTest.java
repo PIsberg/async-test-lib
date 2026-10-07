@@ -97,4 +97,25 @@ public class FutureIgnoredDetectorTest {
         assertTrue(msg.contains("thread '#" + vt.threadId() + "'"),
                 "the unnamed submitter must be named by its id: " + msg);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        FutureIgnoredDetector d = new FutureIgnoredDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, f -> d.recordSubmit(f, null, Thread.currentThread()));
+    }
+
+    /**
+     * Recording a future a second time keeps what was learned about it: a put() here replaced the
+     * record and reset "inspected", so an inspected future was reported as ignored (#918).
+     */
+    @Test
+    void aRepeatedSubmitDoesNotForgetTheInspection() {
+        FutureIgnoredDetector d = new FutureIgnoredDetector();
+        Object future = new Object();
+        d.recordSubmit(future, "task", Thread.currentThread());
+        d.recordInspect(future, Thread.currentThread());
+        d.recordSubmit(future, "task", Thread.currentThread());
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
 }

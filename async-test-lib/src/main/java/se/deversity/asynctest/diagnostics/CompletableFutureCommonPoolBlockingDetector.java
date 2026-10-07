@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
@@ -31,10 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * mon.recordBlockingCall(cf, Thread.currentThread(), "InputStream.read");
  * }</pre>
  */
-public class CompletableFutureCommonPoolBlockingDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class CompletableFutureCommonPoolBlockingDetector
+        extends AbstractInstanceDetector<CompletableFutureCommonPoolBlockingDetector.Task> {
 
     /**
      * The most distinct findings this detector will keep. A finding is one (thread, call type,
@@ -46,8 +43,19 @@ public class CompletableFutureCommonPoolBlockingDetector {
      */
     static final int MAX_DISTINCT_FINDINGS = 200;
 
-    private final Set<IdentityKey>         commonPoolFutures = ConcurrentHashMap.newKeySet();
-    private final Map<IdentityKey, String> futureNames       = new ConcurrentHashMap<>();
+    /** A future submitted to the common pool, under the name it was submitted with. */
+    static final class Task {
+        final String name;
+
+        Task(String name) {
+            this.name = name;
+        }
+    }
+
+    @Override
+    Task newState(Object instance, String label) {
+        return new Task(label);
+    }
 
     /**
      * Finding text to the number of times it was recorded.
@@ -72,9 +80,7 @@ public class CompletableFutureCommonPoolBlockingDetector {
      */
     public void recordCommonPoolSubmission(Object future, Thread thread, String taskName) {
         if (future == null) return;
-        IdentityKey key = new IdentityKey(future);
-        commonPoolFutures.add(key);
-        futureNames.put(key, taskName != null ? taskName : unnamedLabels.of(key, "task"));
+        stateFor(future, taskName, "task");
     }
 
     /**
@@ -87,9 +93,9 @@ public class CompletableFutureCommonPoolBlockingDetector {
      */
     public void recordBlockingCall(Object future, Thread thread, String callType) {
         if (future == null || thread == null) return;
-        IdentityKey key = new IdentityKey(future);
-        if (!commonPoolFutures.contains(key)) return;
-        String name = futureNames.getOrDefault(key, unnamedLabels.of(key, "future"));
+        Task task = trackedState(future);
+        if (task == null) return;
+        String name = task.name;
         String type = callType != null ? callType : "blocking call";
         String finding = String.format(
             "Thread '%s' made blocking call (%s) inside CompletableFuture '%s' "

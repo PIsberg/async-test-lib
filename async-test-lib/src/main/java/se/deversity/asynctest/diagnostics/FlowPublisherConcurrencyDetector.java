@@ -59,12 +59,9 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/FlowPublisherConcurrencyDetectorTest.java"
 )
-public final class FlowPublisherConcurrencyDetector {
+public final class FlowPublisherConcurrencyDetector extends AbstractInstanceDetector<FlowPublisherConcurrencyDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State {
+    static final class State {
         final String label;
         final Set<Long>   threadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> threadNames = ConcurrentHashMap.newKeySet();
@@ -78,7 +75,10 @@ public final class FlowPublisherConcurrencyDetector {
         State(String label) { this.label = label; }
     }
 
-    private final Map<IdentityKey, State> subscribers = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * Record a subscription. Registers the subscriber under {@code label} so later
@@ -89,7 +89,7 @@ public final class FlowPublisherConcurrencyDetector {
      * @param thread     the thread delivering {@code onSubscribe}
      */
     public void recordSubscribe(@Nullable Object subscriber, @Nullable String label, @Nullable Thread thread) {
-        State s = stateFor(subscriber, label);
+        State s = subscriberState(subscriber, label);
         if (s == null || thread == null) return;
         s.threadIds.add(thread.threadId());
         s.threadNames.add(thread.getName());
@@ -103,7 +103,7 @@ public final class FlowPublisherConcurrencyDetector {
      * @param n          the requested amount
      */
     public void recordRequest(@Nullable Object subscriber, long n) {
-        State s = stateFor(subscriber, null);
+        State s = subscriberState(subscriber, null);
         if (s == null) return;
         s.demandRecorded.set(true);
         s.requested.add(n);
@@ -117,7 +117,7 @@ public final class FlowPublisherConcurrencyDetector {
      * @param thread     the delivering thread
      */
     public void recordNextStart(@Nullable Object subscriber, @Nullable Thread thread) {
-        State s = stateFor(subscriber, null);
+        State s = subscriberState(subscriber, null);
         if (s == null || thread == null) return;
         s.threadIds.add(thread.threadId());
         s.threadNames.add(thread.getName());
@@ -134,7 +134,7 @@ public final class FlowPublisherConcurrencyDetector {
      * @param subscriber the subscriber whose delivery completed (null-safe)
      */
     public void recordNextEnd(@Nullable Object subscriber) {
-        State s = stateFor(subscriber, null);
+        State s = subscriberState(subscriber, null);
         if (s == null) return;
         s.inOnNext.updateAndGet(v -> v > 0 ? v - 1 : 0);
     }
@@ -162,7 +162,7 @@ public final class FlowPublisherConcurrencyDetector {
     }
 
     private void recordTerminal(@Nullable Object subscriber, @Nullable Thread thread) {
-        State s = stateFor(subscriber, null);
+        State s = subscriberState(subscriber, null);
         if (s == null) return;
         if (thread != null) {
             s.threadIds.add(thread.threadId());
@@ -171,17 +171,8 @@ public final class FlowPublisherConcurrencyDetector {
         if (!s.terminated.compareAndSet(false, true)) s.signalsAfterTerminal.increment();
     }
 
-    private @Nullable State stateFor(@Nullable Object subscriber, @Nullable String label) {
-        if (subscriber == null) return null;
-        IdentityKey id = new IdentityKey(subscriber);
-        State s = subscribers.get(id);
-        if (s == null) {
-            final String lbl = label != null
-                    ? label
-                    : unnamedLabels.of(id, subscriber.getClass().getSimpleName());
-            s = subscribers.computeIfAbsent(id, k -> new State(lbl));
-        }
-        return s;
+    private @Nullable State subscriberState(@Nullable Object subscriber, @Nullable String label) {
+        return subscriber == null ? null : stateFor(subscriber, label);
     }
 
     /**
@@ -190,7 +181,7 @@ public final class FlowPublisherConcurrencyDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : subscribers.values()) {
+        for (State s : states()) {
             int overlap = s.maxConcurrentOnNext.get();
             if (overlap > 1) {
                 add(r, s, IssueSeverity.HIGH, String.format(

@@ -241,4 +241,25 @@ class CompletableFutureChainDetectorTest {
         assertTrue(failures.isEmpty(),
             "chainOperations was a plain ArrayList appended from worker threads: " + failures);
     }
+
+    /**
+     * Recording a future a second time keeps what was learned about it: a put() here replaced the
+     * state, so a joined future was reported as never joined (#918).
+     */
+    @Test
+    void aRepeatedCreateDoesNotForgetTheJoin() {
+        CompletableFutureChainDetector d = new CompletableFutureChainDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        d.recordFutureCreated(future, "f");
+        d.recordFutureJoined(future, "f");
+        d.recordFutureCreated(future, "f");
+        assertTrue(d.analyze().unjoinedFutures.isEmpty(), d.analyze().toString());
+    }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CompletableFutureChainDetector d = new CompletableFutureChainDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(CompletableFuture<String>::new, f -> d.recordFutureCreated(f, null));
+    }
 }

@@ -48,12 +48,9 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 )
 @AISecure(aspect = "cryptography (hash integrity / MAC / signature state)")
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "Per-instance state in ConcurrentHashMap with get-then-computeIfAbsent hot path; thread-id/name sets are ConcurrentHashMap.newKeySet().")
-public class SharedMessageDigestDetector {
+public class SharedMessageDigestDetector extends AbstractInstanceDetector<SharedMessageDigestDetector.DigestState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class DigestState extends SelfGuard.ThreadTrackedInstance {
+    static final class DigestState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
         final String      type;
         final Set<SiteCapture.Site> accessSites = ConcurrentHashMap.newKeySet();
@@ -66,7 +63,17 @@ public class SharedMessageDigestDetector {
         }
     }
 
-    private final Map<IdentityKey, DigestState> digests = new ConcurrentHashMap<>();
+    @Override
+    DigestState newState(Object instance, String label) {
+        return new DigestState(label, typeOf(instance));
+    }
+
+    private static String typeOf(Object digest) {
+        if (digest instanceof javax.crypto.Cipher) return "Cipher";
+        if (digest instanceof javax.crypto.Mac) return "Mac";
+        if (digest instanceof java.security.Signature) return "Signature";
+        return "MessageDigest";
+    }
 
     /**
      * Record an access (update/digest/reset/clone/encrypt/decrypt/sign/verify) to a MessageDigest or cryptographic instance.
@@ -82,33 +89,8 @@ public class SharedMessageDigestDetector {
         // state object exists. It is evaluated on the accessing thread, still inside whatever
         // region the caller is in.
 
-        // Hot path: lookup-only. The vast majority of calls hit an instance the
-        // detector has already seen at least once, so we avoid all classification
-        // work (instanceof chain, label string construction, lambda allocation)
-        // until we know the entry is missing.
-        // The thread's lookup key, reused while it names the same instance (#812).
-        DigestState s = digests.get(IdentityKey.lookup(digest));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(digest);
-            // Cold path: first encounter of this instance. computeIfAbsent
-            // guarantees the factory runs at most once even under contention.
-            s = digests.computeIfAbsent(key, k -> {
-                String label = (name != null)
-                        ? name
-                        : unnamedLabels.of(k, digest.getClass().getSimpleName());
-                String type;
-                if (digest instanceof javax.crypto.Cipher) {
-                    type = "Cipher";
-                } else if (digest instanceof javax.crypto.Mac) {
-                    type = "Mac";
-                } else if (digest instanceof java.security.Signature) {
-                    type = "Signature";
-                } else {
-                    type = "MessageDigest";
-                }
-                return new DigestState(label, type);
-            });
-        }
+        // The classification (instanceof chain, label) runs once, when the instance is first seen.
+        DigestState s = stateFor(digest, name);
         s.noteAccess(digest, thread);
         // The user-code site of the calling thread's first access, whose stack is the one walked.
         // Once per thread: a walk on every access allocated over 1,100 bytes (#849). The Set
@@ -123,7 +105,7 @@ public class SharedMessageDigestDetector {
      */
     public SharedMessageDigestReport analyze() {
         SharedMessageDigestReport r = new SharedMessageDigestReport();
-        for (DigestState s : digests.values()) {
+        for (DigestState s : states()) {
             if (s.sharedAndUnguarded()) {
                 r.violatedTypes.add(s.type);
                 String msg;

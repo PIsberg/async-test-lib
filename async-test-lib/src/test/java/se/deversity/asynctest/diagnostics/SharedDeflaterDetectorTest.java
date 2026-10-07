@@ -126,4 +126,11 @@ class SharedDeflaterDetectorTest {
             deflater.end();
         }
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedDeflaterDetector d = new SharedDeflaterDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Deflater::new, z -> d.recordAccess(z, "gzip", Thread.currentThread()));
+    }
 }

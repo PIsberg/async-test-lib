@@ -85,12 +85,9 @@ import java.util.concurrent.atomic.AtomicLong;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ScopeResultEscapeDetectorTest.java"
 )
-public final class ScopeResultEscapeDetector {
+public final class ScopeResultEscapeDetector extends AbstractInstanceDetector<ScopeResultEscapeDetector.HandleState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class ScopeState {
+    static final class ScopeState {
         final String        scopeId;
         final long          ownerThreadId;
         final AtomicBoolean joined   = new AtomicBoolean(false);
@@ -103,7 +100,7 @@ public final class ScopeResultEscapeDetector {
         }
     }
 
-    private static final class HandleState {
+    static final class HandleState {
         final String        label;
         final ScopeState    scope;
         final AtomicInteger readsAfterClose     = new AtomicInteger();
@@ -119,7 +116,6 @@ public final class ScopeResultEscapeDetector {
     }
 
     private final Map<String, ScopeState>       scopes   = new ConcurrentHashMap<>();
-    private final Map<IdentityKey, HandleState> handles  = new ConcurrentHashMap<>();
     private final AtomicLong                    sequence = new AtomicLong();
     private volatile boolean                    enabled  = true;
 
@@ -165,9 +161,7 @@ public final class ScopeResultEscapeDetector {
         if (!enabled || handle == null) return;
         ScopeState s = scope(scopeId);
         if (s == null) return;
-        IdentityKey key = new IdentityKey(handle);
-        String name = label != null ? label : unnamedLabels.of(key, "results");
-        handles.computeIfAbsent(key, k -> new HandleState(name, s));
+        stateFor(handle, label, "results", name -> new HandleState(name, s));
     }
 
     /**
@@ -225,7 +219,7 @@ public final class ScopeResultEscapeDetector {
 
     private @Nullable HandleState handle(Object handle) {
         if (!enabled || handle == null) return null;
-        return handles.get(new IdentityKey(handle));
+        return trackedState(handle);
     }
 
     /** Turn recording off; already-recorded state is kept. */
@@ -241,7 +235,7 @@ public final class ScopeResultEscapeDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        List<HandleState> all = new ArrayList<>(handles.values());
+        List<HandleState> all = new ArrayList<>(states());
         all.sort((a, b) -> a.label.compareTo(b.label));
         for (HandleState h : all) {
             readAfterClose(r, h);

@@ -123,4 +123,11 @@ class ThreadPoolMonitorTest {
         assertEquals(viaAnalyzePoolHealth.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzePoolHealth.toString(), viaAnalyze.toString());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        ThreadPoolMonitor d = new ThreadPoolMonitor();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, e -> d.registerPool(e, null, 1, 1, 1));
+    }
 }

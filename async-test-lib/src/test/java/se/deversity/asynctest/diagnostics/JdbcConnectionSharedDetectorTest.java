@@ -283,4 +283,11 @@ class JdbcConnectionSharedDetectorTest {
         assertFalse(d.analyze().hasIssues(),
             "both uses held the connection's monitor, which serialises them: " + d.analyze());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        JdbcConnectionSharedDetector d = new JdbcConnectionSharedDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(JdbcConnectionSharedDetectorTest::stubConnection, c -> d.recordAccess(c, null, Thread.currentThread()));
+    }
 }

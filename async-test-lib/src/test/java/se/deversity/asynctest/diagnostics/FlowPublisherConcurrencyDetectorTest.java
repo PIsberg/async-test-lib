@@ -147,4 +147,11 @@ class FlowPublisherConcurrencyDetectorTest {
         String second = detector.analyze().toString();
         assertEquals(first, second, "analyze() must be idempotent on quiescent state");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        FlowPublisherConcurrencyDetector d = new FlowPublisherConcurrencyDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, s -> d.recordSubscribe(s, null, Thread.currentThread()));
+    }
 }

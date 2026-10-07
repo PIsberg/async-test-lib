@@ -693,4 +693,11 @@ public class StatefulLambdaDetectorTest {
         assertTrue(msg.contains(one + " \u2192 counter") && msg.contains(two + " \u2192 counter"),
                 "each mutation must name its thread by id: " + msg);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        StatefulLambdaDetector d = new StatefulLambdaDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, l -> d.recordExecution(l, null, Thread.currentThread()));
+    }
 }
