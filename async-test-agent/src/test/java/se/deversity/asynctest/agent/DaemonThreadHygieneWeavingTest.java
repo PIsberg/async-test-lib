@@ -44,7 +44,7 @@ class DaemonThreadHygieneWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 2, invocations = 1, detectDaemonThreadHygiene = true)
+    @AsyncTest(threads = 2, invocations = 1, detectAll = true)
     void startingBareThreadInsideRun() {
         Thread t = starter.startBare(() -> {
             try {

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -199,8 +200,10 @@ class TaskSchedulerTest {
      * 3. Fix: capture an AtomicInteger, or build a fresh task with its own counter per submission
      */
     @Disabled("Remove @Disabled to see shared mutable lambda capture detected by StatefulLambdaDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
-            detectStatefulLambda = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            failOn = FailOn.LOW,
+            includes = DetectorType.STATEFUL_LAMBDA)
     void test_concurrent_detectsStatefulLambda() {
         // The task has to be the same object on every thread, which is the bug. This
         // demonstration used to build a fresh lambda inside the body, so the detector - which
@@ -228,8 +231,10 @@ class TaskSchedulerTest {
      *    both the read and the write
      */
     @Disabled("Remove @Disabled to see a captured read racing its writer detected by StatefulLambdaDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false,
-            detectStatefulLambda = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            failOn = FailOn.LOW,
+            includes = DetectorType.STATEFUL_LAMBDA)
     void test_concurrent_detectsPeakReadRacingItsWriter() {
         StatefulLambdaDetector detector = AsyncTestContext.get().statefulLambdaDetector();
         wirePeakTracker(detector);

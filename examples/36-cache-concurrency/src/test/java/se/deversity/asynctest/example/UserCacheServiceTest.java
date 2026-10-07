@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -71,7 +72,7 @@ class UserCacheServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see HashMap cache race detected by CacheConcurrencyDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCacheConcurrency = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.CACHE_CONCURRENCY)
 
     void testCache_concurrent_detectsRace() {
         var cache = service.getCache();

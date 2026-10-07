@@ -42,7 +42,7 @@ class TestBodyFieldIsObservedTest {
         eventsBefore = TelemetryRegistry.publishedEvents();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void fieldMutationsFromTheTestBody() {
         racingCounter++;
         synchronized (lock) {

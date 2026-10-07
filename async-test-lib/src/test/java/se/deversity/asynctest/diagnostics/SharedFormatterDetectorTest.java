@@ -94,4 +94,11 @@ public class SharedFormatterDetectorTest {
         assertTrue(s.contains("SHARED FORMATTER"));
         assertTrue(s.contains("Fix"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedFormatterDetector d = new SharedFormatterDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(o -> d.recordAccess(o, "fmt", Thread.currentThread()));
+    }
 }

@@ -42,7 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectPlatformThreadPerTask = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.PLATFORM_THREAD_PER_TASK)
  * void testThreadCreation() {
  *     var d = AsyncTestContext.platformThreadPerTaskDetector();
  *     Thread worker = new Thread(task);          // per-task platform thread

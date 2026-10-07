@@ -3,6 +3,7 @@ package se.deversity.asynctest.example;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -120,12 +121,15 @@ class RequestScopedServiceTest {
      * the thread is reused. See issue #346.
      */
     @Disabled("Remove @Disabled to see bug detected by ThreadLocalContaminationDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, useVirtualThreads = false,
-            detectThreadLocalContamination = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 50,
+            useVirtualThreads = false,
+            failOn = FailOn.LOW,
+            includes = DetectorType.THREAD_LOCAL_CONTAMINATION)
     void test_concurrent_detectsContamination() {
         Thread thread = Thread.currentThread();
         ThreadLocalContaminationDetector monitor =
-                AsyncTestContext.threadLocalContaminationMonitor();
+                AsyncTestContext.threadLocalContaminationDetector();
         service.observeContext(
                 () -> monitor.recordSet(thread, RequestScopedService.REQUEST_ID, "REQUEST_ID"),
                 value -> monitor.recordGet(thread, RequestScopedService.REQUEST_ID,

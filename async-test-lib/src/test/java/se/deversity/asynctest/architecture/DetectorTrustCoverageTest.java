@@ -83,18 +83,9 @@ class DetectorTrustCoverageTest {
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorFiresOnAFutureThatIsNeverCompleted",
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorStaysSilentWhenTheFutureIsCompleted"))
     );
-    /**
-     * The one {@link DetectorType} with no row in {@code LegacyDetectorFactories}.
-     *
-     * <p>It has a dedicated typed adapter instead, {@code SharedMessageDigestDetectorFactory},
-     * because it surfaces structured violations directly. Listed here so the parse below can tell
-     * a deliberate omission from a detector that lost its factory.
-     */
-    private static final DetectorType FACTORY_EXEMPT = DetectorType.SHARED_MESSAGE_DIGEST;
-
-    /** Source of truth for what each detector factory constructs. */
-    private static final String FACTORIES =
-            "async-test-lib/src/main/java/se/deversity/asynctest/spi/adapters/LegacyDetectorFactories.java";
+    /** Source of truth for what each detector type constructs: the registry's factory table (#916). */
+    private static final String REGISTRY =
+            "async-test-lib/src/main/java/se/deversity/asynctest/DetectorRegistry.java";
 
     @Test
     @DisplayName("every detector is classified, exactly once, in declaration order")
@@ -247,55 +238,39 @@ class DetectorTrustCoverageTest {
     }
 
     @Test
-    @DisplayName("each row names the detector class the factories actually construct")
-    void detectorClassNamesMatchTheFactories() {
-        Map<String, String[]> constructed = parseFactories(read(repoRoot().resolve(FACTORIES)));
+    @DisplayName("each row names the detector class the registry actually constructs")
+    void detectorClassNamesMatchTheRegistry() {
+        Map<String, String> constructed = parseRegistry(read(repoRoot().resolve(REGISTRY)));
 
         List<String> wrong = new ArrayList<>();
         for (DetectorTrust.Row row : DetectorTrust.rows()) {
-            if (row.type() == FACTORY_EXEMPT) continue;
-            String[] actual = constructed.get(row.type().name());
+            String actual = constructed.get(row.type().name());
             if (actual == null) {
-                wrong.add(row.type() + ": no factory constructs it");
-            } else if (!actual[0].equals(row.detectorClass()) || !actual[1].equals(row.spiName())) {
-                wrong.add(row.type() + ": table says " + row.detectorClass() + "/" + row.spiName()
-                        + ", factory constructs " + actual[0] + "/" + actual[1]);
+                wrong.add(row.type() + ": the registry has no factory row for it");
+            } else if (!actual.equals(row.detectorClass())) {
+                wrong.add(row.type() + ": table says " + row.detectorClass() + ", registry constructs " + actual);
             }
         }
         assertTrue(wrong.isEmpty(),
                 "A row whose detector class name does not match the constructed detector stops resolving: "
                         + "the report map is keyed by that simple name (DetectorRegistry.ifIssue), so the "
                         + "finding silently loses its tier. Mismatches: " + wrong);
-        assertEquals(DetectorType.values().length - 1, constructed.size(),
-                "every detector except " + FACTORY_EXEMPT + " is constructed by a legacy factory; a change "
-                        + "in that shape means this parse is reading less than it thinks");
+        assertEquals(DetectorType.values().length, constructed.size(),
+                "every detector is constructed by one registry row; a change in that shape means this "
+                        + "parse is reading less than it thinks");
     }
 
     /**
-     * Reads the (DetectorType, detector class, SPI name) triples out of the factory source.
-     *
-     * <p>A plain scan rather than a regular expression on purpose. The pattern needs four escaped
-     * parentheses and an escaped quote, which is exactly the kind of line that rots quietly, and
-     * this gate exists to catch drift rather than to be clever.
+     * Reads the (DetectorType, detector class) pairs out of the registry's factory rows,
+     * {@code field = create(DetectorType.TYPE, DetectorClass::new);}.
      */
-    private static Map<String, String[]> parseFactories(String source) {
-        String marker = "new LegacyDetectorAdapter<>(new ";
-        String typeToken = "DetectorType.";
-        Map<String, String[]> out = new HashMap<>();
-        int at = source.indexOf(marker);
-        while (at >= 0) {
-            int cursor = at + marker.length();
-            int classEnd = source.indexOf("()", cursor);
-            int typeAt = source.indexOf(typeToken, cursor);
-            int quoteOpen = source.indexOf('"', cursor);
-            if (classEnd < 0 || typeAt < 0 || quoteOpen < 0) break;
-            int typeEnd = source.indexOf(',', typeAt);
-            int quoteClose = source.indexOf('"', quoteOpen + 1);
-            if (typeEnd < 0 || quoteClose < 0) break;
-            out.putIfAbsent(source.substring(typeAt + typeToken.length(), typeEnd).trim(),
-                    new String[] {source.substring(cursor, classEnd),
-                                  source.substring(quoteOpen + 1, quoteClose)});
-            at = source.indexOf(marker, quoteClose);
+    private static Map<String, String> parseRegistry(String source) {
+        Map<String, String> out = new HashMap<>();
+        java.util.regex.Matcher row = Pattern
+                .compile("(?m)^\\s+\\w+\\s*= create\\(DetectorType\\.(\\w+),\\s*(\\w+)::new\\)")
+                .matcher(source);
+        while (row.find()) {
+            out.putIfAbsent(row.group(1), row.group(2));
         }
         return out;
     }
@@ -518,6 +493,44 @@ class DetectorTrustCoverageTest {
                         + "still holds, remove the registration and lower the tier; if it no longer "
                         + "does, rewrite the paragraph to say what changed and drop the held or "
                         + "commented line: " + contradictions);
+    }
+
+    /**
+     * A detector's structured findings name it the way {@link DetectorTrust} resolves it (#930).
+     *
+     * <p>{@code Violation.detector()} on a detector's own {@code structuredViolations} is a string
+     * literal in its source. 21 detectors used a third spelling, neither the class name nor the
+     * alias the table also accepts ({@code "BusyWait"} beside {@code "BusyWaiting"}), so
+     * {@code tierOfDetector(v.detector())} answered PROMPT for them whatever their tier, and
+     * {@code typeOfDetector} answered empty.
+     */
+    @Test
+    @DisplayName("every structured violation names a detector DetectorTrust resolves to its own type")
+    void everyStructuredViolationResolvesToItsOwnDetector() {
+        Path diagnostics = repoRoot().resolve("async-test-lib/src/main/java/se/deversity/asynctest/diagnostics");
+        Pattern literal = Pattern.compile("new Violation\\(\\s*\"(\\w+)\"");
+        List<String> wrong = new ArrayList<>();
+        int scanned = 0;
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            Path source = diagnostics.resolve(row.detectorClass() + ".java");
+            if (!Files.isRegularFile(source)) {
+                continue;
+            }
+            Matcher m = literal.matcher(read(source));
+            while (m.find()) {
+                scanned++;
+                String name = m.group(1);
+                if (!DetectorTrust.typeOfDetector(name).equals(java.util.Optional.of(row.type()))) {
+                    wrong.add(row.detectorClass() + " reports as \"" + name + "\" (resolves to "
+                            + DetectorTrust.typeOfDetector(name).map(Enum::name).orElse("nothing")
+                            + ", alias is \"" + row.spiName() + "\")");
+                }
+            }
+        }
+        assertTrue(scanned > 100, "expected the scan to find the detectors' Violation literals, found " + scanned);
+        assertTrue(wrong.isEmpty(), wrong.size() + " detectors name their structured findings with a "
+                + "string DetectorTrust does not resolve to their own type, so a consumer asking for "
+                + "the tier of one of those findings gets PROMPT:\n  " + String.join("\n  ", wrong));
     }
 
     private static Path repoRoot() {

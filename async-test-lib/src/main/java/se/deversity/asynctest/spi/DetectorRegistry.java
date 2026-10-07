@@ -11,95 +11,45 @@ import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIImmutable;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 
 /**
- * SPI-driven registry that complements the legacy
- * {@code se.deversity.asynctest.DetectorRegistry}.
+ * The detectors a user adds: every {@link DetectorFactory} on the classpath, discovered through
+ * {@link ServiceLoader}, built per test when {@link DetectorFactory#isEnabledFor(AsyncTestConfig)
+ * enabled}, and keyed by {@link Detector#id() id} (#919).
  *
- * <p>While the legacy registry hard-codes 111 detector wirings as fields and
- * if-blocks (one per type), this registry discovers detectors via
- * {@link ServiceLoader}, builds per-test instances from
- * {@link DetectorFactory#isEnabledFor(AsyncTestConfig) enabled} factories, and
- * exposes them via a single generic typed accessor.
- *
- * <p>Both registries currently coexist; the SPI is the path forward for new
- * detectors, the legacy registry preserves wiring for the existing 106 until
- * each is migrated.
+ * <p>The built-in detectors are not here. The runner's own
+ * {@code se.deversity.asynctest.DetectorRegistry} builds and analyses them, and holds the very
+ * instances user code records into. Until 1.13.0 this class also offered {@code build(config)}, a
+ * view that added a bridge factory per built-in detector, each constructing a fresh instance that
+ * observed nothing; only tests called it, and every new detector paid two edit sites for it. 1.13.0
+ * deleted that path (#922): this registry is the third-party extension point and nothing else.
  *
  * @since 1.6.0
  */
 @AIPublicAPI
-@AIImmutable(note = "Effectively immutable after build() — the EnumMap is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over an EnumMap populated once at construction.")
+@AIImmutable(note = "Effectively immutable after buildExternal() — the id-keyed map is populated only in the private constructor and never mutated thereafter; safe to publish to multiple threads and read-only views over a map populated once at construction.")
 @API(status = Status.STABLE)
 public final class DetectorRegistry {
 
-    private final Map<DetectorType, Detector> byType = new EnumMap<>(DetectorType.class);
+    private final Map<String, Detector> byId = new LinkedHashMap<>();
 
-    private DetectorRegistry(Map<DetectorType, Detector> detectors) {
-        byType.putAll(detectors);
+    private DetectorRegistry(Map<String, Detector> detectors) {
+        byId.putAll(detectors);
     }
 
     /**
-     * Classpath resource listing the built-in factories, one class name per line.
+     * Build a registry of the <em>third-party</em> detectors enabled for {@code config}.
      *
-     * <p>Deliberately not a {@code META-INF/services} file. Those factories construct <em>fresh</em>
-     * legacy detector instances, disconnected from the ones the running test actually records into
-     * (which live on the {@code AsyncTestContext}'s legacy registry). They exist so that every
-     * {@link DetectorType} is addressable through this registry, not as a second live detection
-     * path, so runtime discovery should not pay to load them. See
-     * {@link #buildExternal(AsyncTestConfig)}.
-     */
-    private static final String BUILT_IN_FACTORY_RESOURCE =
-            "META-INF/async-test/builtin-detector-factories";
-
-    /**
-     * Build a registry for the given config: every built-in factory plus every third-party
-     * {@link DetectorFactory} on the classpath, filtered by
-     * {@link DetectorFactory#isEnabledFor(AsyncTestConfig)} and instantiated.
-     *
-     * <p>This is the addressability view, used to prove every {@link DetectorType} is reachable
-     * through the SPI. It is not the path the runner takes: see
-     * {@link #buildExternal(AsyncTestConfig)}.
-     *
-     * @param config the configuration deciding which factories report themselves as enabled
-     * @return a registry holding every enabled detector, built-in and third-party
-     */
-    public static DetectorRegistry build(AsyncTestConfig config) {
-        Map<DetectorType, Detector> detectors = new EnumMap<>(DetectorType.class);
-        addEnabled(builtInFactories(), config, detectors);
-        addEnabled(externalFactories(), config, detectors);
-        return new DetectorRegistry(detectors);
-    }
-
-    /**
-     * Build a registry containing only <em>third-party</em> detectors.
-     *
-     * <p>This is the registry the runner installs alongside the legacy one: the legacy registry
-     * already owns the built-in detectors (and holds the very instances user code records into),
-     * so including their bridge factories here would allocate ~127 duplicate detectors per test
-     * that observe nothing. Everything else on the classpath is a user-supplied detector whose
-     * findings must reach the reports and the {@code failOn} gate, which is what makes the
-     * published SPI more than documentation.
-     *
-     * <p><strong>Why the built-ins are not in {@code META-INF/services}.</strong> They used to be,
-     * and this method filtered them out by package name. Filtering was not free: {@code
-     * ServiceLoader} has to load a provider class before it can report that provider's type, so
-     * every construction paid to load 127 classes and then discarded all of them. Measured cold in
-     * a fresh JVM, that was ~383 ms, of which ~340 ms was the built-ins; with {@code forkEvery = 1}
-     * it was charged once per test class, and it returned nothing in the common case where no
-     * third-party detector is installed. They now live in
-     * {@code META-INF/async-test/builtin-detector-factories}, which only {@link
-     * #build(AsyncTestConfig)} reads, so runtime discovery sees only genuine third-party providers.
+     * <p>This is the registry the runner installs beside its own. Every factory on the classpath is
+     * a user-supplied detector whose findings must reach the reports and the {@code failOn} gate,
+     * which is what makes the published SPI more than documentation. The library registers no
+     * factory of its own, so in the common case, with no third-party detector installed,
+     * {@link ServiceLoader} loads nothing.
      *
      * @since 1.7.0
      *
@@ -107,16 +57,19 @@ public final class DetectorRegistry {
      * @return a registry holding only the enabled third-party detectors
      */
     public static DetectorRegistry buildExternal(AsyncTestConfig config) {
-        Map<DetectorType, Detector> detectors = new EnumMap<>(DetectorType.class);
+        Map<String, Detector> detectors = new LinkedHashMap<>();
         addEnabled(externalFactories(), config, detectors);
         return new DetectorRegistry(detectors);
     }
 
     private static void addEnabled(List<DetectorFactory> factories, AsyncTestConfig config,
-                                   Map<DetectorType, Detector> into) {
+                                   Map<String, Detector> into) {
         for (DetectorFactory factory : factories) {
-            if (factory.isEnabledFor(config)) {
-                into.put(factory.type(), factory.create(config));
+            String id = factory.id();
+            // An id the test excludes is never built, whatever the factory's own answer: a
+            // third-party isEnabledFor that ignores the config cannot defeat excludeIds (#919).
+            if (!config.excludedIds().contains(id) && factory.isEnabledFor(config)) {
+                into.put(id, factory.create(config));
             }
         }
     }
@@ -131,61 +84,10 @@ public final class DetectorRegistry {
     }
 
     /**
-     * {@return the built-in factories listed in {@code META-INF/async-test/builtin-detector-factories}}
-     *
-     * <p>Read and instantiated reflectively rather than through {@link ServiceLoader}, so that
-     * loading these classes is charged only to callers that actually want them. A missing or
-     * unloadable entry is a build-time mistake rather than a runtime condition to tolerate:
-     * {@code AllDetectorsSpiCoverageTest} fails on it, so it throws rather than degrading to a
-     * silently smaller registry.
-     */
-    private static List<DetectorFactory> builtInFactories() {
-        List<DetectorFactory> factories = new ArrayList<>();
-        try (InputStream in = DetectorRegistry.class.getClassLoader()
-                .getResourceAsStream(BUILT_IN_FACTORY_RESOURCE)) {
-            if (in == null) {
-                throw new IllegalStateException(
-                        BUILT_IN_FACTORY_RESOURCE + " is missing from the jar. Every DetectorType "
-                                + "is expected to be addressable through this registry; without it "
-                                + "build() silently returns only third-party detectors.");
-            }
-            try (BufferedReader reader =
-                         new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String name = line.trim();
-                    if (name.isEmpty() || name.startsWith("#")) {
-                        continue;
-                    }
-                    factories.add(instantiate(name));
-                }
-            }
-        } catch (IOException e) {
-            throw new IllegalStateException("Could not read " + BUILT_IN_FACTORY_RESOURCE, e);
-        }
-        return factories;
-    }
-
-    private static DetectorFactory instantiate(String className) {
-        try {
-            return Class.forName(className)
-                    .asSubclass(DetectorFactory.class)
-                    .getDeclaredConstructor()
-                    .newInstance();
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            throw new IllegalStateException(
-                    "Built-in detector factory " + className + " could not be instantiated. It is "
-                            + "listed in " + BUILT_IN_FACTORY_RESOURCE + ", so either the class was "
-                            + "renamed without updating that file or it lost its no-argument "
-                            + "constructor.", e);
-        }
-    }
-
-    /**
      * {@return {@code true} when no detector is active in this registry}
      */
     public boolean isEmpty() {
-        return byType.isEmpty();
+        return byId.isEmpty();
     }
 
     /**
@@ -201,29 +103,40 @@ public final class DetectorRegistry {
      */
     @SuppressWarnings("unchecked")
     public <T extends Detector> @Nullable T get(Class<T> detectorClass) {
-        for (Detector d : byType.values()) {
+        for (Detector d : byId.values()) {
             if (detectorClass.isInstance(d)) return (T) d;
         }
         return null;
     }
 
     /**
-     * Type-keyed lookup.
+     * Type-keyed lookup: the detector whose id is {@code type.name()}.
      *
      * @param type the detector to look up
      * @return the active detector for that type, or {@code null} when it is not enabled
      */
     public @Nullable Detector get(DetectorType type) {
-        return byType.get(type);
+        return byId.get(type.name());
+    }
+
+    /**
+     * Id-keyed lookup, for a detector with an identity of its own as well as a built-in one.
+     *
+     * @param id the {@link Detector#id()} to look up
+     * @return the active detector with that id, or {@code null} when it is not enabled
+     * @since 1.13.0
+     */
+    public @Nullable Detector get(String id) {
+        return byId.get(id);
     }
 
     /**
      * All active detectors (snapshot).
      *
-     * @return the active detectors, in {@link DetectorType} order
+     * @return the active detectors, in the order they were discovered
      */
     public List<Detector> all() {
-        return new ArrayList<>(byType.values());
+        return new ArrayList<>(byId.values());
     }
 
     /**
@@ -234,7 +147,7 @@ public final class DetectorRegistry {
     @AIIdempotent(reason = "Each Detector.analyze() must return the same violations for the same observed state (the SPI contract). Calling analyzeAll() N times on a quiescent registry yields N identical lists; do not introduce stateful side-effects in analyze().")
     public List<Violation> analyzeAll() {
         List<Violation> out = new ArrayList<>();
-        for (Detector d : byType.values()) {
+        for (Detector d : byId.values()) {
             try {
                 out.addAll(d.analyze());
             } catch (RuntimeException | StackOverflowError e) {
@@ -253,12 +166,12 @@ public final class DetectorRegistry {
      * Fire on test start.
      */
     public void fireOnTestStart() {
-        for (Detector d : byType.values()) d.onTestStart();
+        for (Detector d : byId.values()) d.onTestStart();
     }
     /**
      * Fire on test end.
      */
     public void fireOnTestEnd() {
-        for (Detector d : byType.values()) d.onTestEnd();
+        for (Detector d : byId.values()) d.onTestEnd();
     }
 }

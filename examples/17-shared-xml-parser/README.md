@@ -30,7 +30,7 @@ produces a correct `Document`.
 ## How `@AsyncTest` Exposes the Bug
 
 ```java
-@AsyncTest(threads = 4, invocations = 3, detectSharedXmlParser = true, timeoutMs = 5000)
+@AsyncTest(threads = 4, invocations = 3, timeoutMs = 5000, includes = DetectorType.SHARED_XML_PARSER)
 void part2_detectSharedParser() {
     var d = AsyncTestContext.sharedXmlParserDetector();
     d.recordAccess(sharedBuilder, "DocumentBuilder", Thread.currentThread());

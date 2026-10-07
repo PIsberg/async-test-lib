@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -91,7 +92,7 @@ class IdGeneratorTest {
      * 3. To fix: call ThreadLocalRandom.current() per use; never cache it
      */
     @Disabled("Remove @Disabled to see the bug detected by ThreadLocalRandomMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectThreadLocalRandomMisuse = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.THREAD_LOCAL_RANDOM_MISUSE)
     void test_concurrent_detectsCachedReferenceUsedAcrossThreads() {
         Thread thread = Thread.currentThread();
 

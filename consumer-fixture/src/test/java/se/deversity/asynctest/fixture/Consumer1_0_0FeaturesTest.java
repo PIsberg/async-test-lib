@@ -149,32 +149,30 @@ class Consumer1_0_0FeaturesTest {
         assertTrue(json.contains("\"severity\":\"HIGH\""));
     }
 
-    // ---- 7) SPI: DetectorRegistry.build + ServiceLoader discovery ----
+    // ---- 7) SPI: DetectorRegistry.buildExternal + the resolved selection ----
 
     @Test
-    void spi_registry_instantiates_every_detector_type_with_detectAll() {
+    void detectAll_selects_every_detector_type() {
         AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
-        DetectorRegistry reg = DetectorRegistry.build(cfg);
-        assertEquals(DetectorType.values().length, reg.all().size(),
-            "Public SPI must instantiate exactly one detector per DetectorType when detectAll=true");
+        assertEquals(DetectorType.values().length, cfg.enabledDetectors().size(),
+            "detectAll must select exactly one entry per DetectorType");
+        assertTrue(cfg.isEnabled(DetectorType.JDBC_CONNECTION_SHARED));
     }
 
     @Test
-    void spi_registry_lookup_by_type_works_for_a_phase13_detector() {
-        AsyncTestConfig cfg = AsyncTestConfig.builder()
-            .detectAll(true)
-            .build();
-        DetectorRegistry reg = DetectorRegistry.build(cfg);
-        assertNotNull(reg.get(DetectorType.JDBC_CONNECTION_SHARED),
-            "Phase 13 detector must be addressable through the public SPI");
+    void spi_registry_holds_only_third_party_detectors() {
+        // Since 1.13.0 the built-in detectors have one registry, the runner's; the public SPI
+        // registry carries what a consumer adds, and this fixture adds none.
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectAll(true).build();
+        DetectorRegistry reg = DetectorRegistry.buildExternal(cfg);
+        assertTrue(reg.isEmpty(), "no third-party DetectorFactory is on this fixture's classpath");
+        assertNull(reg.get(DetectorType.JDBC_CONNECTION_SHARED));
     }
 
     // ---- 8) Phase 13 detectors: AsyncTestContext accessors compile + return ----
 
-    // Default Preset.ALL + detectAll=true enables every detector. Per-flag
-    // overrides under Preset.NONE don't work — the preset's effective excludes
-    // pin every type off before per-flag values are read.
-    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    // detectAll = true enables every detector; a bare @AsyncTest runs Preset.ESSENTIALS (1.13.0).
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
     void phase13_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.daemonThreadHygieneDetector());
         assertNotNull(AsyncTestContext.notifyWithoutMonitorDetector());
@@ -183,7 +181,7 @@ class Consumer1_0_0FeaturesTest {
         assertNotNull(AsyncTestContext.jdbcConnectionSharedDetector());
     }
 
-    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
     void phase14_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.sharedStatefulCryptoDetector());
         assertNotNull(AsyncTestContext.nonAtomicConcurrentMapUpdateDetector());
@@ -192,7 +190,7 @@ class Consumer1_0_0FeaturesTest {
         assertNotNull(AsyncTestContext.threadLocalRandomMisuseDetector());
     }
 
-    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true)
+    @AsyncTest(threads = 2, invocations = 1, licenseMockMode = true, detectAll = true)
     void phase15_accessors_are_reachable() {
         assertNotNull(AsyncTestContext.completableFutureObtrudeDetector());
         assertNotNull(AsyncTestContext.spuriousWakeupHazardDetector());

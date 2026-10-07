@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -118,8 +119,10 @@ class BatchProcessingServiceTest {
      * 3. Fix: submit subtasks to a dedicated separate executor
      */
     @Disabled("Remove @Disabled to see future-blocking starvation detected by FutureBlockingDetector")
-    @AsyncTest(threads = 4, invocations = 1, detectAll = false,
-            detectFutureBlocking = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 4,
+            invocations = 1,
+            failOn = FailOn.LOW,
+            includes = DetectorType.FUTURE_BLOCKING)
 
     void testProcessBatch_concurrent_detectsFutureBlockingStarvation() {
         ExecutorService pool = service.getWorkerPool();

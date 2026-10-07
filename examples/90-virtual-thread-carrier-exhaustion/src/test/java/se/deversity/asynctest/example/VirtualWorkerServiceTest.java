@@ -3,6 +3,7 @@ package se.deversity.asynctest.example;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -59,8 +60,10 @@ class VirtualWorkerServiceTest {
     // and baselined. 64 clears any machine anyone is likely to run this on, and it is the
     // honest bound rather than a guarantee. Fifty rounds of a 10ms sleep behind one monitor
     // took 4 seconds and timed the round out before the detector was consulted. See #362.
-    @AsyncTest(threads = 64, invocations = 1, detectAll = false,
-            detectVirtualThreadCarrierExhaustion = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 64,
+            invocations = 1,
+            failOn = FailOn.LOW,
+            includes = DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION)
     void test_concurrent_detectsCarrierExhaustion() {
         var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
         String reason = "synchronized-sleep";

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -236,8 +237,10 @@ class OrderProcessingServiceTest {
      */
     @Disabled("Remove @Disabled to see unhandled async exceptions detected by "
             + "CompletableFutureExceptionDetector")
-    @AsyncTest(threads = 10, invocations = 5, detectAll = false,
-            detectCompletableFutureExceptions = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 10,
+            invocations = 5,
+            failOn = FailOn.LOW,
+            includes = DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)
     void testProcessMultipleOrders_Concurrent_WITH_ASYNC_TEST() {
         CompletableFutureExceptionDetector detector =
                 AsyncTestContext.completableFutureExceptionDetector();

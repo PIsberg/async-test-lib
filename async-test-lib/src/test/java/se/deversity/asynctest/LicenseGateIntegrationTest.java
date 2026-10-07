@@ -11,7 +11,8 @@ public class LicenseGateIntegrationTest {
         keygenProductId = "test-prod",
         lemonSqueezyStore = "test-store",
         licenseKey = "ABC-123",
-        licenseMockMode = true
+        licenseMockMode = true,
+        detectAll = true
     )
     void smokeTestWithLicenseConfiguration() {
         // This test uses the new license configuration attributes.

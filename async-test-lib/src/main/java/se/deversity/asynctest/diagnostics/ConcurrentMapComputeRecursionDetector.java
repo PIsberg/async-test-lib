@@ -68,7 +68,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.concurrentMapComputeRecursionMonitor();
+ * var mon = AsyncTestContext.concurrentMapComputeRecursionDetector();
  * mon.recordComputeStart(cache, key, Thread.currentThread(), "cache");
  * try {
  *     // mapping function body

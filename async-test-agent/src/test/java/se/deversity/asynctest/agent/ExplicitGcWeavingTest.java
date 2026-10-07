@@ -51,7 +51,7 @@ class ExplicitGcWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 2, invocations = 2)
+    @AsyncTest(threads = 2, invocations = 2, detectAll = true)
     void collectingExplicitlyInsideTheRun() {
         cache.evict();
     }

@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 4, detectThreadPoolDeadlocks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.THREAD_POOL_DEADLOCK)
  * void testThreadPool() {
  *     ExecutorService pool = Executors.newFixedThreadPool(4);
  *
@@ -276,7 +276,8 @@ public class ThreadPoolDeadlockDetector {
         /**
          * {@return whether this report should surface as a finding}
          *
-         * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
+         * <p>The canonical predicate the report path binds to ({@code DetectorRegistry.ifIssue}, and
+         * until 1.13.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
          * adapter resolved {@code analyze()}, found no {@code hasIssues()} on the returned report,
          * and emitted an empty violation list on every call — leaving this detector registered,
          * addressable and structurally silent. Pinned by {@code DetectorFiringContractTest}.

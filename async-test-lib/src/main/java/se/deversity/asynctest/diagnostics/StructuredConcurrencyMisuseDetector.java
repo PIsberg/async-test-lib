@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 4, useVirtualThreads = true, detectStructuredConcurrencyIssues = true)
+ * @AsyncTest(threads = 4, useVirtualThreads = true, includes = DetectorType.STRUCTURED_CONCURRENCY)
  * void testStructuredConcurrency() {
  *     var detector = AsyncTestContext.structuredConcurrencyMisuseDetector();
  *     String scopeId = detector.recordScopeOpened("ShutdownOnFailure");
@@ -212,19 +212,19 @@ public class StructuredConcurrencyMisuseDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
                 for (String finding : unclosedScopes) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : closedWithoutJoin) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : resultAccessedBeforeJoin) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
                 for (String finding : emptyScopes) {
-                    structuredViolations.add(new Violation("StructuredConcurrencyMisuse", severity,
+                    structuredViolations.add(new Violation("StructuredConcurrency", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
         }

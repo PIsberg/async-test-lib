@@ -124,4 +124,11 @@ public class SharedTimeZoneDetectorTest {
         assertFalse(finding.contains("guarded-") || finding.contains("later"),
                 "threads of other rounds did not take part in the race: " + finding);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedTimeZoneDetector d = new SharedTimeZoneDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(o -> d.recordMutation(o, "setRawOffset", Thread.currentThread()));
+    }
 }

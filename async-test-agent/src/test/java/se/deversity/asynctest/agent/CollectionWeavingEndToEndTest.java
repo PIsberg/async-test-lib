@@ -59,17 +59,17 @@ class CollectionWeavingEndToEndTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void unguardedDelegatedState() {
         unguarded.record("key");
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void guardedDelegatedState() {
         guarded.record("key");
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void lockGuardedDelegatedState() {
         lockGuarded.record("key");
     }

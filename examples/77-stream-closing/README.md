@@ -1,7 +1,7 @@
 # Example 77 — Stream Closing
 
 **Detector**: `StreamClosingDetector`  
-**Flag**: `detectStreamClosing = true`
+**Select it with**: `includes = DetectorType.STREAM_CLOSING`
 
 ## The Problem
 

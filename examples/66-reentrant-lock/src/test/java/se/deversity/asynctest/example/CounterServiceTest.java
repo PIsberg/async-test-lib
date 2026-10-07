@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -80,11 +81,13 @@ class CounterServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see the leaked hold detected by ReentrantLockDetector")
-    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
-            detectReentrantLockIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 2,
+            failOn = FailOn.LOW,
+            includes = DetectorType.REENTRANT_LOCK)
 
     void testIncrement_concurrent_detectsLockImbalance() throws InterruptedException {
-        var detector = AsyncTestContext.reentrantLockMonitor();
+        var detector = AsyncTestContext.reentrantLockDetector();
         detector.registerLock(service.lock, "counter-service-lock");
 
         // Bounded, because increment() leaks a hold: it locks twice and unlocks once, so the

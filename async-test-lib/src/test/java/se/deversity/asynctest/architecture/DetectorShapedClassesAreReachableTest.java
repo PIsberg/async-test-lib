@@ -72,7 +72,7 @@ class DetectorShapedClassesAreReachableTest {
 
         List<String> unreachable = new ArrayList<>();
         for (String name : shaped) {
-            if (wiring.contains("new " + name + "(") || DELIBERATELY_STANDALONE.containsKey(name)) {
+            if (isBuilt(wiring, name) || DELIBERATELY_STANDALONE.containsKey(name)) {
                 continue;
             }
             unreachable.add(name);
@@ -87,12 +87,20 @@ class DetectorShapedClassesAreReachableTest {
                         + "a reason and say so in its javadoc.");
 
         List<String> stale = DELIBERATELY_STANDALONE.keySet().stream()
-                .filter(name -> wiring.contains("new " + name + "(") || !shaped.contains(name))
+                .filter(name -> isBuilt(wiring, name) || !shaped.contains(name))
                 .sorted()
                 .toList();
         assertTrue(stale.isEmpty(),
                 "These are listed as deliberately standalone but are wired now, or are gone: "
                         + stale + ". Delete the line; a stale exemption hides the next real one.");
+    }
+
+    /**
+     * {@return whether the wiring constructs {@code name}: a {@code new Xxx(} call, or the
+     * registry's factory-table row {@code create(DetectorType.X, Xxx::new)} (#916)}
+     */
+    private static boolean isBuilt(String wiring, String name) {
+        return wiring.contains("new " + name + "(") || wiring.contains(" " + name + "::new)");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -149,10 +150,12 @@ class StartupCoordinatorTest {
      * 3. To fix: always call latch.countDown() in initialize()
      */
     @Disabled("Remove @Disabled to see the bug detected by CountDownLatchDetector")
-    @AsyncTest(threads = 8, invocations = 10, detectAll = false,
-            detectCountDownLatchIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 10,
+            failOn = FailOn.LOW,
+            includes = DetectorType.COUNTDOWN_LATCH)
     void testInitialize_concurrent_detectsMissingCountDown() throws Exception {
-        CountDownLatchDetector monitor = AsyncTestContext.countDownLatchMonitor();
+        CountDownLatchDetector monitor = AsyncTestContext.countDownLatchDetector();
         CountDownLatch latch = coordinator.getLatch();
         coordinator.observeLatch(
                 () -> monitor.recordCountDown(latch),

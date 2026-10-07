@@ -31,7 +31,7 @@
 ## Why async-test?
 
 - **One annotation** — `@AsyncTest` runs your test body on N threads × M rounds, collided on a `CyclicBarrier` so every round starts at the same instant. No executor boilerplate, no `CountDownLatch`, no `Thread.join` loops.
-- **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more, all on by default. See [Detectors](#detectors) for what feeds them.
+- **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more; a bare `@AsyncTest` runs the 12 in `Preset.ESSENTIALS` and `detectAll = true` runs them all. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
 - **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **25 of them can see code you did not modify** instead of 3. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
@@ -176,7 +176,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-lib</artifactId>
-       <version>1.12.4</version>
+       <version>1.13.0</version>
        <scope>test</scope>
    </dependency>
    ```
@@ -229,7 +229,7 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 1. **Add the dependency** to `build.gradle.kts`:
    ```kotlin
-   testImplementation("se.deversity.async-test-lib:async-test-lib:1.12.4")
+   testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.0")
    ```
 
 2. **Write your first stress test**:
@@ -302,20 +302,20 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-146 detectors enabled by default with a single flag, or cherry-pick:
+146 detectors. A bare `@AsyncTest` runs the curated `ESSENTIALS` preset; one flag turns on every detector, or cherry-pick:
 
 ```java
-// Everything on (default for bare @AsyncTest)
+// The default: Preset.ESSENTIALS, 12 high-signal detectors
 @AsyncTest
 
-// Curated preset for everyday CI
-@AsyncTest(preset = Preset.ESSENTIALS)
+// Everything on
+@AsyncTest(detectAll = true)
 
 // Everything on except false sharing (too slow for this suite)
-@AsyncTest(excludes = { DetectorType.FALSE_SHARING })
+@AsyncTest(detectAll = true, excludes = { DetectorType.FALSE_SHARING })
 
 // Explicit opt-in
-@AsyncTest(detectAll = false, detectDeadlocks = true, detectRaceConditions = true)
+@AsyncTest(includes = {DetectorType.DEADLOCKS, DetectorType.RACE_CONDITIONS})
 ```
 
 **What feeds them.** Three read the JVM and the harness directly and need no configuration at
@@ -352,8 +352,8 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 > **JDK 25/26 detectors are wired into the pipeline** (Phases 16 and 18). They are part of
 > `detectAll` and the `Preset.ALL` / `STRICT` bundles, each with a `DetectorType` constant
 > (`STABLE_VALUE_MISUSE`, `STRUCTURED_TASK_SCOPE_MISUSE`, `GATHERER_CONCURRENCY_MISUSE`,
-> `LAZY_CONSTANT_MISUSE`, `FINAL_FIELD_MUTATION`, `SHARED_KDF`) and a deprecated `@AsyncTest`
-> boolean flag. Record events against them via the matching `AsyncTestContext` accessors
+> `LAZY_CONSTANT_MISUSE`, `FINAL_FIELD_MUTATION`, `SHARED_KDF`) that `includes` and `excludes`
+> name. Record events against them via the matching `AsyncTestContext` accessors
 > (`stableValueMisuseDetector()` … `lazyConstantMisuseDetector()`,
 > `finalFieldMutationDetector()`, `sharedKdfDetector()`); findings surface through the
 > standard report and `failOn` gate. `VirtualThreadPinningDetector` is JDK-version-aware
@@ -389,10 +389,11 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `invocations` | 100 | Number of barrier rounds |
 | `timeoutMs` | 5000 | Whole-test timeout (ms) |
 | `useVirtualThreads` | true | Use `Thread.ofVirtual()` (Java 21+) |
-| `preset` | `Preset.ALL` | Curated bundle: `ALL` / `STRICT` / `ESSENTIALS` / `CI_FAST` / `NONE` |
-| `detectAll` | true | Enable all detectors in one shot (honored when `preset = ALL`) |
-| `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll`/per-detector flags when non-empty |
+| `preset` | `Preset.ESSENTIALS` | Curated bundle: `ESSENTIALS` / `ALL` / `STRICT` / `CI_FAST` / `NONE` |
+| `detectAll` | false | Enable every detector, whatever `preset` says (`includes` still wins) |
+| `includes` | `{}` | Enable exactly these detectors — overrides `preset`/`detectAll` when non-empty |
 | `excludes` | `{}` | Detectors to skip — layers on top of any preset or `includes` and wins on conflict |
+| `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (1.13.0+) |
 | `failOn` | `FailOn.NONE` | Severity gate: findings at/above this level (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) fail the test; `NONE` = report-only |
 | `replaySeed` | 0 | Per-round RNG seed. `0` = fresh per round (printed on failure); set explicitly to reproduce a failing schedule |
 
@@ -450,7 +451,7 @@ class LockTest {
     private final Object lockA = new Object();
     private final Object lockB = new Object();
 
-    @AsyncTest(threads = 4, invocations = 50, detectDeadlocks = true)
+    @AsyncTest(threads = 4, invocations = 50, includes = DetectorType.DEADLOCKS)
     void acquireLocks() {
         if (Thread.currentThread().getId() % 2 == 0) {
             synchronized (lockA) { synchronized (lockB) { /* work */ } }

@@ -84,4 +84,11 @@ public class SharedMatcherDetectorTest {
         assertTrue(s.contains("SHARED REGEX MATCHER"));
         assertTrue(s.contains("Fix"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedMatcherDetector d = new SharedMatcherDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(o -> d.recordAccess(o, "matcher", Thread.currentThread()));
+    }
 }

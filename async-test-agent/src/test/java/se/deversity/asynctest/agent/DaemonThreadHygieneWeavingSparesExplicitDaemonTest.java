@@ -45,7 +45,7 @@ class DaemonThreadHygieneWeavingSparesExplicitDaemonTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 2, invocations = 1, detectDaemonThreadHygiene = true)
+    @AsyncTest(threads = 2, invocations = 1, detectAll = true)
     void startingExplicitDaemonThreadInsideRun() {
         Thread t = starter.startDaemon(() -> {
             try {

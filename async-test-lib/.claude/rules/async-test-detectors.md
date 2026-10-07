@@ -396,7 +396,7 @@ a performance budget) are annotated individually and appear below.
 - **Enforced by**: se.deversity.asynctest.architecture.DetectorFeedCoverageTest
 
 ### se.deversity.asynctest.diagnostics.DetectorTrust
-- **Mirrors**: se.deversity.asynctest.DetectorType, se.deversity.asynctest.spi.adapters.LegacyDetectorFactories, docs/DETECTOR_CATALOG.md
-- **Reason**: Every DetectorType needs exactly one row, and each row names the detector class whose simple name keys the report map (DetectorRegistry.ifIssue) plus the short name the SPI adapter reports. A row naming a class the factory does not create silently stops resolving, and the finding loses its tier without anything going red.
+- **Mirrors**: se.deversity.asynctest.DetectorType, se.deversity.asynctest.DetectorRegistry, docs/DETECTOR_CATALOG.md
+- **Reason**: Every DetectorType needs exactly one row, and each row names the detector class whose simple name keys the report map (DetectorRegistry.ifIssue). A row naming a class the registry's factory row does not create silently stops resolving, and the finding loses its tier without anything going red.
 - **Enforced by**: se.deversity.asynctest.architecture.DetectorTrustCoverageTest
 <!-- VIBETAGS-END -->

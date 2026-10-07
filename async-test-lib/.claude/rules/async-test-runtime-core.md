@@ -58,7 +58,7 @@ When modifying these elements, audit for:
 
 ### se.deversity.asynctest.runner.LicenseValidationCache
 - **Strategy**: OTHER
-- **Note**: Stateless static methods over the filesystem. Concurrent writers race on an atomic temp-file move where the losing write is equivalent to the winning one; readers see either the old complete file or the new complete file, never a partial write.
+- **Note**: Stateless static methods over the filesystem. Concurrent writers race on an atomic temp-file move where the losing write is equivalent to the winning one; readers see either the old complete file or the new complete file, never a partial write. On Windows a read that meets a replace in progress fails with AccessDeniedException, so isFresh retries any read failure but a missing file for up to 127 ms (#928).
 
 ## Public API Surface Protection
 - **Rule**: Exposes public API. Preserve signature, Javadoc, and behavior without breaking backwards or source compatibility.

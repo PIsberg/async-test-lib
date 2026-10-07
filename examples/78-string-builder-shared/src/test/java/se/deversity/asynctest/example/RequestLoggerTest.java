@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -75,9 +76,9 @@ class RequestLoggerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see concurrent StringBuilder access detected by StringBuilderDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStringBuilderIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.STRING_BUILDER)
     void test_concurrent_detectsSharedBuilder() {
-        var detector = AsyncTestContext.get().stringBuilderMonitor();
+        var detector = AsyncTestContext.get().stringBuilderDetector();
         var builder = logger.getRawBuilder();
 
         // Register the shared builder once; the detector deduplicates by identity.

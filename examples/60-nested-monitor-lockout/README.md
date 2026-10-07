@@ -27,7 +27,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 the blocked monitor acquisition while holding another monitor.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNestedMonitorLockout = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.NESTED_MONITOR_LOCKOUT)
 void test_concurrent_detectsBug() { ... }
 ```
 

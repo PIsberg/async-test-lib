@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p><strong>Why this exists.</strong> {@link LockDowngradeDetector} and
  * {@link LockUpgradeDeadlockDetector} both report a thread acquiring the write lock while it
- * already holds the read lock. With {@code detectAll}, which is the default, both are on, and a
+ * already holds the read lock. With {@code detectAll = true}, the default before 1.13.0, both are on, and a
  * run that fed both reported the same condition twice under two names, one of which does not
  * describe it. That was issue #361.
  *

@@ -43,13 +43,9 @@ src/main/java/se/deversity/asynctest/
 │   ├── MarkdownFormatter.java        # PR comments / CI logs
 │   └── JsonFormatter.java            # dashboards / SARIF / IDE plugins
 ├── spi/                              # NEW package in 1.6.0 — Detector SPI
-│   ├── Detector.java                 # SPI interface: type(), analyze(), lifecycle hooks
+│   ├── Detector.java                 # SPI interface: id(), type(), analyze(), lifecycle hooks
 │   ├── DetectorFactory.java          # ServiceLoader-discovered factory
-│   ├── DetectorRegistry.java         # SPI-driven registry (coexists with legacy)
-│   └── adapters/
-│       ├── LegacyDetectorAdapter.java               # generic reflective wrapper
-│       ├── LegacyDetectorFactories.java             # 99 inner-class factories (1 per DetectorType)
-│       └── SharedMessageDigestDetectorFactory.java  # typed canary adapter (template)
+│   └── DetectorRegistry.java         # third-party detectors only, keyed by id (built-in bridge removed in 1.13.0)
 └── benchmark/                        # Benchmarking module
     ├── BenchmarkRecorder.java
     ├── BenchmarkComparator.java

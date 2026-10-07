@@ -7,6 +7,7 @@ import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.E2E;
@@ -124,9 +125,12 @@ class ExchangerOrphanRunTest {
 
         static final Exchanger<String> EXCHANGER = new Exchanger<>();
 
-        @AsyncTest(threads = 3, invocations = 1, timeoutMs = 500, detectAll = false,
-                detectDeadlocks = false, detectExchangerIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 3,
+                invocations = 1,
+                timeoutMs = 500,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.EXCHANGER)
         void oddCaller() throws InterruptedException {
             ExchangerDetector detector = AsyncTestContext.exchangerDetector();
             detector.registerExchanger(EXCHANGER, "odd-exchanger");
@@ -141,9 +145,12 @@ class ExchangerOrphanRunTest {
 
         static final Exchanger<String> EXCHANGER = new Exchanger<>();
 
-        @AsyncTest(threads = 3, invocations = 3, timeoutMs = 20_000, detectAll = false,
-                detectDeadlocks = false, detectExchangerIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 3,
+                invocations = 3,
+                timeoutMs = 20_000,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.EXCHANGER)
         void oddCallerGivesUp() throws InterruptedException {
             ExchangerDetector detector = AsyncTestContext.exchangerDetector();
             detector.registerExchanger(EXCHANGER, "timed-exchanger");
@@ -165,9 +172,12 @@ class ExchangerOrphanRunTest {
 
         static final Exchanger<String> EXCHANGER = new Exchanger<>();
 
-        @AsyncTest(threads = 3, invocations = 1, timeoutMs = 500, detectAll = false,
-                detectDeadlocks = false, detectExchangerIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 3,
+                invocations = 1,
+                timeoutMs = 500,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.EXCHANGER)
         void oddCallerRecordsItsInterrupt() {
             ExchangerDetector detector = AsyncTestContext.exchangerDetector();
             detector.registerExchanger(EXCHANGER, "odd-exchanger-handled");
@@ -187,9 +197,12 @@ class ExchangerOrphanRunTest {
 
         static final Exchanger<String> EXCHANGER = new Exchanger<>();
 
-        @AsyncTest(threads = 3, invocations = 3, timeoutMs = 20_000, detectAll = false,
-                detectDeadlocks = false, detectExchangerIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 3,
+                invocations = 3,
+                timeoutMs = 20_000,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.EXCHANGER)
         void callerCancelsItself() {
             ExchangerDetector detector = AsyncTestContext.exchangerDetector();
             detector.registerExchanger(EXCHANGER, "self-cancelled-exchanger");

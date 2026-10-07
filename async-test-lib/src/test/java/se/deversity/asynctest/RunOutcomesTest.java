@@ -32,7 +32,7 @@ class RunOutcomesTest {
     /** One new event per round, so all its workers race to register it, 100 times a run. */
     private static final Set<String> ROUND_EVENTS = ConcurrentHashMap.newKeySet();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 60_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 60_000, detectAll = true)
     void everyWorkerRecords() {
         CONCURRENT.record("ran");
         String round = "round " + AsyncTestContext.replaySeed();

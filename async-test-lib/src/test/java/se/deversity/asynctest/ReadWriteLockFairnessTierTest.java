@@ -71,8 +71,10 @@ class ReadWriteLockFairnessTierTest {
     public static class ReaderHeavyDummy {
         private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.LOW,
-                   detectAll = false, monitorReadWriteLockFairness = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.LOW,
+                   includes = DetectorType.READ_WRITE_LOCK_FAIRNESS)
         void readerHeavy() {
             ReadWriteLockFairnessTierTest.readerHeavy(lock);
         }
@@ -81,8 +83,11 @@ class ReadWriteLockFairnessTierTest {
     public static class ReaderHeavyUnderPromptFloorDummy {
         private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.LOW, minTrust = TrustTier.PROMPT,
-                   detectAll = false, monitorReadWriteLockFairness = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.LOW,
+                   minTrust = TrustTier.PROMPT,
+                   includes = DetectorType.READ_WRITE_LOCK_FAIRNESS)
         void readerHeavy() {
             ReadWriteLockFairnessTierTest.readerHeavy(lock);
         }

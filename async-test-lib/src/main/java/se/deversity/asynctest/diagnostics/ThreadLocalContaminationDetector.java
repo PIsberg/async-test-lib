@@ -22,7 +22,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
- * var mon = AsyncTestContext.threadLocalContaminationMonitor();
+ * var mon = AsyncTestContext.threadLocalContaminationDetector();
  * mon.recordNewTask(Thread.currentThread(), "task-A");
  * mon.recordSet(Thread.currentThread(), MY_TL, "MY_TL");
  * // simulate task boundary / thread reuse

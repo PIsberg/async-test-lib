@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -169,8 +170,10 @@ class WeakCacheEntryTest {
     // invocations is 1 to keep the report readable. The detector joins every recording thread's
     // name into one line with no deduplication, so 400 executions produce a single line listing
     // 400 thread names. That is issue #351; put the number back once it is fixed.
-    @AsyncTest(threads = 8, invocations = 1, detectAll = false,
-            detectWeakReferenceRace = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 1,
+            failOn = FailOn.LOW,
+            includes = DetectorType.WEAK_REFERENCE_RACE)
     void test_concurrent_detectsWeakReferenceRace() {
         // The detector's two findings are a get() result used without a null check, and a
         // reference that returned non-null on one thread and null on another. This

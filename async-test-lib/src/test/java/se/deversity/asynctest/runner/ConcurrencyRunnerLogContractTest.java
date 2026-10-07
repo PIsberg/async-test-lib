@@ -1,4 +1,5 @@
 package se.deversity.asynctest.runner;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.E2E;
 
 import ch.qos.logback.classic.Level;
@@ -405,7 +406,7 @@ class ConcurrencyRunnerLogContractTest {
     static class NarratedDummy {
         private final AtomicInteger counter = new AtomicInteger();
 
-        @AsyncTest(threads = 3, invocations = 2)
+        @AsyncTest(threads = 3, invocations = 2, detectAll = true)
         void narrated() {
             counter.incrementAndGet();
         }
@@ -415,7 +416,7 @@ class ConcurrencyRunnerLogContractTest {
     static class PlatformThreadDummy {
         private final AtomicInteger counter = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false)
+        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false, detectAll = true)
         void onPlatformThreads() {
             counter.incrementAndGet();
         }
@@ -429,7 +430,7 @@ class ConcurrencyRunnerLogContractTest {
 
     /** Several monitors on one slot recorded without an owner: undecided, a note and no finding. */
     static class UndecidedLockDummy {
-        @AsyncTest(threads = 3, invocations = 2, detectAll = false, detectSynchronizedNonFinal = true)
+        @AsyncTest(threads = 3, invocations = 2, includes = DetectorType.SYNCHRONIZED_NON_FINAL)
         void undecided() {
             Holder holder = new Holder();
             AsyncTestContext.synchronizedNonFinalDetector().recordLockObject(holder.lock, "lock", Holder.class);
@@ -441,7 +442,7 @@ class ConcurrencyRunnerLogContractTest {
 
     /** Five undecided slots in one run, more than the per-detector cap. */
     static class ManyUndecidedLocksDummy {
-        @AsyncTest(threads = 2, invocations = 1, detectAll = false, detectSynchronizedNonFinal = true)
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.SYNCHRONIZED_NON_FINAL)
         void many() {
             Holder holder = new Holder();
             for (int slot = 0; slot < 5; slot++) {
@@ -455,8 +456,10 @@ class ConcurrencyRunnerLogContractTest {
     static class ReassignedStaticLockDummy {
         private static Object lock = new Object();
 
-        @AsyncTest(threads = 3, invocations = 2, detectAll = false, detectSynchronizedNonFinal = true,
-                failOn = FailOn.LOW)
+        @AsyncTest(threads = 3,
+                invocations = 2,
+                failOn = FailOn.LOW,
+                includes = DetectorType.SYNCHRONIZED_NON_FINAL)
         void reassigned() {
             Object mine = new Object();
             lock = mine;
@@ -521,8 +524,10 @@ class ConcurrencyRunnerLogContractTest {
         static final ReentrantLock LOCK = new ReentrantLock();
         static final Condition READY = LOCK.newCondition();
 
-        @AsyncTest(threads = 2, invocations = 2, detectAll = false, detectConditionVariableIssues = true,
-                useVirtualThreads = true)
+        @AsyncTest(threads = 2,
+                invocations = 2,
+                useVirtualThreads = true,
+                includes = DetectorType.CONDITION_VARIABLES)
         void lockLess() {
             ConditionVariableDetector monitor = AsyncTestContext.conditionVariableDetector();
             monitor.registerCondition(READY, "ready");
@@ -534,7 +539,7 @@ class ConcurrencyRunnerLogContractTest {
     static class EndWithoutStartDummy {
         static final Exchanger<String> EXCHANGER = new Exchanger<>();
 
-        @AsyncTest(threads = 2, invocations = 2, detectAll = false, detectExchangerIssues = true)
+        @AsyncTest(threads = 2, invocations = 2, includes = DetectorType.EXCHANGER)
         void endOnly() throws Exception {
             String received = EXCHANGER.exchange("mine", 10, TimeUnit.SECONDS);
             AsyncTestContext.exchangerDetector().recordExchangeComplete(EXCHANGER, "swap", received);
@@ -545,7 +550,7 @@ class ConcurrencyRunnerLogContractTest {
     static class LockLessStarvationDummy {
         static final ReentrantLock LOCK = new ReentrantLock();
 
-        @AsyncTest(threads = 2, invocations = 2, detectAll = false, detectReentrantLockIssues = true)
+        @AsyncTest(threads = 2, invocations = 2, includes = DetectorType.REENTRANT_LOCK)
         void timed() {
             long start = System.nanoTime();
             LOCK.lock();

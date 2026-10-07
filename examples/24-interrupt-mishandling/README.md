@@ -42,7 +42,7 @@ Sequential tests call `doWork()` directly. No interruption is ever issued, so th
 Remove the `@Disabled` annotation from `testDoWork_concurrent_detectsInterruptSwallowing()`:
 
 ```java
-@AsyncTest(threads = 6, invocations = 10, detectAll = false, detectInterruptMishandling = true)
+@AsyncTest(threads = 6, invocations = 10, includes = DetectorType.INTERRUPT_MISHANDLING)
 void testDoWork_concurrent_detectsInterruptSwallowing() { ... }
 ```
 

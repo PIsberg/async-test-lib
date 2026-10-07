@@ -26,20 +26,20 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectBlockingQueueIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.BLOCKING_QUEUE)
  * void testQueueUsage() {
  *     BlockingQueue<String> queue = new ArrayBlockingQueue<>(10);
- *     AsyncTestContext.blockingQueueMonitor()
+ *     AsyncTestContext.blockingQueueDetector()
  *         .registerQueue(queue, "work-queue", 10);
  *     
  *     // Producer
  *     boolean added = queue.offer("item");
- *     AsyncTestContext.blockingQueueMonitor()
+ *     AsyncTestContext.blockingQueueDetector()
  *         .recordOffer(queue, "work-queue", added);
  *     
  *     // Consumer
  *     String item = queue.poll();
- *     AsyncTestContext.blockingQueueMonitor()
+ *     AsyncTestContext.blockingQueueDetector()
  *         .recordPoll(queue, "work-queue", item != null);
  * }
  * }</pre>

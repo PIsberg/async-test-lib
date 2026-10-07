@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects XML parser instances shared across multiple threads.
@@ -40,15 +39,18 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 0.10.0
  */
-public class SharedXmlParserDetector {
+public class SharedXmlParserDetector extends AbstractInstanceDetector<SharedXmlParserDetector.ParserState> {
 
-    private static class ParserState extends SelfGuard.ThreadTrackedInstance {
+    static final class ParserState extends SelfGuard.ThreadTrackedInstance {
         final String      parserType;
 
         ParserState(String parserType) { this.parserType = parserType; }
     }
 
-    private final Map<IdentityKey, ParserState> parsers = new ConcurrentHashMap<>();
+    @Override
+    ParserState newState(Object instance, String label) {
+        return new ParserState(label);
+    }
 
     /**
      * Records an access to an XML parser instance.
@@ -60,14 +62,9 @@ public class SharedXmlParserDetector {
      */
     public void recordAccess(Object parser, String parserType, Thread thread) {
         if (parser == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        ParserState s = parsers.get(IdentityKey.lookup(parser));
-        if (s == null) {
-            String label = parserType != null ? parserType
-                    : parser.getClass().getSimpleName();
-            s = parsers.computeIfAbsent(new IdentityKey(parser), id -> new ParserState(label));
-        }
-        s.noteAccess(parser, thread);
+        // An unnamed parser is labelled by its class, unnumbered, as it always was.
+        stateFor(parser, parserType != null ? parserType : parser.getClass().getSimpleName())
+                .noteAccess(parser, thread);
     }
 
     /**
@@ -75,7 +72,7 @@ public class SharedXmlParserDetector {
      */
     public SharedXmlParserReport analyze() {
         SharedXmlParserReport r = new SharedXmlParserReport();
-        for (ParserState s : parsers.values()) {
+        for (ParserState s : states()) {
             if (s.sharedAndUnguarded()) {
                 String finding = String.format(
                         "'%s' instance accessed from %d threads (%s) — "

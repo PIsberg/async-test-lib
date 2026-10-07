@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -77,20 +78,20 @@ class RateLimiterTest {
 
     @Disabled("Remove @Disabled: the round times out once the leaked permits run out, and the failure "
             + "names SemaphoreMisuseDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, monitorSemaphore = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SEMAPHORE)
     void testExecuteRequest_concurrent_detectsPermitLeak() {
         Semaphore sem = limiter.getSemaphore();
         String name = "rate-limiter-semaphore";
 
         // Register the semaphore with the detector
-        AsyncTestContext.semaphoreMonitor()
+        AsyncTestContext.semaphoreMisuseDetector()
                 .registerSemaphore(sem, name, 5);
 
         AtomicInteger failCount = new AtomicInteger(0);
 
         try {
             // Record the acquire
-            AsyncTestContext.semaphoreMonitor().recordAcquire(sem, name);
+            AsyncTestContext.semaphoreMisuseDetector().recordAcquire(sem, name);
 
             // Submit a task that sometimes throws — simulating real failures
             limiter.executeRequest(() -> {
@@ -100,7 +101,7 @@ class RateLimiterTest {
             });
 
             // Record the release only on the happy path
-            AsyncTestContext.semaphoreMonitor().recordRelease(sem, name);
+            AsyncTestContext.semaphoreMisuseDetector().recordRelease(sem, name);
 
         } catch (RuntimeException e) {
             failCount.incrementAndGet();

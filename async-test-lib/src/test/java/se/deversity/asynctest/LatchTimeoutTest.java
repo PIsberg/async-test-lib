@@ -54,8 +54,11 @@ class LatchTimeoutTest {
         private final java.util.concurrent.atomic.AtomicInteger role =
             new java.util.concurrent.atomic.AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectDeadlocks = false,
-                   useVirtualThreads = false)
+        @AsyncTest(threads = 2,
+                   invocations = 1,
+                   timeoutMs = 300,
+                   useVirtualThreads = false,
+                   detectAll = true)
         void oneThreadHangsForever() throws InterruptedException {
             if (role.getAndIncrement() == 0) {
                 // this thread never reaches latch.countDown()

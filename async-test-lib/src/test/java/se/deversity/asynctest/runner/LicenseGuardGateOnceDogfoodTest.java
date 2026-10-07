@@ -78,7 +78,7 @@ class LicenseGuardGateOnceDogfoodTest {
         set("license.file", null);
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 20_000, detectAll = true)
     void everyWorkerChecksTheSameConfiguration() {
         LicenseGuard.check(AsyncTestConfig.builder().licenseMockMode(false).build());
     }

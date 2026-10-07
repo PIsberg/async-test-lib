@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -77,7 +78,7 @@ class ScopedContextServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unbound get() detected by ScopedValueMisuseDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectScopedValueMisuse = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SCOPED_VALUE)
 
     void testGetCurrentUser_concurrent_detectsUnboundGet() {
         // get() with no preceding recordBindingEntered() is the whole finding: this thread is

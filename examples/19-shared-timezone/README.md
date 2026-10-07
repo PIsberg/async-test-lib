@@ -29,7 +29,7 @@ Sequential execution means the write and read are adjacent — no other write ca
 ## How `@AsyncTest` Exposes the Bug
 
 ```java
-@AsyncTest(threads = 4, invocations = 3, detectSharedTimeZone = true, timeoutMs = 5000)
+@AsyncTest(threads = 4, invocations = 3, timeoutMs = 5000, includes = DetectorType.SHARED_TIMEZONE)
 void part2_detectSharedTimeZone() {
     var d = AsyncTestContext.sharedTimeZoneDetector();
     d.recordMutation(sharedTz, "setRawOffset", Thread.currentThread());

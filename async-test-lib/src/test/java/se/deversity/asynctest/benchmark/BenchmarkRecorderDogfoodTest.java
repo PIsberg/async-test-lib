@@ -39,7 +39,7 @@ class BenchmarkRecorderDogfoodTest {
             BenchmarkRecorderDogfoodTest.class.getName(),
             "everyWorkerRecordsItsOwnTiming");
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000, detectAll = true)
     void everyWorkerRecordsItsOwnTiming() {
         long start = RECORDER.recordInvocationStart();
 

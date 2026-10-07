@@ -47,7 +47,7 @@ class CoordinationWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void permitsLeakAndOffersAreDropped() throws InterruptedException {
         leaky.useAPermit(true);
         leaky.enqueue("element");

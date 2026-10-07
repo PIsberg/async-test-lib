@@ -13,7 +13,7 @@ import java.util.function.BiConsumer;
  * threads can all pass the check before any of them writes the new value — they all
  * decrement the same initial stock, driving the balance well below zero.
  *
- * RaceConditionDetector (activated by {@code detectRaceConditions = true}) is recording-fed:
+ * RaceConditionDetector (activated by {@code includes = DetectorType.RACE_CONDITIONS}) is recording-fed:
  * it analyses only the cross-thread field accesses it is handed. See
  * {@link #observeStockAccess(BiConsumer, BiConsumer)} for the seam that hands them over.
  *

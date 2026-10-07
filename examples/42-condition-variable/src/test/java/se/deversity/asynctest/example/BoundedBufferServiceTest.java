@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -81,7 +82,7 @@ class BoundedBufferServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see the stranded consumer reported by ConditionVariableDetector")
-    @AsyncTest(threads = 4, invocations = 5, detectAll = false, detectConditionVariableIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 4, invocations = 5, failOn = FailOn.LOW, includes = DetectorType.CONDITION_VARIABLES)
     void testBuffer_concurrent_detectsStrandedConsumer() throws InterruptedException {
         ConditionVariableDetector monitor = AsyncTestContext.conditionVariableDetector();
         BoundedBufferService buffer = new BoundedBufferService(probe(monitor));

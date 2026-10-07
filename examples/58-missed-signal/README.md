@@ -34,7 +34,7 @@ waits on it with the bounded `waitForSignal(10)`, which receives nothing. The
 reported: with a flag checked in a `while` loop the waiter never waits, and nothing is lost.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMissedSignals = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.MISSED_SIGNAL)
 void test_concurrent_detectsBug() { ... }
 ```
 

@@ -27,7 +27,7 @@ Remove the `@Disabled` annotation from `test_concurrent_detectsBug` in
 `SessionRegistryTest`. The `MutableMapKeyDetector` will report the key mutation.
 
 ```
-@AsyncTest(threads = 8, invocations = 50, detectAll = false, detectMutableMapKeys = true)
+@AsyncTest(threads = 8, invocations = 50, includes = DetectorType.MUTABLE_MAP_KEY)
 void test_concurrent_detectsBug() { ... }
 ```
 

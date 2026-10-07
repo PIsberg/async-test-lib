@@ -13,76 +13,79 @@ Part of the [Usage guide](../USAGE.md).
 | `timeoutMs` | long | 5000 | Test timeout in milliseconds |
 | `useVirtualThreads` | boolean | true | Use Java 21+ virtual threads |
 | `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
-| `detectAll` | boolean | true | **Enable ALL detectors in one shot (Recommended)**. An individual flag set to `false` does not opt out while this is `true`; use `excludes` |
-| `excludes` | DetectorType[] | {} | Detectors to skip when `detectAll = true` |
+| `preset` | Preset | ESSENTIALS | Curated detector bundle, used when neither `includes` nor `detectAll = true` is set. A bare `@AsyncTest` runs `ESSENTIALS` (1.13.0) |
+| `detectAll` | boolean | false | Enable every detector, whatever `preset` says; `includes` still wins. `false` leaves `preset` in charge |
+| `includes` | DetectorType[] | {} | Enable exactly these detectors; overrides `preset` and `detectAll` when non-empty |
+| `excludes` | DetectorType[] | {} | Detectors to skip from whatever `includes`, `preset` or `detectAll` selected |
+| `excludeIds` | String[] | {} | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (1.13.0+) |
 
-### Phase 1 Detectors (Enabled by default if detectAll=true)
+### Phase 1 Detectors (Enabled by detectAll = true)
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `detectDeadlocks` | boolean | true | Detect circular lock dependencies |
-| `detectVisibility` | boolean | false | Detect missing volatile keywords |
-| `detectLivelocks` | boolean | false | Detect thread spinning and starvation |
+| DetectorType | Description |
+|--------------|-------------|
+| `DEADLOCKS` | Detect circular lock dependencies |
+| `VISIBILITY` | Detect missing volatile keywords |
+| `LIVELOCKS` | Detect thread spinning and starvation |
 
-### Phase 2 Detectors (Enabled by default if detectAll=true)
+### Phase 2 Detectors (Enabled by detectAll = true)
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `detectFalseSharing` | boolean | false | Detect cache line contention |
-| `detectWakeupIssues` | boolean | false | Detect spurious/lost wakeups |
-| `validateConstructorSafety` | boolean | false | Detect unsafe object publication |
-| `detectABAProblem` | boolean | false | Detect ABA problems in lock-free code |
-| `validateLockOrder` | boolean | false | Detect improper lock acquisition order |
-| `monitorSynchronizers` | boolean | false | Detect problems in synchronizers |
-| `monitorThreadPool` | boolean | false | Monitor thread pool behavior |
-| `detectMemoryOrderingViolations` | boolean | false | Detect JMM happens-before violations |
-| `monitorAsyncPipeline` | boolean | false | Monitor event flow through async pipelines |
-| `monitorReadWriteLockFairness` | boolean | false | Detect writer starvation and unfair locks |
+| DetectorType | Description |
+|--------------|-------------|
+| `FALSE_SHARING` | Detect cache line contention |
+| `WAKEUP_ISSUES` | Detect spurious/lost wakeups |
+| `CONSTRUCTOR_SAFETY` | Detect unsafe object publication |
+| `ABA_PROBLEM` | Detect ABA problems in lock-free code |
+| `LOCK_ORDER` | Detect improper lock acquisition order |
+| `SYNCHRONIZERS` | Detect problems in synchronizers |
+| `THREAD_POOL` | Monitor thread pool behavior |
+| `MEMORY_ORDERING` | Detect JMM happens-before violations |
+| `ASYNC_PIPELINE` | Monitor event flow through async pipelines |
+| `READ_WRITE_LOCK_FAIRNESS` | Detect writer starvation and unfair locks |
 
-### Phase 3 Detectors (Enabled by default if detectAll=true)
+### Phase 3 Detectors (Enabled by detectAll = true)
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `detectRaceConditions` | boolean | false | Track concurrent field access patterns |
-| `detectThreadLocalLeaks` | boolean | false | Detect ThreadLocal values not cleaned up |
-| `detectBusyWaiting` | boolean | false | Detect spin loops and tight polling |
-| `detectAtomicityViolations` | boolean | false | Detect non-atomic compound operations |
-| `detectInterruptMishandling` | boolean | false | Detect swallowed interrupts and missing restoration |
+| DetectorType | Description |
+|--------------|-------------|
+| `RACE_CONDITIONS` | Track concurrent field access patterns |
+| `THREAD_LOCAL_LEAKS` | Detect ThreadLocal values not cleaned up |
+| `BUSY_WAITING` | Detect spin loops and tight polling |
+| `ATOMICITY_VIOLATIONS` | Detect non-atomic compound operations |
+| `INTERRUPT_MISHANDLING` | Detect swallowed interrupts and missing restoration |
 
-### Phase 5 Detectors — Thread-Safety of Common Types (Enabled by default if detectAll=true)
+### Phase 5 Detectors — Thread-Safety of Common Types (Enabled by detectAll = true)
 
 These detectors catch misuse of common Java standard-library types that are **not thread-safe**
 but are frequently shared across threads by mistake.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `detectCalendarIssues` | boolean | true | Detect `java.util.Calendar` shared across threads (not thread-safe; use `java.time.*`) |
-| `detectSharedCollections` | boolean | true | Detect `ArrayList`/`HashMap`/`HashSet` etc. written by multiple threads without synchronization |
-| `detectTimerIssues` | boolean | true | Detect `java.util.Timer` thread failures (uncaught exception kills all tasks) and tasks that fell due while another task held the timer thread |
-| `detectCopyOnWriteCollectionIssues` | boolean | true | Detect `CopyOnWriteArrayList`/`CopyOnWriteArraySet` with high write ratio (O(n) copy per write) |
-| `detectStringBuilderIssues` | boolean | true | Detect `StringBuilder` mutated by multiple threads (not thread-safe; use `StringBuffer` or `ThreadLocal`) |
+| DetectorType | Description |
+|--------------|-------------|
+| `CALENDAR` | Detect `java.util.Calendar` shared across threads (not thread-safe; use `java.time.*`) |
+| `SHARED_COLLECTIONS` | Detect `ArrayList`/`HashMap`/`HashSet` etc. written by multiple threads without synchronization |
+| `TIMER` | Detect `java.util.Timer` thread failures (uncaught exception kills all tasks) and tasks that fell due while another task held the timer thread |
+| `COPY_ON_WRITE_COLLECTIONS` | Detect `CopyOnWriteArrayList`/`CopyOnWriteArraySet` with high write ratio (O(n) copy per write) |
+| `STRING_BUILDER` | Detect `StringBuilder` mutated by multiple threads (not thread-safe; use `StringBuffer` or `ThreadLocal`) |
 
 #### Context accessors for Phase 5 detectors
 
 ```java
-AsyncTestContext.calendarMonitor()           // CalendarDetector
-AsyncTestContext.sharedCollectionMonitor()   // SharedCollectionDetector
-AsyncTestContext.timerMonitor()              // TimerDetector
-AsyncTestContext.copyOnWriteMonitor()        // CopyOnWriteCollectionDetector
-AsyncTestContext.stringBuilderMonitor()      // StringBuilderDetector
+AsyncTestContext.calendarDetector()           // CalendarDetector
+AsyncTestContext.sharedCollectionDetector()   // SharedCollectionDetector
+AsyncTestContext.timerDetector()              // TimerDetector
+AsyncTestContext.copyOnWriteCollectionDetector()        // CopyOnWriteCollectionDetector
+AsyncTestContext.stringBuilderDetector()      // StringBuilderDetector
 ```
 
 #### CalendarDetector example
 
 ```java
-@AsyncTest(threads = 4, detectCalendarIssues = true)
+@AsyncTest(threads = 4, includes = DetectorType.CALENDAR)
 void testCalendarSharing() {
     Calendar cal = Calendar.getInstance();
-    AsyncTestContext.calendarMonitor()
+    AsyncTestContext.calendarDetector()
         .registerCalendar(cal, "shared-calendar");
 
     cal.set(Calendar.YEAR, 2024);
-    AsyncTestContext.calendarMonitor()
+    AsyncTestContext.calendarDetector()
         .recordSet(cal, "shared-calendar");
 }
 // Fix: use LocalDate/ZonedDateTime from java.time.* (immutable, thread-safe)
@@ -91,14 +94,14 @@ void testCalendarSharing() {
 #### SharedCollectionDetector example
 
 ```java
-@AsyncTest(threads = 4, detectSharedCollections = true)
+@AsyncTest(threads = 4, includes = DetectorType.SHARED_COLLECTIONS)
 void testSharedList() {
     List<String> list = new ArrayList<>();   // BUG: not thread-safe
-    AsyncTestContext.sharedCollectionMonitor()
+    AsyncTestContext.sharedCollectionDetector()
         .registerCollection(list, "item-list", "ArrayList");
 
     list.add("item");
-    AsyncTestContext.sharedCollectionMonitor()
+    AsyncTestContext.sharedCollectionDetector()
         .recordWrite(list, "item-list", "add");
 }
 // Fix: use ConcurrentHashMap, CopyOnWriteArrayList, or Collections.synchronizedList()
@@ -107,10 +110,10 @@ void testSharedList() {
 #### TimerDetector example
 
 ```java
-@AsyncTest(threads = 2, detectTimerIssues = true)
+@AsyncTest(threads = 2, includes = DetectorType.TIMER)
 void testTimerUsage() {
     Timer timer = new Timer("my-timer");
-    TimerDetector detector = AsyncTestContext.timerMonitor();
+    TimerDetector detector = AsyncTestContext.timerDetector();
     detector.registerTimer(timer, "my-timer");
 
     timer.schedule(new TimerTask() {
@@ -129,14 +132,14 @@ void testTimerUsage() {
 #### CopyOnWriteCollectionDetector example
 
 ```java
-@AsyncTest(threads = 4, detectCopyOnWriteCollectionIssues = true)
+@AsyncTest(threads = 4, includes = DetectorType.COPY_ON_WRITE_COLLECTIONS)
 void testWriteHeavyCopyOnWrite() {
     CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
-    AsyncTestContext.copyOnWriteMonitor()
+    AsyncTestContext.copyOnWriteCollectionDetector()
         .registerCollection(list, "event-list");
 
     list.add("event");
-    AsyncTestContext.copyOnWriteMonitor()
+    AsyncTestContext.copyOnWriteCollectionDetector()
         .recordWrite(list, "event-list");
 }
 // Fix: use ConcurrentHashMap.newKeySet() or ConcurrentLinkedQueue for write-heavy workloads
@@ -145,14 +148,14 @@ void testWriteHeavyCopyOnWrite() {
 #### StringBuilderDetector example
 
 ```java
-@AsyncTest(threads = 4, detectStringBuilderIssues = true)
+@AsyncTest(threads = 4, includes = DetectorType.STRING_BUILDER)
 void testSharedStringBuilder() {
     StringBuilder sb = new StringBuilder();   // BUG: not thread-safe
-    AsyncTestContext.stringBuilderMonitor()
+    AsyncTestContext.stringBuilderDetector()
         .registerBuilder(sb, "log-builder");
 
     sb.append("entry");
-    AsyncTestContext.stringBuilderMonitor()
+    AsyncTestContext.stringBuilderDetector()
         .recordAppend(sb, "log-builder");
 }
 // Fix: use ThreadLocal<StringBuilder> or build strings per-thread and join at the end
@@ -160,68 +163,68 @@ void testSharedStringBuilder() {
 
 ### Phase 8: Lifecycle & Structural Correctness (v1.6.0)
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `detectExecutorShutdown` | boolean | true | Detect `ExecutorService` tasks submitted but never shut down, or shut down without `awaitTermination()` |
-| `detectMutableMapKeys` | boolean | true | Detect `HashMap`/`HashSet` keys mutated after insertion, silently breaking future lookups |
-| `detectNestedMonitorLockout` | boolean | true | Detect blocking ops (`wait`/`Future.get`/`lock`) attempted while holding a different monitor |
-| `detectLockDowngrade` | boolean | true | Detect illegal read-to-write upgrade on `ReentrantReadWriteLock` (deadlocks immediately) |
-| `detectInheritableThreadLocalMisuse` | boolean | true | Detect `InheritableThreadLocal` accessed from pooled threads (value frozen at thread-creation time, not task-submission time) |
+| DetectorType | Description |
+|--------------|-------------|
+| `EXECUTOR_SHUTDOWN` | Detect `ExecutorService` tasks submitted but never shut down, or shut down without `awaitTermination()` |
+| `MUTABLE_MAP_KEY` | Detect `HashMap`/`HashSet` keys mutated after insertion, silently breaking future lookups |
+| `NESTED_MONITOR_LOCKOUT` | Detect blocking ops (`wait`/`Future.get`/`lock`) attempted while holding a different monitor |
+| `LOCK_DOWNGRADE` | Detect illegal read-to-write upgrade on `ReentrantReadWriteLock` (deadlocks immediately) |
+| `INHERITABLE_THREAD_LOCAL` | Detect `InheritableThreadLocal` accessed from pooled threads (value frozen at thread-creation time, not task-submission time) |
 
 #### Context accessors for Phase 8 detectors
 
 ```java
-AsyncTestContext.executorShutdownMonitor()             // ExecutorShutdownDetector
-AsyncTestContext.mutableMapKeyMonitor()                // MutableMapKeyDetector
-AsyncTestContext.nestedMonitorLockoutMonitor()         // NestedMonitorLockoutDetector
-AsyncTestContext.lockDowngradeMonitor()                // LockDowngradeDetector
-AsyncTestContext.inheritableThreadLocalMisuseMonitor() // InheritableThreadLocalMisuseDetector
+AsyncTestContext.executorShutdownDetector()             // ExecutorShutdownDetector
+AsyncTestContext.mutableMapKeyDetector()                // MutableMapKeyDetector
+AsyncTestContext.nestedMonitorLockoutDetector()         // NestedMonitorLockoutDetector
+AsyncTestContext.lockDowngradeDetector()                // LockDowngradeDetector
+AsyncTestContext.inheritableThreadLocalMisuseDetector() // InheritableThreadLocalMisuseDetector
 ```
 
 ### Phase 10: API Traps & Subtle Concurrency Bugs (v1.6.0)
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `detectThreadLocalContamination` | boolean | true | Detect `ThreadLocal` set in task A read by task B on the same reused pooled thread |
-| `detectAtomicNonAtomicUpdates` | boolean | true | Detect `get()` + `set()` on `Atomic*` without `compareAndSet()`, losing concurrent updates |
-| `detectSynchronizedCollectionIteration` | boolean | true | Detect `Collections.synchronized*` iterated without holding the wrapper lock |
-| `detectSharedFormatter` | boolean | true | Detect `Formatter`/`PrintWriter`/`PrintStream` accessed from multiple threads concurrently |
-| `detectConcurrentMapComputeRecursion` | boolean | true | Detect a `compute*`/`merge` mapping function that re-enters its own map on the same thread, on the same key (the nested update is discarded) or on any other key (usually returns normally, leaving the map updated out of order). Nesting into a different map is not reported |
-| `detectSynchronizedOnLiteral` | boolean | true | Detect `synchronized` on interned `String` or cached `Integer`/`Long` [-128, 127] — JVM-wide shared monitor |
-| `detectPublicLockExposure` | boolean | true | Detect `synchronized(this)` on publicly accessible objects — enables external lock acquisition |
-| `detectForkJoinTaskBlocking` | boolean | true | Detect blocking calls (`sleep`/`wait`/`get`/IO) inside a `ForkJoinTask`, starving carrier threads |
-| `detectOptimisticReadValidation` | boolean | true | Detect `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation |
-| `detectCFCommonPoolBlocking` | boolean | true | Detect blocking work inside `CompletableFuture` submitted without a custom `Executor` |
+| DetectorType | Description |
+|--------------|-------------|
+| `THREAD_LOCAL_CONTAMINATION` | Detect `ThreadLocal` set in task A read by task B on the same reused pooled thread |
+| `ATOMIC_NON_ATOMIC_UPDATE` | Detect `get()` + `set()` on `Atomic*` without `compareAndSet()`, losing concurrent updates |
+| `SYNCHRONIZED_COLLECTION_ITERATION` | Detect `Collections.synchronized*` iterated without holding the wrapper lock |
+| `SHARED_FORMATTER` | Detect `Formatter`/`PrintWriter`/`PrintStream` accessed from multiple threads concurrently |
+| `CONCURRENT_MAP_COMPUTE_RECURSION` | Detect a `compute*`/`merge` mapping function that re-enters its own map on the same thread, on the same key (the nested update is discarded) or on any other key (usually returns normally, leaving the map updated out of order). Nesting into a different map is not reported |
+| `SYNCHRONIZED_ON_LITERAL` | Detect `synchronized` on interned `String` or cached `Integer`/`Long` [-128, 127] — JVM-wide shared monitor |
+| `PUBLIC_LOCK_EXPOSURE` | Detect `synchronized(this)` on publicly accessible objects — enables external lock acquisition |
+| `FORK_JOIN_TASK_BLOCKING` | Detect blocking calls (`sleep`/`wait`/`get`/IO) inside a `ForkJoinTask`, starving carrier threads |
+| `OPTIMISTIC_READ_VALIDATION` | Detect `StampedLock` optimistic-read data used without `validate(stamp)` or after failed validation |
+| `CF_COMMON_POOL_BLOCKING` | Detect blocking work inside `CompletableFuture` submitted without a custom `Executor` |
 
 #### Context accessors for Phase 10 detectors
 
 ```java
-AsyncTestContext.threadLocalContaminationMonitor()         // ThreadLocalContaminationDetector
-AsyncTestContext.atomicNonAtomicUpdateMonitor()            // AtomicNonAtomicUpdateDetector
-AsyncTestContext.synchronizedCollectionIterationMonitor()  // SynchronizedCollectionIterationDetector
-AsyncTestContext.sharedFormatterMonitor()                  // SharedFormatterDetector
-AsyncTestContext.concurrentMapComputeRecursionMonitor()    // ConcurrentMapComputeRecursionDetector
-AsyncTestContext.synchronizedOnLiteralMonitor()            // SynchronizedOnLiteralDetector
-AsyncTestContext.publicLockExposureMonitor()               // PublicLockExposureDetector
-AsyncTestContext.forkJoinTaskBlockingMonitor()             // ForkJoinTaskBlockingDetector
-AsyncTestContext.optimisticReadValidationMonitor()         // OptimisticReadValidationDetector
-AsyncTestContext.cfCommonPoolBlockingMonitor()             // CompletableFutureCommonPoolBlockingDetector
+AsyncTestContext.threadLocalContaminationDetector()         // ThreadLocalContaminationDetector
+AsyncTestContext.atomicNonAtomicUpdateDetector()            // AtomicNonAtomicUpdateDetector
+AsyncTestContext.synchronizedCollectionIterationDetector()  // SynchronizedCollectionIterationDetector
+AsyncTestContext.sharedFormatterDetector()                  // SharedFormatterDetector
+AsyncTestContext.concurrentMapComputeRecursionDetector()    // ConcurrentMapComputeRecursionDetector
+AsyncTestContext.synchronizedOnLiteralDetector()            // SynchronizedOnLiteralDetector
+AsyncTestContext.publicLockExposureDetector()               // PublicLockExposureDetector
+AsyncTestContext.forkJoinTaskBlockingDetector()             // ForkJoinTaskBlockingDetector
+AsyncTestContext.optimisticReadValidationDetector()         // OptimisticReadValidationDetector
+AsyncTestContext.cfCommonPoolBlockingDetector()             // CompletableFutureCommonPoolBlockingDetector
 ```
 
 ### Phase 12: Operational & Hygiene Concurrency Issues (v0.10.0)
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `detectInterruptSwallowing` | boolean | true | Detect `catch(InterruptedException)` blocks that swallow the signal without calling `Thread.currentThread().interrupt()` or rethrowing |
-| `detectMdcContextLeak` | boolean | true | Detect SLF4J MDC entries not cleared at task end, leaking into the next task on a reused pooled thread |
-| `detectSystemPropertyMutation` | boolean | true | Detect concurrent `System.setProperty()` / `clearProperty()` calls causing non-deterministic configuration |
-| `detectFutureIgnored` | boolean | true | Detect `Future`s from `submit()` that are never inspected — exceptions from failed tasks are silently swallowed |
-| `detectExplicitGc` | boolean | true | Detect `System.gc()` / `Runtime.gc()` invocations that trigger unpredictable STW pauses mid-test |
-| `detectDeprecatedThreadApi` | boolean | true | Detect calls to `Thread.stop()`, `Thread.suspend()`, `Thread.resume()`, `Thread.destroy()`, `Thread.countStackFrames()` |
-| `detectSharedXmlParser` | boolean | true | Detect `DocumentBuilder` / `SAXParser` / `Transformer` / `XPath` instances accessed from multiple threads |
-| `detectBoxedPrimitiveLock` | boolean | true | Detect `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals |
-| `detectSharedTimeZone` | boolean | true | Detect `TimeZone` instances mutated (`setRawOffset`, `setID`) from multiple threads |
-| `detectUncaughtExceptionHandler` | boolean | true | Detect threads started without a custom `UncaughtExceptionHandler`, and with no JVM-wide default handler, that subsequently throw |
+| DetectorType | Description |
+|--------------|-------------|
+| `INTERRUPT_SWALLOWING` | Detect `catch(InterruptedException)` blocks that swallow the signal without calling `Thread.currentThread().interrupt()` or rethrowing |
+| `MDC_CONTEXT_LEAK` | Detect SLF4J MDC entries not cleared at task end, leaking into the next task on a reused pooled thread |
+| `SYSTEM_PROPERTY_MUTATION` | Detect concurrent `System.setProperty()` / `clearProperty()` calls causing non-deterministic configuration |
+| `FUTURE_IGNORED` | Detect `Future`s from `submit()` that are never inspected — exceptions from failed tasks are silently swallowed |
+| `EXPLICIT_GC` | Detect `System.gc()` / `Runtime.gc()` invocations that trigger unpredictable STW pauses mid-test |
+| `DEPRECATED_THREAD_API` | Detect calls to `Thread.stop()`, `Thread.suspend()`, `Thread.resume()`, `Thread.destroy()`, `Thread.countStackFrames()` |
+| `SHARED_XML_PARSER` | Detect `DocumentBuilder` / `SAXParser` / `Transformer` / `XPath` instances accessed from multiple threads |
+| `BOXED_PRIMITIVE_LOCK` | Detect `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals |
+| `SHARED_TIMEZONE` | Detect `TimeZone` instances mutated (`setRawOffset`, `setID`) from multiple threads |
+| `UNCAUGHT_EXCEPTION_HANDLER` | Detect threads started without a custom `UncaughtExceptionHandler`, and with no JVM-wide default handler, that subsequently throw |
 
 #### Context accessors for Phase 12 detectors
 

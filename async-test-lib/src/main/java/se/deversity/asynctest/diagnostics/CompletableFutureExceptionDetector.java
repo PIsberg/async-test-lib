@@ -22,17 +22,17 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectCompletableFutureExceptions = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS)
  * void testCompletableFuture() {
  *     CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordFutureCreated(future, "async-task");
  *         return "result";
  *     });
  *     
  *     // Register exception handler
  *     future.exceptionally(ex -> {
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordExceptionHandled(future, "async-task", ex);
  *         return "default";
  *     });
@@ -40,10 +40,10 @@ import org.jspecify.annotations.Nullable;
  *     // Or track get/join calls
  *     try {
  *         future.join();
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordFutureCompleted(future, "async-task", true);
  *     } catch (Exception e) {
- *         AsyncTestContext.completableFutureMonitor()
+ *         AsyncTestContext.completableFutureExceptionDetector()
  *             .recordFutureCompleted(future, "async-task", false);
  *     }
  * }
@@ -193,15 +193,15 @@ public class CompletableFutureExceptionDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.unhandledExceptions) {
-                report.structuredViolations.add(new Violation("CompletableFutureException", severity,
+                report.structuredViolations.add(new Violation("CompletableFutureExceptions", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.missingHandlers) {
-                report.structuredViolations.add(new Violation("CompletableFutureException", severity,
+                report.structuredViolations.add(new Violation("CompletableFutureExceptions", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.swallowedExceptions) {
-                report.structuredViolations.add(new Violation("CompletableFutureException", severity,
+                report.structuredViolations.add(new Violation("CompletableFutureExceptions", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

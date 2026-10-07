@@ -28,7 +28,7 @@ try (TelemetryBridge bridge = TelemetryBridge.activate(av, workerIds)) {
 
 Inside an `@AsyncTest` you can resolve the context's live validator with
 `TelemetryBridge.forCurrentContext(workerIds)`, which calls
-`AsyncTestContext.atomicityValidator()` for you (requires `detectAtomicityViolations = true`
+`AsyncTestContext.atomicityValidator()` for you (requires `includes = DetectorType.ATOMICITY_VIOLATIONS`
 on the `@AsyncTest`, and an active context — call it from the worker/test body, not from a
 `@BeforeEachInvocation` hook, where the context is not yet installed).
 

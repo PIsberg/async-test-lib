@@ -546,10 +546,10 @@ class CorpusGatesTest {
     // --- The 5 previously unexercised gates ----------------------------------------------------
 
     static class DummySubjectSuite {
-        @se.deversity.asynctest.AsyncTest
+        @se.deversity.asynctest.AsyncTest(detectAll = true)
         void subjectA() {}
 
-        @se.deversity.asynctest.AsyncTest
+        @se.deversity.asynctest.AsyncTest(detectAll = true)
         void subjectB() {}
     }
 

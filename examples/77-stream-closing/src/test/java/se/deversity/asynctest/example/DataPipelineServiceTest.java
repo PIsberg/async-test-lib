@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -75,7 +76,7 @@ class DataPipelineServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unclosed streams detected by StreamClosingDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectStreamClosing = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.STREAM_CLOSING)
     void test_concurrent_detectsUnclosedStream() {
         var detector = AsyncTestContext.get().streamClosingDetector();
 

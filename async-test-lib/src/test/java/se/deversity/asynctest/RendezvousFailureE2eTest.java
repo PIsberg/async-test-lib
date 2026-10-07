@@ -69,7 +69,7 @@ class RendezvousFailureE2eTest {
     static class ThrowingPeerDummy {
         private final AtomicInteger role = new AtomicInteger();
 
-        @AsyncTest(threads = 3, invocations = 1, timeoutMs = 60_000, useVirtualThreads = false)
+        @AsyncTest(threads = 3, invocations = 1, timeoutMs = 60_000, useVirtualThreads = false, detectAll = true)
         void oneWorkerThrowsBeforeTheRendezvous() {
             if (role.getAndIncrement() == 0) {
                 throw new IllegalStateException("peer failed before the rendezvous");
@@ -81,7 +81,7 @@ class RendezvousFailureE2eTest {
     static class AbsentPeerDummy {
         private final AtomicInteger role = new AtomicInteger();
 
-        @AsyncTest(threads = 3, invocations = 1, timeoutMs = 60_000, useVirtualThreads = false)
+        @AsyncTest(threads = 3, invocations = 1, timeoutMs = 60_000, useVirtualThreads = false, detectAll = true)
         void oneWorkerSkipsTheRendezvous() {
             if (role.getAndIncrement() == 0) {
                 return;

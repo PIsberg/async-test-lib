@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -77,11 +78,13 @@ class PositionTrackerTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see unreleased StampedLock stamp detected by StampedLockDetector")
-    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
-            detectStampedLockIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 2,
+            failOn = FailOn.LOW,
+            includes = DetectorType.STAMPED_LOCK)
 
     void test_concurrent_detectsUnreleasedStamp() throws InterruptedException {
-        var detector = AsyncTestContext.get().stampedLockMonitor();
+        var detector = AsyncTestContext.get().stampedLockDetector();
         var lock = tracker.getLock();
 
         detector.registerLock(lock, "position-lock");

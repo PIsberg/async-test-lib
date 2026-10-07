@@ -49,7 +49,7 @@ class SharedInstanceWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void oneFormatterAcrossFourThreads() {
         shared.render(new Date());
     }

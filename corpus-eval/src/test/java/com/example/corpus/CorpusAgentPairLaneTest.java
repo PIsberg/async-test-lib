@@ -181,13 +181,13 @@ class CorpusAgentPairLaneTest {
      * fields back out of it, so a second thread's write lands between the first thread's write and
      * its read. The output is silently wrong when it is not an exception.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_simpleDateFormat_oneInstanceForEveryThread() {
         swallowingTheRace(() -> SHARED_DATE_FORMAT.format(new Date()));
     }
 
     /** The same call, on the per-thread instance the class javadoc tells you to use. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_simpleDateFormat_oneInstancePerThread() {
         swallowingTheRace(() -> CONFINED_DATE_FORMAT.get().format(new Date()));
     }
@@ -201,7 +201,7 @@ class CorpusAgentPairLaneTest {
      * Two threads in one instance means {@code group} reads bounds another thread has already
      * replaced, or none at all.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_matcher_oneInstanceForEveryThread() {
         swallowingTheRace(() -> {
             SHARED_MATCHER.reset();
@@ -212,7 +212,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** A Matcher per call from the shared Pattern, which is how the API is meant to be used. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_matcher_oneInstancePerThread() {
         swallowingTheRace(() -> {
             Matcher mine = PATTERN.matcher(MATCH_INPUT);
@@ -232,7 +232,7 @@ class CorpusAgentPairLaneTest {
      * so what comes out is a hash of an interleaving of every thread's input. Nothing throws and
      * nothing looks wrong; the value is just not the hash of anything anyone asked for.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_messageDigest_oneInstanceForEveryThread() {
         swallowingTheRace(() -> {
             sharedDigest.update(PAYLOAD);
@@ -241,7 +241,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same two calls against a digest the thread owns, which is the documented pattern. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_messageDigest_oneInstancePerThread() {
         swallowingTheRace(() -> {
             MessageDigest mine = CONFINED_DIGEST.get();
@@ -259,7 +259,7 @@ class CorpusAgentPairLaneTest {
      * a change and caches it. A {@code set} from another thread invalidates that cache under a
      * read already in flight.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_calendar_oneInstanceForEveryThread() {
         swallowingTheRace(() -> {
             SHARED_CALENDAR.set(Calendar.MILLISECOND, 0);
@@ -268,7 +268,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same field traffic against a Calendar nothing else can see. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_calendar_oneInstancePerThread() {
         swallowingTheRace(() -> {
             Calendar mine = Calendar.getInstance();
@@ -286,13 +286,13 @@ class CorpusAgentPairLaneTest {
      * {@code count} back, with no synchronization anywhere - that is the whole difference between
      * this class and {@code StringBuffer}. A shared one loses appends or throws out of the copy.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_stringBuilder_oneInstanceForEveryThread() {
         swallowingTheRace(() -> SHARED_BUILDER.append("x"));
     }
 
     /** A builder local to the body, which is what the compiler emits for {@code "a" + b}. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_stringBuilder_oneInstancePerThread() {
         swallowingTheRace(() -> new StringBuilder().append("x").append("y"));
     }
@@ -306,13 +306,13 @@ class CorpusAgentPairLaneTest {
      * javadoc states that number formats are not synchronized, so two numbers interleave into one
      * buffer.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_decimalFormat_oneInstanceForEveryThread() {
         swallowingTheRace(() -> SHARED_DECIMAL_FORMAT.format(1234.5));
     }
 
     /** The same call on the per-thread instance the javadoc's remedy produces. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_decimalFormat_oneInstancePerThread() {
         swallowingTheRace(() -> CONFINED_DECIMAL_FORMAT.get().format(1234.5));
     }
@@ -326,13 +326,13 @@ class CorpusAgentPairLaneTest {
      * {@code IOException} as instance state, so sharing one interleaves the output and the error
      * flag together.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_formatter_oneInstanceForEveryThread() {
         swallowingTheRace(() -> SHARED_FORMATTER.format("%d;", 1));
     }
 
     /** A Formatter over a local builder, which is what {@code String.format} builds per call. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_formatter_oneInstancePerThread() {
         swallowingTheRace(() -> {
             try (Formatter mine = new Formatter(new StringBuilder())) {
@@ -362,7 +362,7 @@ class CorpusAgentPairLaneTest {
      * the round. The detector counts acquisitions against releases, and one unmatched acquire is
      * the whole precondition.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_semaphore_permitNeverReturned() {
         counted(() -> {
             Semaphore leaked = new Semaphore(1);
@@ -371,7 +371,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same two call sites with the release where it belongs. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_semaphore_permitReturnedInFinally() {
         counted(() -> {
             Semaphore balanced = new Semaphore(1);
@@ -393,7 +393,7 @@ class CorpusAgentPairLaneTest {
      * await must return false, which makes the finding a property of the code rather than of the
      * scheduler.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_countDownLatch_awaitTimedOut() {
         counted(() -> {
             CountDownLatch unreachable = new CountDownLatch(1);
@@ -402,7 +402,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same timed await, on a latch this thread has already counted down. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_countDownLatch_awaitSawItsCount() {
         counted(() -> {
             CountDownLatch reached = new CountDownLatch(1);
@@ -424,7 +424,7 @@ class CorpusAgentPairLaneTest {
      * <p>The latch is created in the body, so the arithmetic is over this execution's two calls
      * and nothing else.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_latchMisuse_countedDownPastItsCount() {
         counted(() -> {
             CountDownLatch overCounted = new CountDownLatch(1);
@@ -435,7 +435,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same two call sites on the same latch, counted down as many times as it was made for. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_latchMisuse_countedDownExactly() {
         counted(() -> {
             CountDownLatch exact = new CountDownLatch(1);
@@ -455,7 +455,7 @@ class CorpusAgentPairLaneTest {
      * owner the weaver substitutes on - an {@code ArrayBlockingQueue}-typed call site is a
      * different method reference and would go unwoven.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_blockingQueue_filledToCapacity() {
         counted(() -> {
             BlockingQueue<String> saturated = new ArrayBlockingQueue<>(2);
@@ -466,7 +466,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same three call sites on the same bound, with the poll moved in between. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_blockingQueue_drainedAsItFilled() {
         counted(() -> {
             BlockingQueue<String> keepingUp = new ArrayBlockingQueue<>(2);
@@ -484,7 +484,7 @@ class CorpusAgentPairLaneTest {
      * weaver's lookahead reads, and the drop it reports is the finding (#454). Saturation fires
      * here too, at two of two, so this row alone would not distinguish the two; its twin does.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_blockingQueue_rejectionDiscarded() {
         counted(() -> {
             BlockingQueue<String> full = new ArrayBlockingQueue<>(2);
@@ -501,7 +501,7 @@ class CorpusAgentPairLaneTest {
      * one, so saturation cannot carry a finding either. This is the commonest shape offer takes
      * in production, and a lookahead that reported every popped result would fire on it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_blockingQueue_discardedOfferAccepted() {
         counted(() -> {
             BlockingQueue<String> roomy = new ArrayBlockingQueue<>(2);
@@ -524,13 +524,13 @@ class CorpusAgentPairLaneTest {
      * else, and the same-calls gate has nothing to compare here - the MUST_FIRE half having to
      * fire is what carries this pair.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_sleep_whileHoldingTheMonitor() {
         counted(CorpusAgentPairLaneTest::sleepHoldingTheClassMonitor);
     }
 
     /** The same one-millisecond sleep with no monitor held anywhere above it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_sleep_holdingNothing() {
         counted(CorpusAgentPairLaneTest::sleepHoldingNothing);
     }
@@ -599,13 +599,13 @@ class CorpusAgentPairLaneTest {
     }
 
     /** Offers an object and writes to it again after somebody else has taken it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jctoolsHandOff_offererWritesAfterTheOffer() {
         counted(() -> handOver(true));
     }
 
     /** The same offer and the same poll, and the offerer lets go of what it offered. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jctoolsHandOff_offererLetsGo() {
         counted(() -> handOver(false));
     }
@@ -625,7 +625,7 @@ class CorpusAgentPairLaneTest {
      * in the round receives none, so that wait needed a signal that was already gone. The woven
      * {@code wait} and {@code notifyAll} are the detector's only input.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_wait_behindAnIf() {
         counted(() -> {
             synchronized (HAND_OFF) {
@@ -640,7 +640,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same signal and the same timed wait, inside the loop that re-tests the predicate. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_wait_insideAPredicateLoop() {
         counted(() -> {
             synchronized (HAND_OFF) {
@@ -732,7 +732,7 @@ class CorpusAgentPairLaneTest {
      * <p>The swap expects the node it read and finds it, although the stack moved underneath it:
      * the A-B-A a stack that reuses nodes suffers.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_abaStack_nodePushedBackAfterTheRead() {
         counted(() -> abaRound(false));
     }
@@ -743,7 +743,7 @@ class CorpusAgentPairLaneTest {
      * <p>Recorded by hand, a toggle recorded after a read it ran before reads as this pair's
      * firing half (#810). Woven, each record is taken inside its operation (#817).
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_abaStack_nodePushedBackBeforeTheRead() {
         counted(() -> abaRound(true));
     }
@@ -778,7 +778,7 @@ class CorpusAgentPairLaneTest {
      * Every worker increments under the shared holder's lock, and one a round replaces the lock
      * first, so the holder is entered on a new monitor every round.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_synchronized_onALockOneOwnerReassigns() {
         if (LOCK_SWAP_TICKETS.getAndIncrement() % THREADS == 0) {
             SHARED_LOCK_HOLDER.swapLock();
@@ -790,7 +790,7 @@ class CorpusAgentPairLaneTest {
      * The same holder, block and swap, with a holder per worker: the swap lands before the
      * holder's first entry, so each holder is entered on one monitor only.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_synchronized_onALockPerOwner() {
         LockHolder mine = new LockHolder();
         if (LOCK_SWAP_TICKETS.getAndIncrement() % THREADS == 0) {
@@ -830,7 +830,7 @@ class CorpusAgentPairLaneTest {
      * JVM from exiting. The woven {@code new Thread} and {@code start} are the detector's only
      * input.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_thread_startedWithNoDaemonDecision() {
         counted(() -> {
             if (UNDECIDED_THREAD_STARTED.compareAndSet(false, true)) {
@@ -842,7 +842,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same worker, marked daemon before it starts, which is the fix. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_thread_markedDaemonBeforeStart() {
         counted(() -> {
             if (DAEMON_THREAD_STARTED.compareAndSet(false, true)) {
@@ -892,7 +892,7 @@ class CorpusAgentPairLaneTest {
      * <p>Its thread is non-daemon, so a program that does this never exits. Nothing is recorded:
      * the woven {@code Thread.start} inside Guava is the detector's only input.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaService_startedAndLeftRunning() {
         counted(() -> {
             if (SERVICE_LEFT_RUNNING_STARTED.compareAndSet(false, true)) {
@@ -902,7 +902,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same service, stopped and awaited before the run ends, which is the fix. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaService_stoppedBeforeTheRunEnds() {
         counted(() -> {
             if (SERVICE_STOPPED_STARTED.compareAndSet(false, true)) {
@@ -920,7 +920,7 @@ class CorpusAgentPairLaneTest {
      * which the woven {@code writeLock} put there, and from the lock being write-locked (#543).
      * Before that, the sleep was dropped whatever the lock's state.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_sleepStamped_whileHoldingTheWriteStamp() {
         counted(() -> {
             StampedLock lock = new StampedLock();
@@ -934,7 +934,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same stamp taken and released, and the same sleep after it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_sleepStamped_afterReleasingTheWriteStamp() {
         counted(() -> {
             StampedLock lock = new StampedLock();
@@ -960,7 +960,7 @@ class CorpusAgentPairLaneTest {
      * contributes no edge of its own because a monitor is not delivered to this detector - only
      * {@code Lock} acquisitions are.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lockOrder_nestedBothWays() {
         counted(() -> {
             synchronized (ORDER_GUARD) {
@@ -983,7 +983,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same two locks, always A before B, which is the consistent global order. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lockOrder_nestedOneWay() {
         counted(() -> {
             synchronized (ORDER_GUARD) {
@@ -1014,7 +1014,7 @@ class CorpusAgentPairLaneTest {
      * detector sees is still an acquire with no matching release, and a lock still held when the
      * run is analysed.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lock_acquiredAndNeverReleased() {
         counted(() -> {
             ReentrantLock leaked = new ReentrantLock();
@@ -1023,7 +1023,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The shape the ReentrantLock javadoc's own example shows. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lock_releasedInFinally() {
         counted(() -> {
             ReentrantLock balanced = new ReentrantLock();
@@ -1047,7 +1047,7 @@ class CorpusAgentPairLaneTest {
      * the lock the earlier {@code lock()} took, which is exactly the bug: the code believes the
      * tryLock handed it something.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_tryLock_unlockedAfterFailing() {
         counted(() -> {
             Lock write = new StampedLock().asWriteLock();
@@ -1065,7 +1065,7 @@ class CorpusAgentPairLaneTest {
      * thread's last recorded outcome for a lock, so a row that skipped the plain acquisition
      * would be skipping the shape most likely to be misjudged.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_tryLock_unlockedOnlyWhenAcquired() {
         counted(() -> {
             Lock write = new StampedLock().asWriteLock();
@@ -1172,13 +1172,13 @@ class CorpusAgentPairLaneTest {
      * this body contains no {@code MessageDigest} call for the weaver to substitute. If the
      * detector fires, it heard about the digest from Guava's bytecode.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaHasher_oneHasherForEveryThread() {
         swallowingTheRace(() -> SHARED_HASHER.putBytes(PAYLOAD));
     }
 
     /** A hasher per hash, which is what {@code HashFunction.newHasher()} is documented to hand out. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaHasher_oneHasherPerHash() {
         swallowingTheRace(() -> Hashing.sha256().newHasher().putBytes(PAYLOAD).hash());
     }
@@ -1190,13 +1190,13 @@ class CorpusAgentPairLaneTest {
      * year, month and the rest back out of it with {@code Calendar.get}, which is the woven call.
      * Jackson itself never shares one: its own configuration clones the format per use.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jacksonStdDateFormat_oneFormatForEveryThread() {
         swallowingTheRace(() -> SHARED_STD_DATE_FORMAT.format(EPOCH));
     }
 
     /** The same format call on an instance of its own, so the cached calendar is confined too. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jacksonStdDateFormat_oneFormatPerCall() {
         swallowingTheRace(() -> new StdDateFormat().format(EPOCH));
     }
@@ -1208,7 +1208,7 @@ class CorpusAgentPairLaneTest {
      * the woven call sites. The builder is reset after each call so the run does not accumulate
      * 240 signatures; the reset races too, which is the point.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jacksonSignature_oneBuilderForEveryThread() {
         swallowingTheRace(() -> {
             STRING_TYPE.getGenericSignature(SHARED_SIGNATURE);
@@ -1217,7 +1217,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same signature written into a builder this call made. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jacksonSignature_oneBuilderPerCall() {
         swallowingTheRace(() -> {
             StringBuilder mine = new StringBuilder();
@@ -1255,7 +1255,7 @@ class CorpusAgentPairLaneTest {
      * {@code DateFormat} and calls {@code parse(String, ParsePosition)} on it. The owner of that
      * call is {@code DateFormat}, which is what the weaver could not match.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jacksonRfc1123Parse_oneFormatForEveryThread() {
         swallowingTheRace(() -> {
             try {
@@ -1267,7 +1267,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same RFC 1123 parse on a format this call built. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_jacksonRfc1123Parse_oneFormatPerCall() {
         swallowingTheRace(() -> {
             try {
@@ -1285,14 +1285,14 @@ class CorpusAgentPairLaneTest {
      * format it is handed, which the weaver did not substitute at all while only {@code format}
      * was in its table.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_springParseNumber_oneFormatForEveryThread() {
         swallowingTheRace(() -> org.springframework.util.NumberUtils.parseNumber(
                 "12.5", Double.class, SHARED_NUMBER_FORMAT));
     }
 
     /** The same Spring call with a format built for it. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_springParseNumber_oneFormatPerCall() {
         swallowingTheRace(() -> org.springframework.util.NumberUtils.parseNumber(
                 "12.5", Double.class, new java.text.DecimalFormat("#.##",
@@ -1305,7 +1305,7 @@ class CorpusAgentPairLaneTest {
      * <p>{@code Joiner.appendTo(StringBuilder, Iterable)} writes through {@code Appendable}, so
      * the append the detector hears is an {@code Appendable.append} call in Guava's class file.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaJoinerAppendTo_oneBuilderForEveryThread() {
         swallowingTheRace(() -> {
             JOINER.appendTo(SHARED_JOINED, java.util.List.of("a", "b", "c"));
@@ -1314,7 +1314,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same join into a builder this call made. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaJoinerAppendTo_oneBuilderPerCall() {
         swallowingTheRace(() -> {
             StringBuilder mine = new StringBuilder();
@@ -1335,7 +1335,7 @@ class CorpusAgentPairLaneTest {
      * file. The class is deprecated in favour of commons-text's copy, which does the same thing.
      */
     @SuppressWarnings("deprecation")
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lang3FormattableAppend_oneFormatterForEveryThread() {
         swallowingTheRace(() -> org.apache.commons.lang3.text.FormattableUtils.append(
                 "corpus", SHARED_FORMATTABLE_SINK, 0, 8, -1));
@@ -1343,7 +1343,7 @@ class CorpusAgentPairLaneTest {
 
     /** The same padding into a Formatter this call made. */
     @SuppressWarnings("deprecation")
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lang3FormattableAppend_oneFormatterPerCall() {
         swallowingTheRace(() -> {
             try (Formatter mine = new Formatter(new StringBuilder())) {
@@ -1357,14 +1357,14 @@ class CorpusAgentPairLaneTest {
      * <p>{@code StringGroovyMethods.getCount(Matcher)} calls {@code reset()} and then
      * {@code find()} in a loop on the Matcher it is given; those calls are in Groovy's class file.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_groovyMatcherCount_oneMatcherForEveryThread() {
         swallowingTheRace(() -> org.codehaus.groovy.runtime.StringGroovyMethods.getCount(
                 SHARED_GROOVY_MATCHER));
     }
 
     /** The same Groovy call on a Matcher this call took from the shared Pattern. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_groovyMatcherCount_oneMatcherPerCall() {
         swallowingTheRace(() -> org.codehaus.groovy.runtime.StringGroovyMethods.getCount(
                 PATTERN.matcher(MATCH_INPUT)));
@@ -1378,7 +1378,7 @@ class CorpusAgentPairLaneTest {
      * the worker never took, which throws, and the unlock is what the detector hears. Both calls
      * are inside Guava.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorTryEnter_leftAfterFailing() {
         swallowingTheRace(() -> {
             OCCUPIED_MONITOR.tryEnter();
@@ -1398,7 +1398,7 @@ class CorpusAgentPairLaneTest {
      * the detector keys on the thread's last outcome for a lock, which an honest unlock after a
      * successful tryEnter is the case most likely to be misjudged.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorTryEnter_leftOnlyWhenEntered() {
         swallowingTheRace(() -> {
             if (OCCUPIED_MONITOR.tryEnter()) {
@@ -1425,13 +1425,13 @@ class CorpusAgentPairLaneTest {
      * <p>A monitor per body execution, so the leak cannot block another worker. The lock the
      * detector sees held at analysis is the {@code ReentrantLock} Guava keeps inside it.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorEnter_neverLeft() {
         counted(() -> new Monitor().enter());
     }
 
     /** Enter, then try/finally leave, which is the first snippet in the Monitor javadoc. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorEnter_leftInFinally() {
         counted(() -> {
             Monitor mine = new Monitor();
@@ -1448,7 +1448,7 @@ class CorpusAgentPairLaneTest {
      * Nests two Guava monitors one way and then the other, serialised for the reason the
      * ReentrantLock row gives.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorOrder_nestedBothWays() {
         counted(() -> {
             synchronized (ORDER_GUARD) {
@@ -1471,7 +1471,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same two monitors, always A before B. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorOrder_nestedOneWay() {
         counted(() -> {
             synchronized (ORDER_GUARD) {
@@ -1501,7 +1501,7 @@ class CorpusAgentPairLaneTest {
      * {@code Thread.sleep}, which asks the lockset what is held. Neither library knows the other
      * is there, which is how a sleep under a lock is usually written.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_hikariSleep_whileOccupyingAMonitor() {
         counted(() -> {
             Monitor mine = new Monitor();
@@ -1515,7 +1515,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same monitor traffic and the same sleep, with the sleep after the leave. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_hikariSleep_afterLeavingTheMonitor() {
         counted(() -> {
             Monitor mine = new Monitor();
@@ -1536,14 +1536,14 @@ class CorpusAgentPairLaneTest {
      * the timeout the detector reports is observed in Guava's class file. The body then drops the
      * boolean Guava hands back.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaLatchAwait_timedOut() {
         counted(() -> Uninterruptibles.awaitUninterruptibly(
                 new CountDownLatch(1), 1, TimeUnit.MILLISECONDS));
     }
 
     /** The same Guava await, on a latch this thread counted down first. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaLatchAwait_sawItsCount() {
         counted(() -> {
             CountDownLatch reached = new CountDownLatch(1);
@@ -1558,14 +1558,14 @@ class CorpusAgentPairLaneTest {
      * <p>The same body as {@link #agent_guavaLatchAwait_timedOut}, kept apart so each detector's
      * row has its own method and its own report line.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaLatchAwait_neverCountedDown() {
         counted(() -> Uninterruptibles.awaitUninterruptibly(
                 new CountDownLatch(1), 1, TimeUnit.MILLISECONDS));
     }
 
     /** The same Guava await, on a latch this thread counted down first. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaLatchAwait_countedDownBeforeTheAwait() {
         counted(() -> {
             CountDownLatch reached = new CountDownLatch(1);
@@ -1580,7 +1580,7 @@ class CorpusAgentPairLaneTest {
      * <p>{@code putUninterruptibly} is the woven {@code BlockingQueue.put}. The take goes through
      * Guava too, and is not a substituted call at all, so what the detector counts is the puts.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaQueuePut_filledToCapacity() {
         counted(() -> {
             BlockingQueue<String> saturated = new ArrayBlockingQueue<>(2);
@@ -1591,7 +1591,7 @@ class CorpusAgentPairLaneTest {
     }
 
     /** The same puts and takes, alternated, so the queue never holds more than one. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaQueuePut_drainedAsItFilled() {
         counted(() -> {
             BlockingQueue<String> keepingUp = new ArrayBlockingQueue<>(2);
@@ -1609,14 +1609,14 @@ class CorpusAgentPairLaneTest {
      * in the twin is written here, because Guava has no release helper; the acquisition, which
      * is the half the leak is made of, is the library's in both.
      */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaSemaphore_permitNeverReturned() {
         counted(() -> Uninterruptibles.tryAcquireUninterruptibly(
                 new Semaphore(1), 1, 1, TimeUnit.SECONDS));
     }
 
     /** The same Guava acquisition, with the release in a finally. */
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaSemaphore_permitReturnedInFinally() {
         counted(() -> {
             Semaphore balanced = new Semaphore(1);
@@ -1656,7 +1656,7 @@ class CorpusAgentPairLaneTest {
      * refuses to let the row pass if it ever stops being true.
      */
     @Order(Integer.MAX_VALUE - 1)
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_deadlock_noThreadBlockedOnAnother() {
         counted(() -> {
             SILENT_ROW_RAN_ON_A_CLEAN_JVM.set(!DEADLOCK_STARTED.get());
@@ -1682,7 +1682,7 @@ class CorpusAgentPairLaneTest {
      * else runs in the JVM it has permanently changed.
      */
     @Order(Integer.MAX_VALUE)
-    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_deadlock_twoThreadsBlockedOnEachOther() {
         counted(() -> {
             deadlockTwoDaemonsOnce();

@@ -49,8 +49,10 @@ public class Phase2AsyncIntegrationTest {
         private volatile long counter2 = 0;
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 4, invocations = 10, 
-                  detectFalseSharing = true, timeoutMs = 5000)
+        @AsyncTest(threads = 4,
+                  invocations = 10,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testCacheLineContention() {
             // Two threads contend on adjacent fields
             int threadId = threadAssigner.getAndIncrement();
@@ -86,8 +88,10 @@ public class Phase2AsyncIntegrationTest {
         private volatile boolean signaled = false;
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 5,
-                  detectWakeupIssues = true, timeoutMs = 5000)
+        @AsyncTest(threads = 2,
+                  invocations = 5,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testSpuriousWakeup() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -130,8 +134,10 @@ public class Phase2AsyncIntegrationTest {
         private final AtomicReference<SafeObject> holder = new AtomicReference<>();
         private final AtomicInteger counter = new AtomicInteger(0);
 
-        @AsyncTest(threads = 3, invocations = 5,
-                  validateConstructorSafety = true, timeoutMs = 5000)
+        @AsyncTest(threads = 3,
+                  invocations = 5,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testObjectPublicationRace() {
             if (counter.getAndIncrement() == 0) {
                 // This thread constructs and publishes
@@ -166,8 +172,10 @@ public class Phase2AsyncIntegrationTest {
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
         private volatile int version = 0;
 
-        @AsyncTest(threads = 2, invocations = 3,
-                  detectABAProblem = true, timeoutMs = 5000)
+        @AsyncTest(threads = 2,
+                  invocations = 3,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testABAProblem() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -213,8 +221,11 @@ public class Phase2AsyncIntegrationTest {
         // availableProcessors. Surefire hides this by forking per class; pitest runs all 1194
         // test classes in one JVM, where this fixture and its sibling below took all four
         // carriers on a four-core runner and every later virtual thread waited forever (#479).
-        @AsyncTest(threads = 2, invocations = 2,
-                  validateLockOrder = true, timeoutMs = 5000, useVirtualThreads = false)
+        @AsyncTest(threads = 2,
+                  invocations = 2,
+                  timeoutMs = 5000,
+                  useVirtualThreads = false,
+                  detectAll = true)
         void testInconsistentLockOrder() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -254,8 +265,10 @@ public class Phase2AsyncIntegrationTest {
         private final CyclicBarrier barrier = new CyclicBarrier(3);
         private final AtomicInteger counter = new AtomicInteger(0);
 
-        @AsyncTest(threads = 3, invocations = 2,
-                  monitorSynchronizers = true, timeoutMs = 5000)
+        @AsyncTest(threads = 3,
+                  invocations = 2,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testBarrierSynchronization() throws BrokenBarrierException, InterruptedException {
             barrier.await();
             counter.incrementAndGet();
@@ -282,8 +295,10 @@ public class Phase2AsyncIntegrationTest {
             new ThreadPoolExecutor(1, 2, 60, TimeUnit.SECONDS, 
                                  new LinkedBlockingQueue<>(2));
 
-        @AsyncTest(threads = 3, invocations = 2,
-                  monitorThreadPool = true, timeoutMs = 5000)
+        @AsyncTest(threads = 3,
+                  invocations = 2,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testPoolQueueSaturation() throws InterruptedException {
             Future<?> future = executor.submit(() -> {
                 try { Thread.sleep(100); } catch (Exception e) {}
@@ -318,8 +333,10 @@ public class Phase2AsyncIntegrationTest {
         private int result = 0;
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 2, invocations = 5,
-                  detectMemoryOrderingViolations = true, timeoutMs = 5000)
+        @AsyncTest(threads = 2,
+                  invocations = 5,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testMemoryOrdering() {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 2 == 0) {
@@ -355,8 +372,10 @@ public class Phase2AsyncIntegrationTest {
         private final BlockingQueue<String> stage2Queue = new LinkedBlockingQueue<>(10);
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 4, invocations = 2,
-                  monitorAsyncPipeline = true, timeoutMs = 5000)
+        @AsyncTest(threads = 4,
+                  invocations = 2,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testPipelineFlow() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 4 == 0) {
@@ -400,8 +419,10 @@ public class Phase2AsyncIntegrationTest {
         private volatile int data = 0;
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 5, invocations = 3,
-                  monitorReadWriteLockFairness = true, timeoutMs = 5000)
+        @AsyncTest(threads = 5,
+                  invocations = 3,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testReaderWriterInteraction() throws InterruptedException {
             int threadId = threadAssigner.getAndIncrement();
             if (threadId % 5 == 0) {
@@ -451,11 +472,11 @@ public class Phase2AsyncIntegrationTest {
         // Platform threads, for the reason spelled out on testInconsistentLockOrder above:
         // this body deadlocks on monitors by design, and on a virtual thread each blocked worker
         // pins a carrier that never comes back (#479).
-        @AsyncTest(threads = 2, invocations = 2,
-                  validateLockOrder = true,
-                  detectFalseSharing = true,
-                  detectMemoryOrderingViolations = true,
-                  timeoutMs = 5000, useVirtualThreads = false)
+        @AsyncTest(threads = 2,
+                  invocations = 2,
+                  timeoutMs = 5000,
+                  useVirtualThreads = false,
+                  detectAll = true)
         void testMultipleDetectors() throws InterruptedException {
             int id = threadId.getAndIncrement();
             if (id % 2 == 0) {
@@ -497,12 +518,10 @@ public class Phase2AsyncIntegrationTest {
         private volatile long counter = 0;
         private final AtomicInteger threadAssigner = new AtomicInteger(0);
 
-        @AsyncTest(threads = 3, invocations = 2,
-                  detectDeadlocks = true,
-                  detectVisibility = true,
-                  validateLockOrder = true,
-                  detectFalseSharing = true,
-                  timeoutMs = 5000)
+        @AsyncTest(threads = 3,
+                  invocations = 2,
+                  timeoutMs = 5000,
+                  detectAll = true)
         void testPhasesCombined() throws InterruptedException {
             int id = threadAssigner.getAndIncrement();
             synchronized (lock) {

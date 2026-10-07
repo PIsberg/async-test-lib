@@ -132,16 +132,16 @@ class AsyncTestContext {
   +static memoryOrderingMonitor(): MemoryOrderingMonitor
   +static pipelineMonitor(): PipelineMonitor
   +static readWriteLockMonitor(): ReadWriteLockMonitor
-  +static semaphoreMonitor(): SemaphoreMisuseDetector
-  +static completableFutureMonitor(): CompletableFutureExceptionDetector
-  +static concurrentModificationMonitor(): ConcurrentModificationDetector
-  +static lockLeakMonitor(): LockLeakDetector
-  +static sharedRandomMonitor(): SharedRandomDetector
-  +static blockingQueueMonitor(): BlockingQueueDetector
-  +static conditionMonitor(): ConditionVariableDetector
-  +static simpleDateFormatMonitor(): SimpleDateFormatDetector
-  +static parallelStreamMonitor(): ParallelStreamDetector
-  +static resourceLeakMonitor(): ResourceLeakDetector
+  +static semaphoreMisuseDetector(): SemaphoreMisuseDetector
+  +static completableFutureExceptionDetector(): CompletableFutureExceptionDetector
+  +static concurrentModificationDetector(): ConcurrentModificationDetector
+  +static lockLeakDetector(): LockLeakDetector
+  +static sharedRandomDetector(): SharedRandomDetector
+  +static blockingQueueDetector(): BlockingQueueDetector
+  +static conditionVariableDetector(): ConditionVariableDetector
+  +static simpleDateFormatDetector(): SimpleDateFormatDetector
+  +static parallelStreamDetector(): ParallelStreamDetector
+  +static resourceLeakDetector(): ResourceLeakDetector
   +analyzeAll(): List<String>
 }
 

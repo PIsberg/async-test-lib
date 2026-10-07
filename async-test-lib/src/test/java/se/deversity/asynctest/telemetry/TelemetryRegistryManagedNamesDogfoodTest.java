@@ -58,7 +58,7 @@ class TelemetryRegistryManagedNamesDogfoodTest {
     private static final Set<String> DECLARED_ATOMIC = ConcurrentHashMap.newKeySet();
     private static final Set<String> DECLARED_VOLATILE = ConcurrentHashMap.newKeySet();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000, detectAll = true)
     void aDeclarationMadeOnAnyThreadIsVisibleToTheThreadThatMadeIt() {
         for (int i = 0; i < PER_WORKER; i++) {
             int id = NEXT.getAndIncrement();

@@ -33,15 +33,15 @@ import org.jspecify.annotations.Nullable;
  * 
  * Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectSimpleDateFormatIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.SIMPLE_DATE_FORMAT)
  * void testDateFormatUsage() {
  *     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
- *     AsyncTestContext.simpleDateFormatMonitor()
+ *     AsyncTestContext.simpleDateFormatDetector()
  *         .registerFormatter(sdf, "date-formatter");
  *     
  *     // This will be detected as shared access (not thread-safe!)
  *     String formatted = sdf.format(new Date());
- *     AsyncTestContext.simpleDateFormatMonitor()
+ *     AsyncTestContext.simpleDateFormatDetector()
  *         .recordFormat(sdf, "date-formatter", "format");
  * }
  * }</pre>

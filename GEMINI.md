@@ -39,7 +39,7 @@ The following elements are well-tested core components. Make changes with extrem
 ## LOCKED FILES (DO NOT MODIFY)
 Do not suggest modifications to the following files:
 
-- `se.deversity.asynctest.DetectorType`: Adding or removing a constant requires synchronized changes in five places: (1) @AsyncTest attribute, (2) AsyncTestConfig field, (3) AsyncTestConfig.Builder default, (4) the resolution line in AsyncTestConfig.build() ((detectAll || flag) && !excludes.contains(TYPE)), and (5) DetectorRegistry constructor. Adding a value here in isolation compiles and detects nothing. The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.
+- `se.deversity.asynctest.DetectorType`: Adding or removing a constant requires synchronized changes in three places: (1) the AsyncTestConfig public flag and its derivation enabled.contains(TYPE), with the Builder setter that calls flag(TYPE, v), (2) the DetectorRegistry field and its factory row create(DetectorType.TYPE, X::new), and (3) the registry's ifIssue analysis call. Adding a value here in isolation compiles and detects nothing. The @AsyncTest attribute and the build() resolution line it once also needed are gone (#917, #920). The lock is on the constant set, not the file: editing javadoc on existing constants cannot break that invariant and needs no ceremony.
 - `se.deversity.asynctest.runner.OfflineLicense.VENDOR_VERIFY_KEY_B64`: Every offline licence file already issued to a customer verifies against this key, and its private half exists only on the operator machine. A changed value denies each of those files with OFFLINE_FILE_SIGNATURE_INVALID on the customer's next build. Rotation means re-issuing every file first: a release decision, not a code edit.
 
 ## CONTINUOUS AUDIT REQUIREMENTS
@@ -69,7 +69,7 @@ test fixtures, mock data, or code suggestions.
 ## CORE FUNCTIONALITY (EXTREME CAUTION)
 The following elements are well-tested core components. Make changes with extreme caution:
 
-- `se.deversity.asynctest.AsyncTestConfig`: Sensitivity: Critical. Note: Adding a new detector requires synchronized changes across six places: the five the DetectorType lock names (@AsyncTest attribute, AsyncTestConfig field, Builder default, build() detectAll/excludes resolution, DetectorRegistry constructor) plus the from(AsyncTest) call chain, which the lock does not count because it belongs to this class, not the enum. Same change, counted from two ends.
+- `se.deversity.asynctest.AsyncTestConfig`: Sensitivity: Critical. Note: Selection is one EnumSet resolved once in build() (#917); every public detector flag is assigned enabled.contains(TYPE) in the constructor and nowhere else, so a flag cannot disagree with enabledDetectors(). A new detector here is the flag and its derivation and the Builder setter that calls flag(TYPE, v); @AsyncTest has no per-detector attribute to read since 1.13.0 (#920). Never reintroduce a per-detector resolution expression in build().
 - `se.deversity.asynctest.AsyncTestContext`: Sensitivity: Critical. Note: ThreadLocal install/uninstall must always be symmetric. A leak propagates stale detector state across test invocations and causes false positives or missed detections.
 - `se.deversity.asynctest.extension.AsyncTestInvocationInterceptor`: Sensitivity: Critical. Note: invocation.skip() is intentional — ConcurrencyRunner owns the full N×M execution and must never call invocation.proceed(). Restoring proceed() would run the test body once outside the CyclicBarrier, bypassing all detectors.
 - `se.deversity.asynctest.runner.ConcurrencyRunner`: Sensitivity: Critical. Note: Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations.
@@ -179,8 +179,6 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 - `se.deversity.asynctest.spi.Detector` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.DetectorFactory` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.spi.DetectorRegistry` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.spi.adapters.LegacyDetectorAdapter` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.spi.adapters.LegacyDetectorFactories` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.telemetry.TelemetryBridge` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-lib -->
 <!-- VIBETAGS-END -->

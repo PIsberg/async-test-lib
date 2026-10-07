@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -82,12 +83,14 @@ class MultiPhaseProcessorTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see the short party count detected by PhaserDetector")
-    @AsyncTest(threads = 3, invocations = 1, detectAll = false,
-            detectPhaserIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 3,
+            invocations = 1,
+            failOn = FailOn.LOW,
+            includes = DetectorType.PHASER)
 
     void testRunPhase_concurrent_detectsPhaserMisuse() throws InterruptedException {
         Phaser phaser = processor.getPhaser();
-        var detector = AsyncTestContext.phaserMonitor();
+        var detector = AsyncTestContext.phaserDetector();
 
         detector.registerPhaser(phaser, "multi-phase-processor-phaser", 2);
         detector.recordArriveAwaitAdvance(phaser);

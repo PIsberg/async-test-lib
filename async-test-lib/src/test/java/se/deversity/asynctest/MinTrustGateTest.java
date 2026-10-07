@@ -87,8 +87,10 @@ class MinTrustGateTest {
     public static class RecordedRaceDummy {
         private final Counter counter = new Counter();
 
-        @AsyncTest(threads = 4, invocations = 5, failOn = FailOn.HIGH,
-                   detectAll = false, detectRaceConditions = true)
+        @AsyncTest(threads = 4,
+                   invocations = 5,
+                   failOn = FailOn.HIGH,
+                   includes = DetectorType.RACE_CONDITIONS)
         void racyIncrement() {
             AsyncTestContext.raceConditionDetector().recordFieldRead(counter, "value");
             int current = counter.value;
@@ -102,8 +104,11 @@ class MinTrustGateTest {
     public static class RecordedRaceUnderVerdictFloorDummy {
         private final Counter counter = new Counter();
 
-        @AsyncTest(threads = 4, invocations = 5, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectRaceConditions = true)
+        @AsyncTest(threads = 4,
+                   invocations = 5,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   includes = DetectorType.RACE_CONDITIONS)
         void racyIncrement() {
             AsyncTestContext.raceConditionDetector().recordFieldRead(counter, "value");
             int current = counter.value;
@@ -125,8 +130,11 @@ class MinTrustGateTest {
     public static class AtomicMisuseUnderVerdictFloorDummy {
         private final AtomicInteger counter = new AtomicInteger();
 
-        @AsyncTest(threads = 4, invocations = 5, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectAtomicNonAtomicUpdates = true)
+        @AsyncTest(threads = 4,
+                   invocations = 5,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   includes = DetectorType.ATOMIC_NON_ATOMIC_UPDATE)
         void getThenSet() {
             int current = counter.get();
             AsyncTestContext.atomicNonAtomicUpdateDetector()

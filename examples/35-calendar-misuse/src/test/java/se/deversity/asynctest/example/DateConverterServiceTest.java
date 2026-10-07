@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -76,12 +77,12 @@ class DateConverterServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared-Calendar race detected by CalendarDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectCalendarIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.CALENDAR)
 
     void testConvertToDate_concurrent_detectsSharingBug() {
         Calendar cal = service.getCalendar();
 
-        AsyncTestContext.get().calendarMonitor()
+        AsyncTestContext.get().calendarDetector()
                 .registerCalendar(cal, "date-converter-calendar");
 
         // Recorded, not thrown. A shared Calendar that loses the race throws out of its own
@@ -89,16 +90,16 @@ class DateConverterServiceTest {
         // reports the finding, so the reader gets a java.util stack trace instead of the
         // detector's report. See issue #363.
         try {
-            AsyncTestContext.get().calendarMonitor()
+            AsyncTestContext.get().calendarDetector()
                     .recordSet(cal, "date-converter-calendar");
 
             int year = 2000 + (int) (Thread.currentThread().threadId() % 30);
             service.convertToDate(year, Calendar.JANUARY, 1);
 
-            AsyncTestContext.get().calendarMonitor()
+            AsyncTestContext.get().calendarDetector()
                     .recordGet(cal, "date-converter-calendar");
         } catch (RuntimeException corrupted) {
-            AsyncTestContext.get().calendarMonitor()
+            AsyncTestContext.get().calendarDetector()
                     .recordError(cal, "date-converter-calendar",
                             corrupted.getClass().getSimpleName());
         }

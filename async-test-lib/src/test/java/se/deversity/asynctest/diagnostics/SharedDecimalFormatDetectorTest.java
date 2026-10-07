@@ -94,4 +94,11 @@ public class SharedDecimalFormatDetectorTest {
         assertTrue(s.contains("SHARED DECIMAL FORMAT"));
         assertTrue(s.contains("Fix"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedDecimalFormatDetector d = new SharedDecimalFormatDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(o -> d.recordAccess(o, "fmt", Thread.currentThread()));
+    }
 }

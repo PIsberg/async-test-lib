@@ -183,14 +183,14 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 * **Description**: Virtual threads are designed for I/O-bound work that parks cheaply; CPU-bound tasks monopolize the carrier thread for their entire duration, negating the scalability benefit. The detector flags individual tasks that run past a duration threshold without a recorded yield point, and a high mean duration across recorded tasks.
 * **Buggy Code**:
   ```java
-  @AsyncTest(threads = 200, useVirtualThreads = true)
+  @AsyncTest(threads = 200, useVirtualThreads = true, includes = DetectorType.VIRTUAL_THREAD_CPU_BOUND)
   void testMatrixMultiply() {
       performHeavyComputation(); // CPU-bound work monopolizes the carrier thread
   }
   ```
 * **Fixed Code**:
   ```java
-  @AsyncTest(threads = 200) // plain platform threads for CPU-bound work
+  @AsyncTest(threads = 200, useVirtualThreads = false, includes = DetectorType.VIRTUAL_THREAD_CPU_BOUND) // plain platform threads for CPU-bound work
   void testMatrixMultiply() {
       performHeavyComputation();
   }

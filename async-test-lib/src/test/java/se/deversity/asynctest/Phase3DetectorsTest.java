@@ -147,16 +147,10 @@ class Phase3DetectorsTest {
     static class Phase3FlagsDummy {
         private final AtomicInteger counter = new AtomicInteger();
 
-        @AsyncTest(
-            threads = 3,
+        @AsyncTest(threads = 3,
             invocations = 3,
-            detectRaceConditions = true,
-            detectThreadLocalLeaks = true,
-            detectBusyWaiting = true,
-            detectAtomicityViolations = true,
-            detectInterruptMishandling = true,
-            timeoutMs = 2_000
-        )
+            timeoutMs = 2_000,
+            detectAll = true)
         void runsWithPhase3FlagsEnabled() {
             counter.incrementAndGet();
         }

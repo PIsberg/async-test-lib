@@ -53,7 +53,7 @@ class SleepInLockWeavingTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 10)
+    @AsyncTest(threads = 4, invocations = 10, detectAll = true)
     void sleepingWhileHoldingTheMonitor() throws InterruptedException {
         underLock.process();
     }

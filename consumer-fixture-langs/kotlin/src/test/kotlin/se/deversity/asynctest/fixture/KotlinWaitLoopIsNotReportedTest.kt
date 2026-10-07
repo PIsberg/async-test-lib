@@ -64,9 +64,9 @@ class KotlinWaitLoopIsNotReportedTest {
     @AsyncTest(
         threads = 4,
         invocations = 10,
-        detectMissedSignals = true,
         failOn = FailOn.NONE,
-        licenseMockMode = true
+        licenseMockMode = true,
+        detectAll = true
     )
     fun pollingInAPredicateLoopAfterTheSignalWasLost() {
         handOff.signalThenAwait()

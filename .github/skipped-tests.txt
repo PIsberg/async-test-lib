@@ -36,6 +36,9 @@ se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#theRealFileCoversEveryAd
 se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#aForeignDomainIsDenied tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
 se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#aTamperedCopyOfTheRealFileIsDenied tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
 
+# Windows-only: an exclusive file lock fails a read only where locks are mandatory (#928).
+se.deversity.asynctest.runner.LicenseValidationCacheTransientReadTest#aRecordLockedForAMomentStillReadsAsFresh tests/*,gradle/*,os-sensitive/macos-latest/* # @EnabledOnOs(WINDOWS): Linux and macOS locks are advisory
+
 # Lane five reruns lane four's library rows with the libraries excluded from weaving; its JDK
 # rows have nothing to say there and are disabled by LibraryRowsOnly (46 of 80 on 2026-10-05).
 com.example.corpus.CorpusAgentPairLaneTest#* corpus/*/surefire-reports-agent-pairs-library-excluded # lane five runs library rows only

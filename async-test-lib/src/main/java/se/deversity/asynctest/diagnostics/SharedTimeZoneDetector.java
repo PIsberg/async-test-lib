@@ -8,7 +8,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link java.util.TimeZone} instances whose mutable state is modified while
@@ -40,18 +39,21 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 0.10.0
  */
-public class SharedTimeZoneDetector {
+public class SharedTimeZoneDetector extends AbstractInstanceDetector<SharedTimeZoneDetector.TzState> {
 
     /**
      * The mutating threads are the tracked threads: every recorded access is a mutation, so the
      * per-round thread set of the base class is the per-round mutator set, and the report counts
      * the round that raced rather than every mutator of the run (#748).
      */
-    private static final class TzState extends SelfGuard.ThreadTrackedInstance {
+    static final class TzState extends SelfGuard.ThreadTrackedInstance {
         volatile @Nullable String   firstOperation;
     }
 
-    private final Map<IdentityKey, TzState> timezones = new ConcurrentHashMap<>();
+    @Override
+    TzState newState(Object instance, String label) {
+        return new TzState();
+    }
 
     /**
      * Records a mutating operation on a {@code TimeZone} instance.
@@ -62,11 +64,9 @@ public class SharedTimeZoneDetector {
      */
     public void recordMutation(Object timeZone, String operation, Thread thread) {
         if (timeZone == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        TzState s = timezones.get(IdentityKey.lookup(timeZone));
-        if (s == null) {
-            s = timezones.computeIfAbsent(new IdentityKey(timeZone), k -> new TzState());
-        }
+        // The report names no instance, so the class name stands in for a label; a null name
+        // would have UnnamedLabels number, and keep, the instance.
+        TzState s = stateFor(timeZone, "TimeZone");
         s.noteAccess(timeZone, true, thread);
         if (s.firstOperation == null) s.firstOperation = operation != null ? operation : "mutate";
     }
@@ -76,7 +76,7 @@ public class SharedTimeZoneDetector {
      */
     public SharedTimeZoneReport analyze() {
         SharedTimeZoneReport r = new SharedTimeZoneReport();
-        for (TzState s : timezones.values()) {
+        for (TzState s : states()) {
             if (s.sharedAndUnguarded()) {
                 String finding = String.format(
                         "TimeZone instance mutated from %d threads (%s) via '%s' — "

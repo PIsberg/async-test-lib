@@ -3,6 +3,7 @@ package se.deversity.asynctest.example;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -122,8 +123,10 @@ class CryptoServiceTest {
      * why it appears in the issue's "fires sometimes" list rather than the "never fires" one.
      */
     @Disabled("Remove @Disabled to see bug detected by VirtualThreadCpuBoundTaskDetector")
-    @AsyncTest(threads = 8, invocations = 1, detectAll = false,
-            detectVirtualThreadCpuBoundTasks = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 1,
+            failOn = FailOn.LOW,
+            includes = DetectorType.VIRTUAL_THREAD_CPU_BOUND)
     void test_concurrent_detectsCpuBoundTask() {
         VirtualThreadCpuBoundTaskDetector detector =
                 AsyncTestContext.virtualThreadCpuBoundTaskDetector();

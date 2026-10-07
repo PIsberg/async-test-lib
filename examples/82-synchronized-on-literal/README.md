@@ -1,7 +1,7 @@
 # Example 82 — Synchronized on String Literal
 
 **Detector**: `SynchronizedOnLiteralDetector`  
-**Flag**: `detectSynchronizedOnLiteral = true`
+**Select it with**: `includes = DetectorType.SYNCHRONIZED_ON_LITERAL`
 
 ## The Problem
 

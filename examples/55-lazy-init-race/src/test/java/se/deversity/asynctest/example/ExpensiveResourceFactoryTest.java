@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -40,7 +41,7 @@ class ExpensiveResourceFactoryTest {
     }
 
     @Disabled("Remove @Disabled to see bug detected by LazyInitRaceDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectLazyInitRace = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.LAZY_INIT_RACE)
     void test_concurrent_detectsBug() {
         // Tell the detector about the null-check and initialization pattern.
         // wasNull=true simulates threads observing null before writing.

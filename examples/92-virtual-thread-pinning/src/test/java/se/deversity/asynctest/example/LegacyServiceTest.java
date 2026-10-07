@@ -3,6 +3,7 @@ package se.deversity.asynctest.example;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -60,8 +61,10 @@ class LegacyServiceTest {
     // monitor, so fifty rounds of eight threads took four seconds and timed the round out
     // before the failOn gate was reached. The finding was there the whole time; the round
     // just never finished. See issue #362.
-    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
-            detectVirtualThreadPinning = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 2,
+            failOn = FailOn.LOW,
+            includes = DetectorType.VIRTUAL_THREAD_PINNING)
     void test_concurrent_detectsPinning() {
         var detector = AsyncTestContext.virtualThreadPinningDetector();
         Thread thread = Thread.currentThread();

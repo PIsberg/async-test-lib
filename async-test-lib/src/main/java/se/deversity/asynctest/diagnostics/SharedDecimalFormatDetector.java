@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link java.text.DecimalFormat} and {@link java.text.NumberFormat} instances
@@ -32,18 +31,19 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 0.9.0
  */
-public class SharedDecimalFormatDetector {
+public class SharedDecimalFormatDetector
+        extends AbstractInstanceDetector<SharedDecimalFormatDetector.FormatState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class FormatState extends SelfGuard.ThreadTrackedInstance {
+    static final class FormatState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
 
         FormatState(String name) { this.name = name; }
     }
 
-    private final Map<IdentityKey, FormatState> formats = new ConcurrentHashMap<>();
+    @Override
+    FormatState newState(Object instance, String label) {
+        return new FormatState(label);
+    }
 
     /**
      * Record an access (format/parse/applyPattern) to a DecimalFormat or NumberFormat instance.
@@ -54,15 +54,7 @@ public class SharedDecimalFormatDetector {
      */
     public void recordAccess(Object format, String name, Thread thread) {
         if (format == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        FormatState s = formats.get(IdentityKey.lookup(format));
-        if (s == null) {
-            // The fallback label is built only when the instance is first seen.
-            s = formats.computeIfAbsent(new IdentityKey(format), id -> new FormatState(name != null
-                    ? name
-                    : unnamedLabels.of(format, format.getClass().getSimpleName())));
-        }
-        s.noteAccess(format, thread);
+        stateFor(format, name).noteAccess(format, thread);
     }
 
     /**
@@ -70,7 +62,7 @@ public class SharedDecimalFormatDetector {
      */
     public SharedDecimalFormatReport analyze() {
         SharedDecimalFormatReport r = new SharedDecimalFormatReport();
-        for (FormatState s : formats.values()) {
+        for (FormatState s : states()) {
             if (s.sharedAndUnguarded()) {
                 String finding = String.format(
                         "'%s' accessed from %d threads (%s) — DecimalFormat/NumberFormat is not thread-safe"

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -40,23 +41,23 @@ class ProducerConsumerServiceTest {
 
     @Disabled("Remove @Disabled: the round times out on the nested monitor lockout, and the failure "
             + "names NestedMonitorLockoutDetector's finding")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectNestedMonitorLockout = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.NESTED_MONITOR_LOCKOUT)
     void test_concurrent_detectsBug() {
         // Record acquiring lockA (outer monitor)
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorAcquired(service.lockA);
 
         // Record attempting a blocking operation (wait) while lockA is held
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordBlockingOperationAttempted("wait on lockB while holding lockA");
 
         // Record acquiring lockB (inner monitor — the deadlock point)
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorAcquired(service.lockB);
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorReleased(service.lockB);
 
-        AsyncTestContext.nestedMonitorLockoutMonitor()
+        AsyncTestContext.nestedMonitorLockoutDetector()
                 .recordMonitorReleased(service.lockA);
 
         // Drive the actual service

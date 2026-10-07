@@ -71,7 +71,7 @@ class InventoryServiceFindingsTest {
      * <p>{@code recordFieldWrite} is how the detector learns about the write. Without the agent
      * ({@code -javaagent:async-test-agent.jar}) a bare {@code available--} is invisible to it.
      */
-    @AsyncTest(threads = 4, invocations = 25, failOn = FailOn.NONE)
+    @AsyncTest(threads = 4, invocations = 25, failOn = FailOn.NONE, detectAll = true)
     void reserving_stock_from_four_threads_reports_a_race() {
         AsyncTestContext ctx = AsyncTestContext.get();
         if (ctx != null) {

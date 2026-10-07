@@ -51,7 +51,7 @@ class AgentLockHooksViewDogfoodTest {
 
     private static final AtomicInteger BODY_EXECUTIONS = new AtomicInteger();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 20_000, detectAll = true)
     void aSharedViewRegisteredUnderContentionStillReadsAsShared() {
         BODY_EXECUTIONS.incrementAndGet();
         int round = SEQUENCE.getAndIncrement() / THREADS;

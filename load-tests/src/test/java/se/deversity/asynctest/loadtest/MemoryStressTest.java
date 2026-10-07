@@ -1,5 +1,6 @@
 package se.deversity.asynctest.loadtest;
 
+import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.AsyncTest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -124,16 +125,16 @@ public class MemoryStressTest {
     // ── Target classes (excluded from direct JUnit discovery via *$* build filter) ─────────────
 
     public static class T4_I10_None {
-        @AsyncTest(threads = 4, invocations = 10,  detectAll = false) public void run() {}
+        @AsyncTest(threads = 4, invocations = 10, preset = Preset.NONE) public void run() {}
     }
     public static class T4_I50_None {
-        @AsyncTest(threads = 4, invocations = 50,  detectAll = false) public void run() {}
+        @AsyncTest(threads = 4, invocations = 50, preset = Preset.NONE) public void run() {}
     }
     public static class T4_I100_None {
-        @AsyncTest(threads = 4, invocations = 100, detectAll = false) public void run() {}
+        @AsyncTest(threads = 4, invocations = 100, preset = Preset.NONE) public void run() {}
     }
     public static class T4_I500_None {
-        @AsyncTest(threads = 4, invocations = 500, detectAll = false) public void run() {}
+        @AsyncTest(threads = 4, invocations = 500, preset = Preset.NONE) public void run() {}
     }
     public static class T4_I10_All {
         @AsyncTest(threads = 4, invocations = 10,  detectAll = true) public void run() {}

@@ -67,7 +67,7 @@ class ListenerRegistryRestoreDogfoodTest {
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
     private static final AtomicInteger FIRED = new AtomicInteger();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 30_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, useVirtualThreads = false, timeoutMs = 30_000, detectAll = true)
     void aFindingFiredDuringARestoreIsStillHeard() {
         int ticket = SEQUENCE.getAndIncrement();
         int round = ticket / THREADS;

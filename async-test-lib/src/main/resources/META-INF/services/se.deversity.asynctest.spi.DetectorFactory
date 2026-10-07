@@ -1,5 +1,5 @@
 # Intentionally empty.
 #
-# Built-in factories are listed in META-INF/async-test/builtin-detector-factories instead, so that
-# ServiceLoader discovery at runtime sees only genuine third-party DetectorFactory providers.
+# The library registers no DetectorFactory of its own: its built-in detectors live in the runner's
+# DetectorRegistry, and ServiceLoader discovery sees only genuine third-party providers (#922).
 # See se.deversity.asynctest.spi.DetectorRegistry for why.

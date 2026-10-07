@@ -79,7 +79,7 @@ Unsynchronized access sequences:
 
 ## How the Detector Works
 
-`RaceConditionDetector` is activated by `detectRaceConditions = true`, and it is
+`RaceConditionDetector` is activated by `includes = DetectorType.RACE_CONDITIONS`, and it is
 **recording-fed**: it sees nothing the code under test does not hand it, through
 `recordFieldRead` and `recordFieldWrite`. `InventoryService.observeStockAccess`
 installs those two methods on either side of the race window, so the read before the

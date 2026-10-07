@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -79,9 +80,9 @@ class WorkerPoolServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see default-factory issues detected by ThreadFactoryDetector")
-    @AsyncTest(threads = 8, invocations = 30, detectAll = false, detectThreadFactoryIssues = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 30, failOn = FailOn.LOW, includes = DetectorType.THREAD_FACTORY)
     void test_concurrent_detectsDefaultFactory() throws Exception {
-        var detector = AsyncTestContext.get().threadFactoryMonitor();
+        var detector = AsyncTestContext.get().threadFactoryDetector();
 
         // Wrap the pool's default factory so we can observe threads it creates.
         // Executors.defaultThreadFactory() is the factory used internally.

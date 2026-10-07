@@ -47,7 +47,7 @@ Single-threaded execution always runs `beginRequest()` before `getRequestUserId(
 Remove the `@Disabled` annotation from `testBeginRequest_concurrent_detectsThreadLocalLeak()`:
 
 ```java
-@AsyncTest(threads = 8, invocations = 20, detectAll = false, detectThreadLocalLeaks = true)
+@AsyncTest(threads = 8, invocations = 20, includes = DetectorType.THREAD_LOCAL_LEAKS)
 void testBeginRequest_concurrent_detectsThreadLocalLeak() { ... }
 ```
 

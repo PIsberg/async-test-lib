@@ -60,6 +60,9 @@ substitution to stop the recording path from re-entering itself, so a corpus in 
 would have measured a narrower path than a user's suite does.
 `TestBodyCollectionIsObservedTest` pins the canonical case that depends on it: a `HashMap` shared
 by the test body itself is reported. It runs in the attached lane only.
+`LinearizabilityLibraryPairsTest` runs `OperationHistory` on library subjects in both directions
+(Guava `AtomicLongMap` linearizable, a hand-written read-modify-write over commons-lang3
+`MutableInt` not), see [the design note](../docs/analysis/linearizability-checking.md#corpus-pairs-932).
 
 ## Adding a subject
 

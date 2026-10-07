@@ -7,6 +7,8 @@ import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
+import se.deversity.asynctest.Preset;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.E2E;
@@ -104,9 +106,12 @@ class RoundTimeoutFindingSummaryTest {
 
         static final Map<Object, Object> SHARED = new WeakHashMap<>();
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectAll = false,
-                detectDeadlocks = false, detectWeakHashMapShared = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 1,
+                timeoutMs = 300,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.WEAK_HASH_MAP_SHARED)
         void recordsThenHangs() throws InterruptedException {
             AsyncTestContext.weakHashMapSharedDetector()
                     .recordAccess(SHARED, "shared-weak-cache", Thread.currentThread());
@@ -117,8 +122,12 @@ class RoundTimeoutFindingSummaryTest {
     /** Hangs past the budget with every detector off, so there is nothing to name. */
     static class TimesOutWithNothingToReportFixture {
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectAll = false,
-                detectDeadlocks = false, failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 1,
+                timeoutMs = 300,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                preset = Preset.NONE)
         void justHangs() throws InterruptedException {
             Thread.sleep(30_000);       // cancelled by the round timeout
         }

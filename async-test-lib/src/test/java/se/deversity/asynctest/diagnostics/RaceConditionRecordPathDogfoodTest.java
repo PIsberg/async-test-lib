@@ -46,7 +46,7 @@ class RaceConditionRecordPathDogfoodTest {
     private static final RaceConditionDetector DETECTOR = new RaceConditionDetector();
     private static final Subject SUBJECT = new Subject();
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000, detectAll = true)
     void everyWorkerRecordsAgainstTheSameDetectorAtTheSameInstant() {
         // Unguarded: nothing serialises these, and the detector is told so by an empty lock
         // fingerprint.

@@ -12,6 +12,7 @@ import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.E2E;
@@ -91,9 +92,12 @@ class CyclicBarrierStrandedPartyRunTest {
 
         static final CyclicBarrier BARRIER = new CyclicBarrier(3);
 
-        @AsyncTest(threads = 2, invocations = 1, timeoutMs = 500, detectAll = false,
-                detectDeadlocks = false, detectCyclicBarrierIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 1,
+                timeoutMs = 500,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.CYCLIC_BARRIER)
         void partyShort() throws Exception {
             CyclicBarrierDetector detector = AsyncTestContext.cyclicBarrierDetector();
             detector.registerBarrier(BARRIER, "short-barrier", 3);
@@ -108,9 +112,12 @@ class CyclicBarrierStrandedPartyRunTest {
 
         static final CyclicBarrier BARRIER = new CyclicBarrier(2);
 
-        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 20_000, detectAll = false,
-                detectDeadlocks = false, detectCyclicBarrierIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 2,
+                timeoutMs = 20_000,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.CYCLIC_BARRIER)
         void allPartiesArrive() throws Exception {
             CyclicBarrierDetector detector = AsyncTestContext.cyclicBarrierDetector();
             detector.registerBarrier(BARRIER, "healthy-barrier", 2);
@@ -126,9 +133,12 @@ class CyclicBarrierStrandedPartyRunTest {
 
         static final CyclicBarrier BARRIER = new CyclicBarrier(3);
 
-        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 20_000, detectAll = false,
-                detectDeadlocks = false, detectCyclicBarrierIssues = true,
-                failOn = FailOn.LOW, licenseMockMode = true)
+        @AsyncTest(threads = 2,
+                invocations = 2,
+                timeoutMs = 20_000,
+                failOn = FailOn.LOW,
+                licenseMockMode = true,
+                includes = DetectorType.CYCLIC_BARRIER)
         void handledTimeout() throws Exception {
             CyclicBarrierDetector detector = AsyncTestContext.cyclicBarrierDetector();
             detector.registerBarrier(BARRIER, "timed-barrier", 3);

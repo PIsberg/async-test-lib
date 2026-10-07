@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 4, detectCompletableFutureCompletionLeaks = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS)
  * void testCompletableFuture() {
  *     CompletableFuture<String> future = new CompletableFuture<>();
  *
@@ -232,7 +232,8 @@ public class CompletableFutureCompletionLeakDetector {
         /**
          * {@return whether this report should surface as a finding}
          *
-         * <p>The canonical predicate {@code LegacyDetectorAdapter} binds to. Without it the
+         * <p>The canonical predicate the report path binds to ({@code DetectorRegistry.ifIssue}, and
+         * until 1.13.0 the SPI bridge {@code LegacyDetectorAdapter}). Without it the bridge
          * adapter resolved {@code analyze()}, found no {@code hasIssues()} on the returned report,
          * and emitted an empty violation list on every call — leaving this detector registered,
          * addressable and structurally silent. Pinned by {@code DetectorFiringContractTest}.
@@ -273,7 +274,7 @@ public class CompletableFutureCompletionLeakDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
             for (LeakedFuture lf : leakedFutures) {
-                structuredViolations.add(new Violation("CompletableFutureCompletionLeak", severity,
+                structuredViolations.add(new Violation("CompletableFutureCompletionLeaks", severity,
                         lf.name + " (created by thread #" + lf.creatorThreadId + ", " + lf.ageMillis
                                 + "ms ago) never completed",
                         List.of(), Map.of(), Instant.now()));

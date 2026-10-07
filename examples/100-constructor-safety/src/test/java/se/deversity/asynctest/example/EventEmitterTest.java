@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -187,8 +188,10 @@ class EventEmitterTest {
      * 3. Fix: move EventRegistry.register(this) to the last line of the constructor
      */
     @Disabled("Remove @Disabled to see the bug detected by ConstructorSafetyValidator")
-    @AsyncTest(threads = 8, invocations = 5, detectAll = false,
-            validateConstructorSafety = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 5,
+            failOn = FailOn.LOW,
+            includes = DetectorType.CONSTRUCTOR_SAFETY)
     void test_concurrent_detectsThisEscape() {
         // This demonstration used to record against a sentinel Object created in the test body,
         // never touching the emitter, and did every recording on one thread. The validator

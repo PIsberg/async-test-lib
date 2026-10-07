@@ -46,7 +46,7 @@ class SharedInstanceWeavingSparesConfinedUseTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void aFormatterPerCall() {
         confined.render(new Date());
     }

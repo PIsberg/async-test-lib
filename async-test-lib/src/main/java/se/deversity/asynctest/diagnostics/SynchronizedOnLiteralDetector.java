@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Usage inside {@code @AsyncTest}:
  * <pre>{@code
  * String lock = "shared-lock"; // interned — JVM-wide monitor
- * AsyncTestContext.synchronizedOnLiteralMonitor()
+ * AsyncTestContext.synchronizedOnLiteralDetector()
  *     .recordMonitorAcquired(lock, Thread.currentThread(), "MyService.doWork");
  * }</pre>
  */

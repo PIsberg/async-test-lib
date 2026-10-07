@@ -35,10 +35,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <pre>{@code
  * static final InheritableThreadLocal<String> USER = new InheritableThreadLocal<>();
  *
- * @AsyncTest(threads = 4, detectInheritableThreadLocalMisuse = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.INHERITABLE_THREAD_LOCAL)
  * void testContextPropagation() {
  *     InheritableThreadLocalMisuseDetector mon =
- *         AsyncTestContext.inheritableThreadLocalMisuseMonitor();
+ *         AsyncTestContext.inheritableThreadLocalMisuseDetector();
  *     // Mark the thread pool's worker threads so the detector knows they are pooled
  *     mon.registerPoolThread(Thread.currentThread());
  *
@@ -161,11 +161,11 @@ public class InheritableThreadLocalMisuseDetector {
             IssueSeverity severity = IssueSeverity.markedIn(report.toString())
                     .orElse(IssueSeverity.HIGH);
             for (String finding : report.pooledGetIssues) {
-                report.structuredViolations.add(new Violation("InheritableThreadLocalMisuse", severity,
+                report.structuredViolations.add(new Violation("InheritableThreadLocal", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
             for (String finding : report.pooledSetIssues) {
-                report.structuredViolations.add(new Violation("InheritableThreadLocalMisuse", severity,
+                report.structuredViolations.add(new Violation("InheritableThreadLocal", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }

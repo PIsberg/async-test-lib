@@ -37,14 +37,14 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectStringBuilderIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.STRING_BUILDER)
  * void testStringBuilderSharing() {
  *     StringBuilder sb = new StringBuilder();
- *     AsyncTestContext.stringBuilderMonitor()
+ *     AsyncTestContext.stringBuilderDetector()
  *         .registerBuilder(sb, "shared-log-builder");
  *
  *     sb.append("entry");
- *     AsyncTestContext.stringBuilderMonitor()
+ *     AsyncTestContext.stringBuilderDetector()
  *         .recordAppend(sb, "shared-log-builder");
  * }
  * }</pre>

@@ -93,7 +93,7 @@ class TelemetryEventBufferDogfoodTest {
         consumer.start();
     }
 
-    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000)
+    @AsyncTest(threads = THREADS, invocations = ROUNDS, timeoutMs = 20_000, detectAll = true)
     void producersCollideOnTheRingBuffer() {
         long threadId = Thread.currentThread().threadId();
         for (int i = 0; i < EVENTS_PER_BODY; i++) {

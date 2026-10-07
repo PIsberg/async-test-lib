@@ -14,10 +14,10 @@ import java.util.Set;
 /**
  * Curated bundles of detectors selectable via {@link AsyncTest#preset()}.
  *
- * <p>{@link AsyncTest} has dozens of boolean detector flags; in practice most
- * test suites want one of a handful of standard combinations. Pick a preset to
- * skip the per-flag configuration, then layer {@code excludes = {...}} on top if
- * you need to opt out of a specific detector.
+ * <p>There are well over a hundred detectors; in practice most test suites want one of a
+ * handful of standard combinations. Pick a preset rather than listing detectors in
+ * {@code includes = {...}}, then layer {@code excludes = {...}} on top if you need to opt out
+ * of a specific detector.
  *
  * <p>Example:
  * <pre>{@code
@@ -25,9 +25,9 @@ import java.util.Set;
  * void tight_loop_under_stress() { ... }
  * }</pre>
  *
- * <p>{@link #ALL} is the default and preserves the legacy {@code detectAll = true}
- * behavior. The other presets imply {@code detectAll = false} and enable only
- * the listed {@link DetectorType}s.
+ * <p>{@link #ESSENTIALS} is the default since 1.13.0 (#923): a bare {@code @AsyncTest} runs it.
+ * {@link #ALL} and {@link #STRICT} run every detector, as {@code detectAll = true} does; the
+ * other presets enable only the listed {@link DetectorType}s.
  *
  * @since 1.6.0
  */
@@ -37,8 +37,8 @@ import java.util.Set;
 public enum Preset {
 
     /**
-     * Run every available detector. Equivalent to the legacy default
-     * ({@code @AsyncTest(detectAll = true)}). Picks up new detectors automatically
+     * Run every available detector, the same selection as {@code @AsyncTest(detectAll = true)}
+     * and the default before 1.13.0. Picks up new detectors automatically
      * as they are added in future releases. Highest signal, highest cost.
      */
     ALL(null),
@@ -47,7 +47,9 @@ public enum Preset {
      * High-signal detectors covering the bugs that production teams encounter
      * most often: deadlocks, races, atomicity violations, lock/thread leaks,
      * interrupt mishandling, concurrent modification, and CompletableFuture
-     * exception loss. Reasonable default for everyday CI on application code.
+     * exception loss. The default since 1.13.0 (#923): what a bare {@code @AsyncTest} runs. It
+     * holds no {@link se.deversity.asynctest.diagnostics.TrustTier#ADVISORY} detector, and
+     * {@code LeanDefaultSelectionTest} keeps it that way.
      */
     ESSENTIALS(EnumSet.of(
             DetectorType.DEADLOCKS,
@@ -86,8 +88,8 @@ public enum Preset {
     /**
      * Disable every detector. The runner still drives N×M concurrent execution
      * (so the test body still exercises concurrent code) but no diagnostic
-     * machinery is engaged. Useful when you want raw stress execution and intend
-     * to enable specific detectors via the per-flag boolean attributes manually.
+     * machinery is engaged. Useful when you want raw stress execution with no
+     * diagnostics; to run a few detectors, list them in {@code includes} instead.
      */
     NONE(EnumSet.noneOf(DetectorType.class));
 
@@ -114,7 +116,7 @@ public enum Preset {
     }
 
     /**
-     * True when the preset is the legacy default.
+     * True when the preset runs every detector ({@link #ALL} or {@link #STRICT}).
      *
      * @return {@code true} when this preset enables every {@link DetectorType}
      */

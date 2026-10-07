@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -74,14 +75,14 @@ class TokenGeneratorTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see shared Random detected by SharedRandomDetector")
-    @AsyncTest(threads = 8, invocations = 50, detectAll = false, detectSharedRandom = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 50, failOn = FailOn.LOW, includes = DetectorType.SHARED_RANDOM)
     void testGenerateToken_concurrent_detectsSharedRandom() {
         // Register the shared static Random with the detector
-        AsyncTestContext.sharedRandomMonitor()
+        AsyncTestContext.sharedRandomDetector()
                 .registerRandom(TokenGenerator.getRandom(), "token-generator-random");
 
         // Record that this thread is accessing the shared Random
-        AsyncTestContext.sharedRandomMonitor()
+        AsyncTestContext.sharedRandomDetector()
                 .recordRandomAccess(TokenGenerator.getRandom(),
                         "token-generator-random", "nextInt");
 

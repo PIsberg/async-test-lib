@@ -103,7 +103,7 @@ class SharedNonThreadSafeTypesTest {
      * Detector: SharedMatcherDetector (0.10.0)
      *
      * Change to:
-     *   @AsyncTest(threads = 8, invocations = 10, detectSharedMatcher = true)
+     *   @AsyncTest(threads = 8, invocations = 10, includes = DetectorType.SHARED_MATCHER)
      * and uncomment the detector lines to see:
      *
      *   SHARED REGEX MATCHER DETECTED:
@@ -124,7 +124,7 @@ class SharedNonThreadSafeTypesTest {
      * Detector: SharedDecimalFormatDetector (0.10.0)
      *
      * Change to:
-     *   @AsyncTest(threads = 8, invocations = 10, detectSharedDecimalFormat = true)
+     *   @AsyncTest(threads = 8, invocations = 10, includes = DetectorType.SHARED_DECIMAL_FORMAT)
      * and uncomment the detector lines to see:
      *
      *   SHARED DECIMAL FORMAT / NUMBER FORMAT DETECTED:
@@ -144,7 +144,7 @@ class SharedNonThreadSafeTypesTest {
      * Detector: SharedMessageDigestDetector (0.10.0)
      *
      * Change to:
-     *   @AsyncTest(threads = 8, invocations = 10, detectSharedMessageDigest = true)
+     *   @AsyncTest(threads = 8, invocations = 10, includes = DetectorType.SHARED_MESSAGE_DIGEST)
      * and uncomment the detector lines to see:
      *
      *   SHARED MESSAGE DIGEST DETECTED:
@@ -173,8 +173,8 @@ class SharedNonThreadSafeTypesTest {
      * Uncomment @AsyncTest (0.10.0) to verify the fixes hold under concurrent load.
      */
     // @AsyncTest(threads = 8, invocations = 20,
-    //         detectSharedMatcher = true, detectSharedDecimalFormat = true,
-    //         detectSharedMessageDigest = true)
+    //         includes = {DetectorType.SHARED_MATCHER, DetectorType.SHARED_DECIMAL_FORMAT,
+    //                     DetectorType.SHARED_MESSAGE_DIGEST})
     @Test
     void testFixed_singleThread() {
         assertTrue(service.validateTransactionIdFixed("TX-123456-USD"));

@@ -31,11 +31,11 @@ import java.util.Optional;
  * findings.assertReported("RaceConditionDetector");
  * }</pre>
  *
- * <p><strong>Detectors are opt-in on the builder.</strong> {@code @AsyncTest} defaults to
- * {@code detectAll = true}; {@link AsyncTestConfig#builder()} defaults every detector to off, so
- * a config built without {@code detectAll(true)}, a {@code preset(...)} or individual
- * {@code detectXxx(true)} calls runs the body under contention and detects nothing. Say which
- * detectors you want.
+ * <p><strong>Detectors are opt-in on the builder.</strong> A bare {@code @AsyncTest} runs
+ * {@link Preset#ESSENTIALS}; {@link AsyncTestConfig#builder()} starts from deadlock detection
+ * alone. Say which detectors you want: {@code preset(Preset.ESSENTIALS)} for the annotation's
+ * default, {@code detectAll(true)} for every detector, or {@code includes(...)} and individual
+ * {@code detectXxx(true)} calls.
  *
  * <p>The body runs on the runner's worker threads with an {@link AsyncTestContext} installed, so
  * {@code AsyncTestContext.get()} and the {@code recordXxx} hooks work exactly as they do inside an

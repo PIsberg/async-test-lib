@@ -49,7 +49,7 @@ Single-threaded increments are fully sequential — no concurrent reader can obs
 Remove the `@Disabled` annotation from `testIncrement_concurrent_detectsAtomicityViolation()`:
 
 ```java
-@AsyncTest(threads = 10, invocations = 100, detectAll = false, detectAtomicityViolations = true)
+@AsyncTest(threads = 10, invocations = 100, includes = DetectorType.ATOMICITY_VIOLATIONS)
 void testIncrement_concurrent_detectsAtomicityViolation() { ... }
 ```
 

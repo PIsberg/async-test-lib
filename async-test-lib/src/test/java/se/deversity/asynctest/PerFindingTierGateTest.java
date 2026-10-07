@@ -214,8 +214,11 @@ class PerFindingTierGateTest {
         private final Order order = new Order("A-1", items);
         private final AtomicInteger seq = new AtomicInteger();
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectRecordMutableComponentLeak = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   includes = DetectorType.RECORD_MUTABLE_COMPONENT_LEAK)
         void mutateTheSharedRecord() {
             AsyncTestContext.recordMutableComponentLeakDetector()
                     .recordShared(order, "order", Thread.currentThread());
@@ -227,8 +230,11 @@ class PerFindingTierGateTest {
     public static class StructuralRiskOnlyDummy {
         private final Order order = new Order("A-2", new ArrayList<>(List.of("fixed")));
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectRecordMutableComponentLeak = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   includes = DetectorType.RECORD_MUTABLE_COMPONENT_LEAK)
         void shareWithoutMutating() {
             AsyncTestContext.recordMutableComponentLeakDetector()
                     .recordShared(order, "order", Thread.currentThread());
@@ -248,11 +254,15 @@ class PerFindingTierGateTest {
         private final ReentrantLock lock = new ReentrantLock();
         private final AtomicReference<Thread> holder = new AtomicReference<>();
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectLockLeaks = true, useVirtualThreads = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   useVirtualThreads = true,
+                   includes = DetectorType.LOCK_LEAKS)
         void leaveTheLockTaken() throws InterruptedException {
             if (lock.tryLock()) {
-                AsyncTestContext.lockLeakMonitor().recordLockAcquired(lock, "leaked");
+                AsyncTestContext.lockLeakDetector().recordLockAcquired(lock, "leaked");
                 holder.set(Thread.currentThread());
                 return;
             }
@@ -267,23 +277,29 @@ class PerFindingTierGateTest {
     public static class ReleasedLockUnderVerdictFloorDummy {
         private final ReentrantLock lock = new ReentrantLock();
 
-        @AsyncTest(threads = 2, invocations = 2, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectLockLeaks = true)
+        @AsyncTest(threads = 2,
+                   invocations = 2,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   includes = DetectorType.LOCK_LEAKS)
         void releaseTheLock() {
             lock.lock();
             try {
-                AsyncTestContext.lockLeakMonitor().recordLockAcquired(lock, "released");
+                AsyncTestContext.lockLeakDetector().recordLockAcquired(lock, "released");
             } finally {
                 lock.unlock();
-                AsyncTestContext.lockLeakMonitor().recordLockReleased(lock, "released");
+                AsyncTestContext.lockLeakDetector().recordLockReleased(lock, "released");
             }
         }
     }
 
     /** An access after a close the body recorded, under a gate that admits only VERDICT. */
     public static class RecordedCloseUnderVerdictFloorDummy {
-        @AsyncTest(threads = 1, invocations = 1, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectConfinedArenaThreadEscape = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   includes = DetectorType.CONFINED_ARENA_THREAD_ESCAPE)
         void accessAfterARecordedClose() {
             recordAccessAfterClose();
         }
@@ -291,8 +307,11 @@ class PerFindingTierGateTest {
 
     /** The same finding under a gate that admits FACT. */
     public static class RecordedCloseUnderFactFloorDummy {
-        @AsyncTest(threads = 1, invocations = 1, failOn = FailOn.HIGH, minTrust = TrustTier.FACT,
-                   detectAll = false, detectConfinedArenaThreadEscape = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.FACT,
+                   includes = DetectorType.CONFINED_ARENA_THREAD_ESCAPE)
         void accessAfterARecordedClose() {
             recordAccessAfterClose();
         }
@@ -300,8 +319,11 @@ class PerFindingTierGateTest {
 
     /** A real confined segment touched from a thread that does not own it, under a VERDICT-only gate. */
     public static class JvmRefusedAccessUnderVerdictFloorDummy {
-        @AsyncTest(threads = 1, invocations = 1, failOn = FailOn.HIGH, minTrust = TrustTier.VERDICT,
-                   detectAll = false, detectConfinedArenaThreadEscape = true)
+        @AsyncTest(threads = 1,
+                   invocations = 1,
+                   failOn = FailOn.HIGH,
+                   minTrust = TrustTier.VERDICT,
+                   includes = DetectorType.CONFINED_ARENA_THREAD_ESCAPE)
         void touchAConfinedSegmentFromAnotherThread() throws Exception {
             Class<?> arenaType = Class.forName("java.lang.foreign.Arena");
             Object arena = arenaType.getMethod("ofConfined").invoke(null);

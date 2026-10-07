@@ -55,13 +55,13 @@ import java.util.Optional;
 @AIKeepInSync(
     mirrors = {
         "se.deversity.asynctest.DetectorType",
-        "se.deversity.asynctest.spi.adapters.LegacyDetectorFactories",
+        "se.deversity.asynctest.DetectorRegistry",
         "docs/DETECTOR_CATALOG.md"
     },
     reason = "Every DetectorType needs exactly one row, and each row names the detector class whose "
-           + "simple name keys the report map (DetectorRegistry.ifIssue) plus the short name the SPI "
-           + "adapter reports. A row naming a class the factory does not create silently stops "
-           + "resolving, and the finding loses its tier without anything going red.",
+           + "simple name keys the report map (DetectorRegistry.ifIssue). A row naming a class the "
+           + "registry's factory row does not create silently stops resolving, and the finding loses "
+           + "its tier without anything going red.",
     enforcedBy = "se.deversity.asynctest.architecture.DetectorTrustCoverageTest"
 )
 @API(status = Status.EXPERIMENTAL)
@@ -76,7 +76,9 @@ public final class DetectorTrust {
      * @param type          the public {@link DetectorType} constant
      * @param detectorClass simple name of the detector class, which is the key
      *                      {@code DetectorRegistry.ifIssue} puts in the report map
-     * @param spiName       short name the SPI adapter reports as {@code Violation.detector()}
+     * @param spiName       the short name a detector's own structured violations carry as
+     *                      {@code Violation.detector()} (#930), also what the SPI bridge reported
+     *                      until 1.13.0 deleted it (#922); accepted as a lookup alias
      * @param tier          the weakest tier this detector can produce
      */
     public record Row(DetectorType type, String detectorClass, String spiName, TrustTier tier) { }
@@ -413,8 +415,18 @@ public final class DetectorTrust {
      */
     public static TrustTier tierOfDetector(String detectorName) {
         Row found = detectorName == null ? null : BY_NAME.get(detectorName);
-        return found == null ? TrustTier.PROMPT : found.tier();
+        if (found != null) {
+            return found.tier();
+        }
+        return detectorName == null ? TrustTier.PROMPT : HARNESS.getOrDefault(detectorName, TrustTier.PROMPT);
     }
+
+    /**
+     * Findings the harness raises itself, with no {@link DetectorType}: a verified
+     * {@code OperationHistory} round that no order of its operations explains (#934). That is a
+     * proof over what the workers observed, so it is FACT, not the PROMPT an unknown name gets.
+     */
+    private static final Map<String, TrustTier> HARNESS = Map.of("Linearizability", TrustTier.FACT);
 
     /**
      * {@return the {@link DetectorType} behind a reporting detector's name, when it is a built-in}

@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.AsyncTestContext;
@@ -74,8 +75,10 @@ class ThrottledServiceTest {
     // -----------------------------------------------------------------------
 
     @Disabled("Remove @Disabled to see sleep-in-lock detected by SleepInLockDetector")
-    @AsyncTest(threads = 8, invocations = 2, detectAll = false,
-            detectSleepInLock = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8,
+            invocations = 2,
+            failOn = FailOn.LOW,
+            includes = DetectorType.SLEEP_IN_LOCK)
 
 
     void test_concurrent_detectsSleepInLock() {

@@ -101,7 +101,7 @@ class RequestCounterServiceTest {
      * 3. Fix: replace `synchronized (lock)` with ConcurrentHashMap.merge()
      */
     @Disabled("Remove @Disabled to see lock contention detected by LockContentionDetector")
-    @AsyncTest(threads = 12, invocations = 200, detectLockContention = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 12, invocations = 200, failOn = FailOn.LOW, detectAll = true)
     void testRecordRequest_concurrent_detectsLockContention() {
         String endpoint = "/api/endpoint-" + (Thread.currentThread().threadId() % 4);
 

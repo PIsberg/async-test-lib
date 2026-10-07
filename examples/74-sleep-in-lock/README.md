@@ -1,7 +1,7 @@
 # Example 74 — Sleep In Lock
 
 **Detector**: `SleepInLockDetector`  
-**Flag**: `detectSleepInLock = true`
+**Select it with**: `includes = DetectorType.SLEEP_IN_LOCK`
 
 ## The Problem
 

@@ -78,10 +78,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage, recorded from inside the task:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectTimerIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.TIMER)
  * void testTimerUsage() {
  *     Timer timer = new Timer("my-timer");
- *     TimerDetector detector = AsyncTestContext.timerMonitor();
+ *     TimerDetector detector = AsyncTestContext.timerDetector();
  *     detector.registerTimer(timer, "my-timer");
  *
  *     timer.schedule(new TimerTask() {

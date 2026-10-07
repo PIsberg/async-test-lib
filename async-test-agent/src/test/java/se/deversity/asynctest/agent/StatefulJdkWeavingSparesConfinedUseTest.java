@@ -50,7 +50,7 @@ class StatefulJdkWeavingSparesConfinedUseTest {
         findings = AsyncFindings.collect();
     }
 
-    @AsyncTest(threads = 4, invocations = 25)
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void oneOfEachPerCall() {
         confined.year();
         confined.append();

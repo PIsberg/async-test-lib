@@ -25,7 +25,7 @@ class GuardedCounterStaysSilentTest {
 
   private var counter = 0
 
-  @AsyncTest(threads = 8, invocations = 200, failOn = FailOn.NONE, licenseMockMode = true)
+  @AsyncTest(threads = 8, invocations = 200, failOn = FailOn.NONE, licenseMockMode = true, detectAll = true)
   def guardedWritesFromEightThreads(): Unit = this.synchronized {
     val ctx = AsyncTestContext.get()
     if (ctx != null) ctx.sharedRaceConditionDetector().recordFieldWrite(this, "counter")

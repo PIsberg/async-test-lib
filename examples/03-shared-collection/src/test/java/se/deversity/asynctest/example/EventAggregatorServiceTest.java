@@ -99,7 +99,7 @@ class EventAggregatorServiceTest {
      *            replace HashMap with ConcurrentHashMap
      */
     @Disabled("Remove @Disabled to see the bug detected by SharedCollectionDetector")
-    @AsyncTest(threads = 8, invocations = 100, detectSharedCollections = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 8, invocations = 100, failOn = FailOn.LOW, detectAll = true)
 
     void testRecordEvent_concurrent_detectsSharedCollectionUse() {
         // The recording has to name the collection the threads actually mutate. Recording
@@ -107,7 +107,7 @@ class EventAggregatorServiceTest {
         // saw 800 collections with one writer each rather than one collection with eight, and it
         // reported nothing however long the test ran. See issue #346.
         service.observeCollectionWrites((collection, operation) ->
-                AsyncTestContext.sharedCollectionMonitor()
+                AsyncTestContext.sharedCollectionDetector()
                         .recordWrite(collection, collection instanceof java.util.Map
                                 ? "event-counts" : "event-log", operation));
 

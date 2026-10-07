@@ -1,5 +1,6 @@
 package se.deversity.asynctest.example;
 
+import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
@@ -170,8 +171,10 @@ class ServiceInitializerTest {
      * 3. Fix: remove latch.countDown() from the catch block
      */
     @Disabled("Remove @Disabled to see latch misuse detected by LatchMisuseDetector")
-    @AsyncTest(threads = 4, invocations = 20, detectAll = false,
-            detectLatchMisuse = true, failOn = FailOn.LOW)
+    @AsyncTest(threads = 4,
+            invocations = 20,
+            failOn = FailOn.LOW,
+            includes = DetectorType.LATCH_MISUSE)
     void testInitialize_concurrent_detectsExtraCountDowns() throws Exception {
         // This demonstration used to hand-record four countDown() calls into a locally
         // constructed detector and assert on the result, without ever calling the service. It

@@ -1,7 +1,7 @@
 # Example 75 — Stamped Lock
 
 **Detector**: `StampedLockDetector`  
-**Flag**: `detectStampedLockIssues = true`
+**Select it with**: `includes = DetectorType.STAMPED_LOCK`
 
 ## The Problem
 

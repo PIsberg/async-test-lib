@@ -97,7 +97,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Usage:
  * <pre>{@code
- * @AsyncTest(threads = 4, detectConditionVariableIssues = true)
+ * @AsyncTest(threads = 4, includes = DetectorType.CONDITION_VARIABLES)
  * void consumerAndProducer() throws InterruptedException {
  *     var monitor = AsyncTestContext.conditionVariableDetector();
  *     // lock: the ReentrantLock that made it; the predicate is what the waiter waits for
@@ -714,7 +714,7 @@ public class ConditionVariableDetector {
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
             for (String waiter : stuckWaiters) {
-                structuredViolations.add(new Violation("ConditionVariable", severity,
+                structuredViolations.add(new Violation("ConditionVariables", severity,
                         waiter, List.of(), Map.of(), Instant.now()));
             }
         }
