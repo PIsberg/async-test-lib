@@ -91,16 +91,8 @@ you are editing here.
 
 <rule>Elements listed in <security_elements> are security-critical. Never weaken their security properties. Every proposed change must be explicitly reviewed for security impact.</rule>
   <scoped_rules>
-    <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. Unless an entry carries an explicit path, its file is .claude/rules/{path, every non-alphanumeric character replaced by &#39;-&#39;}.md. Consult the file before modifying an element.</note>
-    <element path="se.deversity.asynctest.AgentCollectionHooks"/>
-    <element path="se.deversity.asynctest.AgentConcurrencyUtilHooks"/>
-    <element path="se.deversity.asynctest.AgentConstructionHooks"/>
-    <element path="se.deversity.asynctest.AgentGcHooks"/>
-    <element path="se.deversity.asynctest.AgentLockHooks"/>
-    <element path="se.deversity.asynctest.AgentMonitorHooks"/>
-    <element path="se.deversity.asynctest.AgentSharedInstanceHooks"/>
-    <element path="se.deversity.asynctest.AgentSleepHooks"/>
-    <element path="se.deversity.asynctest.AgentThreadHooks"/>
+    <note>Detailed per-element guardrails for the elements below live in scoped rule files that load automatically when the matching source file is opened. An elements entry lists names under a shared prefix: in="a.b" listing C, D means a.b.C and a.b.D. Unless an entry carries an explicit path, its file is .claude/rules/{path, every non-alphanumeric character replaced by &#39;-&#39;}.md. Consult the file before modifying an element.</note>
+    <elements in="se.deversity.asynctest">AgentCollectionHooks, AgentConcurrencyUtilHooks, AgentConstructionHooks, AgentGcHooks, AgentLockHooks, AgentMonitorHooks, AgentSharedInstanceHooks, AgentSleepHooks, AgentThreadHooks, RunOutcomes</elements>
     <element path="se.deversity.asynctest.AsyncAssert" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncFindings" rules=".claude/rules/async-test-public-api.md"/>
     <element path="se.deversity.asynctest.AsyncTest" rules=".claude/rules/async-test-configuration.md"/>
@@ -113,7 +105,6 @@ you are editing here.
     <element path="se.deversity.asynctest.DetectorRegistry" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.DetectorType" rules=".claude/rules/async-test-configuration.md"/>
     <element path="se.deversity.asynctest.Preset" rules=".claude/rules/async-test-configuration.md"/>
-    <element path="se.deversity.asynctest.RunOutcomes"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkComparator" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.benchmark.BenchmarkRecorder" rules=".claude/rules/async-test-instrumentation.md"/>
     <element path="se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector" rules=".claude/rules/async-test-detectors.md"/>
