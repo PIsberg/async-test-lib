@@ -57,12 +57,9 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedKdfDetectorTest.java"
 )
-public final class SharedKdfDetector {
+public final class SharedKdfDetector extends AbstractInstanceDetector<SharedKdfDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String algorithm;
         final Set<String> operations           = ConcurrentHashMap.newKeySet();
@@ -73,7 +70,10 @@ public final class SharedKdfDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label, "unknown");
+    }
 
     /**
      * Record an access to a KDF instance.
@@ -87,13 +87,10 @@ public final class SharedKdfDetector {
      */
     public void recordAccess(Object kdf, String algorithm, String operation, Thread thread) {
         if (kdf == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(kdf));
+        State s = trackedState(kdf);
         if (s == null) {
-            IdentityKey key = new IdentityKey(kdf);
-            final String label = unnamedLabels.of(key, kdf.getClass().getSimpleName());
-            final String algo = algorithm != null ? algorithm : "unknown";
-            s = instances.computeIfAbsent(key, k -> new State(label, algo));
+            String algo = algorithm != null ? algorithm : "unknown";
+            s = stateFor(kdf, null, kdf.getClass().getSimpleName(), label -> new State(label, algo));
         }
         if (operation != null) s.operations.add(operation);
         s.noteAccess(kdf, thread);
@@ -105,7 +102,7 @@ public final class SharedKdfDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "KDF '%s' (algorithm %s) accessed from %d threads (%s) via %s — "

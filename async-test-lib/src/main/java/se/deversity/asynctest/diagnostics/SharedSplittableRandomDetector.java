@@ -56,12 +56,9 @@ import java.util.random.RandomGenerator;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedSplittableRandomDetectorTest.java"
 )
-public final class SharedSplittableRandomDetector {
+public final class SharedSplittableRandomDetector extends AbstractInstanceDetector<SharedSplittableRandomDetector.GeneratorState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class GeneratorState extends SelfGuard.ThreadTrackedInstance {
+    static final class GeneratorState extends SelfGuard.ThreadTrackedInstance {
         final String name;
         final String type;
         final AtomicInteger accessCount = new AtomicInteger();
@@ -73,7 +70,10 @@ public final class SharedSplittableRandomDetector {
         }
     }
 
-    private final Map<IdentityKey, GeneratorState> generators = new ConcurrentHashMap<>();
+    @Override
+    GeneratorState newState(Object instance, String label) {
+        return new GeneratorState(label, instance.getClass().getSimpleName());
+    }
 
     /**
      * Register a generator for monitoring. {@code java.util.Random} subclasses are ignored —
@@ -86,13 +86,7 @@ public final class SharedSplittableRandomDetector {
         if (!tracked(generator)) {
             return;
         }
-        IdentityKey key = new IdentityKey(generator);
-        if (generators.containsKey(key)) {
-            return;
-        }
-        String type = generator.getClass().getSimpleName();
-        String label = name != null ? name : unnamedLabels.of(key, type);
-        generators.computeIfAbsent(key, k -> new GeneratorState(label, type));
+        stateFor(generator, name);
     }
 
     /**
@@ -106,14 +100,7 @@ public final class SharedSplittableRandomDetector {
         if (!tracked(generator)) {
             return;
         }
-        // The thread's lookup key, reused while it names the same instance (#812).
-        GeneratorState state = generators.get(IdentityKey.lookup(generator));
-        if (state == null) {
-            IdentityKey key = new IdentityKey(generator);
-            final String type = generator.getClass().getSimpleName();
-            final String label = name != null ? name : unnamedLabels.of(key, type);
-            state = generators.computeIfAbsent(key, k -> new GeneratorState(label, type));
-        }
+        GeneratorState state = stateFor(generator, name);
         state.accessCount.incrementAndGet();
         state.operations.add(methodName != null ? methodName : "next*");
         Thread current = Thread.currentThread();
@@ -131,7 +118,7 @@ public final class SharedSplittableRandomDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (GeneratorState state : generators.values()) {
+        for (GeneratorState state : states()) {
             if (!state.sharedAndUnguarded()) {
                 continue;
             }

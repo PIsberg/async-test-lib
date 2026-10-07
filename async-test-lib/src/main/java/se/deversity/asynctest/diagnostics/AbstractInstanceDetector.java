@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 
 /**
  * The per-instance scaffolding of a detector that tracks state for each object it is told about,
@@ -40,17 +41,68 @@ abstract class AbstractInstanceDetector<S> {
     /**
      * {@return the state for {@code instance}, registered on first sight}
      *
+     * <p>An unnamed instance is labelled by its class's simple name.
+     *
      * @param instance the tracked object; callers skip {@code null} before they get here
      * @param name     the test's label for it, or {@code null} for one of its kind
      */
     final S stateFor(Object instance, @Nullable String name) {
         S state = states.get(IdentityKey.lookup(instance));
-        if (state == null) {
-            // The label, and the weak key, are built only when the instance is first seen.
-            state = states.computeIfAbsent(new IdentityKey.Weak(instance, null),
-                    key -> newState(instance, label(instance, name)));
-        }
-        return state;
+        return state != null ? state : register(instance, name, null, null);
+    }
+
+    /**
+     * {@return the state for {@code instance}, registered on first sight}
+     *
+     * @param instance the tracked object; callers skip {@code null} before they get here
+     * @param name     the test's label for it, or {@code null} for one of its kind
+     * @param kind     what an unnamed instance is labelled as, such as {@code "executor"}
+     */
+    final S stateFor(Object instance, @Nullable String name, String kind) {
+        S state = states.get(IdentityKey.lookup(instance));
+        return state != null ? state : register(instance, name, kind, null);
+    }
+
+    /**
+     * {@return the state for {@code instance}, registered on first sight with {@code factory}}
+     *
+     * <p>For a registration path whose state needs more than a label, such as a capacity the
+     * caller declares. The factory, usually a capturing lambda, is allocated on every call, so
+     * this belongs on a path called once per instance, not on a record path.
+     *
+     * @param instance the tracked object; callers skip {@code null} before they get here
+     * @param name     the test's label for it, or {@code null} for one of its kind
+     * @param kind     what an unnamed instance is labelled as
+     * @param factory  builds the state from the label; called at most once per instance
+     */
+    final S stateFor(Object instance, @Nullable String name, String kind, Function<String, ? extends S> factory) {
+        S state = states.get(IdentityKey.lookup(instance));
+        return state != null ? state : register(instance, name, kind, factory);
+    }
+
+    /**
+     * {@return the state for {@code instance}, or {@code null} when it was never registered}
+     *
+     * <p>For a record path that only counts against an instance the test registered first.
+     *
+     * @param instance the object to look up; callers skip {@code null} before they get here
+     */
+    final @Nullable S trackedState(Object instance) {
+        return states.get(IdentityKey.lookup(instance));
+    }
+
+    /** Forgets every registered state, for a detector's {@code reset()}. */
+    final void clearStates() {
+        states.clear();
+    }
+
+    private S register(Object instance, @Nullable String name, @Nullable String kind,
+            @Nullable Function<String, ? extends S> factory) {
+        // The label, and the weak key, are built only when the instance is first seen.
+        return states.computeIfAbsent(new IdentityKey.Weak(instance, null), key -> {
+            String label = label(instance, name, kind);
+            return factory != null ? factory.apply(label) : newState(instance, label);
+        });
     }
 
     /**
@@ -66,7 +118,8 @@ abstract class AbstractInstanceDetector<S> {
         return Collections.unmodifiableCollection(states.values());
     }
 
-    private String label(Object instance, @Nullable String name) {
-        return name != null ? name : unnamedLabels.of(instance, instance.getClass().getSimpleName());
+    private String label(Object instance, @Nullable String name, @Nullable String kind) {
+        if (name != null) return name;
+        return unnamedLabels.of(instance, kind != null ? kind : instance.getClass().getSimpleName());
     }
 }

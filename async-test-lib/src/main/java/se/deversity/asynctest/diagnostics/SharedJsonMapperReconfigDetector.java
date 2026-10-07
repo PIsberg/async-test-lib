@@ -77,7 +77,7 @@ import java.util.concurrent.atomic.AtomicReference;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedJsonMapperReconfigDetectorTest.java"
 )
-public final class SharedJsonMapperReconfigDetector {
+public final class SharedJsonMapperReconfigDetector extends AbstractInstanceDetector<SharedJsonMapperReconfigDetector.State> {
 
     /**
      * How many flagged mutations a finding names; the count it prints covers all of them. A body
@@ -92,7 +92,7 @@ public final class SharedJsonMapperReconfigDetector {
         return a == null || (b != null && b.size() > a.size()) ? b : a;
     }
 
-    private static final class MutationRecord {
+    static final class MutationRecord {
         final String description;
         final String threadName;
 
@@ -111,7 +111,7 @@ public final class SharedJsonMapperReconfigDetector {
      * They share the thread and the round, so one verdict covers them all once the round's users
      * are complete; only the first few are kept to be named.
      */
-    private static final class PendingMutations {
+    static final class PendingMutations {
         final long threadId;
         final AtomicInteger count = new AtomicInteger();
         final List<MutationRecord> examples = new CopyOnWriteArrayList<>();
@@ -128,7 +128,7 @@ public final class SharedJsonMapperReconfigDetector {
     }
 
     /** One round's mutations of one mapper, judged once the round is over (#784, #799). */
-    private static final class RoundMutations {
+    static final class RoundMutations {
         /** The users of the round, complete once the next round has started. */
         final SelfGuard.RoundThreads.Round users;
         /** Pending mutations by mutating thread, by identity. */
@@ -154,7 +154,7 @@ public final class SharedJsonMapperReconfigDetector {
         }
     }
 
-    private static final class State extends SelfGuard.TrackedInstance {
+    static final class State extends SelfGuard.TrackedInstance {
         final String className;
         /**
          * The using threads, per round. A use in an earlier round finished before this round
@@ -227,7 +227,10 @@ public final class SharedJsonMapperReconfigDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * Record a serialization or deserialization call made against {@code mapper} on the
@@ -285,7 +288,7 @@ public final class SharedJsonMapperReconfigDetector {
      */
     int retainedMutationRecords() {
         int n = 0;
-        for (State s : instances.values()) {
+        for (State s : states()) {
             n += s.examples.size();
             RoundMutations round = s.open.get();
             if (round != null) {
@@ -298,13 +301,8 @@ public final class SharedJsonMapperReconfigDetector {
     }
 
     private State stateFor(Object mapper) {
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(mapper));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(mapper);
-            s = instances.computeIfAbsent(key, k -> new State(mapper.getClass().getName()));
-        }
-        return s;
+        // The class name is the label, passed as the name so no unnamed label is numbered.
+        return stateFor(mapper, mapper.getClass().getName());
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -313,7 +311,7 @@ public final class SharedJsonMapperReconfigDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             // The judged rounds plus the latest one, judged here without changing any state, so
             // analyze() stays idempotent.
             int flaggedCount = s.flaggedCount.get();

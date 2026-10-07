@@ -57,12 +57,9 @@ import java.util.zip.Checksum;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedChecksumDetectorTest.java"
 )
-public final class SharedChecksumDetector {
+public final class SharedChecksumDetector extends AbstractInstanceDetector<SharedChecksumDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final Set<String>  operations           = ConcurrentHashMap.newKeySet();
 
@@ -71,7 +68,10 @@ public final class SharedChecksumDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * Record an access to a {@link Checksum} instance.
@@ -83,13 +83,7 @@ public final class SharedChecksumDetector {
      */
     public void recordAccess(Checksum checksum, String operation, Thread thread) {
         if (checksum == null || thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(checksum));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(checksum);
-            final String label = unnamedLabels.of(key, checksum.getClass().getSimpleName());
-            s = instances.computeIfAbsent(key, k -> new State(label));
-        }
+        State s = stateFor(checksum, null);
         if (operation != null) s.operations.add(operation);
         s.noteAccess(checksum, thread);
     }
@@ -100,7 +94,7 @@ public final class SharedChecksumDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "Checksum '%s' accessed from %d threads (%s) via %s — java.util.zip "

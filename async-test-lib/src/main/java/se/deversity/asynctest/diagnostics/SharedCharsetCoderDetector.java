@@ -58,12 +58,9 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedCharsetCoderDetectorTest.java"
 )
-public final class SharedCharsetCoderDetector {
+public final class SharedCharsetCoderDetector extends AbstractInstanceDetector<SharedCharsetCoderDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
         final Set<String> operations           = ConcurrentHashMap.newKeySet();
@@ -74,7 +71,10 @@ public final class SharedCharsetCoderDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label, instance instanceof CharsetEncoder ? "CharsetEncoder" : "CharsetDecoder");
+    }
 
     /**
      * Record an access to a {@link CharsetEncoder} instance.
@@ -102,13 +102,7 @@ public final class SharedCharsetCoderDetector {
 
     private void record(Object coder, String operation, String kind, Thread thread) {
         if (thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(coder));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(coder);
-            final String label = unnamedLabels.of(key, kind);
-            s = instances.computeIfAbsent(key, k -> new State(label, kind));
-        }
+        State s = stateFor(coder, null, kind);
         s.noteAccess(coder, thread);
         if (operation != null) {
             s.operations.add(operation);
@@ -121,7 +115,7 @@ public final class SharedCharsetCoderDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "%s '%s' accessed from %d threads (%s) via operations %s — %s carries mutable "

@@ -129,4 +129,17 @@ class SharedStatefulCryptoDetectorTest {
                 + "already tracks allocated " + bytes + " bytes over "
                 + RecordPathAllocation.MEASURED_CALLS + " accesses");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedStatefulCryptoDetector d = new SharedStatefulCryptoDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> {
+            try {
+                return Mac.getInstance("HmacSHA256");
+            } catch (java.security.GeneralSecurityException e) {
+                throw new IllegalStateException(e);
+            }
+        }, m -> d.recordAccess(m, null, Thread.currentThread()));
+    }
 }

@@ -278,4 +278,11 @@ public class SimpleDateFormatDetectorTest {
         assertEquals(java.util.List.of(), gradesOf(detector.analyze()),
                 "the same formats under the formatter's own monitor grade nothing");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SimpleDateFormatDetector d = new SimpleDateFormatDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> new SimpleDateFormat("yyyy"), f -> d.recordFormat(f, null));
+    }
 }

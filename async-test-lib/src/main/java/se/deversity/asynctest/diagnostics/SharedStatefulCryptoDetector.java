@@ -65,12 +65,9 @@ import javax.crypto.Mac;
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedStatefulCryptoDetectorTest.java"
 )
 @AISecure(aspect = "cryptography (confidentiality / integrity / authenticity state)")
-public final class SharedStatefulCryptoDetector {
+public final class SharedStatefulCryptoDetector extends AbstractInstanceDetector<SharedStatefulCryptoDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final String kind;
         final String algorithm;
@@ -82,7 +79,16 @@ public final class SharedStatefulCryptoDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label, kindOf(instance), algorithmOf(instance));
+    }
+
+    private static String kindOf(Object instance) {
+        if (instance instanceof Cipher) return "Cipher";
+        if (instance instanceof Mac) return "Mac";
+        return "Signature";
+    }
 
     /**
      * Record an access to a {@link Cipher} instance (init/update/doFinal/wrap/unwrap).
@@ -93,7 +99,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Cipher cipher, String name, Thread thread) {
         if (cipher == null) return;
-        record(cipher, name, "Cipher", thread);
+        record(cipher, name, thread);
     }
 
     /**
@@ -105,7 +111,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Mac mac, String name, Thread thread) {
         if (mac == null) return;
-        record(mac, name, "Mac", thread);
+        record(mac, name, thread);
     }
 
     /**
@@ -117,23 +123,14 @@ public final class SharedStatefulCryptoDetector {
      */
     public void recordAccess(Signature signature, String name, Thread thread) {
         if (signature == null) return;
-        record(signature, name, "Signature", thread);
+        record(signature, name, thread);
     }
 
-    private void record(Object instance, String name, String kind, Thread thread) {
+    private void record(Object instance, String name, Thread thread) {
         if (thread == null) return;
-        // The thread's lookup key, reused while it names the same instance (#812).
-        State s = instances.get(IdentityKey.lookup(instance));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(instance);
-            // Cold path, the first observation of this instance. The algorithm is read here, not by
-            // the callers: a method reference per access cost 16 bytes (#849).
-            final String label = (name != null)
-                    ? name : unnamedLabels.of(key, instance.getClass().getSimpleName());
-            final String algorithm = algorithmOf(instance);
-            s = instances.computeIfAbsent(key, k -> new State(label, kind, algorithm));
-        }
-        s.noteAccess(instance, thread);
+        // The kind and algorithm are read in newState, once per instance, not by the callers: a
+        // method reference per access cost 16 bytes (#849).
+        stateFor(instance, name).noteAccess(instance, thread);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -142,7 +139,7 @@ public final class SharedStatefulCryptoDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "%s '%s' (algorithm=%s) accessed from %d threads (%s) — %s is stateful "

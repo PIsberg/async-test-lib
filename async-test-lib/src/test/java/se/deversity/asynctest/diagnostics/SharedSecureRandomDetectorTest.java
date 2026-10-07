@@ -142,4 +142,11 @@ class SharedSecureRandomDetectorTest {
         d.recordAccess(rng, "rng", new Thread(() -> { }, "worker-2"));
         assertTrue(d.analyze().hasIssues());
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        SharedSecureRandomDetector d = new SharedSecureRandomDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(SecureRandom::new, r -> d.recordAccess(r, null, Thread.currentThread()));
+    }
 }

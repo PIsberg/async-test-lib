@@ -72,10 +72,7 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedMemorySegmentRaceDetectorTest.java"
 )
-public final class SharedMemorySegmentRaceDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public final class SharedMemorySegmentRaceDetector extends AbstractInstanceDetector<SharedMemorySegmentRaceDetector.SegmentState> {
 
     /**
      * Per-segment cap on retained access records. Beyond this the detector counts drops instead
@@ -88,10 +85,10 @@ public final class SharedMemorySegmentRaceDetector {
     /** How many distinct overlapping pairs to name per segment before summarising. */
     private static final int MAX_REPORTED_PAIRS = 3;
 
-    private record Access(long threadId, String threadName, long start, long end,
+    record Access(long threadId, String threadName, long start, long end,
                           boolean write, @Nullable String guard, long epoch) { }
 
-    private static final class SegmentState {
+    static final class SegmentState {
         final String label;
         final List<Access> accesses = new CopyOnWriteArrayList<>();
         final Set<String> threadNames = ConcurrentHashMap.newKeySet();
@@ -102,7 +99,10 @@ public final class SharedMemorySegmentRaceDetector {
         SegmentState(String label) { this.label = label; }
     }
 
-    private final Map<IdentityKey, SegmentState> segments = new ConcurrentHashMap<>();
+    @Override
+    SegmentState newState(Object instance, String label) {
+        return new SegmentState(label);
+    }
 
     private final java.util.concurrent.atomic.AtomicLong invocationEpoch =
             new java.util.concurrent.atomic.AtomicLong();
@@ -152,7 +152,7 @@ public final class SharedMemorySegmentRaceDetector {
                              long offset, long length, boolean write,
                              @Nullable Thread thread, @Nullable String guard) {
         if (segment == null || thread == null || length <= 0) return;
-        SegmentState s = stateFor(segment, label);
+        SegmentState s = stateFor(segment, label, "MemorySegment");
         s.threadNames.add(thread.getName());
 
         if (s.closed.get()) {
@@ -177,18 +177,7 @@ public final class SharedMemorySegmentRaceDetector {
      */
     public void recordClose(@Nullable Object segment, @Nullable String label) {
         if (segment == null) return;
-        stateFor(segment, label).closed.set(true);
-    }
-
-    private SegmentState stateFor(Object segment, @Nullable String label) {
-        // The thread's lookup key, reused while it names the same instance (#812).
-        SegmentState s = segments.get(IdentityKey.lookup(segment));
-        if (s == null) {
-            IdentityKey key = new IdentityKey(segment);
-            final String lbl = label != null ? label : unnamedLabels.of(key, "MemorySegment");
-            s = segments.computeIfAbsent(key, k -> new SegmentState(lbl));
-        }
-        return s;
+        stateFor(segment, label, "MemorySegment").closed.set(true);
     }
 
     /**
@@ -199,7 +188,7 @@ public final class SharedMemorySegmentRaceDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (SegmentState s : segments.values()) {
+        for (SegmentState s : states()) {
             long afterClose = s.afterClose.sum();
             if (afterClose > 0) {
                 add(r, s, IssueSeverity.CRITICAL, TrustTier.FACT, DetectorTrust.Evidence.ASSERTED, String.format(
