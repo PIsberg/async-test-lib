@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link java.util.concurrent.Future} instances returned from
@@ -29,12 +28,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @since 0.10.0
  */
-public class FutureIgnoredDetector {
+public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnoredDetector.SubmitRecord> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class SubmitRecord {
+    static final class SubmitRecord {
         final String taskName;
         final String submitterThreadName;
         volatile boolean inspected = false;
@@ -45,8 +41,6 @@ public class FutureIgnoredDetector {
         }
     }
 
-    private final Map<IdentityKey, SubmitRecord> submits = new ConcurrentHashMap<>();
-
     /**
      * Records that a {@code Future} was returned from a {@code submit()} call.
      *
@@ -56,10 +50,7 @@ public class FutureIgnoredDetector {
      */
     public void recordSubmit(Object future, String taskName, Thread thread) {
         if (future == null || thread == null) return;
-        String label = taskName != null ? taskName
-                : unnamedLabels.of(future, "task");
-        submits.put(new IdentityKey(future),
-                new SubmitRecord(label, ReportSections.threadLabel(thread)));
+        stateFor(future, taskName, "task", label -> new SubmitRecord(label, ReportSections.threadLabel(thread)));
     }
 
     /**
@@ -71,7 +62,7 @@ public class FutureIgnoredDetector {
      */
     public void recordInspect(Object future, Thread thread) {
         if (future == null) return;
-        SubmitRecord rec = submits.get(new IdentityKey(future));
+        SubmitRecord rec = trackedState(future);
         if (rec != null) rec.inspected = true;
     }
 
@@ -80,7 +71,7 @@ public class FutureIgnoredDetector {
      */
     public FutureIgnoredReport analyze() {
         FutureIgnoredReport r = new FutureIgnoredReport();
-        for (SubmitRecord rec : submits.values()) {
+        for (SubmitRecord rec : states()) {
             if (!rec.inspected) {
                 String finding = String.format(
                         "Future for task '%s' submitted by thread '%s' was never inspected — "

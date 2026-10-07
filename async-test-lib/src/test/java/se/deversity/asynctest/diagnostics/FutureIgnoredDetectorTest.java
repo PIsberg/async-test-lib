@@ -97,4 +97,11 @@ public class FutureIgnoredDetectorTest {
         assertTrue(msg.contains("thread '#" + vt.threadId() + "'"),
                 "the unnamed submitter must be named by its id: " + msg);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        FutureIgnoredDetector d = new FutureIgnoredDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, f -> d.recordSubmit(f, null, Thread.currentThread()));
+    }
 }
