@@ -111,16 +111,13 @@ public class CacheConcurrencyDetector extends AbstractInstanceDetector<CacheConc
         return new CacheState((Map<Object, Object>) cache, label);
     }
 
-    /** {@return the cache's state, registered on first sight as "cache-" and its identity hash} */
+    /** {@return the cache's state, registered on first sight, an unnamed cache as {@code cache@n}} */
     private CacheState cacheState(Map<?, ?> cache, @Nullable String name) {
-        CacheState state = trackedState(cache);
-        if (state == null) {
-            // Registers once: get-then-put let two threads racing on a cache's first access each
-            // keep a state, so the cross-thread contention this detector measures was invisible
-            // exactly when it was real.
-            state = stateFor(cache, name != null ? name : "cache-" + System.identityHashCode(cache));
-        }
-        return state;
+        // Registers once: get-then-put let two threads racing on a cache's first access each keep
+        // a state, so the cross-thread contention this detector measures was invisible exactly
+        // when it was real. The label was "cache-" and the identity hash, which two caches can
+        // share (#860).
+        return stateFor(cache, name, "cache");
     }
     private volatile boolean enabled = true;
 

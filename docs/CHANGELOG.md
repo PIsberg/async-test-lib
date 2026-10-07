@@ -89,7 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `null`; it now gets the numbered label of its kind, like every other unnamed subject. And
   `ThisEscapeDetector`, `ThreadLocalRandomMisuseDetector`, `VirtualThreadMonitorSerializationDetector`
   and `VirtualThreadPoolingDetector` labelled an unnamed object by its identity hash, which two live
-  objects can share; they now print `kind@n` too. The #860 scan that forbids such labels missed
+  objects can share, and so did `CacheConcurrencyDetector` (`cache-` and the hash) for a cache first
+  seen by `recordGet` or `recordPut`; they now print `kind@n` too. The #860 scan that forbids such labels missed
   them because the hash went through a local (`int id = key.hashCode()`); it now follows that
   shape (#918).
 - **`AsyncTestContext.rendezvous()`: make a round's workers meet mid-body.** A body that needed its
