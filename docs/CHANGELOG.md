@@ -115,6 +115,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thread; a fork, join or timeout from a thread that opened no scope under that id is still an
   owner-confinement violation. Three tests in `StructuredTaskScopeMisuseDetectorTest`, two red on
   the old keying.
+- **`VirtualThreadContextLeakDetector` no longer fails a run over an `InheritableThreadLocal` set
+  in a virtual thread.** The finding said virtual threads do not inherit those values by default;
+  they do (JEP 444, `Thread.Builder.inheritInheritableThreadLocals`, checked on JDK 26). It is now a
+  warning in the report, outside `hasIssues()` and the structured findings, worded as what is true:
+  every thread a virtual thread creates gets a copy. The class javadoc and the report's learning
+  text no longer say virtual threads are pooled. A value set and never removed is still an issue.
+  `VirtualThreadContextLeakDetectorTest.inheritableThreadLocalInVirtualThread_isAWarningNotAnIssue`,
+  red before.
 - **`MdcContextLeakDetector` reports a leak on a reused pool thread.** Only the last task per
   thread was compared, start against end. A leaked key is still in the MDC when the next task on
   that thread starts, so from round two on each task's start snapshot already held it and the

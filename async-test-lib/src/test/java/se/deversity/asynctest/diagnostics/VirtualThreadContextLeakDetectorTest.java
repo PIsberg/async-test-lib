@@ -83,6 +83,26 @@ class VirtualThreadContextLeakDetectorTest {
     }
 
     @Test
+    void inheritableThreadLocalInVirtualThread_isAWarningNotAnIssue() throws Exception {
+        // Virtual threads inherit InheritableThreadLocal values by default (JEP 444,
+        // Thread.Builder.inheritInheritableThreadLocals), so setting one inside a virtual thread
+        // and removing it again is correct code: nothing a failOn gate may fail on.
+        Thread vt = Thread.ofVirtual().start(() -> {
+            detector.recordThreadLocalSet("CONTEXT", Thread.currentThread(), true /* isInheritable */);
+            detector.recordThreadLocalRemoved("CONTEXT", Thread.currentThread());
+        });
+        vt.join();
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), "an InheritableThreadLocal set and removed is not a leak: " + report);
+        assertTrue(report.structuredViolations.isEmpty(), report.structuredViolations.toString());
+        String warning = report.getInheritableInVirtualIssues().get(0);
+        assertFalse(warning.contains("NOT inherited"),
+            "virtual threads do inherit InheritableThreadLocal values; the warning said otherwise: " + warning);
+        assertFalse(report.toString().contains("does NOT propagate"), report.toString());
+    }
+
+    @Test
     void noInheritableWarning_whenRegularThreadLocalInVirtualThread() throws Exception {
         Thread vt = Thread.ofVirtual().start(() -> {
             detector.recordThreadLocalSet("REQUEST_ID", Thread.currentThread(), false /* regular */);
