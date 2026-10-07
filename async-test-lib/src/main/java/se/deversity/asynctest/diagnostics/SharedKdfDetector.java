@@ -70,10 +70,6 @@ public final class SharedKdfDetector extends AbstractInstanceDetector<SharedKdfD
         }
     }
 
-    @Override
-    State newState(Object instance, String label) {
-        return new State(label, "unknown");
-    }
 
     /**
      * Record an access to a KDF instance.

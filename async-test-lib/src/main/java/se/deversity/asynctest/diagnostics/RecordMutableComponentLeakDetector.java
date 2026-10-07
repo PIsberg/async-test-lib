@@ -69,10 +69,7 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/RecordMutableComponentLeakDetectorTest.java"
 )
-public final class RecordMutableComponentLeakDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public final class RecordMutableComponentLeakDetector extends AbstractInstanceDetector<RecordMutableComponentLeakDetector.State> {
 
     /** Cap on tracked record instances, so a test allocating in a loop cannot exhaust the heap. */
     static final int MAX_INSTANCES = 512;
@@ -97,7 +94,7 @@ public final class RecordMutableComponentLeakDetector {
             "java.lang.StringBuffer",
             "java.util.BitSet");
 
-    private static final class State {
+    static final class State {
         final String label;
         final Class<?> type;
         final Object instance;
@@ -114,7 +111,10 @@ public final class RecordMutableComponentLeakDetector {
         }
     }
 
-    private final Map<IdentityKey, State> records = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return snapshotted(new State(label, instance));
+    }
     private final LongAdder dropped   = new LongAdder();
     /** Current invocation round, bumped by {@link #markInvocationStart()}. */
     private final AtomicLong invocationEpoch = new AtomicLong();
@@ -151,28 +151,25 @@ public final class RecordMutableComponentLeakDetector {
         if (!recordInstance.getClass().isRecord()) {
             return;
         }
-        IdentityKey id = new IdentityKey(recordInstance);
-        State s = records.get(id);
+        State s = trackedState(recordInstance);
         if (s == null) {
-            if (records.size() >= MAX_INSTANCES) {
+            if (states().size() >= MAX_INSTANCES) {
                 dropped.increment();
                 return;
             }
-            final String lbl = label != null
-                    ? label
-                    : unnamedLabels.of(id, recordInstance.getClass().getSimpleName());
-            s = records.computeIfAbsent(id, k -> {
-                State fresh = new State(lbl, recordInstance);
-                snapshot(fresh);
-                return fresh;
-            });
+            s = stateFor(recordInstance, label);
         }
         s.threadIds.add(thread.threadId());
         s.threadNames.add(thread.getName());
         s.sharing.record(invocationEpoch.get(), thread.threadId());
     }
 
-    /** Populate the first-sight fingerprints. Called once, inside computeIfAbsent. */
+    private static State snapshotted(State s) {
+        snapshot(s);
+        return s;
+    }
+
+    /** Populate the first-sight fingerprints. Called once per record, from newState. */
     private static void snapshot(State s) {
         for (RecordComponent rc : s.type.getRecordComponents()) {
             s.firstSight.put(rc.getName(), fingerprint(read(s.instance, rc)));
@@ -246,7 +243,7 @@ public final class RecordMutableComponentLeakDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : records.values()) {
+        for (State s : states()) {
             if (!s.sharing.sharedWithinARound()) continue;    // not shared: nothing this detector can claim
 
             List<String> mutated    = new ArrayList<>();

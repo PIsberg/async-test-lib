@@ -551,4 +551,11 @@ public class StringBuilderDetectorTest {
         assertEquals(java.util.List.of(), gradesOf(detector.analyze()),
                 "the same writers under the builder's own monitor grade nothing");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        StringBuilderDetector d = new StringBuilderDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(StringBuilder::new, b -> d.recordAppend(b, null));
+    }
 }

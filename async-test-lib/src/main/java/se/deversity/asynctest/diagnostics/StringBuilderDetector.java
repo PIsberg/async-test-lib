@@ -49,17 +49,14 @@ import org.jspecify.annotations.Nullable;
  * }
  * }</pre>
  */
-public class StringBuilderDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class StringBuilderDetector extends AbstractInstanceDetector<StringBuilderDetector.BuilderState> {
 
     /**
      * One round's sharing verdict for a builder. A fresh one per round, so the verdict is read for
      * the round it came from: the finding needs two writers and unguarded sharing in the same
      * round, and a verdict kept across the run stops tracking once any round has raced (#782).
      */
-    private static final class RoundGuard extends SelfGuard.TrackedInstance {
+    static final class RoundGuard extends SelfGuard.TrackedInstance {
         final int number;
 
         RoundGuard(int number) {
@@ -67,7 +64,7 @@ public class StringBuilderDetector {
         }
     }
 
-    private static class BuilderState {
+    static final class BuilderState {
         final String name;
         final AtomicInteger appendCount  = new AtomicInteger(0);
         final AtomicInteger insertCount  = new AtomicInteger(0);
@@ -108,7 +105,10 @@ public class StringBuilderDetector {
         }
     }
 
-    private final Map<IdentityKey, BuilderState> builders = new ConcurrentHashMap<>();
+    @Override
+    BuilderState newState(Object instance, String label) {
+        return new BuilderState(label);
+    }
 
     /**
      * Register a {@code StringBuilder} for monitoring.
@@ -118,8 +118,7 @@ public class StringBuilderDetector {
      */
     public void registerBuilder(StringBuilder builder, String name) {
         if (builder == null) return;
-        builders.putIfAbsent(new IdentityKey(builder),
-                new BuilderState(name != null ? name : unnamedLabels.of(builder, "StringBuilder")));
+        stateFor(builder, name, "StringBuilder");
     }
 
     /**
@@ -287,9 +286,7 @@ public class StringBuilderDetector {
     }
 
     private BuilderState resolve(StringBuilder builder, String name) {
-        IdentityKey key = new IdentityKey(builder);
-        return builders.computeIfAbsent(key,
-                k -> new BuilderState(name != null ? name : unnamedLabels.of(builder, "StringBuilder")));
+        return stateFor(builder, name, "StringBuilder");
     }
 
     /**
@@ -300,7 +297,7 @@ public class StringBuilderDetector {
     public StringBuilderReport analyze() {
         StringBuilderReport report = new StringBuilderReport();
 
-        for (BuilderState state : builders.values()) {
+        for (BuilderState state : states()) {
             int mutators = state.mutatingThreads.size();
             int writes   = state.appendCount.get() + state.insertCount.get()
                          + state.deleteCount.get() + state.replaceCount.get();

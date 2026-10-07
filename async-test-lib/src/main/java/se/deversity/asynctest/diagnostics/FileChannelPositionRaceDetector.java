@@ -96,12 +96,9 @@ import java.util.concurrent.atomic.AtomicReference;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/FileChannelPositionRaceDetectorTest.java"
 )
-public final class FileChannelPositionRaceDetector {
+public final class FileChannelPositionRaceDetector extends AbstractInstanceDetector<FileChannelPositionRaceDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State extends SelfGuard.ThreadTrackedInstance {
+    static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
         final Set<String> operations = ConcurrentHashMap.newKeySet();
 
@@ -200,7 +197,10 @@ public final class FileChannelPositionRaceDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * The calling thread's open seeks, if it recorded any. Confined to its thread; set on the
@@ -364,13 +364,8 @@ public final class FileChannelPositionRaceDetector {
     }
 
     private State stateFor(Object channel) {
-        IdentityKey id = new IdentityKey(channel);
-        State s = instances.get(id);
-        if (s == null) {
-            final String label = unnamedLabels.of(id, channel.getClass().getSimpleName());
-            s = instances.computeIfAbsent(id, k -> new State(label));
-        }
-        return s;
+        // Channels carry no test-given name; each is labelled by its class.
+        return stateFor(channel, null);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -379,7 +374,7 @@ public final class FileChannelPositionRaceDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (!s.sharedAndUnguarded()) continue;
             String msg = String.format(
                     "Channel '%s' had implicit-position operations (%s) from %d threads (%s), and "

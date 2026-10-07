@@ -30,12 +30,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * mon.recordSet(counter, "counter", Thread.currentThread());
  * }</pre>
  */
-public class AtomicNonAtomicUpdateDetector {
+public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<AtomicNonAtomicUpdateDetector.AtomicState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class AtomicState extends SelfGuard.TrackedInstance {
+    static final class AtomicState extends SelfGuard.TrackedInstance {
         final String name;
         final Map<Long, Integer> pendingGetByThread = new ConcurrentHashMap<>();
         final AtomicInteger      nonAtomicUpdates   = new AtomicInteger();
@@ -44,11 +41,9 @@ public class AtomicNonAtomicUpdateDetector {
         AtomicState(String name) { this.name = name; }
     }
 
-    private final Map<IdentityKey, AtomicState> atomics = new ConcurrentHashMap<>();
-
-    private AtomicState stateFor(Object atomic, String name) {
-        return atomics.computeIfAbsent(new IdentityKey(atomic),
-            key -> new AtomicState(name != null ? name : unnamedLabels.of(key, "Atomic")));
+    @Override
+    AtomicState newState(Object instance, String label) {
+        return new AtomicState(label);
     }
 
     /**
@@ -60,7 +55,7 @@ public class AtomicNonAtomicUpdateDetector {
      */
     public void recordGet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
-        AtomicState s = stateFor(atomic, name);
+        AtomicState s = stateFor(atomic, name, "Atomic");
         s.noteAccess(atomic, false);
         s.pendingGetByThread.put(thread.threadId(), 1);
     }
@@ -76,7 +71,7 @@ public class AtomicNonAtomicUpdateDetector {
      */
     public void recordSet(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
-        AtomicState s = stateFor(atomic, name);
+        AtomicState s = stateFor(atomic, name, "Atomic");
         s.noteAccess(atomic, true);
         Integer pending = s.pendingGetByThread.remove(thread.threadId());
         if (pending != null) {
@@ -96,7 +91,7 @@ public class AtomicNonAtomicUpdateDetector {
      */
     public void recordCas(Object atomic, String name, Thread thread) {
         if (atomic == null || thread == null) return;
-        stateFor(atomic, name).pendingGetByThread.remove(thread.threadId());
+        stateFor(atomic, name, "Atomic").pendingGetByThread.remove(thread.threadId());
     }
 
     /**
@@ -106,7 +101,7 @@ public class AtomicNonAtomicUpdateDetector {
      * @since 1.11.2
      */
     public void markInvocationStart() {
-        for (AtomicState s : atomics.values()) {
+        for (AtomicState s : states()) {
             s.pendingGetByThread.clear();
         }
     }
@@ -116,7 +111,7 @@ public class AtomicNonAtomicUpdateDetector {
      */
     public AtomicNonAtomicUpdateReport analyze() {
         AtomicNonAtomicUpdateReport r = new AtomicNonAtomicUpdateReport();
-        for (AtomicState s : atomics.values()) {
+        for (AtomicState s : states()) {
             // A get+set pair inside a critical section every access of its round shares is
             // excluded from the interleaving this detector names, so the lockset decides, as for
             // the Shared* family. Judged per round: the runner orders rounds, so a different lock

@@ -62,12 +62,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class SharedCollectionDetector {
+public class SharedCollectionDetector extends AbstractInstanceDetector<SharedCollectionDetector.CollectionState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class CollectionState extends SelfGuard.TrackedInstance {
+    static final class CollectionState extends SelfGuard.TrackedInstance {
         final String name;
         final String collectionType;
         final AtomicInteger readCount  = new AtomicInteger(0);
@@ -114,7 +111,10 @@ public class SharedCollectionDetector {
         }
     }
 
-    private final Map<IdentityKey, CollectionState> collections = new ConcurrentHashMap<>();
+    @Override
+    CollectionState newState(Object instance, String label) {
+        return new CollectionState(label, instance.getClass().getSimpleName());
+    }
 
     /**
      * Register a collection for monitoring.
@@ -125,10 +125,8 @@ public class SharedCollectionDetector {
      */
     public void registerCollection(Object collection, String name, String collectionType) {
         if (collection == null) return;
-        IdentityKey key = new IdentityKey(collection);
         String resolvedType = collectionType != null ? collectionType : collection.getClass().getSimpleName();
-        collections.computeIfAbsent(key,
-                k -> new CollectionState(name != null ? name : unnamedLabels.next(resolvedType), resolvedType));
+        stateFor(collection, name, resolvedType, label -> new CollectionState(label, resolvedType));
     }
 
     /**
@@ -179,17 +177,7 @@ public class SharedCollectionDetector {
     }
 
     private CollectionState resolveState(Object collection, String name) {
-        // Get first, with the thread's lookup key, reused while it names the same instance:
-        // computeIfAbsent allocated its capturing factory and a key on every call (#812).
-        CollectionState state = collections.get(IdentityKey.lookup(collection));
-        if (state != null) {
-            return state;
-        }
-        return collections.computeIfAbsent(new IdentityKey(collection), k -> {
-            String type = collection.getClass().getSimpleName();
-            String label = name != null ? name : unnamedLabels.next(type);
-            return new CollectionState(label, type);
-        });
+        return stateFor(collection, name);
     }
 
     /**
@@ -204,7 +192,7 @@ public class SharedCollectionDetector {
      * @since 1.9.8
      */
     public void markInvocationStart() {
-        for (CollectionState state : collections.values()) {
+        for (CollectionState state : states()) {
             state.foldRound();
         }
     }
@@ -217,7 +205,7 @@ public class SharedCollectionDetector {
     public SharedCollectionReport analyze() {
         SharedCollectionReport report = new SharedCollectionReport();
 
-        for (CollectionState state : collections.values()) {
+        for (CollectionState state : states()) {
             // The final round has not been folded by a round start.
             state.foldRound();
             int writers = state.maxRoundWriters;

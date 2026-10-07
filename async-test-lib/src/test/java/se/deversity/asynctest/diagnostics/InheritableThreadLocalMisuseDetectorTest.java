@@ -183,4 +183,11 @@ public class InheritableThreadLocalMisuseDetectorTest {
         assertTrue(report.contains("USER: accessed by 3 threads"),
                 "the second variable's line counts its own three threads: " + report);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        InheritableThreadLocalMisuseDetector d = new InheritableThreadLocalMisuseDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> new InheritableThreadLocal<String>(), itl -> d.recordGet(itl, null));
+    }
 }

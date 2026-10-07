@@ -66,9 +66,9 @@ import java.util.concurrent.ThreadLocalRandom;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/ThreadLocalRandomMisuseDetectorTest.java"
 )
-public final class ThreadLocalRandomMisuseDetector {
+public final class ThreadLocalRandomMisuseDetector extends AbstractInstanceDetector<ThreadLocalRandomMisuseDetector.State> {
 
-    private static final class State {
+    static final class State {
         final String label;
         /** The first thread to obtain the reference, named in the report. */
         final String obtainingThreadName;
@@ -82,8 +82,6 @@ public final class ThreadLocalRandomMisuseDetector {
         }
     }
 
-    private final Map<IdentityKey, State> instances = new ConcurrentHashMap<>();
-
     /**
      * Record the thread that obtained a {@link ThreadLocalRandom} reference via
      * {@code current()} and cached it.
@@ -94,11 +92,12 @@ public final class ThreadLocalRandomMisuseDetector {
      */
     public void recordObtain(ThreadLocalRandom rng, String name, Thread thread) {
         if (rng == null || thread == null) return;
-        IdentityKey key = new IdentityKey(rng);
-        int id = key.hashCode();
-        final String label = (name != null) ? name : "ThreadLocalRandom@" + id;
-        instances.computeIfAbsent(key, k -> new State(label, ReportSections.threadLabel(thread)))
-                .obtainingThreadIds.add(thread.threadId());
+        State s = trackedState(rng);
+        if (s == null) {
+            String label = (name != null) ? name : "ThreadLocalRandom@" + System.identityHashCode(rng);
+            s = stateFor(rng, label, "ThreadLocalRandom", l -> new State(l, ReportSections.threadLabel(thread)));
+        }
+        s.obtainingThreadIds.add(thread.threadId());
     }
 
     /**
@@ -110,7 +109,7 @@ public final class ThreadLocalRandomMisuseDetector {
      */
     public void recordUse(ThreadLocalRandom rng, Thread thread) {
         if (rng == null || thread == null) return;
-        State s = instances.get(new IdentityKey(rng));
+        State s = trackedState(rng);
         if (s == null) return; // never recorded as obtained — nothing to correlate
         if (!s.obtainingThreadIds.contains(thread.threadId())) {
             s.misusingThreads.add(ReportSections.threadLabel(thread));
@@ -123,7 +122,7 @@ public final class ThreadLocalRandomMisuseDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : instances.values()) {
+        for (State s : states()) {
             if (s.misusingThreads.isEmpty()) continue;
             String msg = String.format(Locale.ROOT,
                     "ThreadLocalRandom '%s' obtained by thread '%s' but used by %d thread(s) that "

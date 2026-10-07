@@ -108,10 +108,17 @@ abstract class AbstractInstanceDetector<S> {
     /**
      * {@return a fresh state for an instance seen for the first time}
      *
+     * <p>Called by the {@code stateFor} overloads without a factory. A detector whose state
+     * always needs more than the instance and its label registers through the factory overload
+     * and does not override this.
+     *
      * @param instance the instance, for a subclass that reads something from it once
      * @param label    the test's name for it, or a label of its kind
+     * @throws UnsupportedOperationException unless overridden
      */
-    abstract S newState(Object instance, String label);
+    S newState(Object instance, String label) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " registers its states through a factory");
+    }
 
     /** {@return every state registered so far, as a live read-only view} */
     final Collection<S> states() {

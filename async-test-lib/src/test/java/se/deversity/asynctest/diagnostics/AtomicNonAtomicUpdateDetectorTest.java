@@ -325,4 +325,11 @@ public class AtomicNonAtomicUpdateDetectorTest {
         assertTrue(droppedClockReported(false),
             "B's later get+set holds no lock; the hand-off excuses A's lock, not a missing one");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        AtomicNonAtomicUpdateDetector d = new AtomicNonAtomicUpdateDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, a -> d.recordGet(a, null, Thread.currentThread()));
+    }
 }

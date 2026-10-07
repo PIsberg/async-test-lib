@@ -892,4 +892,11 @@ class FileChannelPositionRaceDetectorTest {
         assertTrue(d.analyze().hasIssues(),
             "an unknown name may move the cursor, so it is kept as the conservative choice");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        FileChannelPositionRaceDetector d = new FileChannelPositionRaceDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, c -> d.recordImplicitPositionAccess(c, "read"));
+    }
 }

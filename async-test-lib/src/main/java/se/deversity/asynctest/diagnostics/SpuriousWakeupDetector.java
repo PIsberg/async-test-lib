@@ -22,12 +22,9 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SpuriousWakeupDetectorTest.java"
 )
-public final class SpuriousWakeupDetector {
+public final class SpuriousWakeupDetector extends AbstractInstanceDetector<SpuriousWakeupDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State {
+    static final class State {
         final String monitorName;
         final Set<String> threadsOutsideLoop = ConcurrentHashMap.newKeySet();
 
@@ -36,7 +33,10 @@ public final class SpuriousWakeupDetector {
         }
     }
 
-    private final Map<IdentityKey, State> monitors = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * Record a wait/await operation.
@@ -50,10 +50,7 @@ public final class SpuriousWakeupDetector {
         if (monitor == null || thread == null) return;
         if (insideLoop) return; // Safely inside loop, do not track as violation
         
-        IdentityKey key = new IdentityKey(monitor);
-        State s = monitors.computeIfAbsent(key, k -> new State(
-            monitorName != null ? monitorName : unnamedLabels.of(k, "Monitor")
-        ));
+        State s = stateFor(monitor, monitorName, "Monitor");
         s.threadsOutsideLoop.add(thread.getName());
     }
     /**
@@ -63,7 +60,7 @@ public final class SpuriousWakeupDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : monitors.values()) {
+        for (State s : states()) {
             if (s.threadsOutsideLoop.isEmpty()) continue;
             
             String msg = String.format(

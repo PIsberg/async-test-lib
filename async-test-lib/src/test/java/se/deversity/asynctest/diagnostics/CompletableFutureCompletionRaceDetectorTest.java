@@ -225,4 +225,11 @@ class CompletableFutureCompletionRaceDetectorTest {
         assertTrue(rendered.contains("lookup"));
         assertTrue(rendered.contains("Fix:"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CompletableFutureCompletionRaceDetector d = new CompletableFutureCompletionRaceDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(CompletableFuture::new, f -> d.recordCompletionAttempt(f, null, "v", true, Thread.currentThread()));
+    }
 }
