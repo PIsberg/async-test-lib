@@ -133,11 +133,14 @@ done behind the existing API. Only deletions must wait for 2.0.
 
 ### Train 2 — 1.9.x (fully compatible)
 
-* **`AbstractInstanceDetector<T>` base class** (#918, **first wave done 2026-10-06**: the base
-  class with weak identity keys, and the five `Shared*` detectors whose scaffolding was identical:
-  `SharedDecimalFormat`, `SharedFormatter`, `SharedMatcher`, `SharedTimeZone`, `SharedXmlParser`.
-  The rest vary in state shape and migrate in later waves): owns the instance map, `stateFor()`
-  (get-then-computeIfAbsent hot path), thread-id/name key sets, enabled flag, and `reset()`.
+* **`AbstractInstanceDetector<T>` base class** (#918, **done 2026-10-07**: the first wave on
+  2026-10-06 added the base class with weak identity keys and moved the five `Shared*` detectors
+  whose scaffolding was identical; ten more waves moved every detector whose state is per
+  subject, each with a retention test that was red on the old code. What stays on its own map
+  is listed in the changelog entry for #918, with the reason. The thread-id/name key sets live in
+  `SelfGuard.ThreadTrackedInstance`, and the enabled flag stayed per detector, since only some
+  detectors have one): owns the instance map, `stateFor()` (get-then-computeIfAbsent hot path),
+  the unnamed label, and `clearStates()` for `reset()`.
   Migrate the ~83 scaffolding-duplicating detectors in waves — each has a dedicated test
   class to pin behavior. Fix the `identityHashCode` hazard here once, in the base class,
   with weak identity keying.

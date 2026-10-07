@@ -33,7 +33,15 @@ New detectors live in `diagnostics/` and follow the house thread-safety idiom. A
 keeps state per object it is told about extends `AbstractInstanceDetector<S>` (#918), which owns
 the weakly identity-keyed map, the get-then-`computeIfAbsent` lookup and the label of an unnamed
 object: implement `newState(instance, label)`, call `stateFor(instance, name)` on the record path
-and iterate `states()` in `analyze()`. Otherwise: per-key state in a
+and iterate `states()` in `analyze()`. `stateFor(instance, name, kind)` labels an unnamed object as
+`kind` instead of its class; a record path that only counts against a registered object uses
+`trackedState(instance)`, which never registers; a registration whose state needs more than the
+label (a declared capacity, the creating thread) passes a factory, `stateFor(instance, name, kind,
+label -> new State(label, capacity))`, which belongs on a path called once per object because the
+lambda is allocated per call; `reset()` calls `clearStates()`. Keep a state free of the object
+itself unless analysis has to read it back: the weak key releases the object only if nothing
+else holds it, and the detector's test should call `AbstractInstanceDetectorTest.assertNotRetained`.
+Otherwise: per-key state in a
 `ConcurrentHashMap` with a **get-then-`computeIfAbsent`** hot path, thread-id/name sets as
 `ConcurrentHashMap.newKeySet()`, counters as `LongAdder`. Violation lists are `CopyOnWrite` or
 synchronized lists; first-registration-wins uses `putIfAbsent`.
