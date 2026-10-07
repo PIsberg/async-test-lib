@@ -3,6 +3,7 @@ package se.deversity.asynctest.diagnostics;
 import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import java.time.Instant;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -180,6 +181,8 @@ public class LockDowngradeDetector extends AbstractInstanceDetector<LockDowngrad
      * @param peer the detector that will report read-to-write upgrades, or {@code null} to keep
      *             reporting them here
      */
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2",
+            justification = "the peer detector is shared on purpose: this one forwards upgrades to it to report")
     public void deferUpgradeReportingTo(@Nullable LockUpgradeDeadlockDetector peer) {
         this.upgradeReporter = peer;
     }

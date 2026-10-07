@@ -31,7 +31,6 @@ import java.util.Map;
  */
 public class PublicLockExposureDetector extends AbstractInstanceDetector<PublicLockExposureDetector.ObjectState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     /** What was recorded about one object: whether it locks on itself, and whether it escaped. */
     static final class ObjectState {
         final String label;
