@@ -70,6 +70,35 @@ public class MdcContextLeakDetectorTest {
     }
 
     @Test
+    void leakIsReportedWhenTheNextTaskOnTheSameThreadInheritsIt() {
+        // A pool thread runs one task per round. Round one leaks requestId; round two starts with
+        // the leaked key already in the MDC (that is the leak) and ends with it still there.
+        var d = new MdcContextLeakDetector();
+        Thread t = Thread.currentThread();
+        d.recordTaskStart(t, null);
+        d.recordTaskEnd(t, Map.of("requestId", "r1"));
+        d.recordTaskStart(t, Map.of("requestId", "r1"));
+        d.recordTaskEnd(t, Map.of("requestId", "r1"));
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(),
+                "the first task leaked requestId; the second task's start snapshot replaced the "
+                        + "first task's record, so the leak hid itself on the reused thread");
+        assertTrue(report.violations.get(0).contains("requestId"), report.toString());
+    }
+
+    @Test
+    void cleanTasksRepeatedOnTheSameThreadStayClean() {
+        var d = new MdcContextLeakDetector();
+        Thread t = Thread.currentThread();
+        for (int round = 0; round < 3; round++) {
+            d.recordTaskStart(t, null);
+            d.recordTaskEnd(t, null);
+        }
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    @Test
     void testNullSafety() {
         var d = new MdcContextLeakDetector();
         assertDoesNotThrow(() -> d.recordTaskStart(null, null));

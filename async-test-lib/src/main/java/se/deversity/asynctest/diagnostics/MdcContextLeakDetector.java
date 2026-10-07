@@ -45,17 +45,29 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MdcContextLeakDetector {
 
     private static class TaskSnapshot {
-        final String              threadName;
         final Map<String, String> startMdc;
-        volatile @Nullable Map<String, String> endMdc;
 
-        TaskSnapshot(String threadName, Map<String, String> startMdc) {
-            this.threadName = threadName;
-            this.startMdc   = startMdc != null ? new LinkedHashMap<>(startMdc) : Collections.emptyMap();
+        TaskSnapshot(@Nullable Map<String, String> startMdc) {
+            this.startMdc = startMdc != null ? new LinkedHashMap<>(startMdc) : Collections.emptyMap();
         }
     }
 
+    /** The keys tasks on one thread left behind, over every task that thread ran. */
+    private static class ThreadLeaks {
+        final String      threadName;
+        final Set<String> keys = Collections.synchronizedSet(new LinkedHashSet<>());
+
+        ThreadLeaks(String threadName) {
+            this.threadName = threadName;
+        }
+    }
+
+    /** The task each thread is running now; the next task's start replaces it. */
     private final Map<Long, TaskSnapshot> snapshots = new ConcurrentHashMap<>();
+    // Leaks are settled when each task ends, not at analysis: a pooled thread runs one task per
+    // round, and the next task starts with the leaked keys already in its MDC, so comparing only
+    // the last task's start and end hid every leak on a reused thread.
+    private final Map<Long, ThreadLeaks> leaks = new ConcurrentHashMap<>();
 
     /**
      * Records the MDC state at the start of a task.
@@ -65,8 +77,7 @@ public class MdcContextLeakDetector {
      */
     public void recordTaskStart(Thread thread, Map<String, String> mdcSnapshot) {
         if (thread == null) return;
-        snapshots.put(thread.threadId(),
-                new TaskSnapshot(thread.getName(), mdcSnapshot));
+        snapshots.put(thread.threadId(), new TaskSnapshot(mdcSnapshot));
     }
 
     /**
@@ -77,9 +88,13 @@ public class MdcContextLeakDetector {
      */
     public void recordTaskEnd(Thread thread, Map<String, String> mdcSnapshot) {
         if (thread == null) return;
-        TaskSnapshot snap = snapshots.get(thread.threadId());
-        if (snap == null) return;
-        snap.endMdc = mdcSnapshot != null ? new LinkedHashMap<>(mdcSnapshot) : Collections.emptyMap();
+        TaskSnapshot snap = snapshots.remove(thread.threadId());
+        if (snap == null || mdcSnapshot == null) return;
+        Set<String> leaked = new LinkedHashSet<>(mdcSnapshot.keySet());
+        leaked.removeAll(snap.startMdc.keySet());
+        if (leaked.isEmpty()) return;
+        leaks.computeIfAbsent(thread.threadId(), id -> new ThreadLeaks(thread.getName()))
+             .keys.addAll(leaked);
     }
 
     /**
@@ -87,19 +102,18 @@ public class MdcContextLeakDetector {
      */
     public MdcContextLeakReport analyze() {
         MdcContextLeakReport r = new MdcContextLeakReport();
-        for (TaskSnapshot snap : snapshots.values()) {
-            if (snap.endMdc == null) continue;
-            Set<String> leaked = new LinkedHashSet<>(snap.endMdc.keySet());
-            leaked.removeAll(snap.startMdc.keySet());
-            if (!leaked.isEmpty()) {
-                String finding = String.format(
-                        "Thread '%s' left %d MDC key(s) behind after task completion: %s — "
-                                + "these will contaminate the next task run on this thread",
-                        snap.threadName, leaked.size(), leaked);
-                r.violations.add(finding);
-                r.structuredViolations.add(new Violation("MdcContextLeak", IssueSeverity.HIGH,
-                        finding, List.of(), Map.of(), Instant.now()));
+        for (ThreadLeaks t : leaks.values()) {
+            Set<String> leaked;
+            synchronized (t.keys) {
+                leaked = new LinkedHashSet<>(t.keys);
             }
+            String finding = String.format(
+                    "Thread '%s' left %d MDC key(s) behind after task completion: %s — "
+                            + "these will contaminate the next task run on this thread",
+                    t.threadName, leaked.size(), leaked);
+            r.violations.add(finding);
+            r.structuredViolations.add(new Violation("MdcContextLeak", IssueSeverity.HIGH,
+                    finding, List.of(), Map.of(), Instant.now()));
         }
         return DetectorFailurePolicy.checkedReport(this, r);
     }
