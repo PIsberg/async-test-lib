@@ -189,6 +189,7 @@ public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditio
     ObjectFieldState newState(Object instance, String label) {
         return new ObjectFieldState(instance.getClass());
     }
+
     private final IssueDeduplicator<RaceConditionEvent> deduplicator = new IssueDeduplicator<>();
 
     /**

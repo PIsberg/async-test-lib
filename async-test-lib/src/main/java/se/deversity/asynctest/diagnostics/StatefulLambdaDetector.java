@@ -53,10 +53,7 @@ import org.jspecify.annotations.Nullable;
  *
  * @since 0.9.0
  */
-public class StatefulLambdaDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class StatefulLambdaDetector extends AbstractInstanceDetector<StatefulLambdaDetector.LambdaState> {
 
     /**
      * Per-lambda bookkeeping. The lockset is kept per captured object rather than per lambda, so
@@ -68,7 +65,7 @@ public class StatefulLambdaDetector {
      * site and without it at another, each under its own lock, read as two guarded captures
      * (#800).
      */
-    private static class LambdaState {
+    static final class LambdaState {
         final String      name;
         final Set<Long>   executingThreadIds   = ConcurrentHashMap.newKeySet();
         final Set<String> executingThreadNames = ConcurrentHashMap.newKeySet();
@@ -90,9 +87,12 @@ public class StatefulLambdaDetector {
     }
 
     /** The lockset and round verdict for one captured object of one lambda. */
-    private static final class CaptureGuard extends SelfGuard.TrackedInstance { }
+    static final class CaptureGuard extends SelfGuard.TrackedInstance { }
 
-    private final Map<IdentityKey, LambdaState> lambdas = new ConcurrentHashMap<>();
+    @Override
+    LambdaState newState(Object instance, String label) {
+        return new LambdaState(label);
+    }
 
     /**
      * Record that a lambda instance is executing on the calling thread.
@@ -104,10 +104,7 @@ public class StatefulLambdaDetector {
      */
     public void recordExecution(Object lambda, String name, Thread thread) {
         if (lambda == null || thread == null) return;
-        // The fallback label is built only when the instance is first seen.
-        LambdaState s = lambdas.computeIfAbsent(
-                new IdentityKey(lambda), id -> new LambdaState(name != null ? name
-                        : unnamedLabels.of(lambda, lambda.getClass().getSimpleName())));
+        LambdaState s = stateFor(lambda, name);
         // The label is built once per thread, and carries the id, so unnamed threads stay apart.
         if (s.executingThreadIds.add(thread.threadId())) {
             s.executingThreadNames.add(ReportSections.threadLabel(thread));
@@ -194,9 +191,7 @@ public class StatefulLambdaDetector {
 
     private LambdaState noteCaptureAccess(Object lambda, @Nullable Object capturedState,
                                           boolean forWrite, Thread thread) {
-        LambdaState s = lambdas.computeIfAbsent(
-                new IdentityKey(lambda),
-                id -> new LambdaState(unnamedLabels.of(lambda, lambda.getClass().getSimpleName())));
+        LambdaState s = stateFor(lambda, null);
         // Probed on the accessing thread while it is still inside whatever region guards it. Every
         // access also feeds the lambda-wide guard, since an unnamed access recorded later in the
         // round may be of this same object.
@@ -224,7 +219,7 @@ public class StatefulLambdaDetector {
      */
     public StatefulLambdaReport analyze() {
         StatefulLambdaReport r = new StatefulLambdaReport();
-        for (LambdaState s : lambdas.values()) {
+        for (LambdaState s : states()) {
             if (s.executingThreadIds.size() > 1 && !s.mutationEvents.isEmpty()
                     && s.sawUnguardedSharing()) {
                 String finding = String.format(

@@ -73,6 +73,7 @@ public class CompletableFutureExceptionDetector extends AbstractInstanceDetector
     FutureState newState(Object instance, String label) {
         return new FutureState(label);
     }
+
     private volatile boolean enabled = true;
 
     /**

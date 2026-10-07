@@ -141,6 +141,7 @@ public final class ScopeJoinerMisuseDetector extends AbstractInstanceDetector<Sc
     JoinerState newState(Object instance, String label) {
         return new JoinerState(label);
     }
+
     private volatile boolean                enabled = true;
 
     /** Creates a detector with no recorded joiners. */

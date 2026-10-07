@@ -94,10 +94,7 @@ import org.jspecify.annotations.Nullable;
  * }
  * }</pre>
  */
-public class TimerDetector {
-
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+public class TimerDetector extends AbstractInstanceDetector<TimerDetector.TimerState> {
 
     /**
      * The class of every thread a {@link java.util.Timer} runs its tasks on. Package-private in
@@ -118,7 +115,7 @@ public class TimerDetector {
     private static final int QUOTED_STARVATIONS = 3;
 
     /** One task's occupation of a timer thread, from its recorded run to its recorded end. */
-    private static final class Run {
+    static final class Run {
         /** The {@code TimerTask} when the record carried it, otherwise the task's name. */
         final Object task;
         final String label;
@@ -137,7 +134,7 @@ public class TimerDetector {
      * on one thread are consecutive, so a lookup walks back only as far as the instant it asks
      * about.
      */
-    private static final class RunHistory {
+    static final class RunHistory {
         /** Deep enough for any burst of tasks that falls due inside one run of a test. */
         private static final int DEPTH = 64;
 
@@ -189,7 +186,7 @@ public class TimerDetector {
         }
     }
 
-    private static class TimerState {
+    static final class TimerState {
         final String name;
         final AtomicInteger scheduledTasks = new AtomicInteger(0);
         final AtomicInteger completedTasks = new AtomicInteger(0);
@@ -221,7 +218,10 @@ public class TimerDetector {
         }
     }
 
-    private final Map<IdentityKey, TimerState> timers = new ConcurrentHashMap<>();
+    @Override
+    TimerState newState(Object instance, String label) {
+        return new TimerState(label);
+    }
 
     /**
      * Register a {@code Timer} instance for monitoring.
@@ -231,7 +231,7 @@ public class TimerDetector {
      */
     public void registerTimer(java.util.Timer timer, String name) {
         if (timer == null) return;
-        timers.computeIfAbsent(new IdentityKey(timer), k -> new TimerState(label(name)));
+        stateFor(timer, name, "timer");
     }
 
     /**
@@ -430,12 +430,8 @@ public class TimerDetector {
         return false;
     }
 
-    private String label(String name) {
-        return name != null ? name : unnamedLabels.next("timer");
-    }
-
     private TimerState resolve(java.util.Timer timer, String name) {
-        return timers.computeIfAbsent(new IdentityKey(timer), k -> new TimerState(label(name)));
+        return stateFor(timer, name, "timer");
     }
 
     /**
@@ -446,7 +442,7 @@ public class TimerDetector {
     public TimerReport analyze() {
         TimerReport report = new TimerReport();
 
-        for (TimerState state : timers.values()) {
+        for (TimerState state : states()) {
             report.totalTimers++;
 
             if (state.threadDied || anyDied(state.threadsThatRecordedAnException)) {
