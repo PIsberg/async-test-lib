@@ -110,4 +110,25 @@ class ThreadStarvationDetectorTest {
         ThreadStarvationDetector d = new ThreadStarvationDetector();
         AbstractInstanceDetectorTest.assertNotRetained(() -> new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.LinkedBlockingQueue<Runnable>()), e -> d.registerExecutor(e, null, 1));
     }
+
+    /**
+     * An executor registered without a name is still matched by name later: the null name it
+     * used to carry made recordTaskStart's equals() throw for every executor (#918).
+     */
+    @Test
+    void anUnnamedExecutorDoesNotBreakTaskStartForTheOthers() {
+        ThreadStarvationDetector d = new ThreadStarvationDetector();
+        ExecutorService unnamed = Executors.newSingleThreadExecutor();
+        ExecutorService named = Executors.newSingleThreadExecutor();
+        try {
+            d.registerExecutor(unnamed, null, 1);
+            d.registerExecutor(named, "named", 1);
+            long submitted = d.recordTaskSubmission(named);
+            assertDoesNotThrow(() -> d.recordTaskStart("named", submitted));
+            assertDoesNotThrow(() -> d.recordTaskEnd("named"));
+        } finally {
+            unnamed.shutdownNow();
+            named.shutdownNow();
+        }
+    }
 }
