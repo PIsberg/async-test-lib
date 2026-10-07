@@ -170,4 +170,11 @@ class VirtualThreadPoolingDetectorTest {
         String second = detector.analyze().toString();
         assertEquals(first, second, "analyze() must be idempotent on quiescent state");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        VirtualThreadPoolingDetector d = new VirtualThreadPoolingDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(() -> new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.LinkedBlockingQueue<Runnable>()), e -> d.registerExecutor(e, null));
+    }
 }

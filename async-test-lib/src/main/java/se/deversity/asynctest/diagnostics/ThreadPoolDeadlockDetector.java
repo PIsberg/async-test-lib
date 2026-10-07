@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -64,9 +63,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 1.2.0
  */
-public class ThreadPoolDeadlockDetector {
+public class ThreadPoolDeadlockDetector extends AbstractInstanceDetector<ThreadPoolDeadlockDetector.PoolState> {
 
-    private static class PoolState {
+    static final class PoolState {
         final String name;
         final int poolSize;
         final AtomicInteger activeTaskCount = new AtomicInteger(0);
@@ -79,7 +78,7 @@ public class ThreadPoolDeadlockDetector {
         }
     }
 
-    private static class NestedSubmissionEvent {
+    static class NestedSubmissionEvent {
         final String poolName;
         final StackTraceElement[] stackTrace;
         final int activeTasksAtTime;
@@ -91,7 +90,6 @@ public class ThreadPoolDeadlockDetector {
         }
     }
 
-    private final Map<IdentityKey, PoolState> registeredPools = new ConcurrentHashMap<>();
     private final AtomicInteger deadlockRiskCount = new AtomicInteger(0);
     private volatile boolean enabled = true;
 
@@ -109,9 +107,7 @@ public class ThreadPoolDeadlockDetector {
             return;
         }
 
-        IdentityKey identity = new IdentityKey(pool);
-        int poolSize = estimatePoolSize(pool);
-        registeredPools.putIfAbsent(identity, new PoolState(name, poolSize));
+        stateFor(pool, name, "pool", label -> new PoolState(label, estimatePoolSize(pool)));
     }
 
     /**
@@ -127,8 +123,7 @@ public class ThreadPoolDeadlockDetector {
             return;
         }
 
-        IdentityKey identity = new IdentityKey(pool);
-        PoolState state = registeredPools.get(identity);
+        PoolState state = trackedState(pool);
         if (state != null) {
             int activeTasks = state.activeTaskCount.incrementAndGet();
             state.nestedSubmissionCount.incrementAndGet();
@@ -153,8 +148,7 @@ public class ThreadPoolDeadlockDetector {
             return;
         }
 
-        IdentityKey identity = new IdentityKey(pool);
-        PoolState state = registeredPools.get(identity);
+        PoolState state = trackedState(pool);
         if (state != null) {
             state.activeTaskCount.decrementAndGet();
         }
@@ -173,7 +167,7 @@ public class ThreadPoolDeadlockDetector {
         }
 
         List<PoolDeadlockRisk> risks = new ArrayList<>();
-        for (PoolState state : registeredPools.values()) {
+        for (PoolState state : states()) {
             if (state.nestedSubmissionCount.get() > 0) {
                 risks.add(new PoolDeadlockRisk(
                     state.name,
@@ -221,7 +215,7 @@ public class ThreadPoolDeadlockDetector {
      * Clear all registered pools and events.
      */
     public void clear() {
-        registeredPools.clear();
+        clearStates();
         deadlockRiskCount.set(0);
     }
 

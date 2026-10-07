@@ -27,9 +27,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Reachable from a test via {@code AsyncTestContext.executorDeadlockDetector()} when
  * {@link se.deversity.asynctest.DetectorType#EXECUTOR_DEADLOCK} is enabled.
  */
-public class ExecutorDeadlockDetector {
+public class ExecutorDeadlockDetector extends AbstractInstanceDetector<ExecutorDeadlockDetector.ExecutorState> {
 
-    private static class ExecutorState {
+    static final class ExecutorState {
         final String name;
         final int maxThreads;
         final AtomicInteger submitted = new AtomicInteger();
@@ -81,7 +81,6 @@ public class ExecutorDeadlockDetector {
         }
     }
 
-    private final Map<IdentityKey, ExecutorState> executors = new ConcurrentHashMap<>();
     /**
      * Registers executor for tracking.
      *
@@ -93,8 +92,8 @@ public class ExecutorDeadlockDetector {
         if (executor == null) {
             return;
         }
-        executors.putIfAbsent(new IdentityKey(executor),
-            new ExecutorState(name == null || name.isBlank() ? "Executor" : name, maxThreads));
+        stateFor(executor, name == null || name.isBlank() ? "Executor" : name, "executor",
+                label -> new ExecutorState(label, maxThreads));
     }
     /**
      * Records task submitted so it can be analysed at the end of the run.
@@ -165,7 +164,7 @@ public class ExecutorDeadlockDetector {
     }
 
     private @Nullable ExecutorState stateFor(Object executor) {
-        return executor == null ? null : executors.get(new IdentityKey(executor));
+        return executor == null ? null : trackedState(executor);
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -175,7 +174,7 @@ public class ExecutorDeadlockDetector {
     public ExecutorDeadlockReport analyze() {
         ExecutorDeadlockReport report = new ExecutorDeadlockReport();
 
-        for (ExecutorState state : executors.values()) {
+        for (ExecutorState state : states()) {
             // The state at analysis counts too: waits still open now are waits that never ended.
             state.noteIfSaturated();
             if (state.saturatedWaiters.get() > 0) {
