@@ -148,4 +148,11 @@ public class CompletableFutureCommonPoolBlockingDetectorTest {
         assertTrue(s.contains("Fix"));
         assertTrue(s.contains("Executor"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CompletableFutureCommonPoolBlockingDetector d = new CompletableFutureCommonPoolBlockingDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, f -> d.recordCommonPoolSubmission(f, Thread.currentThread(), null));
+    }
 }

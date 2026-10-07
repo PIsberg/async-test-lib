@@ -71,4 +71,11 @@ class CompletableFutureObtrudeDetectorTest {
         assertTrue(rendered.contains("COMPLETABLE FUTURE OBTRUDE DETECTED"));
         assertTrue(rendered.contains("my-future"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CompletableFutureObtrudeDetector d = new CompletableFutureObtrudeDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(CompletableFuture<Void>::new, f -> d.recordObtrude(f, null, Thread.currentThread()));
+    }
 }

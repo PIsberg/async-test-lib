@@ -318,4 +318,11 @@ public class CompletableFutureExceptionDetectorTest {
         assertFalse(dirty.contains("No issues detected"),
             "Should not show the no-issues message when issues exist");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CompletableFutureExceptionDetector d = new CompletableFutureExceptionDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(CompletableFuture<Void>::new, f -> d.recordFutureCreated(f, null));
+    }
 }

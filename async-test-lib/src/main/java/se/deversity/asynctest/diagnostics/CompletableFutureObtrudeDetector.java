@@ -10,7 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects CompletableFuture.obtrudeValue() or obtrudeException() calls which
@@ -22,24 +23,22 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureObtrudeDetectorTest.java"
 )
-public final class CompletableFutureObtrudeDetector {
+public final class CompletableFutureObtrudeDetector extends AbstractInstanceDetector<CompletableFutureObtrudeDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State {
+    static final class State {
         final String label;
-        final int obtrudeCount;
-        final String lastObtrudedByThread;
+        final AtomicInteger obtrudeCount = new AtomicInteger();
+        volatile @Nullable String lastObtrudedByThread;
 
-        State(String label, int obtrudeCount, String threadName) {
+        State(String label) {
             this.label = label;
-            this.obtrudeCount = obtrudeCount;
-            this.lastObtrudedByThread = threadName;
         }
     }
 
-    private final Map<IdentityKey, State> obtrudes = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * Record an obtrude action on a CompletableFuture.
@@ -50,10 +49,9 @@ public final class CompletableFutureObtrudeDetector {
      */
     public void recordObtrude(CompletableFuture<?> future, String label, Thread thread) {
         if (future == null || thread == null) return;
-        String name = label != null ? label : unnamedLabels.of(future, "CompletableFuture");
-        obtrudes.merge(new IdentityKey(future), new State(name, 1, thread.getName()), (old, val) -> 
-            new State(name, old.obtrudeCount + 1, val.lastObtrudedByThread)
-        );
+        State s = stateFor(future, label, "CompletableFuture");
+        s.obtrudeCount.incrementAndGet();
+        s.lastObtrudedByThread = thread.getName();
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -62,10 +60,10 @@ public final class CompletableFutureObtrudeDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : obtrudes.values()) {
+        for (State s : states()) {
             String msg = String.format(
                 "CompletableFuture '%s' obtruded %d times (last by thread '%s') — obtruding values or exceptions forces downstream pipelines to execute with outdated/inconsistent states, introducing publication races.",
-                s.label, s.obtrudeCount, s.lastObtrudedByThread
+                s.label, s.obtrudeCount.get(), s.lastObtrudedByThread
             );
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(

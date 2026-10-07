@@ -12,7 +12,6 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 import java.util.Map;
 import java.util.WeakHashMap;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Detects {@link WeakHashMap} or {@link IdentityHashMap} instances accessed

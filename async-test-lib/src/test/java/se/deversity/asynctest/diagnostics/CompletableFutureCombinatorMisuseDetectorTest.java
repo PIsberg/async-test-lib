@@ -198,4 +198,11 @@ class CompletableFutureCombinatorMisuseDetectorTest {
         assertTrue(rendered.contains("writes"));
         assertTrue(rendered.contains("Fix:"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CompletableFutureCombinatorMisuseDetector d = new CompletableFutureCombinatorMisuseDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(CompletableFuture<Void>::new, f -> d.recordCombinator(f, null, "allOf", 2, Thread.currentThread()));
+    }
 }
