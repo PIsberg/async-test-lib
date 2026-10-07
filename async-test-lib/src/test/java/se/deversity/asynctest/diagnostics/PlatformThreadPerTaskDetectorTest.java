@@ -201,4 +201,11 @@ class PlatformThreadPerTaskDetectorTest {
 
         assertEquals(List.of(), detector.analyze().grades(), "a silent report grades nothing");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        PlatformThreadPerTaskDetector d = new PlatformThreadPerTaskDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(java.util.concurrent.Executors::newVirtualThreadPerTaskExecutor, e -> d.registerExecutor(e, null));
+    }
 }

@@ -103,4 +103,11 @@ class TryLockMisuseDetectorTest {
         assertTrue(rendered.contains("TRY LOCK MISUSE DETECTED"));
         assertTrue(rendered.contains("my-lock"));
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        TryLockMisuseDetector d = new TryLockMisuseDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(java.util.concurrent.locks.ReentrantLock::new, l -> d.recordTryLockResult(l, null, false, Thread.currentThread()));
+    }
 }

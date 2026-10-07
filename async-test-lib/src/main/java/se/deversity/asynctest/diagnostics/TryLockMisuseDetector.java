@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects misuse of Lock.tryLock(), such as calling unlock() unconditionally
@@ -22,22 +24,30 @@ import java.util.concurrent.ConcurrentHashMap;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/TryLockMisuseDetectorTest.java"
 )
-public final class TryLockMisuseDetector {
+public final class TryLockMisuseDetector extends AbstractInstanceDetector<TryLockMisuseDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State {
-        final String lockName;
+    static final class State {
+        final String label;
+        /** Per thread, what its last tryLock() returned, until it acquires or unlocks. */
+        final Map<Long, Boolean> results = new ConcurrentHashMap<>();
         final Set<String> threadsWithViolations = ConcurrentHashMap.newKeySet();
+        /** The name the first named misused unlock() gave, which the report prints over the label. */
+        final AtomicReference<@Nullable String> lockName = new AtomicReference<>();
 
-        State(String lockName) {
-            this.lockName = lockName;
+        State(String label) {
+            this.label = label;
+        }
+
+        String reportedName() {
+            String name = lockName.get();
+            return name != null ? name : label;
         }
     }
 
-    private final Map<IdentityKey, Map<Long, Boolean>> lockResults = new ConcurrentHashMap<>();
-    private final Map<IdentityKey, State> violations = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * Record the result of a tryLock() call.
@@ -49,8 +59,8 @@ public final class TryLockMisuseDetector {
      */
     public void recordTryLockResult(Object lock, String lockName, boolean acquired, Thread thread) {
         if (lock == null || thread == null) return;
-        IdentityKey key = new IdentityKey(lock);
-        lockResults.computeIfAbsent(key, k -> new ConcurrentHashMap<>()).put(thread.threadId(), acquired);
+        // Registered unnamed: a finding is named by the misused unlock(), as it always was.
+        stateFor(lock, null, "Lock").results.put(thread.threadId(), acquired);
     }
 
     /**
@@ -66,10 +76,10 @@ public final class TryLockMisuseDetector {
      * @param thread the thread that acquired it
      */
     public void recordLockAcquired(Object lock, Thread thread) {
-        if (lock == null || thread == null || lockResults.isEmpty()) return;
-        Map<Long, Boolean> threadResults = lockResults.get(new IdentityKey(lock));
-        if (threadResults != null) {
-            threadResults.remove(thread.threadId());
+        if (lock == null || thread == null || states().isEmpty()) return;
+        State s = trackedState(lock);
+        if (s != null) {
+            s.results.remove(thread.threadId());
         }
     }
 
@@ -82,17 +92,14 @@ public final class TryLockMisuseDetector {
      */
     public void recordUnlock(Object lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
-        IdentityKey key = new IdentityKey(lock);
-        Map<Long, Boolean> threadResults = lockResults.get(key);
-        if (threadResults != null) {
-            Boolean acquired = threadResults.get(thread.threadId());
+        State s = trackedState(lock);
+        if (s != null) {
+            Boolean acquired = s.results.get(thread.threadId());
             if (acquired != null && !acquired) {
-                State s = violations.computeIfAbsent(key, k -> new State(
-                    lockName != null ? lockName : unnamedLabels.of(key, "Lock")
-                ));
+                if (lockName != null) s.lockName.compareAndSet(null, lockName);
                 s.threadsWithViolations.add(thread.getName());
             }
-            threadResults.remove(thread.threadId());
+            s.results.remove(thread.threadId());
         }
     }
     /**
@@ -102,10 +109,11 @@ public final class TryLockMisuseDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : violations.values()) {
+        for (State s : states()) {
+            if (s.threadsWithViolations.isEmpty()) continue;
             String msg = String.format(
                 "Lock '%s' tryLock misuse detected by threads %s. Threads called unlock() after tryLock() returned false (or without verifying acquisition), which throws IllegalMonitorStateException or corrupts lock state.",
-                s.lockName, String.join(", ", s.threadsWithViolations)
+                s.reportedName(), String.join(", ", s.threadsWithViolations)
             );
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -114,7 +122,7 @@ public final class TryLockMisuseDetector {
                 msg,
                 List.of(),
                 Map.of(
-                    "lockName", s.lockName,
+                    "lockName", s.reportedName(),
                     "threadsWithViolations", List.copyOf(s.threadsWithViolations)
                 ),
                 Instant.now()

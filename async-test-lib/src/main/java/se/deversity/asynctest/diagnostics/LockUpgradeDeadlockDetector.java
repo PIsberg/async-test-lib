@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects attempts to upgrade a ReentrantReadWriteLock from a read lock to a write lock
@@ -29,30 +31,34 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LockUpgradeDeadlockDetectorTest.java"
 )
-public final class LockUpgradeDeadlockDetector {
+public final class LockUpgradeDeadlockDetector extends AbstractInstanceDetector<LockUpgradeDeadlockDetector.State> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static final class State {
-        final String lockName;
+    static final class State {
+        final String label;
+        /**
+         * Read holds per thread, as a count. A set lost the second of two nested read acquires at
+         * the first release, so a thread still holding the read lock read as free and its write
+         * attempt, which really blocks forever, went unreported (#566).
+         */
+        final Map<Long, Integer> readHolds = new ConcurrentHashMap<>();
         final Set<String> deadlockedThreads = ConcurrentHashMap.newKeySet();
+        /** The name the first named upgrade attempt gave, which the report prints over the label. */
+        final AtomicReference<@Nullable String> lockName = new AtomicReference<>();
 
-        State(String lockName) {
-            this.lockName = lockName;
+        State(String label) {
+            this.label = label;
+        }
+
+        String reportedName() {
+            String name = lockName.get();
+            return name != null ? name : label;
         }
     }
 
-    /**
-     * Read holds per lock, per thread, as a count. A set lost the second of two nested read
-     * acquires at the first release, so a thread still holding the read lock read as free and
-     * its write attempt, which really blocks forever, went unreported (#566).
-     *
-     * <p>Locks are keyed by identity. Keyed by the bare identity hash, two locks that shared one
-     * were one lock, and a read hold on one made a write attempt on the other an upgrade.
-     */
-    private final Map<IdentityKey, Map<Long, Integer>> readHolds = new ConcurrentHashMap<>();
-    private final Map<IdentityKey, State> violations = new ConcurrentHashMap<>();
+    @Override
+    State newState(Object instance, String label) {
+        return new State(label);
+    }
 
     /**
      * Record acquisition of a read lock.
@@ -63,8 +69,8 @@ public final class LockUpgradeDeadlockDetector {
      */
     public void recordReadLockAcquired(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
-        readHolds.computeIfAbsent(new IdentityKey(lock), k -> new ConcurrentHashMap<>())
-                .merge(thread.threadId(), 1, Integer::sum);
+        // Registered unnamed: a finding is named by the upgrade attempt, never by the read hold.
+        stateFor(lock, null, "ReentrantReadWriteLock").readHolds.merge(thread.threadId(), 1, Integer::sum);
     }
 
     /**
@@ -75,9 +81,9 @@ public final class LockUpgradeDeadlockDetector {
      */
     public void recordReadLockReleased(ReentrantReadWriteLock lock, Thread thread) {
         if (lock == null || thread == null) return;
-        Map<Long, Integer> holds = readHolds.get(new IdentityKey(lock));
-        if (holds != null) {
-            holds.computeIfPresent(thread.threadId(), (k, count) -> count > 1 ? count - 1 : null);
+        State s = trackedState(lock);
+        if (s != null) {
+            s.readHolds.computeIfPresent(thread.threadId(), (k, count) -> count > 1 ? count - 1 : null);
         }
     }
 
@@ -104,7 +110,6 @@ public final class LockUpgradeDeadlockDetector {
      */
     public void recordWriteLockAcquisitionAttempt(ReentrantReadWriteLock lock, String lockName, Thread thread) {
         if (lock == null || thread == null) return;
-        IdentityKey id = new IdentityKey(lock);
         boolean upgrade;
         if (thread.threadId() == Thread.currentThread().threadId()
                 && (lock.isWriteLockedByCurrentThread() || lock.getReadHoldCount() > 0)) {
@@ -112,13 +117,12 @@ public final class LockUpgradeDeadlockDetector {
             // only consulted for a body that declares acquisitions without taking the lock.
             upgrade = !lock.isWriteLockedByCurrentThread();
         } else {
-            Map<Long, Integer> holds = readHolds.get(id);
-            upgrade = holds != null && holds.containsKey(thread.threadId());
+            State held = trackedState(lock);
+            upgrade = held != null && held.readHolds.containsKey(thread.threadId());
         }
         if (upgrade) {
-            State s = violations.computeIfAbsent(id, k -> new State(
-                lockName != null ? lockName : unnamedLabels.of(id, "ReentrantReadWriteLock")
-            ));
+            State s = stateFor(lock, null, "ReentrantReadWriteLock");
+            if (lockName != null) s.lockName.compareAndSet(null, lockName);
             s.deadlockedThreads.add(ReportSections.threadLabel(thread));
         }
     }
@@ -130,10 +134,11 @@ public final class LockUpgradeDeadlockDetector {
      */
     public Report analyze() {
         Report r = new Report();
-        for (State s : violations.values()) {
+        for (State s : states()) {
+            if (s.deadlockedThreads.isEmpty()) continue;
             String msg = String.format(
                 "Read-Write Lock '%s' upgrade attempt detected by threads %s. A thread holding a read lock cannot acquire a write lock on the same ReentrantReadWriteLock instance, resulting in a permanent deadlock.",
-                s.lockName, String.join(", ", s.deadlockedThreads)
+                s.reportedName(), String.join(", ", s.deadlockedThreads)
             );
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
