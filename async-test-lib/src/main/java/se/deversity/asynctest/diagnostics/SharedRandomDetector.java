@@ -66,6 +66,7 @@ public class SharedRandomDetector extends AbstractInstanceDetector<SharedRandomD
     RandomState newState(Object instance, String label) {
         return new RandomState(label);
     }
+
     private volatile boolean enabled = true;
 
     /**

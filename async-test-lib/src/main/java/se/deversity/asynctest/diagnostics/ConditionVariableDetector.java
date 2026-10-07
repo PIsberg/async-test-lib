@@ -199,6 +199,7 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
     ConditionState newState(Object instance, String label) {
         return new ConditionState(label);
     }
+
     /** Bumped at the start of every invocation round; read on the recording threads. */
     private final AtomicLong invocationEpoch = new AtomicLong();
     private volatile boolean enabled = true;

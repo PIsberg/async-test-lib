@@ -58,10 +58,6 @@ public class InheritableThreadLocalMisuseDetector extends AbstractInstanceDetect
     private final List<String> pooledGetIssues = new CopyOnWriteArrayList<>();
     private final List<String> pooledSetIssues = new CopyOnWriteArrayList<>();
 
-    /**
-     * Per variable object, the threads that accessed it. Keyed by identity: two variables may
-     * share a name, and keyed by the name one line counted both variables' threads (#789).
-     */
     @Override
     Accesses newState(Object instance, String label) {
         return new Accesses(label);

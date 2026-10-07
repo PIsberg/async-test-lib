@@ -48,12 +48,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class HttpClientConcurrencyDetector {
+public class HttpClientConcurrencyDetector extends AbstractInstanceDetector<HttpClientConcurrencyDetector.ClientState> {
 
     /** Concurrent requests on one client above which the connection pool may run out (#756). */
     private static final int POOL_EXHAUSTION_REQUESTS_THRESHOLD = 50;
 
-    private static class ClientState {
+    static final class ClientState {
         final String name;
         final AtomicInteger requestCount = new AtomicInteger(0);
         final AtomicInteger responseCount = new AtomicInteger(0);
@@ -74,7 +74,7 @@ public class HttpClientConcurrencyDetector {
         }
     }
 
-    private static class RequestState {
+    static class RequestState {
         final String name;
         /** Claimed by exactly one response; a check-then-set let two responses answer one send. */
         final AtomicBoolean answered = new AtomicBoolean();
@@ -87,8 +87,11 @@ public class HttpClientConcurrencyDetector {
     /** How the report names the sends that no client can be tied to. */
     private static final String UNATTRIBUTED_CLIENT = "(no client named)";
 
-    /** Registered clients, by identity. */
-    private final Map<IdentityKey, ClientState> clients = new ConcurrentHashMap<>();
+    @Override
+    ClientState newState(Object instance, String label) {
+        return new ClientState(label);
+    }
+
     /**
      * Sends recorded without a client while none, or more than one, is registered. They used to
      * be filed under whichever client the map returned first, so with two clients registered the
@@ -121,7 +124,7 @@ public class HttpClientConcurrencyDetector {
         if (!enabled || client == null) {
             return;
         }
-        clients.computeIfAbsent(new IdentityKey(client), k -> new ClientState(name));
+        stateFor(client, name, "client");
     }
 
     /**
@@ -139,7 +142,7 @@ public class HttpClientConcurrencyDetector {
         if (!enabled || request == null) {
             return;
         }
-        Iterator<ClientState> registered = clients.values().iterator();
+        Iterator<ClientState> registered = states().iterator();
         ClientState only = registered.hasNext() ? registered.next() : null;
         send(only != null && !registered.hasNext() ? only : unattributed, name);
     }
@@ -160,7 +163,7 @@ public class HttpClientConcurrencyDetector {
         if (!enabled || client == null || request == null) {
             return;
         }
-        send(clients.computeIfAbsent(new IdentityKey(client), k -> new ClientState(name)), name);
+        send(stateFor(client, name, "client"), name);
     }
 
     private static void send(ClientState client, String name) {
@@ -184,7 +187,7 @@ public class HttpClientConcurrencyDetector {
         if (!enabled || response == null) {
             return;
         }
-        for (ClientState client : clients.values()) {
+        for (ClientState client : states()) {
             if (answer(client, name)) {
                 return;
             }
@@ -214,7 +217,7 @@ public class HttpClientConcurrencyDetector {
         HttpClientConcurrencyReport report = new HttpClientConcurrencyReport();
         report.enabled = enabled;
 
-        List<ClientState> all = new ArrayList<>(clients.values());
+        List<ClientState> all = new ArrayList<>(states());
         if (unattributed.requestCount.get() > 0) {
             all.add(unattributed);
         }

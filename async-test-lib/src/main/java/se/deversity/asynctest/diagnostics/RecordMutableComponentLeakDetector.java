@@ -115,6 +115,7 @@ public final class RecordMutableComponentLeakDetector extends AbstractInstanceDe
     State newState(Object instance, String label) {
         return snapshotted(new State(label, instance));
     }
+
     private final LongAdder dropped   = new LongAdder();
     /** Current invocation round, bumped by {@link #markInvocationStart()}. */
     private final AtomicLong invocationEpoch = new AtomicLong();

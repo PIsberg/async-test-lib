@@ -556,4 +556,11 @@ public class CalendarDetectorTest {
         assertEquals(java.util.List.of(), gradesOf(detector.analyze()),
                 "the same writes under the calendar's own monitor grade nothing");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CalendarDetector d = new CalendarDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(java.util.Calendar::getInstance, c -> d.registerCalendar(c, null));
+    }
 }

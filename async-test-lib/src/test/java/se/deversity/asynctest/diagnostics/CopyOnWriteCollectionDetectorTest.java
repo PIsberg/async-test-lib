@@ -156,4 +156,11 @@ public class CopyOnWriteCollectionDetectorTest {
         assertTrue(activity.contains("reads: 2"), "Should report read count");
         assertTrue(activity.contains("writes: 1"), "Should report write count");
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        CopyOnWriteCollectionDetector d = new CopyOnWriteCollectionDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(java.util.concurrent.CopyOnWriteArrayList<String>::new, c -> d.registerCollection(c, null));
+    }
 }

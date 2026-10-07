@@ -137,15 +137,11 @@ public class LockDowngradeDetector extends AbstractInstanceDetector<LockDowngrad
         LockState(String name) { this.name = name; }
     }
 
-    /**
-     * Per lock, by identity. Keyed by the bare identity hash, two locks that shared one were one
-     * lock: a read hold on one and a write acquire on the other read as an upgrade, and a write
-     * on one inside the other's downgrade gap as the evidence that makes the gap a finding.
-     */
     @Override
     LockState newState(Object instance, String label) {
         return new LockState(label);
     }
+
     /**
      * Current invocation round, bumped by {@link #markInvocationStart()}. Standalone use without
      * round marks leaves every gap in epoch 0, which preserves the single-run behaviour.

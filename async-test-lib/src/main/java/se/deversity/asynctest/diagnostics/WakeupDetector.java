@@ -175,6 +175,7 @@ public class WakeupDetector extends AbstractInstanceDetector<WakeupDetector.Moni
     MonitorState newState(Object instance, String label) {
         return new MonitorState(label);
     }
+
     private volatile boolean enabled = true;
 
     /**

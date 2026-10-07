@@ -91,6 +91,7 @@ public final class HighContentionAtomicDetector extends AbstractInstanceDetector
     State newState(Object instance, String label) {
         return new State(label);
     }
+
     /** Current invocation round, bumped by {@link #markInvocationStart()}. */
     private final AtomicLong invocationEpoch = new AtomicLong();
     private final long attemptThreshold;

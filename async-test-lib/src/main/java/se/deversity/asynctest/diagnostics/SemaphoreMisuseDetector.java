@@ -61,6 +61,7 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
     SemaphoreState newState(Object instance, String label) {
         return new SemaphoreState((Semaphore) instance, label, -1);
     }
+
     private volatile boolean enabled = true;
 
     /**

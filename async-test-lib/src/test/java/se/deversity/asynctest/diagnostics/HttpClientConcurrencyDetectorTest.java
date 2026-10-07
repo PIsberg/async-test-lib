@@ -254,4 +254,11 @@ class HttpClientConcurrencyDetectorTest {
         assertTrue(report.contains("api: 2 threads made HTTP requests"),
                 "the second client's line survives beside the first's: " + report);
     }
+
+    /** The detector releases a subject the code under test dropped (#918). */
+    @Test
+    void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
+        HttpClientConcurrencyDetector d = new HttpClientConcurrencyDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, c -> d.recordClientCreated(c, null));
+    }
 }

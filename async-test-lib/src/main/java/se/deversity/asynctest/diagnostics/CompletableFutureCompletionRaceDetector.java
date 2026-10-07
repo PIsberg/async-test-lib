@@ -95,6 +95,7 @@ public final class CompletableFutureCompletionRaceDetector extends AbstractInsta
     FutureState newState(Object instance, String label) {
         return new FutureState(label);
     }
+
     private final AtomicInteger             sequence = new AtomicInteger();
     private volatile boolean                enabled  = true;
 

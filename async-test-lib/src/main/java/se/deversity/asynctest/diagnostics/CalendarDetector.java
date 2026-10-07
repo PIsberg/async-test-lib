@@ -50,12 +50,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class CalendarDetector {
+public class CalendarDetector extends AbstractInstanceDetector<CalendarDetector.CalendarState> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class CalendarState extends SelfGuard.TrackedInstance {
+    static final class CalendarState extends SelfGuard.TrackedInstance {
         final String name;
         final AtomicInteger getCount   = new AtomicInteger(0);
         final AtomicInteger setCount   = new AtomicInteger(0);
@@ -74,13 +71,16 @@ public class CalendarDetector {
          */
         final AtomicBoolean fieldsPending;
 
-        CalendarState(Calendar calendar, String name, UnnamedLabels labels) {
-            this.name = name != null ? name : labels.next("calendar");
+        CalendarState(Calendar calendar, String name) {
+            this.name = name;
             this.fieldsPending = new AtomicBoolean(PendingFields.of(calendar));
         }
     }
 
-    private final Map<IdentityKey, CalendarState> calendars = new ConcurrentHashMap<>();
+    @Override
+    CalendarState newState(Object instance, String label) {
+        return new CalendarState((Calendar) instance, label);
+    }
 
     /**
      * Register a {@code Calendar} instance for monitoring.
@@ -91,7 +91,7 @@ public class CalendarDetector {
     public void registerCalendar(Calendar calendar, String name) {
         if (calendar == null) return;
         // computeIfAbsent, so the calendar's state is read once, when it is first seen.
-        calendars.computeIfAbsent(new IdentityKey(calendar), k -> new CalendarState(calendar, name, unnamedLabels));
+        stateFor(calendar, name, "calendar");
     }
 
     /**
@@ -176,7 +176,7 @@ public class CalendarDetector {
      */
     public void recordError(Calendar calendar, String name, String errorType) {
         if (calendar == null) return;
-        CalendarState state = calendars.get(new IdentityKey(calendar));
+        CalendarState state = trackedState(calendar);
         if (state != null) {
             state.errorCount.incrementAndGet();
         }
@@ -187,9 +187,7 @@ public class CalendarDetector {
                               boolean leavesFieldsPending) {
         if (calendar == null) return;
 
-        IdentityKey key = new IdentityKey(calendar);
-        CalendarState state = calendars.computeIfAbsent(key,
-                k -> new CalendarState(calendar, name, unnamedLabels));
+        CalendarState state = stateFor(calendar, name, "calendar");
 
         long now = System.currentTimeMillis();
         boolean get = "get".equals(method);
@@ -219,7 +217,7 @@ public class CalendarDetector {
     public CalendarReport analyze() {
         CalendarReport report = new CalendarReport();
 
-        for (CalendarState state : calendars.values()) {
+        for (CalendarState state : states()) {
             int reads     = state.getCount.get();
             int writes    = state.setCount.get() + state.addCount.get();
             int threads   = state.accessingThreads.size();

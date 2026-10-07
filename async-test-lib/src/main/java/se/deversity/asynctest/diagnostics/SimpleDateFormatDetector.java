@@ -67,6 +67,7 @@ public class SimpleDateFormatDetector extends AbstractInstanceDetector<SimpleDat
     FormatterState newState(Object instance, String label) {
         return new FormatterState(label);
     }
+
     private volatile boolean enabled = true;
 
     /**

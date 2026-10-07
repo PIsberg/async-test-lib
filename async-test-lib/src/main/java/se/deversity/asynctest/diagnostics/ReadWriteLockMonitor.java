@@ -48,15 +48,11 @@ public class ReadWriteLockMonitor extends AbstractInstanceDetector<ReadWriteLock
         }
     }
     
-    /**
-     * Per lock, by identity. Keyed by the bare identity hash, two locks that shared one were one
-     * entry: the second registration was dropped as a duplicate and its reads and writes were
-     * counted, and reported, under the first lock's name.
-     */
     @Override
     LockState newState(Object instance, String label) {
         return new LockState(label);
     }
+
     private volatile boolean enabled = true;
     
     /**

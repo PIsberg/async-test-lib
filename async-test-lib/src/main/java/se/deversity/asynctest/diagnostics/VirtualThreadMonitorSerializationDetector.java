@@ -106,6 +106,7 @@ public final class VirtualThreadMonitorSerializationDetector extends AbstractIns
     MonitorState newState(Object instance, String label) {
         return new MonitorState(label);
     }
+
     private final int                            contentionThreshold;
     private final int                            jdkFeatureVersion;
     private volatile boolean                     enabled = true;

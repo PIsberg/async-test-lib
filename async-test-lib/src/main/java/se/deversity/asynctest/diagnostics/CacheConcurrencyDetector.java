@@ -5,6 +5,7 @@ import se.deversity.asynctest.report.Violation;
 import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;
+import org.jspecify.annotations.Nullable;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,7 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class CacheConcurrencyDetector {
+public class CacheConcurrencyDetector extends AbstractInstanceDetector<CacheConcurrencyDetector.CacheState> {
 
     /**
      * How many distinct keys one cache is tracked at. A stampede shows up on the first hot key,
@@ -57,7 +58,7 @@ public class CacheConcurrencyDetector {
      */
     private static final int MAX_TRACKED_KEYS = 512;
 
-    private static class CacheState extends SelfGuard.TrackedInstance {
+    static final class CacheState extends SelfGuard.TrackedInstance {
         final String name;
         final Map<Object, Object> cache;
         final AtomicInteger readCount = new AtomicInteger(0);
@@ -100,7 +101,27 @@ public class CacheConcurrencyDetector {
         }
     }
 
-    private final Map<IdentityKey, CacheState> caches = new ConcurrentHashMap<>();
+    @Override
+    CacheState newState(Object instance, String label) {
+        return typedState(instance, label);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static CacheState typedState(Object cache, String label) {
+        return new CacheState((Map<Object, Object>) cache, label);
+    }
+
+    /** {@return the cache's state, registered on first sight as "cache-" and its identity hash} */
+    private CacheState cacheState(Map<?, ?> cache, @Nullable String name) {
+        CacheState state = trackedState(cache);
+        if (state == null) {
+            // Registers once: get-then-put let two threads racing on a cache's first access each
+            // keep a state, so the cross-thread contention this detector measures was invisible
+            // exactly when it was real.
+            state = stateFor(cache, name != null ? name : "cache-" + System.identityHashCode(cache));
+        }
+        return state;
+    }
     private volatile boolean enabled = true;
 
     /**
@@ -127,10 +148,7 @@ public class CacheConcurrencyDetector {
         if (!enabled || cache == null) {
             return;
         }
-        @SuppressWarnings("unchecked")
-        Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-        caches.computeIfAbsent(new IdentityKey(cache),
-            k -> new CacheState(typedCache, name));
+        cacheState(cache, name);
     }
 
     /**
@@ -144,18 +162,7 @@ public class CacheConcurrencyDetector {
         if (!enabled || cache == null) {
             return;
         }
-        IdentityKey cacheKey = new IdentityKey(cache);
-        CacheState state = caches.get(cacheKey);
-        if (state == null) {
-            @SuppressWarnings("unchecked")
-            Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-            final String label = name != null ? name : "cache-" + cacheKey.hashCode();
-            // computeIfAbsent, not get-then-put: two threads racing on a cache's first access
-            // both saw null, both built a CacheState and the second put discarded the first, so
-            // readerThreads/writerThreads each held one id and the cross-thread contention this
-            // detector exists to measure was invisible exactly when it was real.
-            state = caches.computeIfAbsent(cacheKey, k -> new CacheState(typedCache, label));
-        }
+        CacheState state = cacheState(cache, name);
         
         // Probe the locks first, while the caller is still inside whatever region it is in. A get
         // on an access-ordered LinkedHashMap relinks the entry, so it needs the exclusive lock a
@@ -177,15 +184,7 @@ public class CacheConcurrencyDetector {
         if (!enabled || cache == null) {
             return;
         }
-        IdentityKey cacheKey = new IdentityKey(cache);
-        CacheState state = caches.get(cacheKey);
-        if (state == null) {
-            @SuppressWarnings("unchecked")
-            Map<Object, Object> typedCache = (Map<Object, Object>) cache;
-            final String label = name != null ? name : "cache-" + cacheKey.hashCode();
-            // Atomic auto-register - see recordGet() for what get-then-put cost here.
-            state = caches.computeIfAbsent(cacheKey, k -> new CacheState(typedCache, label));
-        }
+        CacheState state = cacheState(cache, name);
         
         state.noteAccess(cache, true);
         state.writeCount.incrementAndGet();
@@ -203,7 +202,7 @@ public class CacheConcurrencyDetector {
         if (!enabled || cache == null) {
             return;
         }
-        CacheState state = caches.get(new IdentityKey(cache));
+        CacheState state = trackedState(cache);
         if (state != null) {
             state.iterationDetected = true;
         }
@@ -218,7 +217,7 @@ public class CacheConcurrencyDetector {
         CacheConcurrencyReport report = new CacheConcurrencyReport();
         report.enabled = enabled;
 
-        for (CacheState state : caches.values()) {
+        for (CacheState state : states()) {
             int reads = state.readCount.get();
             int writes = state.writeCount.get();
 

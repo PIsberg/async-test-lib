@@ -36,12 +36,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * mon.recordIterationStarted(list, Thread.currentThread(), false);
  * }</pre>
  */
-public class SynchronizedCollectionIterationDetector {
+public class SynchronizedCollectionIterationDetector extends AbstractInstanceDetector<SynchronizedCollectionIterationDetector.WrapperInfo> {
 
-    /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
-    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
-
-    private static class WrapperInfo {
+    static final class WrapperInfo {
         final String name;
         final AtomicInteger unsafeIterations = new AtomicInteger();
         final List<String>  details          = new CopyOnWriteArrayList<>();
@@ -49,7 +46,10 @@ public class SynchronizedCollectionIterationDetector {
         WrapperInfo(String name) { this.name = name; }
     }
 
-    private final Map<IdentityKey, WrapperInfo> wrappers = new ConcurrentHashMap<>();
+    @Override
+    WrapperInfo newState(Object instance, String label) {
+        return new WrapperInfo(label);
+    }
 
     /**
      * Register a synchronized wrapper created by {@code Collections.synchronized*(collection)}.
@@ -59,12 +59,11 @@ public class SynchronizedCollectionIterationDetector {
      */
     public void recordWrapperCreated(Object wrapper, String name) {
         if (wrapper == null) return;
-        String label = name != null ? name : unnamedLabels.of(wrapper, "collection");
         // computeIfAbsent, not put: an @AsyncTest body runs once per worker, so this is called
         // again for a wrapper already being tracked. Installing fresh state there discarded
         // every unsafe iteration counted so far. The first label wins, which is the right way
         // round - a name is cosmetic and the observations are the finding.
-        wrappers.computeIfAbsent(new IdentityKey(wrapper), k -> new WrapperInfo(label));
+        stateFor(wrapper, name, "collection");
     }
 
     /**
@@ -76,7 +75,7 @@ public class SynchronizedCollectionIterationDetector {
      */
     public void recordIterationStarted(Object wrapper, Thread thread, boolean holdingLock) {
         if (wrapper == null || thread == null) return;
-        WrapperInfo info = wrappers.get(new IdentityKey(wrapper));
+        WrapperInfo info = trackedState(wrapper);
         if (info == null || holdingLock) return;
         info.unsafeIterations.incrementAndGet();
         info.details.add(String.format(
@@ -90,7 +89,7 @@ public class SynchronizedCollectionIterationDetector {
      */
     public SynchronizedCollectionIterationReport analyze() {
         SynchronizedCollectionIterationReport r = new SynchronizedCollectionIterationReport();
-        for (WrapperInfo w : wrappers.values()) {
+        for (WrapperInfo w : states()) {
             if (w.unsafeIterations.get() > 0) {
                 r.violations.add(String.format("'%s': %d unsafe iteration(s) detected",
                     w.name, w.unsafeIterations.get()));
