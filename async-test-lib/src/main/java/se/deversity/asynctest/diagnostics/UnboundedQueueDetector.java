@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
@@ -40,15 +40,17 @@ import org.jspecify.annotations.Nullable;
  * }
  * }</pre>
  */
-public class UnboundedQueueDetector {
+public class UnboundedQueueDetector extends AbstractInstanceDetector<UnboundedQueueDetector.QueueState> {
 
-    private static class QueueState {
+    static final class QueueState {
         final String name;
         final int capacity; // -1 for unbounded
         final AtomicInteger peakSize = new AtomicInteger(0);
         final AtomicInteger enqueueCount = new AtomicInteger(0);
         final AtomicInteger dequeueCount = new AtomicInteger(0);
         final StackTraceElement[] creationStack;
+        /** Claimed by the first registration, which alone reports the queue. */
+        final AtomicBoolean registered = new AtomicBoolean();
 
         QueueState(String name, int capacity) {
             this.name = name;
@@ -57,7 +59,6 @@ public class UnboundedQueueDetector {
         }
     }
 
-    private final Map<IdentityKey, QueueState> trackedQueues = new ConcurrentHashMap<>();
     private final List<UnboundedQueueEvent> events = new ArrayList<>();
     private volatile boolean enabled = true;
     private volatile int warningThreshold = 1000; // Warn if queue grows beyond this
@@ -74,15 +75,19 @@ public class UnboundedQueueDetector {
             return;
         }
 
-        boolean isUnbounded = capacity < 0 || capacity == Integer.MAX_VALUE;
-        QueueState state = new QueueState(name, capacity);
-        trackedQueues.put(new IdentityKey(queue), state);
+        // The first registration wins: an @AsyncTest body registers its shared queue once per
+        // worker, and a put() here reset the queue's counts and reported it once per worker.
+        QueueState state = stateFor(queue, name, "queue", label -> new QueueState(label, capacity));
+        if (!state.registered.compareAndSet(false, true)) {
+            return;
+        }
 
+        boolean isUnbounded = state.capacity < 0 || state.capacity == Integer.MAX_VALUE;
         if (isUnbounded) {
             UnboundedQueueEvent event = new UnboundedQueueEvent(
-                name,
+                state.name,
                 "Unbounded queue created",
-                capacity,
+                state.capacity,
                 state.creationStack,
                 "Use bounded queues with rejection policies to prevent OOM"
             );
@@ -100,7 +105,7 @@ public class UnboundedQueueDetector {
     public void recordEnqueue(BlockingQueue<?> queue) {
         if (!enabled || queue == null) return;
 
-        QueueState state = trackedQueues.get(new IdentityKey(queue));
+        QueueState state = trackedState(queue);
         if (state != null) {
             state.enqueueCount.incrementAndGet();
             int currentSize = queue.size();
@@ -139,7 +144,7 @@ public class UnboundedQueueDetector {
     public void recordDequeue(BlockingQueue<?> queue) {
         if (!enabled || queue == null) return;
 
-        QueueState state = trackedQueues.get(new IdentityKey(queue));
+        QueueState state = trackedState(queue);
         if (state != null) {
             state.dequeueCount.incrementAndGet();
         }
@@ -159,14 +164,14 @@ public class UnboundedQueueDetector {
 
         List<UnboundedQueueEvent> allEvents;
         int unboundedCount = 0;
-        int totalTracked = trackedQueues.size();
+        int totalTracked = states().size();
 
         synchronized (events) {
             allEvents = new ArrayList<>(events);
         }
 
         // Check current queue states
-        for (QueueState state : trackedQueues.values()) {
+        for (QueueState state : states()) {
             boolean isUnbounded = state.capacity < 0 || state.capacity == Integer.MAX_VALUE;
             if (isUnbounded) {
                 unboundedCount++;
@@ -197,7 +202,7 @@ public class UnboundedQueueDetector {
      * Clear all tracked data.
      */
     public void clear() {
-        trackedQueues.clear();
+        clearStates();
         synchronized (events) {
             events.clear();
         }
