@@ -106,8 +106,7 @@ public final class VirtualThreadPoolingDetector extends AbstractInstanceDetector
         if (trackedState(executor) != null) {
             return;
         }
-        String label = name != null ? name : executor.getClass().getSimpleName() + "@" + System.identityHashCode(executor);
-        stateFor(executor, label, "executor", l -> new ExecutorInfo(
+        stateFor(executor, name, executor.getClass().getSimpleName(), l -> new ExecutorInfo(
                 l,
                 executor.getClass().getName(),
                 pool.getMaximumPoolSize(),

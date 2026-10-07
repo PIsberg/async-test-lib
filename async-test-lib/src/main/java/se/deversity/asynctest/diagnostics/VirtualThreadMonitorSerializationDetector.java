@@ -141,10 +141,7 @@ public final class VirtualThreadMonitorSerializationDetector extends AbstractIns
      */
     public void recordMonitorEnter(Object monitor, String label, Thread thread) {
         if (!enabled || monitor == null || thread == null) return;
-        MonitorState s = trackedState(monitor);
-        if (s == null) {
-            s = stateFor(monitor, label != null ? label : "monitor@" + System.identityHashCode(monitor));
-        }
+        MonitorState s = stateFor(monitor, label, "monitor");
         raise(s.peakWaiting, s.waiting.incrementAndGet());
         if (thread.isVirtual()) {
             raise(s.peakVirtualWaiting, s.virtualWaiting.incrementAndGet());

@@ -39,9 +39,13 @@ class ReportLabelsAreNotIdentityHashesTest {
     private static final String LABEL = "\"[^\"\\n]*@\"\\s*\\+\\s*(?:Integer\\.toHexString\\(\\s*)?"
             + "(?:System\\.identityHashCode\\(|\\w+\\.hashCode\\(\\)%s)";
 
-    /** A local an identity hash is assigned to, so {@code "x@" + id} is caught as well. */
-    private static final Pattern HASH_LOCAL =
-            Pattern.compile("\\b(?:int|long|var)\\s+(\\w+)\\s*=\\s*System\\.identityHashCode\\(");
+    /**
+     * A local an identity hash, or any {@code hashCode()}, is assigned to, so {@code "x@" + id} is
+     * caught as well. {@code int id = key.hashCode()} on an {@code IdentityKey} hid four labels
+     * from a scan that only knew {@code System.identityHashCode} (#918).
+     */
+    private static final Pattern HASH_LOCAL = Pattern.compile(
+            "\\b(?:int|long|var)\\s+(\\w+)\\s*=\\s*(?:System\\.identityHashCode\\(|\\w+\\.hashCode\\(\\))");
 
     /**
      * Labels that render a value rather than name an object: the text a value whose own
@@ -82,6 +86,7 @@ class ReportLabelsAreNotIdentityHashesTest {
         assertEquals(1, hits("String l = m.getClass().getSimpleName() + \"@\" + System.identityHashCode(m);").size());
         assertEquals(1, hits("String l = \"task@\" + Integer.toHexString(System.identityHashCode(f));").size());
         assertEquals(1, hits("int id = System.identityHashCode(f);\nString n = \"CompletableFuture@\" + id;").size());
+        assertEquals(1, hits("int id = key.hashCode();\nString n = \"monitor@\" + id;").size());
         assertEquals(1, hits("String l = m.getClass().getSimpleName() + \"@\"\n        + Integer.toHexString(System.identityHashCode(m));").size());
         assertTrue(hits(" * a label such as \"map@\" + System.identityHashCode(m)").isEmpty());
         assertEquals(1, hits("String l = \"Arena@\" + key.hashCode();").size());

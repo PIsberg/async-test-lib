@@ -86,8 +86,7 @@ public final class ThisEscapeDetector extends AbstractInstanceDetector<ThisEscap
         if (instance == null || thread == null) return;
         State s = trackedState(instance);
         if (s == null) {
-            String label = instance.getClass().getSimpleName() + "@" + System.identityHashCode(instance);
-            s = stateFor(instance, label, "instance", l -> new State(l, thread.threadId()));
+            s = stateFor(instance, null, instance.getClass().getSimpleName(), l -> new State(l, thread.threadId()));
         }
         s.escapes.add(how != null ? how : "this published from constructor");
     }

@@ -94,8 +94,7 @@ public final class ThreadLocalRandomMisuseDetector extends AbstractInstanceDetec
         if (rng == null || thread == null) return;
         State s = trackedState(rng);
         if (s == null) {
-            String label = (name != null) ? name : "ThreadLocalRandom@" + System.identityHashCode(rng);
-            s = stateFor(rng, label, "ThreadLocalRandom", l -> new State(l, ReportSections.threadLabel(thread)));
+            s = stateFor(rng, name, "ThreadLocalRandom", l -> new State(l, ReportSections.threadLabel(thread)));
         }
         s.obtainingThreadIds.add(thread.threadId());
     }
