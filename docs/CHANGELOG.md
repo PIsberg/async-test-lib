@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`StructuredTaskScopeMisuseDetector` says when a scope id must be unique (#943).** Scopes are
+  keyed by id and owner thread, so a constant id is safe while scopes stay on their opening
+  thread. A scope handed to another thread under a shared id resolved to the receiver's own scope
+  (the off-owner use went unreported) or, with several owners, to an arbitrary one. The class and
+  `recordScopeOpened` javadocs now say to give each open its own id when a scope crosses threads,
+  and two tests pin that both cases are reported exactly with one id per open.
 - **Three more detectors end their per-thread state at the round boundary (#964).** The leads
   the #944 follow-up hunt left unverified are all real, each shown by a test that failed first:
   - `NestedMonitorLockoutDetector`: a body that threw between `recordMonitorAcquired` and
