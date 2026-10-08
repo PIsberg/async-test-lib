@@ -27,7 +27,7 @@ review. A breaking change that has not had its major bump fails the build.
 1.12 deprecated (the per-detector `@AsyncTest` attributes, the `*Monitor()` accessors, the
 `spi.adapters` bridge), makes three SPI methods default, and changes what a bare `@AsyncTest`
 selects. The owner chose on 2026-10-06 to keep the 1.x line rather than call it 2.0.0.
-`docs/MIGRATION.md` describes every change. japicmp waives exactly those breaks by name in
+[migration/1.13.0.md](migration/1.13.0.md) describes every change. japicmp waives exactly those breaks by name in
 `async-test-lib/pom.xml`; any other break still fails the build, and the waiver goes when the
 baseline moves to 1.13.0.
 

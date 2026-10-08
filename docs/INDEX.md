@@ -1,6 +1,6 @@
 # Documentation Index
 
-87 documents, one router. Every path below is relative to this file.
+88 documents, one router. Every path below is relative to this file.
 
 **There are no per-directory indexes, deliberately.** `DocsIndexCoverageTest` requires a direct
 link from *this* file to every document under `docs/`, not a transitive one, so a second index in
@@ -59,6 +59,7 @@ Three paths, depending on why you came.
 | [detector-catalog/12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 146. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
 | [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously — `AsyncFindings`, for asserting on what the detectors reported, `AsyncTestContext.rendezvous()`, for making a round's workers meet mid-body, `RunOutcomes`, for asserting that something happened exactly once, at most once, or with distinct values, and `OperationHistory`, for asserting that every round's results are linearizable |
 | [MIGRATION.md](MIGRATION.md) | Moving an existing test suite onto `@AsyncTest` |
+| [migration/1.13.0.md](migration/1.13.0.md) | Upgrading from 1.12 to 1.13.0: the breaking changes, which ones compile and still change what runs, and the exact rewrite for each |
 
 ### Reading what it found
 

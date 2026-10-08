@@ -181,7 +181,7 @@ name their replacement. Each item below says whether it is ready.
 * Remove the 42 deprecated `*Monitor()` accessors from `AsyncTestContext` (#921, **done
   2026-10-06**: 504 lines removed, 77 files moved to the new names) (renamed
   `*Detector()` aliases shipped in 1.7). Ready: all 42 name their replacement. Four are not a
-  suffix swap and one defeats a global `Monitor` to `Detector` replace; `docs/MIGRATION.md` lists
+  suffix swap and one defeats a global `Monitor` to `Detector` replace; `docs/migration/1.13.0.md` lists
   them.
 * Delete whichever registry lost (#922). **Done 2026-10-06:** the built-in SPI bridge lost and is
   deleted (`spi.adapters`, the built-in factory list, `spi.DetectorRegistry.build(config)`); the SPI
