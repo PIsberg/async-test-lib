@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
+import org.jspecify.annotations.Nullable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -95,8 +96,11 @@ public class StructuredTaskScopeMisuseDetector {
         }
     }
 
-    // Per-scope lifecycle state, keyed by a caller-supplied scope id.
-    private final Map<String, ScopeState> scopes = new ConcurrentHashMap<>();
+    // Per-scope lifecycle state, keyed by the caller-supplied scope id and then by the owner's
+    // thread id. An @AsyncTest body runs on every worker at once, so a constant id (the class
+    // javadoc's own "fanout") names one scope per worker; keyed by id alone, the second open
+    // replaced the first and every worker's correct fork and join read as a CRITICAL violation.
+    private final Map<String, Map<Long, ScopeState>> scopes = new ConcurrentHashMap<>();
 
     private final List<String> forkAfterJoinReports   = Collections.synchronizedList(new ArrayList<>());
     private final List<String> resultBeforeJoinReports = Collections.synchronizedList(new ArrayList<>());
@@ -112,13 +116,28 @@ public class StructuredTaskScopeMisuseDetector {
      * Record that a {@code StructuredTaskScope.open(...)} returned a new scope,
      * confined to the opening (owner) thread.
      *
-     * @param scopeId correlates the calls belonging to one scope across its lifecycle
+     * @param scopeId correlates the calls belonging to one scope across its lifecycle; each
+     *                thread that opens a scope under the same id owns a scope of its own, so a
+     *                constant id in an {@code @AsyncTest} body is safe
      * @param owner the thread currently holding it
      */
     public void recordScopeOpened(String scopeId, Thread owner) {
         if (scopeId == null || owner == null) return;
         totalScopes.incrementAndGet();
-        scopes.put(scopeId, new ScopeState(owner.threadId(), owner.getName()));
+        scopes.computeIfAbsent(scopeId, k -> new ConcurrentHashMap<>())
+              .put(owner.threadId(), new ScopeState(owner.threadId(), owner.getName()));
+    }
+
+    /**
+     * The scope {@code thread} acts on: its own scope under {@code scopeId} when it opened one,
+     * else one opened by another thread, which makes the call off-owner.
+     */
+    private @Nullable ScopeState scope(String scopeId, Thread thread) {
+        Map<Long, ScopeState> owners = scopes.get(scopeId);
+        if (owners == null) return null;
+        ScopeState own = owners.get(thread.threadId());
+        if (own != null) return own;
+        return owners.values().stream().findFirst().orElse(null);
     }
 
     /**
@@ -132,7 +151,7 @@ public class StructuredTaskScopeMisuseDetector {
     public void recordFork(String scopeId, String subtaskId, Thread thread) {
         if (scopeId == null || subtaskId == null || thread == null) return;
         totalForks.incrementAndGet();
-        ScopeState s = scopes.get(scopeId);
+        ScopeState s = scope(scopeId, thread);
         if (s == null) return;
 
         if (thread.threadId() != s.ownerThreadId) {
@@ -163,7 +182,7 @@ public class StructuredTaskScopeMisuseDetector {
      */
     public void recordJoin(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
-        ScopeState s = scopes.get(scopeId);
+        ScopeState s = scope(scopeId, thread);
         if (s == null) return;
 
         if (thread.threadId() != s.ownerThreadId) {
@@ -188,7 +207,7 @@ public class StructuredTaskScopeMisuseDetector {
      */
     public void recordResultRead(String scopeId, String subtaskId, Thread thread) {
         if (scopeId == null || subtaskId == null || thread == null) return;
-        ScopeState s = scopes.get(scopeId);
+        ScopeState s = scope(scopeId, thread);
         if (s == null) return;
 
         if (s.timedOut) {
@@ -222,7 +241,7 @@ public class StructuredTaskScopeMisuseDetector {
      */
     public void recordJoinTimeout(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
-        ScopeState s = scopes.get(scopeId);
+        ScopeState s = scope(scopeId, thread);
         if (s == null) return;
 
         if (thread.threadId() != s.ownerThreadId) {
@@ -250,7 +269,7 @@ public class StructuredTaskScopeMisuseDetector {
      */
     public void recordTimeoutSwallowed(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
-        ScopeState s = scopes.get(scopeId);
+        ScopeState s = scope(scopeId, thread);
         if (s == null) return;
 
         s.timedOut = true;
@@ -276,7 +295,7 @@ public class StructuredTaskScopeMisuseDetector {
      */
     public void recordScopeClosed(String scopeId, Thread thread) {
         if (scopeId == null || thread == null) return;
-        ScopeState s = scopes.get(scopeId);
+        ScopeState s = scope(scopeId, thread);
         if (s == null) return;
 
         if (s.forkCount.get() > 0 && !s.joined) {

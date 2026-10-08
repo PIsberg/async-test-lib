@@ -110,6 +110,65 @@ class StructuredTaskScopeMisuseDetectorTest {
         assertFalse(detector.analyze().getConfinementIssues().isEmpty());
     }
 
+    // ---- One scope id opened by several workers at once (the class javadoc's own example) ----
+
+    @Test
+    void sameScopeIdOpenedByConcurrentWorkers_isNotMisuse() {
+        // @AsyncTest(threads = 8) runs the javadoc example on eight workers at once, each opening
+        // its own scope under the constant id "fanout". Each worker's lifecycle is correct; the
+        // interleaving below is the one the barrier produces.
+        Thread a = new Thread("worker-a");
+        Thread b = new Thread("worker-b");
+        detector.recordScopeOpened("fanout", a);
+        detector.recordScopeOpened("fanout", b);
+        detector.recordFork("fanout", "x", a);
+        detector.recordJoin("fanout", a);
+        detector.recordFork("fanout", "x", b);
+        detector.recordJoin("fanout", b);
+        detector.recordResultRead("fanout", "x", a);
+        detector.recordResultRead("fanout", "x", b);
+        detector.recordScopeClosed("fanout", a);
+        detector.recordScopeClosed("fanout", b);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(),
+                "two workers each running open, fork, join, get, close on their own scope were "
+                        + "reported as misuse because the second open replaced the first: " + report);
+        assertEquals(2, report.getTotalScopes());
+    }
+
+    @Test
+    void sameScopeIdOpenedByConcurrentWorkers_stillCatchesAThirdThreadForking() {
+        Thread a = new Thread("worker-a");
+        Thread b = new Thread("worker-b");
+        Thread intruder = new Thread("intruder");
+        detector.recordScopeOpened("fanout", a);
+        detector.recordScopeOpened("fanout", b);
+        detector.recordFork("fanout", "x", intruder);
+
+        var report = detector.analyze();
+        assertEquals(1, report.getConfinementIssues().size(), report.toString());
+        assertTrue(report.getConfinementIssues().get(0).contains("intruder"), report.toString());
+    }
+
+    @Test
+    void sameScopeIdOpenedByConcurrentWorkers_keepsEachWorkersOwnMisuse() {
+        Thread a = new Thread("worker-a");
+        Thread b = new Thread("worker-b");
+        detector.recordScopeOpened("fanout", a);
+        detector.recordScopeOpened("fanout", b);
+        detector.recordFork("fanout", "x", a);
+        detector.recordFork("fanout", "x", b);
+        detector.recordJoin("fanout", b);
+        detector.recordScopeClosed("fanout", a);   // a never joined its own scope
+        detector.recordScopeClosed("fanout", b);
+
+        var report = detector.analyze();
+        assertEquals(1, report.getMissingJoinIssues().size(), report.toString());
+        assertTrue(report.getMissingJoinIssues().get(0).contains("worker-a"), report.toString());
+        assertTrue(report.getConfinementIssues().isEmpty(), report.toString());
+    }
+
     // ---- Missing join ----
 
     @Test

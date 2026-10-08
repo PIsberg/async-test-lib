@@ -107,6 +107,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`StructuredTaskScopeMisuseDetector` no longer reports CRITICAL misuse when every worker opens
+  a scope under the same id.** The class javadoc's own example, `@AsyncTest(threads = 8)` with the
+  constant id `"fanout"`, opens one scope per worker at once. Scopes were keyed by id alone, so the
+  second open replaced the first and a correct open, fork, join, get, close on each worker was
+  reported as off-owner fork and fork after join, CRITICAL. A scope is now keyed by id and owner
+  thread; a fork, join or timeout from a thread that opened no scope under that id is still an
+  owner-confinement violation. Three tests in `StructuredTaskScopeMisuseDetectorTest`, two red on
+  the old keying.
+- **`VirtualThreadContextLeakDetector` no longer fails a run over an `InheritableThreadLocal` set
+  in a virtual thread.** The finding said virtual threads do not inherit those values by default;
+  they do (JEP 444, `Thread.Builder.inheritInheritableThreadLocals`, checked on JDK 26). It is now a
+  warning in the report, outside `hasIssues()` and the structured findings, worded as what is true:
+  every thread a virtual thread creates gets a copy. The class javadoc and the report's learning
+  text no longer say virtual threads are pooled. A value set and never removed is still an issue.
+  `VirtualThreadContextLeakDetectorTest.inheritableThreadLocalInVirtualThread_isAWarningNotAnIssue`,
+  red before.
+- **`MdcContextLeakDetector` reports a leak on a reused pool thread.** Only the last task per
+  thread was compared, start against end. A leaked key is still in the MDC when the next task on
+  that thread starts, so from round two on each task's start snapshot already held it and the
+  leak hid itself: a pool that ran more than one task per thread, which is the case the detector
+  exists for, passed clean, and so did a body leaking on the runner's own workers with
+  `useVirtualThreads = false` and more than one round.
+  Leaks are now settled when each task ends and accumulated per thread.
+  `MdcContextLeakDetectorTest.leakIsReportedWhenTheNextTaskOnTheSameThreadInheritsIt`, red on the
+  old comparison.
 - **A licensed run no longer revalidates online because the cache file was being replaced (#928).**
   On Windows, a read that meets another JVM's replace of the validation record fails with
   `AccessDeniedException`, and `LicenseValidationCache.isFresh` read every failure as "no fresh

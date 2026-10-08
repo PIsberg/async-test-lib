@@ -14,19 +14,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Detects {@link ThreadLocal} context leaks in virtual threads.
  *
- * <p>Virtual threads are designed to be created in large quantities and are pooled
- * by the JVM. When a virtual thread sets a {@code ThreadLocal} value and does not
- * remove it before completing, the value may be retained and visible to a future
- * task scheduled on the same carrier thread or virtual thread instance. In server
- * applications this creates subtle bugs: a request may see data from a previous
- * request.
+ * <p>Virtual threads are cheap and are never pooled, so a {@code ThreadLocal} value a
+ * virtual thread leaves set dies with it. The same task code leaks as soon as it runs on
+ * a pooled platform thread, or on a virtual thread that runs more than one task: the
+ * value stays visible to the next task, and a request may see data from a previous
+ * request. A task that sets a {@code ThreadLocal} and does not remove it is reported
+ * here, where it is cheap to catch.
  *
  * <p><strong>Issues detected:</strong>
  * <ul>
  *   <li><b>ThreadLocal not removed</b> — A ThreadLocal was set in a virtual thread
  *       but {@code remove()} was never called before the thread completed</li>
- *   <li><b>InheritableThreadLocal in virtual threads</b> — {@code InheritableThreadLocal}
- *       values are not propagated to virtual threads by default; using them is likely a bug</li>
+ *   <li><b>InheritableThreadLocal in virtual threads</b> (warning, not an issue) — virtual
+ *       threads inherit {@code InheritableThreadLocal} values by default, so every thread a
+ *       virtual thread creates gets a copy; {@code ScopedValue} bounds the context instead</li>
  *   <li><b>High ThreadLocal count</b> — More than a configurable threshold of distinct
  *       ThreadLocals set on one virtual thread (design smell: prefer {@code ScopedValue})</li>
  * </ul>
@@ -114,9 +115,9 @@ public class VirtualThreadContextLeakDetector {
         if (isInheritable && isVirtual) {
             inheritableInVirtualReports.add(
                 "Thread " + thread.getName() + " (id=" + tid + "): "
-                + "InheritableThreadLocal '" + variableName + "' used inside a virtual thread. "
-                + "InheritableThreadLocal values are NOT inherited by virtual threads by default. "
-                + "Use ScopedValue instead."
+                + "InheritableThreadLocal '" + variableName + "' set inside a virtual thread. "
+                + "Every thread it creates inherits a copy (virtual threads inherit by default), "
+                + "so the context travels further than the task. Consider ScopedValue."
             );
         }
     }
@@ -154,7 +155,7 @@ public class VirtualThreadContextLeakDetector {
                 leakReports.add(
                     "Virtual thread (id=" + entry.threadId + "): "
                     + "ThreadLocal '" + entry.key + "' was set but never removed. "
-                    + "This value will persist and may leak into subsequent tasks on the same thread."
+                    + "If this code runs on a pooled thread, the value leaks into the next task on it."
                 );
             }
         }
@@ -210,10 +211,6 @@ public class VirtualThreadContextLeakDetector {
                     structuredViolations.add(new Violation("VirtualThreadContextLeaks", severity,
                             finding, List.of(), Map.of(), Instant.now()));
                 }
-                for (String finding : inheritableInVirtualIssues) {
-                    structuredViolations.add(new Violation("VirtualThreadContextLeaks", severity,
-                            finding, List.of(), Map.of(), Instant.now()));
-                }
         }
 
         private final List<String> highCountWarnings;
@@ -237,7 +234,9 @@ public class VirtualThreadContextLeakDetector {
          * {@return true if any context leak issues were detected}
          */
         public boolean hasIssues() {
-            return !leaks.isEmpty() || !inheritableInVirtualIssues.isEmpty();
+            // An InheritableThreadLocal set in a virtual thread is a warning: virtual threads
+            // inherit those values by default, so it is not a defect a failOn gate may fail on.
+            return !leaks.isEmpty();
         }
 
         /**
@@ -245,7 +244,7 @@ public class VirtualThreadContextLeakDetector {
          */
         public List<String> getLeaks()                        { return Collections.unmodifiableList(leaks); }
         /**
-         * {@return the inheritable in virtual issues}
+         * {@return the InheritableThreadLocal-in-virtual-thread warnings, which {@link #hasIssues()} does not count}
          */
         public List<String> getInheritableInVirtualIssues()   { return Collections.unmodifiableList(inheritableInVirtualIssues); }
         /**
@@ -263,13 +262,13 @@ public class VirtualThreadContextLeakDetector {
 
         @Override
         public String toString() {
-            if (!hasIssues() && highCountWarnings.isEmpty()) {
+            if (!hasIssues() && highCountWarnings.isEmpty() && inheritableInVirtualIssues.isEmpty()) {
                 return "VirtualThreadContextLeakReport: No ThreadLocal context leaks detected";
             }
 
             StringBuilder sb = new StringBuilder();
 
-            if (!leaks.isEmpty() || !inheritableInVirtualIssues.isEmpty()) {
+            if (!leaks.isEmpty()) {
                 sb.append(IssueSeverity.HIGH.format())
                   .append(": Virtual thread ThreadLocal context leak detected\n");
             } else {
@@ -282,7 +281,7 @@ public class VirtualThreadContextLeakDetector {
               .append(", Unremoved=").append(totalSets - totalRemoves).append("\n");
 
             ReportSections.appendSection(sb, "ThreadLocal leaks (set but never removed)", leaks);
-            ReportSections.appendSection(sb, "InheritableThreadLocal misuse in virtual threads", inheritableInVirtualIssues);
+            ReportSections.appendSection(sb, "InheritableThreadLocal set in virtual threads (warning)", inheritableInVirtualIssues);
             ReportSections.appendSection(sb, "High ThreadLocal usage per virtual thread", highCountWarnings);
 
             sb.append("\n\n").append("=".repeat(60));
@@ -296,9 +295,9 @@ public class VirtualThreadContextLeakDetector {
             return """
                 📚 LEARNING: ThreadLocals and Virtual Threads
 
-                Virtual threads are designed to be cheap and plentiful. However, ThreadLocal
-                values set inside a virtual thread task can leak into subsequent tasks if not
-                explicitly removed.
+                Virtual threads are cheap and never pooled, so a value one leaves set dies
+                with it. The same task code leaks when it runs on a pooled thread: a
+                ThreadLocal value it does not remove is visible to the next task.
 
                 Problem example (leaking request ID):
                   ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
@@ -314,8 +313,9 @@ public class VirtualThreadContextLeakDetector {
                      ScopedValue<String> REQUEST_ID = ScopedValue.newInstance();
                      ScopedValue.where(REQUEST_ID, "request-A").run(() -> handleRequest());
 
-                  3. InheritableThreadLocal does NOT propagate to virtual threads by default.
-                     Use ScopedValue for structured context propagation.
+                  3. Virtual threads inherit InheritableThreadLocal values by default, so
+                     every thread they create gets a copy. ScopedValue bounds the context
+                     to the code that binds it.
                 """;
         }
     }
