@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Windows legs of Tests & Build pass the skipped-tests gate again (#950).** The gate's
+  context for the full suite named the JDK and not the OS, so the baseline could only say
+  `LicenseValidationCacheTransientReadTest` skips everywhere, and the `@EnabledOnOs(WINDOWS)` test
+  failed the gate on all three Windows legs of every main run since #927, hidden by those legs'
+  `continue-on-error`. The context is now `tests/jdk<N>/<os>` and the baseline line names Linux and
+  macOS only. `SkippedTestsGateWiringTest` went red first on `tests.yml:test`; the gate's
+  `--self-test` gained an OS-qualified case.
+
 ## [1.13.0] - 2026-10-08
 
 > **Breaking release.** 1.13.0 removes what 1.12 deprecated and changes what a bare `@AsyncTest`
