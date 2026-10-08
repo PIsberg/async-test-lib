@@ -17,6 +17,29 @@ public class NestedMonitorLockoutDetectorTest {
     }
 
     @Test
+    void aMonitorABodyNeverReleasedDoesNotFollowItsThreadIntoTheNextRound() {
+        // A body that throws between acquire and release leaves the monitor recorded; a pooled
+        // platform worker reused in the next round holds nothing there (#964).
+        NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
+        detector.recordMonitorAcquired(new Object());
+        detector.markInvocationStart();
+        detector.recordBlockingOperationAttempted("future.get()");
+        assertFalse(detector.analyze().hasIssues(),
+                "the monitor was recorded last round and never released, but nothing is held now");
+    }
+
+    @Test
+    void aMonitorHeldInThisRoundIsStillReported() {
+        NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
+        detector.markInvocationStart();
+        Object lock = new Object();
+        detector.recordMonitorAcquired(lock);
+        detector.recordBlockingOperationAttempted("future.get()");
+        detector.recordMonitorReleased(lock);
+        assertTrue(detector.analyze().hasIssues(), "blocking while holding a monitor this round");
+    }
+
+    @Test
     void testNoIssuesWhenBlockingWithoutMonitor() {
         NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
         // Blocking op, but no monitor held

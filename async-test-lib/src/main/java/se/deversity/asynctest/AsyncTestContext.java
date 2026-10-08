@@ -1104,6 +1104,17 @@ public final class AsyncTestContext {
         if (cfBlockingCallbackDetector != null) {
             cfBlockingCallbackDetector.markInvocationStart();
         }
+        // A monitor a throwing body never released, a pending VarHandle read, and a blocking
+        // section that never ended each belong to the round that recorded them (#964).
+        if (nestedMonitorLockoutDetector != null) {
+            nestedMonitorLockoutDetector.markInvocationStart();
+        }
+        if (varHandleNonAtomicUpdateDetector != null) {
+            varHandleNonAtomicUpdateDetector.markInvocationStart();
+        }
+        if (virtualThreadCarrierExhaustionDetector != null) {
+            virtualThreadCarrierExhaustionDetector.markInvocationStart();
+        }
     }
 
     /**

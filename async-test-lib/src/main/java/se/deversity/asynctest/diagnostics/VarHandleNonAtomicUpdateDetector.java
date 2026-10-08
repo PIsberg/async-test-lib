@@ -187,6 +187,18 @@ public final class VarHandleNonAtomicUpdateDetector {
      * {@code synchronized (holder)} is recognised, or the handle itself for a static field, which
      * nobody locks but which keeps declared and woven locks in play.
      */
+    /**
+     * Ends the round's pending reads. A get one body execution recorded and a set the same pooled
+     * worker records in the next are two body executions, not one get-then-set; without this
+     * the pair was counted as a lost update (#964). The runner calls this once the previous
+     * round's workers have finished.
+     */
+    public void markInvocationStart() {
+        for (State s : locations.values()) {
+            s.pendingReadByThread.clear();
+        }
+    }
+
     private static @Nullable Object guardOf(@Nullable Object varHandle, @Nullable Object receiver) {
         return receiver != null ? receiver : varHandle;
     }

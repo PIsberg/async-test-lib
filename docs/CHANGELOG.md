@@ -37,6 +37,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Three more detectors end their per-thread state at the round boundary (#964).** The leads
+  the #944 follow-up hunt left unverified are all real, each shown by a test that failed first:
+  - `NestedMonitorLockoutDetector`: a body that threw between `recordMonitorAcquired` and
+    `recordMonitorReleased` left the monitor recorded, and a pooled platform worker was reported
+    "holding 1 monitor(s)" for a blocking call in a later round.
+  - `VarHandleNonAtomicUpdateDetector`: a get recorded in one round and a set the same pooled
+    worker recorded in the next were counted as one non-atomic get-then-set, a lost update.
+  - `VirtualThreadCarrierExhaustionDetector`: nested `recordBlockingStart` calls on one virtual
+    thread counted it once per call, so one thread blocked in a synchronized block around a native
+    call read as two pinned carriers and, with two carriers, as exhaustion; and a start never
+    ended kept counting in every later round. A thread now counts once whatever its depth, keeps
+    its outermost reason, and the count restarts each round.
+  Each gained a `markInvocationStart()` in the round fan-out; the in-round cases still report.
 - **`CompletableFutureBlockingCallbackDetector` keeps a stack of open callbacks and ends them at
   the round boundary (#941).** The active callback was one `ThreadLocal` slot. A callback that
   completes another future runs that future's dependent inline, so the inner exit cleared the slot
