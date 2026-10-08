@@ -24,7 +24,7 @@ import java.util.Map;
  * declared is invisible and still fires; treat such a finding as a prompt to verify the
  * synchronization, or to move to a per-thread instance.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_FORMATTER)}:
  * <pre>{@code
  * var mon = AsyncTestContext.sharedFormatterDetector();
  * mon.recordAccess(sharedFormatter, "sharedFormatter", Thread.currentThread());

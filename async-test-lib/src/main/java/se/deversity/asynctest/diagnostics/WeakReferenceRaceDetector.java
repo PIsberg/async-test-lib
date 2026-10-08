@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *       intermittently.</li>
  * </ol>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.WEAK_REFERENCE_RACE)}:
  * <pre>{@code
  * var d = AsyncTestContext.weakReferenceRaceDetector();
  * Foo val = weakRef.get();

@@ -36,7 +36,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * same object on every thread is a shared constant and is never reported, and a key touched only
  * by platform threads is out of scope, because on a pool the bound is real.
  *
- * <p>Usage inside {@code @AsyncTest} - record the value each thread ends up with:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.THREAD_LOCAL_CACHE_DEGRADATION)} -
+ * record the value each thread ends up with:
  * <pre>{@code
  * private static final ThreadLocal<SimpleDateFormat> FORMAT =
  *         ThreadLocal.withInitial(() -> new SimpleDateFormat("yyyy-MM-dd"));

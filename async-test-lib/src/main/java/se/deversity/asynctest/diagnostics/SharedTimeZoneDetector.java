@@ -28,7 +28,7 @@ import java.util.Map;
  * lock object is invisible and still fires; treat such a finding as a prompt to verify the
  * synchronization, or to prefer immutable {@link java.time.ZoneId} or a per-thread copy.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_TIMEZONE)}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedTimeZoneDetector();
  * TimeZone tz = TimeZone.getDefault();

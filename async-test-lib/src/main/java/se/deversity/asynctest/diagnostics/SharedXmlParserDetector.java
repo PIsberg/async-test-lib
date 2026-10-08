@@ -30,7 +30,7 @@ import java.util.Map;
  * lock that was never declared is invisible and still fires; treat such a finding as a prompt to
  * verify the synchronization, or to create a per-thread parser from the shared factory.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_XML_PARSER)}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedXmlParserDetector();
  * d.recordAccess(documentBuilder, "DocumentBuilder", Thread.currentThread());

@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.LongAdder;
  * so this class compiles and runs on the library's JDK 21 baseline, where the FFM API is still
  * a preview. Callers on JDK 22+ pass real segments; nothing else changes.
  *
- * <p>Usage:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.CONFINED_ARENA_THREAD_ESCAPE)}:
  * <pre>{@code
  * var d = AsyncTestContext.confinedArenaThreadEscapeDetector();
  * try (Arena arena = Arena.ofConfined()) {

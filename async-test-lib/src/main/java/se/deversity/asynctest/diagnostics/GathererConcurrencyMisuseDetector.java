@@ -69,7 +69,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 8)
+ * @AsyncTest(threads = 8, includes = DetectorType.GATHERER_CONCURRENCY_MISUSE)
  * void testParallelGather() {
  *     var detector = AsyncTestContext.gathererConcurrencyMisuseDetector();
  *     // Describe the gatherer once, up front:

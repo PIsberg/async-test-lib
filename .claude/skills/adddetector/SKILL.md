@@ -76,6 +76,10 @@ its `analyze()` rule is a **placeholder marked TODO**. This skill wires the plum
 detection logic is out of scope* and left for the user (or a follow-up prompt) to fill in.
 Keep the report shape intact: a public no-arg **`analyze()`** returning a nested **`Report`**
 with a public **`hasIssues()`**; the registry's `ifIssue` call binds both.
+A usage example in the class javadoc that calls the accessor must select the detector, as
+`Usage inside {@code @AsyncTest(includes = DetectorType.TYPE)}:`: a bare `@AsyncTest` runs only
+`ESSENTIALS`, and the accessor throws for anything else (#955,
+`JavadocExamplesSelectTheirDetectorTest`).
 
 ### 2. Test *(new file)*
 Copy `templates/DetectorTest.java.tmpl` to the test file, substituting `{{CLASS}}`. Required, not
@@ -166,7 +170,7 @@ The wiring tests are the safety net — they fail loudly on any missed step:
 
 ```bash
 mvn -q -Dlicense.mock.mode=true \
-  -Dtest='DetectorRegistryFactoryTableTest,DetectorFiringContractTest,AsyncTestConfigBuildResolutionTest,StructuredViolationCoverageTest,{{CLASS}}Test' \
+  -Dtest='DetectorRegistryFactoryTableTest,DetectorFiringContractTest,AsyncTestConfigBuildResolutionTest,StructuredViolationCoverageTest,JavadocExamplesSelectTheirDetectorTest,{{CLASS}}Test' \
   test
 ```
 
@@ -174,6 +178,8 @@ mvn -q -Dlicense.mock.mode=true \
 - `DetectorFiringContractTest` → catches a built detector never handed to an `ifIssue` call.
 - `AsyncTestConfigBuildResolutionTest` → catches a missing config flag or derivation.
 - `{{CLASS}}Test` → the new detector's own tests.
+- `JavadocExamplesSelectTheirDetectorTest` → catches a javadoc example that calls the accessor
+  without naming the type in `includes`.
 - `StructuredViolationCoverageTest` → the report must keep `structuredViolations` and `analyze()`
   must return it through `DetectorFailurePolicy.checkedReport(this, r)` (the template does both),
   and the detector needs one driver in that test's `PATHS`. It fails until the TODO detection rule

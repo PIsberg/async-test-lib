@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.LongAdder;
  * <p>The parameter types are {@link Object} rather than {@code java.lang.foreign.MemorySegment}
  * so this class compiles on the library's JDK 21 baseline, where the FFM API is still preview.
  *
- * <p>Usage:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_MEMORY_SEGMENT_RACE)}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedMemorySegmentRaceDetector();
  * try (Arena arena = Arena.ofShared()) {

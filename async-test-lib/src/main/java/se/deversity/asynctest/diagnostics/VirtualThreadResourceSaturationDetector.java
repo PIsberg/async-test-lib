@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * virtual threads in it, or one whose queue was made of platform threads: a bounded platform pool
  * cannot produce this hazard, and {@code THREAD_POOL_DEADLOCK} already owns that ground.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.VIRTUAL_THREAD_RESOURCE_SATURATION)}:
  * <pre>{@code
  * var d = AsyncTestContext.vthreadResourceSaturationDetector();
  * d.registerResource("connections", pool.getMaximumPoolSize());

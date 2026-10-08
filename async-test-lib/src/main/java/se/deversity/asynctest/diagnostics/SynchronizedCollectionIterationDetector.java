@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Iterating without synchronization allows another thread to modify the collection
  * mid-iteration, causing {@link ConcurrentModificationException} or silently skipped elements.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SYNCHRONIZED_COLLECTION_ITERATION)}:
  * <pre>{@code
  * var mon = AsyncTestContext.synchronizedCollectionIterationDetector();
  * List<String> list = Collections.synchronizedList(new ArrayList<>());

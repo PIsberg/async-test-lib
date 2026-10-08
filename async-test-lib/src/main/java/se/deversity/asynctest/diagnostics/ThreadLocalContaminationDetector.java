@@ -20,7 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Common victims: MDC loggers, security contexts, request-scoped beans (Spring/Jakarta EE).
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.THREAD_LOCAL_CONTAMINATION)}:
  * <pre>{@code
  * var mon = AsyncTestContext.threadLocalContaminationDetector();
  * mon.recordNewTask(Thread.currentThread(), "task-A");

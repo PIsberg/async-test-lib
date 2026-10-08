@@ -66,7 +66,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *       {@code withName}, which makes every diagnostic that quotes the name ambiguous.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SCOPE_CONFIGURATION_MISUSE)}:
  * <pre>{@code
  * var d = AsyncTestContext.scopeConfigurationMisuseDetector();
  * d.recordScopeOpened("scope-1", "order-fetcher", 3_000L, threadFactory, Thread.currentThread());

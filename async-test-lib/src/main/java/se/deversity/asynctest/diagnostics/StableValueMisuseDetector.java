@@ -52,7 +52,7 @@ import org.jspecify.annotations.Nullable;
  * <pre>{@code
  * private static final StableValue<Config> CONFIG = StableValue.of();
  *
- * @AsyncTest(threads = 16)
+ * @AsyncTest(threads = 16, includes = DetectorType.STABLE_VALUE_MISUSE)
  * void testLazyConfig() {
  *     var detector = AsyncTestContext.stableValueMisuseDetector();
  *     String name = "CONFIG";

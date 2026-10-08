@@ -41,7 +41,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * the reads past the cap that it does not name. The reads after a successful {@code validate()}
  * keep at least one name however many fields came before, so their finding always names a field.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.OPTIMISTIC_READ_VALIDATION)}:
  * <pre>{@code
  * var mon = AsyncTestContext.optimisticReadValidationDetector();
  * long stamp = lock.tryOptimisticRead();

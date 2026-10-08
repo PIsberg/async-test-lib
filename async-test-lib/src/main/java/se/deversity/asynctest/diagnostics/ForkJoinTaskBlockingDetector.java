@@ -19,7 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * tasks and parallel streams. For tasks that must block, the correct pattern is
  * {@link java.util.concurrent.ForkJoinPool#managedBlock}.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.FORK_JOIN_TASK_BLOCKING)}:
  * <pre>{@code
  * var mon = AsyncTestContext.forkJoinTaskBlockingDetector();
  * mon.recordForkJoinTaskEntered(Thread.currentThread());

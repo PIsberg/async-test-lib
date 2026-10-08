@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Detector javadoc examples run under the 1.13.0 default (#955).** 46 javadoc comments in main
+  code (45 detector classes and `AsyncTestContext`) called the accessor of a detector outside
+  `ESSENTIALS` with no selection, so copied as written they threw `Detector not active` once a
+  bare `@AsyncTest` stopped running every detector. Each now says `includes = DetectorType.X`.
+  `JavadocExamplesSelectTheirDetectorTest` keeps the next detector's example honest: an accessor
+  call in a javadoc comment needs its `DetectorType` named in that comment (as `DetectorType.X`
+  or a `{@link DetectorType#X}`), or `detectAll = true`. Its first version went red on 49
+  comments; 3 of them already linked the type and needed no change.
 - **The Windows legs of Tests & Build pass the skipped-tests gate again (#950).** The gate's
   context for the full suite named the JDK and not the OS, so the baseline could only say
   `LicenseValidationCacheTransientReadTest` skips everywhere, and the `@EnabledOnOs(WINDOWS)` test

@@ -63,7 +63,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
  * warning for {@code synchronized} on such types, and doing so may throw at runtime in a
  * future JDK release.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.BOXED_PRIMITIVE_LOCK)}:
  * <pre>{@code
  * var d = AsyncTestContext.boxedPrimitiveLockDetector();
  * Integer lockObj = 42; // cached — dangerous!

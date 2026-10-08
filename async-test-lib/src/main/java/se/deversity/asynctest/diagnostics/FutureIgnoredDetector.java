@@ -16,7 +16,7 @@ import java.util.Map;
  * {@code isCancelled()}, or {@code cancel()}, the failure is silently discarded.
  * This makes debugging intermittent concurrent failures very difficult.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.FUTURE_IGNORED)}:
  * <pre>{@code
  * var d = AsyncTestContext.futureIgnoredDetector();
  * Future<?> f = executor.submit(task);

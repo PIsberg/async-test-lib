@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code Long.valueOf(n)} and {@code (Long) n} where {@code -128 <= n <= 127}</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SYNCHRONIZED_ON_LITERAL)}:
  * <pre>{@code
  * String lock = "shared-lock"; // interned — JVM-wide monitor
  * AsyncTestContext.synchronizedOnLiteralDetector()

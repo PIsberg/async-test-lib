@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.LongAdder;
  * set, which keeps recording calls uniform and avoids a hard dependency on the handle's identity
  * semantics.
  *
- * <p>Usage:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE)}:
  * <pre>{@code
  * private static final VarHandle COUNT =
  *     MethodHandles.lookup().findVarHandle(Holder.class, "count", int.class);

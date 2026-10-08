@@ -22,7 +22,7 @@ import java.util.Map;
  *
  * <p>The standard fix is {@code private final Object lock = new Object()}.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.PUBLIC_LOCK_EXPOSURE)}:
  * <pre>{@code
  * var mon = AsyncTestContext.publicLockExposureDetector();
  * mon.recordSynchronizedOnThis(this, Thread.currentThread(), getClass().getSimpleName());

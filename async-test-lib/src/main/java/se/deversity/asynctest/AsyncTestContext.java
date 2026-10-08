@@ -875,7 +875,8 @@ public final class AsyncTestContext {
      * monitor instructions and woven {@code Lock} call sites are recognised too. What is left is
      * a lock acquired only inside code the weaver never sees, which looks exactly like no lock at
      * all, and the shared instance gets reported even though the code is correct. Declaring the
-     * lock here is what tells the detectors otherwise:
+     * lock here is what tells the detectors otherwise (the example records through
+     * {@code DetectorType.SHARED_COLLECTIONS}, which the test names in {@code includes}):
      *
      * <pre>{@code
      * try (var held = AsyncTestContext.holdingLock(cacheLock)) {

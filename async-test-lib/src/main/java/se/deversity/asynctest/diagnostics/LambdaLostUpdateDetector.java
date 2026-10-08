@@ -67,7 +67,7 @@ import org.jspecify.annotations.Nullable;
  * built before the fan-out); a lambda built afresh inside each invocation is a fresh key with one
  * event in it.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.LAMBDA_LOST_UPDATE)}:
  * <pre>{@code
  * int[] counter = {0};
  * Runnable task = () -> {

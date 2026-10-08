@@ -18,7 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * real concurrency bugs by changing the thread-scheduling timing. Explicit GC in
  * production code is almost always wrong.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.EXPLICIT_GC)}:
  * <pre>{@code
  * var d = AsyncTestContext.explicitGcDetector();
  * // wrap before the call:

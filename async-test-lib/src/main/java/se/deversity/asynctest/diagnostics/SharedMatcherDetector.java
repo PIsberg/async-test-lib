@@ -23,7 +23,7 @@ import java.util.Map;
  * verify the synchronization, or to obtain a fresh matcher per thread from the shared {@code
  * Pattern}.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_MATCHER)}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedMatcherDetector();
  * d.recordAccess(sharedMatcher, "emailMatcher", Thread.currentThread());

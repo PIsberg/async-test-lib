@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *       cannot see whether it did, so silence there is the conservative side.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE)}:
  * <pre>{@code
  * var d = AsyncTestContext.cfCombinatorMisuseDetector();
  *

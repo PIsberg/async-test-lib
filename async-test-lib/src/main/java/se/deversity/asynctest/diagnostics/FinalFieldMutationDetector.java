@@ -52,7 +52,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 8)
+ * @AsyncTest(threads = 8, includes = DetectorType.FINAL_FIELD_MUTATION)
  * void testConfigOverride() {
  *     var detector = AsyncTestContext.finalFieldMutationDetector();
  *     String field = "Config.MAX_RETRIES";

@@ -65,7 +65,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 8, useVirtualThreads = true)
+ * @AsyncTest(threads = 8, useVirtualThreads = true,
+ *            includes = DetectorType.STRUCTURED_TASK_SCOPE_MISUSE)
  * void testStructuredFanOut() {
  *     var detector = AsyncTestContext.structuredTaskScopeMisuseDetector();
  *     String scopeId = "fanout";
