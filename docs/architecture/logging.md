@@ -38,10 +38,14 @@ suite. Without it, interleaved output from concurrent forks is unreadable.
 Log the decision and the values behind it:
 
 ```
-runner.config test=… threads=8 multiplier=2.0 effectiveTimeoutMs=10000
+runner.config test=… threads=8 multiplier=2.0 effectiveTimeoutMs=10000 detectors=12 selection=ESSENTIALS
 ```
 
-answers "why did this behave differently on CI?" in one line. `entering execute()` answers nothing —
+answers "why did this behave differently on CI?" in one line. `detectors` and `selection` say which
+detectors looked: since 1.13.0 a bare `@AsyncTest` runs the 12 in `ESSENTIALS` where 1.12 ran all
+146, and a run that passes says nothing else about it (#956). `selection` is `all`, the name of the
+preset whose set the run's selection equals, or `custom`, read from the resolved set rather than the
+annotation. `entering execute()` answers nothing —
 it records a position in the code, which the stack trace already had.
 
 The replay seed belongs in the narrative on every round. It is the reproduction handle for a failure

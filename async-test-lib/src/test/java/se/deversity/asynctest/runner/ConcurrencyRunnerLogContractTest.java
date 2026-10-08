@@ -98,6 +98,8 @@ class ConcurrencyRunnerLogContractTest {
             "the effective budget every downstream timeout derives from: " + config);
         assertTrue(config.contains("multiplier="),
             "the multiplier that explains a CI-only difference: " + config);
+        assertTrue(config.contains("detectors=" + se.deversity.asynctest.DetectorType.values().length
+                + " selection=all"), "how many detectors ran, and which selection: " + config);
 
         assertEquals(2, events().stream().filter(m -> m.startsWith("runner.round.start")).count(),
             "one start event per invocation: " + events());
@@ -107,6 +109,37 @@ class ConcurrencyRunnerLogContractTest {
             "every round carries the replay seed, which is the reproduction handle");
         assertTrue(eventStartingWith("runner.round.done").contains("durationMs="),
             "the round reports what it cost");
+    }
+
+    @Test
+    @DisplayName("a bare annotation's run says it ran the ESSENTIALS preset (#956)")
+    void theRunSaysWhichDetectorsRan() {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(BareDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        String config = eventStartingWith("runner.config");
+        assertTrue(config.contains("detectors=" + se.deversity.asynctest.Preset.ESSENTIALS.enabled().size()
+                + " selection=ESSENTIALS"),
+            "1.13.0 runs 12 detectors where 1.12 ran 146 for the same annotation; the run must"
+                + " say so: " + config);
+    }
+
+    @Test
+    @DisplayName("the selection label names a preset only for its exact set")
+    void theSelectionLabelNamesWhatRan() {
+        assertEquals("CI_FAST", ConcurrencyRunner.selectionLabel(
+                java.util.EnumSet.copyOf(se.deversity.asynctest.Preset.CI_FAST.enabled())));
+        assertEquals("NONE", ConcurrencyRunner.selectionLabel(
+                java.util.EnumSet.noneOf(se.deversity.asynctest.DetectorType.class)));
+        assertEquals("custom", ConcurrencyRunner.selectionLabel(
+                java.util.EnumSet.of(se.deversity.asynctest.DetectorType.DEADLOCKS)));
+        java.util.Set<se.deversity.asynctest.DetectorType> essentialsPlusOne =
+                java.util.EnumSet.copyOf(se.deversity.asynctest.Preset.ESSENTIALS.enabled());
+        essentialsPlusOne.add(se.deversity.asynctest.DetectorType.FALSE_SHARING);
+        assertEquals("custom", ConcurrencyRunner.selectionLabel(essentialsPlusOne));
     }
 
     @Test
@@ -403,6 +436,15 @@ class ConcurrencyRunnerLogContractTest {
     }
 
     /** Runs under the extension so the narrative is produced by the real code path. */
+    static class BareDummy {
+        private final AtomicInteger counter = new AtomicInteger();
+
+        @AsyncTest(threads = 2, invocations = 1)
+        void bare() {
+            counter.incrementAndGet();
+        }
+    }
+
     static class NarratedDummy {
         private final AtomicInteger counter = new AtomicInteger();
 

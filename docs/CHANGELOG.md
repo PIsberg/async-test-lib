@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   went red first on the three cases that set it; `mvn test -Dasync-test.detectAll=true` turns
   `LeanDefaultSelectionTest`'s bare annotation from 12 detectors to 146, so the property reaches
   surefire's forked JVM.
+- **`runner.config` says which detectors ran (#956).** After the 1.13.0 default flip a test that
+  passed under 1.12 passes under 1.13 with nothing in its output saying that 12 detectors looked
+  instead of 146. The DEBUG event now ends with `detectors=<count> selection=<all|preset|custom>`,
+  where `selection` names the preset whose set the run's selection equals. The log contract test
+  went red on both fields first. The report header does not carry it yet: where it belongs there is
+  an owner decision, left on #956.
 
 ### Security
 

@@ -13,6 +13,8 @@ import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
 import se.deversity.asynctest.BeforeEachInvocation;
+import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.benchmark.BenchmarkRecorder;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
@@ -422,14 +424,16 @@ public class ConcurrencyRunner {
         // One event carrying every value that decides how this test runs. When a test behaves
         // differently on CI than locally, this line is the difference: the multiplier, the
         // thread count actually used (stress mode overrides the annotation) and whether the
-        // executor is virtual are all resolved here and nowhere else.
+        // executor is virtual are all resolved here and nowhere else. The selection is here too:
+        // since 1.13.0 the same bare annotation runs 12 detectors where it ran 146 (#956).
         if (log.isDebugEnabled()) {
             log.debug("runner.config test={} threads={} invocations={} timeoutMs={} "
                     + "multiplier={} effectiveTimeoutMs={} virtualThreads={} stressMode={} "
-                    + "replaySeed={} benchmarking={}",
+                    + "replaySeed={} benchmarking={} detectors={} selection={}",
                 testMethod.getName(), actualThreads, config.invocations, config.timeoutMs,
                 timeoutMultiplier, effectiveTimeoutMs, config.useVirtualThreads,
-                config.virtualThreadStressMode, config.replaySeed, config.enableBenchmarking);
+                config.virtualThreadStressMode, config.replaySeed, config.enableBenchmarking,
+                config.enabledDetectors().size(), selectionLabel(config.enabledDetectors()));
         }
 
         // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every
@@ -678,6 +682,26 @@ public class ConcurrencyRunner {
      * {@code static final} — so the property/env var can still be changed between test runs
      * within the same JVM (as the accompanying unit tests do).
      */
+    /**
+     * {@return what a resolved selection is, for {@code runner.config}: {@code all} for every
+     * detector, a preset's name when the set is exactly that preset's, otherwise {@code custom}}
+     *
+     * <p>Read from the set alone, so it names what ran, not what the annotation said.
+     *
+     * @param enabled the run's resolved selection
+     */
+    static String selectionLabel(Set<DetectorType> enabled) {
+        if (enabled.size() == DetectorType.values().length) {
+            return "all";
+        }
+        for (Preset preset : Preset.values()) {
+            if (!preset.isAll() && enabled.equals(preset.enabled())) {
+                return preset.name();
+            }
+        }
+        return "custom";
+    }
+
     private static double resolveTimeoutMultiplier() {
         String raw = System.getProperty(TIMEOUT_MULTIPLIER_PROPERTY);
         if (raw == null || raw.isBlank()) {
