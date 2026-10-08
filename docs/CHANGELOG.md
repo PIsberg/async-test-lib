@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`CompletableFutureBlockingCallbackDetector` keeps a stack of open callbacks and ends them at
+  the round boundary (#941).** The active callback was one `ThreadLocal` slot. A callback that
+  completes another future runs that future's dependent inline, so the inner exit cleared the slot
+  and a blocking call the outer callback made afterwards went unreported; a callback that threw
+  before its exit left the slot set on a reused pool thread, so later blocking calls outside any
+  callback were attributed to it. Each thread now keeps its open callbacks innermost first, stamped
+  with the round, and `markInvocationStart()` ends every thread's stack. Both directions red first.
 - **`ForkJoinTaskBlockingDetector` tracks nested tasks and ends them at the round boundary
   (#940).** "Inside a ForkJoinTask" was a set of thread ids. A parent's `join()` often runs its
   child inline on the same worker, so the child's exit took the parent out of its task and a

@@ -1099,6 +1099,11 @@ public final class AsyncTestContext {
         if (forkJoinTaskBlockingDetector != null) {
             forkJoinTaskBlockingDetector.markInvocationStart();
         }
+        // Likewise a CompletableFuture callback that threw before its exit, on a reused pool
+        // thread (#941).
+        if (cfBlockingCallbackDetector != null) {
+            cfBlockingCallbackDetector.markInvocationStart();
+        }
     }
 
     /**

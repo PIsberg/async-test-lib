@@ -6,11 +6,14 @@ import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Detects blocking calls (like get(), join(), sleep()) inside CompletableFuture callback pipelines,
@@ -33,8 +36,31 @@ public final class CompletableFutureBlockingCallbackDetector {
         }
     }
 
-    private final ThreadLocal<String> activeCallback = new ThreadLocal<>();
+    /**
+     * One thread's open callbacks, innermost first, and the round they were opened in. A stack,
+     * not a slot: a callback that completes another future runs that future's dependent inline on
+     * the same thread, and the inner exit must not end the outer callback (#941).
+     */
+    private static final class OpenCallbacks {
+        final ArrayDeque<String> names = new ArrayDeque<>();
+        long round;
+    }
+
+    private final ThreadLocal<OpenCallbacks> openCallbacks = ThreadLocal.withInitial(OpenCallbacks::new);
+    /** Advanced at each round start; a thread's stack from an earlier round is discarded on use. */
+    private final AtomicLong round = new AtomicLong();
     private final Map<String, State> violations = new ConcurrentHashMap<>();
+
+    /** {@return the calling thread's open callbacks, emptied first if an earlier round opened them} */
+    private OpenCallbacks open() {
+        OpenCallbacks open = openCallbacks.get();
+        long now = round.get();
+        if (open.round != now) {
+            open.names.clear();
+            open.round = now;
+        }
+        return open;
+    }
 
     /**
      * Record entry into a CompletableFuture callback.
@@ -44,7 +70,7 @@ public final class CompletableFutureBlockingCallbackDetector {
      */
     public void recordEnterCallback(String callbackName, Thread thread) {
         if (thread == null) return;
-        activeCallback.set(callbackName);
+        open().names.push(Objects.requireNonNullElse(callbackName, "callback"));
     }
 
     /**
@@ -54,7 +80,7 @@ public final class CompletableFutureBlockingCallbackDetector {
      */
     public void recordExitCallback(Thread thread) {
         if (thread == null) return;
-        activeCallback.remove();
+        open().names.pollFirst();
     }
 
     /**
@@ -65,12 +91,22 @@ public final class CompletableFutureBlockingCallbackDetector {
      */
     public void recordBlockingCall(Thread thread, String blockingApiName) {
         if (thread == null) return;
-        String currentCallback = activeCallback.get();
+        String currentCallback = open().names.peekFirst();
         if (currentCallback != null) {
             State s = violations.computeIfAbsent(currentCallback, k -> new State(currentCallback));
             s.blockingCalls.add(blockingApiName + " by thread " + thread.getName());
         }
     }
+    /**
+     * Ends the round's callbacks. A callback that threw before its exit leaves its pool thread
+     * inside it, and a later round's blocking call on that thread would be reported against a
+     * callback that is long gone (#941). The runner calls this once the previous round's workers
+     * have finished; each thread drops its stale stack the next time it records.
+     */
+    public void markInvocationStart() {
+        round.incrementAndGet();
+    }
+
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
