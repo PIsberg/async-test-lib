@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A test body can no longer drive the round (#947).** `openRendezvousForRound`,
+  `markInvocationStart`, `setReplaySeedForRound` and `markRoundTimedOut` are public only because
+  the runner is in another package, and a body reaches the instance through
+  `AsyncTestContext.get()`: from a body they replaced the rendezvous the workers were in, reset
+  every round-scoped detector mid-round, or rewrote the reported seed. They now throw
+  `IllegalStateException` on a thread with a run's context installed, which the runner's thread
+  never has. `breakRendezvous` stays callable (the runner calls it on the failing worker) and says
+  what it does. `RunnerOnlyLifecycleTest` went red first (24 of 24 body calls allowed).
 - **`StructuredTaskScopeMisuseDetector` says when a scope id must be unique (#943).** Scopes are
   keyed by id and owner thread, so a constant id is safe while scopes stay on their opening
   thread. A scope handed to another thread under a shared id resolved to the receiver's own scope

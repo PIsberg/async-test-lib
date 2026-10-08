@@ -991,14 +991,19 @@ public final class AsyncTestContext {
     }
 
     /**
-     * Internal: called by {@code ConcurrencyRunner} at the start of each invocation round, after
-     * the previous round's workers have all finished, so the detectors that count per round can
-     * close the round in progress. Touches only this context's own detector instances, never the
+     * Called by {@code ConcurrencyRunner} at the start of each invocation round, after the
+     * previous round's workers have all finished, so the detectors that count per round can close
+     * the round in progress. Touches only this context's own detector instances, never the
      * {@code ThreadLocal}, so install/uninstall symmetry is unaffected.
+     *
+     * <p>Runner-only: public because {@code ConcurrencyRunner} is in another package, not part of
+     * the test-author API. It runs on the runner's thread, which never has a run's context
+     * installed; called from a test body it throws {@link IllegalStateException} (#947).
      *
      * @since 1.9.8
      */
     public void markInvocationStart() {
+        requireRunnerThread("markInvocationStart");
         // Every lock-aware detector (the Shared* family and the others built on SelfGuard) judges
         // sharing within one round; this is the round boundary they read.
         sharingScope.markInvocationStart();
@@ -1118,11 +1123,16 @@ public final class AsyncTestContext {
     }
 
     /**
-     * Internal: set by {@code ConcurrencyRunner} before each invocation round.
+     * Set by {@code ConcurrencyRunner} before each invocation round.
+     *
+     * <p>Runner-only: public because {@code ConcurrencyRunner} is in another package, not part of
+     * the test-author API. It runs on the runner's thread, which never has a run's context
+     * installed; called from a test body it throws {@link IllegalStateException} (#947).
      *
      * @param seed the seed for this round, so a reported interleaving can be replayed
      */
     public void setReplaySeedForRound(long seed) {
+        requireRunnerThread("setReplaySeedForRound");
         this.currentRoundSeed = seed;
     }
 
@@ -1166,14 +1176,20 @@ public final class AsyncTestContext {
     private int roundsOpened;
 
     /**
-     * Internal: called by {@code ConcurrencyRunner} before it starts a round's workers, with the
-     * number of workers and the time the round has left.
+     * Called by {@code ConcurrencyRunner} before it starts a round's workers, with the number of
+     * workers and the time the round has left. From a body it would replace the rendezvous the
+     * round's workers are already waiting at.
+     *
+     * <p>Runner-only: public because {@code ConcurrencyRunner} is in another package, not part of
+     * the test-author API. It runs on the runner's thread, which never has a run's context
+     * installed; called from a test body it throws {@link IllegalStateException} (#947).
      *
      * @param workers        the round's worker count, which every rendezvous waits for
      * @param roundTimeoutMs the time left in the round, the default rendezvous bound
      * @since 1.13.0
      */
     public void openRendezvousForRound(int workers, long roundTimeoutMs) {
+        requireRunnerThread("openRendezvousForRound");
         this.roundDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(roundTimeoutMs);
         this.roundRendezvous = workers <= MAX_RENDEZVOUS_PARTIES ? new Phaser(workers) : null;
         roundsOpened++;
@@ -1190,9 +1206,13 @@ public final class AsyncTestContext {
     }
 
     /**
-     * Internal: called by {@code ConcurrencyRunner} when a worker's body throws, so the peers
-     * waiting at this round's rendezvous, and any that arrive later, fail at once instead of
-     * waiting out the round for a worker that will never come.
+     * Called by {@code ConcurrencyRunner} when a worker's body throws, so the peers waiting at this
+     * round's rendezvous, and any that arrive later, fail at once instead of waiting out the round
+     * for a worker that will never come.
+     *
+     * <p>Runner-facing, not part of the test-author API, but not refused from a body: the runner
+     * calls it on the failing worker's own thread. A body that calls it fails every peer's
+     * rendezvous in the round, exactly as a body that throws does (#947).
      *
      * @since 1.13.0
      */
@@ -1278,19 +1298,38 @@ public final class AsyncTestContext {
     }
 
     /**
-     * Internal: called by {@code ConcurrencyRunner} when a round has timed out, before it
-     * interrupts the round's workers, so a detector can tell that interrupt from one the test body
-     * sent itself. Touches only this context's own detector instances, never the
-     * {@code ThreadLocal}, so install/uninstall symmetry is unaffected.
+     * Called by {@code ConcurrencyRunner} when a round has timed out, before it interrupts the
+     * round's workers, so a detector can tell that interrupt from one the test body sent itself.
+     * Touches only this context's own detector instances, never the {@code ThreadLocal}, so
+     * install/uninstall symmetry is unaffected.
+     *
+     * <p>Runner-only: public because {@code ConcurrencyRunner} is in another package, not part of
+     * the test-author API. It runs on the runner's thread, which never has a run's context
+     * installed; called from a test body it throws {@link IllegalStateException} (#947).
      *
      * @since 1.12.1
      */
     public void markRoundTimedOut() {
+        requireRunnerThread("markRoundTimedOut");
         if (exchangerDetector != null) {
             exchangerDetector.markRoundTimedOut();
         }
         if (cyclicBarrierDetector != null) {
             cyclicBarrierDetector.markRoundTimedOut();
+        }
+    }
+
+    /**
+     * Refuses a runner-only round call from a test body. The runner calls these on its own thread,
+     * which never has a run's context installed; a body's thread always has one (#947).
+     *
+     * @param method the method refused, for the message
+     */
+    private static void requireRunnerThread(String method) {
+        if (CURRENT.get() != null) {
+            throw new IllegalStateException("AsyncTestContext." + method + "() belongs to the"
+                    + " runner, which calls it between rounds; a test body cannot call it, since"
+                    + " it would change the round every worker is in.");
         }
     }
 
