@@ -109,6 +109,34 @@ class HardenRunnerEndpointsTest {
                         + "the same as a repository with no egress policy.");
     }
 
+    /** {@code egress-policy: <mode>} on a harden-runner step. */
+    private static final Pattern EGRESS_POLICY = Pattern.compile("^\\s*egress-policy:\\s*(\\S+)");
+
+    @Test
+    @DisplayName("#960: every harden-runner step blocks egress rather than only auditing it")
+    void everyHardenRunnerBlocks() {
+        List<String> auditing = new ArrayList<>();
+        int policies = 0;
+        for (Path file : yamlFiles(repoRoot().resolve(".github/workflows"))) {
+            String relative = repoRoot().relativize(file).toString().replace('\\', '/');
+            List<String> lines = readLines(file);
+            for (int i = 0; i < lines.size(); i++) {
+                var policy = EGRESS_POLICY.matcher(lines.get(i));
+                if (policy.find()) {
+                    policies++;
+                    if (!"block".equals(policy.group(1))) {
+                        auditing.add(relative + ":" + (i + 1) + "  egress-policy: " + policy.group(1));
+                    }
+                }
+            }
+        }
+        assertTrue(policies > 0, "No egress-policy found; the scan is checking nothing.");
+        assertTrue(auditing.isEmpty(), "These harden-runner steps only audit egress, so nothing the"
+                + " job contacts is blocked; demo.yml did so while holding contents: write and"
+                + " pull-requests: write (#960). Switch to block with an allowed-endpoints list:\n  "
+                + String.join("\n  ", auditing));
+    }
+
     /** Where Central redirects a large artifact's download from some runners (#884). */
     private static final String RELEASE_ASSETS = "release-assets.githubusercontent.com:443";
 

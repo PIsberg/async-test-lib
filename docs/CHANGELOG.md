@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The demo workflow blocks egress (#960).** `demo.yml` was the one workflow whose harden-runner
+  only audited, and its job holds `contents: write` and `pull-requests: write`. It now blocks, with
+  the hosts its steps reach. `HardenRunnerEndpointsTest` requires `egress-policy: block` on every
+  harden-runner step and went red on `demo.yml` first.
 - **corpus-eval's jackson-databind moves from 2.22.2 to 2.22.3 (#958).** 2.22.2 is in the range of
   GHSA-wv8q-qhhj-9h54 and GHSA-cxp5-3px4-pw24, both high. It is a test-scope corpus subject, so
   nothing shipped with it, but no Dependabot PR was ever raised: `.github/dependabot.yml` watched
