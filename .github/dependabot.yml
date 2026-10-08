@@ -17,6 +17,26 @@ updates:
     schedule:
       interval: daily
 
+  # The Maven builds outside the reactor. The entry above reads only the reactor's modules, so
+  # corpus-eval's jackson-databind sat on two high advisories for a week with no PR (#958). One
+  # grouped PR per directory keeps the 148 example modules from opening one PR each. The library's
+  # own version is left to the release skill, which bumps every pin in one commit. A corpus subject
+  # bump can move the measured numbers: rerun the corpus lanes before merging one.
+  - package-ecosystem: maven
+    directories:
+      - /corpus-eval
+      - /consumer-fixture
+      - /consumer-fixture-langs
+      - /examples
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "se.deversity.async-test-lib:*"
+    groups:
+      non-reactor:
+        patterns:
+          - "*"
+
   # Gradle-only versions. Everything the two builds share is declared in pom.xml and read from
   # there by build.gradle.kts, so the maven ecosystem above already covers it and this entry
   # cannot raise a competing PR for it: those numbers are not literals in any Gradle file.

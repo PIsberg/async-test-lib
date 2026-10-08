@@ -36,7 +36,7 @@ a finding mean something is wrong, and how much noise comes with it. This docume
 ## What was measured
 
 139 subjects from `commons-lang3:3.20.0`, `commons-collections4:4.5.0`, `guava:33.4.8-jre`,
-`jackson-databind:2.22.2`, `caffeine:3.2.4`, `netty-buffer:4.2.17.Final`, `spring-core:7.0.9`,
+`jackson-databind:2.22.3`, `caffeine:3.2.4`, `netty-buffer:4.2.17.Final`, `spring-core:7.0.9`,
 `HikariCP:7.0.2` and the JDK the run is on, each exercised by one shared instance under `@AsyncTest(threads = 6, invocations = 40)` with
 `detectAll = true`. No detector is configured, nothing is recorded by hand, and no line of the
 subject library is modified. The only thing the test body does is call the class from six threads
@@ -295,7 +295,7 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 | `eventBus_post` | guava:33.4.8-jre | THREAD_SAFE | 31595 | 0 | - | 0 |
 | `bloomFilter_putAndMightContain` | guava:33.4.8-jre | THREAD_SAFE | 28422 | 0 | - | 0 |
 | `atomicLongMap_incrementAndGet` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
-| `sequenceWriter_write` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 24765 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 239 |
+| `sequenceWriter_write` | jackson-databind:2.22.3 | NOT_THREAD_SAFE | 24765 | 2 | AtomicityValidator (PROMPT/HIGH), SharedCollectionDetector (PROMPT/HIGH) | 239 |
 | `hashBasedTable_put` | guava:33.4.8-jre | NOT_THREAD_SAFE | 3863 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 0 |
 | `guavaLoadingCache_get` | guava:33.4.8-jre | THREAD_SAFE | 10784 | 0 | - | 0 |
 | `concurrentHashMultiset_add` | guava:33.4.8-jre | THREAD_SAFE | 1394 | 0 | - | 0 |
@@ -305,10 +305,10 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 | `patternFilenameFilter_accept` | guava:33.4.8-jre | THREAD_SAFE | 911 | 0 | - | 0 |
 | `fixedOrderComparator_compare` | commons-collections4:4.5.0 | THREAD_SAFE | 1391 | 0 | - | 0 |
 | `fileBackedOutputStream_writeAndReset` | guava:33.4.8-jre | THREAD_SAFE | 3541 | 0 | - | 0 |
-| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 120373 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
-| `objectMapper_configuredThenShared` | jackson-databind:2.22.2 | THREAD_SAFE | 114529 | 0 | - | 0 |
-| `objectReader_readValue` | jackson-databind:2.22.2 | THREAD_SAFE | 75498 | 0 | - | 0 |
-| `objectWriter_writeValueAsString` | jackson-databind:2.22.2 | THREAD_SAFE | 83692 | 0 | - | 0 |
+| `objectMapper_reconfigureWhileWriting` | jackson-databind:2.22.3 | NOT_THREAD_SAFE | 120373 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `objectMapper_configuredThenShared` | jackson-databind:2.22.3 | THREAD_SAFE | 114529 | 0 | - | 0 |
+| `objectReader_readValue` | jackson-databind:2.22.3 | THREAD_SAFE | 75498 | 0 | - | 0 |
+| `objectWriter_writeValueAsString` | jackson-databind:2.22.3 | THREAD_SAFE | 83692 | 0 | - | 0 |
 | `caffeineCache_getAndPut` | caffeine:3.2.4 | THREAD_SAFE | 8726 | 0 | - | 0 |
 | `caffeineAsMap_computeIfAbsent` | caffeine:3.2.4 | THREAD_SAFE | 3470 | 0 | - | 0 |
 | `pooledByteBufAllocator_bufferAndRelease` | netty-buffer:4.2.17.Final | THREAD_SAFE | 61083 | 0 | - | 0 |
@@ -383,7 +383,7 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 | `properties_setPropertyAndGetProperty` | jdk:26 | THREAD_SAFE | 911 | 0 | - | 0 |
 | `atomicLong_incrementAndGet` | jdk:26 | THREAD_SAFE | 661 | 0 | - | 0 |
 | `atomicReference_updateAndGet` | jdk:26 | THREAD_SAFE | 667 | 0 | - | 0 |
-| `jacksonLruMap_putAndEvict` | jackson-databind:2.22.2 | THREAD_SAFE | 15529 | 0 | - | 0 |
+| `jacksonLruMap_putAndEvict` | jackson-databind:2.22.3 | THREAD_SAFE | 15529 | 0 | - | 0 |
 | `caffeineStrongInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 928 | 0 | - | 0 |
 | `caffeineWeakInterner_intern` | caffeine:3.2.4 | THREAD_SAFE | 6316 | 0 | - | 0 |
 | `caffeineBoundedCache_evictUnderPressure` | caffeine:3.2.4 | THREAD_SAFE | 51490 | 0 | - | 0 |
@@ -406,7 +406,7 @@ real defect rather than variance ([#316](https://github.com/PIsberg/async-test-l
 | `hashCodeBuilder_appendAndHash` | commons-lang3:3.20.0 | NOT_THREAD_SAFE | 1669 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 | `springStopWatch_startStop` | spring-core:7.0.9 | NOT_THREAD_SAFE | 3585 | 1 | AtomicityValidator (PROMPT/HIGH) | 44 |
 | `linkedMultiValueMap_addAndRemove` | spring-core:7.0.9 | NOT_THREAD_SAFE | 1429 | 1 | SharedCollectionDetector (PROMPT/HIGH) | 7 |
-| `tokenBuffer_writeNumber` | jackson-databind:2.22.2 | NOT_THREAD_SAFE | 4363 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
+| `tokenBuffer_writeNumber` | jackson-databind:2.22.3 | NOT_THREAD_SAFE | 4363 | 1 | AtomicityValidator (PROMPT/HIGH) | 0 |
 
 | Measure | **L** | **L-off** |
 |---|---|---|

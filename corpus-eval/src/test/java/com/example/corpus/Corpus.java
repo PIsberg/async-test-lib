@@ -23,7 +23,7 @@ final class Corpus {
     private static final String LANG3 = "commons-lang3:3.20.0";
     private static final String COLLECTIONS4 = "commons-collections4:4.5.0";
     private static final String GUAVA = "guava:33.4.8-jre";
-    private static final String JACKSON = "jackson-databind:2.22.2";
+    private static final String JACKSON = "jackson-databind:2.22.3";
     private static final String CAFFEINE = "caffeine:3.2.4";
     private static final String NETTY = "netty-buffer:4.2.17.Final";
     private static final String SPRING = "spring-core:7.0.9";

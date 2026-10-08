@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **corpus-eval's jackson-databind moves from 2.22.2 to 2.22.3 (#958).** 2.22.2 is in the range of
+  GHSA-wv8q-qhhj-9h54 and GHSA-cxp5-3px4-pw24, both high. It is a test-scope corpus subject, so
+  nothing shipped with it, but no Dependabot PR was ever raised: `.github/dependabot.yml` watched
+  the reactor only. A second Maven entry now watches `corpus-eval`, `consumer-fixture`,
+  `consumer-fixture-langs` and `examples` weekly. Every source file the corpus cites by line
+  (`ObjectMapper`, `ObjectReader`, `ObjectWriter`, `SequenceWriter`, `LRUMap`, `TokenBuffer`) is
+  byte-identical between the two source jars; 2.22.3 changes five deserializer and serializer
+  classes.
+
 ### Fixed
 
 - **The Windows legs of Tests & Build pass the skipped-tests gate again (#950).** The gate's
