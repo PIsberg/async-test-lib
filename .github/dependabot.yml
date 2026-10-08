@@ -44,6 +44,12 @@ updates:
   # What is left here has no Maven twin and so had nothing watching it: the Gradle plugin
   # versions (vanniktech publish, errorprone, spotbugs, cyclonedx) and the test-only logback
   # backend that `./gradlew test` needs and Maven does not.
+  # The Copilot CLI instruction-evals.yml installs with npm ci from this lockfile (#959).
+  - package-ecosystem: npm
+    directory: /.github/copilot-cli
+    schedule:
+      interval: weekly
+
   - package-ecosystem: gradle
     directory: /
     schedule:

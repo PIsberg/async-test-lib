@@ -1,0 +1,8 @@
+{
+  "name": "copilot-cli-pin",
+  "private": true,
+  "description": "Pins the Copilot CLI that instruction-evals.yml installs with npm ci, so the install is checked against the lockfile's integrity hashes (#959). Dependabot's npm entry keeps it current.",
+  "dependencies": {
+    "@github/copilot": "1.0.87"
+  }
+}
