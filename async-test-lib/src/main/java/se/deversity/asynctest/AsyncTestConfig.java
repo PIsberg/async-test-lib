@@ -664,7 +664,20 @@ public final class AsyncTestConfig {
     }
 
     /**
+     * The system property that turns every detector on for every {@code @AsyncTest} in the run:
+     * {@code -Dasync-test.detectAll=true} reads as {@code detectAll = true} on each annotation, so it
+     * overrides a preset, the default {@link Preset#ESSENTIALS} included, while {@code includes}
+     * still select exactly their list and {@code excludes} still apply (#946). Only the annotation
+     * path reads it; a config built with {@link #builder()} says its own selection.
+     */
+    static final String DETECT_ALL_PROPERTY = "async-test.detectAll";
+
+    /**
      * Builds a config from an {@link AsyncTest} annotation instance.
+     *
+     * <p>The system property {@code -Dasync-test.detectAll=true} turns every detector on for every
+     * annotation, as {@code detectAll = true} would; {@code includes} and {@code excludes} still
+     * apply (#946).
      *
      * @param ann the annotation instance to read the declared values from
      * @return the resolved configuration for this run
@@ -694,7 +707,9 @@ public final class AsyncTestConfig {
         // the excludes that carve the selection out of every type, so build() resolves it like
         // any other. A bare annotation lands in the last branch with Preset.ESSENTIALS (1.13.0,
         // #923); detectAll = false only declines the opt-in and leaves the preset in charge.
-        // User-supplied excludes() always layer on top and win on conflict.
+        // User-supplied excludes() always layer on top and win on conflict. The run-wide switch
+        // reads as detectAll = true on every annotation (#946).
+        boolean detectAll = ann.detectAll() || Boolean.getBoolean(DETECT_ALL_PROPERTY);
         Preset preset = ann.preset();
         boolean effectiveDetectAll = true;
         Set<DetectorType> effectiveExcludes = EnumSet.noneOf(DetectorType.class);
@@ -704,7 +719,7 @@ public final class AsyncTestConfig {
             for (DetectorType t : DetectorType.values()) {
                 if (!included.contains(t)) effectiveExcludes.add(t);
             }
-        } else if (!ann.detectAll() && !preset.isAll()) {
+        } else if (!detectAll && !preset.isAll()) {
             // Otherwise every detector: effectiveDetectAll stays true and nothing is carved out.
             // Non-null here: isAll() owns every preset whose set is null.
             Set<DetectorType> enabled = Objects.requireNonNull(

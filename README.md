@@ -322,6 +322,11 @@ After the run, the **detector registry** analyses what was observed and reports 
 @AsyncTest(includes = {DetectorType.DEADLOCKS, DetectorType.RACE_CONDITIONS})
 ```
 
+To turn every detector on for a whole run without editing annotations, for an audit or a nightly
+job, pass `-Dasync-test.detectAll=true` (`mvn test -Dasync-test.detectAll=true`; in Gradle,
+`systemProperty("async-test.detectAll", "true")` on the test task). It reads as `detectAll = true`
+on every `@AsyncTest`: `includes` still select exactly their list and `excludes` still apply.
+
 **What feeds them.** Three read the JVM and the harness directly and need no configuration at
 all. With the agent attached that becomes 25, because the woven streams carry what those
 detectors need without a line of instrumentation. The remaining 121 observe what the test body

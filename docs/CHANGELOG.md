@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`-Dasync-test.detectAll=true` turns every detector on for a whole run (#946).** The 1.13.0
+  migration guide's audit, run everything once and go back to `ESSENTIALS`, meant adding
+  `detectAll = true` to every annotation and removing it again. The property reads as
+  `detectAll = true` on every `@AsyncTest`: it overrides any preset, the default included, while
+  `includes` still select exactly their list and `excludes` still apply. `RunWideDetectAllTest`
+  went red first on the three cases that set it; `mvn test -Dasync-test.detectAll=true` turns
+  `LeanDefaultSelectionTest`'s bare annotation from 12 detectors to 146, so the property reaches
+  surefire's forked JVM.
+
 ### Security
 
 - **corpus-eval's jackson-databind moves from 2.22.2 to 2.22.3 (#958).** 2.22.2 is in the range of

@@ -26,6 +26,11 @@ defaults are `detectAll = false` and `preset = ESSENTIALS`, so a bare annotation
 per-detector attribute since 1.13.0 (#920); under 1.12, 144 of those attributes defaulted to `true`,
 so `detectAll = false` left almost every detector on.
 
+The system property `async-test.detectAll=true` reads as `detectAll = true` on every annotation in
+the run (#946; `RunWideDetectAllTest`): it overrides any preset, the default included, and leaves
+`includes` and `excludes` as they are. Only `from(AsyncTest)` reads it; a config built with
+`AsyncTestConfig.builder()` says its own selection.
+
 `AsyncTestConfig.Builder.build()` resolves the selection once, into one `EnumSet<DetectorType>`
 that `AsyncTestConfig.enabledDetectors()` returns (#917). Precedence: **includes beats
 everything; then `detectAll`; then the per-detector setters; and excludes always have the last
