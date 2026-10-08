@@ -24,6 +24,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * {@code setReplaySeedForRound} rewrote the seed the report prints. The runner calls them on its
  * own thread, which never has a run's context installed; a body's thread always has.
  */
+@E2E
 class RunnerOnlyLifecycleTest {
 
     static final AtomicInteger REFUSED = new AtomicInteger();
