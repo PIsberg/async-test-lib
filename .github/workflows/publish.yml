@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: write
       id-token: write  # required for keyless cosign signing via OIDC
+      attestations: write  # build provenance (#961)
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
@@ -114,6 +115,24 @@ jobs:
             fi
           done
 
+      # SLSA build provenance for every artifact the release attaches, stored in the repository's
+      # attestations (gh attestation verify) and attached to the release as an .intoto.jsonl
+      # asset: Scorecard's releasesHaveProvenance probe counts only an asset with that suffix
+      # (#961). Signing above stays: provenance says where an artifact was built, not who signed it.
+      - name: Generate build provenance
+        id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            async-test-lib/target/async-test-lib-${{ steps.version.outputs.VERSION }}*.jar
+            async-test-agent/target/async-test-agent-${{ steps.version.outputs.VERSION }}*.jar
+            async-test-analysis/target/async-test-analysis-${{ steps.version.outputs.VERSION }}*.jar
+            target/bom.xml
+            target/bom.json
+
+      - name: Name the provenance for the release
+        run: cp "${{ steps.provenance.outputs.bundle-path }}" "target/async-test-lib-${{ steps.version.outputs.VERSION }}.intoto.jsonl"
+
       - name: Create GitHub Release with artifacts and signatures
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -145,6 +164,8 @@ jobs:
               if [ -f "$candidate" ]; then files+=("$candidate"); fi
             done
           done
+          provenance="target/async-test-lib-${VERSION}.intoto.jsonl"
+          if [ -f "$provenance" ]; then files+=("$provenance"); fi
           gh release create "${{ github.ref_name }}" \
             "${files[@]}" \
             --title "Release ${{ github.ref_name }}" \
@@ -176,6 +197,13 @@ jobs:
             --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \\
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
             async-test-lib-${VERSION}.jar
+          \`\`\`
+
+          ### Verify the build provenance
+          Every attached artifact has SLSA build provenance, recorded in this repository's
+          attestations and attached as \`async-test-lib-${VERSION}.intoto.jsonl\`:
+          \`\`\`bash
+          gh attestation verify async-test-lib-${VERSION}.jar --repo PIsberg/async-test-lib
           \`\`\`
 
           ### Verify the GPG signature

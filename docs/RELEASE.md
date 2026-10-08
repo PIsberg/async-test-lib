@@ -22,8 +22,12 @@ On a `v*` tag push, `publish.yml`:
    `mvn deploy` got the job killed mid-poll in 1.7.0 and 1.9.1.
 4. Signs each JAR and both SBOMs with keyless cosign (Sigstore, via OIDC), producing
    `.sigstore.json` bundles.
-5. Creates the GitHub Release with the three modules' JARs, their `.asc` and `.sigstore.json`
-   signatures, and the SBOMs.
+5. Generates SLSA build provenance for every attached artifact with
+   `actions/attest-build-provenance` (verify with `gh attestation verify <file> --repo
+   PIsberg/async-test-lib`), then creates the GitHub Release with the three modules' JARs, their
+   `.asc` and `.sigstore.json` signatures, the SBOMs, and the provenance bundle as
+   `async-test-lib-<version>.intoto.jsonl`, the one suffix Scorecard's provenance probe counts
+   (#961).
 6. Waits for Maven Central: `.github/scripts/wait-for-central.sh` polls each module's
    `.jar.sha1` on repo1.maven.org and compares it with the jar the run built, failing the run
    on a mismatch or when an hour passes without it (#952). Before this step a green run meant

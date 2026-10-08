@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Releases carry SLSA build provenance (#961).** Releases were GPG- and cosign-signed but had no
+  provenance, so Scorecard's Signed-Releases scored 8. `publish.yml` now attests every attached
+  artifact with `actions/attest-build-provenance` (`gh attestation verify` checks it) and attaches
+  the bundle as `async-test-lib-<version>.intoto.jsonl`, the only suffix Scorecard's
+  `releasesHaveProvenance` probe counts. `PublishAttachesProvenanceTest` pins the wiring; the
+  step itself runs only on a tag push.
 - **The demo workflow blocks egress (#960).** `demo.yml` was the one workflow whose harden-runner
   only audited, and its job holds `contents: write` and `pull-requests: write`. It now blocks, with
   the hosts its steps reach. `HardenRunnerEndpointsTest` requires `egress-policy: block` on every
