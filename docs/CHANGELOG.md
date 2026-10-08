@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `continue-on-error`. The context is now `tests/jdk<N>/<os>` and the baseline line names Linux and
   macOS only. `SkippedTestsGateWiringTest` went red first on `tests.yml:test`; the gate's
   `--self-test` gained an OS-qualified case.
+- **The weekly mutation gate computes a score again (#951).** Its coverage pass runs every test
+  class in one JVM, and a record-path allocation budget failed there on 2026-10-04, so no score was
+  computed. Allocation budgets now skip under pitest (`-Dasynctest.mutationRun=true` in its
+  `jvmArgs`, read by the test helper `AllocationBudgets.assumeMeasurable()`) and are still measured
+  by surefire, one JVM per class. `AllocationBudgetUnderMutationTest` went red first on the four
+  unguarded measuring sites and the missing property.
 
 ## [1.13.0] - 2026-10-08
 

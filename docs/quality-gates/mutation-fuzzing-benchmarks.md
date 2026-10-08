@@ -31,6 +31,15 @@ developer's full run silently scored the fast tier only (74%) while the CI job �
 profile clears the exclusion — scored the whole suite (77.5%), so the same command measured two
 different things. Reports are non-timestamped, so each run overwrites `target/pit-reports/`.
 
+Allocation budgets are not measured under pitest. Its coverage pass runs every test class in one
+JVM, where other classes' type profiles change what the JIT can prove about a measured path, and a
+record-path budget in `SharedStatefulCryptoDetectorTest` failed there on 2026-10-04 while passing
+in its own JVM and in a scoped pitest run, so that week computed no score (#951). The plugin's
+`jvmArgs` set `-Dasynctest.mutationRun=true`, and every test that reads a thread allocation counter
+calls `AllocationBudgets.assumeMeasurable()` first, which skips it there. Surefire still measures
+each budget in a JVM of its own. `AllocationBudgetUnderMutationTest` requires both the property and
+the call, so a new budget test cannot reintroduce the failure.
+
 Surviving mutants are dominated by diagnostic output and timing-heuristic detectors — killing them
 would require flaky timing-forced tests, so they are deliberately tolerated. Mutation analysis has
 caught real wiring bugs: see the excludes-branch gap in

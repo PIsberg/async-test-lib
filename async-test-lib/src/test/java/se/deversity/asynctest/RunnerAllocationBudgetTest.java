@@ -185,6 +185,7 @@ class RunnerAllocationBudgetTest {
     }
 
     private static com.sun.management.ThreadMXBean allocationBean() {
+        AllocationBudgets.assumeMeasurable();
         var mx = ManagementFactory.getThreadMXBean();
         assumeTrue(mx instanceof com.sun.management.ThreadMXBean,
                 "needs the HotSpot ThreadMXBean for per-thread allocation counters");
