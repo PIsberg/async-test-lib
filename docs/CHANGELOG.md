@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-08
+
+> **Breaking release.** 1.13.0 removes what 1.12 deprecated and changes what a bare `@AsyncTest`
+> runs. Two of the changes compile and pass while checking less. Upgrading from 1.12: read
+> [the 1.13.0 migration guide](migration/1.13.0.md) first.
+
 ### Added
 
 - **Linearizability pairs on corpus libraries (#932).** `LinearizabilityLibraryPairsTest` in
@@ -164,7 +170,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Violation.detector()` literal was a third spelling, neither the class name nor the alias
   (`"BusyWait"` beside `"BusyWaiting"`), so `DetectorTrust.tierOfDetector(v.detector())` answered
   PROMPT for them whatever their tier. 44 literals now use the alias the other 125 detectors already
-  use. Listeners and `AsyncFindings` were not affected: they receive the class name. A new check in
+  use. Listeners and `AsyncFindings` were not affected: they receive the class name. SARIF rule ids
+  are this string, so a code-scanning tool sees the 21 renamed rules as new on the first 1.13.0
+  upload. A new check in
   `DetectorTrustCoverageTest` resolves every literal; it listed all 44 before the fix.
 - **The weekly concurrency kill check measures every test marked for a class.** It keyed its
   results by class, so a second `@ConcurrencyTestFor` for the same class silently replaced the
@@ -196,7 +204,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LeanDefaultSelectionTest` keeps true. That test went red first: a bare annotation resolved to all
   146 types and `detectAll = false` to none. `detectAll = false` beside a named preset now resolves to
   that preset. The 694 annotations in this repository that relied on the old default now say
-  `detectAll = true`, so what they test did not shrink. `docs/MIGRATION.md` has the rewrite (#923).
+  `detectAll = true`, so what they test did not shrink. [migration/1.13.0.md](migration/1.13.0.md) has the rewrite (#923).
 - **A docs-only pull request can no longer wait forever on `E2E Tests` (#910).** The check is
   required, but `e2e-tests.yml` skipped pull requests that touch only docs, so the context would
   never report. Its pull-request trigger is no longer path-filtered, and
@@ -239,7 +247,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed (1.13.0)
 
 1.13.0 breaks the public API in a minor release, by the owner's decision (2026-10-06) rather than
-a 2.0.0. `docs/SUPPORT_POLICY.md` records the exception, `docs/MIGRATION.md` the rewrite, and
+a 2.0.0. `docs/SUPPORT_POLICY.md` records the exception, [migration/1.13.0.md](migration/1.13.0.md) the rewrite, and
 japicmp waives exactly these removals by name; checked by narrowing an unrelated public method,
 which still fails the build.
 
@@ -248,16 +256,16 @@ which still fails the build.
   The attributes were a trap as well as an edit tax: 144 defaulted to `true`, so
   `@AsyncTest(detectAll = false, detectX = true)`, which this repository's own fixtures described
   as "only X", ran every detector except `VISIBILITY` and `LIVELOCKS`. `detectAll = false` on its
-  own now selects nothing. The detector-not-active error now names the `DetectorType` to add to
+  own now selects the default preset, `ESSENTIALS` (#923). The detector-not-active error now names the `DetectorType` to add to
   `includes`. 360 annotations across the tests, fixtures and examples were rewritten by intent
   (flags under `detectAll = false` became `includes`; flags the default `detectAll` ignored were
-  dropped). `AsyncTestConfig`'s public flags and builder setters stay (#383). `docs/MIGRATION.md`
+  dropped). `AsyncTestConfig`'s public flags and builder setters stay (#383). [migration/1.13.0.md](migration/1.13.0.md)
   has the rewrite (#920).
 - **The 42 deprecated `*Monitor()` accessors on `AsyncTestContext`.** Each was a second name for
   the instance its `*Detector()` replacement returns, deprecated since 1.7 and naming that
   replacement. 38 differ only in the suffix; `semaphoreMonitor`, `completableFutureMonitor`,
   `conditionMonitor` and `copyOnWriteMonitor` were renamed to say what they detect, and
-  `nestedMonitorLockoutMonitor` becomes `nestedMonitorLockoutDetector`. `docs/MIGRATION.md` has the
+  `nestedMonitorLockoutMonitor` becomes `nestedMonitorLockoutDetector`. [migration/1.13.0.md](migration/1.13.0.md) has the
   table (#921).
 - **The built-in SPI bridge.** `se.deversity.asynctest.spi.adapters` (`LegacyDetectorFactories`,
   `LegacyDetectorAdapter`, `SharedMessageDigestDetectorFactory`), the

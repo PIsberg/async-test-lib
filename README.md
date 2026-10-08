@@ -168,6 +168,10 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 ## ⚡ Quick Start
 
+> **Upgrading from 1.12?** 1.13.0 removes the deprecated per-detector `@AsyncTest` attributes and
+> makes a bare `@AsyncTest` run `Preset.ESSENTIALS` instead of every detector. Read
+> [docs/migration/1.13.0.md](docs/migration/1.13.0.md) before bumping.
+
 <details open>
 <summary><b>Maven</b></summary>
 
