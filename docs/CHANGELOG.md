@@ -41,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Publish Release is green only once Maven Central serves the release (#952).** The deploy
+  returns when the bundle is uploaded, so v1.13.0's run went green while nothing reached Central
+  (#949). A last step, `.github/scripts/wait-for-central.sh`, polls each module's jar sha1 on
+  repo1.maven.org, compares it with the jar the run built and fails after an hour.
+  Checked against 1.12.4 (passes), a tampered jar (fails on the sha1) and 9.9.9 (times out);
+  `PublishWaitsForCentralTest` went red first and pins the step. `docs/RELEASE.md` also said
+  `waitUntil=published` and `.bundle` files, both out of date, and now matches the workflow.
 - **A test body can no longer drive the round (#947).** `openRendezvousForRound`,
   `markInvocationStart`, `setReplaySeedForRound` and `markRoundTimedOut` are public only because
   the runner is in another package, and a body reaches the instance through
