@@ -1094,6 +1094,11 @@ public final class AsyncTestContext {
         if (fileChannelPositionRaceDetector != null) {
             fileChannelPositionRaceDetector.markInvocationStart();
         }
+        // A task body that threw before its exit would otherwise keep a pooled worker inside a
+        // ForkJoinTask for the rest of the run (#940).
+        if (forkJoinTaskBlockingDetector != null) {
+            forkJoinTaskBlockingDetector.markInvocationStart();
+        }
     }
 
     /**

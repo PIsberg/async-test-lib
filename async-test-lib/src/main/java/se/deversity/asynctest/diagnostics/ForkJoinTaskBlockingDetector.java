@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -33,7 +32,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class ForkJoinTaskBlockingDetector {
 
-    private final Set<Long>    activeForkJoinThreads = ConcurrentHashMap.newKeySet();
+    /**
+     * How many ForkJoinTask bodies each thread is inside. A depth, not membership: a parent's
+     * {@code join()} or {@code invoke()} often runs the child inline on the same worker, and the
+     * child's exit must not end the parent's task (#940). Only the owning thread changes its own
+     * entry.
+     */
+    private final Map<Long, Integer> taskDepthByThread = new ConcurrentHashMap<>();
     private final List<String> blockingCalls         = new CopyOnWriteArrayList<>();
 
     /**
@@ -43,7 +48,7 @@ public class ForkJoinTaskBlockingDetector {
      */
     public void recordForkJoinTaskEntered(Thread thread) {
         if (thread == null) return;
-        activeForkJoinThreads.add(thread.threadId());
+        taskDepthByThread.merge(thread.threadId(), 1, Integer::sum);
     }
 
     /**
@@ -53,7 +58,7 @@ public class ForkJoinTaskBlockingDetector {
      */
     public void recordForkJoinTaskExited(Thread thread) {
         if (thread == null) return;
-        activeForkJoinThreads.remove(thread.threadId());
+        taskDepthByThread.computeIfPresent(thread.threadId(), (id, depth) -> depth > 1 ? depth - 1 : null);
     }
 
     /**
@@ -65,12 +70,22 @@ public class ForkJoinTaskBlockingDetector {
      */
     public void recordBlockingCallAttempted(Thread thread, String callType) {
         if (thread == null) return;
-        if (!activeForkJoinThreads.contains(thread.threadId())) return;
+        if (!taskDepthByThread.containsKey(thread.threadId())) return;
         String type = callType != null ? callType : "blocking call";
         blockingCalls.add(String.format(
             "Thread '%s' called %s inside a ForkJoinTask — "
             + "blocks the carrier thread and starves the pool; use ForkJoinPool.managedBlock instead",
             thread.getName(), type));
+    }
+
+    /**
+     * Ends the round's task bodies. A body that threw between enter and exit leaves its thread
+     * inside a task, and a pooled worker reused in the next round would have every blocking call
+     * reported against a task that is long gone (#940). Called by the runner once the previous
+     * round's workers have finished.
+     */
+    public void markInvocationStart() {
+        taskDepthByThread.clear();
     }
 
     /**

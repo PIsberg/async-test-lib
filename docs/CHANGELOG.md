@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ForkJoinTaskBlockingDetector` tracks nested tasks and ends them at the round boundary
+  (#940).** "Inside a ForkJoinTask" was a set of thread ids. A parent's `join()` often runs its
+  child inline on the same worker, so the child's exit took the parent out of its task and a
+  blocking call the parent made afterwards went unreported; a body that threw between enter and
+  exit left its worker marked, so a reused pool thread was reported for blocking outside any task
+  in later rounds. It is now a per-thread depth, cleared at each round start through
+  `AsyncTestContext.markInvocationStart()`. Both directions red first: the nested parent's
+  blocking call fires, the next round's call after an aborted task stays silent.
 - **Detector javadoc examples run under the 1.13.0 default (#955).** 46 javadoc comments in main
   code (45 detector classes and `AsyncTestContext`) called the accessor of a detector outside
   `ESSENTIALS` with no selection, so copied as written they threw `Detector not active` once a
