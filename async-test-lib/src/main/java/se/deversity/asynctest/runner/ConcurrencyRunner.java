@@ -652,6 +652,26 @@ public class ConcurrencyRunner {
     }
 
     /**
+     * {@return what a resolved selection is, for {@code runner.config}: {@code all} for every
+     * detector, a preset's name when the set is exactly that preset's, otherwise {@code custom}}
+     *
+     * <p>Read from the set alone, so it names what ran, not what the annotation said.
+     *
+     * @param enabled the run's resolved selection
+     */
+    static String selectionLabel(Set<DetectorType> enabled) {
+        if (enabled.size() == DetectorType.values().length) {
+            return "all";
+        }
+        for (Preset preset : Preset.values()) {
+            if (!preset.isAll() && enabled.equals(preset.enabled())) {
+                return preset.name();
+            }
+        }
+        return "custom";
+    }
+
+    /**
      * Resolves the CI timeout-scaling multiplier applied to {@link AsyncTestConfig#timeoutMs}
      * for the current {@link #execute} call.
      *
@@ -682,26 +702,6 @@ public class ConcurrencyRunner {
      * {@code static final} — so the property/env var can still be changed between test runs
      * within the same JVM (as the accompanying unit tests do).
      */
-    /**
-     * {@return what a resolved selection is, for {@code runner.config}: {@code all} for every
-     * detector, a preset's name when the set is exactly that preset's, otherwise {@code custom}}
-     *
-     * <p>Read from the set alone, so it names what ran, not what the annotation said.
-     *
-     * @param enabled the run's resolved selection
-     */
-    static String selectionLabel(Set<DetectorType> enabled) {
-        if (enabled.size() == DetectorType.values().length) {
-            return "all";
-        }
-        for (Preset preset : Preset.values()) {
-            if (!preset.isAll() && enabled.equals(preset.enabled())) {
-                return preset.name();
-            }
-        }
-        return "custom";
-    }
-
     private static double resolveTimeoutMultiplier() {
         String raw = System.getProperty(TIMEOUT_MULTIPLIER_PROPERTY);
         if (raw == null || raw.isBlank()) {

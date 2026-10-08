@@ -8,6 +8,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,7 +43,7 @@ public final class CompletableFutureBlockingCallbackDetector {
      * the same thread, and the inner exit must not end the outer callback (#941).
      */
     private static final class OpenCallbacks {
-        final ArrayDeque<String> names = new ArrayDeque<>();
+        final Deque<String> names = new ArrayDeque<>();
         long round;
     }
 
