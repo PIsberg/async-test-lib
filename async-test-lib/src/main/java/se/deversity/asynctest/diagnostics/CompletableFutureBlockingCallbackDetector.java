@@ -103,6 +103,8 @@ public final class CompletableFutureBlockingCallbackDetector {
      * inside it, and a later round's blocking call on that thread would be reported against a
      * callback that is long gone (#941). The runner calls this once the previous round's workers
      * have finished; each thread drops its stale stack the next time it records.
+     *
+     * @since 1.13.1
      */
     public void markInvocationStart() {
         round.incrementAndGet();

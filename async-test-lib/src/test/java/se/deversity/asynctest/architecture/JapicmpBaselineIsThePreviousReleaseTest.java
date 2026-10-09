@@ -39,6 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The released versions come from {@code docs/CHANGELOG.md}'s version headings rather than
  * from git tags: a test must not depend on the checkout having tags, and CI clones without them.
+ * A heading marked {@code [YANKED]} never counts: it names no artifact on Central (1.13.0, whose
+ * bundle Central rejected, #949).
  */
 class JapicmpBaselineIsThePreviousReleaseTest {
 
@@ -100,12 +102,12 @@ class JapicmpBaselineIsThePreviousReleaseTest {
         return version.group(1).trim();
     }
 
-    /** Released versions, newest first, read from the changelog's version headings. */
+    /** Released versions, newest first, from the changelog's version headings, yanked ones left out. */
     private static List<String> releasedVersions() {
         List<String> versions = new ArrayList<>();
         for (String line : read(repoRoot().resolve("docs/CHANGELOG.md"))) {
             Matcher m = CHANGELOG_RELEASE.matcher(line);
-            if (m.find()) {
+            if (m.find() && !line.contains("[YANKED]")) {
                 versions.add(m.group(1));
             }
         }

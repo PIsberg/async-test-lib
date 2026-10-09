@@ -187,6 +187,8 @@ public final class VarHandleNonAtomicUpdateDetector {
      * worker records in the next are two body executions, not one get-then-set; without this
      * the pair was counted as a lost update (#964). The runner calls this once the previous
      * round's workers have finished.
+     *
+     * @since 1.13.1
      */
     public void markInvocationStart() {
         for (State s : locations.values()) {

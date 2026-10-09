@@ -7,7 +7,7 @@
     <parent>
         <groupId>se.deversity.async-test-lib</groupId>
         <artifactId>async-test-parent</artifactId>
-        <version>1.13.0</version>
+        <version>1.13.1</version>
     </parent>
 
     <!-- Deliberately unchanged: this is the coordinate every existing consumer depends on. -->
@@ -188,7 +188,8 @@
                              from abstract to default (#919). Any other break still fails the build;
                              checked by deleting an unrelated public method with these in place.
 
-                             Remove the whole list when <oldVersion> is re-pinned to 1.13.0: the
+                             1.13.0 never reached Central (#949), so the baseline stays 1.12.4 for
+                             1.13.1. Remove the whole list when <oldVersion> moves past 1.12.4: the
                              removed elements are then absent from the baseline too, and a stale
                              wildcard would only hide a future break. -->
                         <excludes>

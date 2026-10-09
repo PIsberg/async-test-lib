@@ -63,6 +63,25 @@ jobs:
         env:
           MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
 
+      # The runner image's Maven moved to 3.10.0 in ubuntu-24.04 build 20261004.327. Under it,
+      # central-publishing-maven-plugin 0.11.0 (the newest) stages into a directory Maven treats
+      # as a local repository, so the bundle also carries .locks/, _remote.repositories and a
+      # maven-metadata-local.xml beside each module's version directory. The portal rejected
+      # v1.13.0's bundle for those ("Bundle has content that does NOT have a .pom file") and
+      # published nothing (#949). The release builds on the last Maven the plugin bundles
+      # correctly with; PublishRunsOnPinnedMavenTest holds the pin below 3.10.
+      - name: Install Maven 3.9.16
+        env:
+          MAVEN_VERSION: 3.9.16
+          MAVEN_SHA512: 831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/maven.tar.gz" \
+            "https://repo1.maven.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+          echo "${MAVEN_SHA512}  $RUNNER_TEMP/maven.tar.gz" | sha512sum --check --strict
+          tar -xzf "$RUNNER_TEMP/maven.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-${MAVEN_VERSION}/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/apache-maven-${MAVEN_VERSION}/bin/mvn" --version
+
       - name: Build, test and publish to Maven Central
         run: mvn --batch-mode clean deploy -P release
         env:

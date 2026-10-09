@@ -14,8 +14,14 @@ preparation; the tag itself is the point of no return.
 On a `v*` tag push, `publish.yml`:
 
 1. Builds and tests on JDK 21 (Temurin).
-2. Imports the GPG key and runs `mvn --batch-mode clean deploy -P release`. The `release`
-   profile activates `maven-gpg-plugin`, which signs the artifacts at the `verify` phase.
+2. Imports the GPG key, installs Maven 3.9.16 (checksum-verified) and runs
+   `mvn --batch-mode clean deploy -P release`. The `release` profile activates
+   `maven-gpg-plugin`, which signs the artifacts at the `verify` phase. The Maven is pinned
+   because the runner image's 3.10.0 makes `central-publishing-maven-plugin` 0.11.0 build a
+   bundle with a `maven-metadata-local.xml` beside each module's version directory, which the
+   portal rejects; that is why v1.13.0 published nothing (#949). Raise the pin only after
+   checking that a newer plugin's bundle holds no `.locks/`, `_remote.repositories` or
+   `maven-metadata-local.xml` entries (`PublishRunsOnPinnedMavenTest` holds it below 3.10).
 3. Uploads via `central-publishing-maven-plugin`, configured with `autoPublish=true` and
    `waitUntil=uploaded`: **no manual portal action is required**, and nothing stops the
    release once validation passes. `uploaded`, not `published`, because waiting inside
@@ -139,9 +145,12 @@ Then re-pin the japicmp baseline in `async-test-lib/pom.xml` to the version you 
         <version>1.9.1</version>   <!-- the release before the one being cut -->
 ```
 
-When moving the baseline to 1.13.0 or later, also delete the `<excludes>` list beside it: it
-waives the breaks 1.13.0 made against 1.12.4, and against a 1.13.0 baseline it can only hide a
-new one.
+When moving the baseline past 1.12.4, also delete the `<excludes>` list beside it: it waives the
+breaks 1.13.0 made against 1.12.4, and against a later baseline it can only hide a new one.
+
+A version that never reached Central has no artifact to compare against. Mark its changelog
+heading `[YANKED]` (Keep a Changelog's marker, as on `## [1.13.0] - 2026-10-08 [YANKED]`) and both
+baseline tests skip it, so 1.13.1 compares against 1.12.4.
 
 **This step is not optional, and skipping it used to be silent.** `JapicmpBaselineFreshnessTest`
 now fails the build when `<oldVersion>` is not the newest release in `docs/CHANGELOG.md` below the

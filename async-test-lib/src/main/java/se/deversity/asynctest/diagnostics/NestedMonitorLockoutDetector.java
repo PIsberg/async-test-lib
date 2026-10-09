@@ -64,6 +64,8 @@ public class NestedMonitorLockoutDetector {
      * {@link #recordMonitorReleased} leaves the monitor recorded, and a pooled platform worker
      * reused in a later round would be reported as holding it (#964). The runner calls this once
      * the previous round's workers have finished.
+     *
+     * @since 1.13.1
      */
     public void markInvocationStart() {
         heldMonitors.clear();
