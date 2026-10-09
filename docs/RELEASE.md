@@ -172,6 +172,17 @@ appears in the script's "prose mentions" report; that is expected, not a missed 
 A stale baseline does not report anything; it just stops protecting the API your customers pin
 against.
 
+Between releases the baseline is one release behind on purpose. `pom.xml` stays on the version it
+last released, so the newest release below it is the one before, and the gate cannot compare against
+the version being built (#954). A pull request that removes or changes API added in the latest
+release therefore passes japicmp. It is caught at the next release instead: re-pinning the baseline
+here, which `JapicmpBaselineFreshnessTest` enforces, puts that API back under comparison before the
+tag. Checked on 2026-10-09 with the version bumped to 1.13.2, the baseline re-pinned to the published
+1.13.1 and the 1.13.0 waiver deleted: removing `AsyncTestConfig.enabledDetectors()` failed the build
+with "Versions of archives indicate a patch change but binary incompatible changes found", and it was
+the only incompatibility. Late, not missed; if such a failure appears at step 4, restore the API or
+cut a minor or major instead.
+
 ### 3. Update the changelog
 
 In `docs/CHANGELOG.md`, turn `## [Unreleased]` into `## [<version>] - <YYYY-MM-DD>` and add a
