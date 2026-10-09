@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A run that leaves detectors out says so once per JVM at INFO (#956).** #965 put the selection in
+  `runner.config`, which is DEBUG, so a bare `@AsyncTest` that passed under 1.12 still passed under
+  1.13 with nothing in a default build log saying `ESSENTIALS` ran instead of every detector. The
+  first run in a JVM whose selection is not `all` now logs `runner.selection.partial test=...
+  detectors=<n> of=<total> selection=<preset|custom>` with a hint naming
+  `-Dasync-test.detectAll=true`; later runs stay quiet. The owner chose this over a report-header
+  line: the console report prints only when there are findings, the JSON report is one file per
+  JVM, and `SarifFormatter` sees only violations, so none of them could show the selection of a
+  run that passed. `ConcurrencyRunnerLogContractTest` went red first (no announcement), and pins
+  that a run of every detector does not trigger it.
+
 ### Changed
 
 - **`VIRTUAL_THREAD_CONTEXT_LEAKS` reports set-without-remove at `MEDIUM`, not `HIGH` (#942).**

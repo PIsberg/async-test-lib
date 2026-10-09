@@ -43,6 +43,7 @@ one who does not have DEBUG enabled.
 
 | Event | What it means | What to do |
 |---|---|---|
+| `runner.selection.partial` | The run's selection left detectors out (`detectors=` of `of=`, and `selection=` as in `runner.config`); a bare `@AsyncTest` runs `ESSENTIALS` since 1.13.0 (#956). Not a finding, and not a defect. | Nothing, if the selection is what you meant. `-Dasync-test.detectAll=true` runs every detector for one build. |
 | `runner.agent.absent` | `AtomicityValidator` is enabled and the agent's telemetry pipeline is not running, so nothing auto-records field accesses. | Attach the agent, or record through `AsyncTestContext` explicitly. |
 | `runner.detector.inert detector=DaemonThreadHygieneDetector` | The runner's workers are daemon threads in both thread modes (#479), and a thread inherits the daemon flag of its creator, so every thread the body constructs is already daemon and the detector's rule has nothing to judge. | Record a thread whose factory sets the flag itself, such as anything from `Executors.defaultThreadFactory()` or a JDK thread pool, or a thread created outside the body. `useVirtualThreads = false` does not change it. |
 | `runner.detector.inert detector=DeadlockDetector` | `findDeadlockedThreads()` reports platform threads, and this JVM's thread dump does not name monitors either, so a cycle between the virtual workers cannot be seen here. | `useVirtualThreads = false`, or a JDK whose thread dump carries monitor ownership. |

@@ -45,7 +45,8 @@ answers "why did this behave differently on CI?" in one line. `detectors` and `s
 detectors looked: since 1.13.0 a bare `@AsyncTest` runs the 12 in `ESSENTIALS` where 1.12 ran all
 146, and a run that passes says nothing else about it (#956). `selection` is `all`, the name of the
 preset whose set the run's selection equals, or `custom`, read from the resolved set rather than the
-annotation. `entering execute()` answers nothing —
+annotation. `runner.config` is DEBUG, so the first run in a JVM that leaves any detector out also
+logs the same count once at INFO, as `runner.selection.partial` ([the once-per-JVM events](../agent/diagnostics.md)). `entering execute()` answers nothing —
 it records a position in the code, which the stack trace already had.
 
 The replay seed belongs in the narrative on every round. It is the reproduction handle for a failure
