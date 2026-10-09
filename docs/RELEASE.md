@@ -14,8 +14,14 @@ preparation; the tag itself is the point of no return.
 On a `v*` tag push, `publish.yml`:
 
 1. Builds and tests on JDK 21 (Temurin).
-2. Imports the GPG key and runs `mvn --batch-mode clean deploy -P release`. The `release`
-   profile activates `maven-gpg-plugin`, which signs the artifacts at the `verify` phase.
+2. Imports the GPG key, installs Maven 3.9.16 (checksum-verified) and runs
+   `mvn --batch-mode clean deploy -P release`. The `release` profile activates
+   `maven-gpg-plugin`, which signs the artifacts at the `verify` phase. The Maven is pinned
+   because the runner image's 3.10.0 makes `central-publishing-maven-plugin` 0.11.0 build a
+   bundle with a `maven-metadata-local.xml` beside each module's version directory, which the
+   portal rejects; that is why v1.13.0 published nothing (#949). Raise the pin only after
+   checking that a newer plugin's bundle holds no `.locks/`, `_remote.repositories` or
+   `maven-metadata-local.xml` entries (`PublishRunsOnPinnedMavenTest` holds it below 3.10).
 3. Uploads via `central-publishing-maven-plugin`, configured with `autoPublish=true` and
    `waitUntil=uploaded`: **no manual portal action is required**, and nothing stops the
    release once validation passes. `uploaded`, not `published`, because waiting inside

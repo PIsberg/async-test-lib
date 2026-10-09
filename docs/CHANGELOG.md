@@ -47,6 +47,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The release reaches Maven Central again (#949).** v1.13.0's publish run went green, but the
+  portal rejected its bundle ("Bundle has content that does NOT have a .pom file") and nothing
+  was published, so 1.13.0 exists only as a GitHub release. The runner image had moved to Maven
+  3.10.0 three days earlier, and under it `central-publishing-maven-plugin` 0.11.0, the newest,
+  stages into a directory Maven treats as a local repository: the bundle gained `.locks/`,
+  `_remote.repositories` and a `maven-metadata-local.xml` beside each module's version directory,
+  the four paths the portal named. Reproduced locally on one commit with the upload pointed at a
+  dead URL: 79 bundle entries under Maven 3.10.0, 42 under 3.9.16 with none of those. `publish.yml`
+  now installs a checksum-verified Maven 3.9.16 before the deploy, and
+  `PublishRunsOnPinnedMavenTest`, red first, holds the pin below 3.10.
 - **Publish Release is green only once Maven Central serves the release (#952).** The deploy
   returns when the bundle is uploaded, so v1.13.0's run went green while nothing reached Central
   (#949). A last step, `.github/scripts/wait-for-central.sh`, polls each module's jar sha1 on
