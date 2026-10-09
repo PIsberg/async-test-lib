@@ -133,6 +133,31 @@ class VirtualThreadContextLeakDetectorTest {
         assertTrue(leak.contains("never removed"), leak);
     }
 
+    /**
+     * #942, owner's option 2: a virtual thread is never pooled, so the value it leaves set dies
+     * with it. The finding stays (the same task code leaks on a pool) but as a MEDIUM warning, so
+     * a {@code failOn = HIGH} gate no longer fails on a leak that cannot happen here, and the text
+     * names the detectors that see the real leak on pooled threads.
+     */
+    @Test
+    void unremovedSetOnVirtualThread_isAMediumWarningThatAHighGateDoesNotFailOn() throws Exception {
+        Thread vt = Thread.ofVirtual().start(() ->
+                detector.recordThreadLocalSet("REQUEST_ID", Thread.currentThread()));
+        vt.join();
+
+        var report = detector.analyze();
+        assertTrue(report.hasIssues(), "the finding must still fire: " + report);
+        assertEquals(1, report.structuredViolations.size(), report.structuredViolations.toString());
+        IssueSeverity severity = report.structuredViolations.get(0).severity();
+        assertEquals(IssueSeverity.MEDIUM, severity, report.toString());
+        assertFalse(se.deversity.asynctest.FailOn.HIGH.triggeredBy(severity));
+        assertTrue(se.deversity.asynctest.FailOn.MEDIUM.triggeredBy(severity));
+        String text = report.toString();
+        assertFalse(text.contains(IssueSeverity.HIGH.format()), text);
+        assertTrue(text.contains("THREAD_LOCAL_LEAKS"), text);
+        assertTrue(text.contains("MDC_CONTEXT_LEAK"), text);
+    }
+
     @Test
     void noLeak_whenVirtualThreadProperlyRemoves() throws Exception {
         Thread vt = Thread.ofVirtual().start(() -> {

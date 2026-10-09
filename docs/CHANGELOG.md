@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`VIRTUAL_THREAD_CONTEXT_LEAKS` reports set-without-remove at `MEDIUM`, not `HIGH` (#942).**
+  The finding fires only on virtual threads, which are never pooled, so the value it names dies
+  with the thread; the HIGH finding fired where the leak cannot happen and was silent where it
+  can. Owner's option 2: it stays a finding (the same task code leaks once it runs on a pool, and
+  the corpus pair still fires), but `failOn = HIGH` no longer fails on it, and its text now points
+  to `THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK`, which report the leak on pooled threads. A suite
+  on `failOn = MEDIUM` or `LOW` still fails. The new detector test went red on HIGH first.
 - **Publish Release creates the GitHub Release only after Maven Central serves the jars (#966).**
   The Central wait (#952) used to run after `gh release create`, so a stalled publication still
   produced a GitHub Release marked Latest whose coordinates 404'd, as v1.13.0's did (#949). The

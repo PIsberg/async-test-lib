@@ -21,10 +21,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * request. A task that sets a {@code ThreadLocal} and does not remove it is reported
  * here, where it is cheap to catch.
  *
+ * <p>That finding is {@code MEDIUM}, not {@code HIGH} (#942): on the virtual thread where it
+ * is observed the value cannot reach another task, so it is task hygiene rather than a
+ * leak that happened, and a {@code failOn = HIGH} gate does not fail on it. The leak itself,
+ * on pooled platform threads, is what {@code THREAD_LOCAL_LEAKS} and {@code MDC_CONTEXT_LEAK}
+ * report; this detector deliberately ignores platform threads.
+ *
  * <p><strong>Issues detected:</strong>
  * <ul>
- *   <li><b>ThreadLocal not removed</b> — A ThreadLocal was set in a virtual thread
- *       but {@code remove()} was never called before the thread completed</li>
+ *   <li><b>ThreadLocal not removed</b> ({@code MEDIUM}) — A ThreadLocal was set in a
+ *       virtual thread but {@code remove()} was never called before the thread completed</li>
  *   <li><b>InheritableThreadLocal in virtual threads</b> (warning, not an issue) — virtual
  *       threads inherit {@code InheritableThreadLocal} values by default, so every thread a
  *       virtual thread creates gets a copy; {@code ScopedValue} bounds the context instead</li>
@@ -155,7 +161,9 @@ public class VirtualThreadContextLeakDetector {
                 leakReports.add(
                     "Virtual thread (id=" + entry.threadId + "): "
                     + "ThreadLocal '" + entry.key + "' was set but never removed. "
-                    + "If this code runs on a pooled thread, the value leaks into the next task on it."
+                    + "A virtual thread is never pooled, so here the value dies with the thread; "
+                    + "if this code runs on a pooled thread, the value leaks into the next task on it. "
+                    + "THREAD_LOCAL_LEAKS and MDC_CONTEXT_LEAK report that leak on pooled threads."
                 );
             }
         }
@@ -204,9 +212,9 @@ public class VirtualThreadContextLeakDetector {
             if (!hasIssues()) {
                 return;
             }
-            // The severity the failOn gate read from this text before #801: a marker in it,
-            // else the value DetectorDefaultSeverity declared for the detector.
-            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            // MEDIUM (#942): on a virtual thread the value dies with the thread, so this is
+            // hygiene that a failOn = HIGH gate must not fail on. toString() carries the same marker.
+            IssueSeverity severity = IssueSeverity.MEDIUM;
                 for (String finding : leaks) {
                     structuredViolations.add(new Violation("VirtualThreadContextLeaks", severity,
                             finding, List.of(), Map.of(), Instant.now()));
@@ -269,8 +277,8 @@ public class VirtualThreadContextLeakDetector {
             StringBuilder sb = new StringBuilder();
 
             if (!leaks.isEmpty()) {
-                sb.append(IssueSeverity.HIGH.format())
-                  .append(": Virtual thread ThreadLocal context leak detected\n");
+                sb.append(IssueSeverity.MEDIUM.format())
+                  .append(": Virtual thread ThreadLocal set without remove (leaks once this code runs on a pool)\n");
             } else {
                 sb.append(IssueSeverity.MEDIUM.format())
                   .append(": Virtual thread ThreadLocal usage warnings\n");

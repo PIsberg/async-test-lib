@@ -42,7 +42,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 01 | [CompletableFuture Exception Handling](01-completablefuture-exception-handling/) | `CompletableFutureExceptionDetector` | Unhandled exceptions in async chains cause silent data loss | 🔴 Critical |
 | 02 | [Visibility/Volatile Flag](02-visibility-volatile-flag/) | `VisibilityMonitor` | Missing `volatile` on shared flags causes threads to never see shutdown signals | 🔴 Critical |
 | 03 | [Shared Non-Thread-Safe Collection](03-shared-collection/) | `SharedCollectionDetector` | ArrayList/HashMap shared across threads causes data loss and corruption | 🔴 Critical |
-| 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 High |
+| 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 Medium |
 | 05 | [Lock Contention](05-lock-contention/) | `LockContentionDetector` | Many threads competing for one monitor — wait time dominates, throughput collapses before the CPUs are busy | 🟡 High |
 | 06 | [Deadlock](06-deadlock/) | `DeadlockDetector` | Two threads acquire the same pair of locks in opposite order — circular wait, neither can proceed | 🔴 Critical |
 | 07 | [Livelock](07-livelock/) | `LivelockDetector` (reports starvation, not a busy spin) | Two nodes back off and retry without delay — threads stay active but make no progress | 🔴 Critical |
