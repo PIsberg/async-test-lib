@@ -160,6 +160,8 @@ public class VirtualThreadCarrierExhaustionDetector {
      * end, and its virtual thread is gone by the next round, so counting it there would add a
      * carrier nobody holds to every later count (#964). The runner calls this once the previous
      * round's workers have finished.
+     *
+     * @since 1.13.1
      */
     public void markInvocationStart() {
         activeBlocksByThread.clear();

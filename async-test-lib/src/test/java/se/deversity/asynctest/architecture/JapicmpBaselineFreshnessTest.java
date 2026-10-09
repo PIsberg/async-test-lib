@@ -44,7 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * </ul>
  *
  * <p>The list of releases comes from {@code docs/CHANGELOG.md} rather than from git tags,
- * because CI clones are shallow and a tag-based check would quietly pass on an empty list.
+ * because CI clones are shallow and a tag-based check would quietly pass on an empty list. A
+ * heading marked {@code [YANKED]} (Keep a Changelog's marker) is not a release users can upgrade
+ * off and has no artifact on Central to resolve, so it never counts: 1.13.0 is one, because
+ * Central rejected its bundle (#949).
  */
 @DisplayName("The japicmp baseline is the previous release, not an older one")
 class JapicmpBaselineFreshnessTest {
@@ -57,9 +60,13 @@ class JapicmpBaselineFreshnessTest {
     private static final Pattern BASELINE_VERSION = Pattern.compile(
             "<oldVersion>.*?<version>([^<]+)</version>.*?</oldVersion>", Pattern.DOTALL);
 
-    /** A released-version heading in the changelog: {@code ## [1.9.4] - 2026-08-16}. */
+    /**
+     * A released-version heading in the changelog, {@code ## [1.9.4] - 2026-08-16}, unless the
+     * line marks it {@code [YANKED]}.
+     */
     private static final Pattern RELEASE_HEADING = Pattern.compile(
-            "^## \\[(\\d+)\\.(\\d+)\\.(\\d+)\\]\\s+-\\s+\\d", Pattern.MULTILINE);
+            "^## \\[(\\d+)\\.(\\d+)\\.(\\d+)\\]\\s+-\\s+\\d(?![^\\n]*\\[YANKED\\])",
+            Pattern.MULTILINE);
 
     @Test
     @DisplayName("japicmp compares against the newest release below the version being built")

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-10-09
+
+> **The first 1.13 on Maven Central.** 1.13.0 was tagged and released on GitHub, but Central
+> rejected its bundle and published nothing (#949, see Fixed), so 1.13.0 is marked yanked. Upgrading
+> from 1.12: everything under 1.13.0 below applies, so read [the 1.13.0 migration guide](migration/1.13.0.md)
+> first. The japicmp baseline stays 1.12.4, the newest version on Central.
+
 ### Added
 
 - **`-Dasync-test.detectAll=true` turns every detector on for a whole run (#946).** The 1.13.0
@@ -139,7 +146,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by surefire, one JVM per class. `AllocationBudgetUnderMutationTest` went red first on the four
   unguarded measuring sites and the missing property.
 
-## [1.13.0] - 2026-10-08
+## [1.13.0] - 2026-10-08 [YANKED]
+
+> **Never on Maven Central.** The tag and the GitHub release exist, but Central rejected the bundle
+> (#949), so no 1.13.0 artifact can be resolved; use 1.13.1. The entries below are part of 1.13.1.
+> The japicmp gate does not count a yanked version as a release (`JapicmpBaselineFreshnessTest`).
 
 > **Breaking release.** 1.13.0 removes what 1.12 deprecated and changes what a bare `@AsyncTest`
 > runs. Two of the changes compile and pass while checking less. Upgrading from 1.12: read

@@ -29,7 +29,8 @@ review. A breaking change that has not had its major bump fails the build.
 selects. The owner chose on 2026-10-06 to keep the 1.x line rather than call it 2.0.0.
 [migration/1.13.0.md](migration/1.13.0.md) describes every change. japicmp waives exactly those breaks by name in
 `async-test-lib/pom.xml`; any other break still fails the build, and the waiver goes when the
-baseline moves to 1.13.0.
+baseline moves past 1.12.4. 1.13.0 itself never reached Maven Central (#949), so the first 1.13
+on Central is 1.13.1, which ships the same breaks.
 
 **What is not covered.** Anything in a package containing `internal`,
 the exact text of a report or an assertion message, and the `async-test-agent` and

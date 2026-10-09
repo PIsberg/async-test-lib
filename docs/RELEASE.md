@@ -145,9 +145,12 @@ Then re-pin the japicmp baseline in `async-test-lib/pom.xml` to the version you 
         <version>1.9.1</version>   <!-- the release before the one being cut -->
 ```
 
-When moving the baseline to 1.13.0 or later, also delete the `<excludes>` list beside it: it
-waives the breaks 1.13.0 made against 1.12.4, and against a 1.13.0 baseline it can only hide a
-new one.
+When moving the baseline past 1.12.4, also delete the `<excludes>` list beside it: it waives the
+breaks 1.13.0 made against 1.12.4, and against a later baseline it can only hide a new one.
+
+A version that never reached Central has no artifact to compare against. Mark its changelog
+heading `[YANKED]` (Keep a Changelog's marker, as on `## [1.13.0] - 2026-10-08 [YANKED]`) and both
+baseline tests skip it, so 1.13.1 compares against 1.12.4.
 
 **This step is not optional, and skipping it used to be silent.** `JapicmpBaselineFreshnessTest`
 now fails the build when `<oldVersion>` is not the newest release in `docs/CHANGELOG.md` below the
