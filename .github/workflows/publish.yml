@@ -152,6 +152,17 @@ jobs:
       - name: Name the provenance for the release
         run: cp "${{ steps.provenance.outputs.bundle-path }}" "target/async-test-lib-${{ steps.version.outputs.VERSION }}.intoto.jsonl"
 
+      # The deploy above returns once the bundle is uploaded (waitUntil=uploaded), so until this
+      # step a green run did not mean the release was on Central: v1.13.0's went green with
+      # nothing published (#949). This fails the run unless Central serves each module's jar with
+      # the sha1 this run built, within an hour (#952). It runs before the GitHub Release on
+      # purpose (#966): released first, a stall left a Release marked Latest whose coordinates
+      # 404. A red run here leaves the tag with no Release; do not re-run the job, which would
+      # deploy a burned version again, but follow "When a release fails" in docs/RELEASE.md.
+      - name: Wait for Maven Central to serve the release
+        timeout-minutes: 70
+        run: bash .github/scripts/wait-for-central.sh "${{ steps.version.outputs.VERSION }}" .
+
       - name: Create GitHub Release with artifacts and signatures
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -229,12 +240,3 @@ jobs:
           \`\`\`bash
           gpg --verify async-test-lib-${VERSION}.jar.asc async-test-lib-${VERSION}.jar
           \`\`\`"
-
-      # The deploy above returns once the bundle is uploaded (waitUntil=uploaded), so until this
-      # step a green run did not mean the release was on Central: v1.13.0's went green with
-      # nothing published (#949). This fails the run unless Central serves each module's jar with
-      # the sha1 this run built, within an hour (#952). The GitHub Release already exists by now;
-      # a red run here is the notification that Central has not caught up.
-      - name: Wait for Maven Central to serve the release
-        timeout-minutes: 70
-        run: bash .github/scripts/wait-for-central.sh "${{ steps.version.outputs.VERSION }}" .

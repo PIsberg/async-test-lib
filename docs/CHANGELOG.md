@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Publish Release creates the GitHub Release only after Maven Central serves the jars (#966).**
+  The Central wait (#952) used to run after `gh release create`, so a stalled publication still
+  produced a GitHub Release marked Latest whose coordinates 404'd, as v1.13.0's did (#949). The
+  wait now comes first; a stall leaves the tag without a Release, and `docs/RELEASE.md` ("When a
+  release fails") says how to create it by hand. `PublishWaitsForCentralTest` went red on the old
+  order first.
+
 ## [1.13.1] - 2026-10-09
 
 > **The first 1.13 on Maven Central.** 1.13.0 was tagged and released on GitHub, but Central

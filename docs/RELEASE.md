@@ -30,15 +30,17 @@ On a `v*` tag push, `publish.yml`:
    `.sigstore.json` bundles.
 5. Generates SLSA build provenance for every attached artifact with
    `actions/attest-build-provenance` (verify with `gh attestation verify <file> --repo
-   PIsberg/async-test-lib`), then creates the GitHub Release with the three modules' JARs, their
-   `.asc` and `.sigstore.json` signatures, the SBOMs, and the provenance bundle as
-   `async-test-lib-<version>.intoto.jsonl`, the one suffix Scorecard's provenance probe counts
-   (#961).
+   PIsberg/async-test-lib`).
 6. Waits for Maven Central: `.github/scripts/wait-for-central.sh` polls each module's
    `.jar.sha1` on repo1.maven.org and compares it with the jar the run built, failing the run
    on a mismatch or when an hour passes without it (#952). Before this step a green run meant
-   only "uploaded", and v1.13.0's went green with nothing on Central (#949). A red run here
-   with the release already created means: read the deployment in the Central portal.
+   only "uploaded", and v1.13.0's went green with nothing on Central (#949).
+7. Only then creates the GitHub Release with the three modules' JARs, their `.asc` and
+   `.sigstore.json` signatures, the SBOMs, and the provenance bundle as
+   `async-test-lib-<version>.intoto.jsonl`, the one suffix Scorecard's provenance probe counts
+   (#961). The order is deliberate (#966): with the Release first, v1.13.0 had a Release marked
+   Latest whose coordinates 404'd. `PublishWaitsForCentralTest` pins it. A red wait therefore
+   leaves the tag with no GitHub Release; see "When a release fails".
 
 Required repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`,
 `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`.
@@ -276,6 +278,15 @@ git push origin :refs/tags/v1.7.0
 **Failed after the Central upload succeeded** — the version is **burned**. Central does not
 permit re-releasing a version, and consumers may already have resolved it. Do not retry the
 same number; bump to the next patch or RC and release that.
+
+**The Central wait failed** (step 6 above) — the upload succeeded, so the version is burned, and
+the tag has no GitHub Release yet. Do not re-run the job: it would deploy the same version again,
+which Central refuses. Read the deployment in the Central portal. If it publishes late, create the
+Release by hand from what Central serves (the JARs and their `.asc` files, downloaded from
+repo1.maven.org) with `gh release create v<version> <files> --title "Release v<version>"` and the
+notes `publish.yml` uses; the cosign bundles and provenance of that run are not recoverable, so
+say so in the notes. If it never publishes, as with 1.13.0, mark the changelog heading `[YANKED]`
+and release the next patch.
 
 An `ECONNREFUSED` in the workflow is `harden-runner` blocking an egress host, not a network
 flake. Add the host to `allowed-endpoints` in `publish.yml`.
