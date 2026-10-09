@@ -12,8 +12,9 @@ local measurement rather than the gate's own; see #479. The margin absorbs run-t
 that tests almost always killed, which left the hooks the agent weaves into user code, never called
 by this module's tests, a larger share. Three tests now call those hooks directly and compare each
 with the JDK call it replaces (`AsyncTestConfigBuilderFluencyTest`, `AgentStageHooksMatchTheJdkTest`,
-`TelemetryRegistryHooksMatchTheJdkTest`); a new hook belongs in the matching table. With the first
-two the gate measured 77% (9367 of 12216, run 37862260543, 2026-10-09). It is never bound to `verify`; `mutation.yml` runs it weekly
+`TelemetryRegistryHooksMatchTheJdkTest`); a new hook belongs in the matching table. With all three
+the gate measured 79% (9645 of 12216 killed, 695 with no coverage, run 37872957654, 2026-10-09).
+It is never bound to `verify`; `mutation.yml` runs it weekly
 (Sundays 02:00 UTC) and on demand from the Actions tab, and that job fails below the threshold.
 Until 2026-08-15 nothing in CI ran it at all, while `CONTRIBUTING.md` said it ran on a schedule.
 

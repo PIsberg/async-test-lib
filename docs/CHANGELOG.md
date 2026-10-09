@@ -119,8 +119,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every `CompletionStage` hook, on a `CompletableFuture` and on a foreign stage) and
   `TelemetryRegistryHooksMatchTheJdkTest` (every atomic, field-updater, VarHandle and
   stamped-reference hook, with and without an `ABAProblemDetector` taking the reference path). Each
-  went red on a hook broken by hand. The first two took run 37862260543 to 77% (9367 of 12216);
-  the threshold is unchanged.
+  went red on a hook broken by hand. The first two took run 37862260543 to 77% (9367 of 12216),
+  all three run 37872957654 to 79% (9645 of 12216, mutants with no coverage 1401 to 695); the
+  threshold is unchanged.
 - **The weekly mutation gate computes a score again (#951).** Its coverage pass runs every test
   class in one JVM, and a record-path allocation budget failed there on 2026-10-04, so no score was
   computed. Allocation budgets now skip under pitest (`-Dasynctest.mutationRun=true` in its
