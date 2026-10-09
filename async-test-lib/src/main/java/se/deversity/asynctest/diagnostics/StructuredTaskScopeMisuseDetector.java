@@ -65,7 +65,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p><strong>Usage:</strong>
  * <pre>{@code
- * @AsyncTest(threads = 8, useVirtualThreads = true)
+ * @AsyncTest(threads = 8, useVirtualThreads = true,
+ *            includes = DetectorType.STRUCTURED_TASK_SCOPE_MISUSE)
  * void testStructuredFanOut() {
  *     var detector = AsyncTestContext.structuredTaskScopeMisuseDetector();
  *     String scopeId = "fanout";
@@ -78,6 +79,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  *     detector.recordScopeClosed(scopeId, owner);
  * }
  * }</pre>
+ *
+ * <p><strong>Scope ids.</strong> A constant id is safe while every scope stays on the thread that
+ * opened it: each thread that opens a scope under an id owns a scope of its own there, so the
+ * eight workers above do not collide. When a scope is handed to another thread, give each open
+ * its own id (for example {@code "fanout-" + Thread.currentThread().threadId()}). Under a shared
+ * id a call resolves to the caller's own scope first, so a scope handed to a thread that opened
+ * one under the same id is read as that thread's own and the off-owner use is not reported; and
+ * with several other owners an off-owner call is attributed to any one of them, so a
+ * {@code join()} marks that arbitrary scope joined (#943).
  *
  * @since 1.7.0
  */
@@ -118,7 +128,9 @@ public class StructuredTaskScopeMisuseDetector {
      *
      * @param scopeId correlates the calls belonging to one scope across its lifecycle; each
      *                thread that opens a scope under the same id owns a scope of its own, so a
-     *                constant id in an {@code @AsyncTest} body is safe
+     *                constant id in an {@code @AsyncTest} body is safe while each scope stays on
+     *                its opening thread; a scope handed to another thread needs an id of its
+     *                own (see the class javadoc)
      * @param owner the thread currently holding it
      */
     public void recordScopeOpened(String scopeId, Thread owner) {

@@ -8,7 +8,13 @@ PITest gates the mutation score at **>= 76%**. Measured **81%** (9019 mutations,
 killed) on 2026-09-06 by run 34017000749 - the first CI run of this job ever to complete.
 Every attempt before it died in the coverage phase, so the 77.5% previously quoted here was a
 local measurement rather than the gate's own; see #479. The margin absorbs run-to-run
-`TIMED_OUT` jitter. It is never bound to `verify`; `mutation.yml` runs it weekly
+`TIMED_OUT` jitter. 1.13.0 dropped it to 74% (run 37846845047): it deleted about 1,150 mutants
+that tests almost always killed, which left the hooks the agent weaves into user code, never called
+by this module's tests, a larger share. Three tests now call those hooks directly and compare each
+with the JDK call it replaces (`AsyncTestConfigBuilderFluencyTest`, `AgentStageHooksMatchTheJdkTest`,
+`TelemetryRegistryHooksMatchTheJdkTest`); a new hook belongs in the matching table. With all three
+the gate measured 79% (9645 of 12216 killed, 695 with no coverage, run 37872957654, 2026-10-09).
+It is never bound to `verify`; `mutation.yml` runs it weekly
 (Sundays 02:00 UTC) and on demand from the Actions tab, and that job fails below the threshold.
 Until 2026-08-15 nothing in CI ran it at all, while `CONTRIBUTING.md` said it ran on a schedule.
 
@@ -30,6 +36,15 @@ pitest, so the needed JVM flags are duplicated in the plugin's `jvmArgs`. `parse
 developer's full run silently scored the fast tier only (74%) while the CI job — where the e2e
 profile clears the exclusion — scored the whole suite (77.5%), so the same command measured two
 different things. Reports are non-timestamped, so each run overwrites `target/pit-reports/`.
+
+Allocation budgets are not measured under pitest. Its coverage pass runs every test class in one
+JVM, where other classes' type profiles change what the JIT can prove about a measured path, and a
+record-path budget in `SharedStatefulCryptoDetectorTest` failed there on 2026-10-04 while passing
+in its own JVM and in a scoped pitest run, so that week computed no score (#951). The plugin's
+`jvmArgs` set `-Dasynctest.mutationRun=true`, and every test that reads a thread allocation counter
+calls `AllocationBudgets.assumeMeasurable()` first, which skips it there. Surefire still measures
+each budget in a JVM of its own. `AllocationBudgetUnderMutationTest` requires both the property and
+the call, so a new budget test cannot reintroduce the failure.
 
 Surviving mutants are dominated by diagnostic output and timing-heuristic detectors — killing them
 would require flaky timing-forced tests, so they are deliberately tolerated. Mutation analysis has

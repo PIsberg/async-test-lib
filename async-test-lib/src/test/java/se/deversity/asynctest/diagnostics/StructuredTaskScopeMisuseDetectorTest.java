@@ -151,6 +151,47 @@ class StructuredTaskScopeMisuseDetectorTest {
         assertTrue(report.getConfinementIssues().get(0).contains("intruder"), report.toString());
     }
 
+    // ---- A scope handed between threads: one id per open (#943) ----
+
+    @Test
+    void aScopeHandedToAThreadWithAScopeOfItsOwnIsReportedWhenEachOpenHasItsOwnId() {
+        // Under one shared id, b's join on a's scope resolves to b's own scope and is silent; the
+        // class javadoc says to give each open its own id when a scope crosses threads.
+        Thread a = new Thread("worker-a");
+        Thread b = new Thread("worker-b");
+        detector.recordScopeOpened("fanout-a", a);
+        detector.recordScopeOpened("fanout-b", b);
+        detector.recordFork("fanout-a", "x", a);
+        detector.recordJoin("fanout-a", b);
+
+        var report = detector.analyze();
+        assertEquals(1, report.getConfinementIssues().size(), report.toString());
+        assertTrue(report.getConfinementIssues().get(0).contains("owner='worker-a'"), report.toString());
+    }
+
+    @Test
+    void anOffOwnerJoinMarksExactlyTheScopeItNamesWhenEachOpenHasItsOwnId() {
+        // Under one shared id with several other owners, the join is attributed to any of them and
+        // marks that one joined; with an id per open it marks the scope it names, so the other
+        // scope's missing join is still reported.
+        Thread a = new Thread("worker-a");
+        Thread b = new Thread("worker-b");
+        Thread intruder = new Thread("intruder");
+        detector.recordScopeOpened("fanout-a", a);
+        detector.recordScopeOpened("fanout-b", b);
+        detector.recordFork("fanout-a", "x", a);
+        detector.recordFork("fanout-b", "x", b);
+        detector.recordJoin("fanout-a", intruder);
+        detector.recordScopeClosed("fanout-a", a);
+        detector.recordScopeClosed("fanout-b", b);
+
+        var report = detector.analyze();
+        assertEquals(1, report.getConfinementIssues().size(), report.toString());
+        assertTrue(report.getConfinementIssues().get(0).contains("owner='worker-a'"), report.toString());
+        assertEquals(1, report.getMissingJoinIssues().size(), report.toString());
+        assertTrue(report.getMissingJoinIssues().get(0).contains("fanout-b"), report.toString());
+    }
+
     @Test
     void sameScopeIdOpenedByConcurrentWorkers_keepsEachWorkersOwnMisuse() {
         Thread a = new Thread("worker-a");

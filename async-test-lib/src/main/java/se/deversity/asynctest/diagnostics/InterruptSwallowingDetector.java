@@ -17,7 +17,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * operations) can no longer observe the interrupted state, leading to threads that
  * ignore shutdown requests or loop forever on interrupted queues.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.INTERRUPT_SWALLOWING)}:
  * <pre>{@code
  * var d = AsyncTestContext.interruptSwallowingDetector();
  * try {

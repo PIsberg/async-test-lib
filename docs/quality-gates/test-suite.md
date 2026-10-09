@@ -74,9 +74,12 @@ never appeared (#905). Both directions matter: a new skip hides a test, and a st
 reason that no longer holds.
 
 Each line is `<class>#<method> <contexts> # <reason>`. A context is a pattern over the job context
-the workflow passes (`tests/jdk21`, `gradle/jdk21`, `corpus/jdk25`, `license-e2e`, ...) joined to
-the report directory, so the Gatherer skips are allowed on JDK 21 legs only and lane five's
-disabled JDK rows only in lane five's reports. A method ending in `?` may skip but need not:
+the workflow passes (`tests/jdk21/ubuntu-latest`, `gradle/jdk21`, `corpus/jdk25`, `license-e2e`,
+...) joined to the report directory, so the Gatherer skips are allowed on JDK 21 legs only and lane
+five's disabled JDK rows only in lane five's reports. A job that runs on an OS matrix names the OS in
+its context, so a Windows-only test can be required to skip on Linux and macOS and to run on
+Windows; `SkippedTestsGateWiringTest` requires it, since the context without the OS kept all three
+Windows legs red from #927 on, unseen behind `continue-on-error` (#950). A method ending in `?` may skip but need not:
 that is for a test whose own assumption depends on timing, such as the Gatherer test that skips
 when the JDK keeps a parallel stream's integration on one thread, which a loaded JDK 26 leg did on
 this gate's first CI run. A job with no line in scope tolerates no skip, which

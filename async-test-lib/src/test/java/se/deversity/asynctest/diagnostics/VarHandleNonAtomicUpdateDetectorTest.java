@@ -68,6 +68,33 @@ class VarHandleNonAtomicUpdateDetectorTest {
     }
 
     @Test
+    void aGetInOneRoundAndASetInTheNextAreNotOneUpdate() {
+        // A pooled worker that read in one body execution and writes in the next did not compute
+        // the write from that read (#964).
+        Holder h = new Holder();
+        Thread t = Thread.currentThread();
+        detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+        detector.markInvocationStart();
+        detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+        detector.recordAtomicUpdate(COUNT, h, "count", OTHER);
+
+        var report = detector.analyze();
+        assertFalse(report.toString().contains("non-atomic get-then-set"),
+                "the read and the write belong to two body executions: " + report);
+    }
+
+    @Test
+    void aGetThenSetWithinOneRoundIsStillALostUpdate() {
+        Holder h = new Holder();
+        Thread t = Thread.currentThread();
+        detector.markInvocationStart();
+        detector.recordGet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+        detector.recordSet(COUNT, h, "count", VarHandleNonAtomicUpdateDetector.Mode.VOLATILE, t);
+        detector.recordAtomicUpdate(COUNT, h, "count", OTHER);
+        assertTrue(detector.analyze().toString().contains("non-atomic get-then-set"));
+    }
+
+    @Test
     void volatileModeDoesNotExcuseTheLostUpdate() {
         Holder h = new Holder();
         Thread t = Thread.currentThread();

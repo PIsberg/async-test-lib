@@ -14,7 +14,7 @@ Usage:
     skipped_tests_gate.py <repo-root> <context> <dir> [<dir> ...]
     skipped_tests_gate.py <repo-root> --self-test
 
-<context> names the job, for example tests/jdk21. Every TEST-*.xml under each <dir> is read (Maven
+<context> names the job, for example tests/jdk21/ubuntu-latest. Every TEST-*.xml under each <dir> is read (Maven
 writes target/surefire-reports, Gradle build/test-results), and each report is checked in the
 context "<context>/<its directory relative to the repo root>". A baseline line applies where one
 of its patterns matches that context; an entry no scanned context matches is out of scope for
@@ -126,6 +126,7 @@ def self_test(repo_root):
         "a.Lane#* corpus/*/lane5 # lane five runs library rows only",
         "a.Other#elsewhere other/* # never in scope here",
         "a.Gatherer#luck? job/* # skips when the JDK gives the test nothing to judge",
+        "a.Win#locked job/*/ubuntu-latest/*,job/*/macos-latest/* # runs on Windows only",
     ]))
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp).resolve()
@@ -165,6 +166,15 @@ def self_test(repo_root):
 
         errors, allowed = check(baseline, *collect(root, "corpus/jdk21", [root / "corpus"]))
         expect(not errors and len(allowed) == 2, f"a '*' method covers every skip: {errors}")
+
+        (jdk21 / "TEST-a.Gatherer.xml").write_text(report_xml([("a.Gatherer", "needsJdk24()", True)]))
+        (jdk21 / "TEST-a.Win.xml").write_text(report_xml([("a.Win", "locked()", False)]))
+        errors, _ = check(baseline, *collect(root, "job/jdk21/windows-latest", [root / "lib"]))
+        expect(not errors, f"an OS-qualified entry is not checked on the OS it runs on: {errors}")
+        errors, _ = check(baseline, *collect(root, "job/jdk21/ubuntu-latest", [root / "lib"]))
+        expect(len(errors) == 1 and "a.Win#locked" in errors[0],
+               f"an OS-qualified entry that ran where it must skip fails: {errors}")
+        (jdk21 / "TEST-a.Win.xml").unlink()
 
         scanned, _ = collect(root, "job/jdk21", [root / "missing"])
         expect(not scanned, "no report found leaves nothing scanned, which main() refuses")

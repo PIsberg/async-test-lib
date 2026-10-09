@@ -39,8 +39,9 @@ import org.jspecify.annotations.Nullable;
  * {@link #recordCapturedRead(Object, Object, Thread)}; {@link #recordExecution(Object, String, Thread)}
  * names no captured object and probes no lock, so it does not count as a read.
  *
- * <p>Usage inside {@code @AsyncTest}, naming the captured object so each capture is judged on its
- * own (the overloads that take it are stable since 1.12.4, #800):
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.STATEFUL_LAMBDA)}, naming the captured
+ * object so each capture is judged on its own (the overloads that take it are stable since 1.12.4,
+ * #800):
  * <pre>{@code
  * int[] counter = {0};
  * Runnable task = () -> {

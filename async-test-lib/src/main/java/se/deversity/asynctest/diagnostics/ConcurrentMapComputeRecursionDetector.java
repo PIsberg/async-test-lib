@@ -66,7 +66,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>Java 8 is a fourth outcome, an infinite loop inside the resize path, and is out of scope:
  * this library targets 21 and later.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION)}:
  * <pre>{@code
  * var mon = AsyncTestContext.concurrentMapComputeRecursionDetector();
  * mon.recordComputeStart(cache, key, Thread.currentThread(), "cache");

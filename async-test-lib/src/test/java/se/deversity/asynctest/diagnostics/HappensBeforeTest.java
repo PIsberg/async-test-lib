@@ -433,6 +433,7 @@ class HappensBeforeTest {
     @Test
     @DisplayName("ticking a large clock allocates the same as ticking a small one (#840)")
     void aTickCostsTheSameWhateverTheClockSize() {
+        se.deversity.asynctest.AllocationBudgets.assumeMeasurable();
         long own = 5L;
         HappensBefore.Stamp mine = HappensBefore.Stamp.of(own);
         for (long other = 1_000L; other < 3_000L; other++) {

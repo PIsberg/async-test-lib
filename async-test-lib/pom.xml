@@ -313,6 +313,11 @@
                     <jvmArgs>
                         <value>-Djdk.attach.allowAttachSelf=true</value>
                         <value>-Dlicense.mock.mode=true</value>
+                        <!-- Allocation-budget tests skip here: one shared JVM changes what the JIT
+                             can prove about a measured path, and a budget miss in the coverage
+                             pass left the 2026-10-04 run with no score (#951). Surefire still
+                             measures them, each class in its own JVM. -->
+                        <value>-Dasynctest.mutationRun=true</value>
                     </jvmArgs>
                     <!-- Gate: the build fails below this mutation score. Measured 81%
                          (9019 mutations, 7272 killed) on 2026-09-06, run 34017000749 - the

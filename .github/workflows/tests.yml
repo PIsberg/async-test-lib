@@ -131,11 +131,13 @@ jobs:
       - name: Check skipped tests against the baseline
         # A skip is a pass to the build tool; this fails on one .github/skipped-tests.txt does not list, or a listed one that ran (#905).
         # The self-test first: a parser that quietly stopped recognising a skip would pass empty.
+        # The context names the OS, so the baseline can say a test skips on two and runs on the
+        # third (#950).
         shell: bash
         run: |
           py=$(command -v python3 || command -v python)
           "$py" .github/scripts/skipped_tests_gate.py . --self-test
-          "$py" .github/scripts/skipped_tests_gate.py . "tests/jdk${{ matrix.java-version }}" .
+          "$py" .github/scripts/skipped_tests_gate.py . "tests/jdk${{ matrix.java-version }}/${{ matrix.os }}" .
 
       - name: Check coverage file exists
         if: env.UPLOADS_COVERAGE == 'true'

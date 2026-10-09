@@ -67,7 +67,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       scope, and the owner forked again anyway. The new subtask is born cancelled.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SCOPE_JOINER_MISUSE)}:
  * <pre>{@code
  * var d = AsyncTestContext.scopeJoinerMisuseDetector();
  * d.recordJoinerBound(joiner, "orderJoiner", "scope-1", Thread.currentThread());

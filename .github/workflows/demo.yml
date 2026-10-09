@@ -31,9 +31,27 @@ jobs:
       pull-requests: write   # opens the PR that carries it to main
 
     steps:
+      # Block, like every other workflow: this job holds the widest token in the repository, and in
+      # audit mode nothing it contacted was constrained (#960). The list is what its steps reach:
+      # Temurin and the Maven cache (setup-java), Central and its redirect hosts (mvn, the demo
+      # build), PyPI (asciinema, hash-pinned), the agg release download, and GitHub for the push
+      # and the pull request.
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            release-assets.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            results-receiver.actions.githubusercontent.com:443
+            storage.googleapis.com:443
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

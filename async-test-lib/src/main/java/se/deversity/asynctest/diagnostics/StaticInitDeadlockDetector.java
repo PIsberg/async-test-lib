@@ -68,7 +68,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *       only initializer deadlocks created after construction are reported.</li>
  * </ul>
  *
- * <p>Usage:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.STATIC_INIT_DEADLOCK)}:
  * <pre>{@code
  * class Config {
  *     static {

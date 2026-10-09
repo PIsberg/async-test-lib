@@ -107,7 +107,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install the Copilot CLI
-        run: npm install -g @github/copilot
+        # Pinned by .github/copilot-cli/package-lock.json and checked against its integrity
+        # hashes: the CLI runs next with COPILOT_GITHUB_TOKEN in its environment (#959).
+        run: |
+          npm ci --prefix .github/copilot-cli
+          echo "$GITHUB_WORKSPACE/.github/copilot-cli/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Run the task bank (advisory)
         env:

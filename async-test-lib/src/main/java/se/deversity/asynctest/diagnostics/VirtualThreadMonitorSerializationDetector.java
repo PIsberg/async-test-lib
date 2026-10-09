@@ -52,7 +52,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * pile up produces no finding, and neither does a workload that reaches the monitor from one
  * thread at a time.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.VIRTUAL_THREAD_MONITOR_SERIALIZATION)}:
  * <pre>{@code
  * var d = AsyncTestContext.vthreadMonitorSerializationDetector();
  *

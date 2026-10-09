@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>This detector has no dependency on SLF4J: callers supply the MDC snapshot as a
  * plain {@link Map} by calling {@code MDC.getCopyOfContextMap()} themselves.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.MDC_CONTEXT_LEAK)}:
  * <pre>{@code
  * var d = AsyncTestContext.mdcContextLeakDetector();
  * Map<String,String> before = MDC.getCopyOfContextMap(); // may be null

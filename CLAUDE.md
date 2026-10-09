@@ -9,7 +9,7 @@ link, and every rule below names the gate that enforces it.
 
 1. `AsyncTestInvocationInterceptor` calls `invocation.skip()`, never `proceed()`. `AsyncTestInvocationInterceptorTest`.
 2. `AsyncTestContext` ThreadLocal install and uninstall stay symmetric. `AsyncTestContextTest`, `PerInvocationLifecycleTest`.
-3. `DetectorType` is `@AILocked`: a constant changes only together with the `@AsyncTest` attribute, `AsyncTestConfig` (field, builder default, `build()`) and `DetectorRegistry`. Locked Files Guard, `AsyncTestConfigBuildResolutionTest`.
+3. `DetectorType` is `@AILocked`: a constant changes only together with its `AsyncTestConfig` flag (derived as `enabled.contains(TYPE)`, with the Builder setter calling `flag(TYPE, v)`), the `DetectorRegistry` field and `create(DetectorType.TYPE, X::new)` row, and the registry's `ifIssue` call. There is no per-detector `@AsyncTest` attribute or `build()` line any more (#917, #920). Locked Files Guard, `AsyncTestConfigBuildResolutionTest`.
 4. `invocations = 0` and `threads = 0` are refused at `build()`; a run that executes nothing never passes. `AsyncTestConfigValidationTest`, `CoreFlowsBddTest`.
 5. No main code depends on `async-test-agent` or `async-test-analysis`; byte-buddy and asm stay inside them. Only `async-test-analysis`'s tests read the library's and the agent's classes, as bytes ([docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)). `ArchitectureTest` (20 rules).
 6. Shared versions are declared only in `pom.xml`; Gradle reads them with `pomVersion(...)`. `BuildMetadataSyncTest`.

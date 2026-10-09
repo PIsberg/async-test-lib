@@ -32,7 +32,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * 1,100 bytes a walk, and doing that on every access was a probe effect on the threads being
  * observed (#849); the first line already points at the shared instance.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_MESSAGE_DIGEST)}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedMessageDigestDetector();
  * d.recordAccess(sharedDigest, "sha256", Thread.currentThread());

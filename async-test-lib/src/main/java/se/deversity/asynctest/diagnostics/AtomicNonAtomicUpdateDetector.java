@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code set} sequence is still a non-atomic read-modify-write that races with other threads.
  * The correct pattern is a CAS loop, or the built-in {@code updateAndGet}/{@code getAndUpdate}.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.ATOMIC_NON_ATOMIC_UPDATE)}:
  * <pre>{@code
  * var mon = AsyncTestContext.atomicNonAtomicUpdateDetector();
  * int v = counter.get();

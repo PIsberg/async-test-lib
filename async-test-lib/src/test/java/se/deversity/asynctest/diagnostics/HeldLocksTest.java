@@ -163,6 +163,7 @@ class HeldLocksTest {
     @Test
     @DisplayName("entering, reading under and leaving a synchronized method allocates nothing (#822)")
     void methodMonitorPathIsAllocationFree() {
+        se.deversity.asynctest.AllocationBudgets.assumeMeasurable();
         var mx = java.lang.management.ManagementFactory.getThreadMXBean();
         org.junit.jupiter.api.Assumptions.assumeTrue(mx instanceof com.sun.management.ThreadMXBean,
                 "needs the HotSpot ThreadMXBean for per-thread allocation counters");

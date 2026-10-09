@@ -67,7 +67,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *       pool thread while the cancel comes from the test thread.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside
+ * {@code @AsyncTest(includes = DetectorType.COMPLETABLE_FUTURE_CANCELLATION_PROPAGATION)}:
  * <pre>{@code
  * var d = AsyncTestContext.cfCancellationPropagationDetector();
  * String pipeline = "report-" + Thread.currentThread().getName();   // one label per pipeline instance

@@ -105,9 +105,11 @@ class AgentMonitorHooksTest {
     private boolean missedSignalAfter(boolean loop) throws InterruptedException {
         AsyncTestContext context =
                 new AsyncTestContext(AsyncTestConfig.builder().detectMissedSignals(true).build());
+        // Round start, then install, as the runner does: a thread with the context installed is a
+        // body's, and the round lifecycle refuses a body (#947).
+        context.markInvocationStart();
         AsyncTestContext.install(context);
         try {
-            context.markInvocationStart();
             synchronized (monitor) {
                 AgentMonitorHooks.monitorNotifyAll(monitor);
             }

@@ -27,6 +27,49 @@ class VirtualThreadCarrierExhaustionDetectorTest {
     }
 
     @Test
+    void oneVirtualThreadBlockedInTwoNestedOperationsIsOneBlockedThread() {
+        // A synchronized block around a native call records two starts on one thread; that is one
+        // pinned carrier, not two, so two carriers are not exhausted (#964).
+        Thread vt = Thread.ofVirtual().unstarted(() -> { });
+        detector.recordBlockingStart("synchronized-lock", vt);
+        detector.recordBlockingStart("native-call", vt);
+        detector.recordBlockingEnd("native-call", vt);
+        detector.recordBlockingEnd("synchronized-lock", vt);
+
+        var report = detector.analyze();
+        assertFalse(report.hasIssues(), report.toString());
+        assertEquals(1, report.getPeakConcurrentlyBlocked());
+    }
+
+    @Test
+    void anOuterBlockStaysCountedAfterANestedOneEnds() {
+        Thread a = Thread.ofVirtual().unstarted(() -> { });
+        Thread b = Thread.ofVirtual().unstarted(() -> { });
+        detector.recordBlockingStart("synchronized-lock", a);
+        detector.recordBlockingStart("native-call", a);
+        detector.recordBlockingEnd("native-call", a);
+        detector.recordBlockingStart("synchronized-lock", b);   // a is still blocked: two carriers
+
+        assertTrue(detector.analyze().hasIssues(), "two threads blocked at once on two carriers");
+        detector.recordBlockingEnd("synchronized-lock", b);
+        detector.recordBlockingEnd("synchronized-lock", a);
+    }
+
+    @Test
+    void aBlockNeverEndedDoesNotCountInTheNextRound() {
+        // A body that threw inside its blocking section never records the end; its virtual thread
+        // is gone by the next round and holds no carrier there (#964).
+        Thread previous = Thread.ofVirtual().unstarted(() -> { });
+        detector.recordBlockingStart("synchronized-lock", previous);
+        detector.markInvocationStart();
+        Thread next = Thread.ofVirtual().unstarted(() -> { });
+        detector.recordBlockingStart("synchronized-lock", next);
+        detector.recordBlockingEnd("synchronized-lock", next);
+
+        assertFalse(detector.analyze().hasIssues(), "one thread blocked this round, on two carriers");
+    }
+
+    @Test
     void singleBlockingEvent_belowThreshold_noIssue() throws Exception {
         Thread vt = Thread.ofVirtual().start(() -> {
             detector.recordBlockingStart("test-lock");

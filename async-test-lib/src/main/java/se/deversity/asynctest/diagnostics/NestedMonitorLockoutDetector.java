@@ -59,6 +59,16 @@ public class NestedMonitorLockoutDetector {
     /** All captured nested-monitor-lockout events. */
     private final List<String> issues = new CopyOnWriteArrayList<>();
 
+    /**
+     * Ends the round's monitors. A body that throws between {@link #recordMonitorAcquired} and
+     * {@link #recordMonitorReleased} leaves the monitor recorded, and a pooled platform worker
+     * reused in a later round would be reported as holding it (#964). The runner calls this once
+     * the previous round's workers have finished.
+     */
+    public void markInvocationStart() {
+        heldMonitors.clear();
+    }
+
     private Deque<IdentityKey> monitorsFor(Thread t) {
         return heldMonitors.computeIfAbsent(t.threadId(), id -> new ArrayDeque<>());
     }

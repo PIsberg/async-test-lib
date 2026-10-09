@@ -13,7 +13,8 @@
 # assumption depends on timing: the skip is then allowed but not required, never stale. Use ? only
 # for a skip the test cannot make deterministic, and say why. A context is a pattern over
 # "<job context>/<report directory>", where the job context is what the workflow passes
-# (tests/jdk21, gradle/jdk21, corpus/jdk25, ...). Use the narrowest pattern that holds.
+# (tests/jdk21/ubuntu-latest, gradle/jdk21, corpus/jdk25, ...). Use the narrowest pattern that
+# holds. A * also matches a /, so tests/jdk21/* covers every OS of that JDK.
 #
 # Measured from main's CI on 2026-10-05: Tests & Build run 37348860914 (all nine legs), Corpus
 # Eval 37354962742, E2E Tests 37171092507. The examples reactors are not checked here: their
@@ -37,7 +38,7 @@ se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#aForeignDomainIsDenied t
 se.deversity.asynctest.runner.RealOfflineLicenseE2eTest#aTamperedCopyOfTheRealFileIsDenied tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
 
 # Windows-only: an exclusive file lock fails a read only where locks are mandatory (#928).
-se.deversity.asynctest.runner.LicenseValidationCacheTransientReadTest#aRecordLockedForAMomentStillReadsAsFresh tests/*,gradle/*,os-sensitive/macos-latest/* # @EnabledOnOs(WINDOWS): Linux and macOS locks are advisory
+se.deversity.asynctest.runner.LicenseValidationCacheTransientReadTest#aRecordLockedForAMomentStillReadsAsFresh tests/*/ubuntu-latest/*,tests/*/macos-latest/*,gradle/*,os-sensitive/macos-latest/* # @EnabledOnOs(WINDOWS): Linux and macOS locks are advisory
 
 # Lane five reruns lane four's library rows with the libraries excluded from weaving; its JDK
 # rows have nothing to say there and are disabled by LibraryRowsOnly (46 of 80 on 2026-10-05).

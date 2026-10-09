@@ -57,7 +57,19 @@ public class VirtualThreadCarrierExhaustionDetector {
     private final AtomicInteger peakConcurrentlyBlocked = new AtomicInteger(0);
     private final AtomicInteger exhaustionEvents = new AtomicInteger(0);
     private final List<String> exhaustionDetails = Collections.synchronizedList(new ArrayList<>());
-    private final Map<Long, String> activeBlocksByThread = new ConcurrentHashMap<>();
+    /**
+     * The threads blocked now, each with its outermost reason and how many recorded blocks it is
+     * nested in. A thread counts once however deep it is: a synchronized block around a native
+     * call records two starts on one thread, and that is one pinned carrier, not two (#964).
+     */
+    private final Map<Long, Block> activeBlocksByThread = new ConcurrentHashMap<>();
+
+    /** One thread's open blocks: the outermost reason and the nesting depth. */
+    private record Block(String reason, int depth) {
+        Block nested() {
+            return new Block(reason, depth + 1);
+        }
+    }
     /**
      * Creates a VirtualThreadCarrierExhaustionDetector.
      */
@@ -97,7 +109,11 @@ public class VirtualThreadCarrierExhaustionDetector {
     public void recordBlockingStart(String reason, Thread thread) {
         if (!thread.isVirtual()) return;
 
-        activeBlocksByThread.put(thread.threadId(), reason != null ? reason : "unknown");
+        Block block = activeBlocksByThread.compute(thread.threadId(), (id, open) -> open == null
+                ? new Block(reason != null ? reason : "unknown", 1) : open.nested());
+        if (block.depth() > 1) {
+            return;   // already blocked, and already counted
+        }
         int current = concurrentlyBlocked.incrementAndGet();
         peakConcurrentlyBlocked.updateAndGet(max -> Math.max(max, current));
 
@@ -128,8 +144,26 @@ public class VirtualThreadCarrierExhaustionDetector {
      */
     public void recordBlockingEnd(String reason, Thread thread) {
         if (!thread.isVirtual()) return;
-        activeBlocksByThread.remove(thread.threadId());
-        concurrentlyBlocked.updateAndGet(v -> Math.max(0, v - 1));
+        long id = thread.threadId();
+        if (activeBlocksByThread.get(id) == null) {
+            return;   // nothing open on this thread, or a round boundary already ended it
+        }
+        Block left = activeBlocksByThread.computeIfPresent(id, (k, open) ->
+                open.depth() > 1 ? new Block(open.reason(), open.depth() - 1) : null);
+        if (left == null) {
+            concurrentlyBlocked.updateAndGet(v -> Math.max(0, v - 1));
+        }
+    }
+
+    /**
+     * Ends the round's blocks. A body that threw inside its blocking section never records the
+     * end, and its virtual thread is gone by the next round, so counting it there would add a
+     * carrier nobody holds to every later count (#964). The runner calls this once the previous
+     * round's workers have finished.
+     */
+    public void markInvocationStart() {
+        activeBlocksByThread.clear();
+        concurrentlyBlocked.set(0);
     }
 
     /**
@@ -141,10 +175,10 @@ public class VirtualThreadCarrierExhaustionDetector {
         // Any threads still active at analysis time
         List<String> details = new ArrayList<>(exhaustionDetails);
         if (!activeBlocksByThread.isEmpty()) {
-            for (Map.Entry<Long, String> entry : activeBlocksByThread.entrySet()) {
+            for (Map.Entry<Long, Block> entry : activeBlocksByThread.entrySet()) {
                 details.add(String.format(
                     "Virtual thread (id=%d) still blocked in '%s' at analysis time",
-                    entry.getKey(), entry.getValue()
+                    entry.getKey(), entry.getValue().reason()
                 ));
             }
         }

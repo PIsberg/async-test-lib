@@ -42,7 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * because the library targets Java 21 and {@code KDF} only exists in JDK 24+;
  * pass the KDF instance directly.
  *
- * <p>Usage:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_KDF)}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedKdfDetector();
  * d.recordAccess(kdf, "HKDF-SHA256", "deriveKey", Thread.currentThread());

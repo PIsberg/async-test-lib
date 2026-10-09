@@ -7,6 +7,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`-Dasync-test.detectAll=true` turns every detector on for a whole run (#946).** The 1.13.0
+  migration guide's audit, run everything once and go back to `ESSENTIALS`, meant adding
+  `detectAll = true` to every annotation and removing it again. The property reads as
+  `detectAll = true` on every `@AsyncTest`: it overrides any preset, the default included, while
+  `includes` still select exactly their list and `excludes` still apply. `RunWideDetectAllTest`
+  went red first on the three cases that set it; `mvn test -Dasync-test.detectAll=true` turns
+  `LeanDefaultSelectionTest`'s bare annotation from 12 detectors to 146, so the property reaches
+  surefire's forked JVM.
+- **`runner.config` says which detectors ran (#956).** After the 1.13.0 default flip a test that
+  passed under 1.12 passes under 1.13 with nothing in its output saying that 12 detectors looked
+  instead of 146. The DEBUG event now ends with `detectors=<count> selection=<all|preset|custom>`,
+  where `selection` names the preset whose set the run's selection equals. The log contract test
+  went red on both fields first. The report header does not carry it yet: where it belongs there is
+  an owner decision, left on #956.
+
+### Security
+
+- **Releases carry SLSA build provenance (#961).** Releases were GPG- and cosign-signed but had no
+  provenance, so Scorecard's Signed-Releases scored 8. `publish.yml` now attests every attached
+  artifact with `actions/attest-build-provenance` (`gh attestation verify` checks it) and attaches
+  the bundle as `async-test-lib-<version>.intoto.jsonl`, the only suffix Scorecard's
+  `releasesHaveProvenance` probe counts. `PublishAttachesProvenanceTest` pins the wiring; the
+  step itself runs only on a tag push.
+- **The demo workflow blocks egress (#960).** `demo.yml` was the one workflow whose harden-runner
+  only audited, and its job holds `contents: write` and `pull-requests: write`. It now blocks, with
+  the hosts its steps reach. `HardenRunnerEndpointsTest` requires `egress-policy: block` on every
+  harden-runner step and went red on `demo.yml` first.
+- **corpus-eval's jackson-databind moves from 2.22.2 to 2.22.3 (#958).** 2.22.2 is in the range of
+  GHSA-wv8q-qhhj-9h54 and GHSA-cxp5-3px4-pw24, both high. It is a test-scope corpus subject, so
+  nothing shipped with it, but no Dependabot PR was ever raised: `.github/dependabot.yml` watched
+  the reactor only. A second Maven entry now watches `corpus-eval`, `consumer-fixture`,
+  `consumer-fixture-langs` and `examples` weekly. Every source file the corpus cites by line
+  (`ObjectMapper`, `ObjectReader`, `ObjectWriter`, `SequenceWriter`, `LRUMap`, `TokenBuffer`) is
+  byte-identical between the two source jars; 2.22.3 changes five deserializer and serializer
+  classes.
+
+### Fixed
+
+- **Publish Release is green only once Maven Central serves the release (#952).** The deploy
+  returns when the bundle is uploaded, so v1.13.0's run went green while nothing reached Central
+  (#949). A last step, `.github/scripts/wait-for-central.sh`, polls each module's jar sha1 on
+  repo1.maven.org, compares it with the jar the run built and fails after an hour.
+  Checked against 1.12.4 (passes), a tampered jar (fails on the sha1) and 9.9.9 (times out);
+  `PublishWaitsForCentralTest` went red first and pins the step. `docs/RELEASE.md` also said
+  `waitUntil=published` and `.bundle` files, both out of date, and now matches the workflow.
+- **A test body can no longer drive the round (#947).** `openRendezvousForRound`,
+  `markInvocationStart`, `setReplaySeedForRound` and `markRoundTimedOut` are public only because
+  the runner is in another package, and a body reaches the instance through
+  `AsyncTestContext.get()`: from a body they replaced the rendezvous the workers were in, reset
+  every round-scoped detector mid-round, or rewrote the reported seed. They now throw
+  `IllegalStateException` on a thread with a run's context installed, which the runner's thread
+  never has. `breakRendezvous` stays callable (the runner calls it on the failing worker) and says
+  what it does. `RunnerOnlyLifecycleTest` went red first (24 of 24 body calls allowed).
+- **`StructuredTaskScopeMisuseDetector` says when a scope id must be unique (#943).** Scopes are
+  keyed by id and owner thread, so a constant id is safe while scopes stay on their opening
+  thread. A scope handed to another thread under a shared id resolved to the receiver's own scope
+  (the off-owner use went unreported) or, with several owners, to an arbitrary one. The class and
+  `recordScopeOpened` javadocs now say to give each open its own id when a scope crosses threads,
+  and two tests pin that both cases are reported exactly with one id per open.
+- **Three more detectors end their per-thread state at the round boundary (#964).** The leads
+  the #944 follow-up hunt left unverified are all real, each shown by a test that failed first:
+  - `NestedMonitorLockoutDetector`: a body that threw between `recordMonitorAcquired` and
+    `recordMonitorReleased` left the monitor recorded, and a pooled platform worker was reported
+    "holding 1 monitor(s)" for a blocking call in a later round.
+  - `VarHandleNonAtomicUpdateDetector`: a get recorded in one round and a set the same pooled
+    worker recorded in the next were counted as one non-atomic get-then-set, a lost update.
+  - `VirtualThreadCarrierExhaustionDetector`: nested `recordBlockingStart` calls on one virtual
+    thread counted it once per call, so one thread blocked in a synchronized block around a native
+    call read as two pinned carriers and, with two carriers, as exhaustion; and a start never
+    ended kept counting in every later round. A thread now counts once whatever its depth, keeps
+    its outermost reason, and the count restarts each round.
+  Each gained a `markInvocationStart()` in the round fan-out; the in-round cases still report.
+- **`CompletableFutureBlockingCallbackDetector` keeps a stack of open callbacks and ends them at
+  the round boundary (#941).** The active callback was one `ThreadLocal` slot. A callback that
+  completes another future runs that future's dependent inline, so the inner exit cleared the slot
+  and a blocking call the outer callback made afterwards went unreported; a callback that threw
+  before its exit left the slot set on a reused pool thread, so later blocking calls outside any
+  callback were attributed to it. Each thread now keeps its open callbacks innermost first, stamped
+  with the round, and `markInvocationStart()` ends every thread's stack. Both directions red first.
+- **`ForkJoinTaskBlockingDetector` tracks nested tasks and ends them at the round boundary
+  (#940).** "Inside a ForkJoinTask" was a set of thread ids. A parent's `join()` often runs its
+  child inline on the same worker, so the child's exit took the parent out of its task and a
+  blocking call the parent made afterwards went unreported; a body that threw between enter and
+  exit left its worker marked, so a reused pool thread was reported for blocking outside any task
+  in later rounds. It is now a per-thread depth, cleared at each round start through
+  `AsyncTestContext.markInvocationStart()`. Both directions red first: the nested parent's
+  blocking call fires, the next round's call after an aborted task stays silent.
+- **Detector javadoc examples run under the 1.13.0 default (#955).** 46 javadoc comments in main
+  code (45 detector classes and `AsyncTestContext`) called the accessor of a detector outside
+  `ESSENTIALS` with no selection, so copied as written they threw `Detector not active` once a
+  bare `@AsyncTest` stopped running every detector. Each now says `includes = DetectorType.X`.
+  `JavadocExamplesSelectTheirDetectorTest` keeps the next detector's example honest: an accessor
+  call in a javadoc comment needs its `DetectorType` named in that comment (as `DetectorType.X`
+  or a `{@link DetectorType#X}`), or `detectAll = true`. Its first version went red on 49
+  comments; 3 of them already linked the type and needed no change.
+- **The Windows legs of Tests & Build pass the skipped-tests gate again (#950).** The gate's
+  context for the full suite named the JDK and not the OS, so the baseline could only say
+  `LicenseValidationCacheTransientReadTest` skips everywhere, and the `@EnabledOnOs(WINDOWS)` test
+  failed the gate on all three Windows legs of every main run since #927, hidden by those legs'
+  `continue-on-error`. The context is now `tests/jdk<N>/<os>` and the baseline line names Linux and
+  macOS only. `SkippedTestsGateWiringTest` went red first on `tests.yml:test`; the gate's
+  `--self-test` gained an OS-qualified case.
+- **The weekly mutation gate clears its threshold again (#970, #971).** With #951 fixed it
+  computed 74%, under the pom's 76%: 1.13.0 deleted about 1,150 mutants that tests almost always
+  killed, and the hooks the agent weaves into user code had no test in this module. Three tests
+  that compare each hook with the JDK call it replaces fill that: `AsyncTestConfigBuilderFluencyTest`
+  (every Builder boolean setter returns its own builder, 121 mutants), `AgentStageHooksMatchTheJdkTest`
+  (every `CompletionStage` hook, on a `CompletableFuture` and on a foreign stage) and
+  `TelemetryRegistryHooksMatchTheJdkTest` (every atomic, field-updater, VarHandle and
+  stamped-reference hook, with and without an `ABAProblemDetector` taking the reference path). Each
+  went red on a hook broken by hand. The first two took run 37862260543 to 77% (9367 of 12216),
+  all three run 37872957654 to 79% (9645 of 12216, mutants with no coverage 1401 to 695); the
+  threshold is unchanged.
+- **The weekly mutation gate computes a score again (#951).** Its coverage pass runs every test
+  class in one JVM, and a record-path allocation budget failed there on 2026-10-04, so no score was
+  computed. Allocation budgets now skip under pitest (`-Dasynctest.mutationRun=true` in its
+  `jvmArgs`, read by the test helper `AllocationBudgets.assumeMeasurable()`) and are still measured
+  by surefire, one JVM per class. `AllocationBudgetUnderMutationTest` went red first on the four
+  unguarded measuring sites and the missing property.
+
 ## [1.13.0] - 2026-10-08
 
 > **Breaking release.** 1.13.0 removes what 1.12 deprecated and changes what a bare `@AsyncTest`

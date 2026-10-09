@@ -23,7 +23,7 @@ import java.util.Map;
  * taken. A lock that was never declared is invisible and still fires; treat such a finding as a
  * prompt to verify the synchronization, or to move to a per-thread instance.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SHARED_DECIMAL_FORMAT)}:
  * <pre>{@code
  * var d = AsyncTestContext.sharedDecimalFormatDetector();
  * d.recordAccess(sharedFormat, "currencyFmt", Thread.currentThread());

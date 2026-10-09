@@ -67,7 +67,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       threads waited on one element while a single thread computed it.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.LAZY_COLLECTION_MISUSE)}:
  * <pre>{@code
  * var d = AsyncTestContext.lazyCollectionMisuseDetector();
  *

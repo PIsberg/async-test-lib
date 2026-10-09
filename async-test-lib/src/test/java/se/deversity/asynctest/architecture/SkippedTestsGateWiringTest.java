@@ -81,6 +81,30 @@ class SkippedTestsGateWiringTest {
     }
 
     @Test
+    @DisplayName("a gated job that runs on several operating systems names the OS in its context")
+    void anOsMatrixJobNamesTheOsInItsGateContext() {
+        List<String> blind = new ArrayList<>();
+        GATED.forEach((workflow, jobs) -> {
+            Map<String, String> bodies = jobs(workflow);
+            for (String job : jobs) {
+                String body = bodies.get(job);
+                if (body == null || !body.contains("runs-on: ${{ matrix.os }}")) {
+                    continue;
+                }
+                for (String line : body.split("\n", -1)) {
+                    if (line.contains(GATE) && !line.contains("--self-test")
+                            && !line.contains("${{ matrix.os }}")) {
+                        blind.add(workflow + ":" + job);
+                    }
+                }
+            }
+        });
+        assertTrue(blind.isEmpty(), "these jobs run on an OS matrix but give the skipped-tests"
+                + " gate a context without the OS, so the baseline cannot say a test skips on one"
+                + " OS and runs on another (#950); add ${{ matrix.os }} to the context: " + blind);
+    }
+
+    @Test
     @DisplayName("every job that runs a suite is gated or exempt with a reason")
     void noTestJobIsForgotten() {
         TreeSet<String> forgotten = new TreeSet<>();

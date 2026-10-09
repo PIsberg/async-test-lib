@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.LongAdder;
  * set, which keeps recording calls uniform and avoids a hard dependency on the handle's identity
  * semantics.
  *
- * <p>Usage:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.VAR_HANDLE_NON_ATOMIC_UPDATE)}:
  * <pre>{@code
  * private static final VarHandle COUNT =
  *     MethodHandles.lookup().findVarHandle(Holder.class, "count", int.class);
@@ -180,6 +180,18 @@ public final class VarHandleNonAtomicUpdateDetector {
         if (s == null || thread == null) return;
         note(s, guardOf(varHandle, receiver), Mode.VOLATILE, thread, true);
         s.pendingReadByThread.remove(thread.threadId());
+    }
+
+    /**
+     * Ends the round's pending reads. A get one body execution recorded and a set the same pooled
+     * worker records in the next are two body executions, not one get-then-set; without this
+     * the pair was counted as a lost update (#964). The runner calls this once the previous
+     * round's workers have finished.
+     */
+    public void markInvocationStart() {
+        for (State s : locations.values()) {
+            s.pendingReadByThread.clear();
+        }
     }
 
     /**

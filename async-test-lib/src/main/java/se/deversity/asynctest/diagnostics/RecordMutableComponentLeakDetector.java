@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.LongAdder;
  * are mutable, but they are also the correct answer when mutable shared state is genuinely
  * wanted, and flagging them would train users to ignore this detector.
  *
- * <p>Usage:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.RECORD_MUTABLE_COMPONENT_LEAK)}:
  * <pre>{@code
  * record Order(String id, List<Item> items) { }
  *

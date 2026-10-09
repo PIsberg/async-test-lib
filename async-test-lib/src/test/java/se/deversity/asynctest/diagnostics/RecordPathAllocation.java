@@ -4,6 +4,8 @@ import java.lang.management.ManagementFactory;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import se.deversity.asynctest.AllocationBudgets;
+
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -49,6 +51,7 @@ final class RecordPathAllocation {
      * @throws InterruptedException if the test thread is interrupted while it waits for the calls
      */
     static long measuredBytes(Runnable call) throws InterruptedException {
+        AllocationBudgets.assumeMeasurable();
         var mx = ManagementFactory.getThreadMXBean();
         assumeTrue(mx instanceof com.sun.management.ThreadMXBean,
                 "needs the HotSpot ThreadMXBean for per-thread allocation counters");

@@ -29,7 +29,7 @@ import org.jspecify.annotations.Nullable;
  * {@code AsyncTestContext.holdingLock(...)}, or one the agent wove; a lock it never saw leaves
  * the finding standing.
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SYSTEM_PROPERTY_MUTATION)}:
  * <pre>{@code
  * var d = AsyncTestContext.systemPropertyMutationDetector();
  * // wrap each System.setProperty call:

@@ -63,7 +63,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
  * private static final LazyConstant<Config> CONFIG =
  *         LazyConstant.of(() -> loadConfig());
  *
- * @AsyncTest(threads = 16)
+ * @AsyncTest(threads = 16, includes = DetectorType.LAZY_CONSTANT_MISUSE)
  * void testLazyConfig() {
  *     var detector = AsyncTestContext.lazyConstantMisuseDetector();
  *     String name = "CONFIG";

@@ -41,7 +41,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       winner's - still a race, but this run happened to lose nothing observable.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest} - record the outcome of each attempt:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.COMPLETABLE_FUTURE_COMPLETION_RACE)} -
+ * record the outcome of each attempt:
  * <pre>{@code
  * var d = AsyncTestContext.cfCompletionRaceDetector();
  * boolean won = result.complete(myValue);

@@ -8,7 +8,11 @@ with tools that never leave CI.
 Versions are deliberately **not** repeated here. They are declared once, in the reactor root
 [`pom.xml`](../pom.xml) `<properties>` block (the Gradle build reads them from there —
 `BuildMetadataSyncTest` fails if that derivation is unwound), and Dependabot maintains them.
-Each entry names its property so the current value is one lookup away.
+Each entry names its property so the current value is one lookup away. The Maven builds outside
+the reactor (`corpus-eval`, `consumer-fixture`, `consumer-fixture-langs`, `examples`) declare their
+own versions; a second Maven entry in `.github/dependabot.yml` watches them weekly, one grouped PR
+per directory, since the reactor entry never read them and a corpus subject sat on two high
+advisories unnoticed (#958). The bumpdeps skill covers the Gradle-only pins Dependabot does not.
 
 ## 1. On the consumer's classpath
 

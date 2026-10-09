@@ -26,7 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li>{@code destroy()} was never implemented.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.DEPRECATED_THREAD_API)}:
  * <pre>{@code
  * var d = AsyncTestContext.deprecatedThreadApiDetector();
  * d.recordApiUse("Thread.stop", Thread.currentThread());

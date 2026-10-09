@@ -47,3 +47,5 @@ evals/results/
 .axiom/
 __pycache__/
 *.pyc
+
+.github/copilot-cli/node_modules/

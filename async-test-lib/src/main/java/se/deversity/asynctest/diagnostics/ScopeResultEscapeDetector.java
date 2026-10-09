@@ -61,7 +61,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *       throws; reaching for it at all means the caller believed it owned a private copy.</li>
  * </ul>
  *
- * <p>Usage inside {@code @AsyncTest}:
+ * <p>Usage inside {@code @AsyncTest(includes = DetectorType.SCOPE_RESULT_ESCAPE)}:
  * <pre>{@code
  * var d = AsyncTestContext.scopeResultEscapeDetector();
  * d.recordScopeOpened("scope-1", Thread.currentThread());
