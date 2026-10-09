@@ -111,6 +111,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `continue-on-error`. The context is now `tests/jdk<N>/<os>` and the baseline line names Linux and
   macOS only. `SkippedTestsGateWiringTest` went red first on `tests.yml:test`; the gate's
   `--self-test` gained an OS-qualified case.
+- **The weekly mutation gate clears its threshold again (#970, #971).** With #951 fixed it
+  computed 74%, under the pom's 76%: 1.13.0 deleted about 1,150 mutants that tests almost always
+  killed, and the hooks the agent weaves into user code had no test in this module. Three tests
+  that compare each hook with the JDK call it replaces fill that: `AsyncTestConfigBuilderFluencyTest`
+  (every Builder boolean setter returns its own builder, 121 mutants), `AgentStageHooksMatchTheJdkTest`
+  (every `CompletionStage` hook, on a `CompletableFuture` and on a foreign stage) and
+  `TelemetryRegistryHooksMatchTheJdkTest` (every atomic, field-updater, VarHandle and
+  stamped-reference hook, with and without an `ABAProblemDetector` taking the reference path). Each
+  went red on a hook broken by hand. The first two took run 37862260543 to 77% (9367 of 12216);
+  the threshold is unchanged.
 - **The weekly mutation gate computes a score again (#951).** Its coverage pass runs every test
   class in one JVM, and a record-path allocation budget failed there on 2026-10-04, so no score was
   computed. Allocation budgets now skip under pitest (`-Dasynctest.mutationRun=true` in its
