@@ -41,6 +41,21 @@ class PublishWaitsForCentralTest {
                         + " script's bound");
     }
 
+    @Test
+    @DisplayName("publish.yml creates the GitHub Release only once Central serves the jars")
+    void githubReleaseWaitsForCentral() throws IOException {
+        String publish = Files.readString(repoRoot().resolve(".github/workflows/publish.yml"),
+                StandardCharsets.UTF_8);
+        int wait = publish.indexOf(SCRIPT);
+        int release = publish.indexOf("gh release create");
+        assertTrue(release >= 0, "publish.yml no longer creates a GitHub Release; this test reads"
+                + " the wrong file");
+        assertTrue(wait >= 0 && wait < release, "publish.yml must wait for Central before"
+                + " 'gh release create' (#966). Released first, a stalled Central publication"
+                + " leaves a GitHub Release marked Latest whose coordinates 404, which is what"
+                + " v1.13.0 shipped (#949)");
+    }
+
     private static Path repoRoot() {
         Path dir = Path.of("").toAbsolutePath();
         for (int i = 0; i < 6 && dir != null; i++) {

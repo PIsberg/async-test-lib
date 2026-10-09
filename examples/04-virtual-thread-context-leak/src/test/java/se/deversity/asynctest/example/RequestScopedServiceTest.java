@@ -57,9 +57,9 @@ class RequestScopedServiceTest {
      * <p>With async-test-lib 0.7.0+ and {@code includes = DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS},
      * this test would report:
      * <pre>
-     * 🟠 HIGH: Virtual thread ThreadLocal context leak detected
+     * 🟡 MEDIUM: Virtual thread ThreadLocal set without remove (leaks once this code runs on a pool)
      *   ThreadLocal leaks (set but never removed):
-     *     - Virtual thread (id=...): ThreadLocal 'CURRENT_USER' was set but never removed.
+     *     - Virtual thread (id=...): ThreadLocal 'CURRENT_USER' was set but never removed. ...
      * </pre>
      *
      * <p>This test is commented out because it intentionally exposes the bug in the

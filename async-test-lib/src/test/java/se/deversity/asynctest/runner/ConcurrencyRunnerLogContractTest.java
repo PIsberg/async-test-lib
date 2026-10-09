@@ -128,6 +128,43 @@ class ConcurrencyRunnerLogContractTest {
     }
 
     @Test
+    @DisplayName("the first run that skips detectors says so once, at INFO (#956)")
+    void aPartialSelectionIsAnnouncedOnceAtInfo() {
+        ConcurrencyRunner.PARTIAL_SELECTION_LOGGED.set(false);
+
+        // Every detector: nothing was left out, so nothing to announce.
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(NarratedDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+        for (int i = 0; i < 2; i++) {
+            EngineTestKit.engine("junit-jupiter")
+                .selectors(selectClass(BareDummy.class))
+                .execute()
+                .testEvents()
+                .assertStatistics(stats -> stats.succeeded(1));
+        }
+
+        List<ILoggingEvent> announcements = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.selection.partial"))
+            .toList();
+        assertEquals(1, announcements.size(),
+            "once per JVM, and only for a run that left detectors out: a suite of bare"
+                + " annotations must not repeat it per test. Got: " + events());
+        assertSame(Level.INFO, announcements.get(0).getLevel(),
+            "INFO, not DEBUG: since 1.13.0 a passing bare @AsyncTest runs 12 detectors where 1.12"
+                + " ran 146, and the user it affects does not have DEBUG on");
+        String message = announcements.get(0).getFormattedMessage();
+        assertTrue(message.contains("test=bare"), "names the test that triggered it: " + message);
+        assertTrue(message.contains("detectors=" + se.deversity.asynctest.Preset.ESSENTIALS.enabled().size()
+                + " of=" + se.deversity.asynctest.DetectorType.values().length
+                + " selection=ESSENTIALS"), "how many ran, of how many, and which selection: " + message);
+        assertTrue(message.contains("-Dasync-test.detectAll=true"),
+            "the hint names the run-wide switch that turns every detector on: " + message);
+    }
+
+    @Test
     @DisplayName("the selection label names a preset only for its exact set")
     void theSelectionLabelNamesWhatRan() {
         assertEquals("CI_FAST", ConcurrencyRunner.selectionLabel(

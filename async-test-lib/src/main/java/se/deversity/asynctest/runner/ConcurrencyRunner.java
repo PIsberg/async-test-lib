@@ -122,6 +122,18 @@ public class ConcurrencyRunner {
     static final java.util.concurrent.atomic.AtomicBoolean DAEMON_HYGIENE_INERT_LOGGED =
             new java.util.concurrent.atomic.AtomicBoolean();
 
+    /**
+     * One-shot latch for the {@code runner.selection.partial} INFO event in {@link #execute}
+     * (#956). Since 1.13.0 a bare {@code @AsyncTest} runs the {@code ESSENTIALS} preset where
+     * 1.12 ran every detector, and a test that passed before passes after with nothing saying
+     * fewer detectors looked; {@code runner.config} says it, but only at DEBUG. Once per JVM,
+     * for the same reason as {@link #AGENT_ABSENCE_LOGGED}: per test, a suite of bare
+     * annotations would repeat it hundreds of times. Package-visible so the log-contract test
+     * can rearm it.
+     */
+    static final java.util.concurrent.atomic.AtomicBoolean PARTIAL_SELECTION_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
 
     /**
      * Latches the one-shot announcement that {@code DeadlockDetector} cannot see the runner's
@@ -434,6 +446,17 @@ public class ConcurrencyRunner {
                 timeoutMultiplier, effectiveTimeoutMs, config.useVirtualThreads,
                 config.virtualThreadStressMode, config.replaySeed, config.enableBenchmarking,
                 config.enabledDetectors().size(), selectionLabel(config.enabledDetectors()));
+        }
+        // The same selection at INFO, once per JVM (the latch above), and only when it left
+        // detectors out: a passing run is otherwise silent about how many looked (#956).
+        if (!PARTIAL_SELECTION_LOGGED.get()
+                && config.enabledDetectors().size() < DetectorType.values().length
+                && PARTIAL_SELECTION_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.selection.partial test={} detectors={} of={} selection={} "
+                    + "hint=\"not every detector ran; -Dasync-test.detectAll=true runs all of them "
+                    + "for one build without editing an annotation\"",
+                testMethod.getName(), config.enabledDetectors().size(),
+                DetectorType.values().length, selectionLabel(config.enabledDetectors()));
         }
 
         // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every

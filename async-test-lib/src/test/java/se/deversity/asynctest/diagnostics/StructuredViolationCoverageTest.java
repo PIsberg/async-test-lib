@@ -1539,7 +1539,9 @@ class StructuredViolationCoverageTest {
             java.util.Map.entry("StructuredConcurrencyMisuseDetector", IssueSeverity.HIGH),
             java.util.Map.entry("StructuredTaskScopeMisuseDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("ThreadFactoryDetector", IssueSeverity.HIGH),
-            java.util.Map.entry("VirtualThreadContextLeakDetector", IssueSeverity.HIGH),
+            // HIGH before #801; lowered to MEDIUM on purpose by the owner's decision on #942: on a
+            // virtual thread the value dies with the thread, so a failOn = HIGH gate must not fail.
+            java.util.Map.entry("VirtualThreadContextLeakDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("VirtualThreadCpuBoundTaskDetector", IssueSeverity.MEDIUM),
             java.util.Map.entry("CyclicBarrierDetector", IssueSeverity.CRITICAL),
             java.util.Map.entry("PhaserDetector", IssueSeverity.CRITICAL),

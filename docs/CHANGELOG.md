@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A run that leaves detectors out says so once per JVM at INFO (#956).** #965 put the selection in
+  `runner.config`, which is DEBUG, so a bare `@AsyncTest` that passed under 1.12 still passed under
+  1.13 with nothing in a default build log saying `ESSENTIALS` ran instead of every detector. The
+  first run in a JVM whose selection is not `all` now logs `runner.selection.partial test=...
+  detectors=<n> of=<total> selection=<preset|custom>` with a hint naming
+  `-Dasync-test.detectAll=true`; later runs stay quiet. The owner chose this over a report-header
+  line: the console report prints only when there are findings, the JSON report is one file per
+  JVM, and `SarifFormatter` sees only violations, so none of them could show the selection of a
+  run that passed. `ConcurrencyRunnerLogContractTest` went red first (no announcement), and pins
+  that a run of every detector does not trigger it.
+
+### Changed
+
+- **`VIRTUAL_THREAD_CONTEXT_LEAKS` reports set-without-remove at `MEDIUM`, not `HIGH` (#942).**
+  The finding fires only on virtual threads, which are never pooled, so the value it names dies
+  with the thread; the HIGH finding fired where the leak cannot happen and was silent where it
+  can. Owner's option 2: it stays a finding (the same task code leaks once it runs on a pool, and
+  the corpus pair still fires), but `failOn = HIGH` no longer fails on it, and its text now points
+  to `THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK`, which report the leak on pooled threads. A suite
+  on `failOn = MEDIUM` or `LOW` still fails. The new detector test went red on HIGH first.
+- **Publish Release creates the GitHub Release only after Maven Central serves the jars (#966).**
+  The Central wait (#952) used to run after `gh release create`, so a stalled publication still
+  produced a GitHub Release marked Latest whose coordinates 404'd, as v1.13.0's did (#949). The
+  wait now comes first; a stall leaves the tag without a Release, and `docs/RELEASE.md` ("When a
+  release fails") says how to create it by hand. `PublishWaitsForCentralTest` went red on the old
+  order first.
+
 ## [1.13.1] - 2026-10-09
 
 > **The first 1.13 on Maven Central.** 1.13.0 was tagged and released on GitHub, but Central

@@ -1168,7 +1168,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedThreadLocalMonitor()…</text>
   <text x="3376.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedBusyWaitDetector(): …</text>
   <text x="3376.0" y="453.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedAtomicityValidator()…</text>
-  <text x="3376.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+201 more)</text>
+  <text x="3376.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+202 more)</text>
 </g>
 <g id="DetectorRegistry">
   <title>DetectorRegistry [CLASS]</title>
@@ -4244,10 +4244,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="880.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">log: Logger</text>
   <text x="880.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">AGENT_ABSENCE_LOGGED: java…</text>
   <text x="880.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DAEMON_HYGIENE_INERT_LOGGE…</text>
-  <text x="880.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEADLOCK_INERT_LOGGED: jav…</text>
-  <text x="880.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LIVELOCK_INERT_LOGGED: jav…</text>
-  <text x="880.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMEOUT_MULTIPLIER_PROPERT…</text>
-  <text x="880.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+8 more)</text>
+  <text x="880.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PARTIAL_SELECTION_LOGGED: …</text>
+  <text x="880.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEADLOCK_INERT_LOGGED: jav…</text>
+  <text x="880.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LIVELOCK_INERT_LOGGED: jav…</text>
+  <text x="880.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+9 more)</text>
   <line x1="872.0" y1="185.0" x2="1052.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="880.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">execute(ReflectiveInvocati…</text>
   <text x="880.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">selectionLabel(Set&lt;Detecto…</text>

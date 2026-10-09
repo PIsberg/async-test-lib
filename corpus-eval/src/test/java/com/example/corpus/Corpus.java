@@ -3983,7 +3983,9 @@ final class Corpus {
                             + "Every virtual thread inherits a copy, and where a pool has eight "
                             + "carriers an application may have a million virtual threads, so "
                             + "the per-thread cost that was invisible becomes the heap",
-                    IssueSeverity.HIGH),
+                    // MEDIUM since #942: on a virtual thread the value dies with the
+                    // thread, so a failOn = HIGH gate must not fail on it.
+                    IssueSeverity.MEDIUM),
 
             new RecordingSubject("recorded_virtualThread_contextRemoved", JDK,
                     "java.lang.Thread",

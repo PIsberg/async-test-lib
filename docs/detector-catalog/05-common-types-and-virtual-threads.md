@@ -134,8 +134,8 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
   ```
 
 ### 59. Virtual Thread Context Leak Detector
-* **Severity**: `HIGH`
-* **Description**: Flags `ThreadLocal` values set on a virtual thread but never removed before it completes. Virtual threads are never pooled, so the value dies with that thread, but the same task code leaks as soon as it runs on a pooled thread, where a stale value reaches an unrelated later task. Warns, without counting it as an issue, about an `InheritableThreadLocal` set in a virtual thread (virtual threads inherit those values by default, so every thread it creates gets a copy) and about excessive distinct `ThreadLocal` counts per thread.
+* **Severity**: `MEDIUM` (`HIGH` before #942: on the virtual thread where it is observed the value cannot reach another task, so a `failOn = HIGH` gate does not fail on it)
+* **Description**: Flags `ThreadLocal` values set on a virtual thread but never removed before it completes. Virtual threads are never pooled, so the value dies with that thread, but the same task code leaks as soon as it runs on a pooled thread, where a stale value reaches an unrelated later task. Warns, without counting it as an issue, about an `InheritableThreadLocal` set in a virtual thread (virtual threads inherit those values by default, so every thread it creates gets a copy) and about excessive distinct `ThreadLocal` counts per thread. The leak on pooled platform threads is what `THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK` report; this detector ignores platform threads.
 * **Buggy Code**:
   ```java
   private static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
