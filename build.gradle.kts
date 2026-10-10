@@ -10,7 +10,7 @@ plugins {
     id("com.vanniktech.maven.publish") version "0.37.0" apply false
     id("net.ltgt.errorprone") version "5.1.1" apply false
     id("com.github.spotbugs") version "6.5.12" apply false
-    id("org.cyclonedx.bom") version "3.4.1"
+    id("org.cyclonedx.bom") version "3.5.0"
     // Shades a relocated Byte Buddy into the agent jar, as maven-shade-plugin does. Applied only
     // by async-test-agent (#719).
     id("com.gradleup.shadow") version "9.6.1" apply false
