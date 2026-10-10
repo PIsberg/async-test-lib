@@ -170,7 +170,7 @@ public final class JfrPinningStream implements AutoCloseable {
             List<StackTraceElement> out = new ArrayList<>();
             for (RecordedFrame frame : trace.getFrames()) {
                 String type = frame.getMethod().getType().getName();
-                if (out.isEmpty() && (type.equals("java.lang.VirtualThread") || type.startsWith("jdk.internal."))) {
+                if (out.isEmpty() && ("java.lang.VirtualThread".equals(type) || type.startsWith("jdk.internal."))) {
                     continue;
                 }
                 out.add(new StackTraceElement(type, frame.getMethod().getName(), null, frame.getLineNumber()));
