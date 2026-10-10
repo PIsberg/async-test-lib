@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the corpus pair still fires), but `failOn = HIGH` no longer fails on it, and its text now points
   to `THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK`, which report the leak on pooled threads. A suite
   on `failOn = MEDIUM` or `LOW` still fails. The new detector test went red on HIGH first.
+- **`common-license-lib` 0.5.0 to 0.6.0.** The licence guard now runs on the hardened validator:
+  only a 2xx response can produce `Allowed` (a proxy's 302 or 400 page carrying `valid: true` used
+  to let a build through), a mock-mode `LicenseConfig.Builder` no longer keeps placeholder
+  credentials that a later non-mock `build()` would send to Keygen, a deeply nested response body
+  maps to `NETWORK_ERROR` instead of throwing `StackOverflowError` out of the check, and a
+  LemonSqueezy licence bought from a free-mail address binds to that exact address. No API used
+  here changed. Verified against the jar Central serves (sha1 `ade9c76`): 78 licence tests and
+  `BuildMetadataSyncTest` green, 5 real-licence E2E tests skipped locally (they need the
+  `ATL_E2E_*` secrets and run in `license-e2e.yml`).
 - **Publish Release creates the GitHub Release only after Maven Central serves the jars (#966).**
   The Central wait (#952) used to run after `gh release create`, so a stalled publication still
   produced a GitHub Release marked Latest whose coordinates 404'd, as v1.13.0's did (#949). The
