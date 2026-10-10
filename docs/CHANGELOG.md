@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`VIRTUAL_THREAD_PINNING` reads the JVM's own `jdk.VirtualThreadPinned` JFR event.** The
+  detector reported only pins a body passed to `recordPinningEvent`, which are the pins its author
+  already knew about, and nothing in the harness fed it. On a run with virtual workers the runner
+  now opens a JFR stream and every pin the JVM reports on one of those workers is a finding, with
+  the JVM's reason (`pinnedReason` and `blockingOperation` on JDK 24+, the stack on 21-23) and its
+  measured duration. The event is the running JDK's verdict, so an observed pin is never marked
+  obsolete: it fires for a `synchronized` block on JDK 21 and not on 24+ (JEP 491), and for a
+  blocking class initializer or an FFM upcall on every JDK, which a 2026-10-10 probe confirmed on
+  21, 24 and 26. One blocking call that parks twice is one event. Pins on other threads, a thread
+  the body started or a test running in parallel, are counted in the new per-test INFO event
+  `runner.pinning.unattributed` and not reported. Cost when the detector is enabled: about 4 ms to
+  start and 10-20 ms to stop per test, plus 230-535 ms once per JVM for JFR itself; without a
+  usable JFR the detector keeps its recording feed. `VirtualThreadPinningJfrTest` went red first
+  (with the feed disabled the class-initializer pin produced no report), and is green on JDK 21 and
+  26. The detector moves from the recording-only feed to zero-config (`DetectorFeeds`, catalog,
+  README); its trust row stays `PROMPT` on `ASSERTED` until the report grades the observed findings
+  apart from the recorded ones.
+
 - **A run that leaves detectors out says so once per JVM at INFO (#956).** #965 put the selection in
   `runner.config`, which is DEBUG, so a bare `@AsyncTest` that passed under 1.12 still passed under
   1.13 with nothing in a default build log saying `ESSENTIALS` ran instead of every detector. The

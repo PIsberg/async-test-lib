@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,6 +36,10 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * {@code synchronized} block pinned on 21 only (JEP 491). Each run initializes a fresh copy of the
  * class in its own loader, so a rerun in the same JVM (PIT, a repeated test) pins again instead of
  * finding the class already initialized.
+ *
+ * <p>Every test checks that its fixture body ran to the end and that each initializer it needed
+ * finished. A body that throws produces no pin and no report, and the silent tests would then
+ * pass on nothing; the first draft of this class did exactly that.
  */
 @E2E
 class VirtualThreadPinningJfrTest {
@@ -42,10 +47,25 @@ class VirtualThreadPinningJfrTest {
     private static final String DETECTOR = "VirtualThreadPinningDetector";
     private static final Map<String, String> REPORTS = new ConcurrentHashMap<>();
 
-    /** Its initializer blocks, which pins the virtual thread running it to its carrier. */
+    /** Fixture bodies that ran to their last statement. */
+    static final AtomicInteger COMPLETED = new AtomicInteger();
+    /** Fresh copies of {@link BlockingInitializer} that finished initializing. */
+    static final AtomicInteger INITIALIZED = new AtomicInteger();
+
+    /**
+     * Its initializer blocks, which pins the virtual thread running it to its carrier.
+     *
+     * <p>Touches only public JDK API: a fresh copy lives in another loader, hence another runtime
+     * package, and a call to a package-private helper of this test throws
+     * {@code IllegalAccessError} before anything blocks.
+     */
     public static final class BlockingInitializer {
         static {
-            sleep(50);
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         private BlockingInitializer() {
@@ -58,6 +78,7 @@ class VirtualThreadPinningJfrTest {
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
         void body() {
             initializeFreshCopy(BlockingInitializer.class);
+            COMPLETED.incrementAndGet();
         }
     }
 
@@ -65,8 +86,9 @@ class VirtualThreadPinningJfrTest {
     public static class BlocksWithoutPinning {
         @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
-        void body() {
-            sleep(50);
+        void body() throws InterruptedException {
+            Thread.sleep(50);
+            COMPLETED.incrementAndGet();
         }
     }
 
@@ -76,10 +98,11 @@ class VirtualThreadPinningJfrTest {
 
         @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
-        void body() {
+        void body() throws InterruptedException {
             synchronized (LOCK) {
-                sleep(50);
+                Thread.sleep(50);
             }
+            COMPLETED.incrementAndGet();
         }
     }
 
@@ -92,14 +115,18 @@ class VirtualThreadPinningJfrTest {
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
         void body() throws InterruptedException {
             go.countDown();
-            assertTrue(pinned.await(10, TimeUnit.SECONDS), "the foreign thread never pinned");
+            if (pinned.await(10, TimeUnit.SECONDS)) {
+                COMPLETED.incrementAndGet();
+            }
         }
     }
 
     @Test
     @DisplayName("a worker blocking in a class initializer is reported with no recording call")
     void pinInAClassInitializerIsReported() {
+        int initialized = INITIALIZED.get();
         run(PinsInClassInitializer.class);
+        assertEquals(initialized + 1, INITIALIZED.get(), "the initializer never ran, so nothing pinned");
         assertTrue(REPORTS.containsKey(DETECTOR),
                 "the worker blocked for 50 ms inside <clinit>, which pins a virtual thread on every "
                         + "supported JDK and makes the JVM emit jdk.VirtualThreadPinned. The body "
@@ -145,6 +172,7 @@ class VirtualThreadPinningJfrTest {
     void aForeignThreadsPinIsNotAttributed() throws InterruptedException {
         ForeignThreadPins.go = new CountDownLatch(1);
         ForeignThreadPins.pinned = new CountDownLatch(1);
+        int initialized = INITIALIZED.get();
         Thread foreign = Thread.ofVirtual().name("not-a-worker").start(() -> {
             try {
                 if (ForeignThreadPins.go.await(10, TimeUnit.SECONDS)) {
@@ -158,14 +186,17 @@ class VirtualThreadPinningJfrTest {
         });
         run(ForeignThreadPins.class);
         foreign.join(TimeUnit.SECONDS.toMillis(10));
+        assertEquals(initialized + 1, INITIALIZED.get(), "the foreign thread never ran the initializer");
         // JFR delivers every event to every open stream, so a run in parallel with another
         // test sees that test's pins; attributing them would report the wrong test.
         assertFalse(REPORTS.containsKey(DETECTOR),
                 "the pin happened on a thread the run did not start. Report: " + REPORTS.get(DETECTOR));
     }
 
+    /** Runs {@code fixture} and fails unless its one body execution ran to the end. */
     private static void run(Class<?> fixture) {
         REPORTS.clear();
+        int completed = COMPLETED.get();
         AsyncTestListener capture = new AsyncTestListener() {
             @Override
             public void onDetectorReport(String detectorName, String report) {
@@ -175,6 +206,9 @@ class VirtualThreadPinningJfrTest {
         try (AsyncTestListenerRegistry.Registration r = AsyncTestListenerRegistry.registerScoped(capture)) {
             EngineTestKit.engine("junit-jupiter").selectors(selectClass(fixture)).execute();
         }
+        assertEquals(completed + 1, COMPLETED.get(),
+                fixture.getSimpleName() + "'s body did not run to the end, so its silence or its "
+                        + "report says nothing about pinning");
     }
 
     /** Defines {@code type} again in a loader of its own and initializes it, running its {@code <clinit>}. */
@@ -203,13 +237,6 @@ class VirtualThreadPinningJfrTest {
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    static void sleep(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        INITIALIZED.incrementAndGet();
     }
 }

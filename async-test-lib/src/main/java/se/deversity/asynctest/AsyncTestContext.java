@@ -713,6 +713,24 @@ public final class AsyncTestContext {
     }
 
     /**
+     * Internal: registry-backed {@link VirtualThreadPinningDetector} for this context, or
+     * {@code null} when {@link DetectorType#VIRTUAL_THREAD_PINNING} is not enabled.
+     *
+     * <p>Same instance as the public {@link #virtualThreadPinningDetector()} accessor, and the
+     * one {@link se.deversity.asynctest.diagnostics.JfrPinningStream} feeds; unlike that accessor
+     * this one returns {@code null} instead of throwing when disabled.
+     *
+     * <p>Public only so {@code ConcurrencyRunner}, which lives in a different package, can call
+     * it; not part of the stable public API.
+     *
+     * @return the shared {@link VirtualThreadPinningDetector} for this context, or {@code null} when it is disabled
+     * @since 1.13.2
+     */
+    public @Nullable VirtualThreadPinningDetector sharedVirtualThreadPinningDetector() {
+        return registry.virtualThreadPinningDetector;
+    }
+
+    /**
      * Internal: registry-backed {@link InterruptMonitor} for this context, or
      * {@code null} when {@link DetectorType#INTERRUPT_MISHANDLING} is not enabled.
      *

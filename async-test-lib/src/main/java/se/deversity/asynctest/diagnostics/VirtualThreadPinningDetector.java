@@ -28,33 +28,33 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       versions.</li>
  * </ul>
  *
- * <p>This detector classifies each recorded event by cause and JDK version: events whose
- * cause no longer pins on the running JDK are kept in the report but annotated as
- * obsolete, so tests written against JDK 21–23 behavior don't report phantom pinning on
- * JDK 24+.
+ * <p><strong>Two feeds.</strong> On a run with virtual workers ({@code useVirtualThreads}, the
+ * default) the runner opens a {@link JfrPinningStream}, and every {@code jdk.VirtualThreadPinned}
+ * event the JVM emits for one of those workers is reported with no call from the test body. The
+ * event is the running JDK's own verdict, so such a pin is never annotated as obsolete. The
+ * events are delivered when the stream stops after the run, so they are in the run's report and
+ * not in an {@link #analyzePinning()} the body calls itself. Pins on threads the body starts are
+ * not attributed (they are counted in {@code runner.pinning.unattributed}); for those, and on a
+ * JVM without JFR, {@link #recordPinningEvent} records a pin the caller describes.
+ *
+ * <p>A recorded event is classified by cause and JDK version: one whose cause no longer pins on
+ * the running JDK is kept in the report but annotated as obsolete, so tests written against JDK
+ * 21–23 behavior don't report phantom pinning on JDK 24+.
  *
  * <p>Pinned virtual threads lose their scalability advantage because they hold onto
  * carrier threads that could otherwise be used by other virtual threads.
  *
- * <p><strong>Usage:</strong>
+ * <p><strong>Usage:</strong> enabling the detector is enough for the workers' own pins.
  * <pre>{@code
- * @AsyncTest(threads = 10, useVirtualThreads = true, includes = DetectorType.VIRTUAL_THREAD_PINNING)
- * void testVirtualThreadPinning() {
- *     AsyncTestContext.virtualThreadPinningDetector()
- *         .startMonitoring();
- *
- *     // Code that may cause pinning
- *     synchronized(lock) {
- *         Thread.sleep(100);
- *     }
- *
- *     PinningReport report = AsyncTestContext.virtualThreadPinningDetector()
- *         .analyzePinning();
- *     if (report.hasPinningIssues()) {
- *         // Handle pinning detected
- *     }
+ * @AsyncTest(threads = 10, includes = DetectorType.VIRTUAL_THREAD_PINNING)
+ * void loadsTheCodec() {
+ *     Codec.forName("x");   // reported if Codec's static initializer sleeps or waits
  * }
  * }</pre>
+ *
+ * <p>JFR reports a pinned virtual thread when it parks: blocking inside a class initializer, or
+ * in Java code called back from native code (an FFM upcall), and inside {@code synchronized} up to
+ * JDK 23. A call that blocks inside native code itself never parks, so it is not reported.
  *
  * <p><strong>Note:</strong> This detector requires Java 21+ with virtual thread support.
  * On earlier Java versions, it will report no issues.
@@ -132,6 +132,8 @@ public class VirtualThreadPinningDetector {
         final StackTraceElement[] stackTrace;
         final PinningCause cause;
         final boolean obsoleteOnCurrentJdk;
+        /** The pin's length as the JVM measured it, or -1 for a recorded event, which has none. */
+        final long observedDurationMillis;
 
         PinningEvent(long virtualThreadId, String virtualThreadName,
                      String blockingOperation, StackTraceElement[] stackTrace) {
@@ -142,10 +144,26 @@ public class VirtualThreadPinningDetector {
             this.stackTrace = stackTrace;
             this.cause = classifyOperation(blockingOperation);
             this.obsoleteOnCurrentJdk = !stillPinsOn(this.cause, Runtime.version().feature());
+            this.observedDurationMillis = -1;
+        }
+
+        /** An event the JVM emitted, which by being emitted pins on the running JDK. */
+        PinningEvent(long virtualThreadId, String virtualThreadName, String blockingOperation,
+                     PinningCause cause, long durationMillis, StackTraceElement[] stackTrace) {
+            this.virtualThreadId = virtualThreadId;
+            this.virtualThreadName = virtualThreadName;
+            this.startTimeNanos = System.nanoTime();
+            this.blockingOperation = blockingOperation;
+            this.stackTrace = stackTrace;
+            this.cause = cause;
+            this.obsoleteOnCurrentJdk = false;
+            this.observedDurationMillis = durationMillis;
         }
 
         long getDurationMillis() {
-            return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNanos);
+            return observedDurationMillis >= 0
+                    ? observedDurationMillis
+                    : TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNanos);
         }
     }
 
@@ -190,6 +208,25 @@ public class VirtualThreadPinningDetector {
         pinningEvents.add(event);
         currentPinnedCount.incrementAndGet();
         maxPinnedCount.updateAndGet(max -> Math.max(max, currentPinnedCount.get()));
+    }
+
+    /**
+     * Records a pin the JVM reported through {@code jdk.VirtualThreadPinned}; called by
+     * {@link JfrPinningStream}, which resolves the cause and the frames from the event.
+     *
+     * <p>Unlike {@link #recordPinningEvent} the cause is not checked against the running JDK:
+     * {@link #classifyOperation} maps a blocking {@code <clinit>} to {@link PinningCause#CLASS_INIT},
+     * which {@link #stillPinsOn} calls obsolete on JDK 26, and JDK 26 still emits the event for it.
+     * The event is the verdict. The peak count is raised to at least one, since an event carries
+     * no overlap with the others.
+     */
+    void recordObservedPinning(long threadId, String threadName, String reason, PinningCause cause,
+                               long durationMillis, StackTraceElement[] stackTrace) {
+        if (!monitoring) {
+            return;
+        }
+        pinningEvents.add(new PinningEvent(threadId, threadName, reason, cause, durationMillis, stackTrace));
+        maxPinnedCount.updateAndGet(max -> Math.max(max, 1));
     }
 
     /**

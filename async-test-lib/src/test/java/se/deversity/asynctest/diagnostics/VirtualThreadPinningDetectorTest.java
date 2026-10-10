@@ -369,4 +369,43 @@ class VirtualThreadPinningDetectorTest {
                 "duration must be a small subtraction-based elapsed time, not the huge value "
                         + "produced by adding two absolute nanoTime readings together");
     }
+
+    // ---- pins the JVM observed (JfrPinningStream) ----
+
+    @Test
+    void observedPin_isAFindingEvenWhereItsCauseIsObsoleteOnPaper() {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        // JDK 26 still reports a virtual thread blocking inside <clinit> ("VM call to
+        // X.<clinit> on stack"), while stillPinsOn(CLASS_INIT, 26) is false because waiting for
+        // another thread's initialization stopped pinning there. The JVM emitting the event is
+        // the verdict for the running JDK, so an observed pin is never obsolete.
+        detector.recordObservedPinning(42L, "worker-1",
+                "JFR jdk.VirtualThreadPinned: VM call to Foo.<clinit> on stack (LockSupport.park)",
+                VirtualThreadPinningDetector.PinningCause.CLASS_INIT, 50L,
+                new StackTraceElement[] {new StackTraceElement("Foo", "<clinit>", null, 3)});
+
+        var report = detector.analyzePinning();
+        assertTrue(report.hasIssues(), "an observed pin must be a finding on every JDK: " + report);
+        assertEquals(0, report.getObsoleteEventCount());
+        var event = report.getEvents().get(0);
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT, event.getCause());
+        assertEquals(50L, event.getDurationMillis(), "the duration is the one the JVM measured");
+        assertEquals(1, report.structuredViolations.size());
+        assertTrue(report.structuredViolations.get(0).message().contains("<clinit>"),
+                report.structuredViolations.get(0).message());
+    }
+
+    @Test
+    void observedPin_isDroppedWhileMonitoringIsOff() {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.stopMonitoring();
+
+        detector.recordObservedPinning(42L, "worker-1", "JFR jdk.VirtualThreadPinned: x",
+                VirtualThreadPinningDetector.PinningCause.OTHER, 5L, new StackTraceElement[0]);
+
+        assertEquals(0, detector.analyzePinning().getEvents().size(),
+                "stopMonitoring() must stop the observed feed as it stops the recorded one");
+    }
 }

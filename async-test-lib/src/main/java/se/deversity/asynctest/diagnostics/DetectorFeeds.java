@@ -111,17 +111,20 @@ public final class DetectorFeeds {
     /**
      * Fed by the JVM and the harness with no recording call.
      *
-     * <p>Three, each with the deciding source: {@code DeadlockDetector.analyze()} samples
+     * <p>Four, each with the deciding source: {@code DeadlockDetector.analyze()} samples
      * {@code ThreadMXBean.findDeadlockedThreads()} on its own; {@code ConcurrencyRunner} pushes a
-     * thread-dump snapshot into {@code LivelockDetector} for every worker of every round; and
+     * thread-dump snapshot into {@code LivelockDetector} for every worker of every round;
      * {@code StaticInitDeadlockDetector.analyze()} walks the live stacks for threads parked in
-     * {@code <clinit>} frames. Nothing else in the harness feeds a detector by itself: the sweep
-     * behind #300 checked every {@code record*}/{@code register*} call site in main code.
+     * {@code <clinit>} frames; and {@code ConcurrencyRunner} opens a {@link JfrPinningStream} that
+     * hands {@code VirtualThreadPinningDetector} the JVM's {@code jdk.VirtualThreadPinned} events
+     * for the run's virtual workers. Nothing else in the harness feeds a detector by itself: the
+     * sweep behind #300 checked every {@code record*}/{@code register*} call site in main code.
      */
     private static final Set<DetectorType> ZERO_CONFIG_FED = EnumSet.of(
             DetectorType.DEADLOCKS,
             DetectorType.LIVELOCKS,
-            DetectorType.STATIC_INIT_DEADLOCK);
+            DetectorType.STATIC_INIT_DEADLOCK,
+            DetectorType.VIRTUAL_THREAD_PINNING);
 
     private static final Map<DetectorType, DetectorFeed> FEEDS = buildTable();
 

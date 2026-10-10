@@ -171,10 +171,14 @@ class DetectorEvidenceMatchesCodeTest {
                     + "state changes in ten snapshots: thresholds over what the JVM showed"),
             entry(DetectorType.STATIC_INIT_DEADLOCK, "the live stack sample is graded FACT on OBSERVED "
                     + "evidence, since one slow initializer looks the same, and the cycle of recorded "
-                    + "init requests is FACT on ASSERTED; with no grade above FACT it keeps ASSERTED"));
+                    + "init requests is FACT on ASSERTED; with no grade above FACT it keeps ASSERTED"),
+            entry(DetectorType.VIRTUAL_THREAD_PINNING, "the JFR feed reaches virtual workers only, "
+                    + "and recordPinningEvent still adds a pin described by the caller, judged by its "
+                    + "description; the report does not grade the two apart, so the row keeps "
+                    + "ASSERTED until it does"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 4;
+    private static final int FED_BELOW_OBSERVED_CEILING = 5;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

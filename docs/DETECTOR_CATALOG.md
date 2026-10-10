@@ -393,13 +393,22 @@ feed tracks up to 4,096 owners per run, naming any it dropped in a note.
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`
 
-### Zero-config (3)
+### Zero-config (4)
 
 Watch the JVM and the harness themselves (`ThreadMXBean` deadlock scans, per-round thread-dump
-snapshots, live `<clinit>` stacks) and can fire with an empty test body, no agent and no recording
-call:
+snapshots, live `<clinit>` stacks, the JVM's `jdk.VirtualThreadPinned` JFR event) and can fire with
+no agent and no recording call.
 
-`DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`
+The pinning detector takes the JFR feed only for a run on virtual workers (`useVirtualThreads`,
+the default) and only for pins on those workers: JFR reports every virtual thread in the JVM, so a
+pin on a thread the body started, or in a test running in parallel, is counted in
+`runner.pinning.unattributed` and not reported. The event is the running JDK's own verdict, so it
+fires for a blocking `synchronized` block up to JDK 23 and not from 24 (JEP 491), and for blocking
+inside a class initializer or under a native frame on every JDK. Without a usable JFR (a runtime
+image without `jdk.jfr`) the detector keeps its recording feed. The four:
+
+`DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`,
+`VirtualThreadPinningDetector`
 
 ### Why the rest are recording-only
 
@@ -426,7 +435,7 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (121)
+### Recording-only (120)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -436,7 +445,7 @@ recording is the feed:
 `SynchronizerMonitor`, `ThreadPoolMonitor`,
 `MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
 `CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
-`VirtualThreadPinningDetector`, `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
+`ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
 `SharedRandomDetector`, `ConditionVariableDetector`,
 `ParallelStreamDetector`, `ResourceLeakDetector`,
 `CyclicBarrierDetector`, `ReentrantLockDetector`,
