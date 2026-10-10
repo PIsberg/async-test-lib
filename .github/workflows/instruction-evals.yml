@@ -59,7 +59,7 @@ jobs:
       has-token: ${{ steps.token.outputs.has-token }}
     steps:
       - name: Harden the runner (Block egress, allowlist only)
-        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -87,7 +87,7 @@ jobs:
       # BLOCKED except GitHub, the Copilot API and npm for the CLI install. Extend the list
       # in a reviewed commit if a legitimate endpoint gets blocked; never flip back to audit.
       - name: Harden the runner (Block egress, allowlist only)
-        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
